@@ -421,6 +421,77 @@ test("SettingsModalRenderer renders template slash command registration field", 
   assert.match(html, /YOLO/);
 });
 
+test("Settings category buttons expose stable accessible labels and test ids", () => {
+  const renderSettings = (locale: "en" | "ja") => renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "commands",
+      locale,
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "commands",
+          label: "Commands",
+          fields: [
+            { id: "registered_slash_commands", label: "Slash Commands", type: "text" },
+          ],
+        },
+        {
+          id: "tools",
+          label: "Tools",
+          fields: [
+            { id: "default_mode", label: "Default mode", type: "select" },
+            { id: "hidden_tool_ids", label: "Hidden tools", type: "text" },
+          ],
+        },
+      ],
+      settingsValues: {},
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+  const html = renderSettings("en");
+  const japaneseHtml = renderSettings("ja");
+
+  const categoryIds = [...html.matchAll(/data-settings-category="([^"]+)"/g)]
+    .map((match) => match[1]);
+  const testIds = [...html.matchAll(/data-testid="(settings-category-[^"]+)"/g)]
+    .map((match) => match[1]);
+  const accessibleNames = [...html.matchAll(/aria-label="Settings category: [^"]+"/g)];
+  const japaneseCategoryIds = [...japaneseHtml.matchAll(/data-settings-category="([^"]+)"/g)]
+    .map((match) => match[1]);
+  const japaneseTestIds = [...japaneseHtml.matchAll(/data-testid="(settings-category-[^"]+)"/g)]
+    .map((match) => match[1]);
+  const japaneseAccessibleNames = [...japaneseHtml.matchAll(/aria-label="設定カテゴリ: [^"]+"/g)];
+
+  assert.ok(categoryIds.length >= 2);
+  assert.equal(testIds.length, categoryIds.length);
+  assert.equal(new Set(categoryIds).size, categoryIds.length);
+  assert.equal(new Set(testIds).size, categoryIds.length);
+  assert.equal(accessibleNames.length, categoryIds.length);
+  assert.deepEqual(japaneseCategoryIds, categoryIds);
+  assert.deepEqual(japaneseTestIds, testIds);
+  assert.equal(japaneseAccessibleNames.length, categoryIds.length);
+
+  assert.match(html, /aria-label="Settings category: Display &amp; Input"/);
+  assert.match(html, /data-testid="settings-category-workspace-ui"/);
+  assert.match(html, /data-settings-category="workspace_ui"/);
+  assert.match(html, /aria-label="Settings category: Tools"/);
+  assert.match(html, /data-testid="settings-category-tools-mcp"/);
+  assert.match(html, /data-settings-category="tools_mcp"/);
+  assert.match(html, />Display &amp; Input<\/span>/);
+  assert.match(html, />Tools<\/span>/);
+  assert.match(japaneseHtml, /aria-label="設定カテゴリ: 表示と入力"/);
+  assert.match(japaneseHtml, /aria-label="設定カテゴリ: ツール"/);
+});
+
 test("SettingsModalRenderer keeps internal extension paths out of standard Pack settings", () => {
   const longTemplatePath = "/Users/demo/Library/Application Support/Rumi/extensions/external-custom/templates/very/deep/path/with/no-natural-breaks/ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns";
   const longProfilePath = "/Users/demo/Library/Application Support/Rumi/extensions/external-custom/profiles/another/very/deep/path/with/no-natural-breaks/ExternalCustomProfileExtensionThatWouldOtherwiseOverlap";
