@@ -119,6 +119,7 @@ import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSys
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { statusSurfacesForSlot } from "./lib/statusSurfaces";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -2904,6 +2905,10 @@ export function ChatApp() {
       .filter((item) => !disabledToolIdSet.has(item.id))
       .filter((item) => !templateHasToolAllowlist || templateAllowedToolIdSet.has(item.id)),
     [disabledToolIdSet, sidebarItems, templateAllowedToolIdSet, templateHasToolAllowlist],
+  );
+  const composerStatusSurfaces = useMemo(
+    () => statusSurfacesForSlot(catalog, "above_composer"),
+    [catalog],
   );
   const templateComposerWidgets = useMemo(
     () => templateComposerWidgetsForInput(catalog, templateAiInputMetadata, composerInputMetadata, composerExtensions),
@@ -7026,6 +7031,7 @@ export function ChatApp() {
       steerBusy={modelSteerBusy}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
       steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
+      statusSurfaces={isCentered ? [] : composerStatusSurfaces}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
@@ -7048,6 +7054,27 @@ export function ChatApp() {
       onSubmit={handleSubmit}
       onStopGenerating={handleStopGenerating}
       onSteerSubmit={(prompt) => void queueConversationSteer(prompt)}
+      onStatusSurfaceAction={async (request) => {
+        const result = await api.executeUiCommand({
+          command: request.actionId,
+          args: {
+            surface_id: request.surfaceId,
+            control_id: request.controlId,
+            ...(request.value !== undefined ? { value: request.value } : {}),
+            ...(request.dataSourceId ? { data_source_id: request.dataSourceId } : {}),
+            ...(request.sourceRevision ? { source_revision: request.sourceRevision } : {}),
+          },
+          conversation_id: activeConversationId,
+          mode,
+        });
+        if (result.requires_approval) {
+          throw new Error(result.message ?? "This status action requires approval before it can run.");
+        }
+        if (result.executed !== true) {
+          throw new Error(result.message ?? "The backend did not confirm authoritative action execution.");
+        }
+        await refreshCatalog();
+      }}
       onModeChange={handleModeChange}
       onFileAttach={handleFileAttach}
       onAtFileAttach={handleAtFileAttach}

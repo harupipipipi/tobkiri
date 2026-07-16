@@ -261,6 +261,7 @@ def _identity_extractors() -> dict[str, IdentityExtractor]:
         "commands": _field("command_id", "id", "name"),
         "composer_inputs": _field("input_id", "id"),
         "composer_widgets": _field("widget_id", "id"),
+        "status_surfaces": _field("surface_id", "id"),
         "ai_inputs": _field("ai_input_id", "input_id", "id"),
         "tool_policies": _field("policy_id", "tool_policy_id", "id"),
         "shell_regions": _field("region_id", "id"),

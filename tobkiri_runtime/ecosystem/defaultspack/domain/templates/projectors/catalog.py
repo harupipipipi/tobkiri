@@ -42,6 +42,7 @@ CATALOG_KEYS = (
     "commands",
     "composer_inputs",
     "composer_widgets",
+    "status_surfaces",
     "ai_inputs",
     "tool_policies",
     "shell_regions",
@@ -148,6 +149,7 @@ def project_resolved_templates(
         "commands",
         "composer_inputs",
         "composer_widgets",
+        "status_surfaces",
         "ai_inputs",
         "tool_policies",
         "shell_regions",
@@ -229,6 +231,8 @@ def _project_piece(catalog: dict[str, Any], template: RumiTemplate, piece: Templ
         catalog["composer_inputs"].append(_composer_input(template, piece))
     elif kind == "composer_widget":
         catalog["composer_widgets"].append(_metadata_item(template, piece, default_id=piece.id))
+    elif kind == "status_surface":
+        catalog["status_surfaces"].append(_status_surface(template, piece))
     elif kind == "ai_input":
         catalog["ai_inputs"].append(_ai_input(template, piece))
     elif kind == "tool_policy":
@@ -270,6 +274,15 @@ def _field_renderer(template: RumiTemplate, piece: TemplatePiece) -> dict[str, A
         field_type = piece.data.get("field_type") or piece.data.get("type")
         field_types = [field_type] if field_type else []
     item["field_types"] = [str(value) for value in field_types if str(value or "").strip()]
+    return item
+
+
+def _status_surface(template: RumiTemplate, piece: TemplatePiece) -> dict[str, Any]:
+    data = _piece_payload(piece, "surface")
+    item = _metadata_item_from_data(template, piece, data, default_id=piece.id)
+    item.setdefault("surface_id", item.get("id") or piece.id)
+    item.setdefault("api_version", "rumi.status_surface.v1")
+    item.setdefault("slot", piece.slot or data.get("slot") or "above_composer")
     return item
 
 
