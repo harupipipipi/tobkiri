@@ -5,6 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from .._helpers import canonical_json
+from ..activation import (
+    TemplateActivationPlan,
+    TemplateActivationPlanner,
+    TemplateActivationState,
+)
+from ..collisions import resolve_catalog_collisions
+from ..discovery import TemplateRoot
 from ..models import (
     ResolvedTemplate,
     RumiTemplate,
@@ -12,12 +19,6 @@ from ..models import (
     TemplatePiece,
     TemplateStatus,
 )
-from ..activation import (
-    TemplateActivationPlan,
-    TemplateActivationPlanner,
-    TemplateActivationState,
-)
-from ..collisions import resolve_catalog_collisions
 from ..registry import build_template_registry
 from ..resolver import resolve_template
 from ..source_adapters import (
@@ -56,12 +57,12 @@ CATALOG_KEYS = (
 def build_template_catalog(
     *,
     defaultspack_root: str | Path | None = None,
-    roots: list[str | Path] | None = None,
+    roots: list[str | Path | TemplateRoot] | None = None,
     adapters: list[TemplateSourceAdapter] | None = None,
 ) -> dict[str, Any]:
     catalog = empty_template_catalog()
     registry, diagnostics = build_template_registry(
-        [str(root) for root in roots] if roots is not None else None,
+        list(roots) if roots is not None else None,
         defaultspack_root=str(defaultspack_root) if defaultspack_root is not None else None,
     )
     activation_plan = TemplateActivationPlanner(registry).build()

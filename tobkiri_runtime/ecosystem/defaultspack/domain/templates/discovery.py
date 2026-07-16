@@ -1,17 +1,31 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..extensions.activation import (
+    DEFAULT_PACK_ID,
+    selected_extension_pack_ids,
+    setup_pack_selection_path,
+)
 from .models import RumiTemplate, TemplateDiagnostic, TemplateTrustLevel
 from .validation import parse_template
+
+
+_EXTRA_TEMPLATE_ROOTS_ENV = "RUMI_DEFAULTSPACK_TEMPLATE_ROOTS"
+_APP_ECOSYSTEM_ENVS = ("RUMI_APP_DIR", "RUMI_CORE_DIR")
+_PACK_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 @dataclass(frozen=True)
 class TemplateRoot:
     path: Path
     trust_level: TemplateTrustLevel | str
+    source_pack_id: str | None = None
+    source_kind: str = ""
 
 
 @dataclass
@@ -25,15 +39,24 @@ class TemplateDiscoveryResult:
 
 
 def default_template_roots(defaultspack_root: str | Path | None = None) -> list[TemplateRoot]:
-    root = (
-        Path(defaultspack_root)
-        if defaultspack_root is not None
-        else Path(__file__).resolve().parents[2]
-    )
-    return [
+    """Return loader-ordered roots derived from trusted runtime provenance."""
+    roots, _ = _default_template_roots_with_diagnostics(defaultspack_root)
+    return roots
+
+
+def _default_template_roots_with_diagnostics(
+    defaultspack_root: str | Path | None,
+) -> tuple[list[TemplateRoot], list[TemplateDiagnostic]]:
+    root = _defaultspack_root(defaultspack_root)
+    sibling_roots, diagnostics = _selected_sibling_template_roots(root)
+    diagnostics = [*_selection_file_diagnostics(root), *diagnostics]
+    roots = [
         TemplateRoot(root / "templates", TemplateTrustLevel.BUILTIN),
+        *sibling_roots,
         TemplateRoot(root / "user_data" / "shared" / "templates", TemplateTrustLevel.USER),
     ]
+    roots.extend(_configured_extra_template_roots())
+    return roots, diagnostics
 
 
 def discover_templates(
@@ -42,14 +65,35 @@ def discover_templates(
     defaultspack_root: str | Path | None = None,
     trust_level: TemplateTrustLevel | str | None = None,
 ) -> TemplateDiscoveryResult:
-    search_roots = _normalize_roots(
-        roots, defaultspack_root=defaultspack_root, trust_level=trust_level
-    )
     result = TemplateDiscoveryResult()
+    if roots is None:
+        search_roots, root_diagnostics = _default_template_roots_with_diagnostics(defaultspack_root)
+        result.diagnostics.extend(root_diagnostics)
+        if trust_level is not None:
+            forced_trust = _coerce_trust(trust_level)
+            search_roots = [
+                TemplateRoot(
+                    root.path,
+                    forced_trust,
+                    source_pack_id=root.source_pack_id,
+                    source_kind=root.source_kind,
+                )
+                for root in search_roots
+            ]
+    else:
+        search_roots = _normalize_roots(
+            roots, defaultspack_root=defaultspack_root, trust_level=trust_level
+        )
     for template_root in search_roots:
         root_trust = _coerce_trust(template_root.trust_level)
         for template_path in _iter_template_files(template_root.path):
-            loaded = load_template_file(template_path, trust_level=root_trust)
+            loaded = load_template_file(
+                template_path,
+                trust_level=root_trust,
+                source_pack_id=template_root.source_pack_id,
+                source_root=template_root.path,
+                source_kind=template_root.source_kind,
+            )
             result.diagnostics.extend(loaded.diagnostics)
             result.templates.extend(loaded.templates)
     return result
@@ -59,6 +103,9 @@ def load_template_file(
     template_path: str | Path,
     *,
     trust_level: TemplateTrustLevel | str | None = None,
+    source_pack_id: str | None = None,
+    source_root: str | Path | None = None,
+    source_kind: str = "",
 ) -> TemplateDiscoveryResult:
     path = Path(template_path)
     try:
@@ -97,6 +144,15 @@ def load_template_file(
         source_path=str(path),
         trust_level=effective_trust.value,
     )
+    if parsed.template is not None:
+        # These fields are loader-owned provenance. Template JSON cannot spoof
+        # or promote them because they are overwritten after parsing.
+        if source_pack_id:
+            parsed.template.metadata["source_pack_id"] = source_pack_id
+        if source_root is not None:
+            parsed.template.metadata["source_root"] = str(Path(source_root).resolve())
+        if source_kind:
+            parsed.template.metadata["source_kind"] = source_kind
     return TemplateDiscoveryResult(
         templates=[parsed.template] if parsed.template is not None else [],
         diagnostics=parsed.diagnostics,
@@ -129,7 +185,15 @@ def _normalize_roots(
     if trust_level is None:
         return configured_roots
     forced_trust = _coerce_trust(trust_level)
-    return [TemplateRoot(root.path, forced_trust) for root in configured_roots]
+    return [
+        TemplateRoot(
+            root.path,
+            forced_trust,
+            source_pack_id=root.source_pack_id,
+            source_kind=root.source_kind,
+        )
+        for root in configured_roots
+    ]
 
 
 def _coerce_trust(value: TemplateTrustLevel | str) -> TemplateTrustLevel:
@@ -142,13 +206,169 @@ def _coerce_trust(value: TemplateTrustLevel | str) -> TemplateTrustLevel:
 
 
 def _infer_root_trust(root: Path, defaultspack_root: str | Path | None) -> TemplateTrustLevel:
-    del defaultspack_root
-    pack_root = Path(__file__).resolve().parents[2]
+    pack_root = _defaultspack_root(defaultspack_root)
     if _is_relative_to(root, pack_root / "templates"):
         return TemplateTrustLevel.BUILTIN
     if _is_relative_to(root, pack_root / "user_data" / "shared" / "templates"):
         return TemplateTrustLevel.USER
     return TemplateTrustLevel.USER
+
+
+def _defaultspack_root(defaultspack_root: str | Path | None) -> Path:
+    return (
+        Path(defaultspack_root).resolve()
+        if defaultspack_root is not None
+        else Path(__file__).resolve().parents[2]
+    )
+
+
+def _selected_sibling_template_roots(
+    defaultspack_root: Path,
+) -> tuple[list[TemplateRoot], list[TemplateDiagnostic]]:
+    selected_pack_ids = selected_extension_pack_ids(defaultspack_root)
+    # A missing selection file does not authorize an all-installed-pack scan.
+    if selected_pack_ids is None:
+        return [], []
+
+    roots: list[TemplateRoot] = []
+    diagnostics: list[TemplateDiagnostic] = []
+    for pack_id in sorted(selected_pack_ids - {DEFAULT_PACK_ID}):
+        if not _PACK_ID_PATTERN.fullmatch(pack_id) or pack_id in {".", ".."}:
+            diagnostics.append(
+                TemplateDiagnostic(
+                    code="template.discovery.selected_pack_invalid_id",
+                    message=f"selected template pack ID is unsafe: {pack_id}",
+                    details={"source_pack_id": pack_id},
+                )
+            )
+            continue
+        located, mismatch = _locate_selected_pack(defaultspack_root, pack_id)
+        if located is None:
+            diagnostics.append(
+                TemplateDiagnostic(
+                    code=(
+                        "template.discovery.selected_pack_manifest_mismatch"
+                        if mismatch
+                        else "template.discovery.selected_pack_not_found"
+                    ),
+                    message=(f"selected template pack could not be resolved safely: {pack_id}"),
+                    details={"source_pack_id": pack_id},
+                )
+            )
+            continue
+        template_root = located / "templates"
+        roots.append(
+            TemplateRoot(
+                template_root,
+                TemplateTrustLevel.LOCAL,
+                source_pack_id=pack_id,
+                source_kind="selected_sibling_pack",
+            )
+        )
+    return roots, diagnostics
+
+
+def _selection_file_diagnostics(defaultspack_root: Path) -> list[TemplateDiagnostic]:
+    path = setup_pack_selection_path(defaultspack_root)
+    if not path.is_file():
+        return []
+    try:
+        selection = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [
+            TemplateDiagnostic(
+                code="template.discovery.setup_pack_selection_invalid",
+                message=f"setup-pack selection is unreadable or invalid: {exc}",
+                source_path=str(path),
+            )
+        ]
+    if isinstance(selection, dict):
+        return []
+    return [
+        TemplateDiagnostic(
+            code="template.discovery.setup_pack_selection_invalid",
+            message="setup-pack selection must be a JSON object",
+            source_path=str(path),
+        )
+    ]
+
+
+def _locate_selected_pack(
+    defaultspack_root: Path,
+    pack_id: str,
+) -> tuple[Path | None, bool]:
+    mismatch = False
+    for ecosystem_root in _candidate_ecosystem_roots(defaultspack_root):
+        candidate = (ecosystem_root / pack_id).resolve()
+        if (
+            candidate.parent != ecosystem_root.resolve()
+            or candidate == defaultspack_root.resolve()
+            or not candidate.is_dir()
+        ):
+            continue
+        manifest_pack_id = _manifest_pack_id(candidate)
+        if manifest_pack_id != pack_id:
+            mismatch = True
+            continue
+        return candidate, mismatch
+    return None, mismatch
+
+
+def _candidate_ecosystem_roots(defaultspack_root: Path) -> list[Path]:
+    roots: list[Path] = []
+    if defaultspack_root.parent.name == "ecosystem":
+        roots.append(defaultspack_root.parent.resolve())
+    for env_name in _APP_ECOSYSTEM_ENVS:
+        raw = str(os.environ.get(env_name, "") or "").strip()
+        if not raw:
+            continue
+        app_dir = Path(raw).expanduser()
+        candidates = [app_dir] if app_dir.name == "ecosystem" else [app_dir / "ecosystem"]
+        for candidate in candidates:
+            resolved = candidate.resolve()
+            if resolved.is_dir() and resolved not in roots:
+                roots.append(resolved)
+    return roots
+
+
+def _manifest_pack_id(pack_root: Path) -> str:
+    for manifest_name in ("rumi-pack.json", "ecosystem.json"):
+        manifest_path = pack_root / manifest_name
+        if not manifest_path.is_file():
+            continue
+        try:
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ""
+        if not isinstance(raw, dict):
+            return ""
+        pack_id = str(raw.get("pack_id") or raw.get("id") or "").strip()
+        if pack_id:
+            return pack_id
+    return ""
+
+
+def _configured_extra_template_roots() -> list[TemplateRoot]:
+    roots: list[TemplateRoot] = []
+    seen: set[Path] = set()
+    for item in str(os.environ.get(_EXTRA_TEMPLATE_ROOTS_ENV, "") or "").split(os.pathsep):
+        item = item.strip()
+        if not item:
+            continue
+        path = Path(item).expanduser().resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        # Environment-configured roots remain user trust regardless of any
+        # trust declaration in their JSON files.
+        roots.append(
+            TemplateRoot(
+                path,
+                TemplateTrustLevel.USER,
+                source_kind="configured_extra_root",
+            )
+        )
+    return roots
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:

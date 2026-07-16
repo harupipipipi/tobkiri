@@ -1,0 +1,350 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
+sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+from domain.templates import (  # noqa: E402
+    TemplateRoot,
+    TemplateTrustLevel,
+    build_template_catalog,
+    default_template_roots,
+    discover_templates,
+)
+from domain.templates.catalog_runtime import get_template_catalog_snapshot  # noqa: E402
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _layout(tmp_path: Path) -> tuple[Path, Path, Path]:
+    runtime_root = tmp_path / "tobkiri_runtime"
+    ecosystem_root = runtime_root / "ecosystem"
+    defaultspack_root = ecosystem_root / "defaultspack"
+    _write_json(defaultspack_root / "ecosystem.json", {"pack_id": "defaultspack"})
+    return runtime_root, ecosystem_root, defaultspack_root
+
+
+def _write_selection(runtime_root: Path, pack_ids: list[str]) -> None:
+    _write_json(
+        runtime_root / "user_data" / "settings" / "setup_pack_selection.json",
+        {
+            "target_pack_ids": pack_ids,
+            "installed_target_pack_ids": pack_ids,
+            "active_target_pack_id": pack_ids[0] if pack_ids else "defaultspack",
+        },
+    )
+
+
+def _template(template_id: str, *, version: str = "1.0.0") -> dict:
+    return {
+        "schema_version": 1,
+        "id": template_id,
+        "kind": "pack",
+        "version": version,
+        "status": "active",
+        "trust_level": "builtin",
+        "metadata": {
+            "source_pack_id": "spoofed-pack",
+            "source_kind": "spoofed-kind",
+        },
+        "pieces": [
+            {
+                "id": "command",
+                "kind": "composer_command",
+                "command": {
+                    "id": f"{template_id}.command",
+                    "label": "Feature command",
+                    "execution": {
+                        "type": "pack_block",
+                        "qualified_name": "defaultspack:context.token_estimate",
+                    },
+                },
+            },
+            {
+                "id": "settings",
+                "kind": "settings_section",
+                "section": {"id": f"{template_id}.settings", "fields": []},
+            },
+            {
+                "id": "sidebar",
+                "kind": "sidebar_item",
+                "label": "Feature sidebar",
+            },
+            {
+                "id": "action",
+                "kind": "function",
+                "role": "action",
+                "action_id": f"{template_id}.action",
+                "block_module": "blocks.context.token_estimate",
+            },
+            {
+                "id": "route",
+                "kind": "api_route",
+                "method": "POST",
+                "route_path": f"/api/{template_id}/run",
+                "action_id": f"{template_id}.action",
+            },
+        ],
+    }
+
+
+def _write_pack(
+    ecosystem_root: Path,
+    pack_id: str,
+    template: dict | None = None,
+) -> Path:
+    pack_root = ecosystem_root / pack_id
+    _write_json(pack_root / "ecosystem.json", {"pack_id": pack_id, "version": "1.0.0"})
+    if template is not None:
+        _write_json(pack_root / "templates" / template["id"] / "template.json", template)
+    return pack_root
+
+
+def test_selected_sibling_projects_catalog_with_loader_owned_local_trust(tmp_path: Path):
+    runtime_root, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    _write_pack(ecosystem_root, "feature_pack", _template("feature.template"))
+    _write_pack(ecosystem_root, "unselected_pack", _template("hidden.template"))
+    _write_selection(runtime_root, ["feature_pack"])
+
+    catalog = build_template_catalog(defaultspack_root=defaultspack_root)
+
+    summaries = {item["id"]: item for item in catalog["templates"]}
+    assert "feature.template" in summaries
+    assert "hidden.template" not in summaries
+    feature = summaries["feature.template"]
+    assert feature["trust_level"] == "local"
+    assert feature["metadata"]["declared_trust_level"] == "builtin"
+    assert feature["metadata"]["source_pack_id"] == "feature_pack"
+    assert feature["metadata"]["source_kind"] == "selected_sibling_pack"
+    assert [item["id"] for item in catalog["commands"]] == ["feature.template.command"]
+    assert [item["id"] for item in catalog["settings_sections"]] == ["feature.template.settings"]
+    assert [item["id"] for item in catalog["sidebar_items"]] == ["sidebar"]
+    assert [item["id"] for item in catalog["actions"]] == ["action"]
+    assert [item["path"] for item in catalog["api_routes"]] == ["/api/feature.template/run"]
+    assert all(
+        item["trust_level"] == "local"
+        for key in ("commands", "settings_sections", "sidebar_items", "actions", "api_routes")
+        for item in catalog[key]
+    )
+
+
+def test_missing_selection_never_scans_all_installed_sibling_packs(tmp_path: Path):
+    _, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    _write_pack(ecosystem_root, "installed_but_unselected", _template("hidden.template"))
+
+    result = discover_templates(defaultspack_root=defaultspack_root)
+
+    assert result.templates == []
+    assert not any(
+        "installed_but_unselected" in str(diagnostic.details) for diagnostic in result.diagnostics
+    )
+
+
+def test_invalid_selection_fails_closed_with_diagnostic(tmp_path: Path):
+    runtime_root, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    _write_pack(ecosystem_root, "installed_pack", _template("hidden.template"))
+    selection_path = runtime_root / "user_data" / "settings" / "setup_pack_selection.json"
+    selection_path.parent.mkdir(parents=True, exist_ok=True)
+    selection_path.write_text("{broken", encoding="utf-8")
+
+    result = discover_templates(defaultspack_root=defaultspack_root)
+
+    assert result.templates == []
+    assert any(
+        diagnostic.code == "template.discovery.setup_pack_selection_invalid"
+        for diagnostic in result.diagnostics
+    )
+
+
+def test_root_order_is_builtin_selected_pack_id_user_then_configured_extra(
+    monkeypatch, tmp_path: Path
+):
+    runtime_root, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    pack_b = _write_pack(ecosystem_root, "pack_b")
+    pack_a = _write_pack(ecosystem_root, "pack_a")
+    _write_selection(runtime_root, ["pack_b", "pack_a"])
+    extra_root = tmp_path / "extra_templates"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_TEMPLATE_ROOTS", str(extra_root))
+
+    roots = default_template_roots(defaultspack_root)
+
+    assert roots == [
+        TemplateRoot(defaultspack_root.resolve() / "templates", TemplateTrustLevel.BUILTIN),
+        TemplateRoot(
+            pack_a.resolve() / "templates",
+            TemplateTrustLevel.LOCAL,
+            source_pack_id="pack_a",
+            source_kind="selected_sibling_pack",
+        ),
+        TemplateRoot(
+            pack_b.resolve() / "templates",
+            TemplateTrustLevel.LOCAL,
+            source_pack_id="pack_b",
+            source_kind="selected_sibling_pack",
+        ),
+        TemplateRoot(
+            defaultspack_root.resolve() / "user_data" / "shared" / "templates",
+            TemplateTrustLevel.USER,
+        ),
+        TemplateRoot(
+            extra_root.resolve(),
+            TemplateTrustLevel.USER,
+            source_kind="configured_extra_root",
+        ),
+    ]
+
+
+def test_deselect_upgrade_and_uninstall_invalidate_snapshot_without_stale_projection(
+    tmp_path: Path,
+):
+    runtime_root, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    pack_root = _write_pack(
+        ecosystem_root, "feature_pack", _template("feature.template", version="1.0.0")
+    )
+    _write_selection(runtime_root, ["feature_pack"])
+    initial = get_template_catalog_snapshot(defaultspack_root=defaultspack_root)
+    assert [item["id"] for item in initial.catalog["templates"]] == ["feature.template"]
+
+    _write_selection(runtime_root, [])
+    deselected = get_template_catalog_snapshot(defaultspack_root=defaultspack_root)
+    assert deselected.generation != initial.generation
+    assert deselected.catalog["templates"] == []
+
+    _write_selection(runtime_root, ["feature_pack"])
+    _write_json(
+        pack_root / "templates" / "feature.template" / "template.json",
+        _template("feature.template", version="2.0.0"),
+    )
+    upgraded = get_template_catalog_snapshot(defaultspack_root=defaultspack_root)
+    assert upgraded.generation != initial.generation
+    assert upgraded.catalog["templates"][0]["version"] == "2.0.0"
+
+    _write_json(pack_root / "ecosystem.json", {"pack_id": "feature_pack", "version": "2.1.0"})
+    manifest_upgraded = get_template_catalog_snapshot(defaultspack_root=defaultspack_root)
+    assert manifest_upgraded.generation != upgraded.generation
+
+    shutil.rmtree(pack_root)
+    removed = get_template_catalog_snapshot(defaultspack_root=defaultspack_root)
+    assert removed.generation != manifest_upgraded.generation
+    assert removed.catalog["templates"] == []
+    assert any(
+        item["code"] == "template.discovery.selected_pack_not_found"
+        and item["details"]["source_pack_id"] == "feature_pack"
+        for item in removed.catalog["template_diagnostics"]
+    )
+
+
+def test_sibling_collision_fails_closed_with_both_pack_ids(tmp_path: Path):
+    runtime_root, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    _write_pack(ecosystem_root, "pack_a", _template("collision.template"))
+    _write_pack(ecosystem_root, "pack_b", _template("collision.template"))
+    _write_selection(runtime_root, ["pack_b", "pack_a"])
+
+    catalog = build_template_catalog(defaultspack_root=defaultspack_root)
+
+    duplicate = next(
+        item
+        for item in catalog["template_diagnostics"]
+        if item["code"] == "template.registry.duplicate_template"
+    )
+    assert duplicate["details"]["existing_source_pack_id"] == "pack_a"
+    assert duplicate["details"]["duplicate_source_pack_id"] == "pack_b"
+    assert len(catalog["templates"]) == 1
+
+
+def test_dependency_template_only_resolves_when_dependency_pack_is_selected(tmp_path: Path):
+    runtime_root, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    feature = _template("feature.template")
+    feature["dependencies"] = ["dependency.template"]
+    _write_pack(ecosystem_root, "feature_pack", feature)
+    _write_pack(ecosystem_root, "dependency_pack", _template("dependency.template"))
+    _write_selection(runtime_root, ["feature_pack"])
+
+    missing = build_template_catalog(defaultspack_root=defaultspack_root)
+    feature_summary = next(
+        item for item in missing["templates"] if item["id"] == "feature.template"
+    )
+    assert feature_summary["projectable"] is False
+    assert "dependency.template" in feature_summary["blocked_by"]
+
+    _write_selection(runtime_root, ["feature_pack", "dependency_pack"])
+    resolved = build_template_catalog(defaultspack_root=defaultspack_root)
+    summaries = {item["id"]: item for item in resolved["templates"]}
+    assert summaries["feature.template"]["projectable"] is True
+    assert summaries["dependency.template"]["projectable"] is True
+
+
+def test_configured_extra_root_remains_user_trust(tmp_path: Path, monkeypatch):
+    _, _, defaultspack_root = _layout(tmp_path)
+    extra_root = tmp_path / "extra"
+    _write_json(extra_root / "extra.template" / "template.json", _template("extra.template"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_TEMPLATE_ROOTS", str(extra_root))
+
+    result = discover_templates(defaultspack_root=defaultspack_root)
+
+    template = next(item for item in result.templates if item.id == "extra.template")
+    assert template.trust_level == TemplateTrustLevel.USER
+    assert template.metadata["declared_trust_level"] == "builtin"
+    assert template.metadata["source_kind"] == "configured_extra_root"
+
+
+def test_selected_pack_manifest_id_mismatch_fails_closed(tmp_path: Path):
+    runtime_root, ecosystem_root, defaultspack_root = _layout(tmp_path)
+    pack_root = ecosystem_root / "feature_pack"
+    _write_json(pack_root / "ecosystem.json", {"pack_id": "different_pack"})
+    _write_json(
+        pack_root / "templates" / "feature.template" / "template.json",
+        _template("feature.template"),
+    )
+    _write_selection(runtime_root, ["feature_pack"])
+
+    result = discover_templates(defaultspack_root=defaultspack_root)
+
+    assert result.templates == []
+    assert any(
+        diagnostic.code == "template.discovery.selected_pack_manifest_mismatch"
+        and diagnostic.details["source_pack_id"] == "feature_pack"
+        for diagnostic in result.diagnostics
+    )
+
+
+def test_unsafe_selected_pack_id_cannot_escape_ecosystem_root(tmp_path: Path):
+    runtime_root, _, defaultspack_root = _layout(tmp_path)
+    outside_pack = runtime_root / "outside"
+    _write_json(outside_pack / "ecosystem.json", {"pack_id": "../outside"})
+    _write_json(
+        outside_pack / "templates" / "outside.template" / "template.json",
+        _template("outside.template"),
+    )
+    _write_selection(runtime_root, ["../outside"])
+
+    result = discover_templates(defaultspack_root=defaultspack_root)
+
+    assert result.templates == []
+    assert any(
+        diagnostic.code == "template.discovery.selected_pack_invalid_id"
+        for diagnostic in result.diagnostics
+    )
+
+
+def test_multiple_configured_extra_roots_follow_environment_order(monkeypatch, tmp_path: Path):
+    _, _, defaultspack_root = _layout(tmp_path)
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_TEMPLATE_ROOTS", os.pathsep.join((str(first), str(second)))
+    )
+
+    roots = default_template_roots(defaultspack_root)
+
+    assert [root.path for root in roots[-2:]] == [first.resolve(), second.resolve()]
