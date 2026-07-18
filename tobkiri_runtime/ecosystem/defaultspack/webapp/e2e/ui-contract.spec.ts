@@ -14,6 +14,8 @@ type ApiMockOptions = {
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
+  onAuthorityRequest?: (requestId: string) => void;
+  authorityRequestStatus?: () => "pending" | "approved" | "denied";
   codingApprovalAfterTerminal?: boolean;
   codingApprovalAfterRestore?: boolean;
 };
@@ -473,7 +475,6 @@ async function fulfillStreamEvents(route: Route, events: Record<string, unknown>
 async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions = {}) {
   await page.addInitScript(() => {
     localStorage.clear();
-    sessionStorage.clear();
   });
 
   let currentSettingsValues: Record<string, Record<string, unknown>> = JSON.parse(JSON.stringify({
@@ -503,6 +504,34 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === "/api/health") {
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
+    }
+
+    if (path === "/api/ambient/status" || path === "/api/ambient/permissions/check") {
+      return fulfill(route, {
+        ambient_monitor: { enabled: false },
+        services: {
+          voice_wake_monitor: { enabled: false, status: "paused" },
+          gesture_wake_monitor: { enabled: false, status: "paused" },
+        },
+        permissions: { rumi: {}, os: {} },
+        routing: { mode: "selected_chat" },
+      });
+    }
+
+    if (path.startsWith("/api/authority/requests/") && method === "GET") {
+      const requestId = decodeURIComponent(path.slice("/api/authority/requests/".length));
+      options.onAuthorityRequest?.(requestId);
+      return fulfill(route, {
+        request_id: requestId,
+        status: options.authorityRequestStatus?.() ?? "pending",
+        principal_id: "browser-qa-principal",
+        permission_id: "ambient.trigger.dispatch",
+        resource: { pack_id: "rumi_ambient_trigger_pack" },
+        reason: "Browser QA",
+        risk_level: "medium",
+        created_at: "2026-07-19T00:00:00Z",
+        expires_at: "2099-07-19T00:05:00Z",
+      });
     }
 
     if (path === "/api/ui/catalog") {
@@ -1090,6 +1119,67 @@ test("settings modal contains focus, dismisses nested layers in order, and resto
   expect(narrowBounds!.y + narrowBounds!.height).toBeLessThanOrEqual(640);
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(dialog).toBeHidden();
+});
+
+test("ambient approval return hints settle only after one-time correlation and backend verification", async ({ page }, testInfo) => {
+  let authorityStatus: "pending" | "approved" | "denied" = "pending";
+  const authorityRequests: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await openDefaultspack(page, "/ambient-debug?authority_approved=1", {
+    authorityRequestStatus: () => authorityStatus,
+    onAuthorityRequest: (requestId) => authorityRequests.push(requestId),
+  });
+
+  const verificationFailure = page.getByText(
+    "承認結果を確認できませんでした。承認画面を開いたまま、もう一度確認してください。",
+    { exact: true },
+  );
+  await expect(verificationFailure).toBeVisible();
+  await expect.poll(() => page.url()).not.toContain("authority_approved");
+  expect(authorityRequests).toEqual([]);
+
+  const createReturnPath = () => page.evaluate(async () => {
+    const loadEvents = Function("return import('/src/lib/authorityApprovalEvents.ts')") as () => Promise<{
+      createAuthorityApprovalReturnPath: (requestId: string, currentHref: string) => string;
+    }>;
+    const events = await loadEvents();
+    return events.createAuthorityApprovalReturnPath("rumi_ambient_trigger_pack", window.location.href);
+  });
+
+  const pendingPath = await createReturnPath();
+  const pendingUrl = new URL(pendingPath, page.url()).href;
+  await page.goto(pendingUrl);
+  await expect.poll(() => authorityRequests.length).toBe(1);
+  await expect(verificationFailure).toBeVisible();
+  expect(authorityRequests).toEqual(["rumi_ambient_trigger_pack"]);
+  await expect.poll(() => page.url()).not.toContain("authority_return");
+  expect(await page.evaluate(() => sessionStorage.getItem("rumi.authority.approval.return.v1"))).toBeNull();
+
+  authorityStatus = "approved";
+  const approvedPath = await createReturnPath();
+  const approvedUrl = new URL(approvedPath, page.url()).href;
+  await page.goto(approvedUrl);
+  await expect(page.getByText(
+    "承認を確認しました。次にMacのマイク/カメラを確認します。",
+    { exact: true },
+  )).toBeVisible();
+  await expect.poll(() => authorityRequests.length).toBe(2);
+
+  await page.goto(approvedUrl);
+  await expect(verificationFailure).toBeVisible();
+  await page.waitForTimeout(100);
+  expect(authorityRequests).toHaveLength(2);
+
+  await page.setViewportSize({ width: 390, height: 720 });
+  const panelBounds = await page.locator('section[aria-label="指で録音"]').boundingBox();
+  expect(panelBounds).not.toBeNull();
+  expect(panelBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(panelBounds!.x + panelBounds!.width).toBeLessThanOrEqual(390);
+  expect(consoleErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("authority-return-verification-mobile.png"), fullPage: true });
 });
 
 test("tool hub service selections can be scoped to the conversation and survive reload", async ({ page }) => {

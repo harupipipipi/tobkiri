@@ -28,7 +28,10 @@ import {
 import {
   safeSameOriginApprovalPath,
 } from "../lib/authorityApprovalBrowserToken";
-import { broadcastAuthorityApprovalSettlement } from "../lib/authorityApprovalEvents";
+import {
+  broadcastAuthorityApprovalSettlement,
+  createAuthorityApprovalReturnPath,
+} from "../lib/authorityApprovalEvents";
 import { closeCurrentWindow, getAuthorityApprovalContext, openFingerRecordingWindow } from "../lib/desktopApproval";
 import { cn } from "../lib/cn";
 import { authorityApprovalViewModel } from "../lib/approvalPresentation";
@@ -123,7 +126,10 @@ async function returnToFingerRecordingAfterApproval() {
   window.close();
   window.setTimeout(() => {
     if (document.hidden) return;
-    window.location.replace("/finger-recording?authority_approved=1");
+    window.location.replace(createAuthorityApprovalReturnPath(
+      AMBIENT_AUTHORITY_REQUEST_ID,
+      "/finger-recording",
+    ));
   }, 250);
 }
 

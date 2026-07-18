@@ -17,7 +17,7 @@ type Props = {
   disabled: boolean;
   latestInputPreview: string | null;
   authorityApproval?: AuthorityApproval | null;
-  authorityApprovalUrl?: string | null;
+  showAuthorityApprovalInCurrentTab?: boolean;
   showPicker?: boolean;
   onInputChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -25,6 +25,7 @@ type Props = {
   onRefresh: () => void;
   onPickChat: () => void;
   onOpenAuthorityApproval?: () => void;
+  onOpenAuthorityApprovalInCurrentTab?: () => void;
 };
 
 export function AmbientMiniChat({
@@ -38,7 +39,7 @@ export function AmbientMiniChat({
   disabled,
   latestInputPreview,
   authorityApproval = null,
-  authorityApprovalUrl = null,
+  showAuthorityApprovalInCurrentTab = false,
   showPicker = true,
   onInputChange,
   onSubmit,
@@ -46,6 +47,7 @@ export function AmbientMiniChat({
   onRefresh,
   onPickChat,
   onOpenAuthorityApproval,
+  onOpenAuthorityApprovalInCurrentTab,
 }: Props) {
   const messages = ambientMiniChatMessages(conversation, 5);
   const latestPreview = String(latestInputPreview ?? "").trim();
@@ -127,16 +129,16 @@ export function AmbientMiniChat({
                   <ExternalLink size={12} />
                   承認を開く
                 </button>
-                {authorityApprovalUrl && (
-                  <a
-                    href={authorityApprovalUrl}
-                    rel="noreferrer"
+                {showAuthorityApprovalInCurrentTab && onOpenAuthorityApprovalInCurrentTab && (
+                  <button
+                    type="button"
+                    onClick={onOpenAuthorityApprovalInCurrentTab}
                     className="inline-flex h-7 items-center gap-1.5 rounded-md border border-sky-200/35 px-2 text-[11px] font-semibold text-sky-50 hover:bg-sky-300/10"
                     title="同じタブで承認を開く"
                   >
                     <ExternalLink size={12} />
                     同じタブ
-                  </a>
+                  </button>
                 )}
             </div>
           </div>

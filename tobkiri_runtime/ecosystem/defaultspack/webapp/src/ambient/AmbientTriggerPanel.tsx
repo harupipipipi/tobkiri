@@ -8,7 +8,13 @@ import {
   resolvePendingAuthorityApproval,
   type AuthorityApproval,
 } from "../lib/authorityApproval";
-import { subscribeAuthorityApprovalSettlements } from "../lib/authorityApprovalEvents";
+import {
+  AUTHORITY_APPROVAL_RETURN_PARAM,
+  consumeAuthorityApprovalReturnHint,
+  createAuthorityApprovalReturnPath,
+  subscribeAuthorityApprovalSettlements,
+  verifyAuthorityApprovalRequest,
+} from "../lib/authorityApprovalEvents";
 import {
   browserAuthorityApprovalPath,
 } from "../lib/authorityApprovalBrowserToken";
@@ -135,6 +141,12 @@ export function AmbientTriggerPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [manualRumiFallbackOpen, setManualRumiFallbackOpen] = useState(false);
   const [rumiApprovalOpen, setRumiApprovalOpen] = useState(false);
+  const [authorityReturnVerification, setAuthorityReturnVerification] = useState<"none" | "verifying" | "failed" | "settled">(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("authority_approved") || params.has(AUTHORITY_APPROVAL_RETURN_PARAM)
+      ? "verifying"
+      : "none";
+  });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [miniConversationIdOverride, setMiniConversationIdOverride] = useState<string | null>(null);
@@ -178,6 +190,9 @@ export function AmbientTriggerPanel({
   const choiceHandledAtRef = useRef(0);
   const approvalGestureBusyRef = useRef(false);
   const rumiApprovalAutoOpenRef = useRef(false);
+  const authorityReturnHintSeenRef = useRef<boolean | null>(null);
+  const authorityReturnRequestIdRef = useRef<string | null>(null);
+  const authorityReturnVerificationPromiseRef = useRef<ReturnType<typeof verifyAuthorityApprovalRequest> | null>(null);
   const miniAuthorityApprovalAutoOpenedRef = useRef(new Set<string>());
   const miniAuthorityContinuationWaitRef = useRef(new Set<string>());
   const miniAuthorityContinuationErrorRequestRef = useRef<string | null>(null);
@@ -330,9 +345,9 @@ export function AmbientTriggerPanel({
   const miniAuthorityApprovalResolving = Boolean(miniAuthorityApprovalCandidate && !miniAuthorityApprovalResolved);
   const miniAuthorityBlocksInput = miniAuthorityApprovalResolving || Boolean(miniAuthorityApproval);
   const browserApprovalQaEnabled = standalone && debugMode;
-  const miniBrowserApprovalDirectUrl = browserApprovalQaEnabled && miniAuthorityApproval && !hasNativeAuthorityApprovalWindow()
-    ? browserAuthorityApprovalPath(miniAuthorityApproval.requestId, ambientAuthorityApprovalReturnPath())
-    : null;
+  const showMiniBrowserApprovalDirect = Boolean(
+    browserApprovalQaEnabled && miniAuthorityApproval && !hasNativeAuthorityApprovalWindow(),
+  );
   const inlineSettingsControlsVisible = !standalone;
   const miniChatRoutingSummary = standalone ? "次の送信で作成" : routingSummary;
   const dispatchTemplateContext = useMemo(() => buildAmbientDispatchTemplateContext({
@@ -562,7 +577,7 @@ export function AmbientTriggerPanel({
       setMessage("AIが続きを作成しています。");
       void loadMiniConversation({ conversationId: targetConversationId, quiet: true });
       void waitForMiniAuthorityContinuation(miniAuthorityApproval, targetConversationId);
-    }, { replayStored: true, replayStoredRequestId: miniAuthorityApproval.requestId });
+    });
   }, [loadMiniConversation, miniAuthorityApproval?.requestId, miniConversation?.id, miniConversationId]);
 
   useEffect(() => {
@@ -572,7 +587,9 @@ export function AmbientTriggerPanel({
         if (!cancelled) void refreshDevices();
       })
       .catch((error) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : "指で録音の状態を確認できませんでした。");
+        if (!cancelled && !authorityReturnHintSeenRef.current) {
+          setMessage(error instanceof Error ? error.message : "指で録音の状態を確認できませんでした。");
+        }
       });
     return () => {
       cancelled = true;
@@ -601,20 +618,56 @@ export function AmbientTriggerPanel({
   useEffect(() => subscribeAuthorityApprovalSettlements((event) => {
     if (event.requestId !== AMBIENT_AUTHORITY_REQUEST_ID) return;
     setRumiApprovalOpen(false);
-    setMessage(event.status === "approved" ? "使えるようになりました。次にMacのマイク/カメラを確認します。" : "許可しませんでした。必要になったらもう一度許可できます。");
+    setMessage(event.status === "approved" ? "承認を確認しました。次にMacのマイク/カメラを確認します。" : "許可しませんでした。必要になったらもう一度許可できます。");
     void refresh({ probeOs: true });
-  }, { replayStored: true, replayStoredRequestId: AMBIENT_AUTHORITY_REQUEST_ID }), []);
+  }), []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("authority_approved") !== "1") return;
-    setRumiApprovalOpen(false);
-    setMessage("使えるようになりました。次にMacのマイク/カメラを確認します。");
-    params.delete("authority_approved");
-    const nextSearch = params.toString();
-    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
-    window.history.replaceState(null, "", nextUrl);
-    void refresh({ probeOs: true });
+    if (authorityReturnHintSeenRef.current === null) {
+      const params = new URLSearchParams(window.location.search);
+      const hasLegacyHint = params.has("authority_approved");
+      const hasReturnHint = params.has(AUTHORITY_APPROVAL_RETURN_PARAM);
+      authorityReturnHintSeenRef.current = hasLegacyHint || hasReturnHint;
+      if (authorityReturnHintSeenRef.current) {
+        authorityReturnRequestIdRef.current = consumeAuthorityApprovalReturnHint(window.location.search);
+        params.delete("authority_approved");
+        params.delete(AUTHORITY_APPROVAL_RETURN_PARAM);
+        const nextSearch = params.toString();
+        const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+        window.history.replaceState(null, "", nextUrl);
+      }
+    }
+    if (!authorityReturnHintSeenRef.current) return undefined;
+    const requestId = authorityReturnRequestIdRef.current;
+    if (requestId !== AMBIENT_AUTHORITY_REQUEST_ID) {
+      setAuthorityReturnVerification("failed");
+      setRumiApprovalOpen(true);
+      setMessage("承認結果を確認できませんでした。承認画面を開いたまま、もう一度確認してください。");
+      return undefined;
+    }
+    let cancelled = false;
+    setAuthorityReturnVerification("verifying");
+    setRumiApprovalOpen(true);
+    setMessage("承認結果を確認しています…");
+    authorityReturnVerificationPromiseRef.current ??= verifyAuthorityApprovalRequest(requestId);
+    void authorityReturnVerificationPromiseRef.current
+      .then((settlement) => {
+        if (cancelled) return;
+        if (!settlement) {
+          setAuthorityReturnVerification("failed");
+          setMessage("承認結果を確認できませんでした。承認画面を開いたまま、もう一度確認してください。");
+          return;
+        }
+        setAuthorityReturnVerification("settled");
+        setRumiApprovalOpen(false);
+        setMessage(settlement.status === "approved"
+          ? "承認を確認しました。次にMacのマイク/カメラを確認します。"
+          : "許可しませんでした。必要になったらもう一度許可できます。");
+        void refresh({ probeOs: true });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -632,11 +685,11 @@ export function AmbientTriggerPanel({
   }, [rumiApprovalPending]);
 
   useEffect(() => {
-    if (!status || allRumiPermissionsGranted || rumiApprovalAutoOpenRef.current) return;
+    if (!status || allRumiPermissionsGranted || rumiApprovalAutoOpenRef.current || authorityReturnVerification !== "none") return;
     rumiApprovalAutoOpenRef.current = true;
     setExpanded(true);
     void openRumiPermissionApproval();
-  }, [allRumiPermissionsGranted, status]);
+  }, [allRumiPermissionsGranted, authorityReturnVerification, status]);
 
   function replaceCameraStream(nextStream: MediaStream | null) {
     const current = cameraStreamRef.current;
@@ -1077,6 +1130,7 @@ export function AmbientTriggerPanel({
   }
 
   async function openRumiPermissionApproval() {
+    setAuthorityReturnVerification("none");
     setManualRumiFallbackOpen(false);
     setMessage(null);
     try {
@@ -1124,7 +1178,10 @@ export function AmbientTriggerPanel({
         return;
       }
       if (browserApprovalQaEnabled) {
-        const approvalUrl = browserAuthorityApprovalPath(resolvedApproval.requestId, ambientAuthorityApprovalReturnPath());
+        const approvalUrl = browserAuthorityApprovalPath(
+          resolvedApproval.requestId,
+          ambientAuthorityApprovalReturnPath(resolvedApproval.requestId),
+        );
         const popup = window.open(approvalUrl, `rumi-authority-approval-${resolvedApproval.requestId}`, "width=720,height=820,noopener,noreferrer");
         if (popup) {
           if (!options?.auto) setMessage("ブラウザ承認ページを開きました。");
@@ -1137,6 +1194,15 @@ export function AmbientTriggerPanel({
       console.info("[ambient] authority approval window unavailable", error);
     }
     setMiniChatError("承認ウィンドウを開けませんでした。Tobkiri Launcherから承認を開いてください。");
+  }
+
+  function openMiniAuthorityApprovalInCurrentTab() {
+    if (!miniAuthorityApproval || !browserApprovalQaEnabled) return;
+    const approvalUrl = browserAuthorityApprovalPath(
+      miniAuthorityApproval.requestId,
+      ambientAuthorityApprovalReturnPath(miniAuthorityApproval.requestId),
+    );
+    window.location.href = approvalUrl;
   }
 
   async function resolveMiniAuthorityApprovalTarget(
@@ -2063,7 +2129,7 @@ export function AmbientTriggerPanel({
             disabled={!ambientDispatchGranted || rumiApprovalPending || miniAuthorityBlocksInput}
             latestInputPreview={latestSubmittedInput}
             authorityApproval={miniAuthorityApproval}
-            authorityApprovalUrl={miniBrowserApprovalDirectUrl}
+            showAuthorityApprovalInCurrentTab={showMiniBrowserApprovalDirect}
             showPicker={standalone || inlineSettingsControlsVisible}
             onInputChange={setMiniInput}
             onSubmit={submitMiniChat}
@@ -2071,6 +2137,7 @@ export function AmbientTriggerPanel({
             onRefresh={() => void loadMiniConversation()}
             onPickChat={() => void openChatPicker()}
             onOpenAuthorityApproval={() => void openMiniAuthorityApproval()}
+            onOpenAuthorityApprovalInCurrentTab={openMiniAuthorityApprovalInCurrentTab}
           />
           {inlineSettingsControlsVisible && (
             <>
@@ -2468,14 +2535,8 @@ function hasNativeAuthorityApprovalWindow(): boolean {
   return Boolean(maybeWindow.__TAURI__ || maybeWindow.__TAURI_INTERNALS__);
 }
 
-function ambientAuthorityApprovalReturnPath(): string {
-  try {
-    const url = new URL(window.location.href);
-    url.searchParams.set("authority_approved", "1");
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return "/ambient-debug?authority_approved=1";
-  }
+function ambientAuthorityApprovalReturnPath(requestId: string): string {
+  return createAuthorityApprovalReturnPath(requestId, window.location.href);
 }
 
 function cleanString(value: unknown): string | null {
