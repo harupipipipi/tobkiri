@@ -369,7 +369,8 @@ domains:
     may_import: []
     path: domain/template
   templates:
-    may_import: []
+    may_import:
+    - domain/extensions
     path: domain/templates
   temporal_context:
     may_import: []
