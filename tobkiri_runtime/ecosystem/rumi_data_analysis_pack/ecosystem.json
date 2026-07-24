@@ -6,7 +6,10 @@
     "name": "Rumi Data Analysis Pack",
     "description": "Declarative, local-first data analysis profiles, prompts, presets, catalogs, and reproducible recipe specs.",
     "author": "Rumi AI Team",
-    "license": "MIT"
+    "license": "MIT",
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    }
   },
   "runtime": {
     "type": "declarative_pack"
@@ -122,5 +125,18 @@
     "chart_spec:analysis_specs",
     "analysis_preset:data_analysis_presets",
     "example:data_analysis_examples"
-  ]
+  ],
+  "resources": [
+    {
+      "id": "frontend/contributions/data-analysis.json",
+      "kind": "ui.contribution",
+      "content_hash": "sha256:c52cf09712ad37b0e44656898afa03fb9fd08f238eb9e102b5667386031678cd"
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:96f53569aef890d0c6a317bcab4511498f50a85b1a54edf699faf3d55c49367f",
+    "build_identity": "rumi-data-analysis-content-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  }
 }

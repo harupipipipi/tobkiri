@@ -58,7 +58,11 @@ domains:
     may_import: []
     path: domain/capabilities
   capability:
-    may_import: []
+    may_import:
+    - domain/chat
+    - domain/extensions
+    - domain/mention
+    - domain/skill_trigger
     path: domain/capability
   chat:
     may_import:
@@ -79,7 +83,12 @@ domains:
     - domain/vision
     path: domain/chat
     public_imports:
+    - domain/capability/activity_registry
     - domain/capability/catalog
+    - domain/capability/models
+    - domain/capability/orchestrator
+    - domain/capability/repository
+    - domain/capability/settings
     - domain/mention
     - domain/tool_policy/internal_context
   change_request:
@@ -87,7 +96,9 @@ domains:
     - domain/coding
     path: domain/change_request
   coding:
-    may_import: []
+    may_import:
+    - domain/safety
+    - domain/tool_policy
     path: domain/coding
   coding_backends:
     may_import: []
@@ -101,6 +112,8 @@ domains:
     - domain/ai_client
     - domain/chat
     - domain/input
+    - domain/safety
+    - domain/tool_policy
     path: domain/company
     public_imports:
     - domain/mention
@@ -152,6 +165,7 @@ domains:
     - domain/dev
     - domain/extensions
     - domain/external
+    - domain/safety
     - domain/tool
     - domain/webhook
     path: domain/frontend
@@ -220,16 +234,20 @@ domains:
     may_import:
     - domain/ai_client
     - domain/chat
+    - domain/safety
+    - domain/tool_policy
     path: domain/kanban
   media:
-    may_import: []
+    may_import:
+    - domain/safety
     path: domain/media
   memory:
     may_import:
     - domain/memory2
     path: domain/memory
   memory2:
-    may_import: []
+    may_import:
+    - domain/memory
     path: domain/memory2
   mention:
     may_import: []
@@ -254,9 +272,6 @@ domains:
   prompts:
     may_import: []
     path: domain/prompts
-  providers:
-    may_import: []
-    path: domain/providers
   recording:
     may_import: []
     path: domain/recording
@@ -294,7 +309,9 @@ domains:
     path: domain/skill_feedback.py
   skill_trigger:
     may_import:
+    - domain/capability
     - domain/extensions
+    - domain/mention
     path: domain/skill_trigger.py
   stream:
     may_import: []
@@ -321,9 +338,11 @@ domains:
     - domain/ai_client
     - domain/artifact
     - domain/capabilities
+    - domain/capability
     - domain/coding
     - domain/components
     - domain/extensions
+    - domain/frontend
     - domain/host_bridge
     - domain/human_operator
     - domain/integrations

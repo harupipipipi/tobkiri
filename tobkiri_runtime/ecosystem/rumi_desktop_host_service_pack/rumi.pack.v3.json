@@ -1,0 +1,26 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {"id": "rumi.desktop_host_service", "version": "1.0.0", "kind": "service", "display_name": "Rumi Desktop Host Service", "description": "Typed desktop observe/control requests mediated by core Authority and the Viewer host broker."},
+  "contracts": {
+    "provides": [
+      {"id": "rumi.resource.desktop.host.v1", "version": "1.0.0", "provider_instance_id": "desktop-host.observe", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_desktop_host_service_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["desktop.host.observe"]},
+      {"id": "rumi.action.desktop.host.v1", "version": "1.0.0", "provider_instance_id": "desktop-host.control", "cardinality": "one", "security": "critical", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_desktop_host_service_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["desktop.host.control"]}
+    ],
+    "requires": [{"id": "rumi.service.host.authorize.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"}]
+  },
+  "entrypoints": [
+    {"id": "desktop-host-observe", "contract_id": "rumi.resource.desktop.host.v1", "loader": "python", "module": "ecosystem.rumi_desktop_host_service_pack.runtime.service", "symbol": "create_desktop_observer", "artifact_hash": "sha256:331df96aaafce1d1ff58ad94736467453e388c5f7610c9e9739cfbbd8e5a7a6c"},
+    {"id": "desktop-host-control", "contract_id": "rumi.action.desktop.host.v1", "loader": "python", "module": "ecosystem.rumi_desktop_host_service_pack.runtime.service", "symbol": "create_desktop_control", "artifact_hash": "sha256:331df96aaafce1d1ff58ad94736467453e388c5f7610c9e9739cfbbd8e5a7a6c"}
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {"capability": "desktop.host.observe", "access": "observe", "approval_required": true},
+    {"capability": "desktop.host.control", "access": "control", "approval_required": true},
+    {"capability": "host.authority.consume", "access": "control", "approval_required": false}
+  ],
+  "provenance": {"content_hash": "sha256:331df96aaafce1d1ff58ad94736467453e388c5f7610c9e9739cfbbd8e5a7a6c", "build_identity": "rumi-desktop-host-service-pack:1.0.0", "trust_class": "local", "signature": null},
+  "migration": {"from": ["rumi_default_tools_pack.domain.computer", "rumi_default_tools_pack.domain.tool.browser_computer"], "compatibility_aliases": ["computer_use", "browser_computer"], "compatibility_projection": "one_way_contract_adapter", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Select the pinned prior adapter without enabling a second desktop executor."},
+  "extensions": {"rumi.desktop_host.boundary": {"observe_control_split": true, "authority": "core_runtime.authority", "executor": "rumi_viewer_host_broker", "self_approval": false, "client_approval_material": "forbidden", "tool_agent_chat_ui_imports": false}}
+}
+

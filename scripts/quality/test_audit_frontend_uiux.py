@@ -7,10 +7,12 @@ import unittest
 from pathlib import Path
 
 from audit_frontend_uiux import (
+    AuditPolicy,
     AuditConfigurationError,
     BaselineEntry,
     ChangedLineMap,
     _apply_baseline,
+    _is_excluded,
     _parse_diff,
     load_baseline,
     scan_text,
@@ -19,6 +21,17 @@ from audit_frontend_uiux import (
 
 
 class FrontendUiUxAuditTests(unittest.TestCase):
+    def test_generated_bundle_glob_does_not_exclude_authored_source(self) -> None:
+        policy = AuditPolicy(
+            source_roots=("app",),
+            extensions=frozenset({".js"}),
+            exclude_path_parts=frozenset(),
+            exclude_globs=("app/web/assets/**",),
+        )
+
+        self.assertTrue(_is_excluded(Path("app/web/assets/app-hash.js"), policy))
+        self.assertFalse(_is_excluded(Path("app/frontend/src/App.js"), policy))
+
     def test_detects_high_risk_transport_and_noop_button(self) -> None:
         source = '''
 export function Example() {

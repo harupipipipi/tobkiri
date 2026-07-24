@@ -1,6 +1,7 @@
 import type {
   ApiResponse,
   PacksResponseData,
+  PackApprovalResponseData,
   PackToggleResponseData,
   StartupProfilesResponseData,
   ApiStartupProfile,
@@ -40,6 +41,11 @@ import type {
   CapabilityProfilesResponseData,
   ApiMapResponseData,
 } from './apiTypes';
+import {
+  GetRequestCoordinator,
+  RequestInvalidatedError,
+  type GetRequestSnapshot,
+} from './getRequestCoordinator';
 
 // Base URL: empty string means relative path (works with Vite proxy)
 const API_BASE_URL =
@@ -48,7 +54,8 @@ const PANEL_CSRF_STORAGE_KEY = 'rumi-panel-csrf';
 let panelBootstrapPromise: Promise<void> | null = null;
 let panelBootstrapCodeInFlight: string | null = null;
 let panelSessionRecoveryPromise: Promise<boolean> | null = null;
-const inflightGetRequests = new Map<string, Promise<unknown>>();
+const getRequestCoordinator = new GetRequestCoordinator();
+const FOREGROUND_GET_TIMEOUT_MS = 10_000;
 
 type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 type TauriWindow = Window & {
@@ -126,6 +133,9 @@ async function exchangePanelBootstrapCode(code: string): Promise<void> {
   }
 
   setStoredPanelCsrfToken(envelope.data.csrf_token);
+  // The exchange can happen inside an already coordinated foreground GET.
+  // Clear cached/prefetched data without making that recovered request retry a third time.
+  getRequestCoordinator.invalidate({preserveForeground: true});
   url.searchParams.delete('code');
   window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
 }
@@ -307,14 +317,23 @@ async function ensurePanelSessionForRequest(path: string, method: string): Promi
  * - Throws on success===false or non-ok HTTP status
  * - Returns unwrapped `data`
  */
+export interface ApiRequestPolicy {
+  mode?: 'foreground' | 'prefetch';
+  timeoutMs?: number;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
+  requestPolicy: ApiRequestPolicy = {},
 ): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const method = (options.method || 'GET').toUpperCase();
 
-  const fetchRequest = async (allowPanelRecovery = true): Promise<T> => {
+  const fetchRequest = async (
+    allowPanelRecovery = true,
+    signal?: AbortSignal,
+  ): Promise<T> => {
     await ensurePanelSessionForRequest(path, method);
 
     const headers: Record<string, string> = {
@@ -334,6 +353,7 @@ export async function apiFetch<T>(
       method,
       credentials: 'same-origin',
       headers,
+      signal: signal ?? options.signal,
     });
 
     if (!response.ok) {
@@ -356,7 +376,7 @@ export async function apiFetch<T>(
         isRecoverablePanelAuthError(response.status, errorMessage) &&
         await recoverExpiredPanelSession()
       ) {
-        return fetchRequest(false);
+        return fetchRequest(false, signal);
       }
 
       throw new Error(errorMessage);
@@ -372,7 +392,7 @@ export async function apiFetch<T>(
         isRecoverablePanelAuthError(response.status, errorMessage) &&
         await recoverExpiredPanelSession()
       ) {
-        return fetchRequest(false);
+        return fetchRequest(false, signal);
       }
       throw new Error(errorMessage);
     }
@@ -381,19 +401,55 @@ export async function apiFetch<T>(
   };
 
   if (method === 'GET') {
-    const cacheKey = `${method}:${url}`;
-    const existing = inflightGetRequests.get(cacheKey) as Promise<T> | undefined;
-    if (existing) {
-      return existing;
-    }
-    const request = fetchRequest().finally(() => {
-      inflightGetRequests.delete(cacheKey);
-    });
-    inflightGetRequests.set(cacheKey, request as Promise<unknown>);
-    return request;
+    const mode = requestPolicy.mode ?? 'foreground';
+    const timeoutMs = requestPolicy.timeoutMs ?? FOREGROUND_GET_TIMEOUT_MS;
+    const executeGet = (allowInvalidationRetry: boolean): Promise<T> => (
+      getRequestCoordinator.request({
+        key: `${method}:${url}`,
+        mode,
+        timeoutMs,
+        factory: (signal) => fetchRequest(true, signal),
+      }).catch((error) => {
+        if (
+          allowInvalidationRetry &&
+          mode === 'foreground' &&
+          error instanceof RequestInvalidatedError
+        ) {
+          return executeGet(false);
+        }
+        throw error;
+      })
+    );
+    return executeGet(true);
   }
 
-  return fetchRequest();
+  try {
+    return await fetchRequest();
+  } finally {
+    getRequestCoordinator.invalidate();
+  }
+}
+
+export function prefetchApiGet<T>(
+  path: string,
+  options: { timeoutMs?: number } = {},
+): Promise<T> {
+  return apiFetch<T>(path, {}, {
+    mode: 'prefetch',
+    timeoutMs: options.timeoutMs ?? 2_500,
+  });
+}
+
+export function clearApiPrefetchCache(): void {
+  getRequestCoordinator.invalidate();
+}
+
+export function invalidateApiGetCache(): void {
+  getRequestCoordinator.invalidate();
+}
+
+export function getApiRequestCacheSnapshot(): GetRequestSnapshot {
+  return getRequestCoordinator.snapshot();
 }
 
 // ============================================================
@@ -410,6 +466,13 @@ export function fetchDashboard(): Promise<ApiDashboard> {
 
 export function fetchPacks(): Promise<PacksResponseData> {
   return apiFetch<PacksResponseData>('/api/panel/packs');
+}
+
+export function approvePack(id: string): Promise<PackApprovalResponseData> {
+  return apiFetch<PackApprovalResponseData>(
+    `/api/panel/packs/${encodeURIComponent(id)}/approve`,
+    { method: 'POST' },
+  );
 }
 
 export function enablePack(id: string): Promise<PackToggleResponseData> {
@@ -435,7 +498,14 @@ export function fetchStartupProfiles(): Promise<StartupProfilesResponseData> {
 }
 
 export function createStartupProfile(
-  data: { name?: string; base_pack: string; graph_id?: string; packs?: string[]; node_overrides?: Record<string, string> },
+  data: {
+    name?: string;
+    base_pack: string;
+    graph_id?: string;
+    packs?: string[];
+    node_overrides?: Record<string, string>;
+    icon?: string | null;
+  },
 ): Promise<StartupProfileMutationResponseData> {
   return apiFetch<StartupProfileMutationResponseData>('/api/panel/startup/profiles', {
     method: 'POST',
@@ -450,6 +520,7 @@ export type StartupProfileUpdatePayload = Partial<Pick<
   | 'graph_id'
   | 'packs'
   | 'node_overrides'
+  | 'icon'
   | 'default_flow'
   | 'default_graph'
   | 'system_prompt_id'
@@ -794,6 +865,24 @@ export function fetchCapabilityProfileNodes(
   return apiFetch<CapabilityProfileNodesResponseData>(
     `/api/panel/profiles/${encodeURIComponent(profileId)}/nodes`,
   );
+}
+
+export function enableCapabilityProfileNode(
+  profileId: string,
+  nodeId: string,
+): Promise<{ profile_id: string; node_id: string; enabled: boolean }> {
+  return apiFetch(`/api/panel/profiles/${encodeURIComponent(profileId)}/nodes/${encodeURIComponent(nodeId)}/enable`, {
+    method: 'POST',
+  });
+}
+
+export function disableCapabilityProfileNode(
+  profileId: string,
+  nodeId: string,
+): Promise<{ profile_id: string; node_id: string; enabled: boolean }> {
+  return apiFetch(`/api/panel/profiles/${encodeURIComponent(profileId)}/nodes/${encodeURIComponent(nodeId)}/disable`, {
+    method: 'POST',
+  });
 }
 
 export function fetchCapabilityGraphs(): Promise<CapabilityGraphsResponseData> {

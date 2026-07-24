@@ -6,6 +6,7 @@
 API 一覧:
   GET  /api/panel/dashboard          — ダッシュボード集約
   GET  /api/panel/packs              — Pack 一覧（有効/無効含む）
+  POST /api/panel/packs/{id}/approve — Pack を承認
   POST /api/panel/packs/{id}/enable  — Pack 有効化
   POST /api/panel/packs/{id}/disable — Pack 無効化
   GET  /api/panel/startup/profiles   — 起動プロファイル一覧と catalog
@@ -342,6 +343,27 @@ class ControlPanelHandlersMixin:
         packs = self._panel_list_packs_internal(include_approval_state=True)
         return {"packs": packs, "count": len(packs)}
 
+    def _panel_approve_pack(self, pack_id: str) -> Dict[str, Any]:
+        """POST /api/panel/packs/{id}/approve — 選択した Pack を承認する。"""
+        try:
+            from ..approval_manager import get_approval_manager
+
+            manager = get_approval_manager()
+            result = manager.approve(pack_id)
+            if not result.success:
+                return {
+                    "error": result.error or f"Could not approve Pack '{pack_id}'",
+                    "status_code": 400,
+                }
+            return {
+                "pack_id": pack_id,
+                "approved": True,
+                "approval_status": getattr(result.status, "value", "approved"),
+            }
+        except Exception as error:
+            _log_internal_error("panel_approve_pack", error)
+            return {"error": _SAFE_ERROR_MSG, "status_code": 500}
+
     def _panel_enable_pack(self, pack_id: str) -> Dict[str, Any]:
         """POST /api/panel/packs/{id}/enable — Pack 有効化"""
         return self._panel_set_pack_enabled(pack_id, True)
@@ -467,7 +489,9 @@ class ControlPanelHandlersMixin:
 
     def _panel_get_startup_profile_tool_permissions(self, profile_id: str) -> Dict[str, Any]:
         try:
-            from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
+            from ecosystem.defaultspack.domain.tool.catalog_contract_client import (
+                ContractToolCatalog as ToolRegistry,
+            )
             from ecosystem.defaultspack.domain.tool_policy.profile_permission import (
                 normalize_tool_permission_policy,
                 resolve_profile_tool_permission,
@@ -893,9 +917,12 @@ class ControlPanelHandlersMixin:
         kernel = getattr(self.__class__, "kernel", None) or getattr(self, "kernel", None)
         interface_registry = getattr(kernel, "interface_registry", None) if kernel is not None else None
         registry = getattr(getattr(kernel, "lifecycle", None), "registry", None) if kernel is not None else None
+        startup_ctx = getattr(kernel, "_startup_ctx", None) if kernel is not None else None
+        startup_ctx = startup_ctx if isinstance(startup_ctx, dict) else {}
         return EcosystemNodeRegistry(
             registry=registry,
             interface_registry=interface_registry,
+            approval_manager=startup_ctx.get("approval_manager"),
         )
 
     def _panel_profile_loader(self):
@@ -904,14 +931,19 @@ class ControlPanelHandlersMixin:
         kernel = getattr(self.__class__, "kernel", None) or getattr(self, "kernel", None)
         interface_registry = getattr(kernel, "interface_registry", None) if kernel is not None else None
         registry = getattr(getattr(kernel, "lifecycle", None), "registry", None) if kernel is not None else None
+        startup_ctx = getattr(kernel, "_startup_ctx", None) if kernel is not None else None
+        startup_ctx = startup_ctx if isinstance(startup_ctx, dict) else {}
         return CapabilityProfileLoader(
             registry=registry,
             interface_registry=interface_registry,
+            approval_manager=startup_ctx.get("approval_manager"),
+            continue_on_invalid=True,
         )
 
     def _panel_profile_node_overrides_path(self) -> Path:
-        base_dir = Path(__file__).resolve().parent.parent.parent
-        settings_dir = base_dir / "user_data" / "settings"
+        from ..paths import USER_DATA_DIR
+
+        settings_dir = USER_DATA_DIR / "settings"
         settings_dir.mkdir(parents=True, exist_ok=True)
         return settings_dir / "profile_node_overrides.json"
 
@@ -988,19 +1020,21 @@ class ControlPanelHandlersMixin:
     def _panel_get_profile_nodes(self, profile_id: str) -> Dict[str, Any]:
         """GET /api/panel/profiles/{profile_id}/nodes — profile-aware node catalog."""
         try:
-            from ..profile_node_registry import ProfileNodeRegistry
-
             profile = self._panel_profile_with_node_overrides(profile_id)
             if profile is None:
                 return {"error": f"Profile '{profile_id}' not found", "status_code": 404}
-            profile_nodes = ProfileNodeRegistry(
-                node_registry=self._panel_node_registry(),
-                profile=profile,
-            )
             profile_data = profile.to_dict()
             locale = str(profile_data.get("locale") or "en")
-            states = profile_nodes.node_state()
-            state_list = states if isinstance(states, list) else []
+            registry = self._panel_node_registry()
+            raw_nodes = [
+                node.to_dict()
+                for _, node in sorted(registry.load_all_nodes(register=False).items())
+            ]
+            state_list = self._capability_profile_node_states(
+                profile_data,
+                raw_nodes,
+                None,
+            )
             state_by_id = {
                 str(item.get("node_id")): item
                 for item in state_list
@@ -1008,11 +1042,11 @@ class ControlPanelHandlersMixin:
             }
             nodes = [
                 self._capability_public_node(
-                    node.to_dict(),
+                    node,
                     locale=locale,
                     state_by_id=state_by_id,
                 )
-                for _, node in sorted(profile_nodes.nodes().items())
+                for node in raw_nodes
             ]
             palette_nodes = [
                 node for node in nodes

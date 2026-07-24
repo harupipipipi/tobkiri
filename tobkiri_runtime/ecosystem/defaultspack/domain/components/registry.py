@@ -7,6 +7,7 @@ from typing import Iterable
 
 from .discovery import ComponentDiscoveryIssue, discover_components
 from .manifest import DomainComponent
+from core_runtime.resolved_profile_scope import effective_pack_ids
 
 _LOCK = threading.Lock()
 _REGISTRY: "DomainComponentRegistry | None" = None
@@ -65,10 +66,8 @@ def build_domain_component_roots(
 
     _append_unique(roots, pack_root / "domain")
     if _is_dir(ecosystem_dir):
-        try:
-            siblings = sorted(ecosystem_dir.iterdir())
-        except OSError:
-            siblings = []
+        effective = effective_pack_ids()
+        siblings = [ecosystem_dir / pack_id for pack_id in sorted(effective)]
         for sibling in siblings:
             if sibling == pack_root:
                 continue

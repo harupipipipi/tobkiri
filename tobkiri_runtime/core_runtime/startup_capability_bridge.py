@@ -8,9 +8,19 @@ from typing import Any, Dict, List, Optional
 from .capability_graph_compiler import CapabilityGraphCompiler
 from .capability_graph_loader import CapabilityGraphLoader
 from .ecosystem_nodes import EcosystemNodeRegistry
+from .frontend_host import build_frontend_catalog
 from .interface_registry import InterfaceRegistry
 from .profile_models import CapabilityProfileDefinition
 from .profile_loader import CapabilityProfileLoader
+from .resolved_profile import (
+    ResolvedProfile,
+    resolution_input_from_startup_profile,
+    resolve_profile,
+)
+from .resolved_profile_scope import (
+    activate_resolved_profile,
+    restore_resolved_profile,
+)
 from .startup_graph_overrides import apply_startup_node_overrides
 from .surface_launch_target import extract_surface_launch_target
 
@@ -23,6 +33,8 @@ class StartupCapabilityCompileResult:
     runtime_profile_key: Optional[str] = None
     runtime_profile: Optional[Dict[str, Any]] = None
     surface_launch_target: Optional[Dict[str, Any]] = None
+    resolved_profile: Optional[ResolvedProfile] = None
+    frontend_catalog: Optional[Dict[str, Any]] = None
     diagnostics: List[Dict[str, Any]] = field(default_factory=list)
     skipped: bool = False
     reason: Optional[str] = None
@@ -37,6 +49,10 @@ class StartupCapabilityCompileResult:
             "runtime_profile_key": self.runtime_profile_key,
             "runtime_profile": self.runtime_profile,
             "surface_launch_target": self.surface_launch_target,
+            "resolved_profile": (
+                self.resolved_profile.to_dict() if self.resolved_profile else None
+            ),
+            "frontend_catalog": self.frontend_catalog,
             "diagnostics": list(self.diagnostics),
         }
 
@@ -53,6 +69,9 @@ def compile_startup_capabilities(
     graph_id = _string_or_none(startup_profile.get("default_graph"))
     capability_profile_id = _string_or_none(startup_profile.get("capability_profile_id"))
     diagnostics: List[Dict[str, Any]] = []
+    resolved_profile: Optional[ResolvedProfile] = None
+    frontend_catalog: Optional[Dict[str, Any]] = None
+    activation_token = None
 
     if not graph_id:
         diagnostics.append(
@@ -86,17 +105,77 @@ def compile_startup_capabilities(
         )
 
     try:
-        _register_pack_binding_handlers(
-            interface_registry,
-            diagnostics,
-            approval_manager=approval_manager,
+        normalized_startup_profile = dict(startup_profile)
+        normalized_startup_profile.setdefault("profile_id", capability_profile_id)
+        provisional_input = resolution_input_from_startup_profile(
+            normalized_startup_profile
+        )
+        provisional_profile = resolve_profile(
+            provisional_input,
             ecosystem_dir=ecosystem_dir,
         )
-
+        verified_pack_trust = _verified_pack_trust(
+            approval_manager,
+            provisional_profile.selected_pack_ids
+        )
+        resolution_input = resolution_input_from_startup_profile(
+            normalized_startup_profile,
+            verified_pack_trust=verified_pack_trust,
+        )
+        resolution_input = replace(
+            resolution_input,
+            authorized_pack_ids=tuple(verified_pack_trust),
+        )
+        resolved_profile = resolve_profile(
+            resolution_input,
+            ecosystem_dir=ecosystem_dir,
+        )
+        diagnostics.extend(
+            {
+                "level": item.severity,
+                "code": item.code,
+                "message": item.message,
+                "subject": item.subject,
+                "details": dict(item.details),
+            }
+            for item in resolved_profile.diagnostics
+        )
+        if not resolved_profile.effective_pack_set:
+            diagnostics.append(
+                _diagnostic(
+                    "error",
+                    "effective_pack_set_empty",
+                    "Resolved profile has no healthy authorized packs",
+                    profile_id=resolution_input.profile_id,
+                )
+            )
+            return StartupCapabilityCompileResult(
+                ok=False,
+                graph_id=graph_id,
+                capability_profile_id=capability_profile_id,
+                resolved_profile=resolved_profile,
+                diagnostics=diagnostics,
+            )
+        frontend_catalog_result = build_frontend_catalog(
+            resolved_profile,
+            ecosystem_dir=ecosystem_dir,
+        )
+        frontend_catalog = frontend_catalog_result.to_dict()
+        diagnostics.extend(
+            {
+                "level": item.severity,
+                "code": item.code,
+                "message": item.message,
+                "pack_id": item.owner_pack_id,
+                "contribution_id": item.contribution_id,
+            }
+            for item in frontend_catalog_result.diagnostics
+        )
         profile_loader = CapabilityProfileLoader(
             interface_registry=interface_registry,
             approval_manager=approval_manager,
             ecosystem_dir=ecosystem_dir,
+            effective_pack_ids=resolved_profile.effective_pack_set,
         )
         profile = profile_loader.get_profile(capability_profile_id)
         diagnostics.extend(profile_loader.diagnostics)
@@ -113,6 +192,8 @@ def compile_startup_capabilities(
                 ok=False,
                 graph_id=graph_id,
                 capability_profile_id=capability_profile_id,
+                resolved_profile=resolved_profile,
+                frontend_catalog=frontend_catalog,
                 diagnostics=diagnostics,
             )
 
@@ -120,6 +201,7 @@ def compile_startup_capabilities(
             interface_registry=interface_registry,
             approval_manager=approval_manager,
             ecosystem_dir=ecosystem_dir,
+            effective_pack_ids=resolved_profile.effective_pack_set,
         )
         graph = graph_loader.get_graph(graph_id)
         diagnostics.extend(graph_loader.diagnostics)
@@ -136,6 +218,8 @@ def compile_startup_capabilities(
                 ok=False,
                 graph_id=graph_id,
                 capability_profile_id=capability_profile_id,
+                resolved_profile=resolved_profile,
+                frontend_catalog=frontend_catalog,
                 diagnostics=diagnostics,
             )
 
@@ -143,6 +227,7 @@ def compile_startup_capabilities(
             interface_registry=interface_registry,
             approval_manager=approval_manager,
             ecosystem_dir=ecosystem_dir,
+            effective_pack_ids=resolved_profile.effective_pack_set,
         )
         nodes = node_registry.load_all_nodes(register=True)
         diagnostics.extend(node_registry.diagnostics)
@@ -158,8 +243,19 @@ def compile_startup_capabilities(
                 ok=False,
                 graph_id=graph_id,
                 capability_profile_id=capability_profile_id,
+                resolved_profile=resolved_profile,
+                frontend_catalog=frontend_catalog,
                 diagnostics=diagnostics,
             )
+
+        activation_token = activate_resolved_profile(resolved_profile)
+        _register_pack_binding_handlers(
+            interface_registry,
+            diagnostics,
+            approval_manager=approval_manager,
+            ecosystem_dir=ecosystem_dir,
+            effective_pack_ids=resolved_profile.effective_pack_set,
+        )
 
         profile = extend_profile_for_startup_overrides(
             profile,
@@ -184,6 +280,9 @@ def compile_startup_capabilities(
             fallback_pack_id=_string_or_none(startup_profile.get("base_pack")),
             surfaces=_surfaces_from_startup_or_profile(startup_profile, profile),
         )
+        if not compile_result.ok and activation_token is not None:
+            restore_resolved_profile(activation_token)
+            activation_token = None
 
         return StartupCapabilityCompileResult(
             ok=compile_result.ok,
@@ -192,9 +291,13 @@ def compile_startup_capabilities(
             runtime_profile_key=runtime_profile_key,
             runtime_profile=runtime_profile,
             surface_launch_target=surface_launch_target,
+            resolved_profile=resolved_profile,
+            frontend_catalog=frontend_catalog,
             diagnostics=diagnostics,
         )
     except Exception as exc:
+        if activation_token is not None:
+            restore_resolved_profile(activation_token)
         diagnostics.append(
             _diagnostic(
                 "error",
@@ -208,8 +311,62 @@ def compile_startup_capabilities(
             ok=False,
             graph_id=graph_id,
             capability_profile_id=capability_profile_id,
+            resolved_profile=resolved_profile,
+            frontend_catalog=frontend_catalog,
             diagnostics=diagnostics,
         )
+
+
+def _pack_is_approved(approval_manager: Any, pack_id: str) -> bool:
+    """Return existing approval evidence without trusting profile selection."""
+    if approval_manager is None:
+        try:
+            from .approval_manager import get_approval_manager
+
+            approval_manager = get_approval_manager()
+        except Exception:
+            return False
+    checker = getattr(approval_manager, "is_pack_approved_and_verified", None)
+    if not callable(checker):
+        return False
+    try:
+        result = checker(pack_id)
+    except Exception:
+        return False
+    if isinstance(result, tuple):
+        return bool(result[0])
+    return bool(result)
+
+
+def _verified_pack_trust(
+    approval_manager: Any,
+    pack_ids: tuple[str, ...],
+) -> Dict[str, str]:
+    """Read host-verified trust while preserving test/legacy manager support."""
+    if approval_manager is None:
+        try:
+            from .approval_manager import get_approval_manager
+
+            approval_manager = get_approval_manager()
+        except Exception:
+            return {}
+    getter = getattr(approval_manager, "get_verified_pack_trust", None)
+    if callable(getter):
+        try:
+            result = getter(pack_ids)
+        except Exception:
+            return {}
+        if isinstance(result, dict):
+            return {
+                str(pack_id): str(trust_class)
+                for pack_id, trust_class in result.items()
+            }
+        return {}
+    return {
+        pack_id: "verified"
+        for pack_id in pack_ids
+        if _pack_is_approved(approval_manager, pack_id)
+    }
 
 
 def _register_pack_binding_handlers(
@@ -218,6 +375,7 @@ def _register_pack_binding_handlers(
     *,
     approval_manager: Any = None,
     ecosystem_dir: Optional[str] = None,
+    effective_pack_ids: Optional[List[str] | tuple[str, ...]] = None,
 ) -> None:
     try:
         from .capability_binding_registration import register_pack_binding_handlers
@@ -235,6 +393,7 @@ def _register_pack_binding_handlers(
         interface_registry=interface_registry,
         approval_manager=approval_manager,
         ecosystem_dir=ecosystem_dir,
+        effective_pack_ids=effective_pack_ids,
     )
     diagnostics.extend(result.diagnostics)
 

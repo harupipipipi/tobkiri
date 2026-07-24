@@ -1,5 +1,6 @@
-import { Link, useLocation } from 'react-router-dom';
-import { Loader2, Menu } from 'lucide-react';
+import { Link, useLocation } from 'react-router';
+import { Menu } from 'lucide-react';
+import { TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
 import { useAppStore } from '@/src/store';
 import { useT } from '@/src/lib/i18n';
 import { cn } from '@/src/lib/utils';
@@ -51,7 +52,10 @@ export function Header() {
   })();
 
   return (
-    <header className={`z-40 flex shrink-0 items-center justify-between border-b border-border bg-bg-header transition-colors duration-[var(--transition-base)] ${isFlows ? 'h-12 px-4' : 'h-14 px-6'}`}>
+    <header
+      data-tauri-drag-region
+      className={`z-40 flex shrink-0 items-center justify-between border-b border-border bg-bg-header transition-colors duration-[var(--transition-base)] ${isFlows ? 'h-12 px-4' : 'h-14 px-6'}`}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div className="md:hidden">
           <Popover>
@@ -120,7 +124,7 @@ export function Header() {
           title={runtimePill.label}
         >
           {!runtimeReady && runtimeStatus !== 'error' ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <TobkiriLoadingMark className="h-3 w-6" />
           ) : (
             <span className={cn("rumi-control-pill-dot", runtimePill.dotClass)} />
           )}

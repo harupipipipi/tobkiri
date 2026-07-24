@@ -7,9 +7,12 @@ capability broker.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from core_runtime.authority import get_authority_service
@@ -162,12 +165,29 @@ def _issue_viewer_execution_token(
     request_id: str | None = None,
 ) -> str | dict[str, Any]:
     try:
+        delegated_function_id = _delegated_computer_function_id(intent)
+        if delegated_function_id:
+            args_hash = hashlib.sha256(
+                json.dumps(
+                    intent.args,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            operation = delegated_function_id
+            function_id = delegated_function_id
+        else:
+            args_hash = intent.args_hash
+            operation = intent.operation
+            function_id = intent.host_function_id or intent.operation
         return prepared.issue_execution_token(
             request_id or f"host_intent:{intent.operation}:{intent.args_hash[:12]}",
-            intent.args_hash,
+            args_hash,
             expires_at=int(time.time()) + 300,
-            operation=intent.operation,
-            function_id=intent.host_function_id or intent.operation,
+            operation=operation,
+            function_id=function_id,
             pack_id=intent.caller_pack_id,
             conversation_id=intent.conversation_id,
         )
@@ -180,6 +200,46 @@ def _dispatch_prepared_viewer_broker(
     prepared: _PreparedViewerBroker,
     execution_token: str,
 ) -> dict[str, Any]:
+    delegated_function_id = _delegated_computer_function_id(intent)
+    if delegated_function_id:
+        args = dict(intent.args)
+        args["approval_token"] = execution_token
+        context = {
+            "profile_id": str(args.get("profile_id") or ""),
+            "pack_id": intent.caller_pack_id,
+            "conversation_id": intent.conversation_id,
+        }
+        try:
+            artifact_root_value = str(args.get("artifact_root") or "").strip()
+            result = prepared.client.run_computer(
+                delegated_function_id,
+                args,
+                context,
+                Path(artifact_root_value) if artifact_root_value else None,
+            )
+        except Exception as exc:
+            return {
+                "status": "host_broker_error",
+                "success": False,
+                "error_type": "host_broker_error",
+                "host_broker": {"available": True, "error": str(exc)},
+            }
+        result = dict(result) if isinstance(result, dict) else {}
+        success = not bool(
+            result.get("is_error")
+            or result.get("requires_approval")
+            or result.get("approval_required")
+        )
+        return {
+            "status": "executed" if success else "host_broker_error",
+            "success": success,
+            "error_type": None if success else "host_broker_error",
+            "host_broker": {
+                "available": True,
+                "function_id": delegated_function_id,
+                "result": result,
+            },
+        }
     payload = intent.to_dict()
     payload["approval_token"] = execution_token
     try:
@@ -199,6 +259,15 @@ def _dispatch_prepared_viewer_broker(
         "error_type": None if success else "host_broker_error",
         "host_broker": broker_response if isinstance(broker_response, dict) else {},
     }
+
+
+def _delegated_computer_function_id(intent: HostIntent) -> str:
+    function_id = str(intent.host_function_id or "").strip()
+    if intent.operation != "host.intent.execute":
+        return ""
+    if function_id.startswith(("browser.", "computer.")):
+        return function_id
+    return ""
 
 
 def _dispatch_to_viewer_broker(intent: HostIntent, *, request_id: str | None = None) -> dict[str, Any]:

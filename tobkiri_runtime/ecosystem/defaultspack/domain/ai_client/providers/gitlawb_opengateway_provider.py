@@ -6,11 +6,10 @@ from .openai_compatible_provider import OpenAICompatibleProvider
 
 
 class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
-    """Gitlawb OpenGateway provider limited to the Rumi-approved allowlist."""
+    """Gitlawb OpenGateway provider backed by the account-visible /models API."""
 
     DEFAULT_USER_AGENT = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 Chrome/124 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
     )
     MODEL_IDS = {
         "mimo-v2-flash",
@@ -121,6 +120,9 @@ class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
             },
         },
     ]
+    # The historical entries above are intentionally inert. Availability is
+    # exclusively fetched from the gateway for the configured API key.
+    KNOWN_MODELS: List[Dict[str, Any]] = []
 
     def __init__(self) -> None:
         super().__init__(
@@ -130,20 +132,20 @@ class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
             base_url_env="GITLAWB_OPENGATEWAY_BASE_URL",
             default_base_url="https://opengateway.gitlawb.com/v1",
             credential_required=True,
-            known_models=self.KNOWN_MODELS,
+            known_models=[],
             extra_headers={
                 "User-Agent": self.DEFAULT_USER_AGENT,
             },
+            remote_model_discovery=True,
+            remote_model_list_path="/models",
+            remote_model_cache_ttl_seconds=3600,
         )
 
     @classmethod
     def _assert_supported_model(cls, model: str) -> None:
-        if str(model or "").strip() not in cls.MODEL_IDS:
-            supported = ", ".join(sorted(cls.MODEL_IDS))
-            raise RuntimeError(
-                "gitlawb-opengateway: unsupported model. "
-                f"defaultspack supports only: {supported}"
-            )
+        # The gateway is the model authority; do not maintain a client-side
+        # allowlist that hides newly provisioned account models.
+        return None
 
     @staticmethod
     def _translate_params(params):
@@ -159,7 +161,7 @@ class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
             body["max_completion_tokens"] = params["max_completion_tokens"]
 
     def list_models(self) -> List[Dict[str, Any]]:
-        return [dict(model) for model in self.KNOWN_MODELS]
+        return self._merge_remote_models([])
 
     def complete(self, model, messages, tools, params):
         self._assert_supported_model(model)

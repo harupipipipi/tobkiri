@@ -1,34 +1,27 @@
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+"""Provider-free legacy request analysis projection."""
 
-from blocks._common import ok, error
-from domain.ai_client.client import AIClient
-from domain.ai_client.model_router import ModelRouter
+from blocks._common import error, ok
 
 
 def run(input_data, context):
-    """入力分析結果を返す。
-
-    input_data:
-        messages: list[dict] - StandardMessage 形式
-        mode: str - "fast" (default) or "heavy"
-
-    Returns:
-        ok(analysis_result)
-    """
+    del context
     messages = input_data.get("messages")
-    if not messages:
+    if not isinstance(messages, list) or not messages:
         return error("messages is required", "MISSING_PARAM")
-    if not isinstance(messages, list):
-        return error("messages must be a list", "INVALID_INPUT")
-
-    mode = input_data.get("mode", "fast")
-    if mode not in ("fast", "heavy"):
-        return error("mode must be 'fast' or 'heavy'", "INVALID_INPUT")
-
-    client = AIClient()
-    router = ModelRouter(client)
-    analysis = router.analyze(messages, mode=mode)
-
-    return ok(analysis)
+    text = "\n".join(
+        str(item.get("content") or "")
+        for item in messages
+        if isinstance(item, dict)
+    )
+    has_image = any(
+        isinstance(item, dict)
+        and isinstance(item.get("content"), list)
+        for item in messages
+    )
+    requirements = {
+        "modalities": ["text", "image"] if has_image else ["text"],
+        "capabilities": ["code"]
+        if any(marker in text for marker in ("```", "def ", "class ")) else [],
+        "request_surface": "legacy.routing.analyze",
+    }
+    return ok({"requirements": requirements, "executes": False})

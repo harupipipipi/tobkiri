@@ -60,6 +60,14 @@
         "enabled": true,
         "placeholder": "メッセージを入力...",
         "help": "Enterで送信。必要に応じて / でコマンド、@ で候補を開けます。",
+        "layout": {
+          "home": {
+            "position": "center"
+          },
+          "conversation": {
+            "position": "bottom"
+          }
+        },
         "accepted_modalities": [
           "text",
           "files",

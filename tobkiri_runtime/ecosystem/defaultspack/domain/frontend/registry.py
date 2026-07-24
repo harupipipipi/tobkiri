@@ -17,7 +17,7 @@ from urllib.parse import quote
 from core_runtime.profile_graph_models import normalize_profile_graph_selected
 from core_runtime.profile_workspace import ProfileWorkspaceManager
 from domain.ai_client.client import AIClient
-from domain.ai_client.api_key_store import provider_key_status, set_provider_api_key
+from domain.ai_client.api_key_store import provider_key_status
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.oauth_store import provider_oauth_statuses
 from domain.capability.catalog import CapabilityCatalog
@@ -36,8 +36,11 @@ from domain.external.token_store import external_token_status
 from domain.frontend_settings_store import (
     FrontendSettingsCorruptError,
     FrontendSettingsStore,
+    MUTATION_RECEIPTS_KEY,
+    STATE_REVISIONS_KEY,
+    defaultspack_frontend_settings_path,
 )
-from domain.tool.registry import ToolRegistry
+from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.webhook.endpoint_store import WebhookEndpointStore
 from transport.registry import (
     component_http_route_specs,
@@ -64,10 +67,16 @@ class FrontendRegistry:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
         self._extensions_dir = self._pack_root / "user_data" / "shared" / "frontend_extensions"
         self._shell_path = self._pack_root / "user_data" / "shared" / "frontend_shell.json"
-        self._settings_path = self._pack_root / "user_data" / "shared" / "frontend_settings.json"
+        self._settings_path = defaultspack_frontend_settings_path(self._pack_root)
         self._settings_store = FrontendSettingsStore(self._settings_path)
 
-    def build_catalog(self, profile_id: str | None = None, *, lightweight: bool = False) -> dict[str, Any]:
+    def build_catalog(
+        self,
+        profile_id: str | None = None,
+        *,
+        lightweight: bool = False,
+        include_skills: bool = False,
+    ) -> dict[str, Any]:
         self._load_diagnostics: list[dict[str, Any]] = []
         template_catalog = self._template_catalog_metadata()
         extensions = self._load_extensions()
@@ -106,6 +115,7 @@ class FrontendRegistry:
         ]
         chat_renderers = self._filter_frontend_items(chat_renderers, selected_frontend_ids)
         return {
+            "dynamic_host": self._dynamic_frontend_catalog(),
             "app": self._app_metadata(ui_surfaces),
             "agent_service": CapabilityCatalog(self._pack_root).manifest(),
             "shell": shell,
@@ -122,7 +132,7 @@ class FrontendRegistry:
             "chat_rendering": {
                 "renderers": chat_renderers,
             },
-            "skills": [] if lightweight else self._skill_items(),
+            "skills": self._skill_items() if include_skills or not lightweight else [],
             "routes": self._route_metadata(),
             "templates": template_catalog.get("templates", []),
             "field_renderers": template_catalog.get("field_renderers", []),
@@ -144,6 +154,20 @@ class FrontendRegistry:
             "extension_points": self._extension_points(),
             "diagnostics": self._diagnostics(shell, parts, component_bindings),
         }
+
+    @staticmethod
+    def _dynamic_frontend_catalog() -> dict[str, Any] | None:
+        """Project the active core-owned frontend catalog into the legacy API."""
+        try:
+            from core_runtime.frontend_host import build_frontend_catalog
+            from core_runtime.resolved_profile_scope import persisted_resolved_profile
+
+            plan = persisted_resolved_profile()
+            if plan is None:
+                return None
+            return build_frontend_catalog(plan).to_dict()
+        except Exception:
+            return None
 
     def get_settings(self, *, lightweight: bool = False) -> dict[str, Any]:
         self._load_diagnostics: list[dict[str, Any]] = []
@@ -214,7 +238,7 @@ class FrontendRegistry:
     def _app_metadata(self, ui_surfaces: list[dict[str, Any]]) -> dict[str, Any]:
         app: dict[str, Any] = {
             "id": "defaultspack",
-            "name": "rumi DP",
+            "name": "Tobkiri",
             "icon": "/static/assets/icons/defaultspack-icon.png",
             "account": self._rumi_account_metadata(),
         }
@@ -577,12 +601,100 @@ class FrontendRegistry:
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
         registry = ToolRegistry()
-        items: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = [
+            {
+                "id": "capability-master",
+                "label": "Capabilities",
+                "category": "widget",
+                "description": "Tool・Skill・Activityをまとめて管理します。",
+                "tags": ["capability", "activity", "safety"],
+                "origin": {
+                    "kind": "builtin",
+                    "path": "domain/capability/",
+                },
+                "panel": {
+                    "kind": "capability_settings",
+                    "title": "Capabilities",
+                    "fields": [
+                        {
+                            "id": "enabled",
+                            "label": "Capabilitiesを使う",
+                            "type": "toggle",
+                            "default": True,
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "id": "capability.catalog",
+                            "label": "カタログを開く",
+                            "method": "GET",
+                            "endpoint": "/api/capabilities/catalog",
+                        }
+                    ],
+                    "notes": [
+                        "Activityを選ぶと、必要なToolとSkillが実行時に共同解決されます。",
+                        "個別ToolはAdvancedの機能マネージャーで管理できます。",
+                    ],
+                },
+            }
+        ]
+
+        try:
+            activity_manifests = (
+                get_extension_registry(force_reload=True)
+                .activities()
+                .list(enabled_only=True)
+            )
+        except Exception:
+            activity_manifests = []
+        for activity in activity_manifests:
+            activity_id = str(activity.get("id") or "").strip()
+            if not activity_id:
+                continue
+            label = self._localized_label(
+                activity.get("display_name"), activity_id
+            )
+            items.append(
+                {
+                    "id": activity_id,
+                    "label": label,
+                    "category": "activity",
+                    "description": self._localized_label(
+                        activity.get("description"), ""
+                    ),
+                    "tags": [
+                        "activity",
+                        *[
+                            str(alias)
+                            for alias in activity.get("aliases", [])
+                            if str(alias).strip()
+                        ],
+                    ],
+                    "ui": (
+                        dict(activity.get("ui"))
+                        if isinstance(activity.get("ui"), dict)
+                        else {}
+                    ),
+                    "origin": {
+                        "kind": "activity_registry",
+                        "path": str(activity.get("source_path") or ""),
+                    },
+                    "panel": {
+                        "kind": "activity",
+                        "title": label,
+                        "notes": [
+                            "このActivityのToolとSkillはCapability Planで動的に解決されます。",
+                            "明示指定: @" + activity_id,
+                        ],
+                    },
+                }
+            )
 
         for tool in registry.list_tools():
             schema = tool.get("schema", {}).get("parameters", {})
             execution_type = tool.get("execution", {}).get("type", "local")
             ui = dict(tool.get("ui", {})) if isinstance(tool.get("ui"), dict) else {}
+            ui["advanced_only"] = True
             label = self._tool_display_label(tool, ui)
             risk = str(tool.get("risk") or tool.get("metadata", {}).get("risk") or "low").strip().lower()
             tags = [str(tag) for tag in tool.get("tags", []) if str(tag)]
@@ -706,6 +818,21 @@ class FrontendRegistry:
         return sorted(self._dedupe_by_key(items, "id"), key=self._sidebar_item_sort_key)
 
     @staticmethod
+    def _localized_label(value: Any, fallback: str) -> str:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            for locale in ("ja", "en"):
+                text = str(value.get(locale) or "").strip()
+                if text:
+                    return text
+            for candidate in value.values():
+                text = str(candidate or "").strip()
+                if text:
+                    return text
+        return fallback
+
+    @staticmethod
     def _tool_display_label(tool: dict[str, Any], ui: dict[str, Any]) -> str:
         for value in (
             tool.get("display_name"),
@@ -753,11 +880,12 @@ class FrontendRegistry:
     @staticmethod
     def _sidebar_item_sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
         category_order = {
-            "tool": 0,
-            "widget": 1,
+            "widget": 0,
+            "activity": 1,
             "capability": 2,
             "integration": 3,
             "system": 4,
+            "tool": 5,
         }
         tool_group_order = {
             "browser": 0,
@@ -2661,6 +2789,9 @@ class FrontendRegistry:
                 lambda current: self._migrate_legacy_keyboard_navigation(current)[0]
             )
         if saved:
+            saved = dict(saved)
+            saved.pop(MUTATION_RECEIPTS_KEY, None)
+            saved.pop(STATE_REVISIONS_KEY, None)
             saved = self._settings_with_legacy_tool_version(saved)
             values = self._deep_merge(values, saved)
         return self._refresh_derived_settings(values)
@@ -2711,11 +2842,12 @@ class FrontendRegistry:
                 temporary_file.flush()
                 os.fsync(temporary_file.fileno())
             os.replace(temporary_path, path)
-            directory_descriptor = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
+            if os.name != "nt":
+                directory_descriptor = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_descriptor)
+                finally:
+                    os.close(directory_descriptor)
         except Exception:
             try:
                 os.close(file_descriptor)
@@ -3297,37 +3429,10 @@ class FrontendRegistry:
                 models_patch = sanitized.setdefault("models", {})
                 if isinstance(models_patch, dict) and not models_patch.get("model_api_routes"):
                     models_patch["model_api_routes"] = legacy_model_routes
-            api_key_patch = apis.pop("api_keys", None)
-            if isinstance(api_key_patch, dict) and api_key_patch.get("action") == "upsert":
-                provider_id = str(api_key_patch.get("provider_id") or "").strip()
-                name = str(api_key_patch.get("name") or api_key_patch.get("api_id") or "").strip()
-                value = str(api_key_patch.get("value") or "")
-                if provider_id and name and value.strip():
-                    budget_raw = api_key_patch.get("monthly_budget_usd")
-                    request_limit_raw = api_key_patch.get("monthly_request_limit")
-                    try:
-                        budget_value = float(budget_raw) if budget_raw not in (None, "") else None
-                    except (TypeError, ValueError):
-                        budget_value = None
-                    try:
-                        request_limit_value = int(request_limit_raw) if request_limit_raw not in (None, "") else None
-                    except (TypeError, ValueError):
-                        request_limit_value = None
-                    set_provider_api_key(
-                        provider_id,
-                        value,
-                        pack_root=self._pack_root,
-                        api_id=name,
-                        name=name,
-                        base_url=str(api_key_patch.get("base_url") or "").strip() or None,
-                        allowed_models=api_key_patch.get("allowed_models"),
-                        default_model=str(api_key_patch.get("default_model") or "").strip() or None,
-                        notes=str(api_key_patch.get("notes") or "").strip() or None,
-                        quota_label=str(api_key_patch.get("quota_label") or "").strip() or None,
-                        monthly_budget_usd=budget_value,
-                        monthly_request_limit=request_limit_value,
-                        kind=str(api_key_patch.get("kind") or "").strip() or None,
-                    )
+            # Credential mutations require the signed approval flow exposed by
+            # /api/ai/provider-key. Settings patches have no trusted approval
+            # context, so they may never become a second secret-write path.
+            apis.pop("api_keys", None)
             apis["api_keys"] = []
         external_output = sanitized.get("external_output")
         legacy_external_inputs = sanitized.get("external_inputs")

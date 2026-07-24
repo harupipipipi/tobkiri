@@ -3,17 +3,30 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from ...extensions.loading import import_entrypoint
 from ...extensions.runtime import get_extension_registry
-from ..api_key_store import load_provider_api_keys_into_env, provider_has_api_key
+from ..api_key_store import (
+    list_custom_providers,
+    load_provider_api_keys_into_env,
+    provider_has_api_key,
+    provider_named_api_keys,
+    read_provider_api_key,
+)
+from ..provider_program import (
+    local_openai_runtime_manifests,
+    missing_program_provider_ids,
+    provider_program_manifests,
+)
 from ..model_metadata_schema import (
     context_window_value,
     normalize_capability_map,
     normalize_request_features,
     normalize_routing_defaults,
 )
+from ..metadata_json import load_strict_metadata_json
 from ..oauth_store import provider_has_oauth_connection, provider_oauth_status
 from .component_metadata import (
     model_manifests_from_provider_components,
@@ -21,7 +34,10 @@ from .component_metadata import (
     provider_manifests_from_components,
 )
 from .openai_compatible_provider import OpenAICompatibleProvider
-from .provider_catalog import OPENAI_COMPATIBLE_PROVIDER_CLASSES
+from .provider_catalog import (
+    OPENAI_COMPATIBLE_PROVIDER_CLASSES,
+    OPENAI_COMPATIBLE_PROVIDER_SPECS,
+)
 from . import google_provider as google_provider
 
 """
@@ -146,7 +162,14 @@ _CURATED_PROVIDER_METADATA: Dict[str, Dict[str, Any]] = {
             "cheap": "llama-3.1-8b-instant",
             "vision": "meta-llama/llama-4-scout-17b-16e-instruct",
         },
-        "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision", "openai_compatible"],
+        "capabilities": [
+            "chat",
+            "streaming",
+            "tool_calls",
+            "reasoning",
+            "vision",
+            "openai_compatible",
+        ],
     },
     "mistral": {
         "display_name": "Mistral",
@@ -173,25 +196,22 @@ _CURATED_PROVIDER_METADATA: Dict[str, Dict[str, Any]] = {
     "openrouter": {
         "display_name": "OpenRouter",
         "kind": "aggregator",
-        "description": "OpenRouter gateway backed by the bundled curated model allowlist.",
+        "description": "OpenRouter gateway backed by the connected account's live model inventory.",
         "env_vars": ["OPENROUTER_API_KEY"],
         "base_url_envs": ["OPENROUTER_BASE_URL"],
         "catalog_only": False,
         "supports_invoke": True,
         "default_base_url": "https://openrouter.ai/api/v1",
-        "default_model": "cohere/north-mini-code:free",
-        "default_model_for": {
-            "chat": "cohere/north-mini-code:free",
-            "fast": "cohere/north-mini-code:free",
-            "cheap": "cohere/north-mini-code:free",
-            "general": "anthropic/claude-sonnet-5",
-            "reasoning": "deepseek/deepseek-r1-0528",
-            "coding": "qwen/qwen3-coder-next",
-            "agent": "moonshotai/kimi-k2.7-code",
-            "vision": "google/gemini-2.5-pro",
-            "legacy": "tencent/hy3-preview:free",
-        },
-        "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision", "openai_compatible"],
+        "default_model": "",
+        "default_model_for": {},
+        "capabilities": [
+            "chat",
+            "streaming",
+            "tool_calls",
+            "reasoning",
+            "vision",
+            "openai_compatible",
+        ],
     },
     "gitlawb-opengateway": {
         "display_name": "Gitlawb OpenGateway",
@@ -434,20 +454,77 @@ _CURATED_PROVIDER_MODELS: Dict[str, List[Dict[str, Any]]] = {
         {"model_id": "grok-vision-beta", "name": "Grok Vision", "type": "vision"},
     ],
     "openrouter": [
-        {"model_id": "cohere/north-mini-code:free", "name": "Cohere North Mini Code (free)", "type": "chat"},
-        {"model_id": "anthropic/claude-sonnet-5", "name": "Claude Sonnet 5", "type": "vision", "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"]},
-        {"model_id": "openai/o3-pro", "name": "OpenAI o3 Pro", "type": "vision", "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"]},
-        {"model_id": "google/gemini-2.5-pro", "name": "Gemini 2.5 Pro", "type": "vision", "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"]},
-        {"model_id": "z-ai/glm-5.2", "name": "GLM 5.2", "type": "reasoning", "capabilities": ["chat", "streaming", "tool_calls", "reasoning"]},
-        {"model_id": "moonshotai/kimi-k2.7-code", "name": "Kimi K2.7 Code", "type": "vision", "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"]},
-        {"model_id": "deepseek/deepseek-r1-0528", "name": "DeepSeek R1 0528", "type": "reasoning", "capabilities": ["chat", "streaming", "tool_calls", "reasoning"]},
-        {"model_id": "qwen/qwen3-coder-next", "name": "Qwen3 Coder Next", "type": "chat", "capabilities": ["chat", "streaming", "tool_calls"]},
-        {"model_id": "nvidia/nemotron-3-ultra-550b-a55b:free", "name": "NVIDIA Nemotron 3 Ultra (free)", "type": "reasoning", "capabilities": ["chat", "streaming", "tool_calls", "reasoning"]},
-        {"model_id": "tencent/hy3-preview:free", "name": "Tencent Hy3 preview (free)", "type": "chat", "defaults": {"legacy": True}},
+        {
+            "model_id": "cohere/north-mini-code:free",
+            "name": "Cohere North Mini Code (free)",
+            "type": "chat",
+        },
+        {
+            "model_id": "anthropic/claude-sonnet-5",
+            "name": "Claude Sonnet 5",
+            "type": "vision",
+            "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"],
+        },
+        {
+            "model_id": "openai/o3-pro",
+            "name": "OpenAI o3 Pro",
+            "type": "vision",
+            "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"],
+        },
+        {
+            "model_id": "google/gemini-2.5-pro",
+            "name": "Gemini 2.5 Pro",
+            "type": "vision",
+            "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"],
+        },
+        {
+            "model_id": "z-ai/glm-5.2",
+            "name": "GLM 5.2",
+            "type": "reasoning",
+            "capabilities": ["chat", "streaming", "tool_calls", "reasoning"],
+        },
+        {
+            "model_id": "moonshotai/kimi-k2.7-code",
+            "name": "Kimi K2.7 Code",
+            "type": "vision",
+            "capabilities": ["chat", "streaming", "tool_calls", "reasoning", "vision"],
+        },
+        {
+            "model_id": "deepseek/deepseek-r1-0528",
+            "name": "DeepSeek R1 0528",
+            "type": "reasoning",
+            "capabilities": ["chat", "streaming", "tool_calls", "reasoning"],
+        },
+        {
+            "model_id": "qwen/qwen3-coder-next",
+            "name": "Qwen3 Coder Next",
+            "type": "chat",
+            "capabilities": ["chat", "streaming", "tool_calls"],
+        },
+        {
+            "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "name": "NVIDIA Nemotron 3 Ultra (free)",
+            "type": "reasoning",
+            "capabilities": ["chat", "streaming", "tool_calls", "reasoning"],
+        },
+        {
+            "model_id": "tencent/hy3-preview:free",
+            "name": "Tencent Hy3 preview (free)",
+            "type": "chat",
+            "defaults": {"legacy": True},
+        },
     ],
     "gitlawb-opengateway": [
-        {"model_id": "mimo-v2.5-pro", "name": "MiMo V2.5 Pro via Gitlawb OpenGateway", "type": "reasoning"},
-        {"model_id": "mimo-v2-flash", "name": "MiMo V2 Flash via Gitlawb OpenGateway", "type": "chat"},
+        {
+            "model_id": "mimo-v2.5-pro",
+            "name": "MiMo V2.5 Pro via Gitlawb OpenGateway",
+            "type": "reasoning",
+        },
+        {
+            "model_id": "mimo-v2-flash",
+            "name": "MiMo V2 Flash via Gitlawb OpenGateway",
+            "type": "chat",
+        },
         {
             "model_id": "mimo-v2-omni",
             "name": "MiMo V2 Omni via Gitlawb OpenGateway",
@@ -482,8 +559,16 @@ _CURATED_PROVIDER_MODELS: Dict[str, List[Dict[str, Any]]] = {
         {"model_id": "sonar-reasoning-pro", "name": "Sonar Reasoning Pro", "type": "reasoning"},
     ],
     "together": [
-        {"model_id": "llama-3.1-70b-instruct-turbo", "name": "Llama 3.1 70B Instruct Turbo", "type": "chat"},
-        {"model_id": "qwen2.5-coder-32b-instruct", "name": "Qwen 2.5 Coder 32B Instruct", "type": "chat"},
+        {
+            "model_id": "llama-3.1-70b-instruct-turbo",
+            "name": "Llama 3.1 70B Instruct Turbo",
+            "type": "chat",
+        },
+        {
+            "model_id": "qwen2.5-coder-32b-instruct",
+            "name": "Qwen 2.5 Coder 32B Instruct",
+            "type": "chat",
+        },
         {"model_id": "deepseek-r1", "name": "DeepSeek R1", "type": "reasoning"},
     ],
     "fireworks": [
@@ -588,7 +673,9 @@ def validate_provider_catalog_coverage(registry: Any = None) -> List[Dict[str, A
         for provider in providers
         if str(provider.get("id") or provider.get("provider_id") or "").strip()
     }
-    models_by_provider: Dict[str, List[Dict[str, Any]]] = {provider_id: [] for provider_id in provider_ids}
+    models_by_provider: Dict[str, List[Dict[str, Any]]] = {
+        provider_id: [] for provider_id in provider_ids
+    }
     issues: List[Dict[str, Any]] = []
 
     for model in models:
@@ -657,6 +744,58 @@ def validate_provider_catalog_coverage(registry: Any = None) -> List[Dict[str, A
     return issues
 
 
+def validate_provider_program_coverage() -> List[str]:
+    """Hard-fail coverage gate for every required external provider identity."""
+    return missing_program_provider_ids(_provider_manifest_map())
+
+
+def _bundled_model_catalog_provider_manifests() -> Dict[str, Dict[str, Any]]:
+    """Load executable manifests from the fixed, bundled model-catalog pack.
+
+    Pack architecture moved provider metadata out of ``defaultspack``.  The
+    generic component registry intentionally rejects executable manifests from
+    arbitrary sibling packs, so this loader has a deliberately narrower trust
+    boundary: one repository-owned pack root, fixed ``manifest.json`` names,
+    and provider entrypoints restricted to this package.
+    """
+    ecosystem_root = Path(__file__).resolve().parents[4]
+    roots = (
+        ecosystem_root / "rumi_model_catalog_pack" / "catalog" / "providers",
+        ecosystem_root / "rumi_model_catalog_pack" / "extensions" / "llm" / "providers",
+    )
+    manifests: Dict[str, Dict[str, Any]] = {}
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob("*/manifest.json")):
+            try:
+                raw = load_strict_metadata_json(path)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(raw, dict):
+                continue
+            candidate = raw.get("provider_manifest")
+            if not isinstance(candidate, dict):
+                candidate = raw
+            provider_id = str(candidate.get("id") or raw.get("provider_id") or "").strip()
+            if (
+                not provider_id
+                or not provider_id.isprintable()
+                or any(character.isspace() for character in provider_id)
+            ):
+                continue
+            entrypoint = str(candidate.get("entrypoint") or "").strip()
+            if entrypoint and not entrypoint.startswith("domain.ai_client.providers."):
+                continue
+            manifest = dict(candidate)
+            manifest["id"] = provider_id
+            manifest["models"] = []
+            manifest["source_pack_id"] = "rumi_model_catalog_pack"
+            manifest["source_path"] = str(path)
+            manifests[provider_id] = manifest
+    return manifests
+
+
 def _provider_manifest_map() -> Dict[str, Dict[str, Any]]:
     manifests: Dict[str, Dict[str, Any]] = {}
     for manifest in _list_provider_manifests():
@@ -665,6 +804,511 @@ def _provider_manifest_map() -> Dict[str, Dict[str, Any]]:
             manifests[provider_id] = dict(manifest)
     for provider_id, manifest in provider_manifests_from_components().items():
         manifests.setdefault(provider_id, dict(manifest))
+    # The catalog pack is a fixed bundled trust root.  Its executable provider
+    # definitions replace the old defaultspack/domain/providers ownership.
+    for provider_id, manifest in _bundled_model_catalog_provider_manifests().items():
+        manifests[provider_id] = dict(manifest)
+    # The compatibility registry is an executable provider definition, not just
+    # a documentation table.  It supersedes legacy extension manifests that
+    # still carry default-model or fixed-allowlist snapshots, so an API key
+    # always enables the connected endpoint's complete /models inventory.
+    for provider_id, spec in OPENAI_COMPATIBLE_PROVIDER_SPECS.items():
+        manifests[provider_id] = _openai_compatible_spec_manifest(spec)
+    for provider_id, manifest in local_openai_runtime_manifests().items():
+        # Local runtime endpoints report the exact models currently loaded by
+        # that server.  Do not let an older extension manifest replace this
+        # keyless live-discovery contract with a static catalog.
+        manifests[provider_id] = manifest
+    # Native providers whose invocation protocol is not OpenAI-compatible can
+    # still expose their complete account inventory from an official Models
+    # endpoint.  Register the executable adapter before the program's honest
+    # connection placeholder is applied.
+    # Native runtime definitions must take precedence over extension manifests
+    # that predate live inventory support and can still carry fixed defaults.
+    manifests.__setitem__(
+        "anthropic",
+        {
+            "id": "anthropic",
+            "display_name": "Anthropic",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.anthropic_provider:AnthropicProvider",
+            "api_key_env": ["ANTHROPIC_API_KEY"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/v1/models"},
+        },
+    )
+    manifests.__setitem__(
+        "google",
+        {
+            "id": "google",
+            "display_name": "Google Gemini",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.google_provider:GoogleProvider",
+            "api_key_env": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/v1beta/models"},
+        },
+    )
+    manifests.__setitem__(
+        "cohere",
+        {
+            "id": "cohere",
+            "display_name": "Cohere",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.cohere_provider:CohereProvider",
+            "api_key_env": ["COHERE_API_KEY"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/v1/models"},
+        },
+    )
+    manifests.__setitem__(
+        "replicate",
+        {
+            "id": "replicate",
+            "display_name": "Replicate",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.replicate_provider:ReplicateProvider",
+            "api_key_env": ["REPLICATE_API_TOKEN"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/v1/models"},
+        },
+    )
+    manifests.__setitem__(
+        "elevenlabs",
+        {
+            "id": "elevenlabs",
+            "display_name": "ElevenLabs",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.elevenlabs_provider:ElevenLabsProvider",
+            "api_key_env": ["ELEVENLABS_API_KEY"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/v1/models"},
+        },
+    )
+    manifests.__setitem__(
+        "cloudflare-workers-ai",
+        {
+            "id": "cloudflare-workers-ai",
+            "display_name": "Cloudflare Workers AI",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.cloudflare_workers_ai_provider:CloudflareWorkersAIProvider",
+            "api_key_env": ["CLOUDFLARE_API_TOKEN"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/models/search"},
+        },
+    )
+    manifests.__setitem__(
+        "deepgram",
+        {
+            "id": "deepgram",
+            "display_name": "Deepgram",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.deepgram_provider:DeepgramProvider",
+            "api_key_env": ["DEEPGRAM_API_KEY"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/v1/models"},
+        },
+    )
+    manifests.__setitem__(
+        "databricks-model-serving",
+        {
+            "id": "databricks-model-serving",
+            "display_name": "Databricks Model Serving",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.databricks_model_serving_provider:DatabricksModelServingProvider",
+            "api_key_env": ["DATABRICKS_TOKEN"],
+            "base_url_env": ["DATABRICKS_HOST", "DATABRICKS_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/api/2.0/serving-endpoints",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "azure-openai",
+        {
+            "id": "azure-openai",
+            "display_name": "Azure OpenAI",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.azure_openai_provider:AzureOpenAIProvider",
+            "api_key_env": ["AZURE_OPENAI_API_KEY"],
+            "base_url_env": ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {"model_sync": "remote_merge", "model_list_path": "/openai/deployments"},
+        },
+    )
+    manifests.__setitem__(
+        "azure-ai-foundry",
+        {
+            "id": "azure-ai-foundry",
+            "display_name": "Azure AI Foundry",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.azure_ai_foundry_provider:AzureAIFoundryProvider",
+            "api_key_env": ["AZURE_AI_FOUNDRY_API_KEY"],
+            "base_url_env": ["AZURE_AI_FOUNDRY_ENDPOINT"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/deployments?api-version=v1",
+                "inventory_strategy": "project_deployment_control_plane",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "aws-bedrock",
+        {
+            "id": "aws-bedrock",
+            "display_name": "Amazon Bedrock",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.aws_bedrock_provider:AwsBedrockProvider",
+            "api_key_env": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+            "base_url_env": ["AWS_REGION", "AWS_DEFAULT_REGION"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/foundation-models",
+                "inventory_strategy": "regional_control_plane",
+                "api_family": "bedrock_converse",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "stability-ai",
+        {
+            "id": "stability-ai",
+            "display_name": "Stability AI",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.stability_ai_provider:StabilityAIProvider",
+            "api_key_env": ["STABILITY_API_KEY"],
+            "base_url_env": ["STABILITY_API_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/v1/engines/list",
+                "inventory_strategy": "account_engines_api",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "portkey-ai-gateway",
+        {
+            "id": "portkey-ai-gateway",
+            "display_name": "Portkey AI Gateway",
+            "adapter": "openai_compatible",
+            "api_key_env": ["PORTKEY_API_KEY"],
+            "base_url_env": ["PORTKEY_BASE_URL"],
+            "default_base_url": "https://api.portkey.ai/v1",
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/models",
+                "inventory_strategy": "workspace_model_catalog_api",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "fal-ai",
+        {
+            "id": "fal-ai",
+            "display_name": "fal.ai",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.fal_ai_provider:FalAIProvider",
+            "api_key_env": ["FAL_KEY", "FAL_AI_API_KEY"],
+            "base_url_env": ["FAL_API_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/v1/models",
+                "inventory_strategy": "paginated_models_api_and_queue",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "assemblyai",
+        {
+            "id": "assemblyai",
+            "display_name": "AssemblyAI",
+            "adapter": "openai_compatible",
+            "api_key_env": ["ASSEMBLYAI_API_KEY"],
+            "base_url_env": ["ASSEMBLYAI_LLM_GATEWAY_BASE_URL"],
+            "default_base_url": "https://llm-gateway.assemblyai.com/v1",
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/models",
+                "inventory_strategy": "llm_gateway_models_api",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "ibm-watsonx",
+        {
+            "id": "ibm-watsonx",
+            "display_name": "IBM watsonx.ai",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.ibm_watsonx_provider:IBMWatsonxProvider",
+            "api_key_env": ["WATSONX_API_KEY", "IBM_WATSONX_API_KEY"],
+            "base_url_env": ["WATSONX_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/ml/v1/foundation_model_specs",
+                "inventory_strategy": "foundation_model_specs_api",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "ai21",
+        {
+            "id": "ai21",
+            "display_name": "AI21 Labs",
+            "adapter": "openai_compatible",
+            "api_key_env": ["AI21_API_KEY"],
+            "base_url_env": ["AI21_BASE_URL"],
+            "default_base_url": "https://api.ai21.com/studio/v1",
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "inventory_strategy": "official_model_document",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "black-forest-labs",
+        {
+            "id": "black-forest-labs",
+            "display_name": "Black Forest Labs",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.black_forest_labs_provider:BlackForestLabsProvider",
+            "api_key_env": ["BFL_API_KEY"],
+            "base_url_env": ["BFL_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "inventory_strategy": "official_openapi_document_catalog",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "voyage-ai",
+        {
+            "id": "voyage-ai",
+            "display_name": "Voyage AI",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.voyage_ai_provider:VoyageAIProvider",
+            "api_key_env": ["VOYAGE_API_KEY"],
+            "base_url_env": ["VOYAGE_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "inventory_strategy": "official_model_document",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "genspark",
+        {
+            "id": "genspark",
+            "display_name": "Genspark",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.genspark_provider:GensparkProvider",
+            "api_key_env": ["GENSPARK_API_KEY"],
+            "base_url_env": ["GENSPARK_LLM_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/models",
+                "inventory_strategy": "account_models_endpoint",
+            },
+        },
+    )
+    manifests.__setitem__(
+        "google-vertex-ai",
+        {
+            "id": "google-vertex-ai",
+            "display_name": "Google Vertex AI",
+            "adapter": "native",
+            "entrypoint": "domain.ai_client.providers.google_vertex_ai_provider:GoogleVertexAIProvider",
+            "api_key_env": ["VERTEX_AI_ACCESS_TOKEN", "GOOGLE_VERTEX_AI_ACCESS_TOKEN"],
+            "base_url_env": ["VERTEX_AI_BASE_URL"],
+            "credential_required": True,
+            "catalog_only": False,
+            "supports_invoke": True,
+            "models": [],
+            "config": {
+                "model_sync": "remote_merge",
+                "model_list_path": "/endpoints",
+                "inventory_strategy": "project_deployment_control_plane",
+            },
+        },
+    )
+    # The provider program supplies identity and inventory strategy for every
+    # required provider, but never a hand-maintained model list.  Dedicated
+    # component manifests above remain authoritative when present.
+    for provider_id, manifest in provider_program_manifests().items():
+        manifests.setdefault(provider_id, manifest)
+    # A user can add any OpenAI-compatible service from Settings.  Treat those
+    # saved definitions exactly like extension manifests so they are discoverable
+    # by the provider/model catalog and not merely shown as inert API-key rows.
+    for provider_id, manifest in _custom_openai_provider_manifests().items():
+        existing = manifests.get(provider_id, {})
+        existing_config = existing.get("config") if isinstance(existing.get("config"), dict) else {}
+        # A saved endpoint is an explicit user choice.  It must override both
+        # a program placeholder and a built-in OpenAI-compatible default so
+        # account/project/proxy-specific model inventories are fetched from
+        # the endpoint the user actually configured.
+        if manifest.get("default_base_url") and (
+            existing_config.get("provider_program")
+            or str(existing.get("adapter") or "")
+            in {
+                "openai_compatible",
+                "connection_required",
+                "catalog_only",
+            }
+        ):
+            manifests[provider_id] = manifest
+        else:
+            manifests.setdefault(provider_id, manifest)
+    return manifests
+
+
+def _openai_compatible_spec_manifest(spec: Dict[str, Any]) -> Dict[str, Any]:
+    provider_id = str(spec.get("provider_name") or "").strip()
+    return {
+        "id": provider_id,
+        "display_name": str(spec.get("display_name") or provider_id),
+        "adapter": "openai_compatible",
+        "credential_required": True,
+        "supports_invoke": True,
+        "api_key_env": list(spec.get("env_vars") or []),
+        "base_url_env": list(spec.get("base_url_env_vars") or []),
+        "default_base_url": str(spec.get("default_base_url") or ""),
+        "headers": dict(spec.get("headers") or {}),
+        # An OpenAI-compatible connection must expose the inventory returned
+        # by its authenticated server, never a hand-maintained provider/model
+        # snapshot.  The adapter handles /models (and its account-scoped cache)
+        # after the user supplies a connection.
+        "models": [],
+        "config": {
+            "model_sync": "remote_merge",
+            "model_list_path": str(spec.get("remote_model_list_path") or "/models"),
+            "model_list_base_url": str(spec.get("remote_model_base_url") or ""),
+            "model_cache_ttl_seconds": int(
+                spec.get("remote_model_cache_ttl_seconds", 3600) or 3600
+            ),
+        },
+    }
+
+
+def _custom_openai_provider_manifests() -> Dict[str, Dict[str, Any]]:
+    definitions = {
+        str(item.get("provider_id") or "").strip(): dict(item)
+        for item in list_custom_providers()
+        if isinstance(item, dict) and str(item.get("provider_id") or "").strip()
+    }
+    apis_by_provider: Dict[str, List[Dict[str, Any]]] = {}
+    for api in provider_named_api_keys():
+        if not isinstance(api, dict):
+            continue
+        provider_id = str(api.get("provider_id") or "").strip()
+        if provider_id:
+            apis_by_provider.setdefault(provider_id, []).append(dict(api))
+
+    manifests: Dict[str, Dict[str, Any]] = {}
+    for provider_id in sorted(set(definitions) | set(apis_by_provider)):
+        definition = definitions.get(provider_id, {})
+        apis = apis_by_provider.get(provider_id, [])
+        # "custom" represents non-LLM integrations in the settings UI.  Only
+        # LLM entries can be safely treated as an OpenAI-compatible endpoint.
+        llm_apis = [api for api in apis if str(api.get("kind") or "llm").lower() == "llm"]
+        if not llm_apis and str(definition.get("kind") or "llm").lower() != "llm":
+            continue
+        selected_api = next(
+            (api for api in llm_apis if api.get("configured")), llm_apis[0] if llm_apis else {}
+        )
+        base_url = str(selected_api.get("base_url") or "").strip().rstrip("/")
+        unauthenticated = str(selected_api.get("credential_mode") or "").strip().lower() == "none"
+        manifests[provider_id] = {
+            "id": provider_id,
+            "display_name": str(definition.get("label") or provider_id),
+            "description": "User-configured OpenAI-compatible model provider.",
+            "adapter": "openai_compatible",
+            "credential_required": not unauthenticated,
+            "supports_invoke": True,
+            "default_base_url": base_url,
+            # Saved model hints are routing preferences, not an inventory.
+            # The connected endpoint's live /models response is authoritative.
+            "models": [],
+            "config": {
+                "custom_openai_compatible": True,
+                "api_id": str(selected_api.get("api_id") or "").strip(),
+                "model_sync": "remote_merge",
+                "model_list_path": "/models",
+                "model_list_requires_auth": not unauthenticated,
+                "model_cache_ttl_seconds": 3600,
+            },
+        }
     return manifests
 
 
@@ -733,7 +1377,9 @@ def _infer_kind(provider_id: str, manifest: Dict[str, Any], curated: Dict[str, A
     return "cloud"
 
 
-def _provider_catalog_only(provider_id: str, manifest: Dict[str, Any], curated: Dict[str, Any]) -> bool:
+def _provider_catalog_only(
+    provider_id: str, manifest: Dict[str, Any], curated: Dict[str, Any]
+) -> bool:
     if "catalog_only" in manifest:
         return bool(manifest["catalog_only"])
     if "catalog_only" in curated:
@@ -742,7 +1388,9 @@ def _provider_catalog_only(provider_id: str, manifest: Dict[str, Any], curated: 
     return adapter == "openai_compatible" and provider_id not in {"stub", "rumi"}
 
 
-def _provider_supports_invoke(provider_id: str, manifest: Dict[str, Any], curated: Dict[str, Any]) -> bool:
+def _provider_supports_invoke(
+    provider_id: str, manifest: Dict[str, Any], curated: Dict[str, Any]
+) -> bool:
     if "supports_invoke" in manifest:
         return bool(manifest["supports_invoke"])
     if "supports_invoke" in curated:
@@ -823,7 +1471,9 @@ def _subscription_plans(manifest: Dict[str, Any], curated: Dict[str, Any]) -> Li
     ]
 
 
-def _merge_provider_entry(provider_id: str, manifest: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _merge_provider_entry(
+    provider_id: str, manifest: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     manifest = dict(manifest or {})
     manifest_was_present = bool(manifest)
     component_metadata = dict(provider_component_metadata_map().get(provider_id, {}))
@@ -837,7 +1487,9 @@ def _merge_provider_entry(provider_id: str, manifest: Optional[Dict[str, Any]] =
         or provider_id.replace("_", " ").title()
     )
     env_vars = _manifest_env_list(manifest.get("api_key_env"), curated.get("env_vars", []))
-    base_url_envs = _manifest_env_list(manifest.get("base_url_env"), curated.get("base_url_envs", []))
+    base_url_envs = _manifest_env_list(
+        manifest.get("base_url_env"), curated.get("base_url_envs", [])
+    )
     default_model = str(
         manifest.get("default_model")
         or (manifest.get("default_model_for", {}) or {}).get("chat")
@@ -845,9 +1497,7 @@ def _merge_provider_entry(provider_id: str, manifest: Optional[Dict[str, Any]] =
         or ""
     )
     default_base_url = str(
-        manifest.get("default_base_url")
-        or curated.get("default_base_url")
-        or ""
+        manifest.get("default_base_url") or curated.get("default_base_url") or ""
     ).strip()
     default_model_for = manifest.get("default_model_for", {})
     if not isinstance(default_model_for, dict):
@@ -878,7 +1528,9 @@ def _merge_provider_entry(provider_id: str, manifest: Optional[Dict[str, Any]] =
         "priority": int(manifest.get("priority", 100)),
         "manifest": manifest,
         "catalog_source": _catalog_source(provider_id, manifest),
-        "curated_fallback_used": bool(provider_id in _CURATED_PROVIDER_METADATA and manifest_was_present),
+        "curated_fallback_used": bool(
+            provider_id in _CURATED_PROVIDER_METADATA and manifest_was_present
+        ),
     }
 
 
@@ -888,11 +1540,11 @@ def _provider_is_configured(entry: Dict[str, Any]) -> tuple[bool, Optional[str]]
     default_base_url = str(entry.get("default_base_url", "") or "").strip()
     if provider_id and provider_has_oauth_connection(provider_id):
         return True, "browser_oauth"
+    if provider_id and provider_has_api_key(provider_id):
+        return True, "defaultspack_secret"
     for env_name in entry.get("env_vars", []):
         if _truthy_env(env_name):
             return True, env_name
-    if provider_id and provider_has_api_key(provider_id):
-        return True, "defaultspack_secret"
     if not credential_required:
         for env_name in entry.get("base_url_envs", []):
             if _truthy_env(env_name):
@@ -1033,10 +1685,15 @@ def _load_models_for_provider(entry: Dict[str, Any]) -> List[Dict[str, Any]]:
             seen[key] = item
             models.append(item)
 
-    _append(_load_model_manifests(provider_id))
-    _append(model_manifests_from_provider_components(provider_id))
-    _append(_load_known_models_from_entry(str(entry.get("entrypoint", ""))))
-    _append(_CURATED_PROVIDER_MODELS.get(provider_id, []))
+    # External provider inventories must never fall back to a checked-in
+    # release list (including extension/pack model manifests): it is
+    # necessarily incomplete and can expose retired or unauthorized models.
+    # Only the two internal pseudo-providers have no remote catalog by design.
+    if provider_id in {"stub", "rumi"}:
+        _append(_load_model_manifests(provider_id))
+        _append(model_manifests_from_provider_components(provider_id))
+        _append(_load_known_models_from_entry(str(entry.get("entrypoint", ""))))
+        _append(_CURATED_PROVIDER_MODELS.get(provider_id, []))
     return models
 
 
@@ -1101,7 +1758,9 @@ def get_all_known_models(provider_id=None, active_provider_ids=None):
         provider_entry = catalog_map.get(current_provider_id)
         if provider_entry is None:
             continue
-        for raw in _load_models_for_provider(provider_entry["metadata"] | {"provider_id": current_provider_id}):
+        for raw in _load_models_for_provider(
+            provider_entry["metadata"] | {"provider_id": current_provider_id}
+        ):
             model_provider_id = raw.get("provider") or raw.get("provider_id") or current_provider_id
             qualified_model_id = str(raw.get("id", "")).strip()
             model_id = str(raw.get("model_id", "")).strip()
@@ -1120,7 +1779,9 @@ def get_all_known_models(provider_id=None, active_provider_ids=None):
             pricing = dict(raw.get("pricing", {})) if isinstance(raw.get("pricing"), dict) else {}
             capabilities, capability_map = _capability_fields(raw.get("capabilities", []))
             request_features = normalize_request_features(raw.get("request_features", {}))
-            thinking = dict(raw.get("thinking", {})) if isinstance(raw.get("thinking"), dict) else {}
+            thinking = (
+                dict(raw.get("thinking", {})) if isinstance(raw.get("thinking"), dict) else {}
+            )
             if capability_map and "capabilities" not in metadata:
                 metadata["capabilities"] = capability_map
             if request_features and "request_features" not in metadata:
@@ -1156,7 +1817,9 @@ def get_all_known_models(provider_id=None, active_provider_ids=None):
                 "routing": routing,
                 "thinking": thinking,
                 "availability": dict(provider_entry["availability"]),
-                "supports_invoke": bool(provider_entry["availability"].get("supports_invoke", False)),
+                "supports_invoke": bool(
+                    provider_entry["availability"].get("supports_invoke", False)
+                ),
                 "defaults": defaults,
                 "pricing": pricing,
                 "metadata": metadata,
@@ -1168,7 +1831,9 @@ def get_all_known_models(provider_id=None, active_provider_ids=None):
             if "default_thinking_level" in raw:
                 item["default_thinking_level"] = raw.get("default_thinking_level")
             if thinking:
-                item["supports_thinking"] = bool(thinking.get("supported", item.get("supports_thinking", False)))
+                item["supports_thinking"] = bool(
+                    thinking.get("supported", item.get("supports_thinking", False))
+                )
                 if isinstance(thinking.get("levels"), list):
                     item["thinking_levels"] = list(thinking.get("levels") or [])
                 if "default_level" in thinking:
@@ -1224,11 +1889,21 @@ def build_profile_catalog(active_provider_ids=None, custom_profiles=None):
             "type": model.get("type", "chat"),
             "context_window": int(model.get("context_window", 0) or 0),
             "capabilities": list(model.get("capabilities", [])),
-            "request_features": dict(model.get("request_features", {})) if isinstance(model.get("request_features"), dict) else {},
-            "routing": dict(model.get("routing", {})) if isinstance(model.get("routing"), dict) else {},
-            "thinking": dict(model.get("thinking", {})) if isinstance(model.get("thinking"), dict) else {},
-            "defaults": dict(model.get("defaults", {})) if isinstance(model.get("defaults"), dict) else {},
-            "pricing": dict(model.get("pricing", {})) if isinstance(model.get("pricing"), dict) else {},
+            "request_features": dict(model.get("request_features", {}))
+            if isinstance(model.get("request_features"), dict)
+            else {},
+            "routing": dict(model.get("routing", {}))
+            if isinstance(model.get("routing"), dict)
+            else {},
+            "thinking": dict(model.get("thinking", {}))
+            if isinstance(model.get("thinking"), dict)
+            else {},
+            "defaults": dict(model.get("defaults", {}))
+            if isinstance(model.get("defaults"), dict)
+            else {},
+            "pricing": dict(model.get("pricing", {}))
+            if isinstance(model.get("pricing"), dict)
+            else {},
             "metadata": metadata,
         }
         if "supports_thinking" in model:
@@ -1254,7 +1929,9 @@ def build_profile_catalog(active_provider_ids=None, custom_profiles=None):
             matches = [entry for entry in models if entry["model_id"] == model_id]
             if len(matches) == 1:
                 resolved = matches[0]
-        availability = dict(resolved["availability"]) if resolved else {"active": False, "available": False}
+        availability = (
+            dict(resolved["availability"]) if resolved else {"active": False, "available": False}
+        )
         metadata = dict(raw_profile.get("metadata", {}))
         metadata.update(
             {
@@ -1267,7 +1944,9 @@ def build_profile_catalog(active_provider_ids=None, custom_profiles=None):
                 "id": profile_name,
                 "profile_id": profile_name,
                 "name": raw_profile.get("display_name") or raw_profile.get("name") or profile_name,
-                "display_name": raw_profile.get("display_name") or raw_profile.get("name") or profile_name,
+                "display_name": raw_profile.get("display_name")
+                or raw_profile.get("name")
+                or profile_name,
                 "provider": provider_id or (resolved["provider_id"] if resolved else ""),
                 "provider_id": provider_id or (resolved["provider_id"] if resolved else ""),
                 "provider_display_name": resolved["provider_display_name"] if resolved else "",
@@ -1345,13 +2024,42 @@ def _instantiate_manifest_provider(manifest: Dict[str, Any]):
     adapter = str(manifest.get("adapter", "")).strip()
     entrypoint = str(manifest.get("entrypoint", "")).strip()
     if adapter == "openai_compatible":
+        config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+        if config.get("custom_openai_compatible"):
+            api_id = str(config.get("api_id") or "").strip()
+            if not api_id:
+                return None
+            api_key = read_provider_api_key(provider_id, api_id) or ""
+            requires_credential = bool(manifest.get("credential_required", True))
+            if not api_key and requires_credential:
+                return None
+            return OpenAICompatibleProvider(
+                provider_id=provider_id,
+                display_name=str(manifest.get("display_name") or provider_id),
+                api_key=api_key,
+                base_url=str(manifest.get("default_base_url") or ""),
+                known_models=list(manifest.get("models") or []),
+                credential_required=requires_credential,
+                remote_model_discovery=True,
+                remote_model_discovery_requires_auth=bool(
+                    config.get("model_list_requires_auth", True)
+                ),
+                remote_model_list_path=str(config.get("model_list_path") or "/models"),
+                remote_model_cache_ttl_seconds=config.get("model_cache_ttl_seconds", 3600),
+            )
         provider_cls = OPENAI_COMPATIBLE_PROVIDER_CLASSES.get(
             provider_id,
             OpenAICompatibleProvider,
         )
+        program_provider = provider_id in provider_program_manifests()
         return provider_cls.from_manifest(
             manifest,
-            model_manifests=_load_model_manifests(provider_id),
+            # The provider program forbids static inventory snapshots: its
+            # authenticated /models response is the sole runtime source.
+            # Independently installed custom extensions may still explicitly
+            # opt into their own declared model manifests.
+            model_manifests=[] if program_provider else _load_model_manifests(provider_id),
+            allow_declared_models=not program_provider,
         )
     if entrypoint:
         provider_cls = _import_provider_entrypoint(entrypoint)
@@ -1415,7 +2123,14 @@ def detect_rumi_provider(client):
 
 
 def get_best_model_for_provider(name, use_case="chat"):
-    """Return the preferred default model id for the provider."""
+    """Return a preferred model only for internal pseudo-providers.
+
+    External provider inventories are account- and connection-scoped. Their
+    checked-in extension manifests may describe routing preferences, but those
+    references are not proof that a model is currently visible or invokable.
+    """
+    if name not in {"stub", "rumi"}:
+        return None
     try:
         registry = get_extension_registry(force_reload=False)
         best = registry.llm().best_model(name, use_case=use_case)

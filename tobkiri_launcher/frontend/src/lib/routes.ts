@@ -41,12 +41,12 @@ export const viewerNavGroups = [
   {
     id: 'workspace',
     labelKey: 'nav.group.workspace',
-    routes: ['home', 'packs', 'flows', 'nodes'] satisfies PanelRouteKey[],
+    routes: ['home', 'packs'] satisfies PanelRouteKey[],
   },
   {
     id: 'advanced',
     labelKey: 'nav.group.advanced',
-    routes: ['graphEditor', 'profileGraph', 'aiInput', 'apiMap', 'profileWorkspace', 'settings'] satisfies PanelRouteKey[],
+    routes: ['flows', 'nodes', 'graphEditor', 'profileGraph', 'aiInput', 'apiMap', 'profileWorkspace', 'settings'] satisfies PanelRouteKey[],
   },
 ] as const;
 

@@ -6,6 +6,7 @@
 //! - Detect exit-code 42 to signal "please restart me".
 //! - Auto-restart on unexpected exit (max 3 times).
 
+use std::ffi::OsString;
 use std::fs;
 #[cfg(unix)]
 use std::io::ErrorKind;
@@ -29,12 +30,35 @@ const MAX_AUTO_RESTARTS: u32 = 3;
 /// Seconds to wait after SIGTERM before sending SIGKILL.
 const KILL_TIMEOUT_SECS: u64 = 5;
 
-fn python_runtime_env_vars() -> [(&'static str, &'static str); 3] {
+fn python_runtime_env_vars() -> [(&'static str, &'static str); 4] {
     [
         ("PYTHONUTF8", "1"),
         ("PYTHONIOENCODING", "utf-8"),
         ("PYTHONUNBUFFERED", "1"),
+        ("PYTHONDONTWRITEBYTECODE", "1"),
     ]
+}
+
+fn kernel_working_dir(config: &AppConfig) -> &Path {
+    if config.is_dev_workspace() {
+        &config.rumi_home
+    } else {
+        config
+            .user_data_dir
+            .parent()
+            .unwrap_or(&config.user_data_dir)
+    }
+}
+
+pub(crate) fn python_path_with_runtime(
+    runtime_root: &Path,
+    current: Option<OsString>,
+) -> Result<OsString> {
+    let mut paths = vec![runtime_root.to_path_buf()];
+    if let Some(current) = current {
+        paths.extend(std::env::split_paths(&current));
+    }
+    std::env::join_paths(paths).context("failed to build PYTHONPATH for bundled runtime")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,7 +118,9 @@ impl KernelManager {
 
     /// Start the Kernel process.
     ///
-    /// Runs `{venv}/bin/python -m app` with cwd = `rumi_home`.
+    /// Runs `{venv}/bin/python -m app`. Bundled builds use the writable app
+    /// data root as cwd while importing code from the signed runtime through
+    /// PYTHONPATH, preventing relative user_data writes inside the app bundle.
     /// Stdout and stderr are redirected to `{log_dir}/kernel.log`.
     pub fn start(&mut self) -> Result<()> {
         if self.is_running() {
@@ -128,10 +154,15 @@ impl KernelManager {
             .try_clone()
             .context("failed to clone log file handle")?;
 
+        let working_dir = kernel_working_dir(&self.config);
+        fs::create_dir_all(working_dir)?;
+        let python_path =
+            python_path_with_runtime(&self.config.app_dir, std::env::var_os("PYTHONPATH"))?;
+
         info!(
             "Starting Kernel: {} -m app (cwd={})",
             venv_python.display(),
-            self.config.rumi_home.display()
+            working_dir.display()
         );
 
         let dev_environment = cfg!(debug_assertions) || self.config.is_dev_workspace();
@@ -158,10 +189,23 @@ impl KernelManager {
         let mut command = process_utils::command(&venv_python);
         command
             .args(["-m", "app"])
-            .current_dir(&self.config.rumi_home)
+            .current_dir(working_dir)
+            .env("PYTHONPATH", python_path)
             .env("RUMI_HOME", &self.config.rumi_home)
             .env("RUMI_APP_DIR", &self.config.app_dir)
             .env("RUMI_USER_DATA", &self.config.user_data_dir)
+            .env(
+                "RUMI_DEFAULTSPACK_SECRETS_DIR",
+                self.config.user_data_dir.join("secrets"),
+            )
+            .env(
+                "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+                self.config
+                    .user_data_dir
+                    .join("defaultspack")
+                    .join("shared")
+                    .join("frontend_settings.json"),
+            )
             .env("RUMI_LOG_DIR", &self.config.log_dir)
             .env("RUMI_PORT", self.config.kernel_port.to_string())
             .env("RUMI_PANEL_BOOTSTRAP_SECRET", &self.panel_bootstrap_secret)
@@ -762,6 +806,27 @@ mod tests {
         assert!(envs.contains(&("PYTHONUTF8", "1")));
         assert!(envs.contains(&("PYTHONIOENCODING", "utf-8")));
         assert!(envs.contains(&("PYTHONUNBUFFERED", "1")));
+        assert!(envs.contains(&("PYTHONDONTWRITEBYTECODE", "1")));
+    }
+
+    #[test]
+    fn bundled_kernel_uses_writable_app_data_as_working_directory() {
+        let config = test_config();
+
+        assert_eq!(kernel_working_dir(&config), Path::new("/tmp/test_appdata"));
+    }
+
+    #[test]
+    fn python_path_keeps_runtime_first() {
+        let value = python_path_with_runtime(
+            Path::new("/runtime/app"),
+            Some(OsString::from("/existing/modules")),
+        )
+        .unwrap();
+        let paths = std::env::split_paths(&value).collect::<Vec<_>>();
+
+        assert_eq!(paths[0], PathBuf::from("/runtime/app"));
+        assert_eq!(paths[1], PathBuf::from("/existing/modules"));
     }
 
     #[test]

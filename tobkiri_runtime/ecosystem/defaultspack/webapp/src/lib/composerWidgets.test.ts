@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
@@ -48,11 +48,16 @@ type BoundaryFixture = {
   tokens: string[];
 };
 
-const boundaryFixtures = JSON.parse(readFileSync(resolve(
+const sharedBoundaryFixturePath = resolve(
   import.meta.dirname,
   "../../../../..",
   "tests/fixtures/mention_boundaries.json",
-), "utf8")) as BoundaryFixture[];
+);
+const packagedBoundaryFixturePath = resolve(import.meta.dirname, "fixtures/mention_boundaries.json");
+const boundaryFixtures = JSON.parse(readFileSync(
+  existsSync(sharedBoundaryFixturePath) ? sharedBoundaryFixturePath : packagedBoundaryFixturePath,
+  "utf8",
+)) as BoundaryFixture[];
 
 test("frontend follows the shared Unicode mention boundary fixtures", () => {
   for (const fixture of boundaryFixtures) {

@@ -1,0 +1,17 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.connector_company_adapter","version":"1.0.0","kind":"adapter","display_name":"Rumi Connector Company Adapter","description":"Explicit connector-event projection into Company contracts."},
+  "contracts":{"provides":[{"id":"rumi.action.connector.route.v1","version":"1.0.0","provider_instance_id":"connector-route.company","instance_key":"company","cardinality":"many","security":"sensitive","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_company_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["connector.route"]}],"requires":[
+    {"id":"rumi.resource.company.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.company.state.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.company.coordinator.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
+  ]},
+  "entrypoints":[{"id":"connector-company-route","contract_id":"rumi.action.connector.route.v1","loader":"python","module":"ecosystem.rumi_connector_company_adapter_pack.runtime.adapter","symbol":"create_connector_route","artifact_hash":"sha256:102fc346bfcc24fda4b0543acd26ab34407fb4dd6267d3d5a02fd0ea0a20bd5f"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"connector.route","access":"execute","approval_required":false},{"capability":"company.state.read","access":"read","approval_required":false},{"capability":"company.state.manage","access":"write","approval_required":false},{"capability":"company.coordinate","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:102fc346bfcc24fda4b0543acd26ab34407fb4dd6267d3d5a02fd0ea0a20bd5f","build_identity":"rumi-connector-company-adapter-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.external.company_bridge","defaultspack.domain.company.inbound"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove this projection; connector and Company owners remain independent."},
+  "extensions":{"rumi.connector_route.boundary":{"target":"company","explicit_route_required":true,"explicit_company_id_required":true,"connector_imports":false,"company_imports":false,"coordinator_imports":false,"credential_reference_visible":false,"raw_body_visible":false,"deterministic_inbound_id":true,"separate_authority_receipts":true}}
+}
+

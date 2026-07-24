@@ -1,0 +1,16 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {"id": "rumi.media_inspect_service", "version": "1.0.0", "kind": "service", "display_name": "Rumi Media Inspect Service", "description": "Read-only workspace document and media inspection."},
+  "contracts": {
+    "provides": [{"id": "rumi.service.media.inspect.v1", "version": "1.0.0", "provider_instance_id": "media-inspect.service", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": null}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["media.inspect"]}],
+    "requires": [{"id": "rumi.service.file.inspect.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"}]
+  },
+  "entrypoints": [{"id": "media-inspect", "contract_id": "rumi.service.media.inspect.v1", "loader": "python", "module": "ecosystem.rumi_media_inspect_service_pack.runtime.inspect", "symbol": "create_media_inspector", "artifact_hash": "sha256:39cc9931de498f4a5f683179ad518d48c5c056e119f7117884dad370698f04c6"}],
+  "resources": [],
+  "storage": [],
+  "permissions": [{"capability": "media.inspect", "access": "read", "approval_required": false}, {"capability": "file.inspect", "access": "read", "approval_required": false}],
+  "provenance": {"content_hash": "sha256:39cc9931de498f4a5f683179ad518d48c5c056e119f7117884dad370698f04c6", "build_identity": "rumi-media-inspect-service-pack:1.0.0", "trust_class": "local", "signature": null},
+  "migration": {"from": ["defaultspack.domain.media.processor.read_image", "defaultspack.domain.media.processor.parse_document"], "compatibility_aliases": ["defaults.media.image_read", "defaults.media.doc_parse"], "compatibility_projection": "one_way_contract_adapter", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Select the pinned prior read adapter; this service owns no persistent data."},
+  "extensions": {"rumi.media_inspect.boundary": {"read_only": true, "file_access": "contract_only", "absolute_paths": false, "parent_traversal": "deny", "max_text_bytes": 4194304, "unsupported_format": "unavailable", "capture": false, "vision_inference": false}}
+}
+

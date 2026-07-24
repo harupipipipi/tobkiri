@@ -1,0 +1,16 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.scheduler_surface","version":"1.0.0","kind":"content","display_name":"Rumi Scheduler Surface","description":"Removable scheduler content and isolated read-only UI projection."},
+  "contracts":{"provides":[],"requires":[
+    {"id":"rumi.resource.schedule.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.resource.scheduler.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"isolate"}
+  ]},
+  "entrypoints":[],
+  "resources":[{"id":"frontend/contributions/scheduler.json","kind":"ui.contribution","content_hash":"sha256:8b3c7da7b495e15ba781ff7f881d1ffc7de2d4390802e484896158031a63d0dd"}],
+  "storage":[],
+  "permissions":[{"capability":"schedule.read","access":"read","approval_required":false},{"capability":"scheduler.observe","access":"observe","approval_required":false}],
+  "provenance":{"content_hash":"sha256:9d9ed1c0168c4efabe82662303cc6478069770fa87a6d636b8bbf2ddf5f9b967","build_identity":"rumi-scheduler-surface-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.webapp.scheduler","defaultspack.blocks.scheduler"],"compatibility_aliases":[],"compatibility_projection":"finite_route_projection","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove the UI pack; schedule owner and runtime remain independently available."},
+  "extensions":{"rumi.scheduler_surface.boundary":{"schedule_owner":false,"runtime_owner":false,"target_imports":false,"mutations":false,"authority_receipts":false,"profile_scoped":true,"isolated":true}}
+}
+

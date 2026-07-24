@@ -635,12 +635,9 @@ def test_terminal_filters_secret_env_and_rejects_restricted_cwd(tmp_path):
     assert result["risk"]["reason"] == "restricted_workspace_path"
 
 
-def test_dynamic_tool_create_uses_standard_approval_and_audit(tmp_path, monkeypatch):
-    from domain.safety.approval import reset_approval_state_for_tests
-    from domain.safety.audit import audit_path
+def test_dynamic_tool_create_requires_migration(tmp_path, monkeypatch):
     from blocks.tool.create import run as tool_create_run
 
-    reset_approval_state_for_tests()
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
     tool_name = "approval_probe_tool"
 
@@ -654,14 +651,10 @@ def test_dynamic_tool_create_uses_standard_approval_and_audit(tmp_path, monkeypa
         {},
     )
 
-    assert result["status"] == "ok"
-    assert result["data"]["approval_required"] is True
-    assert result["data"]["operation"] == "tool.create"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "MIGRATION_REQUIRED"
+    assert result["error"]["details"]["migration_required"] is True
     assert not (DEFAULTSPACK_ROOT / "user_data" / "shared" / "tools" / f"{tool_name}.tool.json").exists()
-
-    records = [json.loads(line) for line in audit_path().read_text(encoding="utf-8").splitlines()]
-    assert records[-1]["event"] == "approval"
-    assert any(record["event"] == "attempt" and record["operation"] == "tool.create" for record in records)
 
 
 def test_mcp_connect_uses_standard_approval_before_connecting(tmp_path, monkeypatch):

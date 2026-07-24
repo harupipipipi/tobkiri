@@ -76,6 +76,23 @@ def test_mimo_coding_company_uses_xiaomi_mimo_models(tmp_path, monkeypatch):
     assert runtime._allowed_model("xiaomi-token-plan-sgp/mimo-v2-flash") == "xiaomi-token-plan-sgp/mimo-v2-flash"
 
 
+def test_mimo_coding_company_defaults_use_launcher_user_data(tmp_path, monkeypatch):
+    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import (
+        MimoCodingCompanyRuntime,
+    )
+
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", raising=False)
+    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
+
+    runtime = MimoCodingCompanyRuntime()
+
+    expected_root = tmp_path / "defaultspack" / "shared"
+    assert runtime.state_path == expected_root / "mimo_coding_company" / "state.json"
+    assert runtime.schedules_dir == expected_root / "schedules"
+    assert runtime._docker_runtime_dir() == expected_root / "mimo_coding_company" / "docker_swarm"
+
+
 def test_mimo_coding_company_status_supersedes_legacy_provider_conversations_idempotently(tmp_path, monkeypatch):
     from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import (
         DEFAULT_MAIN_MODEL,

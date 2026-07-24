@@ -1,0 +1,19 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {"id": "rumi.ai_routing", "version": "1.0.0", "kind": "service", "display_name": "Rumi AI Routing", "description": "Replaceable deterministic AI capability and policy router."},
+  "contracts": {
+    "provides": [
+      {"id": "rumi.service.ai.route.v1", "version": "1.0.0", "provider_instance_id": "ai-routing.default", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_ai_routing_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.route"]}
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+      {"id": "ai-route", "contract_id": "rumi.service.ai.route.v1", "loader": "python", "module": "ecosystem.rumi_ai_routing_pack.runtime.router", "symbol": "create_route_operation", "artifact_hash": "sha256:3cf865a705af10d35702981ec38e8f838320a31530096dedd570df2218d2b220"}
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [{"capability": "ai.route", "access": "execute", "approval_required": false}],
+  "provenance": {"content_hash": "sha256:2e57cc82bcbee3362563d95613dc80e717bda3600edc035b13ed911e0225fc43", "build_identity": "rumi-ai-routing-pack:1.0.0", "trust_class": "local", "signature": null},
+  "migration": {"from": ["defaultspack.ai_client.router", "rumi_ai_gateway_pack.runtime.gateway._candidate"], "compatibility_aliases": [], "compatibility_projection": "legacy_to_v3_read_only", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Select the pinned prior routing provider in the resolved profile."},
+  "extensions": {"rumi.ai_routing.boundary": {"catalog_discovery": false, "provider_execution": false, "provider_pack_id_branches": false, "remote_capability_optimism": false}}
+}

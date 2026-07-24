@@ -8,6 +8,90 @@ metadata_defaults:
   legacy_until: v2.4
 
 legacy_routes:
+- method: GET
+  pattern: /api/capabilities/catalog
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: local capability catalog transport pending function-runtime projection
+  remove_after: v2.4
+- method: GET
+  pattern: /api/capabilities/settings
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: local capability settings transport pending function-runtime projection
+  remove_after: v2.4
+- method: PATCH
+  pattern: /api/capabilities/settings
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: local capability settings transport pending function-runtime projection
+  remove_after: v2.4
+- method: POST
+  pattern: /api/capabilities/resolve
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: passive local Capability Plan compilation transport
+  remove_after: v2.4
+- method: GET
+  pattern: /api/capabilities/plans/{plan_id}
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: revision-bound local Capability Plan transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/capabilities/plans/{plan_id}/approve
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: revision-bound local Capability Plan approval transport
+  remove_after: v2.4
+- method: GET
+  pattern: /api/capabilities/traces/{trace_id}
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: local Capability Plan trace transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/capabilities/plans/{plan_id}/execute
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: single-use local Capability Plan execution transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/capabilities/manifests/validate
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: local versioned manifest diagnostics transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/capabilities/schemas/compile
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: passive local provider schema diagnostics transport
+  remove_after: v2.4
+- method: GET
+  pattern: /api/skills
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: unified local Skill lifecycle catalog
+  remove_after: v2.4
+- method: PATCH
+  pattern: /api/skills/lifecycle
+  legacy_block_module: blocks.capability.api
+  replacement_function_id: ''
+  owner: capability
+  reason: unified local Skill enablement lifecycle
+  remove_after: v2.4
 - method: POST
   pattern: /api/remote-images/consents
   legacy_block_module: blocks.media.remote_image
@@ -245,6 +329,41 @@ legacy_routes:
   replacement_function_id: ''
   owner: human_operator
   reason: tracked compatibility fallback during HTTP function migration
+  remove_after: v2.4
+- method: GET
+  pattern: /api/prompts/migration/inspect
+  legacy_block_module: blocks.prompt.migration_adapter
+  replacement_function_id: prompt_migration_inspect
+  owner: prompt
+  reason: prompt migration compatibility adapter remains on the guarded local HTTP surface
+  remove_after: v2.4
+- method: POST
+  pattern: /api/prompts/migration/apply
+  legacy_block_module: blocks.prompt.migration_adapter
+  replacement_function_id: prompt_migration_apply
+  owner: prompt
+  reason: prompt migration compatibility adapter remains on the guarded local HTTP surface
+  remove_after: v2.4
+- method: POST
+  pattern: /api/prompts/migration/rollback
+  legacy_block_module: blocks.prompt.migration_adapter
+  replacement_function_id: prompt_migration_rollback
+  owner: prompt
+  reason: prompt migration compatibility adapter remains on the guarded local HTTP surface
+  remove_after: v2.4
+- method: POST
+  pattern: /api/ui/capability/invoke
+  legacy_block_module: blocks.ui.frontend_capability
+  replacement_function_id: frontend_capability_invoke
+  owner: ui
+  reason: guarded frontend capability bridge requires the local HTTP transport
+  remove_after: v2.4
+- method: GET
+  pattern: /isolated/packs/{pack_id}/{path}
+  legacy_block_module: blocks.ui.isolated_pack_asset
+  replacement_function_id: isolated_pack_asset
+  owner: ui
+  reason: isolated pack assets are served through the guarded local HTTP transport
   remove_after: v2.4
 - method: GET
   pattern: /api/change-requests/{id}/comments
@@ -2460,7 +2579,7 @@ legacy_routes:
   remove_after: v2.4
 - method: GET
   pattern: /api/prompts
-  legacy_block_module: blocks.prompt.editor_load
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_editor_load
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
@@ -2502,91 +2621,91 @@ legacy_routes:
   remove_after: v2.4
 - method: GET
   pattern: /api/prompts/editor
-  legacy_block_module: blocks.prompt.editor_load
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_editor_load
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/editor/save
-  legacy_block_module: blocks.prompt.editor
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_editor_save
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/override
-  legacy_block_module: blocks.prompt.editor
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_create_override
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/diff
-  legacy_block_module: blocks.prompt.diff
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_diff
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/test
-  legacy_block_module: blocks.prompt.test
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_test
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: GET
   pattern: /api/prompts/{name}/versions
-  legacy_block_module: blocks.prompt.versions
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_versions
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/{name}/versions
-  legacy_block_module: blocks.prompt.advanced.version
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: ''
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: PUT
   pattern: /api/prompts/{name}/versions/{version}
-  legacy_block_module: blocks.prompt.advanced.version
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: ''
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/{name}/rollback
-  legacy_block_module: blocks.prompt.rollback
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_rollback
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: PUT
   pattern: /api/prompts/{name}
-  legacy_block_module: blocks.prompt.update
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_update
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: DELETE
   pattern: /api/prompts/{name}
-  legacy_block_module: blocks.prompt.delete
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_delete
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/convert
-  legacy_block_module: blocks.prompt.convert
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_convert
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/lint
-  legacy_block_module: blocks.prompt.lint_prompt
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: prompt_lint_prompt
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
@@ -2600,35 +2719,35 @@ legacy_routes:
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/build
-  legacy_block_module: blocks.prompt.advanced.build
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: ''
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: GET
   pattern: /api/prompts/context-vars
-  legacy_block_module: blocks.prompt.advanced.context_vars
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: ''
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/{name}/conditional
-  legacy_block_module: blocks.prompt.advanced.conditional
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: ''
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/{name}/inherit
-  legacy_block_module: blocks.prompt.advanced.inherit
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: ''
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/prompts/preview
-  legacy_block_module: blocks.prompt.advanced.preview
+  legacy_block_module: blocks.prompt.contract_adapter
   replacement_function_id: ''
   owner: prompt
   reason: tracked compatibility fallback during HTTP function migration
@@ -3206,6 +3325,62 @@ legacy_routes:
   replacement_function_id: ''
   owner: ui
   reason: tracked compatibility fallback during HTTP function migration
+  remove_after: v2.4
+- method: GET
+  pattern: /api/command-protocol/v1/catalog
+  legacy_block_module: blocks.ui.command_protocol_catalog
+  replacement_function_id: ''
+  owner: ui
+  reason: resolved command protocol catalog served by the standalone HTTP compatibility transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/command-protocol/v1/invoke
+  legacy_block_module: blocks.ui.command_protocol_invoke
+  replacement_function_id: ''
+  owner: ui
+  reason: resolved command protocol invocation served by the standalone HTTP compatibility transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/command-protocol/v1/invocations/events/query
+  legacy_block_module: blocks.ui.command_protocol_events
+  replacement_function_id: ''
+  owner: ui
+  reason: resumable invocation events served by the standalone HTTP compatibility transport
+  remove_after: v2.4
+- method: GET
+  pattern: /api/command-protocol/v1/invocations/{invocation_id}/events
+  legacy_block_module: blocks.ui.command_protocol_stream
+  replacement_function_id: ''
+  owner: ui
+  reason: Last-Event-ID resumable SSE progress served by the standalone HTTP compatibility transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/command-protocol/v1/offline
+  legacy_block_module: blocks.ui.command_protocol_offline
+  replacement_function_id: ''
+  owner: ui
+  reason: explicit desired-state offline queue served by the standalone HTTP compatibility transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/command-protocol/v1/resume
+  legacy_block_module: blocks.ui.command_protocol_resume
+  replacement_function_id: ''
+  owner: ui
+  reason: one-shot approval-bound command resume served by the standalone HTTP compatibility transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/command-protocol/v1/states/query
+  legacy_block_module: blocks.ui.command_protocol_states
+  replacement_function_id: ''
+  owner: ui
+  reason: resolved command protocol state query served by the standalone HTTP compatibility transport
+  remove_after: v2.4
+- method: POST
+  pattern: /api/command-protocol/v1/datasources/query
+  legacy_block_module: blocks.ui.command_protocol_datasources
+  replacement_function_id: ''
+  owner: ui
+  reason: resolved command protocol datasource query served by the standalone HTTP compatibility transport
   remove_after: v2.4
 - method: POST
   pattern: /api/ui/clipboard

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -322,7 +322,13 @@ test("ambient approval gesture requires audit event before executing approval", 
   assert.match(submitApprovalGestureSource, /await onApprovalGestureRef\.current\?\.\(decision\)/);
 });
 
-test("Viewer authenticates every dedicated Defaultspack window and rejects unsafe stale listeners", () => {
+test("Viewer authenticates every dedicated Defaultspack window and rejects unsafe stale listeners", (context) => {
+  const viewerPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "lib.rs");
+  const dockPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "dock_registration.rs");
+  if (!existsSync(viewerPath) || !existsSync(dockPath)) {
+    context.skip("Requires the sibling tobkiri_launcher repository.");
+    return;
+  }
   const viewerSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "lib.rs");
   const dockSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "dock_registration.rs");
 

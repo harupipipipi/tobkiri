@@ -1,0 +1,17 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.terminal_session","version":"1.0.0","kind":"service","display_name":"Rumi Terminal Session","description":"Bounded observable and receipt-controlled terminal sessions."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.terminal.session.v1","version":"1.0.0","provider_instance_id":"terminal-session.observe","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_terminal_session_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["terminal.session.observe"]},
+    {"id":"rumi.action.terminal.session.v1","version":"1.0.0","provider_instance_id":"terminal-session.control","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_terminal_session_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["terminal.session.control"]}
+  ],"requires":[{"id":"rumi.service.shell.inspect.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"terminal-observe","contract_id":"rumi.resource.terminal.session.v1","loader":"python","module":"ecosystem.rumi_terminal_session_pack.runtime.sessions","symbol":"create_terminal_resource","artifact_hash":"sha256:b3ea30abdbce708741ae2ee646b8c2820542ade3731e734c1f6877765609e3c6"},
+    {"id":"terminal-control","contract_id":"rumi.action.terminal.session.v1","loader":"python","module":"ecosystem.rumi_terminal_session_pack.runtime.sessions","symbol":"create_terminal_control","artifact_hash":"sha256:b3ea30abdbce708741ae2ee646b8c2820542ade3731e734c1f6877765609e3c6"}
+  ],
+  "resources":[],"storage":[{"namespace":"rumi.terminal.sessions.ephemeral","schema_version":"1.0.0","authoritative":true,"retention":"bounded process lifetime","export_import":false}],
+  "permissions":[{"capability":"terminal.session.observe","access":"observe","approval_required":false},{"capability":"terminal.session.control","access":"control","approval_required":true},{"capability":"shell.inspect","access":"inspect","approval_required":false},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:b3ea30abdbce708741ae2ee646b8c2820542ade3731e734c1f6877765609e3c6","build_identity":"rumi-terminal-session-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.terminal.stream","defaultspack.blocks.coding.terminal_stream"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Cancel all active sessions and select the pinned prior adapter."},
+  "extensions":{"rumi.terminal_session.boundary":{"observe_control_split":true,"control_receipt":"required_per_operation","max_sessions":32,"output_bytes_per_stream":131072,"persistence":false,"clean_shutdown":true}}
+}
+

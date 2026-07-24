@@ -1,16 +1,20 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router';
 import { useAppStore } from '@/src/store';
 import { useT } from '@/src/lib/i18n';
 import { cn } from '@/src/lib/utils';
 import { panelRouteMeta, panelRoutes, viewerNavGroups, type PanelRouteKey } from '@/src/lib/routes';
 import { Avatar } from '@/src/components/ui/Avatar';
 import { LAUNCHER_DISPLAY_NAME } from '@/src/lib/launcherBrand';
+import { fetchStartupProfiles } from '@/src/lib/api';
+import type { ApiStartupProfile } from '@/src/lib/apiTypes';
+import { preloadPanelRoute } from '@/src/lib/routeModules';
 import { BrainCircuit, Folder, FolderCog, LayoutGrid, Network, Settings, PanelLeft, Home, GitBranch, Share2, Route, Rocket } from 'lucide-react';
 
 type NavGroup = {
   id: 'workspace' | 'advanced';
   label: string;
-  items: { to: string; icon: typeof Home; label: string }[];
+  items: { to: string; icon: typeof Home; label: string; route: PanelRouteKey }[];
 };
 
 const sidebarAnimation = 'duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]';
@@ -36,6 +40,32 @@ export function Sidebar() {
   const profile = useAppStore(state => state.profile);
   const isSidebarOpen = useAppStore(state => state.isSidebarOpen);
   const setSidebarOpen = useAppStore(state => state.setSidebarOpen);
+  const selectedStartupProfileId = useAppStore(state => state.selectedStartupProfileId);
+  const setSelectedStartupProfileId = useAppStore(state => state.setSelectedStartupProfileId);
+  const [startupProfiles, setStartupProfiles] = useState<ApiStartupProfile[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchStartupProfiles()
+      .then((response) => {
+        if (cancelled) return;
+        setStartupProfiles(response.profiles);
+        const selectedExists = response.profiles.some(
+          (startupProfile) => startupProfile.profile_id === selectedStartupProfileId,
+        );
+        if (!selectedExists) {
+          setSelectedStartupProfileId(
+            response.active_profile_id ?? response.profiles[0]?.profile_id ?? '',
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStartupProfiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStartupProfileId, setSelectedStartupProfileId]);
 
   const navGroups: NavGroup[] = viewerNavGroups.map((group) => ({
     id: group.id,
@@ -46,6 +76,7 @@ export function Sidebar() {
         to: meta.path,
         icon: routeIcons[route],
         label: t(meta.navKey || meta.titleKey),
+        route,
       };
     }),
   }));
@@ -130,6 +161,23 @@ export function Sidebar() {
               >
                 {group.label}
               </div>
+              {group.id === 'advanced' && isSidebarOpen && startupProfiles.length > 0 ? (
+                <label className="mx-2 mb-1 block">
+                  <span className="sr-only">Advanced profile</span>
+                  <select
+                    aria-label="Advanced profile"
+                    className="rumi-select h-9 w-full rounded-lg border border-border bg-bg-main px-2.5 pr-8 text-xs text-text-main"
+                    onChange={(event) => setSelectedStartupProfileId(event.target.value)}
+                    value={selectedStartupProfileId}
+                  >
+                    {startupProfiles.map((startupProfile) => (
+                      <option key={startupProfile.profile_id} value={startupProfile.profile_id}>
+                        {startupProfile.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <ul
                 className={cn(
                   "flex flex-col transition-[gap]",
@@ -148,6 +196,9 @@ export function Sidebar() {
                         title={!isSidebarOpen ? link.label : undefined}
                         aria-label={link.label}
                         aria-current={isActive ? 'page' : undefined}
+                        onFocus={() => { void preloadPanelRoute(link.route); }}
+                        onPointerEnter={() => { void preloadPanelRoute(link.route); }}
+                        onTouchStart={() => { void preloadPanelRoute(link.route); }}
                         className={cn(
                           "group relative flex items-center rounded-lg text-sm font-medium transition-[gap,padding,background-color,color]",
                           sidebarAnimation,
@@ -199,6 +250,8 @@ export function Sidebar() {
             to={panelRoutes.settings}
             title={!isSidebarOpen ? profile.username : undefined}
             aria-label={profile.username}
+            onFocus={() => { void preloadPanelRoute('settings'); }}
+            onPointerEnter={() => { void preloadPanelRoute('settings'); }}
             className={cn(
               "flex items-center rounded-lg transition-[gap,padding,background-color] hover:bg-bg-hover",
               sidebarAnimation,

@@ -8,20 +8,18 @@ const appSource = readFileSync(resolve(import.meta.dirname, '..', 'App.tsx'), 'u
 
 test('panel setup does not bypass setup-pack installation', () => {
   assert.match(source, /hasSelectedSetupPack\(\)/);
-  assert.match(source, /window\.location\.assign\(setupPackSelectionUrl\(\)\)/);
+  assert.match(source, /window\.location\.assign\(setupPackSelectionUrl\(undefined, colorMode\)\)/);
+  assert.match(source, /tobkiri-launcher-icon\.png/);
   assert.doesNotMatch(
     source,
     /const handleSkip = \(\) => \{\s*setSetupDone\(true\);\s*navigate\(panelRoutes\.home\);/,
   );
 });
 
-test('panel entry verifies backend setup-pack selection before showing the app', () => {
+test('panel entry shows Home first and verifies the setup pack in the background', () => {
   assert.match(appSource, /import \{ hasSelectedSetupPack \} from '@\/src\/lib\/setupPacks'/);
-  assert.match(appSource, /function SetupVerificationGate\(\)/);
+  assert.match(appSource, /requestIdleCallback/);
   assert.match(appSource, /void hasSelectedSetupPack\(\)[\s\S]*setSetupDone\(false\)/);
-  assert.match(appSource, /setupPackVerified \? <Layout \/> : <SetupVerificationGate \/>/);
-  assert.doesNotMatch(
-    appSource,
-    /element=\{isSetupDone \? <Layout \/> : <Navigate to=\{panelRoutes\.setup\} replace \/>\}/,
-  );
+  assert.match(appSource, /element=\{isSetupDone \? <Layout \/> : <Navigate to=\{panelRoutes\.setup\} replace \/>\}/);
+  assert.doesNotMatch(appSource, /function SetupVerificationGate\(\)/);
 });

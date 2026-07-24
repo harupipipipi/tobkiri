@@ -1,7 +1,18 @@
 {
   "pack_id": "rumi_model_evals_pack",
   "pack_identity": "rumi:ecosystem/rumi_model_evals_pack",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "display_name": "Rumi Model Evals Pack",
+  "description": "Local-first evaluation catalog, non-executing plans, and deterministic scoring.",
+  "connectivity": {
+    "requires": [],
+    "provides": ["rumi.resource.ai.eval.catalog.v1", "rumi.action.ai.eval.plan.v1", "rumi.service.ai.eval.score.v1"]
+  },
+  "required_secrets": [],
+  "required_capabilities": ["ai.eval.catalog.read", "ai.eval.plan", "ai.eval.score"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "provenance": {"content_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a", "build_identity": "rumi-model-evals-pack:2.0.0", "trust_class": "local", "signature": null},
   "metadata": {
     "name": "Rumi Model Evals Pack",
     "description": "Declarative, local-first model evaluation and routing evidence pack for provider smoke tests, pass@k, flakiness, fit matrices, and promotion gates.",
@@ -9,7 +20,8 @@
     "license": "MIT"
   },
   "runtime": {
-    "type": "declarative_pack"
+    "type": "verified_hybrid_pack",
+    "artifact_manifest": "artifact-manifest.json"
   },
   "vocabulary": {
     "types": [
@@ -29,7 +41,7 @@
       "path": "catalog/capabilities.yaml",
       "connectivity": {
         "requires": [
-          "rumi.defaultspack.provider_catalog",
+          "rumi.resource.ai.model.catalog.v1",
           "rumi.local_agent.profiles"
         ],
         "provides": [
@@ -43,7 +55,7 @@
       "path": "catalog/provider_eval_catalog.json",
       "connectivity": {
         "requires": [
-          "rumi.defaultspack.provider_catalog"
+          "rumi.resource.ai.model.catalog.v1"
         ],
         "provides": [
           "rumi.model_evals.provider_eval_catalog"

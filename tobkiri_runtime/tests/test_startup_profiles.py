@@ -10,6 +10,7 @@ import pytest
 
 import yaml
 
+from core_runtime import startup_profiles
 from core_runtime.startup_profiles import StartupProfileManager, PROFILE_VERSION
 from core_runtime.interface_registry import InterfaceRegistry
 from core_runtime.desktop_app_manager import DesktopAppManager
@@ -264,6 +265,122 @@ def _write_frontendpack(root: Path, *, component_node: bool = True) -> Path:
     return eco_path
 
 
+def test_legacy_eager_create_placeholders_collapse_to_defaults_profile(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "settings" / "startup_profiles.json"
+    manager = StartupProfileManager(storage_path=state_path)
+    catalog = manager._build_catalog()
+    template = manager._default_startup_profile(catalog)
+    assert template is not None
+
+    profiles = []
+    for index in range(3):
+        profile = dict(template)
+        profile["profile_id"] = (
+            "new-custom-profile" if index == 0 else f"new-custom-profile-{index + 1}"
+        )
+        profile["name"] = "New custom profile"
+        profile["packs"] = ["defaultspack"]
+        profile["created_at"] = 100 + index
+        profile["updated_at"] = 100 + index
+        profiles.append(profile)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "version": PROFILE_VERSION,
+                "active_profile_id": "new-custom-profile",
+                "last_launched_profile_id": "new-custom-profile",
+                "profiles": profiles,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = manager.list_profiles_payload()
+
+    assert [profile["profile_id"] for profile in payload["profiles"]] == [
+        "default-profile"
+    ]
+    assert payload["profiles"][0]["name"] == "Defaults Profile"
+    assert payload["active_profile_id"] == "default-profile"
+
+
+def test_default_profile_upgrades_to_all_currently_available_packs(
+    tmp_path: Path,
+) -> None:
+    storage = tmp_path / "startup_profiles.json"
+    catalog_manager = StartupProfileManager(storage_path=storage)
+    catalog = catalog_manager._build_catalog()
+    profile = catalog_manager._default_startup_profile(catalog)
+    assert profile is not None
+    profile["metadata"].pop("default_profile_pack_mode", None)
+    profile["packs"] = [
+        "defaultspack",
+        *startup_profiles.WAVE7_DEFAULT_OWNER_PACKS,
+        *startup_profiles.WAVE8_DEFAULT_SERVICE_PACKS,
+        *startup_profiles.WAVE9_DEFAULT_SERVICE_PACKS,
+    ]
+    storage.write_text(
+        json.dumps({
+            "version": 3,
+            "active_profile_id": "default-profile",
+            "last_launched_profile_id": None,
+            "profiles": [profile],
+        }),
+        encoding="utf-8",
+    )
+
+    payload = catalog_manager.list_profiles_payload()
+
+    expected_pack_ids = catalog_manager._default_profile_pack_ids(
+        catalog,
+        "defaultspack",
+    )
+    assert payload["profiles"][0]["packs"] == expected_pack_ids
+    assert payload["last_launched_profile_id"] is None
+
+
+def test_seeded_default_profile_contains_all_currently_available_packs(
+    tmp_path: Path,
+) -> None:
+    storage = tmp_path / "startup_profiles.json"
+    manager = StartupProfileManager(storage_path=storage, seed_default_profile=True)
+    catalog = manager._build_catalog()
+
+    payload = manager.list_profiles_payload()
+
+    assert payload["profiles"][0]["packs"] == manager._default_profile_pack_ids(
+        catalog,
+        "defaultspack",
+    )
+
+
+def test_boot_guard_ignores_only_complete_legacy_service_pack_seed() -> None:
+    from app import _without_legacy_auto_seeded_packs
+
+    legacy = {
+        *startup_profiles.WAVE7_DEFAULT_OWNER_PACKS,
+        *startup_profiles.WAVE8_DEFAULT_SERVICE_PACKS,
+        *startup_profiles.WAVE9_DEFAULT_SERVICE_PACKS,
+    }
+    profile = {
+        "profile_id": "default-profile",
+        "base_pack": "defaultspack",
+        "metadata": {"selected": {}},
+    }
+
+    assert _without_legacy_auto_seeded_packs(
+        profile,
+        {"defaultspack", *legacy},
+    ) == {"defaultspack"}
+    assert _without_legacy_auto_seeded_packs(
+        profile,
+        {"defaultspack", next(iter(legacy))},
+    ) != {"defaultspack"}
+
+
 def _startup_graph(pack_id: str) -> dict:
     return {
         "graph_id": f"{pack_id}.startup",
@@ -352,7 +469,13 @@ def test_create_profile_with_base_pack(tmp_path: Path):
     manager = StartupProfileManager(storage_path=tmp_path / "startup_profiles.json")
 
     with patch("core_runtime.startup_profiles.discover_pack_locations", return_value=locations):
-        result = manager.create_profile({"base_pack": "defaultspack", "name": "My Profile"})
+        result = manager.create_profile(
+            {
+                "base_pack": "defaultspack",
+                "name": "My Profile",
+                "icon": "https://example.com/profile.png",
+            }
+        )
 
     assert result["created"] is True
     profile = result["profile"]
@@ -361,6 +484,7 @@ def test_create_profile_with_base_pack(tmp_path: Path):
     assert profile["graph_id"] == "defaultspack.startup"
     assert profile["packs"] == ["defaultspack"]
     assert profile["node_overrides"] == {}
+    assert profile["icon"] == "https://example.com/profile.png"
     assert len(profile["graph_ports"]) > 0
     start_port = next(port for port in profile["graph_ports"] if port["port_key"] == "agent.start")
     assert start_port["source_node_ref"] == "rumi.start"

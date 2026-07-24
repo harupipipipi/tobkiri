@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
+import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
 import type { ChatUiMessage } from "./types";
 
 const RISKY_AUTHORITY_FOLLOWUP_PHRASES = [
@@ -294,6 +294,138 @@ test("running tool activity summary exposes active work and next action", () => 
   assert.equal(summary.label, "作業中 · 1件 · 7s");
   assert.equal(summary.visibleTitle, "ブラウザ / browser_use: 東京 今日の天気");
   assert.equal(summary.nextAction, "画面の変化を確認します");
+});
+
+test("task duration is human-friendly while running and after completion", () => {
+  const startedAt = Date.UTC(2026, 6, 20, 3, 0, 0);
+  const completedAt = startedAt + 125_000;
+  const running = taskDurationForMessage(
+    message({
+      createdAt: startedAt,
+      metadata: { thinkingLabel: "streaming" },
+    }),
+    [],
+    startedAt + 65_000,
+  );
+  const completed = taskDurationForMessage(message({
+    events: [
+      {
+        type: "tool_call_started",
+        timestamp: startedAt,
+        tool_call_id: "duration-call",
+        tool_name: "coding_file_read",
+      },
+      {
+        type: "tool_call_completed",
+        timestamp: completedAt,
+        tool_call_id: "duration-call",
+        tool_name: "coding_file_read",
+      },
+    ],
+  }));
+
+  assert.deepEqual(running, { label: "実行中 1分5秒", running: true });
+  assert.deepEqual(completed, { label: "実行時間 2分5秒", running: false });
+});
+
+test("assistant header replaces relative timestamps with task duration", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      metadata: {
+        executionTime: "just now",
+        thinkingDuration: "1m 2s",
+      },
+      rawText: "done",
+      content: [{ type: "text", text: "done" }],
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /Assistant/);
+  assert.match(html, /実行時間 1分2秒/);
+  assert.doesNotMatch(html, /just now|thinking 1m 2s/);
+});
+
+test("stale streaming metadata on a historical assistant message does not show a running timer", () => {
+  const startedAt = Date.UTC(2026, 6, 20, 3, 0, 0);
+  const completedAt = startedAt + 45_000;
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      createdAt: startedAt,
+      metadata: { thinkingLabel: "streaming" },
+      events: [{
+        type: "tool_call_completed",
+        timestamp: completedAt,
+        tool_call_id: "stale-stream",
+        tool_name: "coding_file_read",
+      }],
+      rawText: "done",
+      content: [{ type: "text", text: "done" }],
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /実行時間 45秒/);
+  assert.doesNotMatch(html, /実行中/);
+});
+
+test("expanded tool history retains every event and log entry", () => {
+  const startedAt = Date.UTC(2026, 6, 20, 3, 0, 0);
+  const eventPaths = Array.from({ length: 12 }, (_, index) => `event-${index}.md`);
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      events: eventPaths.map((path, index) => ({
+        type: "tool_call_started",
+        seq: index + 1,
+        timestamp: startedAt + index * 1_000,
+        tool_call_id: `event-call-${index}`,
+        tool_name: "coding_file_read",
+        arguments: { path },
+      })),
+      toolLogs: [{
+        tool_name: "coding_file_read",
+        tool_call_id: "log-only-call",
+        arguments: { path: "log-only.md" },
+        result: { status: "ok", data: { path: "log-only.md", content: "ok" } },
+        timestamp: startedAt + 20_000,
+      }],
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /aria-label="ツール履歴"/);
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, /aria-label="ツール履歴の詳細"/);
+  for (const path of eventPaths) assert.match(html, new RegExp(path));
+  assert.match(html, /log-only\.md/);
+  assert.doesNotMatch(html, /前の \d+ 件を表示/);
 });
 
 test("empty response warning waits until streaming draft is finalized", () => {
@@ -657,4 +789,28 @@ test("streamed browser screenshots include nested tool result artifacts", () => 
   assert.equal(screenshots[0].tool_name, "browser_companion");
   assert.equal(screenshots[0].data_url, "data:image/png;base64,def");
   assert.deepEqual(screenshots[0].marker, { x: 10, y: 12 });
+});
+
+
+test("chat send error exposes retry and dismiss actions without truncating the message", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: "Network connection failed while sending a very long Japanese/English message.",
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+    onRetry: () => undefined,
+    onDismissError: () => undefined,
+  }));
+
+  assert.match(html, /role="alert"/);
+  assert.match(html, />再試行</);
+  assert.match(html, /aria-label="エラーを閉じる"/);
+  assert.match(html, /Network connection failed/);
 });

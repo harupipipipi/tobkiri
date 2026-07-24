@@ -1,0 +1,84 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.tool_guard",
+    "version": "1.0.0",
+    "kind": "service",
+    "display_name": "Rumi Tool Guard",
+    "description": "Ordered fail-closed pre-authorization tool guards."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.service.tool.guard.evaluate.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "tool-guard.evaluate",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "caller"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.guard.evaluate"
+        ]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "tool-guard-evaluate",
+      "contract_id": "rumi.service.tool.guard.evaluate.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_guard_pack.runtime.guards",
+      "symbol": "create_guard_operation",
+      "artifact_hash": "sha256:3c9f17067f3e7f313bee9e243ebb98586171baa2185ffed5f9b65c0ea6027194"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "tool.guard.evaluate",
+      "access": "execute",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:32ad798918f6d5f0b2118cf5f2da973ef82cf7176cae90ab1b94d26826f9c51a",
+    "build_identity": "rumi-tool-guard-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.domain.tool.permission_checker",
+      "defaultspack.domain.tool.broker.guards"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Select the pinned prior guard provider."
+  },
+  "extensions": {
+    "rumi.tool_guard.boundary": {
+      "approval_authority": false,
+      "policy_owner": false,
+      "tool_execution": false,
+      "concrete_tool_branches": false
+    }
+  }
+}

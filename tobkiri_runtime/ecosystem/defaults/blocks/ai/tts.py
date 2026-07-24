@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok, error
-from domain.ai_client.client import AIClient
+from domain.ai_client.modality_contract_client import invoke_modality
 
 
 def run(input_data, context):
@@ -16,8 +16,11 @@ def run(input_data, context):
     voice = input_data.get("voice")
 
     try:
-        client = AIClient()
-        result = client.tts(model, text, voice=voice)
+        result = invoke_modality(
+            "rumi.service.ai.audio.speech.v1",
+            "synthesize",
+            {"model_id": model, "text": text, "voice": voice},
+        )
         return ok(result)
     except RuntimeError as e:
         return error(str(e), "PROVIDER_ERROR")

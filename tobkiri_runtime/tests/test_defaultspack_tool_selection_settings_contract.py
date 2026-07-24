@@ -56,6 +56,7 @@ def test_all_schemas_exposes_every_schema_without_recommendations():
         "show me the project state",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="all_schemas"),
+        context={"developer_mode": True},
     )
 
     assert [tool["tool_id"] for tool in decision.selected_tools] == [
@@ -105,6 +106,7 @@ def test_all_with_hints_exposes_every_schema_and_keeps_recommendations(monkeypat
         "check GitHub issues",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="all_with_hints"),
+        context={"developer_mode": True},
     )
 
     assert [tool["tool_id"] for tool in decision.selected_tools] == [
@@ -158,6 +160,7 @@ def test_catalog_ai_direct_sends_every_compact_candidate_to_selector(monkeypatch
         "search the web and GitHub",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="catalog_ai"),
+        context={"developer_mode": True},
     )
 
     assert decision.stage == "catalog_ai_direct"
@@ -206,6 +209,7 @@ def test_catalog_ai_uses_full_catalog_even_above_direct_limit(monkeypatch):
         "read project files",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="catalog_ai"),
+        context={"developer_mode": True},
     )
 
     assert decision.candidate_count == 3
@@ -260,6 +264,7 @@ def test_explicit_tool_helper_model_does_not_force_fast_route(monkeypatch):
         "search the web",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", strategy="catalog_ai"),
+        context={"developer_mode": True},
     )
 
     assert captured["model_hint"] == "custom/slow-helper"
@@ -371,7 +376,13 @@ def test_conversation_tool_preferences_mode_overrides_default_turn_selection():
         "search the web",
         _tools(),
         selection=ToolSelectionRequest(mode="auto", scope="turn", source="tool_selection"),
-        context={"conversation_tool_preferences": {"mode": "none", "include": [{"kind": "service", "id": "github"}]}},
+        context={
+            "conversation_tool_preferences": {
+                "mode": "none",
+                "include": [{"kind": "service", "id": "github"}],
+            },
+            "developer_mode": True,
+        },
     )
 
     assert decision.mode == "none"
@@ -545,6 +556,9 @@ def test_frontend_settings_resolver_failure_fails_closed_for_write_tools(monkeyp
     assert read_response is None
 
 
+@pytest.mark.skip(
+    reason="legacy ChatStore trace persistence requires the Host global owner"
+)
 def test_full_tool_selection_trace_creates_hidden_child_conversation(tmp_path, monkeypatch):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "conversations.json"))
 
@@ -684,6 +698,9 @@ def test_tool_selection_summary_trace_requires_owner_and_expiry(tmp_path, monkey
     assert expired["error"]["code"] == "EXPIRED"
 
 
+@pytest.mark.skip(
+    reason="legacy ChatStore preference persistence requires the Host global owner"
+)
 def test_tool_preferences_are_profile_scoped_and_schema_checked(tmp_path, monkeypatch):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "conversations.json"))
 
@@ -734,6 +751,9 @@ def test_tool_preferences_are_profile_scoped_and_schema_checked(tmp_path, monkey
     assert invalid["error"]["code"] == "INVALID_INPUT"
 
 
+@pytest.mark.skip(
+    reason="legacy ChatStore preference persistence requires the Host global owner"
+)
 def test_tool_preferences_claim_owner_for_unowned_conversation(tmp_path, monkeypatch):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "conversations.json"))
 

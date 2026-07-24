@@ -1,0 +1,16 @@
+{
+  "pack_id": "rumi_human_operator_provider_pack",
+  "pack_identity": "rumi:ecosystem/rumi_human_operator_provider_pack",
+  "display_name": "Rumi Human Operator Provider Pack",
+  "version": "1.0.0",
+  "description": "Local human handoff intent provider without authority or data ownership.",
+  "dependencies": {},
+  "connectivity": {"requires": [], "provides": ["rumi.service.ai.provider.generate.v1", "rumi.service.ai.provider.stream.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["ai.provider.human_handoff"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:9049f47a5b5059631b49efa3f915e523152454030afef0066e04d255e7924520", "build_identity": "rumi-human-operator-provider-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authoritative_owner": true, "owner_surfaces": ["human_handoff_provider_intent"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"authority_granted": false, "self_approval": false, "conversation_storage": false, "context_payload_copied": false}}
+}

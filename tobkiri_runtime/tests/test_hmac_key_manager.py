@@ -298,6 +298,14 @@ class TestHMACKey:
 class TestHMACKeyManagerInit:
     """HMACKeyManager 初期化のテスト"""
 
+    def test_default_path_uses_launcher_user_data(self, tmp_path, monkeypatch):
+        user_data = tmp_path / "launcher-user-data"
+        monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+
+        mgr = HMACKeyManager()
+
+        assert mgr._keys_path == user_data / "hmac_keys.json"
+
     def test_first_boot_generates_key(self, tmp_path):
         """鍵ファイルが存在しない場合、初回起動で鍵が生成されること"""
         keys_path = str(tmp_path / "hmac_keys.json")

@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
-import {useSearchParams} from 'react-router-dom';
+import {useSearchParams} from 'react-router';
 import {
   Boxes,
   Braces,
@@ -52,6 +52,8 @@ function resolveFocusedNodeId(nodes: ApiProfileGraphNode[], profileId: string, f
 
 export function ApiMap() {
   const addToast = useAppStore((state) => state.addToast);
+  const advancedProfileId = useAppStore((state) => state.selectedStartupProfileId);
+  const setAdvancedProfileId = useAppStore((state) => state.setSelectedStartupProfileId);
   const [searchParams, setSearchParams] = useSearchParams();
   const [profiles, setProfiles] = useState<ApiStartupProfile[]>([]);
   const [profileId, setProfileId] = useState(searchParams.get('profile_id') || '');
@@ -105,11 +107,13 @@ export function ApiMap() {
       .then(([startupProfiles, apiMap]) => {
         if (cancelled) return;
         const resolvedProfileId = requestedProfileId
+          || advancedProfileId
           || startupProfiles.active_profile_id
           || startupProfiles.profiles[0]?.profile_id
           || '';
         setProfiles(startupProfiles.profiles);
         setProfileId(resolvedProfileId);
+        if (resolvedProfileId) setAdvancedProfileId(resolvedProfileId);
         setData(apiMap);
         setSelectedNodeId(resolveFocusedNodeId(apiMap.nodes, resolvedProfileId, requestedFocus));
       })
@@ -159,6 +163,7 @@ export function ApiMap() {
   const selectedProfileRuntime = asRecord(profileRuntime.selected);
 
   const handleApplyContext = () => {
+    setAdvancedProfileId(profileId);
     syncQueryParams(profileId, focusInput);
   };
 

@@ -4,6 +4,8 @@ import type { ModelSearchItem } from "../../../lib/api";
 import {
   ModelSearchPicker,
   modelFieldOptionToModelSelectOption,
+  parseModelSelectorSchema,
+  type ModelSelectorSchema,
   type ModelSelectOption,
 } from "../../../features/models";
 import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
@@ -15,11 +17,13 @@ export function SettingsModelSearchField({
   options,
   onChange,
   placeholder = "model/provider/特徴メモで検索",
+  selectorSchema,
 }: {
   value: string;
   options: ModelSelectOption[];
   onChange: (value: string) => void;
   placeholder?: string;
+  selectorSchema?: ModelSelectorSchema;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -73,6 +77,8 @@ export function SettingsModelSearchField({
         loading={busy}
         error={error}
         placeholder={placeholder}
+        selectorSchema={selectorSchema}
+        surface="settings"
         open={open}
         onOpenChange={setOpen}
         onChange={onChange}
@@ -90,6 +96,7 @@ export function BuiltinModelSelectRenderer({ sectionId, field, value, sectionVal
       <SettingsModelSearchField
         value={selectedValue}
         options={fieldOptions(field).map(modelFieldOptionToModelSelectOption)}
+        selectorSchema={parseModelSelectorSchema(field.selector_schema)}
         onChange={(nextValue) => onChange(sectionId, targetFieldId, nextValue)}
       />
     </SettingsFieldShell>

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import re
 from os import PathLike
 from typing import Any
 
 from blocks._common import error, ok
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import invoke_global_contract
+from core_runtime.resolved_profile_scope import active_resolved_profile
 from domain.artifact.workspace import ArtifactWorkspace
 from domain.chat.store import ChatStore
 
@@ -35,9 +39,28 @@ def run(input_data: dict[str, Any] | None, context: dict[str, Any] | None):
     export_format, extension, mime_type = format_spec
 
     store = ChatStore()
-    content = store.export_conversation(conversation_id, fmt=export_format)
-    if content is None:
+    conversation = store.get_conversation(conversation_id)
+    if conversation is None:
         return error("Conversation not found", "NOT_FOUND")
+    registry = get_container().get_or_none("interface_registry")
+    plan = active_resolved_profile()
+    if registry is None or plan is None:
+        return error("Context runtime unavailable", "CONTEXT_UNAVAILABLE")
+    materialized = invoke_global_contract(
+        registry,
+        "rumi.service.context.v1",
+        "materialize",
+        {
+            "profile_id": plan.profile_id,
+            "conversation_id": conversation_id,
+            "conversation_revision": conversation["conversation_revision"],
+            "query": str(payload.get("query") or ""),
+            "system_items": [],
+            "recall_limit": int(payload.get("recall_limit") or 8),
+            "token_budget": int(payload.get("token_budget") or 131072),
+        },
+    )
+    content = _context_text(materialized, export_format)
 
     workspace_context = dict(context or {})
     for key in ("artifact_root", "conversation_workspace_dir", "workspace_root"):
@@ -86,6 +109,19 @@ def run(input_data: dict[str, Any] | None, context: dict[str, Any] | None):
 def _safe_filename(value: str) -> str:
     safe = _SAFE_FILENAME_RE.sub("-", value.strip()).strip(".-")
     return safe[:100] or "conversation"
+
+
+def _context_text(value: Any, export_format: str) -> str:
+    if export_format == "text":
+        lines = []
+        for section in value.get("sections") or []:
+            if not isinstance(section, dict):
+                continue
+            lines.append(f"[{section.get('kind') or 'context'}]")
+            for item in section.get("items") or []:
+                lines.append(str(item.get("content") if isinstance(item, dict) else item))
+        return "\n".join(lines)
+    return "```json\n" + json.dumps(value, ensure_ascii=False, indent=2) + "\n```\n"
 
 
 def materialized_audio_transcript_blocks(attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -10,6 +10,13 @@ import {
   modelSelectDisplay,
   type ModelSelectOption,
 } from "./modelSelect";
+import {
+  DEFAULT_MODEL_SELECTOR_SCHEMA,
+  filterModelOptionsBySelector,
+  modelSelectorSchemaForSurface,
+  type ModelSelectorSchema,
+  type ModelSelectorSurface,
+} from "./modelSelectorSchema";
 
 export type ModelSearchPickerVariant = "settings" | "compact";
 
@@ -25,6 +32,8 @@ export function ModelSearchPicker({
   clearLabel,
   variant = "settings",
   maxVisibleOptions,
+  selectorSchema = DEFAULT_MODEL_SELECTOR_SCHEMA,
+  surface = "settings",
   open: controlledOpen,
   onOpenChange,
   onChange,
@@ -42,6 +51,8 @@ export function ModelSearchPicker({
   clearLabel?: string;
   variant?: ModelSearchPickerVariant;
   maxVisibleOptions?: number;
+  selectorSchema?: ModelSelectorSchema;
+  surface?: ModelSelectorSurface;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onChange: (value: string) => void;
@@ -53,18 +64,40 @@ export function ModelSearchPicker({
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties | null>(null);
   const open = controlledOpen ?? internalOpen;
   const trimmedQuery = query.trim();
-  const remoteOptions = useMemo(() => remoteResults.map(modelSearchItemToModelSelectOption), [remoteResults]);
+  const resolvedSchema = useMemo(
+    () => modelSelectorSchemaForSurface(selectorSchema, surface),
+    [selectorSchema, surface],
+  );
+  const filteredOptions = useMemo(
+    () => filterModelOptionsBySelector(options, resolvedSchema, surface),
+    [options, resolvedSchema, surface],
+  );
+  const remoteOptions = useMemo(
+    () => filterModelOptionsBySelector(
+      remoteResults.map(modelSearchItemToModelSelectOption),
+      resolvedSchema,
+      surface,
+    ),
+    [remoteResults, resolvedSchema, surface],
+  );
   const selected = findSelectedModelOption(options, value, remoteOptions);
+  const visibleSelected = filteredOptions.find(
+    (option) => option.value === value || option.qualified_model_id === value,
+  ) ?? remoteOptions.find(
+    (option) => option.value === value || option.qualified_model_id === value,
+  ) ?? null;
   const selectedDisplay = selected ? modelSelectDisplay(selected) : null;
   const visibleOptions = useMemo(() => {
     const built = buildVisibleModelOptions({
-      options,
-      selected,
+      options: filteredOptions,
+      selected: visibleSelected,
       remoteOptions,
       query: trimmedQuery,
     });
-    return typeof maxVisibleOptions === "number" ? built.slice(0, maxVisibleOptions) : built;
-  }, [maxVisibleOptions, options, remoteOptions, selected, trimmedQuery]);
+    const configuredLimit = resolvedSchema.layout.max_visible_options;
+    const limit = typeof maxVisibleOptions === "number" ? maxVisibleOptions : configuredLimit;
+    return built.slice(0, limit);
+  }, [filteredOptions, maxVisibleOptions, remoteOptions, resolvedSchema.layout.max_visible_options, trimmedQuery, visibleSelected]);
 
   function setOpen(nextOpen: boolean) {
     if (controlledOpen === undefined) setInternalOpen(nextOpen);

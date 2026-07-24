@@ -43,11 +43,12 @@ from .paths import (
     LOCAL_PACK_DIR,
     LOCAL_PACK_MODIFIERS_DIR,
     ECOSYSTEM_DIR,
-    discover_pack_locations,
+    resolve_pack_locations,
     get_pack_modifier_dirs,
     get_shared_modifier_dir,
     PackLocation,
 )
+from .resolved_profile_scope import effective_pack_ids
 
 
 class FlowModifierLoader:
@@ -159,7 +160,10 @@ class FlowModifierLoader:
             return cached
         allowed = False
         try:
-            locations = discover_pack_locations(str(ECOSYSTEM_DIR))
+            locations = resolve_pack_locations(
+                (pack_id,),
+                str(ECOSYSTEM_DIR),
+            )
             for loc in locations:
                 if loc.pack_id == pack_id:
                     allowed = self._read_wildcard_flag_from_ecosystem(loc.ecosystem_json_path)
@@ -200,7 +204,8 @@ class FlowModifierLoader:
         self._load_directory_modifiers(shared_dir, None)
 
     def _load_pack_modifiers_via_discovery(self) -> None:
-        locations = discover_pack_locations(str(ECOSYSTEM_DIR))
+        effective = effective_pack_ids()
+        locations = resolve_pack_locations(effective, str(ECOSYSTEM_DIR))
         for loc in locations:
             pack_id = loc.pack_id
             if pack_id not in self._wildcard_flags:

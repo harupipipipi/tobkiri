@@ -1,0 +1,86 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.tool_sandbox_executor",
+    "version": "1.0.0",
+    "kind": "adapter",
+    "display_name": "Rumi Tool Sandbox Executor",
+    "description": "Docker-calling-convention-only tool executor."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.service.tool.execute.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "tool-executor.sandbox",
+        "routing_keys": [
+          "sandbox"
+        ],
+        "cardinality": "many",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "sandbox-runtime"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.execute"
+        ]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "tool-sandbox-execute",
+      "contract_id": "rumi.service.tool.execute.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_sandbox_executor_pack.runtime.executor",
+      "symbol": "create_execute_operation",
+      "artifact_hash": "sha256:5f36220d03bdd6a8ef2381cc21e450309315e912f6e57fddf6f592bea3ae0350"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "tool.execute",
+      "access": "execute",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:f4e41e2d97a331d56685bb102f2c9afea1828dda5d136038a22911571747a339",
+    "build_identity": "rumi-tool-sandbox-executor-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.domain.tool.executor.python_docker",
+      "rumi_sandbox_runtime_pack"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Remove this adapter; sandbox runtime services remain independently available."
+  },
+  "extensions": {
+    "rumi.tool_executor.boundary": {
+      "execution_kind": "sandbox",
+      "calling_convention": "python_docker",
+      "host_downgrade": false
+    }
+  }
+}

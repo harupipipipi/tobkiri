@@ -16,6 +16,7 @@ Wave 19-A 変更:
 import sys
 import atexit
 import argparse
+import json
 import os
 import traceback
 import threading
@@ -27,6 +28,170 @@ from core_runtime.env_compat import read_migrated_env
 
 _kernel = None
 _logger = logging.getLogger(__name__)
+
+
+def _without_legacy_auto_seeded_packs(
+    active_profile: Dict[str, object],
+    pack_ids: set[str],
+) -> set[str]:
+    """Remove only the complete legacy implicit service-pack seed set."""
+    if (
+        active_profile.get("profile_id") != "default-profile"
+        or active_profile.get("base_pack") != "defaultspack"
+    ):
+        return pack_ids
+    metadata = active_profile.get("metadata")
+    selected = metadata.get("selected") if isinstance(metadata, dict) else None
+    if isinstance(selected, dict) and any(bool(value) for value in selected.values()):
+        return pack_ids
+    from core_runtime.startup_profiles import (
+        WAVE7_DEFAULT_OWNER_PACKS,
+        WAVE8_DEFAULT_SERVICE_PACKS,
+        WAVE9_DEFAULT_SERVICE_PACKS,
+    )
+
+    legacy_auto_packs = {
+        *WAVE7_DEFAULT_OWNER_PACKS,
+        *WAVE8_DEFAULT_SERVICE_PACKS,
+        *WAVE9_DEFAULT_SERVICE_PACKS,
+    }
+    if not legacy_auto_packs.issubset(pack_ids):
+        return pack_ids
+    return pack_ids - legacy_auto_packs
+
+
+def _active_startup_profile_pack_ids() -> set[str]:
+    """Return Pack IDs selected by the active launch profile without loading Pack code."""
+    user_data_dir = read_migrated_env("TOBKIRI_USER_DATA", "RUMI_USER_DATA")
+    base_dir = Path(user_data_dir) if user_data_dir else Path(__file__).resolve().parent / "user_data"
+    state_path = base_dir / "settings" / "startup_profiles.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        profiles = state.get("profiles", [])
+        active_profile_id = str(state.get("active_profile_id") or "")
+        active_profile = next(
+            (
+                profile
+                for profile in profiles
+                if isinstance(profile, dict) and profile.get("profile_id") == active_profile_id
+            ),
+            None,
+        )
+        if not isinstance(active_profile, dict):
+            return set()
+        pack_ids = {str(pack_id) for pack_id in active_profile.get("packs", []) if pack_id}
+        base_pack = active_profile.get("base_pack")
+        if base_pack:
+            pack_ids.add(str(base_pack))
+        return _without_legacy_auto_seeded_packs(active_profile, pack_ids)
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def _enable_approved_profile_host_execution(pack_ids: set[str]) -> bool:
+    """Enable host execution only for hash-verified profile Pack grants.
+
+    The launcher always starts in strict mode.  A selected Pack that declares
+    ``host_execution`` still needs its normal approval grant; this helper turns
+    that completed, verified approval into the process-local runtime flag that
+    legacy host executors consume.  Any missing or modified grant fails closed.
+    """
+    if not pack_ids:
+        return False
+
+    try:
+        from core_runtime.approval_manager import get_approval_manager
+        from core_runtime.paths import discover_pack_locations
+
+        host_pack_ids: list[str] = []
+        for location in discover_pack_locations():
+            if location.pack_id not in pack_ids:
+                continue
+            ecosystem = json.loads(
+                location.ecosystem_json_path.read_text(encoding="utf-8")
+            )
+            if isinstance(ecosystem, dict) and ecosystem.get("host_execution") is True:
+                host_pack_ids.append(location.pack_id)
+
+        if not host_pack_ids:
+            return False
+
+        approval_manager = get_approval_manager()
+        unapproved = []
+        for pack_id in host_pack_ids:
+            approved, reason = approval_manager.is_pack_approved_and_verified(pack_id)
+            if not approved:
+                unapproved.append(f"{pack_id} ({reason or 'not approved'})")
+        if unapproved:
+            _logger.warning(
+                "Host execution remains disabled for unapproved profile Packs: %s",
+                ", ".join(unapproved),
+            )
+            return False
+
+        os.environ["RUMI_ALLOW_HOST_EXECUTION"] = "true"
+        _logger.info(
+            "Enabled host execution for approved startup profile Packs: %s",
+            ", ".join(sorted(host_pack_ids)),
+        )
+        return True
+    except Exception:
+        _logger.warning(
+            "Unable to verify startup-profile host-execution approvals",
+            exc_info=True,
+        )
+        return False
+
+
+def _restore_active_startup_capability_graph(kernel: object) -> None:
+    """Register the approved active profile's contracts in the new kernel."""
+    try:
+        from core_runtime.approval_manager import get_approval_manager
+        from core_runtime.capability_binding_registration import (
+            register_pack_binding_handlers,
+        )
+        from core_runtime.resolved_profile_scope import persisted_resolved_profile
+        from core_runtime.startup_profiles import StartupProfileManager
+
+        interface_registry = getattr(kernel, "interface_registry", None)
+        if interface_registry is None:
+            return
+        approval_manager = get_approval_manager()
+        manager = StartupProfileManager(
+            interface_registry=interface_registry,
+            approval_manager=approval_manager,
+        )
+        payload = manager.list_profiles_payload()
+        active_id = str(payload.get("active_profile_id") or "")
+        profile = next(
+            (
+                item for item in payload.get("profiles", [])
+                if isinstance(item, dict) and item.get("profile_id") == active_id
+            ),
+            None,
+        )
+        if not isinstance(profile, dict):
+            return
+        plan = persisted_resolved_profile()
+        if plan is None:
+            _logger.warning("Active startup profile could not be resolved")
+            return
+        binding_result = register_pack_binding_handlers(
+            interface_registry=interface_registry,
+            approval_manager=approval_manager,
+            effective_pack_ids=plan.effective_pack_set,
+        )
+        if not binding_result.ok:
+            _logger.warning(
+                "Some active startup contracts were not restored: %s",
+                binding_result.diagnostics,
+            )
+        result = manager._compile_launch_capability_graph(profile)
+        manager._record_capability_graph_result(result)
+        if not result.get("ok"):
+            _logger.warning("Active startup capability graph was not restored: %s", result)
+    except Exception:
+        _logger.warning("Unable to restore active startup capability graph", exc_info=True)
 
 
 # Fallback L() — overwritten if core_runtime.lang loads successfully
@@ -205,10 +370,14 @@ def main():
         # 未対応の外部値も含め、通常起動は strict に固定する。
         os.environ["RUMI_SECURITY_MODE"] = "strict"
 
-    # --- host_execution ガード (W19-A) ---
+    # --- host_execution guard ---
+    # Convert verified profile grants into the narrowly-scoped runtime flag
+    # before invoking the existing fail-closed validator.
+    selected_pack_ids = _active_startup_profile_pack_ids()
+    _enable_approved_profile_host_execution(selected_pack_ids)
     try:
         from core_runtime.pack_validator import validate_host_execution
-        validate_host_execution()
+        validate_host_execution(pack_ids=selected_pack_ids)
     except SystemExit:
         raise
     except Exception:
@@ -253,8 +422,11 @@ def main():
         from core_runtime.pack_validator import validate_host_execution_single
         from core_runtime.paths import discover_pack_locations
         import json
+        selected_pack_ids = _active_startup_profile_pack_ids()
         blocked_packs = []
         for loc in discover_pack_locations():
+            if loc.pack_id not in selected_pack_ids:
+                continue
             try:
                 with open(loc.ecosystem_json_path, "r", encoding="utf-8") as f:
                     eco = json.load(f)
@@ -294,6 +466,7 @@ def main():
         def _finish_runtime_startup():
             try:
                 _kernel.run_startup_remaining()
+                _restore_active_startup_capability_graph(_kernel)
                 try:
                     from backend_core.ecosystem.compat import mark_ecosystem_initialized
 

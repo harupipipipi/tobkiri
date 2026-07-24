@@ -356,6 +356,30 @@ class TestHostExecutionGuard:
                 result = validate_host_execution(ecosystem_dir=eco_dir)
                 assert sorted(result) == ["dangerous_pack_b", "dangerous_pack_d"]
 
+    def test_only_selected_profile_packs_are_checked(self):
+        """Unselected host-execution Packs must not block an unrelated profile."""
+        with tempfile.TemporaryDirectory() as tmp:
+            eco_dir = _create_ecosystem(Path(tmp), {
+                "selected_safe_pack": {
+                    "pack_id": "selected_safe_pack",
+                    "host_execution": False,
+                },
+                "unselected_host_pack": {
+                    "pack_id": "unselected_host_pack",
+                    "host_execution": True,
+                },
+            })
+            clean_env = {
+                key: value for key, value in os.environ.items()
+                if key != "RUMI_ALLOW_HOST_EXECUTION"
+            }
+            with patch.dict(os.environ, clean_env, clear=True):
+                result = validate_host_execution(
+                    ecosystem_dir=eco_dir,
+                    pack_ids={"selected_safe_pack"},
+                )
+                assert result == []
+
     def test_host_execution_env_case_insensitive(self):
         """RUMI_ALLOW_HOST_EXECUTION=TRUE (大文字) も許可"""
         with tempfile.TemporaryDirectory() as tmp:

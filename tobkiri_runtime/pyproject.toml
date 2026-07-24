@@ -9,6 +9,7 @@ description = "Tobkiri runtime package"
 requires-python = ">=3.10"
 dependencies = [
   "cryptography>=42.0.0",
+  "jsonschema>=4.26.0",
   "PyYAML>=6.0.2",
 ]
 

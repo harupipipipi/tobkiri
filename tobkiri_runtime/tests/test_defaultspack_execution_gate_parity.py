@@ -104,7 +104,7 @@ def test_coding_file_write_denial_parity_across_direct_and_function_entrypoints(
         )
 
 
-def test_tool_create_denial_parity_across_direct_and_function_entrypoints(
+def test_tool_create_is_retired_across_direct_and_function_entrypoints(
     tmp_path: Path,
 ) -> None:
     from blocks.tool.create import run as block_tool_create
@@ -120,12 +120,10 @@ def test_tool_create_denial_parity_across_direct_and_function_entrypoints(
     ]
 
     for entrypoint in cases:
-        _exercise_denial_contract(
-            tmp_path,
-            entrypoint,
-            _tool_create_payload,
-            "tool.create",
-        )
+        result = entrypoint(_tool_create_payload(tmp_path), {})
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "MIGRATION_REQUIRED"
+        assert result["error"]["details"]["migration_required"] is True
 
 
 def test_legacy_http_fallback_denies_forged_coding_write_approval(
@@ -205,3 +203,15 @@ def test_issue665_first_slice_documents_remaining_execution_route_gaps() -> None
     # - bootstrap routes: need explicit route-by-route classification so safe
     #   idempotent bootstrap is not conflated with host execution.
     assert True
+
+
+def test_legacy_tool_invoke_requires_a_capability_plan() -> None:
+    from blocks.tool.invoke import run as invoke_tool
+
+    result = invoke_tool(
+        {"tool_name": "calculator", "arguments": {"expression": "1 + 1"}},
+        {},
+    )
+
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"

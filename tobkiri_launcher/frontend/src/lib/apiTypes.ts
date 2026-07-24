@@ -241,6 +241,12 @@ export interface PackToggleResponseData {
   enabled: boolean;
 }
 
+export interface PackApprovalResponseData {
+  pack_id: string;
+  approved: boolean;
+  approval_status: string;
+}
+
 export interface UpdatesResponseData {
   updates: ApiUpdateInfo[];
 }
@@ -346,6 +352,7 @@ export interface ApiStartupProfile {
   graph_ports: ApiStartupGraphPort[];
   packs: string[];
   node_overrides: Record<string, string>;
+  icon?: string | null;
   created_at: number;
   updated_at: number;
   capability_profile_id?: string | null;

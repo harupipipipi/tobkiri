@@ -1,17 +1,25 @@
 export const BUILTIN_API_PROVIDER_IDS: string[] = [
   "anthropic",
+  "avian",
   "cerebras",
   "deepseek",
+  "deepinfra",
+  "fireworks",
+  "friendli",
   "gitlawb-opengateway",
   "glm",
   "google",
   "groq",
+  "hyperbolic",
+  "inference-net",
   "llama_cpp",
   "lmstudio",
   "longcat",
   "mistral",
   "moonshotai",
   "nvidia",
+  "nebius",
+  "novita",
   "ollama",
   "opencode-go",
   "opencode-zen",
@@ -19,7 +27,9 @@ export const BUILTIN_API_PROVIDER_IDS: string[] = [
   "openai_compatible",
   "openrouter",
   "perplexity",
+  "sambanova",
   "together",
+  "upstage",
   "vllm",
   "xai",
   "xiaomi-token-plan-ams",
@@ -65,6 +75,7 @@ export type ApiKeySetupDraft = {
   default_model?: string;
   quota_label?: string;
   notes?: string;
+  credential_mode?: "api_key" | "none";
 };
 
 export type ApiKeySaveOptions = {
@@ -76,6 +87,7 @@ export type ApiKeySaveOptions = {
   defaultModel?: string;
   quotaLabel?: string;
   notes?: string;
+  credentialMode?: "api_key" | "none";
 };
 
 export type ApiKeySavePayload = {
@@ -140,14 +152,15 @@ export function collectApiProviderOptions(
     : [...builtinProviderIds, ...builtinExternalProviderIds];
   const collected = new Map<string, ApiProviderOption>();
 
-  if (providers.length === 0) {
-    for (const providerId of builtinProviderIds) {
-      collected.set(providerId, { provider_id: providerId, label: providerId, kind: "llm", builtin: true });
-    }
-    if (options.includeExternalBuiltins !== false) {
-      for (const providerId of builtinExternalProviderIds) {
-        collected.set(providerId, { provider_id: providerId, label: providerId, kind: "custom", builtin: true });
-      }
+  // The backend commonly returns only configured providers.  Seed the complete
+  // built-in catalog first, then let returned rows enrich it, so adding one key
+  // never makes every other supported provider disappear from Settings.
+  for (const providerId of builtinProviderIds) {
+    collected.set(providerId, { provider_id: providerId, label: providerId, kind: "llm", builtin: true });
+  }
+  if (options.includeExternalBuiltins !== false) {
+    for (const providerId of builtinExternalProviderIds) {
+      collected.set(providerId, { provider_id: providerId, label: providerId, kind: "custom", builtin: true });
     }
   }
   for (const provider of providers) {
@@ -217,7 +230,8 @@ export function buildApiKeySavePayload(draft: ApiKeySetupDraft, fallbackKind: Ap
   const providerId = draft.provider_id.trim();
   const name = draft.name.trim();
   const value = draft.value;
-  if (!providerId || !name || !value.trim()) return null;
+  const credentialMode = draft.credential_mode === "none" ? "none" : "api_key";
+  if (!providerId || !name || (credentialMode === "api_key" && !value.trim()) || (credentialMode === "none" && !draft.base_url?.trim())) return null;
   const allowedModels = parseAllowedModels(draft.allowed_models);
   return {
     provider_id: providerId,
@@ -231,6 +245,7 @@ export function buildApiKeySavePayload(draft: ApiKeySetupDraft, fallbackKind: Ap
       defaultModel: draft.default_model?.trim() || undefined,
       quotaLabel: draft.quota_label?.trim() || undefined,
       notes: draft.notes?.trim() || undefined,
+      credentialMode,
     },
   };
 }

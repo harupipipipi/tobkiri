@@ -1,0 +1,134 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.mcp_server",
+    "version": "1.0.0",
+    "kind": "adapter",
+    "display_name": "Rumi MCP Server",
+    "description": "MCP server catalog and call projection over the global tool broker."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.resource.mcp.server.tool.catalog.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "mcp-server.catalog",
+        "cardinality": "one",
+        "security": "sensitive",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "rumi_tool_registry_pack"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "mcp.server.catalog.read"
+        ]
+      },
+      {
+        "id": "rumi.service.mcp.server.tool.call.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "mcp-server.call",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "caller"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "mcp.server.tool.call"
+        ]
+      }
+    ],
+    "requires": [
+      {
+        "id": "rumi.resource.tool.definition.v1",
+        "version_range": "^1.0.0",
+        "cardinality": "one",
+        "optional": false
+      },
+      {
+        "id": "rumi.service.tool.invoke.v1",
+        "version_range": "^1.0.0",
+        "cardinality": "one",
+        "optional": false
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "id": "mcp-server-tool-catalog",
+      "contract_id": "rumi.resource.mcp.server.tool.catalog.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_mcp_server_pack.runtime.server",
+      "symbol": "create_catalog_operation",
+      "artifact_hash": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745"
+    },
+    {
+      "id": "mcp-server-tool-call",
+      "contract_id": "rumi.service.mcp.server.tool.call.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_mcp_server_pack.runtime.server",
+      "symbol": "create_call_operation",
+      "artifact_hash": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "mcp.server.catalog.read",
+      "access": "read",
+      "approval_required": false
+    },
+    {
+      "capability": "mcp.server.tool.call",
+      "access": "execute",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:cec975d1dd7fb0502e3b3b1feb8f1fcb3a138f48027dac1c65835aa1cc6438ca",
+    "build_identity": "rumi-mcp-server-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.backend.mcp_transport"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Remove the server projection without removing tool definitions or services."
+  },
+  "extensions": {
+    "rumi.mcp_server.boundary": {
+      "transport_owner": false,
+      "tool_owner": false,
+      "approval_bypass": false,
+      "namespace_prefix": "rumi."
+    }
+  }
+}

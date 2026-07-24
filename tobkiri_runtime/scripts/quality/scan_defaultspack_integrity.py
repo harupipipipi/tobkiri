@@ -177,7 +177,12 @@ def check_routes(errors: list[str]) -> None:
 
 def check_frontend_route_parity(errors: list[str]) -> None:
     backend = {_normalize_route(str(spec.pattern or "")) for spec in _route_specs()}
-    optional_prefixes = ("/api/agent/company/",)
+    optional_prefixes = (
+        "/api/agent/company/",
+        # The credential-transfer facade is intentionally absent unless its
+        # security-sensitive mobile feature is enabled by the Host.
+        "/api/mobile/v1/credential-transfers",
+    )
     for endpoint in sorted(_extract_api_endpoints()):
         if endpoint in backend:
             continue

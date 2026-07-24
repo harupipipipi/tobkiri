@@ -90,6 +90,20 @@ test("buildApiKeySavePayload parses form metadata while keeping secret only in s
   assert.equal(payload?.options.baseUrl, "https://example.test");
 });
 
+test("buildApiKeySavePayload accepts an explicit loopback no-key connection", () => {
+  const payload = buildApiKeySavePayload({
+    provider_id: "vllm",
+    name: "local",
+    value: "",
+    base_url: "http://127.0.0.1:8000/v1",
+    credential_mode: "none",
+  });
+
+  assert.equal(payload?.value, "");
+  assert.equal(payload?.options.credentialMode, "none");
+  assert.equal(payload?.options.baseUrl, "http://127.0.0.1:8000/v1");
+});
+
 test("summarizeApiKeySetupForDiagnostics never exposes secret values", () => {
   const summary = summarizeApiKeySetupForDiagnostics({
     provider_id: "openai",

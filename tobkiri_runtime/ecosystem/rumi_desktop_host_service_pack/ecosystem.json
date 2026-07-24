@@ -1,0 +1,17 @@
+{
+  "pack_id": "rumi_desktop_host_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_desktop_host_service_pack",
+  "display_name": "Rumi Desktop Host Service Pack",
+  "version": "1.0.0",
+  "description": "Independent desktop observe/control boundary for the Viewer host broker.",
+  "dependencies": {"rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"},
+  "connectivity": {"requires": ["rumi.service.host.authorize.v1"], "provides": ["rumi.resource.desktop.host.v1", "rumi.action.desktop.host.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["desktop.host.observe", "desktop.host.control", "host.authority.consume"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": false,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:331df96aaafce1d1ff58ad94736467453e388c5f7610c9e9739cfbbd8e5a7a6c", "build_identity": "rumi-desktop-host-service-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authority_split": ["observe", "control"], "executor_owner": "rumi_viewer_host_broker", "operation_descriptor_owner": true, "tool_or_ui_registry_imports": false}
+}
+

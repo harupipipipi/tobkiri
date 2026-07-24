@@ -325,10 +325,12 @@ export function ToolExperienceSettingsPanel({
   tools,
   settingsValues,
   onSettingChange,
+  displayMode = "standard",
 }: {
   tools: SidebarItem[];
   settingsValues: SettingsValues;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
+  displayMode?: "standard" | "advanced" | "developer";
 }) {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]["id"]>("basic");
   const [catalog, setCatalog] = useState<ToolCatalogResponse | null>(null);
@@ -724,7 +726,7 @@ export function ToolExperienceSettingsPanel({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => tab.id !== "advanced" || displayMode === "developer").map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -738,7 +740,7 @@ export function ToolExperienceSettingsPanel({
       {activeTab === "basic" && renderBasic()}
       {activeTab === "permissions" && renderPermissions()}
       {activeTab === "connections" && renderConnections()}
-      {activeTab === "advanced" && renderAdvanced()}
+      {activeTab === "advanced" && displayMode === "developer" && renderAdvanced()}
     </div>
   );
 }

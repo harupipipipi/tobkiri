@@ -1,8 +1,11 @@
 from importlib.metadata import version
 
+import pytest
 import rumi_ai.__main__ as legacy_entrypoint
 import tobkiri
 import tobkiri.__main__ as canonical_entrypoint
+
+pytestmark = pytest.mark.contract
 
 
 def test_installed_canonical_and_legacy_modules_are_discoverable():

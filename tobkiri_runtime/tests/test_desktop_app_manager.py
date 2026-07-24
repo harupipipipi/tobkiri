@@ -41,6 +41,29 @@ def sample_meta():
     }
 
 
+def test_register_app_stores_metadata_under_rumi_user_data(tmp_path, monkeypatch):
+    """Launcher-managed registrations must not write into the app bundle."""
+    repo_dir = tmp_path / "bundle" / "tobkiri_runtime"
+    user_data = tmp_path / "Library" / "Application Support" / "Tobkiri"
+    pack_shell = tmp_path / "pack-shell"
+    pack_shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    pack_shell.chmod(0o755)
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_PACK_SHELL_PATH", str(pack_shell))
+    manager = DesktopAppManager(repo_dir=str(repo_dir))
+
+    with mock.patch.object(manager, "_create_shortcut", return_value="/tmp/Test.app"):
+        result = manager.register_app(
+            "defaultspack",
+            {"command": "python desktop_app.py"},
+            str(repo_dir / "ecosystem" / "defaultspack"),
+        )
+
+    assert result["success"] is True
+    assert (user_data / "apps" / "defaultspack.json").is_file()
+    assert not (repo_dir / "user_data" / "apps" / "defaultspack.json").exists()
+
+
 class TestLaunchAppArguments:
     """Verify that launch_app() constructs the correct Popen arguments."""
 

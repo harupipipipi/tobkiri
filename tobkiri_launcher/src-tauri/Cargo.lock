@@ -3352,32 +3352,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tobkiri-launcher"
-version = "1.0.0-beta.2"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "dirs",
- "env_logger",
- "flate2",
- "hex",
- "hmac",
- "log",
- "open",
- "rand 0.8.5",
- "reqwest 0.12.28",
- "semver",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-single-instance",
- "which",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4416,6 +4390,32 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "tobkiri-launcher"
+version = "1.0.0-beta.2"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "dirs",
+ "env_logger",
+ "flate2",
+ "hex",
+ "hmac",
+ "log",
+ "open",
+ "rand 0.8.5",
+ "reqwest 0.12.28",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-single-instance",
+ "which",
+]
 
 [[package]]
 name = "tokio"

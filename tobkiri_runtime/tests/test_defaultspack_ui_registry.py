@@ -38,6 +38,17 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertIn("sections", settings)
         self.assertIn("values", settings)
 
+    def test_lightweight_catalog_can_include_skills_without_full_hydration(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = FrontendRegistry(pack_root=Path(tmpdir))
+            expected = [{"id": "settings_assistant", "label": "Settings"}]
+            with patch.object(registry, "_skill_items", return_value=expected):
+                catalog = registry.build_catalog(lightweight=True, include_skills=True)
+
+        self.assertEqual(catalog["skills"], expected)
+
     def test_catalog_merges_tool_registry_and_extension_manifest(self):
         from domain.frontend.registry import FrontendRegistry
 
@@ -1007,7 +1018,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
 
         self.assertEqual(values["general"]["settings_version"], 2)
         self.assertEqual(persisted["general"]["settings_version"], 2)
-        self.assertEqual(persisted_mode, 0o640)
+        if os.name != "nt":
+            self.assertEqual(persisted_mode, 0o640)
         self.assertEqual(temporary_files, [])
 
     def test_settings_atomic_replace_failure_keeps_original(self):
@@ -1073,7 +1085,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                     self.assertEqual(settings_path.read_bytes(), original)
                     self.assertEqual(len(backups), 1)
                     self.assertEqual(backups[0].read_bytes(), original)
-                    self.assertEqual(backups[0].stat().st_mode & 0o777, 0o640)
+                    if os.name != "nt":
+                        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o640)
 
     def test_keyboard_navigation_explicit_false_is_preserved_and_marked(self):
         from domain.frontend.registry import FrontendRegistry
@@ -1102,7 +1115,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             reloaded["general"]["keyboard_button_navigation_source"],
             "user",
         )
-        self.assertEqual(settings_mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(settings_mode, 0o600)
 
     def test_keyboard_navigation_future_version_false_is_not_migrated(self):
         from domain.frontend.registry import FrontendRegistry
@@ -1486,7 +1500,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             pack_root = Path(tmpdir)
             with patch("domain.frontend.registry.AIClient") as mock_client:
                 mock_client.return_value.list_models.return_value = [
-                    {"id": "openrouter/tencent/hy3-preview:free"}
+                    {"id": "openrouter/tencent/hy3:free"}
                 ]
                 registry = FrontendRegistry(pack_root=pack_root)
                 values = registry.update_settings({"models": {"openrouter_api_key": "or-secret"}})
@@ -1611,7 +1625,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
 
             with patch("domain.frontend.registry.AIClient") as mock_client:
                 mock_client.return_value.list_models.return_value = [
-                    {"id": "openrouter/tencent/hy3-preview:free"}
+                    {"id": "openrouter/tencent/hy3:free"}
                 ]
                 values = FrontendRegistry(pack_root=pack_root).get_settings()["values"]
 
@@ -1796,7 +1810,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 values = registry.update_settings(
                     {
                         "models": {
-                            "preferred_model": "openrouter/tencent/hy3-preview:free",
+                            "preferred_model": "openrouter/tencent/hy3:free",
                         }
                     }
                 )
@@ -2095,6 +2109,48 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertTrue(result["data"]["executed"])
         self.assertIn("数時間", result["data"]["message"])
         service.set_deepthink_enabled.assert_called_once_with(True)
+
+    def test_slash_command_registry_returns_authoritative_deepthink_state(self):
+        from domain.frontend.command_registry import SlashCommandRegistry
+
+        registry = SlashCommandRegistry(DEFAULTSPACK_ROOT)
+        snapshot = {
+            "state_ref": "defaultspack:models.deepthink_enabled",
+            "value": True,
+            "revision": 8,
+            "freshness": "authoritative",
+        }
+        with patch(
+            "domain.ai_client.model_runtime_settings.ModelRuntimeSettingsService"
+        ) as service_cls:
+            service = service_cls.return_value
+            service.set_deepthink_enabled.return_value = {
+                "enabled": True,
+                "message": "DeepThinkをONにしました。",
+                "state_snapshot": snapshot,
+            }
+            result = registry.execute(
+                {
+                    "command": "deepthink",
+                    "mode": "chat",
+                    "args": {"enabled": True},
+                    "invocation_id": "deepthink-operation-8",
+                    "idempotency_key": "deepthink-operation-8",
+                    "client_sequence": 8,
+                    "expected_revision": 7,
+                },
+                {},
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["data"]["operation_id"], "deepthink-operation-8")
+        self.assertEqual(result["data"]["client_sequence"], 8)
+        self.assertEqual(result["data"]["state_changes"], [snapshot])
+        service.set_deepthink_enabled.assert_called_once_with(
+            True,
+            expected_revision=7,
+            idempotency_key="deepthink-operation-8",
+        )
 
     def test_slash_command_registry_model_command_opens_picker_without_query(self):
         from domain.frontend.command_registry import SlashCommandRegistry

@@ -12,6 +12,11 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+pytest.skip(
+    "legacy Kanban service/store were retired; contract_facade tests own this boundary",
+    allow_module_level=True,
+)
+
 from domain.tool.task_board import TaskBoardController  # noqa: E402
 from domain.tool.executor import ToolExecutor  # noqa: E402
 from domain.tool.registry import ToolRegistry  # noqa: E402

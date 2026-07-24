@@ -15,6 +15,26 @@ export const settingsApiResources = {
     return providerApiKeyResources.saveProviderApiKey(providerId, value, options) as Promise<ProviderKeySaveResult>;
   },
 
+  renameProviderApiKey(providerId: string, apiId: string, name: string) {
+    return api.renameProviderApiKey(providerId, apiId, name);
+  },
+
+  deleteProviderApiKey(providerId: string, apiId: string) {
+    return api.deleteProviderApiKey(providerId, apiId);
+  },
+
+  saveExternalToken(providerId: string, value: string, options?: Parameters<typeof api.saveExternalToken>[2]) {
+    return api.saveExternalToken(providerId, value, options);
+  },
+
+  renameExternalToken(providerId: string, tokenId: string, name: string) {
+    return api.renameExternalToken(providerId, tokenId, name);
+  },
+
+  deleteExternalToken(providerId: string, tokenId: string) {
+    return api.deleteExternalToken(providerId, tokenId);
+  },
+
   startProviderOAuth(providerId: string, options?: { scopeMode?: string; services?: string[] }) {
     return api.startProviderOAuth(providerId, options);
   },
@@ -74,4 +94,5 @@ export const settingsApiResources = {
   closePublicUrl(urlId: string) {
     return api.closePublicUrl(urlId);
   },
+
 };

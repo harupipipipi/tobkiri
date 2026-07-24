@@ -8,6 +8,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from .paths import discover_pack_locations
 from .profile_runtime_selection import apply_profile_graph_selection
@@ -23,6 +24,68 @@ DEFAULT_PROFILE_ID = "default-profile"
 DEFAULTSPACK_PACK_ID = "defaultspack"
 DEFAULTSPACK_PACK_IDENTITY = "rumi:ecosystem/defaultspack"
 DESKTOP_APP_EXECUTE_PERMISSION = "desktop_app.execute"
+WAVE7_DEFAULT_OWNER_PACKS = (
+    "rumi_conversation_store_pack",
+    "rumi_memory_store_pack",
+    "rumi_knowledge_store_pack",
+    "rumi_turn_runtime_pack",
+    "rumi_context_runtime_pack",
+)
+WAVE8_DEFAULT_SERVICE_PACKS = (
+    "rumi_host_authority_bridge_pack",
+    "rumi_workspace_mount_pack",
+    "rumi_file_inspect_pack",
+    "rumi_file_mutation_pack",
+    "rumi_file_patch_pack",
+    "rumi_shell_policy_pack",
+    "rumi_shell_execute_pack",
+    "rumi_terminal_session_pack",
+    "rumi_git_read_pack",
+    "rumi_git_write_pack",
+    "rumi_git_publish_pack",
+    "rumi_ide_bridge_service_pack",
+    "rumi_coding_sandbox_service_pack",
+    "rumi_browser_host_service_pack",
+    "rumi_desktop_host_service_pack",
+    "rumi_clipboard_host_service_pack",
+    "rumi_media_capture_host_service_pack",
+    "rumi_media_inspect_service_pack",
+    "rumi_ai_modality_pack",
+    "rumi_media_analysis_adapter_pack",
+)
+WAVE9_DEFAULT_SERVICE_PACKS = (
+    "rumi_schedule_store_pack",
+    "rumi_job_action_broker_pack",
+    "rumi_scheduler_runtime_pack",
+    "rumi_scheduler_surface_pack",
+    "rumi_scheduler_tool_adapter_pack",
+    "rumi_connector_registry_service_pack",
+    "rumi_connector_inbound_broker_pack",
+    "rumi_connector_outbound_broker_pack",
+    "rumi_connector_transport_gateway_pack",
+    "rumi_connector_settings_surface_pack",
+    "rumi_connector_oauth_broker_pack",
+    "rumi_generic_webhook_connector_pack",
+    "rumi_slack_connector_pack",
+    "rumi_line_connector_pack",
+    "rumi_discord_connector_pack",
+    "rumi_email_connector_pack",
+    "rumi_p2p_connector_pack",
+    "rumi_http_api_connector_pack",
+    "rumi_mobile_pairing_connector_pack",
+    "rumi_qr_pairing_connector_pack",
+    "rumi_agent_state_store_pack",
+    "rumi_agent_runtime_service_pack",
+    "rumi_connector_turn_adapter_pack",
+    "rumi_company_state_store_pack",
+    "rumi_company_agent_adapter_pack",
+    "rumi_company_coordinator_pack",
+    "rumi_connector_company_adapter_pack",
+    "rumi_company_surface_pack",
+    "rumi_kanban_state_store_pack",
+    "rumi_kanban_conversation_adapter_pack",
+    "rumi_kanban_surface_pack",
+)
 
 # --- graph loader (lazy import to avoid circular dependency) ---
 _graph_loader = None
@@ -136,6 +199,9 @@ class StartupProfileManager:
             return {"error": f"Graph '{graph_id}' has no overridable ports", "status_code": 400}
 
         name = str(payload.get("name") or "").strip() or "New startup profile"
+        icon = self._profile_icon(payload.get("icon"))
+        if payload.get("icon") and icon is None:
+            return {"error": "Profile icon must be an HTTPS image URL", "status_code": 400}
         requested_id = str(payload.get("profile_id") or "").strip()
         profile_id = requested_id or self._unique_profile_id(state["profiles"], name)
         if any(profile["profile_id"] == profile_id for profile in state["profiles"]):
@@ -150,6 +216,7 @@ class StartupProfileManager:
             "graph_ports": graph_ports,
             "packs": [base_pack],
             "node_overrides": {},
+            "icon": icon,
             **self._runtime_profile_fields(profile_id, payload),
         }
         profile = apply_profile_graph_selection(profile)
@@ -175,6 +242,8 @@ class StartupProfileManager:
         index = self._find_profile_index(state["profiles"], profile_id)
         if index is None:
             return {"error": f"Profile '{profile_id}' not found", "status_code": 404}
+        if payload.get("icon") and self._profile_icon(payload.get("icon")) is None:
+            return {"error": "Profile icon must be an HTTPS image URL", "status_code": 400}
         current = copy.deepcopy(state["profiles"][index])
 
         updated = self._build_profile_from_payload(
@@ -742,6 +811,10 @@ class StartupProfileManager:
         new_graph_id = payload.get("graph_id", current.get("graph_id"))
         new_packs = payload.get("packs", current.get("packs", []))
         new_node_overrides = payload.get("node_overrides", current.get("node_overrides", {}))
+        new_icon = payload.get("icon", current.get("icon"))
+        icon = self._profile_icon(new_icon)
+        if new_icon and icon is None:
+            icon = current.get("icon") if isinstance(current.get("icon"), str) else None
 
         graph_ports = current.get("graph_ports", [])
         if new_base_pack and new_graph_id:
@@ -753,6 +826,7 @@ class StartupProfileManager:
             "graph_id": new_graph_id,
             "packs": new_packs,
             "node_overrides": new_node_overrides,
+            "icon": icon,
         }
         for field_name in self._runtime_profile_field_names():
             if field_name in payload or field_name in current:
@@ -777,6 +851,7 @@ class StartupProfileManager:
                 for key, value in node_overrides.items()
                 if isinstance(key, str) and isinstance(value, str)
             },
+            "icon": icon,
             **self._runtime_profile_fields(profile_id, merged_payload),
             "created_at": int(current.get("created_at") or _now_ts()),
             "updated_at": int(updated_at),
@@ -826,27 +901,87 @@ class StartupProfileManager:
             return apply_profile_graph_selection({
                 "version": PROFILE_VERSION,
                 "profile_id": "default-profile",
-                "name": "Default Profile",
+                "name": "Defaults Profile",
                 "base_pack": base_pack,
                 "graph_id": graph_id,
                 "graph_ports": graph_ports,
-                "packs": [base_pack],
+                "packs": self._default_profile_pack_ids(catalog, base_pack),
+                "policy": {
+                    "capabilities": self._profile_pack_capabilities(
+                        self._default_profile_pack_ids(catalog, base_pack),
+                    )
+                },
                 "node_overrides": {},
                 "created_at": created_at,
                 "updated_at": created_at,
                 **self._runtime_profile_fields(
                     "default-profile",
                     {
-                        "name": "Default Profile",
-                        "display_name": {"en": "Default Profile", "ja": "Default Profile"},
+                        "name": "Defaults Profile",
+                        "display_name": {"en": "Defaults Profile", "ja": "Defaults Profile"},
                         "default_graph": graph_id,
                         "capability_profile_id": graph_id,
                         "launch_capability_graph": True,
                         "surfaces": {"preferred": "browser", "enabled": ["browser", "cli"]},
+                        "metadata": {"default_profile_pack_mode": "all_available"},
                     },
                 ),
             })
         return None
+
+    def _profile_pack_capabilities(self, pack_ids: List[str]) -> List[str]:
+        """Return the declared capability scope selected during setup."""
+        capabilities: set[str] = set()
+        # Capability metadata is static manifest data.  Do not route this
+        # lookup through ``_discover_packs``: that path verifies every Pack's
+        # complete file hash and made a harmless profile normalization perform
+        # the expensive security scan once per selected Pack.  Besides making
+        # the control-panel GET endpoint take minutes, it duplicated work that
+        # ``_build_catalog`` has already performed for availability status.
+        locations = {
+            location.pack_id: location
+            for location in discover_pack_locations(self.ecosystem_dir)
+        }
+        for pack_id in pack_ids:
+            location = locations.get(pack_id)
+            pack_subdir = location.pack_subdir if location is not None else None
+            if not pack_subdir:
+                continue
+            try:
+                manifest = json.loads(
+                    (Path(pack_subdir) / "ecosystem.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+            except (OSError, json.JSONDecodeError):
+                continue
+            values = manifest.get("required_capabilities")
+            if isinstance(values, list):
+                capabilities.update(
+                    str(value).strip() for value in values if str(value).strip()
+                )
+        return sorted(capabilities)
+
+    def _default_profile_pack_ids(
+        self,
+        catalog: Dict[str, Any],
+        base_pack: str,
+    ) -> List[str]:
+        """Return only Packs that are already available to the runtime.
+
+        Initial startup happens before setup has collected the user's review.
+        Pulling unapproved dependencies into the auto-seeded profile at that
+        point can activate host-execution preflight and prevent the setup UI
+        from starting.  The setup API separately reviews and approves the
+        complete official bundled set; once that transaction finishes those
+        Packs become available and are included here normally.
+        """
+        available_pack_ids = sorted(
+            str(pack.get("pack_id") or "").strip()
+            for pack in catalog.get("packs", [])
+            if pack.get("available")
+        )
+        return self._unique_string_list([base_pack, *available_pack_ids])
 
     def _normalize_state(self, state: Dict[str, Any], catalog: Dict[str, Any]) -> Dict[str, Any]:
         profiles = state.get("profiles")
@@ -865,7 +1000,10 @@ class StartupProfileManager:
             else:
                 normalized = self._migrate_profile(profile_id, raw_profile, catalog)
             normalized = apply_profile_graph_selection(normalized)
-            normalized = self._normalize_default_profile_launch_fields(normalized)
+            normalized = self._normalize_default_profile_launch_fields(
+                normalized,
+                catalog,
+            )
             normalized["name"] = str(raw_profile.get("name") or normalized.get("name") or profile_id)
             normalized["created_at"] = int(raw_profile.get("created_at") or _now_ts())
             normalized["updated_at"] = int(raw_profile.get("updated_at") or normalized["created_at"])
@@ -874,13 +1012,37 @@ class StartupProfileManager:
         if not normalized_profiles:
             return self._default_state(catalog)
 
+        legacy_placeholder_ids = {
+            profile["profile_id"]
+            for profile in normalized_profiles
+            if self._is_legacy_placeholder_profile(profile)
+        }
+        collapsed_placeholder_ids: set[str] = set()
+        if (
+            len(legacy_placeholder_ids) >= 2
+            and self._get_profile(normalized_profiles, DEFAULT_PROFILE_ID) is None
+        ):
+            default_profile = self._default_startup_profile(catalog)
+            if default_profile is not None:
+                normalized_profiles = [
+                    profile
+                    for profile in normalized_profiles
+                    if profile["profile_id"] not in legacy_placeholder_ids
+                ]
+                normalized_profiles.insert(0, default_profile)
+                collapsed_placeholder_ids = legacy_placeholder_ids
+
         active_profile_id = str(state.get("active_profile_id") or "").strip() or None
+        if active_profile_id in collapsed_placeholder_ids:
+            active_profile_id = DEFAULT_PROFILE_ID
         if active_profile_id and self._get_profile(normalized_profiles, active_profile_id) is None:
             active_profile_id = None
         if active_profile_id is None:
             active_profile_id = normalized_profiles[0]["profile_id"]
 
         last_launched_profile_id = str(state.get("last_launched_profile_id") or "").strip() or None
+        if last_launched_profile_id in collapsed_placeholder_ids:
+            last_launched_profile_id = None
         if last_launched_profile_id and self._get_profile(normalized_profiles, last_launched_profile_id) is None:
             last_launched_profile_id = None
 
@@ -890,6 +1052,26 @@ class StartupProfileManager:
             "last_launched_profile_id": last_launched_profile_id,
             "profiles": normalized_profiles,
         }
+
+    @staticmethod
+    def _is_legacy_placeholder_profile(profile: Dict[str, Any]) -> bool:
+        """Identify untouched profiles created by the former eager-create UI bug."""
+        profile_id = str(profile.get("profile_id") or "")
+        name = str(profile.get("name") or "")
+        placeholder_id = (
+            profile_id == "new-profile"
+            or profile_id == "new-custom-profile"
+            or profile_id.startswith("new-custom-profile-")
+        )
+        return (
+            placeholder_id
+            and name in {"New Profile", "New custom profile"}
+            and profile.get("base_pack") == DEFAULTSPACK_PACK_ID
+            and set(profile.get("packs") or []) <= {DEFAULTSPACK_PACK_ID}
+            and not profile.get("node_overrides")
+            and not profile.get("icon")
+            and int(profile.get("created_at") or 0) == int(profile.get("updated_at") or -1)
+        )
 
     def _migrate_profile(
         self,
@@ -943,7 +1125,11 @@ class StartupProfileManager:
             **runtime,
         })
 
-    def _normalize_default_profile_launch_fields(self, profile: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_default_profile_launch_fields(
+        self,
+        profile: Dict[str, Any],
+        catalog: Dict[str, Any],
+    ) -> Dict[str, Any]:
         if (
             profile.get("profile_id") != DEFAULT_PROFILE_ID
             or profile.get("base_pack") != DEFAULTSPACK_PACK_ID
@@ -957,6 +1143,57 @@ class StartupProfileManager:
             normalized.get("capability_profile_id") or "defaultspack.startup"
         )
         normalized["launch_capability_graph"] = True
+        selected_packs = [str(item) for item in normalized.get("packs") or []]
+        legacy_auto_packs = {
+            *WAVE7_DEFAULT_OWNER_PACKS,
+            *WAVE8_DEFAULT_SERVICE_PACKS,
+            *WAVE9_DEFAULT_SERVICE_PACKS,
+        }
+        selected = (
+            normalized.get("metadata", {}).get("selected", {})
+            if isinstance(normalized.get("metadata"), dict)
+            else {}
+        )
+        metadata = normalized.get("metadata")
+        uses_all_available_pack_set = (
+            isinstance(metadata, dict)
+            and metadata.get("default_profile_pack_mode") == "all_available"
+        )
+        has_explicit_selection = any(
+            bool(value) for value in selected.values()
+        ) if isinstance(selected, dict) else False
+        if (
+            legacy_auto_packs.issubset(set(selected_packs))
+            and not has_explicit_selection
+            and not uses_all_available_pack_set
+        ):
+            selected_packs = [
+                pack_id for pack_id in selected_packs
+                if pack_id not in legacy_auto_packs
+            ]
+        if DEFAULTSPACK_PACK_ID not in selected_packs:
+            selected_packs.insert(0, DEFAULTSPACK_PACK_ID)
+        # A previous first-run profile contained only the base pack.  Upgrade
+        # that untouched default to the full currently enabled pack set while
+        # leaving any user-customized selection alone.
+        if (
+            selected_packs == [DEFAULTSPACK_PACK_ID]
+            or (uses_all_available_pack_set and not has_explicit_selection)
+        ):
+            selected_packs = self._default_profile_pack_ids(
+                catalog,
+                DEFAULTSPACK_PACK_ID,
+            )
+            if not isinstance(metadata, dict):
+                metadata = {}
+                normalized["metadata"] = metadata
+            metadata["default_profile_pack_mode"] = "all_available"
+        normalized["packs"] = selected_packs
+        policy = normalized.get("policy")
+        normalized["policy"] = {
+            **(policy if isinstance(policy, dict) else {}),
+            "capabilities": self._profile_pack_capabilities(selected_packs),
+        }
 
         surfaces = normalized.get("surfaces")
         legacy_default = surfaces in (
@@ -1858,6 +2095,19 @@ class StartupProfileManager:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _profile_icon(value: Any) -> Optional[str]:
+        """Return a safe custom profile icon URL, or ``None`` for the default."""
+        if not isinstance(value, str):
+            return None
+        icon = value.strip()
+        if not icon or len(icon) > 2048:
+            return None
+        parsed = urlparse(icon)
+        if parsed.scheme == "https" and parsed.netloc:
+            return icon
+        return None
 
     @staticmethod
     def _find_profile_index(profiles: List[Dict[str, Any]], profile_id: str) -> Optional[int]:

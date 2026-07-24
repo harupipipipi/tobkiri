@@ -62,10 +62,11 @@ from .paths import (
     LOCAL_PACK_DIR,
     OFFICIAL_FLOWS_DIR,
     ECOSYSTEM_DIR,
-    discover_pack_locations,
+    resolve_pack_locations,
     get_pack_flow_dirs,
     get_shared_flow_dir,
 )
+from .resolved_profile_scope import effective_pack_ids
 
 logger = logging.getLogger(__name__)
 
@@ -472,10 +473,11 @@ class FlowLoader:
         """
         pack提供Flowをロード（承認必須）
 
-        discover_pack_locations() で検出された全packについて、
+        active ResolvedProfileのeffective packだけをIDで直接解決し、
         pack_subdir 基準で flows/ と backend/flows/ を探索する。
         """
-        locations = discover_pack_locations(str(ECOSYSTEM_DIR))
+        effective = effective_pack_ids()
+        locations = resolve_pack_locations(effective, str(ECOSYSTEM_DIR))
 
         for loc in locations:
             pack_id = loc.pack_id

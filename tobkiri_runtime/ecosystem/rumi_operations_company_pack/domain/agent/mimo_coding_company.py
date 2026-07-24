@@ -830,12 +830,24 @@ class MimoCodingCompanyRuntime:
         override = os.environ.get("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", "").strip()
         if override:
             return Path(override)
+        user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+        if user_data:
+            return (
+                Path(user_data).expanduser()
+                / "defaultspack"
+                / "shared"
+                / "mimo_coding_company"
+                / "state.json"
+            )
         return self.pack_root / "user_data" / "shared" / "mimo_coding_company" / "state.json"
 
     def _resolve_schedules_dir(self) -> Path:
         override = os.environ.get("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", "").strip()
         if override:
             return Path(override)
+        user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+        if user_data:
+            return Path(user_data).expanduser() / "defaultspack" / "shared" / "schedules"
         runtime_root = self.pack_root.parent.parent if self.pack_root.parent.name == "ecosystem" else self.pack_root.parent
         return runtime_root / "user_data" / "shared" / "schedules"
 

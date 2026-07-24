@@ -2,34 +2,42 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Boxes,
   CheckCircle2,
-  Copy,
-  GitBranch,
-  Loader2,
-  Plug,
+  ChevronRight,
+  Globe2,
+  Package,
   RefreshCw,
   Search,
   ShieldCheck,
-  TriangleAlert,
+  Unplug,
 } from 'lucide-react';
 
 import { Badge } from '@/src/components/ui/Badge';
 import { Button } from '@/src/components/ui/Button';
-import { Input } from '@/src/components/ui/Input';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
+import { TobkiriLoader, TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
+
+function NodeManagerSkeleton() {
+  return (
+    <div className="flex flex-1 flex-col gap-5 overflow-hidden bg-bg-main p-6" role="status" aria-label="Loading capability access">
+      <div className="h-8 w-56 animate-pulse rounded bg-bg-hover" />
+      <div className="grid flex-1 gap-3 lg:grid-cols-[minmax(220px,280px)_1fr_minmax(280px,360px)]">
+        {[0, 1, 2].map((item) => <div key={item} className="animate-pulse rounded-lg border border-border bg-bg-card" />)}
+      </div>
+    </div>
+  );
+}
 import {
-  cloneCapabilityProfile,
-  compileCapabilityGraph,
-  fetchCapabilityGraphs,
+  approvePack,
+  disableCapabilityProfileNode,
+  enableCapabilityProfileNode,
   fetchCapabilityProfileNodes,
   fetchCapabilityProfiles,
-  validateCapabilityGraph,
+  fetchStartupProfiles,
 } from '@/src/lib/api';
 import type {
-  ApiCapabilityGraph,
   ApiCapabilityNode,
   ApiCapabilityProfile,
-  CapabilityGraphCompileResponseData,
-  StartupProfileRelationship,
+  ApiStartupProfile,
 } from '@/src/lib/apiTypes';
 import {
   capabilityNodeDescription,
@@ -42,72 +50,144 @@ import {
 import { cn } from '@/src/lib/utils';
 import { useAppStore } from '@/src/store';
 
-function statusVariant(status?: string): 'default' | 'secondary' | 'destructive' | 'outline' {
-  if (status === 'ready') return 'default';
-  if (status === 'disabled') return 'secondary';
-  if (status === 'missing_config' || status === 'missing_node' || status === 'unapproved') {
-    return 'destructive';
-  }
-  return 'outline';
+type CapabilityPackGroup = {
+  packId: string;
+  nodes: ApiCapabilityNode[];
+  enabledCount: number;
+  readyCount: number;
+};
+
+type CapabilityAccessCache = {
+  startupProfiles: ApiStartupProfile[];
+  capabilityProfiles: ApiCapabilityProfile[];
+  capabilityProfileId: string;
+  nodes: ApiCapabilityNode[];
+  selectedPackId: string;
+  selectedNodeId: string;
+};
+
+let capabilityAccessCache: CapabilityAccessCache | null = null;
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
-function canCloneProfile(profile: ApiCapabilityProfile | null): boolean {
-  return profile?.permissions?.can_create_profile === true;
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
+export function capabilityPackId(node: ApiCapabilityNode): string {
+  const fromMetadata = node.metadata?.pack_id;
+  if (typeof fromMetadata === 'string' && fromMetadata.trim()) return fromMetadata;
+  return node.node_id.split('.')[0] ?? 'unknown';
+}
+
+export function capabilityDomains(node: ApiCapabilityNode): string[] {
+  const metadata = recordValue(node.metadata);
+  const requirements = recordValue(node.requirements);
+  const permissions = recordValue(node.permissions);
+  const requirementNetwork = recordValue(requirements.network);
+  const permissionNetwork = recordValue(permissions.network);
+  return [...new Set([
+    ...stringList(metadata.allowed_domains),
+    ...stringList(metadata.network_domains),
+    ...stringList(requirementNetwork.domains),
+    ...stringList(requirementNetwork.allowed_domains),
+    ...stringList(permissionNetwork.domains),
+    ...stringList(permissionNetwork.allowed_domains),
+  ])].sort();
+}
+
+export function capabilityProfileForStartup(
+  startupProfile: ApiStartupProfile | null,
+  capabilityProfiles: ApiCapabilityProfile[],
+): string {
+  const candidates = [
+    startupProfile?.capability_profile_id,
+    startupProfile?.default_graph,
+    startupProfile?.graph_id,
+  ].filter((value): value is string => Boolean(value));
+  return candidates.find((candidate) => (
+    capabilityProfiles.some((profile) => profile.profile_id === candidate)
+  )) ?? capabilityProfiles[0]?.profile_id ?? '';
+}
+
+function buildPackGroups(nodes: ApiCapabilityNode[]): CapabilityPackGroup[] {
+  const groups = new Map<string, ApiCapabilityNode[]>();
+  nodes.forEach((node) => {
+    const packId = capabilityPackId(node);
+    groups.set(packId, [...(groups.get(packId) ?? []), node]);
+  });
+  return [...groups.entries()]
+    .map(([packId, packNodes]) => ({
+      packId,
+      nodes: packNodes.sort((left, right) => capabilityNodeLabel(left).localeCompare(capabilityNodeLabel(right))),
+      enabledCount: packNodes.filter((node) => node.state?.enabled).length,
+      readyCount: packNodes.filter((node) => node.state?.status === 'ready').length,
+    }))
+    .sort((left, right) => left.packId.localeCompare(right.packId));
 }
 
 export function NodeManager() {
-  const addToast = useAppStore(state => state.addToast);
-  const [profiles, setProfiles] = useState<ApiCapabilityProfile[]>([]);
-  const [graphs, setGraphs] = useState<ApiCapabilityGraph[]>([]);
-  const [selectedProfileId, setSelectedProfileId] = useState('');
-  const [selectedGraphId, setSelectedGraphId] = useState('');
-  const [nodes, setNodes] = useState<ApiCapabilityNode[]>([]);
-  const [paletteNodes, setPaletteNodes] = useState<ApiCapabilityNode[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState('');
-  const [relationship, setRelationship] = useState<StartupProfileRelationship | null>(null);
+  const addToast = useAppStore((state) => state.addToast);
+  const selectedStartupProfileId = useAppStore((state) => state.selectedStartupProfileId);
+  const setSelectedStartupProfileId = useAppStore((state) => state.setSelectedStartupProfileId);
+  const [startupProfiles, setStartupProfiles] = useState<ApiStartupProfile[]>(
+    () => capabilityAccessCache?.startupProfiles ?? [],
+  );
+  const [capabilityProfiles, setCapabilityProfiles] = useState<ApiCapabilityProfile[]>(
+    () => capabilityAccessCache?.capabilityProfiles ?? [],
+  );
+  const [capabilityProfileId, setCapabilityProfileId] = useState(
+    () => capabilityAccessCache?.capabilityProfileId ?? '',
+  );
+  const [nodes, setNodes] = useState<ApiCapabilityNode[]>(
+    () => capabilityAccessCache?.nodes ?? [],
+  );
+  const [selectedPackId, setSelectedPackId] = useState(
+    () => capabilityAccessCache?.selectedPackId ?? '',
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState(
+    () => capabilityAccessCache?.selectedNodeId ?? '',
+  );
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => capabilityAccessCache === null);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [preview, setPreview] = useState<CapabilityGraphCompileResponseData | null>(null);
   const [initialError, setInitialError] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<string | null>(null);
 
-  const selectedProfile = profiles.find(profile => profile.profile_id === selectedProfileId) ?? null;
-  const selectedNode = nodes.find(node => node.node_id === selectedNodeId) ?? null;
-
-  const filteredNodes = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return nodes;
-    return nodes.filter(node => {
-      const haystack = [
-        node.node_id,
-        capabilityNodeLabel(node),
-        capabilityNodeDescription(node),
-        String(node.metadata?.category ?? ''),
-      ].join(' ').toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [nodes, search]);
+  const selectedStartupProfile = startupProfiles.find(
+    (profile) => profile.profile_id === selectedStartupProfileId,
+  ) ?? null;
 
   const loadInitial = async () => {
-    setLoading(true);
+    const hasCachedContent = startupProfiles.length > 0 && capabilityProfiles.length > 0;
+    setLoading(!hasCachedContent);
     try {
-      const [profileData, graphData] = await Promise.all([
+      const [startupData, capabilityData] = await Promise.all([
+        fetchStartupProfiles(),
         fetchCapabilityProfiles(),
-        fetchCapabilityGraphs(),
       ]);
-      setProfiles(profileData.profiles);
-      setRelationship(profileData.startup_profile_relationship);
-      setGraphs(graphData.graphs);
-      const nextProfile = selectedProfileId || profileData.profiles[0]?.profile_id || '';
-      const nextGraph = selectedGraphId || profileData.profiles[0]?.default_graph || graphData.graphs[0]?.graph_id || '';
-      setSelectedProfileId(nextProfile);
-      setSelectedGraphId(nextGraph);
+      setStartupProfiles(startupData.profiles);
+      setCapabilityProfiles(capabilityData.profiles);
+      const startupId = startupData.profiles.some(
+        (profile) => profile.profile_id === selectedStartupProfileId,
+      )
+        ? selectedStartupProfileId
+        : startupData.active_profile_id ?? startupData.profiles[0]?.profile_id ?? '';
+      setSelectedStartupProfileId(startupId);
+      const startupProfile = startupData.profiles.find((profile) => profile.profile_id === startupId) ?? null;
+      setCapabilityProfileId(capabilityProfileForStartup(startupProfile, capabilityData.profiles));
       setInitialError(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load capability profiles';
-      setInitialError(message);
-      addToast(message, 'error');
+      if (!hasCachedContent) {
+        setInitialError(error instanceof Error ? error.message : 'Failed to load capability access');
+      }
     } finally {
       setLoading(false);
     }
@@ -118,318 +198,378 @@ export function NodeManager() {
   }, []);
 
   useEffect(() => {
-    if (!selectedProfileId) return;
-    let cancelled = false;
+    if (!selectedStartupProfile || capabilityProfiles.length === 0) return;
+    setCapabilityProfileId(capabilityProfileForStartup(selectedStartupProfile, capabilityProfiles));
+  }, [capabilityProfiles, selectedStartupProfile]);
+
+  const loadProfileNodes = async (profileId: string) => {
+    if (!profileId) return;
     setProfileLoading(true);
-    setPreview(null);
-    fetchCapabilityProfileNodes(selectedProfileId)
-      .then(data => {
-        if (cancelled) return;
-        const normalized = normalizeCapabilityProfileNodes(
-          data,
-          profiles.find(profile => profile.profile_id === selectedProfileId) ?? null,
-        );
-        setNodes(normalized.nodes);
-        setPaletteNodes(normalized.paletteNodes);
-        setSelectedNodeId(current => (
-          normalized.nodes.some(node => node.node_id === current)
-            ? current
-            : normalized.nodes[0]?.node_id ?? ''
-        ));
-        if (!selectedGraphId && normalized.profile?.default_graph) {
-          setSelectedGraphId(normalized.profile.default_graph);
-        }
-        setProfileError(null);
-      })
-      .catch(error => {
-        if (!cancelled) {
-          const message = error instanceof Error ? error.message : 'Failed to load profile nodes';
-          setProfileError(message);
-          addToast(message, 'error');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setProfileLoading(false);
-      });
-    return () => {
-      cancelled = true;
+    try {
+      const response = await fetchCapabilityProfileNodes(profileId);
+      const normalized = normalizeCapabilityProfileNodes(
+        response,
+        capabilityProfiles.find((profile) => profile.profile_id === profileId) ?? null,
+      );
+      setNodes(normalized.nodes);
+      const groups = buildPackGroups(normalized.nodes);
+      setSelectedPackId((current) => groups.some((group) => group.packId === current)
+        ? current
+        : groups[0]?.packId ?? '');
+      setSelectedNodeId((current) => normalized.nodes.some((node) => node.node_id === current)
+        ? current
+        : normalized.nodes[0]?.node_id ?? '');
+      setProfileError(null);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Failed to load profile capability access');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProfileNodes(capabilityProfileId);
+  }, [capabilityProfileId]);
+
+  useEffect(() => {
+    if (!startupProfiles.length || !capabilityProfiles.length || !capabilityProfileId) return;
+    capabilityAccessCache = {
+      startupProfiles,
+      capabilityProfiles,
+      capabilityProfileId,
+      nodes,
+      selectedPackId,
+      selectedNodeId,
     };
-  }, [addToast, profiles, selectedGraphId, selectedProfileId]);
+  }, [startupProfiles, capabilityProfiles, capabilityProfileId, nodes, selectedPackId, selectedNodeId]);
 
-  const runValidate = async () => {
-    if (!selectedGraphId || !selectedProfileId) return;
+  const packGroups = useMemo(() => buildPackGroups(nodes), [nodes]);
+  const selectedPack = packGroups.find((group) => group.packId === selectedPackId) ?? null;
+  const visibleNodes = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const packNodes = selectedPack?.nodes ?? [];
+    if (!term) return packNodes;
+    return packNodes.filter((node) => [
+      node.node_id,
+      capabilityNodeLabel(node),
+      capabilityNodeDescription(node),
+      ...capabilityDomains(node),
+    ].join(' ').toLowerCase().includes(term));
+  }, [search, selectedPack]);
+  const selectedNode = nodes.find((node) => node.node_id === selectedNodeId)
+    ?? visibleNodes[0]
+    ?? null;
+
+  const refreshProfile = async () => {
+    await loadProfileNodes(capabilityProfileId);
+  };
+
+  const setNodeEnabled = async (node: ApiCapabilityNode, enabled: boolean) => {
+    if (!capabilityProfileId) return;
+    const previousNodes = nodes;
+    setUpdating(node.node_id);
+    setNodes((current) => current.map((candidate) => candidate.node_id === node.node_id
+      ? {...candidate, state: {...candidate.state, enabled}}
+      : candidate));
     try {
-      const result = await validateCapabilityGraph(selectedGraphId, selectedProfileId);
-      setPreview(result);
-      addToast(result.ok ? 'Graph validation passed' : 'Graph validation failed', result.ok ? 'success' : 'error');
+      if (enabled) {
+        await enableCapabilityProfileNode(capabilityProfileId, node.node_id);
+      } else {
+        await disableCapabilityProfileNode(capabilityProfileId, node.node_id);
+      }
+      await refreshProfile();
+      addToast(`${capabilityNodeLabel(node)} ${enabled ? 'enabled' : 'disabled'} for this profile.`, 'success');
     } catch (error) {
-      addToast(error instanceof Error ? error.message : 'Graph validation failed', 'error');
+      setNodes(previousNodes);
+      addToast(error instanceof Error ? error.message : 'Capability access could not be updated', 'error');
+    } finally {
+      setUpdating(null);
     }
   };
 
-  const runCompile = async () => {
-    if (!selectedGraphId || !selectedProfileId) return;
+  const setPackEnabled = async (pack: CapabilityPackGroup, enabled: boolean) => {
+    const changeableNodes = pack.nodes.filter((node) => node.node_id !== 'rumi.start');
+    const changeableNodeIds = new Set(changeableNodes.map((node) => node.node_id));
+    const previousNodes = nodes;
+    setUpdating(`pack:${pack.packId}`);
+    setNodes((current) => current.map((node) => changeableNodeIds.has(node.node_id)
+      ? {...node, state: {...node.state, enabled}}
+      : node));
     try {
-      const result = await compileCapabilityGraph(selectedGraphId, selectedProfileId);
-      setPreview(result);
-      addToast(result.ok ? 'Compile preview ready' : 'Compile preview failed', result.ok ? 'success' : 'error');
+      await Promise.all(changeableNodes.map((node) => (
+        enabled
+          ? enableCapabilityProfileNode(capabilityProfileId, node.node_id)
+          : disableCapabilityProfileNode(capabilityProfileId, node.node_id)
+      )));
+      await refreshProfile();
+      addToast(`${pack.packId} ${enabled ? 'enabled' : 'disabled'} for this profile.`, 'success');
     } catch (error) {
-      addToast(error instanceof Error ? error.message : 'Compile preview failed', 'error');
+      setNodes(previousNodes);
+      addToast(error instanceof Error ? error.message : 'Pack access could not be updated', 'error');
+    } finally {
+      setUpdating(null);
     }
   };
 
-  const cloneProfile = async () => {
-    if (!selectedProfile) return;
-    const profileId = `${selectedProfile.profile_id}_copy`;
+  const approveCapabilityPack = async (packId: string) => {
+    setUpdating(`approve:${packId}`);
     try {
-      const result = await cloneCapabilityProfile(selectedProfile.profile_id, {
-        profile_id: profileId,
-        display_name: `${selectedProfile.label} Copy`,
-      });
-      addToast(`${result.profile.label} created`, 'success');
-      await loadInitial();
-      setSelectedProfileId(result.profile.profile_id);
+      await approvePack(packId);
+      await refreshProfile();
+      addToast(`${packId} approved.`, 'success');
     } catch (error) {
-      addToast(error instanceof Error ? error.message : 'Profile clone failed', 'error');
+      addToast(error instanceof Error ? error.message : 'Pack approval failed', 'error');
+    } finally {
+      setUpdating(null);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center bg-bg-main">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-accent" />
-          <span className="text-sm text-text-muted">Loading capability graph</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (initialError && profiles.length === 0 && graphs.length === 0) {
+  if (loading) return <NodeManagerSkeleton />;
+  if (initialError) {
     return (
       <div className="flex flex-1 items-center justify-center bg-bg-main p-6">
-        <div className="w-full max-w-xl">
-          <InlineLoadError
-            title="Node Manager could not be loaded"
-            message={initialError}
-            onRetry={() => void loadInitial()}
-            retrying={loading}
-          />
-        </div>
+        <InlineLoadError message={initialError} onRetry={() => void loadInitial()} title="Capability access could not load" />
       </div>
     );
   }
 
+  const packFullyEnabled = Boolean(selectedPack?.nodes.length)
+    && selectedPack?.nodes.every((node) => node.state?.enabled);
+
   return (
-    <div className="flex flex-1 flex-col gap-5 overflow-y-auto bg-bg-main p-6 animate-in fade-in slide-in-from-bottom-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-bg-main p-5">
+      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-text-main">Node Manager</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-            <span>{relationship?.launch_time_source_of_truth ?? 'StartupProfileManager'}</span>
-            <span>-</span>
-            <span>{relationship?.capability_graph_profiles_role ?? 'graph_runtime_presets'}</span>
-          </div>
+          <h1 className="text-xl font-semibold text-text-main">Capability Access</h1>
+          <p className="mt-1 text-xs text-text-muted">
+            Choose a profile, then a Pack, then control each Node capability.
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void loadInitial()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Capability profile"
+            className="rumi-select h-9 min-w-56 rounded-lg border border-border bg-bg-card px-3 pr-9 text-sm text-text-main"
+            onChange={(event) => setSelectedStartupProfileId(event.target.value)}
+            value={selectedStartupProfileId}
+          >
+            {startupProfiles.map((profile) => (
+              <option key={profile.profile_id} value={profile.profile_id}>{profile.name}</option>
+            ))}
+          </select>
+          <Button onClick={() => void refreshProfile()} size="sm" variant="outline">
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
+        </div>
+      </header>
 
-      {initialError ? (
-        <InlineLoadError title="Refresh failed" message={initialError} onRetry={() => void loadInitial()} retrying={loading} stale />
-      ) : null}
       {profileError ? (
-        <InlineLoadError
-          title="Profile nodes could not be refreshed"
-          message={profileError}
-          onRetry={() => {
-            const current = selectedProfileId;
-            setSelectedProfileId('');
-            queueMicrotask(() => setSelectedProfileId(current));
-          }}
-          retrying={profileLoading}
-          stale={nodes.length > 0}
-        />
+        <InlineLoadError message={profileError} onRetry={() => void refreshProfile()} title="Profile access could not load" />
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr_minmax(280px,360px)]">
-        <section className="rounded-lg border border-border bg-bg-card p-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-text-main">Profiles</h2>
-            {canCloneProfile(selectedProfile) && (
-              <Button variant="ghost" size="icon" title="Clone profile" onClick={() => void cloneProfile()}>
-                <Copy className="h-4 w-4" />
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[220px_minmax(340px,1fr)_320px]">
+        <section className="min-h-0 overflow-y-auto rounded-xl border border-border bg-bg-card p-3">
+          <div className="mb-3 flex items-center gap-2 px-1">
+            <Package className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold text-text-main">Packs</h2>
+          </div>
+          <div className="space-y-1.5">
+            {packGroups.map((pack) => (
+              <button
+                className={cn(
+                  'w-full rounded-lg border px-3 py-2.5 text-left transition',
+                  selectedPackId === pack.packId
+                    ? 'border-accent bg-accent/10'
+                    : 'border-transparent hover:border-border hover:bg-bg-hover',
+                )}
+                key={pack.packId}
+                onClick={() => {
+                  setSelectedPackId(pack.packId);
+                  setSelectedNodeId(pack.nodes[0]?.node_id ?? '');
+                }}
+                type="button"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium text-text-main">{pack.packId}</span>
+                  <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
+                </div>
+                <div className="mt-1 text-[11px] text-text-muted">
+                  {pack.enabledCount}/{pack.nodes.length} enabled · {pack.readyCount} ready
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <main className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-bg-card">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Boxes className="h-4 w-4 text-accent" />
+                <h2 className="text-sm font-semibold text-text-main">{selectedPackId || 'Select a Pack'}</h2>
+                {profileLoading && nodes.length > 0 ? <TobkiriLoadingMark /> : null}
+              </div>
+              <p className="mt-1 text-xs text-text-muted">Nodes are execution parts owned by this Pack.</p>
+            </div>
+            {selectedPack ? (
+              <Button
+                loading={updating === `pack:${selectedPack.packId}`}
+                onClick={() => void setPackEnabled(selectedPack, !packFullyEnabled)}
+                size="sm"
+                variant={packFullyEnabled ? 'outline' : 'default'}
+              >
+                {packFullyEnabled ? <Unplug className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                {packFullyEnabled ? 'Disable Pack access' : 'Enable Pack access'}
               </Button>
-            )}
+            ) : null}
           </div>
-          <div className="space-y-2">
-            {profiles.map(profile => (
-              <button
-                key={profile.profile_id}
-                className={cn(
-                  "w-full rounded-md border px-3 py-2 text-left transition-colors",
-                  selectedProfileId === profile.profile_id
-                    ? "border-text-muted/50 bg-bg-hover text-text-main"
-                    : "border-border text-text-muted hover:bg-bg-hover hover:text-text-main",
-                )}
-                onClick={() => setSelectedProfileId(profile.profile_id)}
-              >
-                <div className="truncate text-sm font-medium">{profile.label}</div>
-                <div className="truncate text-xs">{profile.profile_id}</div>
-              </button>
-            ))}
+          <div className="shrink-0 border-b border-border p-3">
+            <label className="flex items-center gap-2 rounded-lg border border-border bg-bg-main px-3 py-2">
+              <Search className="h-4 w-4 text-text-muted" />
+              <input
+                aria-label="Search capabilities"
+                className="min-w-0 flex-1 bg-transparent text-sm text-text-main outline-none"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search Nodes, capabilities, or domains"
+                value={search}
+              />
+            </label>
           </div>
-        </section>
-
-        <section className="rounded-lg border border-border bg-bg-card p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Boxes className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-main">Catalog</h2>
-              {profileLoading && <Loader2 className="h-4 w-4 animate-spin text-text-muted" />}
-            </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-              <Input value={search} onChange={event => setSearch(event.target.value)} className="pl-9" />
-            </div>
-          </div>
-
-          {profileError && nodes.length === 0 ? (
-            <div className="border border-dashed border-border p-6 text-center text-sm text-text-muted">
-              Node counts are unavailable until this profile loads successfully.
-            </div>
-          ) : <>
-            <div className="mb-4 flex flex-wrap gap-2">
-              <Badge variant="outline">{nodes.length} installed</Badge>
-              <Badge variant="default">{paletteNodes.length} palette</Badge>
-              <Badge variant="secondary">{nodes.filter(node => node.state?.status === 'disabled').length} disabled</Badge>
-            </div>
-
-            <div className="grid gap-2 2xl:grid-cols-2">
-            {filteredNodes.map(node => (
-              <button
-                key={node.node_id}
-                className={cn(
-                  "block w-full px-3 py-3 text-left transition-colors",
-                  selectedNodeId === node.node_id
-                    ? "bg-bg-hover"
-                    : "hover:bg-bg-hover/70",
-                )}
-                onClick={() => setSelectedNodeId(node.node_id)}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-text-main">{node.label}</div>
-                    <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted">{node.node_id}</div>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+            {profileLoading && nodes.length === 0 ? (
+              <TobkiriLoader className="min-h-64" label="Loading profile capabilities" scope="inline" />
+            ) : null}
+            {visibleNodes.map((node) => {
+              const domains = capabilityDomains(node);
+              const enabled = node.state?.enabled === true;
+              const approved = node.state?.approved !== false;
+              return (
+                <article
+                  className={cn(
+                    'rounded-xl border p-3 transition',
+                    selectedNode?.node_id === node.node_id
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border bg-bg-main hover:bg-bg-hover/40',
+                  )}
+                  key={node.node_id}
+                  onClick={() => setSelectedNodeId(node.node_id)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedNodeId(node.node_id)} type="button">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-text-main">{capabilityNodeLabel(node)}</span>
+                        <Badge variant={node.state?.status === 'ready' ? 'success' : 'secondary'}>{node.state?.status ?? 'unknown'}</Badge>
+                      </div>
+                      <div className="mt-1 truncate font-mono text-[11px] text-text-muted">{node.node_id}</div>
+                      {domains.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {domains.slice(0, 4).map((domain) => <Badge key={domain} variant="outline">{domain}</Badge>)}
+                        </div>
+                      ) : null}
+                    </button>
+                    {approved ? (
+                      <button
+                        aria-checked={enabled}
+                        aria-label={`${enabled ? 'Disable' : 'Enable'} ${capabilityNodeLabel(node)}`}
+                        className={cn(
+                          'relative h-6 w-11 shrink-0 rounded-full transition',
+                          enabled ? 'bg-accent' : 'bg-bg-hover ring-1 ring-border',
+                        )}
+                        disabled={updating !== null}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void setNodeEnabled(node, !enabled);
+                        }}
+                        role="switch"
+                        type="button"
+                      >
+                        <span className={cn(
+                          'absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                          enabled ? 'translate-x-6' : 'translate-x-1',
+                        )} />
+                      </button>
+                    ) : (
+                      <Button
+                        loading={updating === `approve:${capabilityPackId(node)}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void approveCapabilityPack(capabilityPackId(node));
+                        }}
+                        size="sm"
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" /> Approve Pack
+                      </Button>
+                    )}
                   </div>
-                  <Badge variant={statusVariant(node.state?.status)}>{node.state?.status ?? 'unknown'}</Badge>
-                </div>
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-text-muted">{capabilityNodeDescription(node)}</p>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {capabilityNodePorts(node).slice(0, 4).map(port => (
-                    <span key={port.id} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
-                      {port.direction === 'input' ? 'in' : port.direction === 'output' ? 'out' : 'bi'}:{port.id}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            ))}
-            </div>
-          </>}
-        </section>
+                </article>
+              );
+            })}
+            {!profileLoading && visibleNodes.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-text-muted">
+                No matching Nodes in this Pack.
+              </div>
+            ) : null}
+          </div>
+        </main>
 
-        <aside className="flex flex-col gap-3">
-          <section className="rounded-lg border border-border bg-bg-card p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Plug className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-main">Details</h2>
-            </div>
-            {selectedNode ? (
-              <div className="space-y-3">
-                <div>
-                  <div className="text-base font-semibold text-text-main">{capabilityNodeLabel(selectedNode)}</div>
-                  <div className="break-all text-xs text-text-muted">{selectedNode.node_id}</div>
+        <aside className="min-h-0 overflow-y-auto rounded-xl border border-border bg-bg-card p-4">
+          {selectedNode ? (
+            <div className="space-y-5">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-text-main">Node details</h2>
+                  {updating === selectedNode.node_id ? <TobkiriLoadingMark /> : null}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={statusVariant(selectedNode.state?.status)}>{selectedNode.state?.status ?? 'unknown'}</Badge>
-                  <Badge variant="outline">{String(selectedNode.metadata?.category ?? selectedNode.kind)}</Badge>
+                <div className="mt-2 text-base font-semibold text-text-main">{capabilityNodeLabel(selectedNode)}</div>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  {capabilityNodeDescription(selectedNode) || 'No description declared.'}
+                </p>
+              </div>
+
+              <section>
+                <div className="mb-2 flex items-center gap-2">
+                  <Globe2 className="h-4 w-4 text-accent" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Connections</h3>
                 </div>
-                {selectedNode.state?.missing?.length ? (
-                  <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300">
-                    {selectedNode.state.missing.join(', ')}
+                {capabilityDomains(selectedNode).length ? (
+                  <div className="space-y-2">
+                    {capabilityDomains(selectedNode).map((domain) => (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-bg-main px-3 py-2" key={domain}>
+                        <span className="truncate font-mono text-xs text-text-main">{domain}</span>
+                        <Badge variant={selectedNode.state?.enabled ? 'success' : 'secondary'}>
+                          {selectedNode.state?.enabled ? 'Allowed by Node' : 'Blocked'}
+                        </Badge>
+                      </div>
+                    ))}
+                    <p className="text-[11px] leading-4 text-text-muted">
+                      Domain access is bounded by this Node. Disable the Node to stop its declared connections for this profile.
+                    </p>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border px-3 py-5 text-xs text-text-muted">
+                    This Node does not declare network domains.
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Capability ports</h3>
                 <div className="space-y-2">
-                  {capabilityNodePorts(selectedNode).map(port => (
-                    <div key={port.id} className="rounded-md border border-border p-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-text-main">{capabilityPortLabel(port)}</span>
-                        <span className="text-xs text-text-muted">{port.direction}</span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {capabilityPortStandards(port).map(standard => (
-                          <span key={standard} className="rounded bg-bg-hover px-1.5 py-0.5 text-[11px] text-text-muted">
-                            {standard}
-                          </span>
-                        ))}
+                  {capabilityNodePorts(selectedNode).map((port) => (
+                    <div className="rounded-lg border border-border bg-bg-main px-3 py-2" key={port.id}>
+                      <div className="text-xs font-medium text-text-main">{capabilityPortLabel(port)}</div>
+                      <div className="mt-1 text-[11px] text-text-muted">
+                        {capabilityPortStandards(port).join(', ') || 'No standard declared'}
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            ) : (
-              <div className="text-sm text-text-muted">No node selected</div>
-            )}
-          </section>
-
-          <section className="rounded-lg border border-border bg-bg-card p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <GitBranch className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-main">Graphs</h2>
+              </section>
             </div>
-            <select
-              value={selectedGraphId}
-              onChange={event => setSelectedGraphId(event.target.value)}
-              className="mb-3 h-10 w-full rounded-md border border-border bg-bg-main px-3 text-sm text-text-main"
-            >
-              {graphs.map(graph => (
-                <option key={graph.graph_id} value={graph.graph_id}>{graph.label}</option>
-              ))}
-            </select>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" size="sm" onClick={() => void runValidate()} disabled={!selectedGraphId || !selectedProfileId}>
-                <ShieldCheck className="mr-2 h-4 w-4" />
-                Validate
-              </Button>
-              <Button size="sm" onClick={() => void runCompile()} disabled={!selectedGraphId || !selectedProfileId}>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Compile
-              </Button>
+          ) : (
+            <div className="flex min-h-64 items-center justify-center text-center text-sm text-text-muted">
+              Select a Node to inspect its capability access.
             </div>
-            {preview && (
-              <div className="mt-3 rounded-md border border-border bg-bg-main p-3">
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-text-main">
-                  {preview.ok ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <TriangleAlert className="h-4 w-4 text-red-500" />}
-                  {preview.ok ? 'OK' : 'Failed'}
-                </div>
-                {preview.surface_launch_target && (
-                  <div className="mb-3 rounded-md border border-border bg-bg-hover p-3">
-                    <div className="text-xs font-semibold text-text-main">Launch target</div>
-                    <div className="mt-1 text-xs text-text-muted">
-                      {preview.surface_launch_target.pack_id}
-                      {' / '}
-                      {preview.surface_launch_target.node_id ?? preview.surface_launch_target.node_instance_id ?? 'desktop_app'}
-                    </div>
-                  </div>
-                )}
-                <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-text-muted">
-                  {JSON.stringify(preview.runtime_profile ?? preview.diagnostics, null, 2)}
-                </pre>
-              </div>
-            )}
-          </section>
+          )}
         </aside>
       </div>
     </div>

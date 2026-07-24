@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok, error
-from domain.ai_client.client import AIClient
+from domain.ai_client.gateway_contract_client import generate
 
 
 def run(input_data, context):
@@ -18,8 +18,24 @@ def run(input_data, context):
         return error("prompt is required", "MISSING_PARAM")
 
     try:
-        client = AIClient()
-        result = client.image_analyze(model, image, prompt)
+        result = generate(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image", "image": image},
+                        ],
+                    }
+                ],
+                "requirements": {
+                    "preferred_model_id": model,
+                    "modalities": ["text", "image"],
+                    "request_surface": "legacy.image_analyze",
+                },
+            }
+        )
         return ok(result)
     except RuntimeError as e:
         return error(str(e), "PROVIDER_ERROR")

@@ -346,7 +346,8 @@ class KernelSystemHandlersMixin:
     def _get_profile_loader(self: Any, args: Dict[str, Any], ctx: Dict[str, Any]):
         from .profile_loader import CapabilityProfileLoader
 
-        existing = ctx.get("profile_loader")
+        isolate_invalid = bool(args.get("isolate_invalid_profiles"))
+        existing = None if isolate_invalid else ctx.get("profile_loader")
         if existing is not None:
             return existing
         loader = CapabilityProfileLoader(
@@ -355,7 +356,10 @@ class KernelSystemHandlersMixin:
             approval_manager=ctx.get("approval_manager"),
             ecosystem_dir=args.get("ecosystem_dir"),
             shared_profiles_dir=args.get("shared_profiles_dir"),
+            continue_on_invalid=isolate_invalid,
         )
+        if isolate_invalid:
+            return loader
         ctx["profile_loader"] = loader
         self.interface_registry.register(
             "profile.loader",
@@ -380,7 +384,10 @@ class KernelSystemHandlersMixin:
     def _h_profile_list(self: Any, args: Dict[str, Any], ctx: Dict[str, Any]) -> Any:
         try:
             loader = self._get_profile_loader(args, ctx)
-            profiles = loader.list_profiles()
+            if args.get("isolate_invalid_profiles"):
+                profiles = list(loader.load_all_profiles(register=False).values())
+            else:
+                profiles = loader.list_profiles()
             return {
                 "_kernel_step_status": "success",
                 "_kernel_step_meta": {"count": len(profiles)},
@@ -395,6 +402,8 @@ class KernelSystemHandlersMixin:
             return {"_kernel_step_status": "failed", "_kernel_step_meta": {"error": "missing 'profile_id' argument"}}
         try:
             loader = self._get_profile_loader(args, ctx)
+            if args.get("isolate_invalid_profiles"):
+                loader.load_all_profiles(register=False)
             profile = loader.get_profile(str(profile_id))
             return {
                 "_kernel_step_status": "success" if profile else "failed",
@@ -412,6 +421,8 @@ class KernelSystemHandlersMixin:
             from .profile_node_registry import ProfileNodeRegistry
 
             loader = self._get_profile_loader(args, ctx)
+            if args.get("isolate_invalid_profiles"):
+                loader.load_all_profiles(register=False)
             profile = loader.get_profile(str(profile_id))
             if profile is None:
                 return {

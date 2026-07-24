@@ -183,8 +183,6 @@ def _apply_function_defaults(function_id: str, payload: dict[str, Any]) -> dict[
         payload.setdefault("_method", "PUT")
     elif function_id == "prompt_system_get":
         payload.setdefault("_method", "GET")
-    elif function_id == "prompt_system_set":
-        payload.setdefault("_method", "PUT")
     elif function_id == "coding_git_branch_get":
         payload.setdefault("_method", "GET")
     elif function_id == "coding_git_branch_create":
@@ -203,63 +201,29 @@ def _model_runtime_service():
 
 
 def _provider_key_status(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del args, context
-    from domain.ai_client.api_key_store import provider_key_status
+    from blocks.ai.provider_key import run
 
-    return ok({"providers": provider_key_status()})
+    return run({**args, "_method": "GET"}, context)
 
 
 def _set_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del context
-    from domain.ai_client.api_key_store import set_provider_api_key
+    from blocks.ai.provider_key import run
 
-    result = set_provider_api_key(
-        str(args.get("provider_id") or "").strip(),
-        str(args.get("value") or ""),
-        api_id=args.get("api_id"),
-        name=args.get("name"),
-        base_url=args.get("base_url"),
-        allowed_models=args.get("allowed_models"),
-        default_model=args.get("default_model"),
-        notes=args.get("notes"),
-        quota_label=args.get("quota_label"),
-    )
-    if not result.get("success"):
-        return error(result.get("error") or "failed to save api key", "API_KEY_SAVE_FAILED")
-    return ok({key: value for key, value in result.items() if key != "error"})
+    return run({**args, "_method": "POST", "action": "upsert"}, context)
 
 
 def _delete_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del context
-    from domain.ai_client.api_key_store import delete_provider_api_key
+    from blocks.ai.provider_key import run
 
-    result = delete_provider_api_key(
-        str(args.get("provider_id") or "").strip(),
-        str(args.get("api_id") or "").strip(),
-    )
-    if not result.get("success"):
-        return error(result.get("error") or "failed to delete api key", "API_KEY_DELETE_FAILED")
-    return ok({key: value for key, value in result.items() if key != "error"})
+    return run({**args, "_method": "POST", "action": "delete"}, context)
 
 
 def _rename_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del context
-    from domain.ai_client.api_key_store import rename_provider_api_key
+    from blocks.ai.provider_key import run
 
-    result = rename_provider_api_key(
-        str(args.get("provider_id") or "").strip(),
-        str(args.get("api_id") or "").strip(),
-        str(args.get("name") or args.get("new_name") or "").strip(),
-        new_api_id=args.get("new_api_id"),
-        base_url=args.get("base_url"),
-        allowed_models=args.get("allowed_models"),
-        default_model=args.get("default_model"),
-        notes=args.get("notes"),
-        quota_label=args.get("quota_label"),
-    )
-    if not result.get("success"):
-        return error(result.get("error") or "failed to rename api key", "API_KEY_RENAME_FAILED")
-    return ok({key: value for key, value in result.items() if key != "error"})
+    payload = {**args, "_method": "POST", "action": "rename"}
+    payload.setdefault("name", args.get("new_name"))
+    return run(payload, context)
 
 
 def _validate_model_params(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:

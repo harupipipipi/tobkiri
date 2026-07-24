@@ -189,7 +189,10 @@ class CapabilityGraphHandlersMixin:
     def _capability_get_profiles(self) -> Dict[str, Any]:
         """GET /api/profiles and /api/panel/profiles."""
         try:
-            result = self._call_kernel_handler("kernel:profile.list")
+            result = self._call_kernel_handler(
+                "kernel:profile.list",
+                {"isolate_invalid_profiles": True},
+            )
             if not _status_from_kernel_result(result):
                 return {
                     "error": result.get("_kernel_step_meta", {}).get("error", _SAFE_ERROR_MSG),
@@ -212,7 +215,10 @@ class CapabilityGraphHandlersMixin:
     def _capability_get_profile(self, profile_id: str) -> Dict[str, Any]:
         """GET /api/profiles/{profile_id} and /api/panel/profiles/{profile_id}."""
         try:
-            result = self._call_kernel_handler("kernel:profile.get", {"profile_id": profile_id})
+            result = self._call_kernel_handler(
+                "kernel:profile.get",
+                {"profile_id": profile_id, "isolate_invalid_profiles": True},
+            )
             if not _status_from_kernel_result(result) or result.get("profile") is None:
                 return {"error": f"Profile '{profile_id}' not found", "status_code": 404}
             profile = self._capability_public_profile(result["profile"], locale="en")
@@ -227,8 +233,14 @@ class CapabilityGraphHandlersMixin:
     def _capability_get_profile_nodes(self, profile_id: str) -> Dict[str, Any]:
         """GET /api/profiles/{profile_id}/nodes and panel alias."""
         try:
-            profile_result = self._call_kernel_handler("kernel:profile.get", {"profile_id": profile_id})
-            if not _status_from_kernel_result(profile_result) or profile_result.get("profile") is None:
+            profile_result = self._call_kernel_handler(
+                "kernel:profile.get",
+                {"profile_id": profile_id, "isolate_invalid_profiles": True},
+            )
+            if (
+                not _status_from_kernel_result(profile_result)
+                or profile_result.get("profile") is None
+            ):
                 return {"error": f"Profile '{profile_id}' not found", "status_code": 404}
             profile = profile_result["profile"]
             locale = str(profile.get("locale") or "en")
@@ -236,32 +248,35 @@ class CapabilityGraphHandlersMixin:
             nodes_result = self._call_kernel_handler("kernel:node.list")
             if not _status_from_kernel_result(nodes_result):
                 return {
-                    "error": nodes_result.get("_kernel_step_meta", {}).get("error", _SAFE_ERROR_MSG),
+                    "error": nodes_result.get("_kernel_step_meta", {}).get(
+                        "error", _SAFE_ERROR_MSG
+                    ),
                     "status_code": 500,
                 }
             state_result = self._call_kernel_handler(
                 "kernel:profile.node_state",
-                {"profile_id": profile_id},
+                {"profile_id": profile_id, "isolate_invalid_profiles": True},
             )
-            if not _status_from_kernel_result(state_result):
-                return {
-                    "error": state_result.get("_kernel_step_meta", {}).get("error", _SAFE_ERROR_MSG),
-                    "status_code": 500,
-                }
-            states = [
-                item for item in state_result.get("node_state", [])
-                if isinstance(item, dict)
+            raw_nodes = [
+                node for node in nodes_result.get("nodes", [])
+                if isinstance(node, dict)
             ]
+            states = self._capability_profile_node_states(
+                profile,
+                raw_nodes,
+                state_result.get("node_state")
+                if _status_from_kernel_result(state_result)
+                else None,
+            )
             state_by_id = {str(item.get("node_id")): item for item in states}
             nodes = [
                 self._capability_public_node(node, locale=locale, state_by_id=state_by_id)
-                for node in nodes_result.get("nodes", [])
-                if isinstance(node, dict)
+                for node in raw_nodes
             ]
             palette_nodes = [
                 node for node in nodes
-                if node.get("state", {}).get("enabled") is True
-                and node.get("state", {}).get("installed") is True
+                if (node.get("state") or {}).get("enabled") is True
+                and (node.get("state") or {}).get("installed") is True
             ]
             return {
                 "profile": self._capability_public_profile(profile, locale=locale),
@@ -274,6 +289,77 @@ class CapabilityGraphHandlersMixin:
         except Exception as exc:
             _log_internal_error("capability_get_profile_nodes", exc)
             return {"error": _SAFE_ERROR_MSG, "status_code": 500}
+
+    def _capability_profile_node_states(
+        self,
+        profile: Dict[str, Any],
+        nodes: list[Dict[str, Any]],
+        kernel_states: Any,
+    ) -> list[Dict[str, Any]]:
+        """Return profile-scoped Node state, with a read-only safe fallback.
+
+        The catalog must remain usable when an unrelated legacy profile file
+        prevents the mutable profile registry from being constructed.  The
+        fallback mirrors ``ProfileDefinition.is_node_enabled`` and does not
+        grant or mutate any capability.
+        """
+        if isinstance(kernel_states, list):
+            return [item for item in kernel_states if isinstance(item, dict)]
+
+        enabled = {
+            str(item) for item in profile.get("enabled_nodes") or [] if item
+        }
+        disabled = {
+            str(item) for item in profile.get("disabled_nodes") or [] if item
+        }
+        settings = profile.get("node_settings")
+        settings = settings if isinstance(settings, dict) else {}
+        profile_id = str(profile.get("profile_id") or "")
+        states: list[Dict[str, Any]] = []
+        for node in nodes:
+            node_id = str(node.get("node_id") or "")
+            node_settings = settings.get(node_id)
+            node_settings = (
+                node_settings if isinstance(node_settings, dict) else {}
+            )
+            requirements = node.get("requirements")
+            requirements = requirements if isinstance(requirements, dict) else {}
+            required = (
+                requirements.get("required_settings")
+                or requirements.get("settings")
+                or []
+            )
+            required = required if isinstance(required, list) else []
+            missing = [
+                key
+                for key in required
+                if isinstance(key, str)
+                and key
+                and node_settings.get(key) in (None, "")
+            ]
+            node_enabled = (
+                node_id not in disabled
+                and (not enabled or node_id in enabled or node_id == "rumi.start")
+            )
+            configured = not missing
+            states.append(
+                {
+                    "node_id": node_id,
+                    "installed": True,
+                    "approved": True,
+                    "enabled": node_enabled,
+                    "configured": configured,
+                    "status": (
+                        "disabled"
+                        if not node_enabled
+                        else "ready" if configured else "missing_config"
+                    ),
+                    "missing": missing,
+                    "credential_ref": node_settings.get("credential_ref"),
+                    "profile_id": profile_id,
+                }
+            )
+        return states
 
     def _capability_get_graphs(self) -> Dict[str, Any]:
         """GET /api/graphs and /api/panel/graphs."""

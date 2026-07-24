@@ -45,6 +45,9 @@
     "consumes_existing_sources_only": true,
     "output_effect": "draft_and_handoff_only",
     "defaultspack_promotion_eligible": false,
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
     "owner_surfaces": [
       "participant_consent_record",
       "research_redaction_policy",
@@ -149,5 +152,18 @@
         "examples/survey_theme_map.example.yaml"
       ]
     }
+  },
+  "resources": [
+    {
+      "id": "frontend/contributions/customer-research.json",
+      "kind": "ui.contribution",
+      "content_hash": "sha256:083b6a99b7b5cd6c59dbc1fa2af992d6cef024b34a641f592ea2d269910ee224"
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:f5719438d89f5a429942c22844351e332a92fa8963dd0a00da643dffe7d78e81",
+    "build_identity": "rumi-customer-research-content-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
   }
 }

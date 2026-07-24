@@ -643,9 +643,9 @@
     "frontend:frontend"
   ],
   "metadata": {
-    "name": "Rumi Defaultspack v2",
+    "name": "Tobkiri",
     "description": "Primary v2 pack cloned from defaults and extended with canonical defaultspack management APIs.",
-    "author": "Rumi AI Team",
+    "author": "Tobkiri Team",
     "license": "MIT"
   },
   "capability_bindings": {
@@ -666,7 +666,7 @@
       "desktop_app.execute"
     ],
     "window": {
-      "title": "Rumi Defaultspack",
+      "title": "Tobkiri",
       "width": 1280,
       "height": 800,
       "icon": "assets/icons/defaultspack-icon.png"

@@ -14,6 +14,7 @@ from .security import (
     unsupported_execution_reason,
 )
 from .loading import normalize_tool_loading_mode
+from core_runtime.resolved_profile_scope import effective_pack_ids
 
 _TOOL_SEARCH_METADATA_KEYS = {
     "aliases",
@@ -25,6 +26,25 @@ _TOOL_SEARCH_METADATA_KEYS = {
     "skills",
     "triggers",
 }
+
+
+class ToolRegistrationError(ValueError):
+    """Raised when a Tool cannot enter the canonical registry snapshot."""
+
+
+def _tool_source(tool_def: dict) -> str:
+    metadata = (
+        tool_def.get("metadata")
+        if isinstance(tool_def.get("metadata"), dict)
+        else {}
+    )
+    return str(
+        tool_def.get("source_path")
+        or metadata.get("manifest_path")
+        or tool_def.get("source_pack_id")
+        or metadata.get("source_pack_id")
+        or "<unknown>"
+    )
 
 
 def _search_metadata_from_manifest(manifest: dict, config: dict) -> dict:
@@ -41,7 +61,167 @@ def _search_metadata_from_manifest(manifest: dict, config: dict) -> dict:
             metadata[key] = manifest[key]
         if key in config:
             metadata[key] = config[key]
+    if manifest.get("schema_version") == "tobkiri.tool/v3":
+        config_metadata = (
+            config.get("metadata")
+            if isinstance(config.get("metadata"), dict)
+            else {}
+        )
+        for key in ("schema_version", "effects", "security", "activity_ids"):
+            if key in config_metadata:
+                metadata[key] = config_metadata[key]
     return metadata
+
+
+def _localized_text(value) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if not isinstance(value, dict):
+        return ""
+    for locale in ("en", "ja"):
+        text = str(value.get(locale) or "").strip()
+        if text:
+            return text
+    return next(
+        (
+            str(item).strip()
+            for _, item in sorted(value.items())
+            if str(item).strip()
+        ),
+        "",
+    )
+
+
+def _v3_tool_config(manifest: dict) -> dict:
+    """Project a strict Tool v3 manifest into the canonical registry shape."""
+
+    discovery = (
+        manifest.get("discovery")
+        if isinstance(manifest.get("discovery"), dict)
+        else {}
+    )
+    contract = (
+        manifest.get("contract")
+        if isinstance(manifest.get("contract"), dict)
+        else {}
+    )
+    risk = (
+        manifest.get("risk")
+        if isinstance(manifest.get("risk"), dict)
+        else {}
+    )
+    approval = (
+        manifest.get("approval")
+        if isinstance(manifest.get("approval"), dict)
+        else {}
+    )
+    requirements = (
+        manifest.get("requirements")
+        if isinstance(manifest.get("requirements"), dict)
+        else {}
+    )
+    effects = [
+        item
+        for item in (manifest.get("effects") or [])
+        if isinstance(item, dict)
+    ]
+    effect_operations = {
+        str(item.get("operation") or "").strip().casefold()
+        for item in effects
+    }
+    effect_classes = {
+        str(item.get("class") or "").strip().casefold()
+        for item in effects
+    }
+    write_markers = {
+        "write",
+        "create",
+        "update",
+        "delete",
+        "send",
+        "publish",
+        "execute",
+        "control",
+        "mutate",
+    }
+    write_action = bool(
+        (effect_operations | effect_classes) & write_markers
+        or any(bool(item.get("external")) for item in effects)
+    )
+    minimum = str(approval.get("minimum") or "auto").strip()
+    default = str(approval.get("default") or "inherit").strip()
+    activity_ids = [
+        str(item)
+        for item in discovery.get("activity_ids", [])
+        if str(item).strip()
+    ]
+    aliases = [
+        str(item)
+        for item in discovery.get("aliases", [])
+        if str(item).strip()
+    ]
+    keywords = [
+        str(item)
+        for item in discovery.get("keywords", [])
+        if str(item).strip()
+    ]
+    return {
+        "tool_id": str(manifest.get("id") or "").strip(),
+        "name": str(manifest.get("id") or "").strip(),
+        "display_name": _localized_text(manifest.get("display_name")),
+        "summary": _localized_text(manifest.get("description")),
+        "schema": {
+            "parameters": dict(contract.get("input_schema") or {}),
+            **(
+                {"returns": dict(contract.get("output_schema") or {})}
+                if isinstance(contract.get("output_schema"), dict)
+                else {}
+            ),
+        },
+        "execution": dict(manifest.get("execution") or {}),
+        "risk": str(risk.get("level") or "medium"),
+        "requires_approval": (
+            minimum in {"confirm", "deny"}
+            or default in {"confirm", "deny"}
+        ),
+        "approval_policy": minimum if minimum != "auto" else default,
+        "write_action": write_action,
+        "action_type": (
+            sorted(effect_operations)[0]
+            if effect_operations
+            else ("write" if write_action else "read")
+        ),
+        "category": activity_ids[0] if activity_ids else "tool",
+        "tool_category": activity_ids[0] if activity_ids else "tool",
+        "tags": list(dict.fromkeys([*keywords, *activity_ids])),
+        "aliases": aliases,
+        "keywords": keywords,
+        "activity_ids": activity_ids,
+        "loading": (
+            "lazy"
+            if discovery.get("schema_loading") == "on_demand"
+            else "always"
+        ),
+        "requires_model_capabilities": list(
+            requirements.get("model_capabilities") or []
+        ),
+        "requires_runtime_capabilities": list(
+            requirements.get("runtime_capabilities") or []
+        ),
+        "capability_requirements": {
+            "connections": list(requirements.get("connections") or []),
+            "env": list(requirements.get("env") or []),
+        },
+        "ui": dict(manifest.get("ui") or {}),
+        "metadata": {
+            "aliases": aliases,
+            "keywords": keywords,
+            "activity_ids": activity_ids,
+            "schema_version": "tobkiri.tool/v3",
+            "effects": effects,
+            "security": dict(manifest.get("security") or {}),
+        },
+    }
 
 
 class ToolRegistry:
@@ -73,6 +253,7 @@ class ToolRegistry:
 
         try:
             self._tools = {}
+            self._diagnostics = []
             self._mcp_servers = {}
             self._lock = threading.Lock()
             self._tools_dir = self._resolve_tools_dir()
@@ -119,8 +300,13 @@ class ToolRegistry:
         if not ecosystem_dir.is_dir():
             return [self._pack_root()]
         roots: list[Path] = []
-        for path in sorted(ecosystem_dir.iterdir()):
-            if path.is_dir() and (path / "ecosystem.json").is_file():
+        effective = effective_pack_ids()
+        for pack_id in sorted(effective):
+            path = ecosystem_dir / pack_id
+            if (
+                path.is_dir()
+                and (path / "ecosystem.json").is_file()
+            ):
                 roots.append(path)
         return roots
 
@@ -331,7 +517,10 @@ class ToolRegistry:
 
     @staticmethod
     def _tool_from_manifest(manifest, source_pack_id: str = "", allow_legacy_compat: bool = False):
-        config = manifest.get("config", {}) or {}
+        if manifest.get("schema_version") == "tobkiri.tool/v3":
+            config = _v3_tool_config(manifest)
+        else:
+            config = manifest.get("config", {}) or {}
         tool_id = str(config.get("tool_id", manifest.get("id", ""))).strip()
         if not tool_id:
             return None
@@ -340,11 +529,11 @@ class ToolRegistry:
             ui = manifest.get("ui")
         if not isinstance(ui, dict):
             ui = {}
-        display_name = str(
+        display_name = _localized_text(
             config.get("display_name")
             or manifest.get("display_name")
             or ""
-        ).strip()
+        )
         execution = dict(config.get("execution", {}))
         handler = str(config.get("handler", "")).strip()
         write_action = bool(config.get("write_action", False))
@@ -403,8 +592,10 @@ class ToolRegistry:
             "tool_id": tool_id,
             "name": str(config.get("name", tool_id)),
             "display_name": display_name,
-            "summary": str(config.get("summary", manifest.get("description", ""))),
-            "description": str(manifest.get("description", "")),
+            "summary": _localized_text(
+                config.get("summary") or manifest.get("description", "")
+            ),
+            "description": _localized_text(manifest.get("description", "")),
             "tags": tags,
             "schema": dict(
                 config.get(
@@ -495,8 +686,10 @@ class ToolRegistry:
             "tool_id": tool_id,
             "name": str(config.get("name", tool_id)),
             "display_name": display_name,
-            "summary": str(config.get("summary", manifest.get("description", ""))),
-            "description": str(manifest.get("description", "")),
+            "summary": _localized_text(
+                config.get("summary") or manifest.get("description", "")
+            ),
+            "description": _localized_text(manifest.get("description", "")),
             "tags": tags,
             "risk": risk,
             "schema": dict(
@@ -570,25 +763,28 @@ class ToolRegistry:
                     tool_def = json.load(f)
             except (json.JSONDecodeError, OSError):
                 continue
-            # handler_code があればファイルから読み込み
-            name = tool_def.get("name", "")
-            handler_path = os.path.join(self._tools_dir, name + ".handler.py")
-            if os.path.isfile(handler_path):
-                try:
-                    with open(handler_path, "r", encoding="utf-8") as f:
-                        tool_def["handler_code"] = f.read()
-                except OSError:
-                    pass
             metadata = dict(tool_def.get("metadata", {}))
             metadata["source"] = "user"
             metadata["source_pack_id"] = "user_dynamic"
             metadata["trusted"] = False
+            metadata["migration_required"] = True
+            metadata["migration_reason"] = (
+                "Dynamic Python handlers are no longer executable. "
+                "Migrate this Tool to a reviewed pack, MCP server, or connector."
+            )
             loading = normalize_tool_loading_mode(tool_def.get("loading") or metadata.get("loading"))
             metadata["loading"] = loading
             tool_def["metadata"] = metadata
             tool_def["source_pack_id"] = "user_dynamic"
             tool_def["trusted"] = False
             tool_def["loading"] = loading
+            tool_def["enabled"] = False
+            tool_def["availability"] = {
+                "status": "unavailable",
+                "reason": "migration_required",
+            }
+            tool_def["migration_required"] = True
+            tool_def.pop("handler_code", None)
             if unsupported_execution_reason(tool_def) is not None:
                 continue
             with self._lock:
@@ -604,10 +800,12 @@ class ToolRegistry:
             json.dump(save_def, f, ensure_ascii=False, indent=2)
 
     def _save_handler_code(self, name, code):
-        """handler コードを .handler.py ファイルに保存する"""
-        fpath = os.path.join(self._tools_dir, name + ".handler.py")
-        with open(fpath, "w", encoding="utf-8") as f:
-            f.write(code)
+        """Reject persistence of retired executable Python source."""
+
+        del name, code
+        raise ValueError(
+            "migration_required: dynamic Python handler source is not persisted"
+        )
 
     def _delete_tool_files(self, name):
         """ツール定義ファイルと handler コードファイルを削除する"""
@@ -624,8 +822,35 @@ class ToolRegistry:
 
     def register(self, tool_def):
         """ツール定義を登録（インメモリのみ、永続化なし）"""
+        if not isinstance(tool_def, dict):
+            raise ToolRegistrationError("tool definition must be an object")
+        tool_id = str(tool_def.get("tool_id") or "").strip()
+        if not tool_id:
+            raise ToolRegistrationError("tool definition requires tool_id")
         with self._lock:
-            self._tools[tool_def["tool_id"]] = tool_def
+            existing = self._tools.get(tool_id)
+            if existing is not None and existing != tool_def:
+                diagnostic = {
+                    "code": "tool_id_collision",
+                    "tool_id": tool_id,
+                    "existing_source": _tool_source(existing),
+                    "incoming_source": _tool_source(tool_def),
+                }
+                self._diagnostics.append(diagnostic)
+                raise ToolRegistrationError(
+                    "tool_id collision: {} (existing={}, incoming={})".format(
+                        tool_id,
+                        diagnostic["existing_source"],
+                        diagnostic["incoming_source"],
+                    )
+                )
+            self._tools[tool_id] = tool_def
+
+    def diagnostics(self):
+        """Return canonical registry diagnostics without exposing live state."""
+
+        with self._lock:
+            return [dict(item) for item in self._diagnostics]
 
     def unregister(self, tool_name):
         """ツール定義を削除（インメモリのみ）"""
@@ -659,83 +884,22 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def register_dynamic(self, tool_def, handler_code=None):
-        """
-        動的ツールを登録し永続化する。
-        tool_def: ツール定義 dict（tool_id, name, summary, tags, schema, execution 等）
-        handler_code: Python コード文字列（None なら保存しない）
-        戻り値: 登録された tool_def
-        """
-        # execution.type を dynamic に設定
-        if "execution" not in tool_def:
-            tool_def["execution"] = {}
-        tool_def["execution"]["type"] = "dynamic"
-        metadata = dict(tool_def.get("metadata", {}))
-        metadata["source"] = "user"
-        metadata["source_pack_id"] = "user_dynamic"
-        metadata["trusted"] = False
-        loading = normalize_tool_loading_mode(tool_def.get("loading") or metadata.get("loading"))
-        metadata["loading"] = loading
-        tool_def["metadata"] = metadata
-        tool_def["source_pack_id"] = "user_dynamic"
-        tool_def["trusted"] = False
-        tool_def["loading"] = loading
-        rejection_reason = unsupported_execution_reason(tool_def)
-        if rejection_reason is not None:
-            raise ValueError(rejection_reason)
+        """Reject executable Python while keeping the legacy API explicit."""
 
-        if handler_code is not None:
-            tool_def["handler_code"] = handler_code
-
-        with self._lock:
-            self._tools[tool_def["tool_id"]] = tool_def
-
-        # 永続化
-        self._save_tool_json(tool_def)
-        if handler_code is not None:
-            self._save_handler_code(tool_def["name"], handler_code)
-
-        return tool_def
+        del tool_def, handler_code
+        raise ValueError(
+            "migration_required: dynamic Python Tools are no longer supported; "
+            "use a reviewed pack, MCP server, or connector"
+        )
 
     def update_dynamic(self, tool_name, updates):
-        """
-        動的ツール定義を部分更新し永続化する。
-        tool_name: ツール名（tool_id と同じ）
-        updates: 部分更新 dict
-        戻り値: 更新後の tool_def、見つからなければ None
-        """
-        with self._lock:
-            tool_def = self._tools.get(tool_name)
-            if tool_def is None:
-                return None
-            # execution.type が dynamic でなければ更新不可
-            exec_type = tool_def.get("execution", {}).get("type", "")
-            if exec_type != "dynamic":
-                return None
-            # 部分更新
-            handler_code = updates.pop("handler_code", None)
-            for key, value in updates.items():
-                if key == "schema" and isinstance(value, dict) and isinstance(tool_def.get("schema"), dict):
-                    tool_def["schema"].update(value)
-                elif key == "tags" and isinstance(value, list):
-                    tool_def["tags"] = value
-                else:
-                    tool_def[key] = value
-            raw_metadata = tool_def.get("metadata") if isinstance(tool_def.get("metadata"), dict) else {}
-            loading = normalize_tool_loading_mode(tool_def.get("loading") or raw_metadata.get("loading"))
-            metadata = dict(raw_metadata)
-            metadata["loading"] = loading
-            tool_def["metadata"] = metadata
-            tool_def["loading"] = loading
-            if handler_code is not None:
-                tool_def["handler_code"] = handler_code
-            self._tools[tool_name] = tool_def
+        """Reject edits to retired executable Python definitions."""
 
-        # 永続化
-        self._save_tool_json(tool_def)
-        if handler_code is not None:
-            self._save_handler_code(tool_def["name"], handler_code)
-
-        return tool_def
+        del tool_name, updates
+        raise ValueError(
+            "migration_required: dynamic Python Tools are no longer supported; "
+            "use a reviewed pack, MCP server, or connector"
+        )
 
     def unregister_dynamic(self, tool_name):
         """
@@ -755,26 +919,24 @@ class ToolRegistry:
         return tool_def
 
     def export_tool(self, tool_name):
-        """
-        ツール定義を export 用の dict として返す。
-        handler_code も含める。
-        戻り値: dict or None
-        """
+        """Export metadata without exposing retired executable source."""
         with self._lock:
             tool_def = self._tools.get(tool_name)
         if tool_def is None:
             return None
-        export = dict(tool_def)
-        # handler_code がインメモリになければファイルから読む
-        if "handler_code" not in export:
-            name = export.get("name", "")
-            handler_path = os.path.join(self._tools_dir, name + ".handler.py")
-            if os.path.isfile(handler_path):
-                try:
-                    with open(handler_path, "r", encoding="utf-8") as f:
-                        export["handler_code"] = f.read()
-                except OSError:
-                    pass
+        export = {
+            key: value
+            for key, value in tool_def.items()
+            if key != "handler_code"
+        }
+        execution = (
+            export.get("execution")
+            if isinstance(export.get("execution"), dict)
+            else {}
+        )
+        if execution.get("type") == "dynamic":
+            export["enabled"] = False
+            export["migration_required"] = True
         return export
 
     # ------------------------------------------------------------------

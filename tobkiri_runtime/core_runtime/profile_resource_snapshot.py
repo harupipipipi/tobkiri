@@ -5,6 +5,7 @@ import json
 import shutil
 import time
 from collections.abc import Iterable
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,11 @@ import yaml  # type: ignore[import-untyped]
 
 from .paths import discover_pack_locations
 from .profile_workspace import ProfileWorkspaceManager
+from .resolved_profile import (
+    ResolvedProfile,
+    create_lockfile,
+    write_lockfile,
+)
 
 
 class ProfileResourceSnapshotManager:
@@ -23,6 +29,34 @@ class ProfileResourceSnapshotManager:
     ) -> None:
         self.workspace_manager = ProfileWorkspaceManager(user_data_root)
         self.ecosystem_dir = ecosystem_dir
+
+    def snapshot_resolved_profile(
+        self,
+        plan: ResolvedProfile,
+    ) -> dict[str, Any]:
+        """Snapshot every selected pack/provider/resource hash for one plan."""
+        paths = self.workspace_manager.paths_for_profile(plan.profile_id)
+        snapshot_root = paths.snapshots_dir / "resolved-profile" / plan.plan_hash
+        snapshot_root.mkdir(parents=True, exist_ok=True)
+        lockfile = create_lockfile(plan)
+        write_lockfile(snapshot_root / "profile.lock.json", lockfile)
+        manifest = {
+            "version": 2,
+            "profile_id": plan.profile_id,
+            "profile_revision": plan.profile_revision,
+            "input_hash": plan.input_hash,
+            "plan_hash": plan.plan_hash,
+            "effective_pack_set": list(plan.effective_pack_set),
+            "packs": [asdict(item) for item in plan.packs],
+            "providers": [asdict(item) for item in plan.providers],
+            "resources": [asdict(item) for item in plan.projections],
+            "lock_hash": lockfile.lock_hash,
+        }
+        (snapshot_root / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return manifest
 
     def snapshot_default_resources(
         self,

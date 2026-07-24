@@ -12,34 +12,51 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 class TestDefaultspackProviderCatalog(unittest.TestCase):
     def test_provider_catalog_contains_major_and_local_entries(self):
-        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
-            list_provider_catalog,
+        from ecosystem.defaultspack.domain.ai_client.providers import (
+            get_provider_catalog,
         )
 
-        providers = {item["provider_id"]: item for item in list_provider_catalog()}
+        providers = {item["provider_id"]: item for item in get_provider_catalog()}
         self.assertIn("openai", providers)
         self.assertIn("anthropic", providers)
         self.assertIn("ollama", providers)
-        self.assertTrue(providers["ollama"]["local"])
+        self.assertEqual(providers["ollama"]["kind"], "local")
 
     def test_provider_catalog_manifest_coverage_has_no_orphans(self):
-        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
-            validate_catalog_coverage,
+        from ecosystem.defaultspack.domain.ai_client.providers import (
+            validate_provider_catalog_coverage,
         )
 
-        self.assertEqual(validate_catalog_coverage(), [])
+        self.assertEqual(validate_provider_catalog_coverage(), [])
 
     def test_model_catalog_exposes_cross_provider_identity_metadata(self):
         from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
             list_model_catalog,
         )
 
-        models = list_model_catalog(provider="openai")
+        class Client:
+            def list_models(self, provider=None):
+                assert provider == "openai"
+                return [{
+                    "id": "openai/account-visible-model",
+                    "qualified_model_id": "openai/account-visible-model",
+                    "provider_id": "openai",
+                    "model_id": "account-visible-model",
+                    "display_name": "Account Visible Model",
+                    "type": "chat",
+                    "metadata": {"source": "remote_models_endpoint"},
+                }]
+
+        with patch(
+            "ecosystem.defaultspack.backend.ai_client.provider_catalog._runtime_client",
+            return_value=Client(),
+        ):
+            models = list_model_catalog(provider="openai")
         self.assertTrue(models)
-        sample = next(model for model in models if model["model_id"] == "gpt-4o")
-        self.assertEqual(sample["canonical_model_id"], "gpt-4o")
-        self.assertEqual(sample["same_model_across_providers_key"], "gpt-4o")
-        self.assertEqual(sample["qualified_model_id"], "openai/gpt-4o")
+        sample = next(model for model in models if model["model_id"] == "account-visible-model")
+        self.assertEqual(sample["canonical_model_id"], "account-visible-model")
+        self.assertEqual(sample["same_model_across_providers_key"], "account-visible-model")
+        self.assertEqual(sample["qualified_model_id"], "openai/account-visible-model")
 
     def test_detect_available_providers_registers_openai_compatible_gateways(self):
         from ecosystem.defaultspack.domain.ai_client.providers import (
@@ -55,22 +72,29 @@ class TestDefaultspackProviderCatalog(unittest.TestCase):
         self.assertIn("openrouter", providers)
 
     def test_provider_catalog_marks_google_configured_when_only_gemini_key_is_set(self):
-        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
-            list_provider_catalog,
+        from ecosystem.defaultspack.domain.ai_client.providers import (
+            get_provider_catalog,
         )
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
-            providers = {item["provider_id"]: item for item in list_provider_catalog()}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = {
+                "GEMINI_API_KEY": "test-key",
+                "RUMI_DEFAULTSPACK_SECRETS_DIR": str(Path(tmpdir) / "secrets"),
+            }
+            with patch.dict(os.environ, env, clear=True):
+                providers = {item["provider_id"]: item for item in get_provider_catalog()}
 
         google = providers["google"]
         self.assertIn("GEMINI_API_KEY", google["env_vars"])
-        self.assertEqual(google["configured_envs"], ["GEMINI_API_KEY"])
-        self.assertTrue(google["configured"])
         self.assertTrue(google["availability"]["configured"])
+        self.assertIn(
+            google["availability"]["configuration_source"],
+            {"GEMINI_API_KEY", "defaultspack_secret"},
+        )
 
     def test_provider_catalog_does_not_mark_google_configured_from_application_credentials(self):
-        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
-            list_provider_catalog,
+        from ecosystem.defaultspack.domain.ai_client.providers import (
+            get_provider_catalog,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -79,18 +103,17 @@ class TestDefaultspackProviderCatalog(unittest.TestCase):
                 "RUMI_DEFAULTSPACK_SECRETS_DIR": str(Path(tmpdir) / "secrets"),
             }
             with patch.dict(os.environ, env, clear=True):
-                providers = {item["provider_id"]: item for item in list_provider_catalog()}
+                providers = {item["provider_id"]: item for item in get_provider_catalog()}
 
         google = providers["google"]
         self.assertNotIn("GOOGLE_APPLICATION_CREDENTIALS", google["env_vars"])
-        self.assertFalse(google["configured"])
         self.assertFalse(google["availability"]["configured"])
 
     def test_provider_catalog_marks_google_configured_from_secret_store(self):
         from core_runtime.secrets_store import SecretsStore
-        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
-            list_profile_catalog,
-            list_provider_catalog,
+        from ecosystem.defaultspack.domain.ai_client.providers import (
+            get_all_known_models,
+            get_provider_catalog,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -98,17 +121,17 @@ class TestDefaultspackProviderCatalog(unittest.TestCase):
             store = SecretsStore(str(secrets_dir))
             store.set_secret("GOOGLE_API_KEY", "secret-key", actor="test")
             with patch.dict(os.environ, {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)}, clear=True):
-                providers = {item["provider_id"]: item for item in list_provider_catalog()}
-                profiles = {item["profile_id"]: item for item in list_profile_catalog()}
+                providers = {item["provider_id"]: item for item in get_provider_catalog()}
+                models = get_all_known_models("google")
 
         google = providers["google"]
-        self.assertEqual(google["configured_envs"], ["defaultspack_secret"])
-        self.assertTrue(google["configured"])
-        self.assertTrue(profiles["google/gemini-2.5-flash"]["availability"]["configured"])
+        self.assertEqual(google["availability"]["configuration_source"], "defaultspack_secret")
+        self.assertTrue(google["availability"]["configured"])
+        self.assertEqual(models, [])
 
     def test_provider_catalog_marks_google_configured_from_browser_oauth(self):
-        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
-            list_provider_catalog,
+        from ecosystem.defaultspack.domain.ai_client.providers import (
+            get_provider_catalog,
         )
         from ecosystem.defaultspack.domain.ai_client.oauth_store import (
             save_provider_oauth_client_config,
@@ -143,11 +166,10 @@ class TestDefaultspackProviderCatalog(unittest.TestCase):
                     userinfo={"email": "user@example.test", "name": "OAuth User"},
                     pack_root=pack_root,
                 )
-                providers = {item["provider_id"]: item for item in list_provider_catalog()}
+                providers = {item["provider_id"]: item for item in get_provider_catalog()}
 
         google = providers["google"]
-        self.assertEqual(google["configured_envs"], ["browser_oauth"])
-        self.assertTrue(google["configured"])
+        self.assertTrue(google["availability"]["configured"])
         self.assertEqual(google["availability"]["configuration_source"], "browser_oauth")
 
 

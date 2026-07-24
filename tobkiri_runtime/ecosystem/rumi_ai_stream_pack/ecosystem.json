@@ -1,0 +1,16 @@
+{
+  "pack_id": "rumi_ai_stream_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ai_stream_pack",
+  "display_name": "Rumi AI Stream Pack",
+  "version": "1.0.0",
+  "description": "Typed provider-neutral stream event validation and normalization.",
+  "dependencies": {},
+  "connectivity": {"requires": [], "provides": ["rumi.service.ai.stream.normalize.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["ai.stream.normalize"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:bc5733265ef1124aca07b062d73a5a47a8169dcfc92bf1f9602f5bf1f4c4f98d", "build_identity": "rumi-ai-stream-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authoritative_owner": true, "owner_surfaces": ["stream_event_schema", "stream_normalization"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"network": false, "provider_branches": false, "terminal_event_required": true}}
+}

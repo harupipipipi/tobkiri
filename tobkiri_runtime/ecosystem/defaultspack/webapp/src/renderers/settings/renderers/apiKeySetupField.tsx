@@ -32,6 +32,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const [defaultModel, setDefaultModel] = useState("");
   const [quotaLabel, setQuotaLabel] = useState("");
   const [notes, setNotes] = useState("");
+  const [credentialMode, setCredentialMode] = useState<"api_key" | "none">("api_key");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
   const [availability, setAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
@@ -57,6 +58,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
       default_model: defaultModel,
       quota_label: quotaLabel,
       notes,
+      credential_mode: credentialMode,
     });
     if (!payload) return;
     setSaveState("saving");
@@ -133,29 +135,36 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             placeholder="名前 (例: main, work)"
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
           />
-          <input
-            type="password"
-            autoComplete="off"
-            value={secret}
-            onChange={(event) => {
-              setSecret(event.target.value);
-              resetFeedback();
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
-              event.preventDefault();
-              void handleSubmit();
-            }}
-            placeholder={`${providerId || "provider"} API key`}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
-          />
+          <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 focus-within:border-zinc-600">
+            <select value={credentialMode} onChange={(event) => { setCredentialMode(event.target.value === "none" ? "none" : "api_key"); resetFeedback(); }} className="max-w-20 bg-transparent px-2 text-[10px] text-zinc-400 outline-none">
+              <option value="api_key">Key</option>
+              <option value="none">Local</option>
+            </select>
+            <input
+              type="password"
+              autoComplete="off"
+              value={secret}
+              disabled={credentialMode === "none"}
+              onChange={(event) => {
+                setSecret(event.target.value);
+                resetFeedback();
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                void handleSubmit();
+              }}
+              placeholder={credentialMode === "none" ? "loopback endpoint only" : `${providerId || "provider"} API key`}
+              className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-zinc-200 outline-none disabled:cursor-not-allowed disabled:text-zinc-600"
+            />
+          </div>
           <button
             type="button"
-            disabled={saveState === "saving" || !providerId.trim() || !apiName.trim() || !secret.trim()}
+            disabled={saveState === "saving" || !providerId.trim() || !apiName.trim() || (credentialMode === "api_key" ? !secret.trim() : !baseUrl.trim())}
             onClick={() => void handleSubmit()}
             className={cn(
               "rounded-lg border px-3 py-2 text-xs transition-colors",
-              saveState !== "saving" && providerId.trim() && apiName.trim() && secret.trim()
+              saveState !== "saving" && providerId.trim() && apiName.trim() && (credentialMode === "api_key" ? secret.trim() : baseUrl.trim())
                 ? "border-zinc-100 bg-zinc-100 text-zinc-950"
                 : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
             )}

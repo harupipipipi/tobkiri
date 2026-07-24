@@ -97,6 +97,9 @@ class ExtensionRegistry:
     def skills(self) -> "SkillExtensionRegistry":
         return SkillExtensionRegistry(self)
 
+    def activities(self) -> "ActivityExtensionRegistry":
+        return ActivityExtensionRegistry(self)
+
     def chat_modes(self) -> "ChatModeRegistry":
         return ChatModeRegistry(self)
 
@@ -310,6 +313,23 @@ class SkillExtensionRegistry:
 
     def list(self, *, enabled_only: bool = True) -> List[Dict[str, Any]]:
         return self._registry.list("skill", enabled_only=enabled_only)
+
+
+class ActivityExtensionRegistry:
+    """Read validated Activity manifests from an extension registry."""
+
+    def __init__(self, registry: ExtensionRegistry) -> None:
+        self._registry = registry
+
+    def list(self, *, enabled_only: bool = True) -> List[Dict[str, Any]]:
+        """Return Activity manifests ordered by extension priority."""
+
+        return self._registry.list("activity", enabled_only=enabled_only)
+
+    def get(self, activity_id: str) -> Optional[Dict[str, Any]]:
+        """Return one Activity manifest by stable identifier."""
+
+        return self._registry.get("activity", activity_id)
 
 
 class ChatModeRegistry:

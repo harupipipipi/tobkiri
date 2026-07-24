@@ -1,0 +1,16 @@
+{
+  "pack_id": "rumi_ai_tool_bridge_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ai_tool_bridge_pack",
+  "display_name": "Rumi AI Tool Bridge Pack",
+  "version": "1.0.0",
+  "description": "Provider tool-call normalization into non-authoritative operation descriptors.",
+  "dependencies": {},
+  "connectivity": {"requires": [], "provides": ["rumi.service.ai.tool_intent.normalize.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["ai.tool_intent.normalize"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:00ad753511dff1bad0537ce4d7910d9f29f0b3369840cb5581c429af6d043958", "build_identity": "rumi-ai-tool-bridge-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authoritative_owner": true, "owner_surfaces": ["ai_tool_intent_schema"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"executes_tools": false, "grants_authority": false, "approves_requests": false}}
+}

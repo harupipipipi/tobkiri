@@ -11,12 +11,18 @@ from core_runtime.profile_paths import active_profile_id
 from core_runtime.profile_runtime_selection import apply_profile_graph_selection
 from core_runtime.profile_workspace import ProfileWorkspaceManager, validate_profile_id
 from core_runtime.runtime_audit_helpers import redact_sensitive
+from domain.prompt.studio_client import (
+    authored_edge_states,
+    prompt_owner_available,
+    write_authored_edge_state,
+)
 
 
 def active_prompt_summary(input_data: dict[str, Any] | None = None) -> dict[str, Any]:
     data = input_data if isinstance(input_data, dict) else {}
     profile_id = _resolve_profile_id(data.get("profile_id"))
     profile = _load_profile(profile_id)
+    profile = _profile_with_owner_edge_states(profile_id, profile)
     request_context = _request_context(data)
     model_profile_id = _model_profile_id(data, request_context)
     model = _model_name(data, request_context, model_profile_id)
@@ -105,6 +111,7 @@ def toggle_prompt_edge(input_data: dict[str, Any] | None = None, *, preview: boo
         raise ValueError("edge_id is required")
     enabled = bool(data.get("enabled", True))
     profile = _load_profile(profile_id)
+    profile = _profile_with_owner_edge_states(profile_id, profile)
     request_context = _request_context(data)
     model_profile_id = _model_profile_id(data, request_context)
     model = _model_name(data, request_context, model_profile_id)
@@ -136,11 +143,9 @@ def toggle_prompt_edge(input_data: dict[str, Any] | None = None, *, preview: boo
         profiles=model_profiles,
     )
     if not preview:
-        raw_profile = _load_raw_profile(profile_id)
-        ProfileWorkspaceManager().save_profile_yaml(
-            profile_id,
-            _profile_with_edge_state(raw_profile, edge_id=edge_id, enabled=enabled),
-        )
+        if not prompt_owner_available():
+            raise RuntimeError("prompt composition owner is unavailable")
+        write_authored_edge_state(profile_id, edge_id, enabled)
     prompt_summary = prompt_usage_from_graph_response(
         response,
         conversation_id=str(data.get("conversation_id") or ""),
@@ -735,6 +740,35 @@ def _profile_with_edge_state(profile: dict[str, Any], *, edge_id: str, enabled: 
     ai_input["disabled_edges"] = disabled_edges
     metadata["ai_input"] = ai_input
     patched["metadata"] = metadata
+    return patched
+
+
+def _profile_with_owner_edge_states(
+    profile_id: str,
+    profile: dict[str, Any],
+) -> dict[str, Any]:
+    if not prompt_owner_available():
+        return profile
+    patched = copy.deepcopy(profile)
+    metadata = (
+        patched.get("metadata")
+        if isinstance(patched.get("metadata"), dict)
+        else {}
+    )
+    ai_input = (
+        copy.deepcopy(metadata.get("ai_input"))
+        if isinstance(metadata.get("ai_input"), dict)
+        else {}
+    )
+    ai_input["disabled_edges"] = []
+    metadata["ai_input"] = ai_input
+    patched["metadata"] = metadata
+    for edge_id, enabled in authored_edge_states(profile_id).items():
+        patched = _profile_with_edge_state(
+            patched,
+            edge_id=edge_id,
+            enabled=enabled,
+        )
     return patched
 
 

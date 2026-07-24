@@ -39,11 +39,17 @@ class EcosystemNodeRegistry:
         interface_registry: Optional[InterfaceRegistry] = None,
         approval_manager: Any = None,
         ecosystem_dir: Optional[str] = None,
+        effective_pack_ids: Optional[Iterable[str]] = None,
     ) -> None:
         self.registry = registry
         self.interface_registry = interface_registry
         self.approval_manager = approval_manager
         self.ecosystem_dir = ecosystem_dir
+        self.effective_pack_ids = (
+            frozenset(str(item) for item in effective_pack_ids)
+            if effective_pack_ids is not None
+            else None
+        )
         self.nodes: Dict[str, NodeDefinition] = {}
         self.diagnostics: List[Dict[str, Any]] = []
 
@@ -155,13 +161,22 @@ class EcosystemNodeRegistry:
         registry = self.registry or self._load_registry()
         packs = getattr(registry, "packs", None)
         if isinstance(packs, dict):
-            return list(packs.items())
+            return [
+                (pack_id, pack_info)
+                for pack_id, pack_info in packs.items()
+                if self.effective_pack_ids is None
+                or pack_id in self.effective_pack_ids
+            ]
         return []
 
     def _load_registry(self) -> Any:
-        from .paths import discover_pack_locations
+        from .paths import discover_pack_locations, resolve_pack_locations
 
-        locations = discover_pack_locations(self.ecosystem_dir)
+        locations = (
+            resolve_pack_locations(self.effective_pack_ids, self.ecosystem_dir)
+            if self.effective_pack_ids is not None
+            else discover_pack_locations(self.ecosystem_dir)
+        )
         registry = type(
             "DiscoveredPackRegistry",
             (),

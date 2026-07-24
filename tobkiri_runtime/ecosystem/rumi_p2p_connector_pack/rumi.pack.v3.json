@@ -1,0 +1,12 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.p2p_connector","version":"1.0.0","kind":"provider","display_name":"Rumi P2P Connector","description":"Timestamped signed peer envelopes and HTTPS delivery."},
+  "contracts":{"provides":[{"id":"rumi.service.connector.adapter.v1","version":"1.0.0","provider_instance_id":"connector.p2p","instance_key":"p2p","cardinality":"many","security":"critical","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.adapter.verify","connector.delivery.execute"]}],"requires":[{"id":"rumi.service.credential.resolve.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"p2p-adapter","contract_id":"rumi.service.connector.adapter.v1","loader":"python","module":"ecosystem.rumi_p2p_connector_pack.runtime.adapter","symbol":"create_connector_adapter","artifact_hash":"sha256:beb7d2f0f1dfe9bb9eaa4f4e2d960ded504465a1de26f9df2f4fead681a146ce"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"connector.adapter.verify","access":"execute","approval_required":false},{"capability":"connector.delivery.execute","access":"execute","approval_required":true},{"capability":"credential.resolve","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:beb7d2f0f1dfe9bb9eaa4f4e2d960ded504465a1de26f9df2f4fead681a146ce","build_identity":"rumi-p2p-connector-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.p2p","defaultspack.domain.company.mimo_sync"],"compatibility_aliases":["p2p"],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Disable peer ingress and select one prior adapter after replay-ledger preservation."},
+  "extensions":{"rumi.connector_adapter.boundary":{"vendor":"p2p","chat_imports":false,"company_imports":false,"credential_scope_bound":true,"inbound_signature":"timestamped-hmac-sha256","replay_window_ms":300000,"outbound_receipt":true,"https_only":true,"redirects":false,"private_network":false}}
+}
+

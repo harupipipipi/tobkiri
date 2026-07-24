@@ -81,6 +81,42 @@ def test_model_runtime_settings_deepthink_toggle_warns(tmp_path):
     assert service.get_settings()["deepthink_enabled"] is False
 
 
+def test_model_runtime_settings_deepthink_uses_desired_state_snapshot(tmp_path):
+    service = ModelRuntimeSettingsService(tmp_path)
+
+    enabled = service.set_deepthink_enabled(
+        True,
+        expected_revision=0,
+        idempotency_key="deepthink-enable-1",
+    )
+    replay = service.set_deepthink_enabled(
+        True,
+        expected_revision=0,
+        idempotency_key="deepthink-enable-1",
+    )
+
+    assert enabled["state_snapshot"] == {
+        "state_ref": "defaultspack:models.deepthink_enabled",
+        "value": True,
+        "revision": 1,
+        "freshness": "authoritative",
+    }
+    assert replay["idempotent_replay"] is True
+    assert replay["revision"] == 1
+
+
+def test_model_runtime_settings_deepthink_two_desired_states_settle_to_last(tmp_path):
+    service = ModelRuntimeSettingsService(tmp_path)
+
+    enabled = service.set_deepthink_enabled(True, expected_revision=0)
+    disabled = service.set_deepthink_enabled(False, expected_revision=1)
+
+    assert enabled["enabled"] is True
+    assert disabled["enabled"] is False
+    assert disabled["revision"] == 2
+    assert service.get_deepthink_enabled()["enabled"] is False
+
+
 def test_model_runtime_settings_utility_models_and_groups(tmp_path):
     service = ModelRuntimeSettingsService(tmp_path)
     settings = service.update_settings(

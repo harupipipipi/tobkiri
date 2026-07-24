@@ -2,8 +2,8 @@
   "pack_id": "rumi_prompt_studio_pack",
   "pack_identity": "rumi:ecosystem/rumi_prompt_studio_pack",
   "display_name": "Rumi Prompt Studio Pack",
-  "version": "0.1.0",
-  "description": "Declarative prompt library, prompt linting, custom instruction migration, and fixture dry-run contract pack.",
+  "version": "1.0.0",
+  "description": "Authoritative Prompt Studio authoring, versioning, migration, and isolated UI pack.",
   "vocabulary": {
     "types": [
       "catalog",
@@ -18,50 +18,59 @@
       "example"
     ]
   },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
+  "dependencies": {},
   "connectivity": {
-    "requires": [
-      "defaultspack"
-    ],
-    "provides": []
+    "requires": [],
+    "provides": [
+      "rumi.resource.prompt.studio.v1",
+      "rumi.action.prompt.author.v1",
+      "rumi.action.prompt.version.v1",
+      "rumi.action.prompt.test.v1",
+      "rumi.action.prompt.migrate.v1",
+      "rumi.ui.route.module.v1"
+    ]
   },
-  "components": {},
-  "load_order": [],
   "required_secrets": [],
+  "required_capabilities": [
+    "profile.prompt.author.read",
+    "profile.prompt.author.write",
+    "profile.prompt.author.migrate"
+  ],
   "required_network": {
     "allowed_domains": [],
     "allowed_ports": []
   },
-  "host_execution": false,
+  "host_execution": true,
+  "resources": [
+    {
+      "id": "frontend/contributions/prompt-studio.json",
+      "kind": "ui.contribution",
+      "content_hash": "sha256:7a21d786ce90d54f615b7e85a7317ff7556d82a49a79070407ac65a50b3c6484"
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:4bb2b96ba25bfcdb335d86a543fe8c6aba0069d1b0740e385f42c434d721b5fa",
+    "build_identity": "rumi-prompt-studio-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
   "metadata": {
     "required_secrets": [],
     "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
-    "optional_integrations": [
-      {
-        "pack_id": "rumi_model_evals_pack",
-        "reason": "Adjacent owner for rumi_model_evals_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_memory_knowledge_pack",
-        "reason": "Adjacent owner for rumi_memory_knowledge_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_api_toolsmith_pack",
-        "reason": "Adjacent owner for rumi_api_toolsmith_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_code_ide_pack",
-        "reason": "Adjacent owner for rumi_code_ide_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_knowledge_marketplace_pack",
-        "reason": "Adjacent owner for rumi_knowledge_marketplace_pack handoff; this pack keeps declarative evidence only."
-      }
-    ],
+    "executable_code": true,
+    "declarative_only": false,
+    "authoritative_owner": true,
+    "storage_namespace": "rumi.prompt_studio",
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "security": {
+      "local_only": true,
+      "csrf_required": true,
+      "capability_scoped": true,
+      "optimistic_concurrency": true,
+      "audit_redaction": true
+    },
     "owner_surfaces": [
       "prompt_artifact_catalog",
       "prompt_lint_rubric",

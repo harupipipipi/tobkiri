@@ -18,7 +18,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Collection, Dict, List, Optional, Set, Tuple
 
 from .paths import (
     PackLocation,
@@ -106,7 +106,10 @@ def validate_packs(ecosystem_dir: Optional[str] = None) -> ValidationReport:
     return report
 
 
-def validate_host_execution(ecosystem_dir: Optional[str] = None) -> List[str]:
+def validate_host_execution(
+    ecosystem_dir: Optional[str] = None,
+    pack_ids: Optional[Collection[str]] = None,
+) -> List[str]:
     """
     W19-A: host_execution: true の Pack を検出し、未承認なら起動を拒否する。
 
@@ -116,6 +119,7 @@ def validate_host_execution(ecosystem_dir: Optional[str] = None) -> List[str]:
 
     Args:
         ecosystem_dir: エコシステムルート。None なら paths.ECOSYSTEM_DIR を使用。
+        pack_ids: 起動対象の Pack ID。指定時は、選択された Pack だけを検証する。
 
     Returns:
         host_execution: true の Pack ID リスト
@@ -131,9 +135,12 @@ def validate_host_execution(ecosystem_dir: Optional[str] = None) -> List[str]:
         logger.warning("Failed to discover packs for host_execution check: %s", exc)
         return []
 
+    selected_pack_ids = None if pack_ids is None else {str(pack_id) for pack_id in pack_ids}
     host_exec_packs: List[str] = []
 
     for loc in locations:
+        if selected_pack_ids is not None and loc.pack_id not in selected_pack_ids:
+            continue
         try:
             with open(loc.ecosystem_json_path, "r", encoding="utf-8") as f:
                 eco_data = json.load(f)

@@ -5,6 +5,7 @@ import { useT } from '@/src/lib/i18n';
 import { cn } from '@/src/lib/utils';
 import { Button } from '@/src/components/ui/Button';
 import { Input } from '@/src/components/ui/Input';
+import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import {
   Plus,
   ChevronDown,
@@ -17,7 +18,6 @@ import {
   Workflow,
   X,
   Box,
-  Loader2,
   PanelLeft,
 } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
@@ -34,6 +34,7 @@ import {
 import type { Edge, Node, ReactFlowInstance } from '@xyflow/react';
 
 import { nodeTypes } from '@/src/components/flow/CustomNodes';
+import { TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
 import { nodesToYaml, yamlToNodes } from '@/src/lib/flowUtils';
 import { useFlowHistory } from '@/src/hooks/useFlowHistory';
 import { useFlowExecution } from '@/src/hooks/useFlowExecution';
@@ -70,11 +71,25 @@ function deriveFlowId(fileName: string): string {
     .trim() || 'untitled';
 }
 
+function FlowWorkspaceSkeleton() {
+  return (
+    <div className="flow-focus-shell flex h-full min-w-0 flex-1 gap-3 overflow-hidden p-3" role="status" aria-label="Loading flows">
+      <div className="hidden w-64 animate-pulse rounded-2xl border border-border bg-bg-card min-[1000px]:block" />
+      <div className="flex min-w-0 flex-1 flex-col gap-3 rounded-2xl border border-border bg-bg-card p-4">
+        <div className="h-8 w-64 animate-pulse rounded bg-bg-hover" />
+        <div className="h-10 w-full animate-pulse rounded-xl bg-bg-hover" />
+        <div className="flex-1 animate-pulse rounded-[28px] border border-border bg-bg-main" />
+      </div>
+    </div>
+  );
+}
+
 function FlowEditorInner() {
   const t = useT();
   const availableSteps = useMemo(() => buildAvailableSteps(t), [t]);
   const flows = useAppStore((state) => state.flows);
-  const isLoading = useAppStore((state) => state.isLoading);
+  const flowsLoading = useAppStore((state) => state.flowsLoading);
+  const flowsError = useAppStore((state) => state.flowsError);
   const loadFlows = useAppStore((state) => state.loadFlows);
   const addFlow = useAppStore((state) => state.addFlow);
   const updateFlow = useAppStore((state) => state.updateFlow);
@@ -150,7 +165,7 @@ function FlowEditorInner() {
   });
 
   useEffect(() => dragDrop.setupPointerTracking(), [dragDrop.setupPointerTracking]);
-  useEffect(() => { loadFlows(); }, [loadFlows]);
+  useEffect(() => { void loadFlows(); }, [loadFlows]);
   useEffect(() => {
     // Flow is a focus workspace; collapse the global sidebar on entry so the canvas gets priority.
     setSidebarOpen(false);
@@ -271,7 +286,7 @@ function FlowEditorInner() {
         flowId,
         name: fileName,
       });
-      await addFlow({ id: flowId, name: fileName, content: yamlContent });
+      if (!await addFlow({ id: flowId, name: fileName, content: yamlContent })) return;
       const created = useAppStore.getState().flows.find((flow) => flow.id === flowId);
       if (created) {
         setSelectedFlowId(created.id);
@@ -282,8 +297,7 @@ function FlowEditorInner() {
       return;
     }
 
-    if (selectedFlowId) {
-      await updateFlow(selectedFlowId, generatedYaml);
+    if (selectedFlowId && await updateFlow(selectedFlowId, generatedYaml)) {
       addToast(t('flows.saved'), 'success');
     }
   };
@@ -295,7 +309,7 @@ function FlowEditorInner() {
       message: t('flows.delete_message'),
       confirmText: t('flows.delete_confirm'),
       onConfirm: async () => {
-        await deleteFlow(selectedFlowId);
+        if (!await deleteFlow(selectedFlowId)) return;
         setSelectedFlowId(null);
         const graph = createDefaultFlowGraph(DEFAULT_BASE_PACK);
         setNodes(graph.nodes);
@@ -379,12 +393,18 @@ function FlowEditorInner() {
     return () => window.cancelAnimationFrame(frame);
   }, [nodes.length, reactFlowInstance, selectedFlowId, isCreating]);
 
-  if (isLoading && flows.length === 0) {
+  if (flowsLoading && flows.length === 0) return <FlowWorkspaceSkeleton />;
+
+  if (flowsError && flows.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-bg-main">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-accent" />
-          <span className="text-sm text-text-muted">{t('flows.loading')}</span>
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="w-full max-w-xl">
+          <InlineLoadError
+            title="Flows could not be loaded"
+            message={flowsError}
+            onRetry={() => { void loadFlows(); }}
+            retrying={flowsLoading}
+          />
         </div>
       </div>
     );
@@ -588,7 +608,7 @@ function FlowEditorInner() {
                 )}
               >
                 <div className="rounded-full border border-border bg-bg-card/85 p-3 shadow-lg backdrop-blur-sm">
-                  <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                  <TobkiriLoadingMark />
                 </div>
               </div>
 
@@ -835,7 +855,7 @@ function FlowEditorInner() {
                         <div className="p-4">
                           {execution.isExecuting ? (
                             <div className="flex h-full items-center justify-center text-text-muted">
-                              <Clock className="mr-2 h-4 w-4 animate-spin" /> {t('flows.executing')}
+                              <TobkiriLoadingMark /> {t('flows.executing')}
                             </div>
                           ) : execution.executionResult ? (
                             <div className="flex flex-col gap-2">

@@ -35,7 +35,9 @@ FrontendRegistry = import_module(
 resolve_effective_prompt = import_module(
     "ecosystem.defaultspack.domain.prompt.effective"
 ).resolve_effective_prompt
-ToolRegistry = import_module("ecosystem.defaultspack.domain.tool.registry").ToolRegistry
+ToolRegistry = import_module(
+    "ecosystem.defaultspack.domain.tool.catalog_contract_client"
+).ContractToolCatalog
 WebhookEndpointStore = import_module(
     "ecosystem.defaultspack.domain.webhook.endpoint_store"
 ).WebhookEndpointStore

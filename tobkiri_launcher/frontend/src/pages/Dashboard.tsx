@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   activateStartupProfile,
   addPackToStartupProfile,
+  approvePack,
   clearStartupProfileNodeOverride,
   compileStartupProfilePreview,
   createStartupProfile,
@@ -25,7 +26,6 @@ import type {
 import {
   buildStartupProfileView,
   compatibleNodesForPort,
-  defaultBasePack,
   describeStartupActionError,
   describeStartupIssue,
   filterAndSortStartupProfiles,
@@ -35,14 +35,13 @@ import {
 } from '@/src/lib/startupProfiles';
 import { apiMapRoute, profileGraphRoute } from '@/src/lib/routes';
 import { useAppStore } from '@/src/store';
+import { TobkiriLoader, TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
 import {
   AlertCircle,
   ArrowLeft,
-  Box,
   CheckCircle2,
   Cloud,
   Copy,
-  Loader2,
   Monitor,
   MoreHorizontal,
   Plus,
@@ -63,7 +62,7 @@ import { Badge } from '@/src/components/ui/Badge';
 import { transformDashboard } from '@/src/lib/transforms';
 import type { DashboardData } from '@/src/store';
 
-type ActionState = 'activate' | 'create' | 'delete' | 'duplicate' | 'launch' | 'save';
+type ActionState = 'activate' | 'approve' | 'create' | 'delete' | 'duplicate' | 'launch' | 'save';
 
 const defaultDashboard: DashboardData = {
   kernelStatus: 'stopped',
@@ -77,7 +76,49 @@ const INITIAL_PROFILE_LOAD_MAX_ATTEMPTS = 3;
 const INITIAL_PROFILE_LOAD_RETRY_DELAY_MS = 900;
 
 export function canLoadDashboardProfiles(runtimeReady: boolean, runtimeStatus: string): boolean {
-  return runtimeReady || runtimeStatus === 'panel_ready';
+  // Reaching this route means the panel HTTP server is already available.
+  // Start the profile request immediately so a delayed health poll cannot leave
+  // the home screen behind an indefinite startup loader.
+  return runtimeReady || runtimeStatus !== 'error';
+}
+
+export function buildProfileCreationRequest(
+  name: string,
+  basePack: string,
+): { name: string; base_pack: string } | null {
+  const normalizedBasePack = basePack.trim();
+  if (!normalizedBasePack) return null;
+  return {
+    name: name.trim() || 'New Profile',
+    base_pack: normalizedBasePack,
+  };
+}
+
+const PROFILE_DRAFT_STORAGE_PREFIX = 'tobkiri-profile-draft:';
+
+export function readProfileDraft(profile: ApiStartupProfile): ApiStartupProfile | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = window.sessionStorage.getItem(`${PROFILE_DRAFT_STORAGE_PREFIX}${profile.profile_id}`);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as ApiStartupProfile;
+    return parsed.profile_id === profile.profile_id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeProfileDraft(profile: ApiStartupProfile): void {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(
+    `${PROFILE_DRAFT_STORAGE_PREFIX}${profile.profile_id}`,
+    JSON.stringify(profile),
+  );
+}
+
+export function clearProfileDraft(profileId: string): void {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(`${PROFILE_DRAFT_STORAGE_PREFIX}${profileId}`);
 }
 
 export async function launchStartupProfileFromDashboard({
@@ -101,11 +142,7 @@ export async function launchStartupProfileFromDashboard({
   setErrorFeedback: (message: string) => void;
   translateError: (error: unknown, fallbackAction: string) => string;
 }): Promise<void> {
-  const response = await launchProfile(profileId);
-  if (response.restart_requested) {
-    setSuccessFeedback('Profile launched. Defaultspack will open after the runtime restart is ready.');
-    return;
-  }
+  await launchProfile(profileId);
 
   await refreshProfiles(preferredProfileId);
   await refreshDashboard();
@@ -125,6 +162,22 @@ function formatTimestamp(timestamp: number): string {
 
 function shouldRetryInitialProfileLoad(errorMessage: string): boolean {
   return /Unauthorized|Invalid or expired code|Too many requests|429|Failed to fetch|NetworkError/i.test(errorMessage);
+}
+
+export async function copyTextToClipboard(
+  text: string,
+  clipboard: Pick<Clipboard, 'writeText'> | undefined = typeof navigator === 'undefined'
+    ? undefined
+    : navigator.clipboard,
+): Promise<boolean> {
+  if (!clipboard) return false;
+
+  try {
+    await clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function Dashboard() {
@@ -147,6 +200,9 @@ export function Dashboard() {
   const [feedback, setFeedback] = useState<{ message: string; tone: 'error' | 'success' } | null>(null);
   const [actionState, setActionState] = useState<{ profileId?: string; type: ActionState } | null>(null);
   const [draft, setDraft] = useState<ApiStartupProfile | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [newProfileBasePack, setNewProfileBasePack] = useState('');
 
   const editProfileId = searchParams.get('edit');
   const searchQuery = searchParams.get('q') ?? '';
@@ -170,6 +226,15 @@ export function Dashboard() {
   const translateActionError = (error: unknown, fallbackAction: string) => {
     const rawMessage = error instanceof Error ? error.message : '';
     return describeStartupActionError(rawMessage, fallbackAction);
+  };
+
+  const copyRuntimeError = async () => {
+    const message = runtimeError || 'The control panel opened, but the background runtime startup failed.';
+    const copied = await copyTextToClipboard(message);
+    addToast(
+      copied ? 'Error copied to clipboard.' : 'Could not copy the error. Please select and copy it manually.',
+      copied ? 'success' : 'error',
+    );
   };
 
   const refreshDashboard = async () => {
@@ -235,8 +300,12 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!selectedProfile) { setDraft(null); return; }
-    setDraft(JSON.parse(JSON.stringify(selectedProfile)));
+    setDraft(readProfileDraft(selectedProfile) ?? JSON.parse(JSON.stringify(selectedProfile)));
   }, [selectedProfile]);
+
+  useEffect(() => {
+    if (draft) writeProfileDraft(draft);
+  }, [draft]);
 
   const profileViews = useMemo(() => {
     if (!payload) return [];
@@ -254,7 +323,6 @@ export function Dashboard() {
   const profileCount = payload?.profiles.length ?? 0;
   const catalogPacks = catalog?.packs ?? [];
   const selectedBasePack = catalogPacks.find((pack) => pack.pack_id === draft?.base_pack) ?? null;
-  const defaultCreatePack = defaultBasePack(catalog);
   const availablePacksToAdd = useMemo(
     () => catalogPacks.filter((pack) => pack.available && draft && !draft.packs.includes(pack.pack_id)),
     [catalogPacks, draft],
@@ -265,11 +333,11 @@ export function Dashboard() {
     return JSON.stringify({
       name: selectedProfile.name, base_pack: selectedProfile.base_pack,
       graph_id: selectedProfile.graph_id, packs: selectedProfile.packs,
-      node_overrides: selectedProfile.node_overrides,
+      node_overrides: selectedProfile.node_overrides, icon: selectedProfile.icon ?? null,
     }) !== JSON.stringify({
       name: draft.name, base_pack: draft.base_pack,
       graph_id: draft.graph_id, packs: draft.packs,
-      node_overrides: draft.node_overrides,
+      node_overrides: draft.node_overrides, icon: draft.icon ?? null,
     });
   }, [draft, selectedProfile]);
 
@@ -283,13 +351,21 @@ export function Dashboard() {
     addToast(message, 'error');
   };
 
+  const openCreateDialog = () => {
+    setNewProfileName('');
+    setNewProfileBasePack('');
+    setCreateDialogOpen(true);
+  };
+
   const handleCreate = async () => {
     setActionState({ type: 'create' });
     setFeedback(null);
     try {
-      if (!defaultCreatePack) throw new Error('No available base pack with a startup graph was found.');
-      const response = await createStartupProfile({ name: 'New custom profile', base_pack: defaultCreatePack.pack_id });
+      const request = buildProfileCreationRequest(newProfileName, newProfileBasePack);
+      if (!request) throw new Error('Choose a base pack before creating this profile.');
+      const response = await createStartupProfile(request);
       await refreshProfiles(response.profile.profile_id);
+      setCreateDialogOpen(false);
       setSuccessFeedback('Custom profile created.');
     } catch (error) {
       setErrorFeedback(translateActionError(error, 'create a custom profile'));
@@ -303,8 +379,9 @@ export function Dashboard() {
     try {
       await updateStartupProfile(draft.profile_id, {
         name: draft.name, base_pack: draft.base_pack, graph_id: draft.graph_id,
-        packs: draft.packs, node_overrides: draft.node_overrides,
+        packs: draft.packs, node_overrides: draft.node_overrides, icon: draft.icon ?? null,
       });
+      clearProfileDraft(draft.profile_id);
       await refreshProfiles(draft.profile_id);
       setSuccessFeedback('Profile changes saved.');
     } catch (error) {
@@ -324,6 +401,20 @@ export function Dashboard() {
     } catch (error) {
       setErrorFeedback(translateActionError(error, 'add this pack'));
     } finally { setActionState(null); }
+  };
+
+  const handleApprovePack = async (packId: string) => {
+    setActionState({ type: 'approve', profileId: editProfileId ?? undefined });
+    setFeedback(null);
+    try {
+      await approvePack(packId);
+      await refreshProfiles(editProfileId);
+      setSuccessFeedback('Pack approved. You can now use it in this profile.');
+    } catch (error) {
+      setErrorFeedback(translateActionError(error, 'approve this pack'));
+    } finally {
+      setActionState(null);
+    }
   };
 
   const handleRemovePack = async (packId: string) => {
@@ -401,10 +492,12 @@ export function Dashboard() {
   };
 
   const handleOpenProfileGraph = (profileId: string) => {
+    if (draft?.profile_id === profileId) writeProfileDraft(draft);
     navigate(profileGraphRoute(profileId));
   };
 
   const handleOpenApiMap = (profileId: string) => {
+    if (draft?.profile_id === profileId) writeProfileDraft(draft);
     navigate(apiMapRoute({
       profileId,
       focus: `profile:${profileId}`,
@@ -449,7 +542,19 @@ export function Dashboard() {
             <AlertCircle className="mt-0.5 h-5 w-5 text-red-500 shrink-0" />
             <div className="space-y-1">
               <h2 className="text-base font-semibold text-text-main">Runtime could not finish starting</h2>
-              <p className="text-sm text-text-muted">{runtimeError || 'The control panel opened, but the background runtime startup failed.'}</p>
+              <div className="flex items-start gap-1">
+                <p className="text-sm text-text-muted">{runtimeError || 'The control panel opened, but the background runtime startup failed.'}</p>
+                <Button
+                  aria-label="Copy error message"
+                  className="h-7 w-7 shrink-0 p-0"
+                  onClick={() => void copyRuntimeError()}
+                  size="icon"
+                  title="Copy error message"
+                  variant="ghost"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           </div>
           <div className="flex justify-end">
@@ -503,7 +608,7 @@ export function Dashboard() {
                 aria-label="Search profiles"
               />
             </label>
-            <Button onClick={handleCreate} disabled={actionState?.type === 'create'} loading={actionState?.type === 'create'}>
+            <Button onClick={openCreateDialog}>
               <Plus className="h-4 w-4" /> Create
             </Button>
           </div>
@@ -528,7 +633,7 @@ export function Dashboard() {
 
         {!runtimeReady && runtimeStatus === 'panel_ready' && (
           <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <TobkiriLoadingMark />
             <span className="flex-1">Runtime is still preparing. Profiles are available now, and launch surfaces will open after readiness.</span>
           </div>
         )}
@@ -551,7 +656,7 @@ export function Dashboard() {
               {searchQuery ? (
                 <Button variant="outline" size="sm" onClick={() => patchSearchParams({ q: null })}>Clear search</Button>
               ) : (
-                <Button size="sm" onClick={handleCreate} disabled={actionState?.type === 'create'}>Create Profile</Button>
+                <Button size="sm" onClick={openCreateDialog}>Create Profile</Button>
               )}
             </div>
           </section>
@@ -608,8 +713,8 @@ export function Dashboard() {
 
                   {/* Icon */}
                   <div className="mt-4 flex justify-center">
-                    <div className={`flex h-14 w-14 items-center justify-center rounded-xl ${isActive ? 'bg-accent/8 text-accent' : 'bg-bg-hover text-text-muted'}`}>
-                      <Box className="h-6 w-6" strokeWidth={1.5} />
+                    <div className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl ${isActive ? 'bg-accent/8' : 'bg-bg-hover'}`}>
+                      <ProfileIcon icon={profile.icon} name={profile.name} />
                     </div>
                   </div>
 
@@ -641,12 +746,11 @@ export function Dashboard() {
 
             {/* Create card */}
             <button
-              onClick={handleCreate}
-              disabled={actionState?.type === 'create'}
+              onClick={openCreateDialog}
               className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg-card/50 p-5 text-center transition hover:border-accent/40 hover:bg-bg-card min-h-[240px]"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-bg-hover text-text-muted">
-                {actionState?.type === 'create' ? <Loader2 className="h-5 w-5 animate-spin text-accent" /> : <Plus className="h-5 w-5" />}
+                <Plus className="h-5 w-5" />
               </div>
               <h3 className="mt-3 text-sm font-semibold text-text-main">Create Profile</h3>
               <p className="mt-1 text-xs text-text-muted">Build a new startup profile</p>
@@ -674,12 +778,69 @@ export function Dashboard() {
           handleLaunch={handleLaunch}
           handleOpenProfileGraph={handleOpenProfileGraph}
           handleOpenApiMap={handleOpenApiMap}
+          handleApprovePack={handleApprovePack}
           handleAddPack={handleAddPack}
           handleRemovePack={handleRemovePack}
           handleOverrideChange={handleOverrideChange}
         />}
       </div>
+
+      {createDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 backdrop-blur-sm">
+          <section
+            aria-labelledby="create-profile-title"
+            aria-modal="true"
+            className="w-full max-w-md rounded-xl border border-border bg-bg-card p-6 shadow-xl"
+            role="dialog"
+          >
+            <h2 id="create-profile-title" className="text-lg font-semibold text-text-main">Create Profile</h2>
+            <p className="mt-2 text-sm text-text-muted">Choose a base pack before saving a new profile. Going back does not create anything.</p>
+            <label className="mt-5 block text-xs font-medium uppercase tracking-wider text-text-muted">
+              Profile name
+              <input
+                className="mt-1.5 w-full rounded-lg border border-border bg-bg-main px-3 py-2.5 text-sm text-text-main outline-none transition focus:border-accent focus:ring-2 focus:ring-[var(--ring-color)]"
+                onChange={(event) => setNewProfileName(event.target.value)}
+                placeholder="New Profile"
+                value={newProfileName}
+              />
+            </label>
+            <label className="mt-4 block text-xs font-medium uppercase tracking-wider text-text-muted">
+              Base pack
+              <select
+                className="rumi-select mt-1.5 w-full rounded-lg border border-border px-3 py-2.5 pr-9 text-sm outline-none transition"
+                onChange={(event) => setNewProfileBasePack(event.target.value)}
+                value={newProfileBasePack}
+              >
+                <option value="">Choose a pack</option>
+                {catalogPacks.map((pack: any) => (
+                  <option disabled={!pack.available} key={pack.pack_id} value={pack.pack_id}>
+                    {packLabel(pack)}{pack.available ? '' : ' (unavailable)'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button disabled={actionState?.type === 'create'} onClick={() => setCreateDialogOpen(false)} variant="outline">Back</Button>
+              <Button disabled={!newProfileBasePack || actionState?.type === 'create'} loading={actionState?.type === 'create'} onClick={() => void handleCreate()}>
+                Create Profile
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ProfileIcon({ icon, name }: { icon?: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <img
+      alt={`${name} icon`}
+      className="h-full w-full object-cover p-2"
+      onError={() => setFailed(true)}
+      src={!failed && icon ? icon : '/panel/assets/tobkiri-launcher-icon.png'}
+    />
   );
 }
 
@@ -714,7 +875,7 @@ function SupervisorSnapshot({
               {loading ? 'Loading runtime snapshot...' : error || 'Runtime snapshot unavailable.'}
             </p>
           </div>
-          {loading && <Loader2 className="h-4 w-4 animate-spin text-accent" />}
+          {loading && <TobkiriLoadingMark />}
         </div>
       </section>
     );
@@ -871,6 +1032,7 @@ interface EditPanelProps {
   handleLaunch: (id: string) => Promise<void>;
   handleOpenProfileGraph: (id: string) => void;
   handleOpenApiMap: (id: string) => void;
+  handleApprovePack: (packId: string) => Promise<void>;
   handleAddPack: (packId: string) => Promise<void>;
   handleRemovePack: (packId: string) => Promise<void>;
   handleOverrideChange: (portKey: string, nodeId: string) => Promise<void>;
@@ -881,8 +1043,10 @@ function EditPanel({
   isDirty, actionState, profileCount, editProfileId, patchSearchParams,
   handleSave, handleActivate, handleDuplicate, handleDelete, handleLaunch,
   handleOpenProfileGraph, handleOpenApiMap,
+  handleApprovePack,
   handleAddPack, handleRemovePack, handleOverrideChange,
 }: EditPanelProps) {
+  const [activeSection, setActiveSection] = useState<'general' | 'packs' | 'wiring'>('general');
   const [compilePreview, setCompilePreview] = useState<StartupProfileCompilePreviewResponseData | null>(null);
   const [compilePreviewError, setCompilePreviewError] = useState<string | null>(null);
   const [compilePreviewLoading, setCompilePreviewLoading] = useState(false);
@@ -975,9 +1139,32 @@ function EditPanel({
 
       {/* Edit body */}
       <div className="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 gap-6 overflow-y-auto px-6 py-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="space-y-6">
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[190px_minmax(0,1fr)]">
+          <nav aria-label="Profile settings" className="space-y-1 lg:sticky lg:top-0 lg:self-start">
+            {([
+              ['general', 'General', 'Name, icon, and base pack'],
+              ['packs', 'Packs', 'Installed packs for this profile'],
+              ['wiring', 'Startup wiring', 'Launch graph port overrides'],
+            ] as const).map(([section, label, description]) => (
+              <button
+                aria-current={activeSection === section ? 'page' : undefined}
+                className={`w-full rounded-lg px-3 py-2.5 text-left transition ${
+                  activeSection === section
+                    ? 'bg-accent/10 text-accent'
+                    : 'text-text-muted hover:bg-bg-hover hover:text-text-main'
+                }`}
+                key={section}
+                onClick={() => setActiveSection(section)}
+                type="button"
+              >
+                <span className="block text-sm font-medium">{label}</span>
+                <span className="mt-0.5 block text-[11px] leading-4 opacity-75">{description}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="min-w-0">
           {/* General settings */}
-          <div className="rounded-lg border border-border bg-bg-main p-5">
+          {activeSection === 'general' ? <div className="rounded-lg border border-border bg-bg-main p-5">
             <h3 className="text-sm font-semibold text-text-main">General settings</h3>
             <p className="mt-0.5 text-xs text-text-muted">Profile name and base pack.</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -1014,6 +1201,22 @@ function EditPanel({
               </div>
             </div>
 
+            <div className="mt-4 space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wider text-text-muted">Profile icon</label>
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-bg-hover">
+                  <ProfileIcon icon={draft.icon} name={draft.name} />
+                </div>
+                <input
+                  value={draft.icon ?? ''}
+                  onChange={(event) => setDraft({ ...draft, icon: event.target.value || null })}
+                  placeholder="Optional HTTPS image URL"
+                  className="w-full rounded-lg border border-border bg-bg-hover px-3 py-2.5 text-sm text-text-main outline-none transition focus:border-accent focus:ring-2 focus:ring-[var(--ring-color)]"
+                />
+              </div>
+              <p className="text-xs text-text-muted">Leave blank to use the Tobkiri icon.</p>
+            </div>
+
             {selectedBasePack && !selectedBasePack.available && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-950/20">
                 <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
@@ -1024,12 +1227,21 @@ function EditPanel({
                     <li key={issue}>{describeStartupIssue(issue, packLabel(selectedBasePack)).description}</li>
                   ))}
                 </ul>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  onClick={() => void handleApprovePack(selectedBasePack.pack_id)}
+                  disabled={actionState?.type === 'approve'}
+                  loading={actionState?.type === 'approve'}
+                >
+                  <ShieldCheck className="mr-2 h-3.5 w-3.5" /> Approve {packLabel(selectedBasePack)}
+                </Button>
               </div>
             )}
-          </div>
+          </div> : null}
 
           {/* Profile packs */}
-          <div className="rounded-lg border border-border bg-bg-main p-5">
+          {activeSection === 'packs' ? <div className="rounded-lg border border-border bg-bg-main p-5">
             <h3 className="text-sm font-semibold text-text-main">Profile packs</h3>
             <p className="mt-0.5 text-xs text-text-muted">Add packs before using their nodes as overrides.</p>
             <div className="mt-4 space-y-3">
@@ -1042,9 +1254,21 @@ function EditPanel({
                       <div className="truncate text-sm font-medium text-text-main">{packLabel(pack, packId)}</div>
                       <div className="truncate text-xs text-text-muted">{packId}</div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => void handleRemovePack(packId)} disabled={!canRemove || actionState?.profileId === draft.profile_id}>
-                      {packId === draft.base_pack ? 'Base' : 'Remove'}
-                    </Button>
+                    <div className="flex shrink-0 gap-2">
+                      {pack && !pack.available ? (
+                        <Button
+                          size="sm"
+                          onClick={() => void handleApprovePack(packId)}
+                          disabled={actionState?.type === 'approve'}
+                          loading={actionState?.type === 'approve'}
+                        >
+                          Approve
+                        </Button>
+                      ) : null}
+                      <Button variant="outline" size="sm" onClick={() => void handleRemovePack(packId)} disabled={!canRemove || actionState?.profileId === draft.profile_id}>
+                        {packId === draft.base_pack ? 'Base' : 'Remove'}
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
@@ -1063,10 +1287,10 @@ function EditPanel({
                 </select>
               </div>
             </div>
-          </div>
+          </div> : null}
 
           {/* Graph port overrides */}
-          <div className="rounded-lg border border-border bg-bg-main p-5">
+          {activeSection === 'wiring' ? <div className="rounded-lg border border-border bg-bg-main p-5">
             <h3 className="text-sm font-semibold text-text-main">Graph port overrides</h3>
             <p className="mt-0.5 text-xs text-text-muted">Override graph inputs with compatible nodes.</p>
             <div className="mt-4 space-y-3">
@@ -1106,6 +1330,7 @@ function EditPanel({
                 );
               })}
             </div>
+          </div> : null}
           </div>
         </div>
 
@@ -1115,7 +1340,7 @@ function EditPanel({
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs font-medium uppercase tracking-wider text-text-muted">Launch target</div>
               {compilePreviewLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" />
+                <TobkiriLoadingMark />
               ) : compilePreview?.ok ? (
                 <Badge variant="success" className="text-[10px]">Ready</Badge>
               ) : (
@@ -1178,46 +1403,6 @@ function EditPanel({
 
 // --- Skeleton ---
 
-function SkeletonPulse({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-lg bg-bg-hover ${className}`} />;
-}
-
 function DashboardSkeleton() {
-  return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-6 py-8 lg:px-10 scrollbar-hidden overflow-y-auto">
-        <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-2">
-            <SkeletonPulse className="h-7 w-44" />
-            <SkeletonPulse className="h-4 w-56" />
-          </div>
-          <div className="flex items-center gap-3">
-            <SkeletonPulse className="h-10 w-40" />
-            <SkeletonPulse className="h-10 w-28" />
-          </div>
-        </section>
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <article key={i} className="flex flex-col rounded-xl border border-border bg-bg-card p-5">
-              <div className="flex items-center justify-between">
-                <SkeletonPulse className="h-3 w-12" />
-                <SkeletonPulse className="h-6 w-6 rounded-md" />
-              </div>
-              <div className="mt-4 flex justify-center">
-                <SkeletonPulse className="h-14 w-14 rounded-xl" />
-              </div>
-              <div className="mt-3 flex flex-col items-center gap-2">
-                <SkeletonPulse className="h-4 w-28" />
-                <SkeletonPulse className="h-3 w-20" />
-              </div>
-              <div className="mt-auto pt-4 flex gap-2 justify-end">
-                <SkeletonPulse className="h-8 w-14" />
-                <SkeletonPulse className="h-8 w-20" />
-              </div>
-            </article>
-          ))}
-        </section>
-      </div>
-    </div>
-  );
+  return <TobkiriLoader label="Loading Tobkiri home..." />;
 }

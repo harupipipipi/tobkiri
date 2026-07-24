@@ -1,0 +1,111 @@
+"""Pure command inspection and risk classification."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import shlex
+from typing import Any, Callable, Mapping
+
+_READ = {
+    "pwd", "ls", "dir", "cat", "head", "tail", "rg", "grep", "find",
+    "git status", "git diff", "git log", "git show", "git grep",
+    "git ls-files", "git rev-parse", "git blame",
+}
+_NETWORK = {
+    "curl", "wget", "ssh", "scp", "rsync", "git clone", "git fetch",
+    "git pull", "git push", "gh", "npm publish", "cargo publish",
+}
+_INSTALL = {
+    "npm install", "npm i", "pnpm install", "yarn add", "pip install",
+    "pip3 install", "uv pip install", "cargo install", "brew install",
+}
+_DESTRUCTIVE = {
+    "rm", "rmdir", "del", "erase", "git reset", "git clean",
+    "git checkout", "git switch", "chmod", "chown", "sudo",
+}
+_CREDENTIAL = {
+    "gh auth", "git credential", "security find-generic-password",
+    "pass", "op read", "aws configure",
+}
+_METACHARS = (";", "&&", "||", "|", ">", "<", "`", "$(", "${")
+
+
+def create_shell_policy_operation(
+    client: Any,
+) -> Callable[[str, Mapping[str, Any]], dict[str, Any]]:
+    """Create pure shell inspect operations."""
+    del client
+
+    def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        if name == "classify":
+            return classify(payload)
+        if name == "tokenize":
+            return {"argv": _argv(payload.get("command")), "executed": False}
+        raise ValueError(f"unknown shell policy operation: {name}")
+
+    return operation
+
+
+def classify(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return deterministic risk without executing a command."""
+    command = payload.get("command")
+    normalized = _normalized(command)
+    if not normalized:
+        raise ValueError("command is required")
+    reasons = []
+    shell_syntax = any(marker in normalized for marker in _METACHARS)
+    if shell_syntax:
+        reasons.append("shell_syntax")
+    if _prefix(normalized, _NETWORK):
+        reasons.append("network")
+    if _prefix(normalized, _INSTALL):
+        reasons.append("install")
+    if _prefix(normalized, _DESTRUCTIVE):
+        reasons.append("destructive")
+    if _prefix(normalized, _CREDENTIAL):
+        reasons.append("credential")
+    if any(flag in _argv(command) for flag in ("--fix", "--write", "--bless")):
+        reasons.append("write_option")
+    read_only = bool(_prefix(normalized, _READ)) and not reasons
+    risk = "low" if read_only else "critical" if reasons else "medium"
+    return {
+        "normalized_command": normalized,
+        "command_hash": hashlib.sha256(
+            json.dumps(
+                {"command": command, "cwd": payload.get("cwd"), "shell": bool(payload.get("shell"))},
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest(),
+        "classification": risk,
+        "risk_level": risk,
+        "risk_reasons": reasons or (["read_only"] if read_only else ["command_execution"]),
+        "read_only": read_only,
+        "approval_required": not read_only,
+        "shell_syntax": shell_syntax,
+        "executed": False,
+    }
+
+
+def _normalized(command: Any) -> str:
+    if isinstance(command, (list, tuple)):
+        return " ".join(str(item).strip() for item in command if str(item).strip())
+    return " ".join(str(command or "").strip().split())
+
+
+def _argv(command: Any) -> list[str]:
+    if isinstance(command, (list, tuple)):
+        return [str(item) for item in command]
+    return shlex.split(str(command or ""), posix=True)
+
+
+def _prefix(normalized: str, values: set[str]) -> str | None:
+    lower = normalized.casefold()
+    for candidate in sorted(values, key=len, reverse=True):
+        folded = candidate.casefold()
+        if lower == folded or lower.startswith(folded + " "):
+            return candidate
+    return None
+

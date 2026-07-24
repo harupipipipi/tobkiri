@@ -1,0 +1,87 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.tool_capability_executor",
+    "version": "1.0.0",
+    "kind": "adapter",
+    "display_name": "Rumi Tool Capability Executor",
+    "description": "Capability-backed executor retaining core trust, grant, timeout, and audit checks."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.service.tool.execute.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "tool-executor.capability",
+        "routing_keys": [
+          "capability"
+        ],
+        "cardinality": "many",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "domain-service"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.execute"
+        ]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "tool-capability-execute",
+      "contract_id": "rumi.service.tool.execute.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_capability_executor_pack.runtime.executor",
+      "symbol": "create_execute_operation",
+      "artifact_hash": "sha256:32c817fdddaeef88f7ca88364e6b3bc2fb985c820f514dc46b88fbfe93a34eb2"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "tool.execute",
+      "access": "execute",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:d2c3bf5577d57bfbe6f6d8bb4e976b05bc57f78493d3d6b3d9f3de9fcfcf2857",
+    "build_identity": "rumi-tool-capability-executor-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.domain.tool.executor.capability",
+      "core_runtime.capability_executor"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Remove this adapter; underlying capability services remain available."
+  },
+  "extensions": {
+    "rumi.tool_executor.boundary": {
+      "execution_kind": "capability",
+      "grant_bypass": false,
+      "trust_bypass": false,
+      "domain_service_owner": false
+    }
+  }
+}

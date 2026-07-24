@@ -605,9 +605,27 @@ def _change_request_commit_route_enabled() -> bool:
 
 
 def _route_enabled_by_default(spec: HttpRouteSpec) -> bool:
+    if spec.pattern.startswith("/api/prompts"):
+        return prompt_contract_routes_enabled()
     if spec.method == "POST" and spec.pattern == "/api/change-requests/{id}/commit":
         return _change_request_commit_route_enabled()
     return True
+
+
+def prompt_contract_routes_enabled() -> bool:
+    """Expose legacy prompt shims only when a prompt owner is resolved."""
+    try:
+        from core_runtime.resolved_profile_scope import active_resolved_profile
+
+        plan = active_resolved_profile()
+    except Exception:
+        plan = None
+    if plan is None:
+        return True
+    return any(
+        provider.contract_id.startswith(("rumi.resource.prompt.", "rumi.action.prompt."))
+        for provider in plan.providers
+    )
 
 
 def canonical_http_route_specs(*, include_always_available: bool = True) -> list[HttpRouteSpec]:
@@ -661,7 +679,7 @@ def flow_http_output_is_compatible(
 
 
 _PROMPT_HTTP_ROUTE_SPECS = [
-    HttpRouteSpec("GET", "/api/prompts", block_module="blocks.prompt.editor_load", sensitive=True),
+    HttpRouteSpec("GET", "/api/prompts", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "editor.load"}, sensitive=True),
     HttpRouteSpec("GET", "/api/prompts/active", block_module="blocks.prompt.active", sensitive=True),
     HttpRouteSpec("GET", "/api/prompts/traces", block_module="blocks.prompt.trace", sensitive=True),
     HttpRouteSpec(
@@ -678,73 +696,82 @@ _PROMPT_HTTP_ROUTE_SPECS = [
         block_module="blocks.prompt.preview_toggle",
         sensitive=True,
     ),
-    HttpRouteSpec("GET", "/api/prompts/editor", block_module="blocks.prompt.editor_load", sensitive=True),
+    HttpRouteSpec("GET", "/api/prompts/editor", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "editor.load"}, sensitive=True),
     HttpRouteSpec(
         "POST",
         "/api/prompts/editor/save",
-        block_module="blocks.prompt.editor",
-        defaults={"action": "save"},
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "save"},
         sensitive=True,
     ),
     HttpRouteSpec(
         "POST",
         "/api/prompts/override",
-        block_module="blocks.prompt.editor",
-        defaults={"action": "override"},
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "override"},
         sensitive=True,
     ),
-    HttpRouteSpec("POST", "/api/prompts/diff", block_module="blocks.prompt.diff", sensitive=True),
-    HttpRouteSpec("POST", "/api/prompts/test", block_module="blocks.prompt.test", sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/diff", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "diff"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/test", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "test"}, sensitive=True),
+    HttpRouteSpec("GET", "/api/prompts/migration/inspect", block_module="blocks.prompt.migration_adapter", defaults={"_migration_operation": "inspect"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/migration/apply", block_module="blocks.prompt.migration_adapter", defaults={"_migration_operation": "apply"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/migration/rollback", block_module="blocks.prompt.migration_adapter", defaults={"_migration_operation": "rollback"}, sensitive=True),
     HttpRouteSpec(
         "GET",
         "/api/prompts/{name}/versions",
-        block_module="blocks.prompt.versions",
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "versions"},
         path_inject={"name": "name"},
         sensitive=True,
     ),
     HttpRouteSpec(
         "POST",
         "/api/prompts/{name}/versions",
-        block_module="blocks.prompt.advanced.version",
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "save"},
         path_inject={"name": "name"},
         sensitive=True,
     ),
     HttpRouteSpec(
         "PUT",
         "/api/prompts/{name}/versions/{version}",
-        block_module="blocks.prompt.advanced.version",
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "rollback"},
         path_inject={"name": "name", "version": "version"},
         sensitive=True,
     ),
     HttpRouteSpec(
         "POST",
         "/api/prompts/{name}/rollback",
-        block_module="blocks.prompt.rollback",
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "rollback"},
         path_inject={"name": "name"},
         sensitive=True,
     ),
-    HttpRouteSpec("PUT", "/api/prompts/{name}", block_module="blocks.prompt.update", path_inject={"name": "name"}, sensitive=True),
-    HttpRouteSpec("DELETE", "/api/prompts/{name}", block_module="blocks.prompt.delete", path_inject={"name": "name"}, sensitive=True),
-    HttpRouteSpec("POST", "/api/prompts/convert", block_module="blocks.prompt.convert", sensitive=True),
-    HttpRouteSpec("POST", "/api/prompts/lint", block_module="blocks.prompt.lint_prompt", sensitive=True),
-    HttpRouteSpec("POST", "/api/prompts/compact", block_module="blocks.prompt.compact_prompt", sensitive=True),
-    HttpRouteSpec("POST", "/api/prompts/build", block_module="blocks.prompt.advanced.build", sensitive=True),
-    HttpRouteSpec("GET", "/api/prompts/context-vars", block_module="blocks.prompt.advanced.context_vars", sensitive=True),
+    HttpRouteSpec("PUT", "/api/prompts/{name}", block_module="blocks.prompt.contract_adapter", path_inject={"name": "name"}, defaults={"_contract_operation": "save"}, sensitive=True),
+    HttpRouteSpec("DELETE", "/api/prompts/{name}", block_module="blocks.prompt.contract_adapter", path_inject={"name": "name"}, defaults={"_contract_operation": "delete"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/convert", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "convert"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/lint", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "lint"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/compact", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "compact"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/build", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "build"}, sensitive=True),
+    HttpRouteSpec("GET", "/api/prompts/context-vars", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "context_vars"}, sensitive=True),
     HttpRouteSpec(
         "POST",
         "/api/prompts/{name}/conditional",
-        block_module="blocks.prompt.advanced.conditional",
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "conditional"},
         path_inject={"name": "name"},
         sensitive=True,
     ),
     HttpRouteSpec(
         "POST",
         "/api/prompts/{name}/inherit",
-        block_module="blocks.prompt.advanced.inherit",
+        block_module="blocks.prompt.contract_adapter",
+        defaults={"_contract_operation": "inherit"},
         path_inject={"name": "name"},
         sensitive=True,
     ),
-    HttpRouteSpec("POST", "/api/prompts/preview", block_module="blocks.prompt.advanced.preview", sensitive=True),
+    HttpRouteSpec("POST", "/api/prompts/preview", block_module="blocks.prompt.contract_adapter", defaults={"_contract_operation": "preview"}, sensitive=True),
 ]
 
 
@@ -1765,6 +1792,18 @@ _FALLBACK_HTTP_ROUTE_SPECS = [
         defaults={"action": "delete_column"},
     ),
     HttpRouteSpec("GET", "/api/capabilities", block_module="blocks.capability.list"),
+    HttpRouteSpec("GET", "/api/capabilities/catalog", block_module="blocks.capability.api", defaults={"action": "catalog"}),
+    HttpRouteSpec("GET", "/api/capabilities/settings", block_module="blocks.capability.api", defaults={"action": "settings"}, sensitive=True),
+    HttpRouteSpec("PATCH", "/api/capabilities/settings", block_module="blocks.capability.api", defaults={"action": "update_settings"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/capabilities/resolve", block_module="blocks.capability.api", defaults={"action": "resolve"}, sensitive=True),
+    HttpRouteSpec("GET", "/api/capabilities/plans/{plan_id}", block_module="blocks.capability.api", path_inject={"plan_id": "plan_id"}, defaults={"action": "plan"}, sensitive=True),
+    HttpRouteSpec("GET", "/api/capabilities/traces/{trace_id}", block_module="blocks.capability.api", path_inject={"trace_id": "trace_id"}, defaults={"action": "trace"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/capabilities/plans/{plan_id}/approve", block_module="blocks.capability.api", path_inject={"plan_id": "plan_id"}, defaults={"action": "approve"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/capabilities/plans/{plan_id}/execute", block_module="blocks.capability.api", path_inject={"plan_id": "plan_id"}, defaults={"action": "execute"}, sensitive=True),
+    HttpRouteSpec("POST", "/api/capabilities/manifests/validate", block_module="blocks.capability.api", defaults={"action": "validate_manifest"}),
+    HttpRouteSpec("POST", "/api/capabilities/schemas/compile", block_module="blocks.capability.api", defaults={"action": "compile_schema"}),
+    HttpRouteSpec("GET", "/api/skills", block_module="blocks.capability.api", defaults={"action": "skills"}),
+    HttpRouteSpec("PATCH", "/api/skills/lifecycle", block_module="blocks.capability.api", defaults={"action": "update_skill"}, sensitive=True),
     HttpRouteSpec(
         "GET",
         "/api/capabilities/{id}",
@@ -2287,15 +2326,71 @@ _FALLBACK_HTTP_ROUTE_SPECS = [
         "POST", "/api/vision/describe-images", block_module="blocks.vision.describe_images"
     ),
     HttpRouteSpec("GET", "/api/ui/catalog", block_module="blocks.ui.catalog"),
+    HttpRouteSpec(
+        "POST",
+        "/api/ui/capability/invoke",
+        block_module="blocks.ui.frontend_capability",
+        sensitive=True,
+        local_only=True,
+    ),
     HttpRouteSpec("GET", "/api/ui/settings", block_module="blocks.ui.settings"),
     HttpRouteSpec("PUT", "/api/ui/settings", block_module="blocks.ui.settings"),
     HttpRouteSpec("GET", "/api/ui/provider-health", block_module="blocks.ui.provider_health"),
     HttpRouteSpec("GET", "/api/ui/commands", block_module="blocks.ui.commands"),
     HttpRouteSpec("POST", "/api/ui/commands/execute", block_module="blocks.ui.commands"),
+    HttpRouteSpec(
+        "GET",
+        "/api/command-protocol/v1/catalog",
+        block_module="blocks.ui.command_protocol_catalog",
+    ),
+    HttpRouteSpec(
+        "POST",
+        "/api/command-protocol/v1/invoke",
+        block_module="blocks.ui.command_protocol_invoke",
+    ),
+    HttpRouteSpec(
+        "POST",
+        "/api/command-protocol/v1/invocations/events/query",
+        block_module="blocks.ui.command_protocol_events",
+    ),
+    HttpRouteSpec(
+        "GET",
+        "/api/command-protocol/v1/invocations/{invocation_id}/events",
+        block_module="blocks.ui.command_protocol_stream",
+        path_inject={"invocation_id": "invocation_id"},
+    ),
+    HttpRouteSpec(
+        "POST",
+        "/api/command-protocol/v1/offline",
+        block_module="blocks.ui.command_protocol_offline",
+    ),
+    HttpRouteSpec(
+        "POST",
+        "/api/command-protocol/v1/resume",
+        block_module="blocks.ui.command_protocol_resume",
+        sensitive=True,
+    ),
+    HttpRouteSpec(
+        "POST",
+        "/api/command-protocol/v1/states/query",
+        block_module="blocks.ui.command_protocol_states",
+    ),
+    HttpRouteSpec(
+        "POST",
+        "/api/command-protocol/v1/datasources/query",
+        block_module="blocks.ui.command_protocol_datasources",
+    ),
     HttpRouteSpec("POST", "/api/ui/clipboard", block_module="blocks.ui.clipboard"),
     HttpRouteSpec("POST", "/api/ui/client-events", block_module="blocks.ui.client_events"),
     HttpRouteSpec("POST", "/api/ui/build-recursive", block_module="blocks.ui.build_recursive", sensitive=True),
     HttpRouteSpec("GET", "/api/ui/generation-status", block_module="blocks.ui.generation_status"),
+    HttpRouteSpec(
+        "GET",
+        "/isolated/packs/{pack_id}/{path}",
+        block_module="blocks.ui.isolated_pack_asset",
+        path_inject={"pack_id": "pack_id", "path": "asset_path"},
+        local_only=True,
+    ),
     HttpRouteSpec(
         "GET",
         "/api/ui/conversations/{id}/preview",

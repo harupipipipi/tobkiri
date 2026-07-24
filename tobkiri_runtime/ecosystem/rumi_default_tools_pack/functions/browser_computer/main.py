@@ -4,68 +4,28 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from functions._tool_common import tool_result
-
-_SEQUENCE_ID_KEYS = (
-    "computer_use_haze_sequence_id",
-    "computer_use_sequence_id",
-    "run_id",
-    "request_id",
-    "conversation_turn_id",
-    "_flow_run_request_id",
-    "_flow_execution_id",
-)
+from domain.tool.host_contract_adapter import run_host_contract_action
 
 
 def run(context, args):
     action = str(args.get("action", "browser.session"))
     payload = dict(args.get("payload") or {})
-    tool_name = str(args.get("tool_name") or "browser_computer").strip() or "browser_computer"
-    payload = _payload_with_sequence_defaults(payload, context, args)
-    tool_arguments = args.get("tool_arguments")
-    if not isinstance(tool_arguments, dict) or not tool_arguments:
-        tool_arguments = _tool_arguments_from_run_args(args)
-    artifact_root = None
-    workspace = context.get("conversation_workspace_dir") if isinstance(context, dict) else None
-    if isinstance(workspace, str) and workspace:
-        artifact_root = Path(workspace) / "tools" / "computer"
+    tool_name = str(args.get("tool_name") or "browser_computer").strip()
     user_requested = bool(isinstance(context, dict) and context.get("user_requested_computer_use"))
-    yolo_mode = _truthy(context.get("yolo_mode"))
     if user_requested and action == "browser.open_url" and not any(
         key in payload for key in ("persistent", "profile_id", "session_id")
     ):
         payload["persistent"] = False
     payload = _payload_with_context_defaults(action, payload, context)
-    sequence_id = _sequence_id_from_mapping(payload)
-    try:
-        run_computer_action = _run_computer_action()
-        result = run_computer_action(
-            action,
-            payload,
-            context if isinstance(context, dict) else None,
-            tool_name=tool_name,
-            tool_arguments=tool_arguments,
-            artifact_root=artifact_root,
-            yolo_mode=yolo_mode,
-        )
-        summary = "{} {} completed".format(tool_name, result.get("action", "action"))
-        if result.get("is_error"):
-            summary = "{} {} failed".format(tool_name, result.get("action", "action"))
-            if result.get("reason"):
-                summary += ": {}".format(result.get("reason"))
-        if result.get("path"):
-            summary += "; artifact: {}".format(result.get("path"))
-        return tool_result(summary, widget={"type": tool_name, **result}, is_error=bool(result.get("is_error")))
-    finally:
-        _end_haze_sequence(sequence_id)
-
-
-def _run_computer_action():
-    try:
-        from ecosystem.defaultspack.domain.host_bridge.computer_router import run_computer_action
-    except ImportError:
-        from domain.host_bridge.computer_router import run_computer_action
-    return run_computer_action
+    if action == "browser.download.collect" and isinstance(context, dict):
+        workspace = str(context.get("conversation_workspace_dir") or "").strip()
+        if workspace:
+            payload["artifact_root"] = str(Path(workspace) / "tools" / "computer")
+    return run_host_contract_action(
+        action,
+        payload,
+        source_function_id=tool_name or "browser_computer",
+    )
 
 
 def _payload_with_context_defaults(action, payload, context):
@@ -87,55 +47,3 @@ def _payload_with_context_defaults(action, payload, context):
         if isinstance(target_title, str) and target_title.strip():
             payload.setdefault("title", target_title.strip())
     return payload
-
-
-def _tool_arguments_from_run_args(args):
-    if not isinstance(args, dict):
-        return {}
-    return {
-        key: value
-        for key, value in args.items()
-        if key not in {"tool_name", "tool_arguments"}
-    }
-
-
-def _payload_with_sequence_defaults(payload, context, args):
-    payload = dict(payload or {})
-    sequence_id = _sequence_id_from_mapping(payload) or _sequence_id_from_mapping(args)
-    if not sequence_id and isinstance(context, dict):
-        sequence_id = _sequence_id_from_mapping(context)
-    if sequence_id:
-        payload.setdefault("computer_use_haze_sequence_id", sequence_id)
-    return payload
-
-
-def _sequence_id_from_mapping(value):
-    if not isinstance(value, dict):
-        return ""
-    for key in _SEQUENCE_ID_KEYS:
-        candidate = str(value.get(key) or "").strip()
-        if candidate:
-            return candidate
-    return ""
-
-
-def _end_haze_sequence(sequence_id):
-    sequence_id = str(sequence_id or "").strip()
-    if not sequence_id:
-        return
-    try:
-        try:
-            from ecosystem.rumi_default_tools_pack.domain.computer.mac.edge_haze import ComputerUseEdgeHazeManager
-        except ImportError:
-            from domain.computer.mac.edge_haze import ComputerUseEdgeHazeManager
-
-        pack_root = Path(__file__).resolve().parents[2]
-        ComputerUseEdgeHazeManager.from_pack_root(pack_root).end_sequence(sequence_id)
-    except Exception:
-        return
-
-
-def _truthy(value):
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-    return bool(value)

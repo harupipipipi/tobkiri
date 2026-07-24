@@ -697,7 +697,7 @@ def codex_app_server_account_status(
                 "params": {
                     "clientInfo": {
                         "name": "rumi_defaultspack",
-                        "title": "Rumi Defaultspack",
+                        "title": "Tobkiri",
                         "version": "0.1.0",
                     },
                     "capabilities": {"experimentalApi": True},
@@ -849,7 +849,7 @@ def codex_app_server_stdio_smoke(
                 "params": {
                     "clientInfo": {
                         "name": "rumi_defaultspack",
-                        "title": "Rumi Defaultspack",
+                        "title": "Tobkiri",
                         "version": "0.1.0",
                     }
                 },

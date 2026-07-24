@@ -1,0 +1,23 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.scheduler_runtime","version":"1.0.0","kind":"service","display_name":"Rumi Scheduler Runtime","description":"Lease-aware clock and global job action dispatcher."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.scheduler.v1","version":"1.0.0","provider_instance_id":"scheduler.status","cardinality":"one","security":"internal","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_scheduler_runtime_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["scheduler.observe"]},
+    {"id":"rumi.action.scheduler.v1","version":"1.0.0","provider_instance_id":"scheduler.control","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_scheduler_runtime_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["scheduler.control"]}
+  ],"requires":[
+    {"id":"rumi.resource.schedule.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.schedule.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.job.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
+  ]},
+  "entrypoints":[
+    {"id":"scheduler-resource","contract_id":"rumi.resource.scheduler.v1","loader":"python","module":"ecosystem.rumi_scheduler_runtime_pack.runtime.scheduler","symbol":"create_scheduler_resource","artifact_hash":"sha256:d5d648a9512a7d7d0dce88968d9d05d6461d4f34f6cd24f503dfcf37457c5288"},
+    {"id":"scheduler-control","contract_id":"rumi.action.scheduler.v1","loader":"python","module":"ecosystem.rumi_scheduler_runtime_pack.runtime.scheduler","symbol":"create_scheduler_control","artifact_hash":"sha256:d5d648a9512a7d7d0dce88968d9d05d6461d4f34f6cd24f503dfcf37457c5288"}
+  ],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"scheduler.observe","access":"observe","approval_required":false},{"capability":"scheduler.control","access":"control","approval_required":true},{"capability":"schedule.read","access":"read","approval_required":false},{"capability":"schedule.manage","access":"control","approval_required":false},{"capability":"job.dispatch","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:d5d648a9512a7d7d0dce88968d9d05d6461d4f34f6cd24f503dfcf37457c5288","build_identity":"rumi-scheduler-runtime-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.scheduler.scheduler","defaultspack.domain.scheduler.runner"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop the runtime, expire leases, then select one prior adapter without dual dispatch."},
+  "extensions":{"rumi.scheduler.boundary":{"schedule_storage":false,"target_imports":false,"dispatch_contract":"rumi.action.job.v1","lease_required":true,"retry_owner":"rumi_schedule_store_pack","cancellation_projection":true}}
+}
+

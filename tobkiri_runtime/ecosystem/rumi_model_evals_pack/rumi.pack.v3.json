@@ -1,0 +1,27 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {"id": "rumi.model_evals", "version": "2.0.0", "kind": "service", "display_name": "Rumi Model Evals", "description": "Local-first evaluation catalog, approved execution plans, and deterministic scoring."},
+  "contracts": {
+    "provides": [
+      {"id": "rumi.resource.ai.eval.catalog.v1", "version": "1.0.0", "provider_instance_id": "ai-eval.catalog", "cardinality": "one", "security": "public", "failure": "isolate", "lifecycle": {"introduced": "2.0.0", "deprecated": false, "data_owner": "rumi_model_evals_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.eval.catalog.read"]},
+      {"id": "rumi.action.ai.eval.plan.v1", "version": "1.0.0", "provider_instance_id": "ai-eval.plan", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "2.0.0", "deprecated": false, "data_owner": "rumi_model_evals_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.eval.plan"]},
+      {"id": "rumi.service.ai.eval.score.v1", "version": "1.0.0", "provider_instance_id": "ai-eval.score", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "2.0.0", "deprecated": false, "data_owner": "rumi_model_evals_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.eval.score"]}
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {"id": "ai-eval-catalog", "contract_id": "rumi.resource.ai.eval.catalog.v1", "loader": "python", "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator", "symbol": "create_catalog_operation", "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a"},
+    {"id": "ai-eval-plan", "contract_id": "rumi.action.ai.eval.plan.v1", "loader": "python", "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator", "symbol": "create_plan_operation", "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a"},
+    {"id": "ai-eval-score", "contract_id": "rumi.service.ai.eval.score.v1", "loader": "python", "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator", "symbol": "create_score_operation", "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a"}
+  ],
+  "resources": [{"id": "catalog/provider_eval_catalog.json", "kind": "ai.eval_catalog", "content_hash": "sha256:e4cf593b4abb244b809e652f9272dea7f30439d5e65b1b887d0ca8b29d4c7efb"}],
+  "storage": [],
+  "permissions": [
+    {"capability": "ai.eval.catalog.read", "access": "read", "approval_required": false},
+    {"capability": "ai.eval.plan", "access": "execute", "approval_required": false},
+    {"capability": "ai.eval.score", "access": "execute", "approval_required": false}
+  ],
+  "provenance": {"content_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a", "build_identity": "rumi-model-evals-pack:2.0.0", "trust_class": "local", "signature": null},
+  "migration": {"from": ["rumi_model_evals_pack.declarative_pack", "defaultspack.ai_client.eval"], "compatibility_aliases": [], "compatibility_projection": "read_only", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Remove runtime contracts and retain the pinned declarative evidence catalog."},
+  "extensions": {"rumi.ai_eval.boundary": {"provider_execution": false, "self_approval": false, "unknown_evidence_as_failure": false, "promotion_requires_complete_evidence": true}}
+}

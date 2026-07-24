@@ -1,0 +1,11 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.git_publish","version":"1.0.0","kind":"service","display_name":"Rumi Git Publish","description":"Receipt-gated Git branch publication to an exact network remote."},
+  "contracts":{"provides":[{"id":"rumi.service.git.publish.v1","version":"1.0.0","provider_instance_id":"git-publish.service","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["git.publish"]}],"requires":[{"id":"rumi.service.git.read.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"git-publish","contract_id":"rumi.service.git.publish.v1","loader":"python","module":"ecosystem.rumi_git_publish_pack.runtime.publish","symbol":"create_git_publish_operation","artifact_hash":"sha256:844fe7dcff7d5777e09e0c59cd46541d48e69885b3c98b0828ddf6a6b7943aec"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"git.publish","access":"publish","approval_required":true},{"capability":"git.read","access":"read","approval_required":false},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:844fe7dcff7d5777e09e0c59cd46541d48e69885b3c98b0828ddf6a6b7943aec","build_identity":"rumi-git-publish-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.git_ops.push","defaultspack.blocks.coding.git_push"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop publication and select the pinned prior adapter; published refs require explicit remote rollback."},
+  "extensions":{"rumi.git_publish.boundary":{"local_write":false,"authority_receipt":"required","remote_url_hash":"required","transport":["https","ssh"],"local_remote":"deny","force":"force_with_lease_only","dry_run":true}}
+}
+

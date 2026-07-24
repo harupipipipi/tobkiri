@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useAppStore } from '@/src/store';
 import { Button } from '@/src/components/ui/Button';
 import { useT } from '@/src/lib/i18n';
@@ -9,9 +9,11 @@ import {
   hasSelectedSetupPack,
   setupPackSelectionUrl,
 } from '@/src/lib/setupPacks';
-import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
 import { motion } from 'motion/react';
 import { LAUNCHER_DISPLAY_NAME } from '@/src/lib/launcherBrand';
+import tobkiriIconUrl from '../../../assets/app-icon/tobkiri-launcher-icon.png';
 
 export function Setup() {
   const navigate = useNavigate();
@@ -35,7 +37,8 @@ export function Setup() {
   };
 
   const openSetupPackSelection = () => {
-    window.location.assign(setupPackSelectionUrl());
+    const colorMode = document.documentElement.dataset.colorMode;
+    window.location.assign(setupPackSelectionUrl(undefined, colorMode));
   };
 
   useEffect(() => {
@@ -196,7 +199,7 @@ export function Setup() {
             <h1 className="text-xl font-semibold text-text-main">{t('setup.linked_title') || 'Account Linked!'}</h1>
             <p className="mt-2 text-sm text-text-muted">{t('setup.redirecting') || 'Redirecting to dashboard...'}</p>
           </div>
-          <Loader2 className="h-5 w-5 animate-spin text-accent" />
+          <TobkiriLoadingMark scene="startup" />
         </motion.div>
       </div>
     );
@@ -207,7 +210,11 @@ export function Setup() {
       <div className="mx-auto grid w-full max-w-4xl items-center gap-10 px-6 py-10 lg:grid-cols-[1fr_400px]">
         <motion.section initial={{opacity: 0, x: -18}} animate={{opacity: 1, x: 0}} transition={{duration: .45}} className="max-w-xl">
           <div className="mb-10 flex items-center gap-3 text-sm font-semibold text-text-main">
-            <span className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-bg-card text-text-main">T</span>
+            <img
+              src={tobkiriIconUrl}
+              alt="Tobkiri"
+              className="h-9 w-9 rounded-lg border border-border bg-bg-card object-cover"
+            />
             {LAUNCHER_DISPLAY_NAME}
           </div>
           <div>

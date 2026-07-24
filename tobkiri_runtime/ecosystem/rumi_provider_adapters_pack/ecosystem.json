@@ -1,0 +1,32 @@
+{
+  "pack_id": "rumi_provider_adapters_pack",
+  "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
+  "display_name": "Rumi Provider Adapters Pack",
+  "version": "1.0.0",
+  "description": "Provider-neutral HTTP protocol execution over registry state and scoped credentials.",
+  "dependencies": {},
+  "connectivity": {
+    "requires": [
+      "rumi.resource.ai.provider.registry.v1",
+      "rumi.service.credential.resolve.v1"
+    ],
+    "provides": [
+      "rumi.service.ai.provider.generate.v1",
+      "rumi.service.ai.provider.stream.v1",
+      "rumi.service.ai.provider.embedding.v1",
+      "rumi.service.ai.provider.image.v1"
+    ]
+  },
+  "required_secrets": [],
+  "required_capabilities": ["ai.provider.generate", "ai.provider.stream", "ai.provider.embedding", "ai.provider.image"],
+  "required_network": {"allowed_domains": ["registry-selected"], "allowed_ports": [80, 443]},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:586608639869c3a9f37d9283dfed48d295180fc1f9559a44670474d413bf82df", "build_identity": "rumi-provider-adapters-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {
+    "authoritative_owner": true,
+    "owner_surfaces": ["provider_protocol_execution"],
+    "integrity": {"artifact_manifest": "artifact-manifest.json"},
+    "security": {"environment_secret_injection": false, "opaque_credentials_only": true, "registry_selected_endpoints_only": true, "provider_pack_id_branches": false}
+  }
+}

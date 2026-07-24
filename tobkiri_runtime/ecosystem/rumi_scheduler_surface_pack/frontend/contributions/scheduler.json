@@ -1,0 +1,15 @@
+{
+  "version":"rumi.ui.contribution.v1",
+  "id":"rumi.scheduler.route",
+  "kind":"route",
+  "mode":"isolated",
+  "label":"Scheduler",
+  "description":"Inspect profile schedules and scheduler runtime state.",
+  "priority":100,
+  "route":"/scheduler",
+  "view":{"type":"isolated_application","mutations":"approved_tool_or_action_only"},
+  "isolated":{"path":"/isolated/packs/rumi_scheduler_surface_pack/index.html","rpc_contracts":["rumi.resource.schedule.v1","rumi.resource.scheduler.v1"]},
+  "localization":{"en":"Scheduler","ja":"スケジューラー"},
+  "accessibility":{"name":"Scheduler","keyboard":true,"live":"polite"}
+}
+

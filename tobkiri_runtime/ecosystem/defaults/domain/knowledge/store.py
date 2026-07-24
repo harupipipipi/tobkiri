@@ -1,233 +1,122 @@
-"""KnowledgeStore — シングルトンのナレッジストア.
+"""Deprecated KnowledgeStore facade over the global knowledge owner."""
 
-永続化: user_data/shared/knowledge/ に {id}.json として保存。
-起動時に全 JSON ファイルを読み込んでメモリに復元する。
-ベクトル検索: cosine similarity で上位 k 件を返す。
-フォールバック: embedding が取得できない場合は文字列マッチで代用。
-"""
+from __future__ import annotations
 
-import json
-import os
-import sys
-import threading
-import time
 import uuid
+import warnings
+from typing import Any, Mapping
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import invoke_global_contract
+from core_runtime.resolved_profile_scope import active_resolved_profile
 
-from domain.knowledge.embedder import (
-    cosine_similarity,
-    get_embedding,
-    text_similarity,
-)
-
-
-def _timestamp():
-    """ISO 8601 タイムスタンプを返す."""
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+RESOURCE = "rumi.resource.knowledge.v1"
+MANAGE = "rumi.action.knowledge.manage.v1"
 
 
 class KnowledgeStore:
-    """スレッドセーフなシングルトン Knowledge Store."""
+    """Finite legacy facade without local storage or provider fallback."""
 
-    _instance = None
-    _lock = threading.Lock()
-    _initialized = False
+    def __init__(self) -> None:
+        warnings.warn(
+            "domain.knowledge.store.KnowledgeStore is a Wave 7 facade",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
+    def create(
+        self, content: str, metadata: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Create one source record through the selected owner."""
+        result = _invoke(
+            MANAGE,
+            "put",
+            {
+                "expected_revision": self._revision(),
+                "item": {
+                    "id": str(uuid.uuid4()),
+                    "content": str(content),
+                    "metadata": dict(metadata or {}),
+                    "source_reference": {"kind": "legacy_facade"},
+                },
+            },
+        )
+        return dict(result.get("item") or {})
 
-    def __init__(self):
-        if self._initialized:
-            return
-        with self._lock:
-            if self._initialized:
-                return
-            self._entries = {}
-            self._data_dir = self._resolve_data_dir()
-            self._load_all()
-            self._initialized = True
+    def get(self, entry_id: str) -> dict[str, Any] | None:
+        """Get one source record from the selected owner."""
+        value = _invoke(RESOURCE, "get", {"knowledge_id": entry_id})
+        return dict(value) if isinstance(value, Mapping) else None
 
-    # -- ディレクトリ解決 -----------------------------------------------------
+    def list_entries(self, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        """Project a stable legacy list from the owner snapshot."""
+        snapshot = _invoke(RESOURCE, "snapshot", {})
+        items = [dict(item) for item in snapshot.get("items") or []]
+        items.sort(key=lambda item: item.get("created_at", 0), reverse=True)
+        return {"items": items[offset : offset + limit], "total": len(items)}
 
-    def _resolve_data_dir(self):
-        """user_data/shared/knowledge/ のパスを解決し、なければ作成する.
-
-        realpath でシンボリックリンクを解決し、Pack ルートを正確に特定する。
-        カーネルの ecosystem/defaults/ 配下に配置された場合でも
-        リンク先の実パスを基準にするため、Pack ルート内に user_data/ が作られる。
-        """
-        base = os.path.dirname(os.path.realpath(__file__))
-        pack_root = os.path.normpath(os.path.join(base, "..", ".."))
-        data_dir = os.path.join(pack_root, "user_data", "shared", "knowledge")
-        os.makedirs(data_dir, exist_ok=True)
-        return data_dir
-
-    # -- 永続化 ---------------------------------------------------------------
-
-    def _load_all(self):
-        """起動時にディレクトリ内の全 JSON ファイルを読み込む."""
-        if not os.path.isdir(self._data_dir):
-            return
-        for fname in os.listdir(self._data_dir):
-            if not fname.endswith(".json"):
-                continue
-            fpath = os.path.join(self._data_dir, fname)
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    entry = json.load(f)
-                entry_id = entry.get("id")
-                if entry_id:
-                    self._entries[entry_id] = entry
-            except (OSError, json.JSONDecodeError, ValueError) as exc:
-                print(
-                    "knowledge.store: failed to load " + fpath + ": " + str(exc),
-                    file=sys.stderr,
-                )
-
-    def _persist(self, entry):
-        """エントリを JSON ファイルに書き出す."""
-        fpath = os.path.join(self._data_dir, entry["id"] + ".json")
-        try:
-            with open(fpath, "w", encoding="utf-8") as f:
-                json.dump(entry, f, ensure_ascii=False, indent=2)
-        except OSError as exc:
-            print(
-                "knowledge.store: failed to write " + fpath + ": " + str(exc),
-                file=sys.stderr,
-            )
-
-    def _delete_file(self, entry_id):
-        """JSON ファイルを削除する."""
-        fpath = os.path.join(self._data_dir, entry_id + ".json")
-        try:
-            if os.path.isfile(fpath):
-                os.remove(fpath)
-        except OSError as exc:
-            print(
-                "knowledge.store: failed to delete " + fpath + ": " + str(exc),
-                file=sys.stderr,
-            )
-
-    # -- CRUD ----------------------------------------------------------------
-
-    def create(self, content, metadata=None):
-        """ナレッジエントリを作成する.
-
-        content を embedding 化して保存する。embedding 取得に失敗しても
-        エントリ自体は作成される (embedding=None)。
-        """
-        entry_id = str(uuid.uuid4())
-        now = _timestamp()
-        embedding = get_embedding(content)
-        entry = {
-            "id": entry_id,
-            "content": content,
-            "embedding": embedding,
-            "metadata": metadata if metadata is not None else {},
-            "created_at": now,
-            "updated_at": now,
-        }
-        with self._lock:
-            self._entries[entry_id] = entry
-        self._persist(entry)
-        return entry
-
-    def get(self, entry_id):
-        """ID でエントリを取得する. 見つからなければ None."""
-        with self._lock:
-            return self._entries.get(entry_id)
-
-    def list_entries(self, limit=50, offset=0):
-        """エントリ一覧を返す. created_at 降順."""
-        with self._lock:
-            all_entries = list(self._entries.values())
-        all_entries.sort(key=lambda e: e.get("created_at", ""), reverse=True)
-        total = len(all_entries)
-        sliced = all_entries[offset: offset + limit]
-        safe_items = []
-        for e in sliced:
-            safe_items.append({
-                "id": e["id"],
-                "content": e["content"],
-                "metadata": e["metadata"],
-                "created_at": e["created_at"],
-                "updated_at": e["updated_at"],
-            })
-        return {"items": safe_items, "total": total}
-
-    def update(self, entry_id, content=None, metadata=None):
-        """エントリを更新する. content が変わった場合は embedding を再取得する.
-
-        見つからなければ None を返す。
-        """
-        with self._lock:
-            entry = self._entries.get(entry_id)
-            if entry is None:
-                return None
-            entry = dict(entry)
-
-        changed = False
-        if content is not None and content != entry["content"]:
-            entry["content"] = content
-            entry["embedding"] = get_embedding(content)
-            changed = True
+    def update(
+        self,
+        entry_id: str,
+        content: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Replace one source record atomically through the owner."""
+        current = self.get(entry_id)
+        if current is None:
+            return None
+        if content is not None:
+            current["content"] = str(content)
         if metadata is not None:
-            entry["metadata"] = metadata
-            changed = True
+            current["metadata"] = dict(metadata)
+        result = _invoke(
+            MANAGE,
+            "put",
+            {"expected_revision": self._revision(), "item": current},
+        )
+        return dict(result.get("item") or {})
 
-        if changed:
-            entry["updated_at"] = _timestamp()
-            with self._lock:
-                self._entries[entry_id] = entry
-            self._persist(entry)
-
-        return entry
-
-    def delete(self, entry_id):
-        """エントリを削除する. 見つからなければ False."""
-        with self._lock:
-            if entry_id not in self._entries:
-                return False
-            del self._entries[entry_id]
-        self._delete_file(entry_id)
+    def delete(self, entry_id: str) -> bool:
+        """Delete one source record through the selected owner."""
+        _invoke(
+            MANAGE,
+            "delete",
+            {
+                "knowledge_id": entry_id,
+                "expected_revision": self._revision(),
+            },
+        )
         return True
 
-    # -- 検索 -----------------------------------------------------------------
+    def search(
+        self, query: str, limit: int = 5, threshold: float = 0.0
+    ) -> list[dict[str, Any]]:
+        """Use the selected owner's derived search projection only."""
+        result = _invoke(
+            RESOURCE,
+            "search",
+            {"query": query, "limit": limit},
+        )
+        return [
+            dict(item)
+            for item in result.get("items") or []
+            if float(item.get("score") or 0.0) > threshold
+        ]
 
-    def search(self, query, limit=5, threshold=0.0):
-        """クエリテキストで関連ナレッジをベクトル検索する.
+    @staticmethod
+    def _revision() -> int:
+        snapshot = _invoke(RESOURCE, "snapshot", {})
+        return int(snapshot.get("revision") or 0)
 
-        1. クエリを embedding 化
-        2. 各エントリとの cosine similarity を計算
-        3. embedding が無いエントリは文字列マッチでフォールバック
-        4. threshold 以上のスコアを持つ上位 limit 件を返す
-        """
-        query_embedding = get_embedding(query)
-        use_vector = query_embedding is not None
 
-        with self._lock:
-            all_entries = list(self._entries.values())
-
-        results = []
-        for entry in all_entries:
-            score = 0.0
-            if use_vector and entry.get("embedding") is not None:
-                score = cosine_similarity(query_embedding, entry["embedding"])
-            else:
-                score = text_similarity(query, entry["content"])
-
-            if score > threshold:
-                results.append({
-                    "id": entry["id"],
-                    "content": entry["content"],
-                    "metadata": entry["metadata"],
-                    "score": round(score, 6),
-                })
-
-        results.sort(key=lambda r: r["score"], reverse=True)
-        return results[:limit]
+def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
+    registry = get_container().get_or_none("interface_registry")
+    plan = active_resolved_profile()
+    if registry is None or plan is None:
+        raise RuntimeError("global knowledge owner is unavailable")
+    return invoke_global_contract(
+        registry,
+        contract_id,
+        operation,
+        {"profile_id": plan.profile_id, **dict(payload)},
+    )

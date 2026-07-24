@@ -1,0 +1,31 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.agent_runtime_service","version":"1.0.0","kind":"service","display_name":"Rumi Agent Runtime Service","description":"Provider-neutral agent planning, tools, subagents, and lifecycle."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.agent.runtime.v1","version":"1.0.0","provider_instance_id":"agent-runtime.status","cardinality":"one","security":"internal","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["agent.runtime.observe"]},
+    {"id":"rumi.action.agent.run.v1","version":"1.0.0","provider_instance_id":"agent-runtime.control","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_agent_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["agent.run.control"]},
+    {"id":"rumi.action.job.adapter.v1","version":"1.0.0","provider_instance_id":"job-adapter.agent-turn","instance_key":"agent.turn","cardinality":"many","security":"sensitive","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_agent_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["job.adapter.invoke"]}
+  ],"requires":[
+    {"id":"rumi.resource.agent.state.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.agent.state.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.resource.conversation.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.message.manage.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.resource.turn.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.turn.lifecycle.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.service.context.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.service.ai.generate.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.service.tool.invoke.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
+  ]},
+  "entrypoints":[
+    {"id":"agent-runtime-resource","contract_id":"rumi.resource.agent.runtime.v1","loader":"python","module":"ecosystem.rumi_agent_runtime_service_pack.runtime.runtime","symbol":"create_agent_runtime_resource","artifact_hash":"sha256:103c8484cfefad1da8fe76928c9593985552d0590e6b33042a36119491fd5d38"},
+    {"id":"agent-runtime-control","contract_id":"rumi.action.agent.run.v1","loader":"python","module":"ecosystem.rumi_agent_runtime_service_pack.runtime.runtime","symbol":"create_agent_control","artifact_hash":"sha256:103c8484cfefad1da8fe76928c9593985552d0590e6b33042a36119491fd5d38"},
+    {"id":"agent-turn-job-adapter","contract_id":"rumi.action.job.adapter.v1","loader":"python","module":"ecosystem.rumi_agent_runtime_service_pack.runtime.runtime","symbol":"create_agent_job_adapter","artifact_hash":"sha256:103c8484cfefad1da8fe76928c9593985552d0590e6b33042a36119491fd5d38"}
+  ],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"agent.runtime.observe","access":"observe","approval_required":false},{"capability":"agent.run.control","access":"control","approval_required":true},{"capability":"agent.state.read","access":"read","approval_required":false},{"capability":"agent.state.manage","access":"control","approval_required":false},{"capability":"conversation.read","access":"read","approval_required":false},{"capability":"message.manage","access":"write","approval_required":false},{"capability":"turn.read","access":"read","approval_required":false},{"capability":"turn.manage","access":"write","approval_required":false},{"capability":"context.materialize","access":"execute","approval_required":false},{"capability":"ai.gateway.generate","access":"execute","approval_required":false},{"capability":"tool.invoke","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false},{"capability":"job.adapter.invoke","access":"execute","approval_required":false}],
+  "provenance":{"content_hash":"sha256:103c8484cfefad1da8fe76928c9593985552d0590e6b33042a36119491fd5d38","build_identity":"rumi-agent-runtime-service-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.agent.engine","defaultspack.domain.agent.multi","defaultspack.domain.subagent_team"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Cancel active runs, preserve state-owner records, then select one prior runtime without dual execution."},
+  "extensions":{"rumi.agent_runtime.boundary":{"state_owner":"rumi_agent_state_store_pack","provider_imports":false,"tool_implementations":false,"connector_imports":false,"company_imports":false,"ui_imports":false,"tool_loop_bounded":true,"approval_wait_resume":true,"subagent_parent_limits":true,"cancellation_projection":true,"handoff_projection":true}}
+}
+

@@ -1,0 +1,11 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.git_read","version":"1.0.0","kind":"service","display_name":"Rumi Git Read","description":"Finite read-only Git inspection under a workspace mount."},
+  "contracts":{"provides":[{"id":"rumi.service.git.read.v1","version":"1.0.0","provider_instance_id":"git-read.service","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["git.read"]}],"requires":[{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"git-read","contract_id":"rumi.service.git.read.v1","loader":"python","module":"ecosystem.rumi_git_read_pack.runtime.read","symbol":"create_git_read_operation","artifact_hash":"sha256:8c95cb91b7580cd83e7ff7cd765f9570ece8391108f0d270faaf2c997dea7c7b"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"git.read","access":"read","approval_required":false},{"capability":"workspace.metadata.read","access":"read","approval_required":false}],
+  "provenance":{"content_hash":"sha256:8c95cb91b7580cd83e7ff7cd765f9570ece8391108f0d270faaf2c997dea7c7b","build_identity":"rumi-git-read-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.git_ops.status","defaultspack.domain.coding.git_ops.diff","defaultspack.blocks.coding.git_status","defaultspack.blocks.coding.git_diff"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Select the pinned prior read adapter; no Git state migration exists."},
+  "extensions":{"rumi.git_read.boundary":{"write":false,"publish":false,"network":false,"shell":false,"repository_root":"inside_workspace","output_bytes_max":524288}}
+}
+

@@ -1,0 +1,92 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.tool_local_executor",
+    "version": "1.0.0",
+    "kind": "service",
+    "display_name": "Rumi Tool Local Executor",
+    "description": "Generic selected local-service adapter executor."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.service.tool.execute.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "tool-executor.local",
+        "routing_keys": [
+          "local"
+        ],
+        "cardinality": "many",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "domain-service"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.execute"
+        ]
+      }
+    ],
+    "requires": [
+      {
+        "id": "rumi.service.tool.local.operation.v1",
+        "version_range": "^1.0.0",
+        "cardinality": "many",
+        "optional": false
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "id": "tool-local-execute",
+      "contract_id": "rumi.service.tool.execute.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_local_executor_pack.runtime.executor",
+      "symbol": "create_execute_operation",
+      "artifact_hash": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "tool.execute",
+      "access": "execute",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:17da74993fe51e5582900b12bbca220ca765851eef634696ad9e308f9c7c0813",
+    "build_identity": "rumi-tool-local-executor-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.domain.tool.executor.local"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Remove this executor; local services remain available without tool projection."
+  },
+  "extensions": {
+    "rumi.tool_executor.boundary": {
+      "execution_kind": "local",
+      "domain_service_imports": false,
+      "provider_selection": "manifest_selected_exact"
+    }
+  }
+}

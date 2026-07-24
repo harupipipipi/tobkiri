@@ -1,0 +1,19 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.schedule_store","version":"1.0.0","kind":"service","display_name":"Rumi Schedule Store","description":"Authoritative schedule state and dispatch lifecycle."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.schedule.v1","version":"1.0.0","provider_instance_id":"schedule-store.resource","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_schedule_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["schedule.read"]},
+    {"id":"rumi.action.schedule.v1","version":"1.0.0","provider_instance_id":"schedule-store.action","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_schedule_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["schedule.manage"]}
+  ],"requires":[{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"schedule-resource","contract_id":"rumi.resource.schedule.v1","loader":"python","module":"ecosystem.rumi_schedule_store_pack.runtime.store","symbol":"create_schedule_resource","artifact_hash":"sha256:ea411984ea998031a02738ab1ef6b3c5aa3a0cddbcc018c18c1dc25ba5881776"},
+    {"id":"schedule-action","contract_id":"rumi.action.schedule.v1","loader":"python","module":"ecosystem.rumi_schedule_store_pack.runtime.store","symbol":"create_schedule_action","artifact_hash":"sha256:ea411984ea998031a02738ab1ef6b3c5aa3a0cddbcc018c18c1dc25ba5881776"}
+  ],
+  "resources":[],
+  "storage":[{"namespace":"rumi.schedules","schema_version":"1.0.0","authoritative":true,"retention":"until explicit deletion/profile cleanup","export_import":true}],
+  "permissions":[{"capability":"schedule.read","access":"read","approval_required":false},{"capability":"schedule.manage","access":"control","approval_required":true},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:ea411984ea998031a02738ab1ef6b3c5aa3a0cddbcc018c18c1dc25ba5881776","build_identity":"rumi-schedule-store-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.scheduler.job_store"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Atomically restore the prior owner snapshot; never enable dual writers."},
+  "extensions":{"rumi.schedule_store.boundary":{"clock":false,"dispatch":false,"chat":false,"company":false,"agent":false,"revision_bound":true,"lease_owned":true,"retries_owned":true}}
+}
+

@@ -1,4 +1,4 @@
-set positional-arguments
+set windows-shell := ["cmd.exe", "/C"]
 
 # Display available commands.
 help:
@@ -10,11 +10,11 @@ health:
 
 # Run root-level contract tests.
 root-test *args:
-    pytest tests/ "$@"
+    pytest tests/ {{args}}
 
 # Run tobkiri_runtime tests. Pass pytest selectors after the recipe name.
 test *args:
-    cd tobkiri_runtime && python -m pytest "$@"
+    cd tobkiri_runtime && python -m pytest {{args}}
 
 # Run the focused defaultspack coding/tooling regression cluster.
 tooling-test:
@@ -38,3 +38,12 @@ frontend-check:
 # Run the defaultspack integrity scan used by CI.
 integrity:
     cd tobkiri_runtime && python scripts/quality/scan_defaultspack_integrity.py
+
+# Run the Wave 1 repository-wide pack architecture boundary gate.
+pack-architecture:
+    python scripts/quality/scan_pack_architecture.py
+
+# Validate Command Protocol v1 coverage and generated multi-client Pack SDK.
+command-protocol:
+    cd tobkiri_runtime && python scripts/quality/scan_command_protocol.py --inventory generated/pack_sdk/command_inventory.json --check-inventory
+    cd tobkiri_runtime && python scripts/tobkiri_pack.py generate generated/pack_sdk --check

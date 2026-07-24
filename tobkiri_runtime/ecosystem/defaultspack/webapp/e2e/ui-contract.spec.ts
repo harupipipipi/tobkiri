@@ -18,6 +18,7 @@ type ApiMockOptions = {
   authorityRequestStatus?: () => "pending" | "approved" | "denied";
   codingApprovalAfterTerminal?: boolean;
   codingApprovalAfterRestore?: boolean;
+  structuredComposer?: boolean;
 };
 
 function ok(data: unknown) {
@@ -548,6 +549,19 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         },
         settings: { sections: settingsSections, values: currentSettingsValues },
         chat_rendering: { renderers: [] },
+        composer_inputs: options.structuredComposer ? [{
+          id: "contract_composer",
+          label: "入力オプション",
+          description: "送信時の補助情報を設定します。",
+          modes: ["chat", "coding", "agent"],
+          enabled: true,
+          fields: [
+            { id: "intent", type: "select", label: "目的", default: "review", options: [{ value: "review", label: "レビュー" }] },
+            { id: "detail", type: "select", label: "詳細度", default: "rich", options: [{ value: "rich", label: "リッチ" }] },
+            { id: "tone", type: "select", label: "文体", default: "natural", options: [{ value: "natural", label: "自然" }] },
+            { id: "note", type: "text", label: "補足", placeholder: "任意の補足" },
+          ],
+        }] : [],
         skills: catalogSkills,
         extension_points: [],
       });
@@ -579,6 +593,17 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
             modes: ["chat", "coding", "agent"],
             execution: { type: "frontend", action: "set_mode_coding" },
           },
+          {
+            id: "yolo",
+            name: "yolo",
+            label: "Full Access (YOLO)",
+            description: "Toggle Full Access and Ask approval.",
+            category: "mode",
+            visibility: "default",
+            risk: "medium",
+            modes: ["chat", "coding", "agent"],
+            execution: { type: "frontend", action: "toggle_ultra_yolo" },
+          },
         ],
       });
     }
@@ -587,7 +612,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       const payload = request.postDataJSON() as Record<string, unknown>;
       return fulfill(route, {
         executed: true,
-        action: payload.command === "coding" ? "set_mode_coding" : "",
+        action: payload.command === "coding"
+          ? "set_mode_coding"
+          : payload.command === "yolo"
+            ? "toggle_ultra_yolo"
+            : "",
       });
     }
 
@@ -1013,6 +1042,46 @@ test("composer approval menu opens action permissions while selection modes live
   await expect(page.getByText("MCP servers can require a connection")).toBeVisible();
 });
 
+test("slash yolo toggles Full Access back to Ask without a duplicate status chip", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const approval = page.getByRole("button", { name: "アクションの承認方法" });
+  await expect(approval).toContainText("承認");
+
+  await composer.fill("/yolo");
+  await composer.press("Enter");
+  await expect(approval).toContainText("フル");
+  await expect(page.locator('[data-composer-widget="active-command-state"]')).toHaveCount(0);
+  await expect(page.locator('[data-composer-widget="yolo-status"]')).toHaveCount(0);
+
+  await composer.fill("/yolo");
+  await composer.press("Enter");
+  await expect(approval).toContainText("承認");
+  await expect(page.locator('[data-composer-widget="active-command-state"]')).toHaveCount(0);
+});
+
+test("new chat structured options open above the compact composer and apply values", async ({ page }) => {
+  await openDefaultspack(page, "/chat", { structuredComposer: true });
+  await page.getByRole("button", { name: "New Chat", exact: true }).click();
+
+  const options = page.locator('[data-structured-composer="contract_composer"] > button[aria-haspopup="dialog"]');
+  await expect(options).toHaveAttribute("aria-expanded", "false");
+  await expect(options).toContainText("3/4");
+  await options.click();
+
+  const dialog = page.getByRole("dialog", { name: "入力オプション" });
+  await expect(dialog).toBeVisible();
+  await expect(options).toHaveAttribute("aria-expanded", "true");
+  await dialog.getByLabel("補足").fill("比較対象を含める");
+  await dialog.getByRole("button", { name: "入力に反映" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(options).toContainText("4/4");
+
+  const panelHeight = await page.locator(".rumi-composer-main-panel").evaluate((element) => element.getBoundingClientRect().height);
+  expect(panelHeight).toBeLessThanOrEqual(133);
+});
+
 test("browser approval uses the shared user-first decision surface at narrow width", async ({ page }) => {
   let denialPayload: Record<string, unknown> | null = null;
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1393,6 +1462,31 @@ test("composer reconciles removed service tools before submit", async ({ page })
   expect(serviceMetadata.mentions).toBeUndefined();
   expect(serviceMetadata.selected_tools).toBeUndefined();
   expect(serviceMetadata.dropped_widgets).toEqual([]);
+});
+
+test("slash and mention candidates share one full-width JSON palette", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  await composer.fill("@");
+  const mentions = page.getByTestId("composer-at-mention-candidates");
+  await expect(mentions).toBeVisible();
+  await expect(mentions).toHaveAttribute("data-json-list-template", "composer-at-mention");
+  const mentionBox = await mentions.boundingBox();
+  expect(mentionBox).not.toBeNull();
+
+  await composer.fill("/");
+  const commands = page.getByTestId("composer-slash-command-candidates");
+  await expect(commands).toBeVisible();
+  await expect(commands).toHaveAttribute("data-json-list-template", "composer-slash-command");
+  await expect(commands).toContainText("/coding");
+  const commandBox = await commands.boundingBox();
+  expect(commandBox).not.toBeNull();
+
+  expect(Math.abs(commandBox!.x - mentionBox!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(commandBox!.width - mentionBox!.width)).toBeLessThanOrEqual(1);
+  await expect(composer).toHaveAttribute("aria-controls", "composer-slash-command-listbox");
+  await expect(composer).toHaveAttribute("aria-activedescendant", "composer-slash-command-option-0");
 });
 
 test("composer removes file mention metadata when its attachment is removed", async ({ page }) => {
@@ -1895,6 +1989,37 @@ test("resizable canvas and tool widgets persist width choices", async ({ page })
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-right-sidebar-panel-width"))).not.toBeNull();
   const storedToolWidth = await page.evaluate(() => Number(localStorage.getItem("rumi-right-sidebar-panel-width")));
   expect(storedToolWidth).toBeGreaterThanOrEqual(320);
+});
+
+test("open utility panel never covers the Home composer at desktop breakpoints", async ({ page }) => {
+  await page.setViewportSize({ width: 980, height: 760 });
+  await openDefaultspack(page, "/chat");
+  await page.getByTitle("New Chat").first().click();
+  await page.locator('button[title="機能"]').click();
+
+  const panel = page.locator(".rumi-right-sidebar-panel");
+  const composer = page.locator(".rumi-composer-frame");
+  const send = page.locator(".rumi-send-button");
+  await expect(panel).toBeVisible();
+  await expect(send).toBeVisible();
+
+  const [panelBox, composerBox, sendBox] = await Promise.all([
+    panel.boundingBox(),
+    composer.boundingBox(),
+    send.boundingBox(),
+  ]);
+  expect(panelBox).not.toBeNull();
+  expect(composerBox).not.toBeNull();
+  expect(sendBox).not.toBeNull();
+  expect(composerBox!.x + composerBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
+  expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(panelBox!.x + 1);
+
+  const sendOwnsCenterPoint = await send.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return hit === element || element.contains(hit);
+  });
+  expect(sendOwnsCenterPoint).toBe(true);
 });
 
 test("model picker search supports @provider filters", async ({ page }) => {

@@ -1,6 +1,7 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 import { Button } from './Button';
+import { TobkiriLoadingMark } from './TobkiriLoader';
 
 interface InlineLoadErrorProps {
   title: string;
@@ -31,7 +32,7 @@ export function InlineLoadError({
         </div>
       </div>
       <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
-        <RefreshCw className={retrying ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+        {retrying ? <TobkiriLoadingMark /> : <RefreshCw className="h-4 w-4" />}
         Retry
       </Button>
     </div>

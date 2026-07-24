@@ -50,6 +50,39 @@ def manager(tmp_dirs, secret_key):
     return am
 
 
+def test_verified_pack_trust_is_derived_from_host_verification(
+    manager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        manager,
+        "_is_core_pack",
+        lambda pack_id: pack_id == "core_control_panel",
+    )
+    monkeypatch.setattr(
+        manager,
+        "_is_trusted_builtin_pack",
+        lambda pack_id: pack_id == "defaultspack",
+    )
+    monkeypatch.setattr(
+        manager,
+        "is_pack_approved_and_verified",
+        lambda pack_id: (pack_id == "approved_pack", None),
+    )
+
+    assert manager.get_verified_pack_trust(
+        [
+            "core_control_panel",
+            "defaultspack",
+            "approved_pack",
+            "unapproved_pack",
+        ]
+    ) == {
+        "core_control_panel": "system",
+        "defaultspack": "system",
+        "approved_pack": "verified",
+    }
+
+
 # ------------------------------------------------------------------ #
 # S-9: HMAC 検証失敗が audit log に記録される
 # ------------------------------------------------------------------ #

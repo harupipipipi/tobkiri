@@ -1,6 +1,6 @@
 """defaults.media.image_read — 画像メタデータ取得ブロック"""
 from blocks._common import ok, error
-from domain.media.processor import read_image
+from domain.media.contract_adapter import MEDIA_INSPECT, invoke_media_contract
 
 
 def run(input_data, context):
@@ -13,11 +13,17 @@ def run(input_data, context):
         dict: {"status": "ok", "data": {"path", "width", "height", "format", "size_bytes"}}
     """
     path = input_data.get("path")
-    if not path:
-        return error("path is required", code="INVALID_INPUT")
+    workspace_id = input_data.get("workspace_id")
+    if not path or not workspace_id:
+        return error("workspace_id and path are required", code="INVALID_INPUT")
 
     try:
-        metadata = read_image(path)
+        metadata = invoke_media_contract(
+            MEDIA_INSPECT,
+            "image.inspect",
+            {"workspace_id": workspace_id, "path": path},
+            source_function_id="defaults.media.image_read",
+        )
         return ok(metadata)
     except FileNotFoundError as exc:
         return error(str(exc), code="FILE_NOT_FOUND")

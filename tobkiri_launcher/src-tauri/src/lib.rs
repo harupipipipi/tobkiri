@@ -4,6 +4,7 @@
 
 mod app_data_migration;
 mod config;
+mod defaultspack_manager;
 mod desktop_system_info;
 mod health_check;
 mod host_audit;
@@ -17,6 +18,7 @@ mod updater;
 
 use std::io::Write;
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -32,6 +34,7 @@ use sha2::Sha256;
 use tauri::{AppHandle, Emitter, Manager, Url};
 
 use config::AppConfig;
+use defaultspack_manager::DefaultspackManager;
 use host_broker::HostBrokerRuntime;
 use kernel_manager::KernelManager;
 
@@ -57,6 +60,12 @@ const HOST_PERMISSIONS_WINDOW_TITLE: &str = "Rumi Host Permissions";
 const AUTHORITY_UI_OPERATOR_TTL_SECONDS: u64 = 180;
 
 type HmacSha256 = Hmac<Sha256>;
+
+fn bundled_resource_dir_fallback() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let resources = executable.parent()?.parent()?.join("Resources");
+    resources.is_dir().then_some(resources)
+}
 
 #[derive(Debug, Deserialize)]
 struct PanelBootstrapPayload {
@@ -1119,9 +1128,16 @@ fn navigate_window_to_panel_session(
     port: u16,
     panel_code: &str,
 ) -> Result<(), tauri::Error> {
-    let current_url = window.url().ok();
-    let panel_url = panel_session_url_for_current(current_url.as_ref(), port, panel_code)?;
-    window.navigate(panel_url)
+    // On macOS a WebView can exist before WKWebView has a URL. Calling
+    // `window.url()` during that short window panics in Wry, so always use the
+    // stable panel entry point for a fresh authenticated session.
+    let panel_url = panel_session_url_for_current(None, port, panel_code)?;
+    // `WebviewWindow::navigate` can return success on macOS while a WebView
+    // booted from the bundled splash page remains on `tauri://`. Changing the
+    // active document location reliably completes the same guarded local
+    // navigation and avoids leaving the user on a permanent “Ready”.
+    let script = format!("window.location.replace({:?});", panel_url.as_str());
+    window.eval(&script)
 }
 
 fn show_and_focus_window(window: &tauri::WebviewWindow) -> Result<(), tauri::Error> {
@@ -1175,6 +1191,10 @@ pub(crate) fn primary_window_label(has_panel: bool, has_main: bool) -> Option<&'
 
 fn should_send_to_background_on_close(label: &str) -> bool {
     PRIMARY_WINDOW_LABELS.contains(&label)
+}
+
+fn should_restore_primary_on_close(label: &str) -> bool {
+    dock_registration::is_defaultspack_main_window(label)
 }
 
 fn restore_primary_window(app: &AppHandle, refresh_panel_session: bool) -> Result<(), String> {
@@ -1283,22 +1303,32 @@ pub(crate) fn request_app_exit(app: &AppHandle) {
     }
 
     let km = Arc::clone(app.state::<Arc<Mutex<KernelManager>>>().inner());
+    let defaultspack = Arc::clone(app.state::<Arc<DefaultspackManager>>().inner());
     let handle = app.clone();
 
     std::thread::spawn(move || {
-        match km.lock() {
-            Ok(mut kernel) => {
-                if let Err(error) = kernel.stop() {
-                    error!("Failed to stop kernel during shutdown: {error}");
-                }
-            }
-            Err(error) => {
-                error!("Failed to lock kernel manager during shutdown: {error}");
-            }
-        }
-
+        stop_managed_runtimes(&defaultspack, &km);
         handle.exit(0);
     });
+}
+
+fn stop_managed_runtimes(
+    defaultspack: &DefaultspackManager,
+    kernel_manager: &Mutex<KernelManager>,
+) {
+    if let Err(error) = defaultspack.stop() {
+        error!("Failed to stop Defaultspack during shutdown: {error:#}");
+    }
+    match kernel_manager.lock() {
+        Ok(mut kernel) => {
+            if let Err(error) = kernel.stop() {
+                error!("Failed to stop kernel during shutdown: {error}");
+            }
+        }
+        Err(error) => {
+            error!("Failed to lock kernel manager during shutdown: {error}");
+        }
+    }
 }
 
 fn spawn_kernel_exit_monitor(
@@ -1540,10 +1570,12 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
-            let resource_dir = app
-                .path()
-                .resource_dir()
-                .context("failed to resolve resource_dir")?;
+            let resource_dir = match app.path().resource_dir() {
+                Ok(resource_dir) => resource_dir,
+                Err(error) => bundled_resource_dir_fallback().ok_or_else(|| {
+                    anyhow!("failed to resolve resource_dir: {error}")
+                })?,
+            };
             let app_data_dir = app
                 .path()
                 .app_data_dir()
@@ -1564,7 +1596,8 @@ pub fn run() {
             )));
             let progress_arc = progress.0.clone();
             app.manage(progress);
-            app.manage(ShutdownState(Arc::new(AtomicBool::new(false))));
+            let shutdown_flag = Arc::new(AtomicBool::new(false));
+            app.manage(ShutdownState(Arc::clone(&shutdown_flag)));
 
             let panel_bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
                 .context("failed to load persisted panel bootstrap secret")?;
@@ -1590,6 +1623,13 @@ pub fn run() {
             let km_for_monitor = km.clone();
             app.manage(km);
 
+            let defaultspack_manager = Arc::new(DefaultspackManager::new(
+                config.clone(),
+                Arc::clone(&shutdown_flag),
+            ));
+            let defaultspack_manager_for_monitor = Arc::clone(&defaultspack_manager);
+            app.manage(defaultspack_manager);
+
             app.manage(config.clone());
 
             if let Some(win) = app.get_webview_window("main") {
@@ -1610,6 +1650,7 @@ pub fn run() {
                 Arc::clone(&app.state::<ShutdownState>().inner().0),
                 panel_bootstrap_secret.clone(),
             );
+            DefaultspackManager::spawn_exit_monitor(defaultspack_manager_for_monitor);
 
             std::thread::spawn(move || {
                 // --- Fast path: existing authenticated kernel ---
@@ -1690,6 +1731,10 @@ pub fn run() {
                     if let Err(error) = send_app_to_background(&window.app_handle()) {
                         error!("Failed to send app to background: {error}");
                     }
+                } else if should_restore_primary_on_close(window.label()) {
+                    if let Err(error) = restore_primary_window(&window.app_handle(), true) {
+                        error!("Failed to restore launcher after closing Tobkiri: {error}");
+                    }
                 }
             }
         })
@@ -1718,11 +1763,40 @@ pub fn run() {
         .build(tauri::generate_context!())
         .map(|app| {
             app.run(|app_handle, event| {
+                if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+                    let shutdown_requested = app_handle
+                        .state::<ShutdownState>()
+                        .inner()
+                        .0
+                        .load(Ordering::SeqCst);
+                    if !shutdown_requested {
+                        api.prevent_exit();
+                        request_app_exit(app_handle);
+                    }
+                }
+
+                // macOS can deliver a terminal Exit without first allowing the
+                // asynchronous ExitRequested shutdown path to finish (for
+                // example from the application-menu Quit action). Keep this
+                // synchronous fallback so Launcher-owned 8765/8766 processes
+                // cannot outlive the app. Re-running it after the normal path
+                // is harmless because both managers have idempotent stops.
+                if matches!(&event, tauri::RunEvent::Exit) {
+                    app_handle
+                        .state::<ShutdownState>()
+                        .inner()
+                        .0
+                        .store(true, Ordering::SeqCst);
+                    let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
+                    let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
+                    stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+                }
+
                 #[cfg(target_os = "macos")]
                 if let tauri::RunEvent::Reopen {
                     has_visible_windows: false,
                     ..
-                } = event
+                } = &event
                 {
                     if let Err(error) = show_primary_window(app_handle) {
                         warn!("Failed to reopen primary window: {error}");
@@ -1830,6 +1904,18 @@ mod tests {
         assert!(!should_send_to_background_on_close(
             AUTHORITY_APPROVAL_WINDOW_LABEL
         ));
+        assert!(should_restore_primary_on_close("defaultspack-main"));
+        assert!(!should_restore_primary_on_close("authority-approval"));
+    }
+
+    #[test]
+    fn macos_main_window_reserves_a_titlebar_without_showing_a_title() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let main_window = &config["app"]["windows"][0];
+
+        assert_eq!(main_window["hiddenTitle"], true);
+        assert_eq!(main_window["titleBarStyle"], "Transparent");
     }
 
     #[test]
@@ -1986,6 +2072,17 @@ mod tests {
                 .find(|(key, _)| key == "code")
                 .map(|(_, value)| value.into_owned()),
             Some("code with space".into())
+        );
+    }
+
+    #[test]
+    fn panel_navigation_script_replaces_the_splash_location() {
+        let url = panel_session_url_for_current(None, 8765, "fresh-code").unwrap();
+        let script = format!("window.location.replace({:?});", url.as_str());
+
+        assert_eq!(
+            script,
+            "window.location.replace(\"http://127.0.0.1:8765/panel/?code=fresh-code\");"
         );
     }
 

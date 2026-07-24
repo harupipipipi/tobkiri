@@ -1,0 +1,83 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.tool_audit",
+    "version": "1.0.0",
+    "kind": "adapter",
+    "display_name": "Rumi Tool Audit",
+    "description": "Redacted tool lifecycle events forwarded to the core audit owner."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.event.tool.invocation.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "tool-audit.event",
+        "cardinality": "one",
+        "security": "sensitive",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "core-audit"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.audit.emit"
+        ]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "tool-audit-emit",
+      "contract_id": "rumi.event.tool.invocation.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_audit_pack.runtime.audit",
+      "symbol": "create_emit_operation",
+      "artifact_hash": "sha256:b789436190c19ec3f436dee86dc740293bdface12fdc0d531a1452c303eef888"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "tool.audit.emit",
+      "access": "write",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:351b455411466b3e03c755d6419929a6c691d0b73365dcd7d972290f3e6188ce",
+    "build_identity": "rumi-tool-audit-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.domain.tool.executor.audit"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Select the pinned prior audit adapter."
+  },
+  "extensions": {
+    "rumi.tool_audit.boundary": {
+      "audit_storage_owner": false,
+      "raw_arguments": false,
+      "raw_results": false,
+      "allowlisted_fields": true
+    }
+  }
+}

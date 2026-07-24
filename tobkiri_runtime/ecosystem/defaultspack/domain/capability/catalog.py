@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from core_runtime.resolved_profile_scope import effective_pack_ids
+
 
 class CapabilityCatalog:
     """Loads defaultspack's local-first service manifests."""
@@ -19,15 +21,17 @@ class CapabilityCatalog:
     def _catalog_roots(self) -> List[Path]:
         ecosystem_dir = self._ecosystem_root()
         roots: List[Path] = []
+        effective = effective_pack_ids()
         if ecosystem_dir.is_dir():
-            for path in sorted(ecosystem_dir.iterdir()):
+            for pack_id in sorted(effective):
+                path = ecosystem_dir / pack_id
                 try:
                     is_pack_root = path.is_dir() and (path / "ecosystem.json").is_file()
                 except OSError:
                     continue
                 if is_pack_root:
                     roots.append(path)
-        if self.pack_root not in roots:
+        if self._pack_id(self.pack_root) in effective and self.pack_root not in roots:
             roots.insert(0, self.pack_root)
         return roots
 

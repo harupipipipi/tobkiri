@@ -1,0 +1,16 @@
+{
+  "pack_id": "rumi_ai_usage_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ai_usage_pack",
+  "display_name": "Rumi AI Usage Pack",
+  "version": "1.0.0",
+  "description": "Provider-neutral token estimates, normalized usage, and cost calculation.",
+  "dependencies": {},
+  "connectivity": {"requires": [], "provides": ["rumi.service.ai.tokenize.v1", "rumi.service.ai.usage.cost.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["ai.tokenize", "ai.usage.cost"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:69610cef7ab9b1e6abd0612393e537a3d3f1becf9abe18ecff6e30a75d444567", "build_identity": "rumi-ai-usage-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authoritative_owner": true, "owner_surfaces": ["token_estimates", "normalized_usage_cost"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"network": false, "provider_branches": false, "unknown_cost_preserved": true}}
+}

@@ -1,0 +1,6 @@
+{
+  "pack_id": "rumi_tool_validation_pack", "pack_identity": "rumi:ecosystem/rumi_tool_validation_pack", "display_name": "Rumi Tool Validation Pack", "version": "1.0.0", "description": "Deterministic non-coercing argument validation.", "dependencies": {},
+  "connectivity": {"requires": [], "provides": ["rumi.service.tool.arguments.validate.v1"]}, "required_secrets": [], "required_capabilities": ["tool.arguments.validate"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [],
+  "provenance": {"content_hash": "sha256:21a25e26fae5f9c908781bbf51e946e546ca8df0a47fcfb56b73a0cbd384cb51", "build_identity": "rumi-tool-validation-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authoritative_owner": true, "owner_surfaces": ["tool_argument_validation"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"coercion": false, "execution": false}}
+}

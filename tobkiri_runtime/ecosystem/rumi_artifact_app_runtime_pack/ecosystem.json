@@ -36,6 +36,9 @@
     "consumes_existing_sources_only": true,
     "output_effect": "draft_and_handoff_only",
     "defaultspack_promotion_eligible": false,
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
     "owner_surfaces": [
       "artifact_app_manifest",
       "sandbox_renderer_contract",
@@ -142,5 +145,18 @@
         "examples/version_rollback.example.yaml"
       ]
     }
+  },
+  "resources": [
+    {
+      "id": "frontend/contributions/artifact-app-runtime.json",
+      "kind": "ui.contribution",
+      "content_hash": "sha256:095f3b32b86ba30a7c3be6b9fad208ef31721027440250d6d536335916c29355"
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:10d187bb800639ee935c2dbe4f54b1aa1e3c5342b9df8a4cbb64a33fe86b4b30",
+    "build_identity": "rumi-artifact-app-runtime-content-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
   }
 }

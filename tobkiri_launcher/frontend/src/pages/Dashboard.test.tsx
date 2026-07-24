@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildProfileCreationRequest,
   canLoadDashboardProfiles,
+  copyTextToClipboard,
   launchStartupProfileFromDashboard,
 } from './Dashboard';
 import type {StartupProfileMutationResponseData} from '@/src/lib/apiTypes';
@@ -26,13 +28,34 @@ function launchResponse(restartRequested: boolean): StartupProfileMutationRespon
   };
 }
 
-test('Dashboard can load profiles once the panel is ready', () => {
-  assert.equal(canLoadDashboardProfiles(false, 'starting'), false);
+test('Dashboard starts loading profiles while runtime health is still settling', () => {
+  assert.equal(canLoadDashboardProfiles(false, 'starting'), true);
   assert.equal(canLoadDashboardProfiles(false, 'panel_ready'), true);
   assert.equal(canLoadDashboardProfiles(true, 'runtime_ready'), true);
+  assert.equal(canLoadDashboardProfiles(false, 'error'), false);
 });
 
-test('launch skips immediate Defaultspack desktop open during restart handoff', async () => {
+test('profile creation requires an explicit base-pack selection', () => {
+  assert.equal(buildProfileCreationRequest('Draft', ''), null);
+  assert.deepEqual(
+    buildProfileCreationRequest('  My profile  ', '  defaultspack  '),
+    {name: 'My profile', base_pack: 'defaultspack'},
+  );
+});
+
+test('copyTextToClipboard copies the complete runtime error message', async () => {
+  let copied = '';
+  const success = await copyTextToClipboard('Kernel failed to start', {
+    writeText: async (text: string) => {
+      copied = text;
+    },
+  });
+
+  assert.equal(success, true);
+  assert.equal(copied, 'Kernel failed to start');
+});
+
+test('launch opens Defaultspack desktop after a restart handoff', async () => {
   const calls: string[] = [];
   await launchStartupProfileFromDashboard({
     profileId: 'p1',
@@ -41,8 +64,8 @@ test('launch skips immediate Defaultspack desktop open during restart handoff', 
       calls.push(`launch:${profileId}`);
       return launchResponse(true);
     },
-    refreshProfiles: async () => {
-      calls.push('refresh-profiles');
+    refreshProfiles: async (profileId) => {
+      calls.push(`refresh-profiles:${profileId}`);
     },
     refreshDashboard: async () => {
       calls.push('refresh-dashboard');
@@ -61,7 +84,10 @@ test('launch skips immediate Defaultspack desktop open during restart handoff', 
 
   assert.deepEqual(calls, [
     'launch:p1',
-    'success:Profile launched. Defaultspack will open after the runtime restart is ready.',
+    'refresh-profiles:p1',
+    'refresh-dashboard',
+    'open-desktop',
+    'success:Profile launched. Defaultspack window opened.',
   ]);
 });
 

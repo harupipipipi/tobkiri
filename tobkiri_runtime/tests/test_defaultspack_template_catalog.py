@@ -103,6 +103,23 @@ def test_template_projector_builds_stable_catalog_metadata():
     assert model_field["projected_id"] == "rumi.model_selector.default:model_select"
 
 
+def test_model_selector_schema_is_projected_to_every_model_and_provider_field():
+    catalog = build_template_catalog(defaultspack_root=DEFAULTSPACK_ROOT)
+    selector_fields = [
+        field
+        for section in catalog["settings_sections"]
+        for field in section.get("fields", [])
+        if field.get("type") in {"model_select", "provider_select"}
+    ]
+
+    assert selector_fields
+    selector_schema = selector_fields[0]["selector_schema"]
+    assert selector_schema["version"] == 1
+    assert selector_schema["layout"]["provider_confirm_key"] == "Tab"
+    assert selector_schema["filters"]["exclude_model_ids"] == []
+    assert all(field["selector_schema"] == selector_schema for field in selector_fields)
+
+
 def test_template_catalog_projects_composer_surface_pieces():
     catalog = build_template_catalog(defaultspack_root=DEFAULTSPACK_ROOT)
 
@@ -134,6 +151,10 @@ def test_template_catalog_projects_composer_surface_pieces():
     }
     assert composer_input["region_id"] == "composer"
     assert composer_input["renderer"] == "composer"
+    assert composer_input["layout"] == {
+        "home": {"position": "center"},
+        "conversation": {"position": "bottom"},
+    }
     assert shell_region["renderer"] == "composer"
     assert shell_renderer["component"] == "Composer"
     assert shell_renderer["regions"] == ["composer"]

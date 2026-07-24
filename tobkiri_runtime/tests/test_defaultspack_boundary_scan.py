@@ -312,7 +312,12 @@ def test_key_edges_use_public_contracts_in_repository_policy():
     }
     assert "domain/capability" not in policy["chat"]["may_import"]
     assert set(policy["chat"]["public_imports"]) == {
+        "domain/capability/activity_registry",
         "domain/capability/catalog",
+        "domain/capability/models",
+        "domain/capability/orchestrator",
+        "domain/capability/repository",
+        "domain/capability/settings",
         "domain/mention",
         "domain/tool_policy/internal_context",
     }

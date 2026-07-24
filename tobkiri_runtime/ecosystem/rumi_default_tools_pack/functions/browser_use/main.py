@@ -116,7 +116,6 @@ def run(context, args):
         "status_text",
         "haze_status_text",
         "dry_run",
-        "approval_token",
         "computer_use_haze_sequence_id",
         "computer_use_sequence_id",
         "run_id",

@@ -468,7 +468,7 @@ class DefaultsHttpServer:
             pass
 
     def _build_context(self):
-        return {
+        context = {
             "flow_id": "transport_direct",
             "step_id": "http_request",
             "phase": "execute",
@@ -476,6 +476,16 @@ class DefaultsHttpServer:
             "owner_pack": "defaultspack",
             "inputs": {},
         }
+        try:
+            from core_runtime.di_container import get_container
+
+            context["interface_registry"] = get_container().get(
+                "interface_registry"
+            )
+        except Exception:
+            # Standalone compatibility mode has no kernel registry.
+            pass
+        return context
 
     def _invoke_registry_handler(self, handler, request_data, path_params):
         if getattr(handler, "_defaultspack_flow_route_handler", False):
@@ -1026,27 +1036,6 @@ class DefaultsHttpServer:
             {"id": "id"},
         )
 
-    # ---- Prompt Handlers (fallback) ----
-
-    def _handle_prompt_update(self, request_data, path_params):
-        return self._invoke_fallback_block(
-            "blocks.prompt.update",
-            request_data,
-            path_params,
-            {"name": "name"},
-        )
-
-    def _handle_prompt_delete(self, request_data, path_params):
-        return self._invoke_fallback_block(
-            "blocks.prompt.delete",
-            request_data,
-            path_params,
-            {"name": "name"},
-        )
-
-    def _handle_prompt_convert(self, request_data, path_params):
-        return self._invoke_fallback_block("blocks.prompt.convert", request_data, path_params)
-
     # ---- Dynamic Tool Handlers (fallback) ----
 
     def _handle_tool_create(self, request_data, path_params):
@@ -1567,8 +1556,10 @@ _LOCAL_UI_APPROVAL_METHOD_PATHS = {
     "/api/runtime/uninstall": {"POST"},
     "/api/desktops": {"POST"},
     "/api/onboarding/apply": {"POST"},
+    "/api/ui/capability/invoke": {"POST"},
 }
 _LOCAL_UI_APPROVAL_METHOD_PATTERNS = (
+    (re.compile(r"^/api/prompts(?:/.*)?$"), {"POST", "PUT", "DELETE"}),
     (re.compile(r"^/api/runtime/operations/[^/]+/cancel$"), {"POST"}),
     (re.compile(r"^/api/desktops/[^/]+$"), {"DELETE"}),
     (re.compile(r"^/api/desktops/[^/]+/(?:start|restart|stop|input|ai-input|rules)$"), {"POST"}),
@@ -1959,7 +1950,13 @@ def _apply_defaultspack_local_ui_context(context, payload):
         return
     if payload.pop(_LOCAL_UI_APPROVAL_CONTEXT_FLAG, False) is not True:
         return
-    context["_tool_server_approved"] = True
+    # This flag is only injected after a local bearer token has been verified
+    # for a narrow, sensitive UI route.  Mark it with the unforgeable internal
+    # sentinel as well: downstream approval checks deliberately reject a bare
+    # client-visible boolean.
+    from domain.tool_policy.internal_context import mark_tool_server_approval_context
+
+    mark_tool_server_approval_context(context)
     context["source"] = "defaultspack_local_ui"
     context["approval_id"] = "defaultspack_local_ui"
     _apply_mimo_company_profile_authority_context(context, payload)

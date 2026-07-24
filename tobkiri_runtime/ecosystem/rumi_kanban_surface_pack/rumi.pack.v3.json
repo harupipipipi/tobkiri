@@ -1,0 +1,13 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.kanban_surface","version":"1.0.0","kind":"content","display_name":"Rumi Kanban Surface","description":"Removable read-only Kanban content projection."},
+  "contracts":{"provides":[],"requires":[{"id":"rumi.resource.kanban.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[],
+  "resources":[{"id":"frontend/contributions/kanban.json","kind":"ui.contribution","content_hash":"sha256:fc808ce0032c0a18b1059031a77d95f8691d428304642bea138897b096ebfb57"}],
+  "storage":[],
+  "permissions":[{"capability":"kanban.state.read","access":"read","approval_required":false}],
+  "provenance":{"content_hash":"sha256:5898e39b53c9599e9c05f1103df2348cd8cc15e1a00acc430fb235b60deca091","build_identity":"rumi-kanban-surface-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.webapp.components.kanban","defaultspack.webapp.features.kanban"],"compatibility_aliases":[],"compatibility_projection":"finite_route_projection","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove the Kanban UI pack; Kanban state and adapters remain independently available."},
+  "extensions":{"rumi.kanban_surface.boundary":{"state_owner":false,"conversation_owner":false,"agent_owner":false,"mutations":false,"authority_receipts":false,"profile_scoped":true,"isolated":true}}
+}
+

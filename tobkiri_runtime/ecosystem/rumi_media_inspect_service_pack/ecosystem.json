@@ -1,0 +1,17 @@
+{
+  "pack_id": "rumi_media_inspect_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_media_inspect_service_pack",
+  "display_name": "Rumi Media Inspect Service Pack",
+  "version": "1.0.0",
+  "description": "Independent read-only document/image/audio/recording inspection.",
+  "dependencies": {"rumi_file_inspect_pack": ">=1.0.0,<2.0.0"},
+  "connectivity": {"requires": ["rumi.service.file.inspect.v1"], "provides": ["rumi.service.media.inspect.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["media.inspect", "file.inspect"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": false,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:39cc9931de498f4a5f683179ad518d48c5c056e119f7117884dad370698f04c6", "build_identity": "rumi-media-inspect-service-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"read_only": true, "file_access": "global_contract_only", "capture": false, "vision_inference": false, "tool_or_ui_registry_imports": false}
+}
+

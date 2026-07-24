@@ -1,0 +1,16 @@
+{
+  "pack_id": "rumi_tool_registry_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_registry_pack",
+  "display_name": "Rumi Tool Registry Pack",
+  "version": "1.0.0",
+  "description": "Authoritative provider-neutral tool definitions and aliases.",
+  "dependencies": {},
+  "connectivity": {"requires": ["rumi.resource.tool.definition.contribution.v1"], "provides": ["rumi.resource.tool.definition.v1", "rumi.action.tool.definition.manage.v1", "rumi.action.tool.definition.migrate.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["tool.definition.read", "tool.definition.manage", "tool.definition.migrate", "tool.definition.contribution.read"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:c244ace51133c9f44d8c74a106904834813629b10b57c0cad1265011884471d9", "build_identity": "rumi-tool-registry-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authoritative_owner": true, "owner_surfaces": ["tool_definitions", "tool_aliases"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"executes_tools": false, "grants_authority": false}}
+}

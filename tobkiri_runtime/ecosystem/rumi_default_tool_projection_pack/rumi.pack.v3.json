@@ -1,0 +1,139 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.default_tool_projection",
+    "version": "1.0.0",
+    "kind": "adapter",
+    "display_name": "Rumi Default Tool Projection",
+    "description": "Finite legacy definition migration source and local execution compatibility projection."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.resource.tool.migration.source.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "default-tools.migration-source",
+        "cardinality": "one",
+        "security": "sensitive",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": true,
+          "data_owner": "defaultspack",
+          "sunset_at": "2027-12-31",
+          "deprecated_at": "2026-07-17"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.migration.source.read"
+        ]
+      },
+      {
+        "id": "rumi.service.tool.local.operation.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "tool-adapter.defaultspack-compat",
+        "routing_keys": [
+          "defaultspack.*"
+        ],
+        "cardinality": "many",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": true,
+          "data_owner": "defaultspack",
+          "sunset_at": "2027-12-31",
+          "deprecated_at": "2026-07-17"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.local.operation"
+        ]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "default-tool-migration-source",
+      "contract_id": "rumi.resource.tool.migration.source.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_default_tool_projection_pack.runtime.projection",
+      "symbol": "create_source_operation",
+      "artifact_hash": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9"
+    },
+    {
+      "id": "default-tool-local-operation",
+      "contract_id": "rumi.service.tool.local.operation.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_default_tool_projection_pack.runtime.projection",
+      "symbol": "create_local_operation",
+      "artifact_hash": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "tool.migration.source.read",
+      "access": "read",
+      "approval_required": false
+    },
+    {
+      "capability": "tool.local.operation",
+      "access": "execute",
+      "approval_required": false
+    },
+    {
+      "capability": "service.invoke",
+      "access": "execute",
+      "approval_required": false
+    },
+    {
+      "capability": "service.mutate",
+      "access": "control",
+      "approval_required": true
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:a4035dbb1f6704ecaa65b27827c43d5544bbef666fd6f7c0a624bc69b8cb3af6",
+    "build_identity": "rumi-default-tool-projection-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.domain.tool.registry",
+      "defaultspack.domain.tool.executor"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Select the legacy broker and remove migrated tool-registry owner state."
+  },
+  "extensions": {
+    "rumi.default_tool_projection.boundary": {
+      "definition_owner": false,
+      "domain_service_owner": false,
+      "approval_bypass": false,
+      "consumer": "rumi_tool_local_executor_pack"
+    }
+  }
+}

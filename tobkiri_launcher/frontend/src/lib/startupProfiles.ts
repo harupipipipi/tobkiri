@@ -96,7 +96,7 @@ export function compatibleNodesForPort(
 
 function describeApprovalIssue(issue: string): string | null {
   if (/needs approval/i.test(issue) || /must be approved/i.test(issue)) {
-    return 'Approve this pack before using it in a launch profile.';
+    return 'This pack is not approved for this profile. Select Approve to continue.';
   }
   if (/changed since it was last approved/i.test(issue) || /modified since approval/i.test(issue)) {
     return 'This pack changed after approval. Re-approve it before launch.';

@@ -1,10 +1,14 @@
 # Rumi Prompt Studio Pack
 
-Declarative prompt library, prompt linting, custom instruction migration, version ledger, and fixture dry-run contract pack.
+Optional local-first prompt authoring, composition preferences, linting,
+testbench, migration, versioning, rollback, and isolated UI pack.
 
 ## Provides
 
-This pack owns prompt_artifact_catalog, prompt_lint_rubric, custom_instruction_migration, fixture_dry_run_contract, prompt_version_ledger. It gives Rumi a customizable, local-first contract for this domain without silently taking over adjacent runtime authority.
+This pack is the sole owner of authored prompts and prompt composition edge
+preferences for a selected profile. It exposes typed global contracts and runs
+through a verified single-request subprocess. Its UI is an opaque sandbox that
+uses the host capability broker and receives no bearer credential.
 
 ## Does Not Provide
 
@@ -18,9 +22,7 @@ None.
 
 None by default.
 
-## Handoff Owners
+## Storage
 
-- `rumi_model_evals_pack`
-- `rumi_memory_knowledge_pack`
-- `rumi_code_ide_pack`
-- `rumi_knowledge_marketplace_pack`
+`user_data/packs/rumi_prompt_studio_pack/profiles/<profile>/` contains the
+atomic store, owner marker, locks, and migration backups.

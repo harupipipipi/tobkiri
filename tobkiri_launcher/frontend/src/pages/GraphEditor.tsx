@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Braces, CheckCircle2, ListTree, Loader2, Save, TriangleAlert } from 'lucide-react';
+import { Braces, CheckCircle2, ListTree, Save, TriangleAlert } from 'lucide-react';
 
 import { Button } from '@/src/components/ui/Button';
 import {
@@ -18,6 +18,7 @@ import type {
 import { cn } from '@/src/lib/utils';
 import { useAppStore } from '@/src/store';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
+import { TobkiriLoader, TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
 
 type GraphViewMode = 'readable' | 'json';
 
@@ -366,12 +367,7 @@ export function GraphEditor() {
   }
 
   if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center gap-2 text-text-muted">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        <span>Loading graphs</span>
-      </div>
-    );
+    return <TobkiriLoader label="Loading graphs" />;
   }
 
   return (
@@ -466,7 +462,7 @@ export function GraphEditor() {
           ) : null}
           {graphLoading ? (
             <div role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-sm text-text-muted">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading selected graph…
+              <TobkiriLoadingMark /> Loading selected graph…
             </div>
           ) : null}
           {!loadError && graphs.length === 0 ? (

@@ -73,13 +73,16 @@ test('viewer overlays use shared layer tokens instead of competing z-50 classes'
   const toast = source('components/ui/ToastContainer.tsx');
   const dialog = source('components/ui/DialogContainer.tsx');
   const popover = source('components/ui/Popover.tsx');
+  const loader = source('components/ui/TobkiriLoader.tsx');
 
+  assert.match(layers, /loading: 'z-\[50\]'/);
   assert.match(layers, /popover: 'z-\[60\]'/);
   assert.match(layers, /dialog: 'z-\[70\]'/);
   assert.match(layers, /toast: 'z-\[80\]'/);
   assert.match(toast, /viewerLayers\.toast/);
   assert.match(dialog, /viewerLayers\.dialog/);
   assert.match(popover, /viewerLayers\.popover/);
+  assert.match(loader, /viewerLayers\.loading/);
   assert.doesNotMatch(toast, /z-50/);
   assert.doesNotMatch(dialog, /z-50/);
   assert.doesNotMatch(popover, /z-50/);

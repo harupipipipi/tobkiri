@@ -1,0 +1,17 @@
+{
+  "pack_id":"rumi_scheduler_surface_pack",
+  "pack_identity":"rumi:ecosystem/rumi_scheduler_surface_pack",
+  "display_name":"Rumi Scheduler Surface Pack",
+  "version":"1.0.0",
+  "description":"Removable scheduler content and isolated read-only UI projection.",
+  "dependencies":{"rumi_schedule_store_pack":">=1.0.0,<2.0.0","rumi_scheduler_runtime_pack":">=1.0.0,<2.0.0"},
+  "connectivity":{"requires":["rumi.resource.schedule.v1","rumi.resource.scheduler.v1"],"provides":["rumi.ui.route.module.v1"]},
+  "required_secrets":[],
+  "required_capabilities":["schedule.read","scheduler.observe"],
+  "required_network":{"allowed_domains":[],"allowed_ports":[]},
+  "host_execution":false,
+  "resources":[{"id":"frontend/contributions/scheduler.json","kind":"ui.contribution","content_hash":"sha256:8b3c7da7b495e15ba781ff7f881d1ffc7de2d4390802e484896158031a63d0dd"}],
+  "provenance":{"content_hash":"sha256:9d9ed1c0168c4efabe82662303cc6478069770fa87a6d636b8bbf2ddf5f9b967","build_identity":"rumi-scheduler-surface-pack:1.0.0","trust_class":"local","signature":null},
+  "metadata":{"authoritative_owner":false,"executable_code":true,"isolated_ui":true,"owner_surfaces":["scheduler_route","scheduler_content"],"integrity":{"artifact_manifest":"artifact-manifest.json"}}
+}
+

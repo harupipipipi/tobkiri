@@ -24,6 +24,9 @@ from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.model_router import ModelRoutingRequest, route_model_request
 from domain.ai_client.model_search import get_model_capabilities
 from domain.ai_client.request_planner import plan_model_request
+from domain.capability.models import stable_revision
+from domain.capability.orchestrator import CapabilityOrchestrator
+from domain.capability.repository import CapabilityRepository
 from domain.chat.ir import RumiChatIR
 from domain.chat.ir_blocks import IR_SCHEMA_VERSION
 from domain.chat.ir_legacy_adapter import (
@@ -66,10 +69,9 @@ from domain.coding.frontend_precision import (
     precision_metadata,
 )
 from domain.prompt.manager import get_manager
-from domain.skill_trigger import RuntimeSkillTriggerService
 from domain.temporal_context import add_temporal_context_message, current_datetime_context
 from domain.tool.loading import split_tools_by_loading
-from domain.tool.registry import ToolRegistry
+from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.tool.eligibility import filter_tool_definitions_by_eligibility
 from domain.tool.schema_adapter import (
     adapt_tool_definitions,
@@ -408,16 +410,12 @@ def prepare_chat_run(
     request_context["request_id"] = request_id
     request_context["tool_selection"] = _tool_selection_metadata(tool_selection)
     _copy_enriched_context_into_request_context(request_context, enrich_info)
-    if isinstance(metadata, dict):
-        forced_skill_ids = (
-            metadata.get("skills") or metadata.get("skill_ids") or metadata.get("selected_skills")
-        )
-        if isinstance(forced_skill_ids, list):
-            request_context["skills"] = [
-                str(item) for item in forced_skill_ids if str(item).strip()
-            ]
-        elif isinstance(forced_skill_ids, str) and forced_skill_ids.strip():
-            request_context["skills"] = forced_skill_ids
+    if isinstance(metadata, dict) and any(
+        key in metadata for key in ("skills", "skill_ids", "selected_skills")
+    ):
+        # Client metadata is an untrusted rendering hint. The backend resolves
+        # explicit Skills again from the canonical message text.
+        request_context["ignored_client_skill_metadata"] = True
     conversation_metadata = (
         conversation.get("metadata") if isinstance(conversation.get("metadata"), dict) else {}
     )
@@ -654,7 +652,42 @@ def prepare_chat_run(
     )
     raw_tools = list(eligibility_result.get("allowed_tools") or [])
     _ensure_must_use_has_eligible_tools(tool_selection, raw_tools)
+    capability_plan = CapabilityOrchestrator(
+        call_handler=request_context.get("call_handler")
+    ).compile_selected(
+        user_text=user_text,
+        selected_tools=raw_tools,
+        eligible_tools=raw_tools,
+        settings=(
+            tool_context.get("capability_settings_snapshot")
+            if isinstance(tool_context.get("capability_settings_snapshot"), dict)
+            else _read_frontend_settings()
+        ),
+        runtime_profile=(
+            tool_context.get("runtime_profile")
+            if isinstance(tool_context.get("runtime_profile"), dict)
+            else None
+        ),
+        context={
+            **request_context,
+            **tool_context,
+            "policy_generation": CapabilityRepository().policy_generation(),
+        },
+    )
+    compiled_model_input = capability_plan.pop("_compiled_model_input")
+    compiled_tool_ids = set(compiled_model_input["tool_ids"])
+    raw_tools = [
+        tool
+        for tool in compiled_model_input["tools"]
+        if tool_name_from_definition(tool) in compiled_tool_ids
+    ]
     provider_tools = adapt_tool_definitions(raw_tools)
+    skill_instructions = str(
+        compiled_model_input.get("skill_instructions") or ""
+    ).strip()
+    matched_skills = list(compiled_model_input.get("matched_skills") or [])
+    request_context["capability_plan"] = capability_plan
+    tool_context["capability_plan"] = capability_plan
     filter_entries = list(eligibility_result.get("entries") or [])
     if isinstance(tool_context.get("unselected_requested_tools"), list):
         filter_entries.extend(
@@ -753,17 +786,6 @@ def prepare_chat_run(
         connected_names = {name for name in connected_names if name not in provider_compat_tool_ids}
     tool_context["chat_references"] = chat_references
     tool_context["history_json_path"] = chat_references["history_json_path"]
-    skill_eval = RuntimeSkillTriggerService().evaluate(
-        user_text=user_text,
-        tool_names=[
-            tool_name_from_definition(tool) for tool in raw_tools if tool_name_from_definition(tool)
-        ],
-        context=request_context,
-    )
-    matched_skills = skill_eval.get("matched", []) if isinstance(skill_eval, dict) else []
-    skill_instructions = (
-        str(skill_eval.get("instructions") or "").strip() if isinstance(skill_eval, dict) else ""
-    )
     if skill_instructions:
         _append_system_context_message(standard_messages, skill_instructions)
         request_context["matched_skill_instructions"] = matched_skills
@@ -788,8 +810,8 @@ def prepare_chat_run(
                 "allow_disable": False,
                 "editable": False,
                 "readonly_reason": "Runtime skill instructions are controlled by skill definitions.",
-                "preview": " ".join(skill_instructions.split())[:280],
-                "text": skill_instructions,
+                "preview": "[instruction body redacted from trace]",
+                "text_hash": stable_revision(skill_instructions),
                 "metadata": {"matched_skills": matched_skills},
             }
             request_context["prompt_usage"] = compact_prompt_usage_for_metadata(
@@ -808,7 +830,6 @@ def prepare_chat_run(
                     trace_store.save_trace(trace_profile_id, trace)
         except Exception:
             pass
-
     provider_input_ir = legacy_standard_messages_to_ir(standard_messages, conversation_id)
     planned_request = plan_model_request(
         provider_input_ir,
@@ -1970,7 +1991,7 @@ def _replace_current_user_content_for_model(
 
 def _conversation_system_prompt(conv: dict[str, Any], manager: Any) -> str:
     from blocks.chat._prompt_helpers import resolve_conversation_system_prompt
-    from domain.kanban.service import append_kanban_system_prompt_note
+    from domain.kanban.prompt_note import append_kanban_system_prompt_note
 
     return append_kanban_system_prompt_note(resolve_conversation_system_prompt(conv, manager), conv)
 
@@ -3011,6 +3032,7 @@ def _available_tools(
             context=resolved_context,
         )
         filtered = list(decision.selected_tools)
+        resolved_context["capability_settings_snapshot"] = settings
         selection_trace = decision.to_trace_dict()
         selected_tool_ids = [
             tool_name_from_definition(tool)
@@ -3052,7 +3074,10 @@ def _available_tools(
             "candidate_count": 0,
             "duration_ms": 0,
         }
-        if selection.mode == "manual":
+        if isinstance(exc, PermissionError):
+            filtered = []
+            resolved_context["tool_selection"]["stage"] = "selection_forbidden"
+        elif selection.mode == "manual":
             try:
                 filtered, unknown_tools = _resolve_selected_tools(selection.include, user_text=user_text, context=resolved_context)
                 if unknown_tools:

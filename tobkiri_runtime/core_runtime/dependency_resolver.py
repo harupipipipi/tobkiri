@@ -112,14 +112,6 @@ def extract_dependency_specs(pack_info: Dict[str, Any]) -> List[Dict[str, str]]:
         for dep in raw_dependencies:
             _add(dep)
 
-    raw_conn = pack_info.get("connectivity")
-    if isinstance(raw_conn, dict):
-        raw_requires = raw_conn.get("requires")
-        if isinstance(raw_requires, list):
-            for pid in raw_requires:
-                if isinstance(pid, str):
-                    _add(pid)
-
     return result
 
 
@@ -177,7 +169,7 @@ def extract_dependencies(pack_info: Dict[str, Any]) -> List[str]:
     """
     単一 pack の manifest / ecosystem dict から依存 pack_id を抽出する。
 
-    3 つのソースを統合し、重複を排除してユニークなリストで返す。
+    明示的な pack 依存を統合し、重複を排除してユニークなリストで返す。
 
     Sources:
         1. ``depends_on`` — 明示的依存。
@@ -186,8 +178,10 @@ def extract_dependencies(pack_info: Dict[str, Any]) -> List[str]:
         2. ``dependencies`` — ecosystem.json の dependencies フィールド。
            - dict の場合: キーを pack_id として扱う。
            - list の場合: 要素をそのまま pack_id として扱う。
-        3. ``connectivity.requires`` — pack レベルの connectivity.requires。
-           - list の場合: 要素をそのまま pack_id として扱う。
+    ``connectivity.requires`` は Pack ID ではなくグローバル契約 ID です。
+    契約プロバイダの解決は capability/profile resolver が行うため、ここで
+    pack dependency に混ぜると ``rumi.action.*`` を存在しない Pack として
+    解釈してしまいます。
 
     Args:
         pack_info: pack の manifest / ecosystem dict

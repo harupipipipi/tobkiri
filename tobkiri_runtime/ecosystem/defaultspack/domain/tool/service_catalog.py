@@ -240,6 +240,8 @@ def infer_connection_status(tool: dict[str, Any]) -> str:
             return "unavailable"
     if metadata.get("legacy_compat_unexecutable"):
         return "unavailable"
+    # Registered local/bundled Tools need no external connection. Explicit but
+    # unrecognized availability values above fail closed as unavailable.
     return "connected"
 
 

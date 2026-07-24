@@ -1,0 +1,20 @@
+{
+  "pack_id": "rumi_ai_modality_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ai_modality_pack",
+  "display_name": "Rumi AI Modality Pack",
+  "version": "1.0.0",
+  "description": "Provider-neutral embedding, image, transcription, and speech gateways.",
+  "dependencies": {},
+  "connectivity": {
+    "requires": ["rumi.service.ai.provider.embedding.v1", "rumi.service.ai.provider.image.v1", "rumi.service.ai.provider.audio.transcribe.v1", "rumi.service.ai.provider.audio.speech.v1"],
+    "provides": ["rumi.service.ai.embedding.v1", "rumi.service.ai.image.v1", "rumi.service.ai.audio.transcribe.v1", "rumi.service.ai.audio.speech.v1"]
+  },
+  "required_secrets": [],
+  "required_capabilities": ["ai.embedding", "ai.image", "ai.audio.transcribe", "ai.audio.speech"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:1ff9dff3217effb90f9ba73c660ff8165e31c7dbaffdc5af652e1d80a41532e9", "build_identity": "rumi-ai-modality-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authoritative_owner": true, "owner_surfaces": ["embedding_gateway", "image_gateway", "audio_transcription_gateway", "audio_speech_gateway"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"provider_pack_id_branches": false, "missing_provider_is_explicit": true, "raw_artifact_paths": false}}
+}
+

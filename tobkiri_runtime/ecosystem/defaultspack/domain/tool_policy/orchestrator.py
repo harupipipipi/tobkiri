@@ -6,7 +6,7 @@ from blocks._common import error
 from domain.agent_runtime.tool_ledger import ToolLedger
 from domain.agent_runtime.run_store import AgentRunStore
 from domain.hooks.dispatcher import dispatch_hook
-from domain.tool.registry import ToolRegistry
+from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 
 from .audit import audit_tool_policy
 from .internal_context import (

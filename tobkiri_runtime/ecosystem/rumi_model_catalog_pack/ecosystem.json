@@ -1,16 +1,42 @@
 {
   "pack_id": "rumi_model_catalog_pack",
   "pack_identity": "rumi:ecosystem/rumi_model_catalog_pack",
-  "version": "1.0.0",
+  "display_name": "Rumi Model Catalog Pack",
+  "version": "2.0.0",
+  "description": "Verified provider and model catalog resources separated from execution adapters.",
+  "dependencies": {},
+  "connectivity": {
+    "requires": [],
+    "provides": ["rumi.resource.ai.model.catalog.v1"]
+  },
+  "required_secrets": [],
+  "required_capabilities": ["ai.model.catalog.read"],
+  "required_network": {"allowed_domains": ["openrouter.ai"], "allowed_ports": [443]},
+  "host_execution": true,
+  "resources": ["catalog/providers", "extensions/llm/providers"],
+  "provenance": {
+    "content_hash": "sha256:94db7bf6697b2468ff3b6bc6f1ab720c826677d6394b23d2466bc9d69dba80ed",
+    "build_identity": "rumi-model-catalog-pack:2.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
   "metadata": {
-    "name": "Rumi Model Catalog Pack",
-    "description": "Concrete provider and model catalog data for the AI client loader.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
-  "vocabulary": {
-    "types": ["ai_client"]
-  },
-  "components": {},
-  "load_order": []
+    "authoritative_owner": true,
+    "catalog_revision": "sha256:119a72a75968f56f12c3422ea07e1f2ef4860d7e03dfdd23520c4b9cdbb51788",
+    "owner_surfaces": ["provider_descriptors", "model_descriptors"],
+    "integrity": {"artifact_manifest": "artifact-manifest.json"},
+    "security": {
+      "declarative_only": false,
+      "imports_provider_code": false,
+      "contains_credentials": false,
+      "execution_adapter_owner": false,
+      "live_inventory": {
+        "provider": "openrouter",
+        "credential_forwarding": false,
+        "endpoint": "https://openrouter.ai/api/v1/models",
+        "fallback": "last_known_good_then_static",
+        "timeout_seconds_max": 5
+      }
+    }
+  }
 }

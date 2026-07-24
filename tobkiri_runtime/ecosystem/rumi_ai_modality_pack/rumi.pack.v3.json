@@ -1,0 +1,36 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {"id": "rumi.ai_modality", "version": "1.0.0", "kind": "service", "display_name": "Rumi AI Modality", "description": "Replaceable embedding, image, transcription, and speech gateways."},
+  "contracts": {
+    "provides": [
+      {"id": "rumi.service.ai.embedding.v1", "version": "1.0.0", "provider_instance_id": "ai-modality.embedding", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_ai_modality_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.embedding"]},
+      {"id": "rumi.service.ai.image.v1", "version": "1.0.0", "provider_instance_id": "ai-modality.image", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_ai_modality_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.image"]},
+      {"id": "rumi.service.ai.audio.transcribe.v1", "version": "1.0.0", "provider_instance_id": "ai-modality.transcribe", "cardinality": "one", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_ai_modality_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.audio.transcribe"]},
+      {"id": "rumi.service.ai.audio.speech.v1", "version": "1.0.0", "provider_instance_id": "ai-modality.speech", "cardinality": "one", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_ai_modality_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.audio.speech"]}
+    ],
+    "requires": [
+      {"id": "rumi.service.ai.provider.embedding.v1", "version_range": ">=1.0.0 <2.0.0", "cardinality": "many", "optional": true},
+      {"id": "rumi.service.ai.provider.image.v1", "version_range": ">=1.0.0 <2.0.0", "cardinality": "many", "optional": true},
+      {"id": "rumi.service.ai.provider.audio.transcribe.v1", "version_range": ">=1.0.0 <2.0.0", "cardinality": "many", "optional": true},
+      {"id": "rumi.service.ai.provider.audio.speech.v1", "version_range": ">=1.0.0 <2.0.0", "cardinality": "many", "optional": true}
+    ]
+  },
+  "entrypoints": [
+    {"id": "ai-embedding", "contract_id": "rumi.service.ai.embedding.v1", "loader": "python", "module": "ecosystem.rumi_ai_modality_pack.runtime.gateway", "symbol": "create_embedding_operation", "artifact_hash": "sha256:1ff9dff3217effb90f9ba73c660ff8165e31c7dbaffdc5af652e1d80a41532e9"},
+    {"id": "ai-image", "contract_id": "rumi.service.ai.image.v1", "loader": "python", "module": "ecosystem.rumi_ai_modality_pack.runtime.gateway", "symbol": "create_image_operation", "artifact_hash": "sha256:1ff9dff3217effb90f9ba73c660ff8165e31c7dbaffdc5af652e1d80a41532e9"},
+    {"id": "ai-transcribe", "contract_id": "rumi.service.ai.audio.transcribe.v1", "loader": "python", "module": "ecosystem.rumi_ai_modality_pack.runtime.gateway", "symbol": "create_audio_transcribe_operation", "artifact_hash": "sha256:1ff9dff3217effb90f9ba73c660ff8165e31c7dbaffdc5af652e1d80a41532e9"},
+    {"id": "ai-speech", "contract_id": "rumi.service.ai.audio.speech.v1", "loader": "python", "module": "ecosystem.rumi_ai_modality_pack.runtime.gateway", "symbol": "create_audio_speech_operation", "artifact_hash": "sha256:1ff9dff3217effb90f9ba73c660ff8165e31c7dbaffdc5af652e1d80a41532e9"}
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {"capability": "ai.embedding", "access": "execute", "approval_required": false},
+    {"capability": "ai.image", "access": "execute", "approval_required": false},
+    {"capability": "ai.audio.transcribe", "access": "execute", "approval_required": false},
+    {"capability": "ai.audio.speech", "access": "execute", "approval_required": false}
+  ],
+  "provenance": {"content_hash": "sha256:1ff9dff3217effb90f9ba73c660ff8165e31c7dbaffdc5af652e1d80a41532e9", "build_identity": "rumi-ai-modality-pack:1.0.0", "trust_class": "local", "signature": null},
+  "migration": {"from": ["defaultspack.ai_client.embedding", "defaultspack.ai_client.image", "defaultspack.ai_client.audio"], "compatibility_aliases": [], "compatibility_projection": "read_only", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Select the pinned prior modality gateways in the resolved profile."},
+  "extensions": {"rumi.ai_modality.boundary": {"provider_execution": false, "provider_pack_id_branches": false, "empty_result_on_missing_provider": false}}
+}
+

@@ -6,7 +6,7 @@ from typing import Any
 TRUSTED_TOOL_PACK_IDS = {"defaultspack", "rumi_default_tools_pack"}
 SUPPORTED_AUTHORABLE_EXECUTION_TYPES = {"rumi_function", "capability", "mcp"}
 TRUSTED_LEGACY_EXECUTION_TYPES = {"local", "handler", "dynamic"}
-VALID_RISKS = {"low", "medium", "high"}
+VALID_RISKS = {"low", "medium", "high", "critical"}
 SANDBOX_CAPABILITY_PREFIX = "sandbox."
 SANDBOX_TOOL_IDS = {
     "sandbox_terminal_exec",
@@ -101,7 +101,17 @@ def is_trusted_tool(tool_def: dict[str, Any]) -> bool:
 
 
 def is_trusted_pack_id(pack_id: str) -> bool:
-    return str(pack_id or "").strip() in TRUSTED_TOOL_PACK_IDS
+    normalized = str(pack_id or "").strip()
+    if normalized in TRUSTED_TOOL_PACK_IDS:
+        return True
+    if not normalized:
+        return False
+    try:
+        from core_runtime.pack_trust import is_pack_trusted
+
+        return bool(is_pack_trusted(normalized)[0])
+    except Exception:
+        return False
 
 
 def execution_type(tool_def: dict[str, Any]) -> str:
@@ -251,7 +261,7 @@ def requires_approval_for_security(tool_def: dict[str, Any]) -> bool:
     risk = str(_tool_value(tool_def, "risk") or "").strip().lower()
     return (
         bool(_tool_value(tool_def, "requires_approval"))
-        or risk == "high"
+        or risk in {"high", "critical"}
         or appears_write_or_execute_capable(tool_def)
     )
 

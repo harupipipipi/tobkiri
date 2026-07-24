@@ -7,6 +7,9 @@
     "description": "Declarative local-first deep research, evidence, source quality, and citation workflow pack for Rumi-native research agents.",
     "author": "Rumi AI Team",
     "license": "MIT",
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
     "inspired_by": [
       "ChatGPT Deep Research-style synthesis",
       "Genspark-style research reports",
@@ -54,5 +57,18 @@
   "load_order": [
     "research_capability_catalog:research_catalog",
     "research_profile:research_profiles"
-  ]
+  ],
+  "resources": [
+    {
+      "id": "frontend/contributions/research.json",
+      "kind": "ui.contribution",
+      "content_hash": "sha256:e8f6c5315bd2285240a9d293cddbdbb060e3da1ed41d8cc462eb586c470fe9c0"
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:24a839364e793974d91cf5e79601aa6f360518a6b315228342c06b0f39577591",
+    "build_identity": "rumi-research-content-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  }
 }

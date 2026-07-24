@@ -238,15 +238,23 @@ class HMACKeyManager:
     ):
         """
         Args:
-            keys_path: 鍵ファイルのパス。None の場合は BASE_DIR/user_data/hmac_keys.json
+            keys_path: 鍵ファイルのパス。None の場合は RUMI_USER_DATA
+                （未設定時のみ bundled runtime の user_data）
             grace_period_seconds: グレースピリオド（秒）
         """
         if keys_path is None:
-            try:
-                from .paths import BASE_DIR
-                keys_path = str(BASE_DIR / _DEFAULT_KEYS_SUBDIR / _DEFAULT_KEYS_FILENAME)
-            except ImportError:
-                keys_path = os.path.join(_DEFAULT_KEYS_SUBDIR, _DEFAULT_KEYS_FILENAME)
+            configured_user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+            if configured_user_data:
+                keys_path = str(Path(configured_user_data) / _DEFAULT_KEYS_FILENAME)
+            else:
+                try:
+                    from .paths import USER_DATA_DIR
+                    keys_path = str(USER_DATA_DIR / _DEFAULT_KEYS_FILENAME)
+                except ImportError:
+                    keys_path = os.path.join(
+                        _DEFAULT_KEYS_SUBDIR,
+                        _DEFAULT_KEYS_FILENAME,
+                    )
 
         self._keys_path = Path(keys_path)
         self._grace_period = timedelta(seconds=grace_period_seconds)

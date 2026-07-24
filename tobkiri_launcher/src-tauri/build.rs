@@ -78,6 +78,7 @@ fn stage_runtime_bundle() -> io::Result<()> {
         copy_runtime_tree(&runtime_root, &staged_root, &runtime_root)?;
     }
     copy_generated_resource_dirs(&runtime_root, &staged_root)?;
+    stage_setup_brand_icon(&repo_root, &staged_root)?;
 
     let bundled_src = project_dir.join("bundled");
     if bundled_src.exists() {
@@ -87,6 +88,22 @@ fn stage_runtime_bundle() -> io::Result<()> {
     stage_pack_shell(&repo_root, &staged_root)?;
 
     Ok(())
+}
+
+fn stage_setup_brand_icon(repo_root: &Path, staged_root: &Path) -> io::Result<()> {
+    let icon_source = repo_root
+        .join("tobkiri_launcher")
+        .join("assets")
+        .join("app-icon")
+        .join("tobkiri-launcher-icon.png");
+    let icon_target = staged_root
+        .join("core_runtime")
+        .join("core_pack")
+        .join("core_setup")
+        .join("web")
+        .join("assets")
+        .join("tobkiri-launcher-icon.png");
+    copy_file(&icon_source, &icon_target).map(|_| ())
 }
 
 fn stage_pack_shell(repo_root: &Path, staged_root: &Path) -> io::Result<()> {
@@ -138,6 +155,13 @@ fn find_pack_shell_binary(repo_root: &Path) -> Option<PathBuf> {
     if let Ok(target) = std::env::var("TARGET") {
         candidates.push(
             repo_root
+                .join("target")
+                .join(&target)
+                .join("release")
+                .join(binary_name),
+        );
+        candidates.push(
+            repo_root
                 .join("pack-shell")
                 .join("target")
                 .join(target)
@@ -146,6 +170,8 @@ fn find_pack_shell_binary(repo_root: &Path) -> Option<PathBuf> {
         );
     }
     candidates.extend([
+        repo_root.join("target").join("release").join(binary_name),
+        repo_root.join("target").join("debug").join(binary_name),
         repo_root
             .join("pack-shell")
             .join("target")

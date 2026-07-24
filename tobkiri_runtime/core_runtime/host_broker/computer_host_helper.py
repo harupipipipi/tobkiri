@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def _ensure_import_path() -> None:
@@ -22,14 +23,40 @@ def main() -> int:
     viewer_host_approved = bool(request.get("viewer_host_approved"))
 
     try:
-        from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+        if action.startswith("browser."):
+            from ecosystem.rumi_browser_host_service_pack.runtime.runner import (
+                run_browser_host_action,
+            )
 
-        artifact_root = _validated_artifact_root(request.get("artifact_root"))
-        result = BrowserComputerController(artifact_root=artifact_root).run(
-            action,
-            payload,
-            yolo_mode=viewer_host_approved,
-        )
+            artifact_root = _validated_artifact_root(request.get("artifact_root"))
+            result = run_browser_host_action(
+                action,
+                payload,
+                viewer_host_approved=viewer_host_approved,
+                artifact_root=artifact_root,
+            )
+        elif action.startswith("computer.clipboard."):
+            from ecosystem.rumi_clipboard_host_service_pack.runtime.runner import (
+                run_clipboard_host_action,
+            )
+
+            result = run_clipboard_host_action(
+                action,
+                payload,
+                viewer_host_approved=viewer_host_approved,
+            )
+        else:
+            from ecosystem.rumi_default_tools_pack.domain.computer import (
+                create_default_computer_tool_service,
+            )
+
+            _validated_artifact_root(request.get("artifact_root"))
+            result = _run_desktop_action(
+                create_default_computer_tool_service(),
+                action,
+                payload,
+                viewer_host_approved=viewer_host_approved,
+            )
     except ValueError as exc:
         print(
             json.dumps(
@@ -44,6 +71,120 @@ def main() -> int:
 
     print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
     return 0
+
+
+def _run_desktop_action(
+    service: Any,
+    action: str,
+    payload: dict[str, Any],
+    *,
+    viewer_host_approved: bool,
+) -> dict[str, Any]:
+    if not viewer_host_approved:
+        raise PermissionError("Viewer approval is required")
+    target = {
+        key: payload.get(key)
+        for key in (
+            "surface_id",
+            "observation_revision",
+            "coordinate_space",
+            "app",
+            "application",
+            "pid",
+            "window_id",
+            "window_title",
+            "title",
+        )
+        if payload.get(key) not in (None, "")
+    }
+    if action == "computer.doctor":
+        return dict(service.doctor())
+    if action in {
+        "computer.observe",
+        "computer.screenshot",
+        "computer.ocr",
+        "computer.ax_tree",
+        "computer.context",
+    }:
+        result = dict(service.observe(target))
+        result.setdefault("action", action)
+        return result
+    if action in {"computer.apps", "computer.windows"}:
+        surfaces = list(service.list_surfaces())
+        return {"action": action, "surfaces": surfaces}
+    if action == "computer.move":
+        return dict(service.move(target, _int(payload, "x"), _int(payload, "y")))
+    if action == "computer.click":
+        return dict(
+            service.click(
+                target,
+                _int(payload, "x"),
+                _int(payload, "y"),
+                str(payload.get("button") or "left"),
+            )
+        )
+    if action == "computer.drag":
+        return dict(
+            service.drag(
+                target,
+                _int(payload, "x1", "from_x"),
+                _int(payload, "y1", "from_y"),
+                _int(payload, "x2", "to_x"),
+                _int(payload, "y2", "to_y"),
+            )
+        )
+    if action == "computer.type":
+        text = str(payload.get("text") or "")
+        if not text:
+            raise ValueError("computer.type requires text")
+        return dict(service.type_text(target, text))
+    if action == "computer.key":
+        key = str(payload.get("key_combo") or payload.get("key") or "")
+        if not key:
+            raise ValueError("computer.key requires a key")
+        return dict(service.key(target, key))
+    if action == "computer.scroll":
+        return dict(
+            service.scroll(
+                target,
+                _int(payload, "x"),
+                _int(payload, "y"),
+                str(payload.get("direction") or "down"),
+                max(1, min(100, _int(payload, "clicks", "amount", default=3))),
+            )
+        )
+    if action in {
+        "computer.select_app",
+        "computer.show_app",
+        "computer.select_window",
+        "computer.click_text",
+        "computer.semantic_action",
+    }:
+        intent = str(payload.get("intent") or action.removeprefix("computer."))
+        return dict(service.semantic_action(target, intent, dict(payload)))
+    if action == "computer.pid_event":
+        intent = str(payload.get("intent") or payload.get("action_type") or "")
+        return dict(service.pid_event(intent, target, dict(payload)))
+    return {
+        "action": action,
+        "is_error": True,
+        "error_type": "desktop_runner_unavailable",
+    }
+
+
+def _int(
+    payload: dict[str, Any],
+    *keys: str,
+    default: int = 0,
+) -> int:
+    for key in keys:
+        value = payload.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            raise ValueError(f"{key} must be an integer")
+        return int(value)
+    return default
 
 
 def _validated_artifact_root(raw_value: object) -> Path | None:

@@ -29,8 +29,12 @@
     "node_modules",
     "vendor"
   ],
+  "exclude_globs": [
+    "tobkiri_runtime/core_runtime/core_pack/core_control_panel/web/assets/**"
+  ],
   "notes": [
     "Pull requests are checked against added/modified lines, not every legacy line in a touched file.",
+    "Hashed control-panel build assets are excluded; their authored frontend source remains in scope.",
     "A full repository scan is available for scheduled/manual reporting.",
     "Heuristics are guardrails, not proof of runtime accessibility, visual quality, or security."
   ]

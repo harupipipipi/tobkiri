@@ -1,0 +1,11 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.git_write","version":"1.0.0","kind":"service","display_name":"Rumi Git Write","description":"Receipt-gated local Git mutation without publication."},
+  "contracts":{"provides":[{"id":"rumi.service.git.write.v1","version":"1.0.0","provider_instance_id":"git-write.service","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["git.write"]}],"requires":[{"id":"rumi.service.git.read.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"git-write","contract_id":"rumi.service.git.write.v1","loader":"python","module":"ecosystem.rumi_git_write_pack.runtime.write","symbol":"create_git_write_operation","artifact_hash":"sha256:195a290f2065179baed87e809580aea3434f370805dd003e93ac6ad3aacebf42"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"git.write","access":"write","approval_required":true},{"capability":"git.read","access":"read","approval_required":false},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:195a290f2065179baed87e809580aea3434f370805dd003e93ac6ad3aacebf42","build_identity":"rumi-git-write-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.git_ops.commit","defaultspack.domain.coding.git_ops.branch","defaultspack.blocks.coding.git_commit","defaultspack.blocks.coding.git_branch"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Use Git history/reflog or select the pinned prior local mutation adapter."},
+  "extensions":{"rumi.git_write.boundary":{"publish":false,"network":false,"shell":false,"authority_receipt":"required","explicit_path_jail":true,"credential_paths":"deny"}}
+}
+

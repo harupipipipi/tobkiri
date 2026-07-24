@@ -46,6 +46,9 @@ def default_runtime_dir() -> Path:
     override = os.environ.get("RUMI_DEFAULTSPACK_AGENT_RUNTIME_DIR")
     if override:
         return Path(override)
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return Path(user_data) / "defaultspack" / "shared" / "agent_runtime"
     return Path(__file__).resolve().parents[2] / "user_data" / "shared" / "agent_runtime"
 
 

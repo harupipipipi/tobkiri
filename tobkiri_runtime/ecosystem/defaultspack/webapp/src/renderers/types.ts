@@ -13,6 +13,7 @@ import type { PendingToolReview, ToolSelectionChip } from "../features/tools/typ
 import type { ComposerMentionMetadata } from "../lib/composerWidgets";
 import type { ComposerEntityReference } from "../lib/composerReferences";
 import type { WidgetConversationContext } from "../lib/widgetContext";
+import type { ModelSelectorSchema } from "../features/models";
 
 export type { ComposerCommandItem } from "../lib/api";
 
@@ -93,6 +94,18 @@ export type ComposerModelStatusIndicator = {
 
 export type SettingChangeHandler = (sectionId: string, fieldId: string, value: unknown) => void;
 
+export type SettingsLoadState = {
+  status: "idle" | "loading" | "ready" | "error";
+  message?: string | null;
+};
+
+export type SettingsSaveState = {
+  status: "idle" | "saving" | "saved" | "error";
+  dirtyKeys?: string[];
+  lastSavedAt?: number | null;
+  message?: string | null;
+};
+
 export type TitleBarRendererProps = {
   appName?: string;
   appIcon?: string;
@@ -153,6 +166,8 @@ export type ChatMessagesRendererProps = {
   onSuggestionClick: (text: string) => void;
   onOpenToolPreview?: (previewId: string) => void;
   onLoadPromptTrace?: (traceId: string, profileId?: string) => Promise<PromptUsageSummary>;
+  onRetry?: () => void;
+  onDismissError?: () => void;
 };
 
 export type ComposerRendererProps = {
@@ -164,6 +179,7 @@ export type ComposerRendererProps = {
   selectedProfile: ModelProfile | null;
   favoriteProfiles: ModelProfile[];
   modelProfiles?: ModelProfile[];
+  modelSelectorSchema?: ModelSelectorSchema;
   thinkingLevel: string | null;
   contextUsage: ContextUsageInfo;
   inlineExtensions: ComposerExtensionItem[];
@@ -174,7 +190,6 @@ export type ComposerRendererProps = {
   structuredInputValues?: Record<string, string>;
   modelCommandCandidates?: ModelCommandCandidate[];
   modelPickerRequestId?: number;
-  yoloMode?: boolean;
   modelStatusIndicators?: ComposerModelStatusIndicator[];
   voiceInputEnabled?: boolean;
   voiceInputUseAi?: boolean;
@@ -280,7 +295,6 @@ export type RightSidebarRendererProps = {
   onLoadPromptActive?: (params: { profile_id?: string; conversation_id?: string; include_text?: boolean }) => Promise<PromptUsageSummary>;
   onTogglePromptEdge?: (payload: { profile_id?: string; conversation_id?: string; edge_id: string; enabled: boolean }) => Promise<PromptUsageSummary>;
   onToggleChatPromptUsage?: (visible: boolean) => void;
-  onOpenPromptStudio?: (promptId?: string) => void;
   onToolToggle?: (item: SidebarItem) => void;
   onToolBatchSet?: (toolIds: string[], enabled: boolean) => void;
   onPanelAction?: (item: SidebarItem, action: SidebarAction) => void;
@@ -295,9 +309,19 @@ export type SettingsModalRendererProps = {
   settingsSections: SettingsSection[];
   settingsValues: Record<string, Record<string, unknown>>;
   desktopSystemInfo?: DesktopSystemInfo | null;
+  modelProfiles?: ModelProfile[];
+  activeModelProfileId?: string | null;
+  backendConnectionState?: "online" | "degraded" | "offline";
+  backendConnectionNote?: string | null;
+  saveState?: SettingsSaveState;
+  loadState?: SettingsLoadState;
+  modelProfilesLoadState?: SettingsLoadState;
   locale?: LocaleSetting;
   onClose: () => void;
+  onStartSettingsChat?: () => void;
   onOpenSection?: (sectionId: string) => void;
+  onRetryLoad?: () => void;
+  onRetrySave?: () => void;
   onSettingChange: SettingChangeHandler;
 };
 

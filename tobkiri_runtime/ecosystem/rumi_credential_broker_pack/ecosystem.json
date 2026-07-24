@@ -1,0 +1,50 @@
+{
+  "pack_id": "rumi_credential_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_credential_broker_pack",
+  "display_name": "Rumi Credential Broker Pack",
+  "version": "1.0.0",
+  "description": "Encrypted opaque credential handles bound to consumer, provider, scope, and expiry.",
+  "dependencies": {},
+  "connectivity": {
+    "requires": [],
+    "provides": [
+      "rumi.service.credential.resolve.v1",
+      "rumi.action.credential.manage.v1",
+      "rumi.action.credential.migrate.v1",
+      "rumi.resource.credential.status.v1"
+    ]
+  },
+  "required_secrets": [],
+  "required_capabilities": [
+    "credential.resolve",
+    "credential.manage",
+    "credential.migrate",
+    "credential.status.read"
+  ],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {
+    "content_hash": "sha256:59df5fbfa772a0919a6117afccedd9849c080c929eaff861a50c2ba4ec96b0a6",
+    "build_identity": "rumi-credential-broker-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "metadata": {
+    "required_secrets": [],
+    "network_policy": "none",
+    "executable_code": true,
+    "authoritative_owner": true,
+    "storage_namespace": "rumi.credentials",
+    "owner_surfaces": ["credential_handles", "credential_scope", "credential_status"],
+    "integrity": {"artifact_manifest": "artifact-manifest.json"},
+    "security": {
+      "encrypted_at_rest": true,
+      "consumer_bound": true,
+      "provider_bound": true,
+      "scope_bound": true,
+      "expiry_bound": true,
+      "redacted_listing": true
+    }
+  }
+}

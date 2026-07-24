@@ -7,7 +7,7 @@ from typing import Any
 from domain.ai_client.provider_trace import redact_sensitive_value
 from domain.human_operator.constants import HUMAN_OPERATOR_MODEL, HUMAN_OPERATOR_TOOL_NAME
 from domain.human_operator.session_store import absolute_session_url, save_session
-from domain.prompt.prompt_compactor import compact_prompt
+from domain.prompt.studio_client import compact_prompt_via_owner
 
 from ._agent_os_common import err, ok
 
@@ -30,7 +30,7 @@ def human_operator_canvas_open(arguments: dict[str, Any], context: dict[str, Any
         if str(item or "").strip()
     ]
     system_prompt = _system_prompt_from_messages(messages)
-    compacted_prompt = compact_prompt(system_prompt) if system_prompt else {}
+    compacted_prompt = compact_prompt_via_owner(system_prompt) if system_prompt else {}
     payload = {
         "session_id": session_id,
         "conversation_id": conversation_id,

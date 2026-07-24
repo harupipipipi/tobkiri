@@ -1,0 +1,43 @@
+{
+  "pack_id": "rumi_provider_registry_pack",
+  "pack_identity": "rumi:ecosystem/rumi_provider_registry_pack",
+  "display_name": "Rumi Provider Registry Pack",
+  "version": "1.0.0",
+  "description": "Authoritative provider connection registry with conservative health state.",
+  "dependencies": {},
+  "connectivity": {
+    "requires": [],
+    "provides": [
+      "rumi.resource.ai.provider.registry.v1",
+      "rumi.action.ai.provider.registry.manage.v1",
+      "rumi.resource.ai.provider.health.v1"
+    ]
+  },
+  "required_secrets": [],
+  "required_capabilities": [
+    "ai.provider.registry.read",
+    "ai.provider.registry.manage",
+    "ai.provider.health.read"
+  ],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {
+    "content_hash": "sha256:bbd2df336da60bf1f79dde082eb35c3615a2ba871544e03ef6d7d70ba067f404",
+    "build_identity": "rumi-provider-registry-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "metadata": {
+    "authoritative_owner": true,
+    "storage_namespace": "rumi.provider_connections",
+    "owner_surfaces": ["provider_instances", "provider_connection_health"],
+    "integrity": {"artifact_manifest": "artifact-manifest.json"},
+    "security": {
+      "opaque_credentials_only": true,
+      "remote_health_unknown_until_verified": true,
+      "catalog_owner": false,
+      "adapter_owner": false
+    }
+  }
+}

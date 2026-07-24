@@ -233,8 +233,8 @@ def test_model_profiles_expose_required_context_and_thinking_metadata():
     by_id = {profile["profile_id"]: profile for profile in profiles}
 
     assert by_id["stub/default"]["max_context"] == -1
-    assert isinstance(by_id["openrouter/tencent/hy3-preview:free"]["max_context"], int)
-    assert "supports_thinking" in by_id["openrouter/tencent/hy3-preview:free"]
+    assert isinstance(by_id["openrouter/tencent/hy3:free"]["max_context"], int)
+    assert "supports_thinking" in by_id["openrouter/tencent/hy3:free"]
     assert isinstance(by_id["openai/gpt-5.5"]["thinking_levels"], list)
 
 
@@ -484,9 +484,11 @@ def test_unit_executor_does_not_pass_integration_tokens_to_python_fallback(monke
     from core_runtime.unit_executor import UnitExecutor
 
     monkeypatch.setenv("LINE_CHANNEL_ACCESS_TOKEN", "line-token")
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
     process_env = UnitExecutor._build_subprocess_env()
 
     assert "LINE_CHANNEL_ACCESS_TOKEN" not in process_env
+    assert process_env["PYTHONDONTWRITEBYTECODE"] == "1"
 
 
 def test_external_integration_routes_are_registered():

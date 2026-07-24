@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { useAppStore } from '@/src/store';
 import { useT } from '@/src/lib/i18n';
 import { Button } from '@/src/components/ui/Button';
@@ -7,7 +7,7 @@ import { Badge } from '@/src/components/ui/Badge';
 import { Switch } from '@/src/components/ui/Switch';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/Card';
 import { panelRoutes } from '@/src/lib/routes';
-import { ArrowLeft, Play, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play } from 'lucide-react';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 
 export function PackDetail() {
@@ -15,8 +15,9 @@ export function PackDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const packs = useAppStore(state => state.packs);
-  const isLoading = useAppStore(state => state.isLoading);
-  const apiError = useAppStore(state => state.apiError);
+  const packsLoading = useAppStore(state => state.packsLoading);
+  const packsError = useAppStore(state => state.packsError);
+  const packTogglePending = useAppStore(state => state.packTogglePending);
   const loadPacks = useAppStore(state => state.loadPacks);
   const togglePack = useAppStore(state => state.togglePack);
   const addToast = useAppStore(state => state.addToast);
@@ -24,29 +25,29 @@ export function PackDetail() {
   const pack = packs.find(p => p.id === id);
 
   useEffect(() => {
-    if (packs.length === 0) loadPacks();
+    if (packs.length === 0) void loadPacks();
   }, [packs.length, loadPacks]);
 
-  if (isLoading && packs.length === 0) {
+  if (packsLoading && packs.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 animate-spin text-accent" />
-          <span className="text-sm text-text-muted">{t('pack.loading')}</span>
+      <div className="flex flex-1 flex-col gap-5 p-6" role="status" aria-label={t('pack.loading')}>
+        <div className="h-8 w-64 animate-pulse rounded bg-bg-hover" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          {[0, 1, 2].map((item) => <div key={item} className="h-48 animate-pulse rounded-xl border border-border bg-bg-card" />)}
         </div>
       </div>
     );
   }
 
-  if (apiError && !pack) {
+  if (packsError && !pack) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-xl">
           <InlineLoadError
             title="Pack details could not be loaded"
-            message={apiError}
+            message={packsError}
             onRetry={() => void loadPacks()}
-            retrying={isLoading}
+            retrying={packsLoading}
           />
         </div>
       </div>
@@ -64,10 +65,9 @@ export function PackDetail() {
     );
   }
 
-  const handleToggle = () => {
+  const handleToggle = async () => {
     const key = pack.enabled ? 'packs.toggle_off' : 'packs.toggle_on';
-    togglePack(pack.id);
-    addToast(t(key, { name: pack.name }), 'success');
+    if (await togglePack(pack.id)) addToast(t(key, { name: pack.name }), 'success');
   };
 
   return (
@@ -90,7 +90,12 @@ export function PackDetail() {
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <span className="text-sm text-text-muted">{pack.enabled ? t('packs.enabled') : t('packs.disabled')}</span>
-            <Switch checked={pack.enabled} onCheckedChange={handleToggle} aria-label={`Toggle ${pack.name}`} />
+            <Switch
+              checked={pack.enabled}
+              disabled={Boolean(packTogglePending[pack.id])}
+              onCheckedChange={() => { void handleToggle(); }}
+              aria-label={`Toggle ${pack.name}`}
+            />
           </div>
         </div>
 

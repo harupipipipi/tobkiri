@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .dependency_resolver import validate_dependencies, version_satisfies
-from .paths import BASE_DIR, discover_pack_locations
+from .paths import BASE_DIR, USER_DATA_DIR, discover_pack_locations
 from .setup_pack_metadata import (
     as_dict as _as_dict,
     normalize_dependency_specs as _normalize_dependency_specs,
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 SETUP_PACK_ROOT = BASE_DIR / "ecosystem" / "setup_pack"
 SETUP_PACK_SELECTION_FILE = (
-    BASE_DIR / "user_data" / "settings" / "setup_pack_selection.json"
+    USER_DATA_DIR / "settings" / "setup_pack_selection.json"
 )
 SETUP_PACK_ALL_OK_PERMISSIONS = [
     "function.call",

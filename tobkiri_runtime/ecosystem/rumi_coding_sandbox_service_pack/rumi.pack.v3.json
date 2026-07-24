@@ -1,0 +1,17 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.coding_sandbox_service","version":"1.0.0","kind":"service","display_name":"Rumi Coding Sandbox Service","description":"Copy-on-write coding workspaces with no-downgrade Docker execution."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.coding.sandbox.v1","version":"1.0.0","provider_instance_id":"coding-sandbox.observe","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_coding_sandbox_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["coding.sandbox.observe"]},
+    {"id":"rumi.action.coding.sandbox.v1","version":"1.0.0","provider_instance_id":"coding-sandbox.control","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_coding_sandbox_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["coding.sandbox.control"]}
+  ],"requires":[{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"sandbox-observe","contract_id":"rumi.resource.coding.sandbox.v1","loader":"python","module":"ecosystem.rumi_coding_sandbox_service_pack.runtime.sandbox","symbol":"create_sandbox_observe","artifact_hash":"sha256:c4f467516519fb22b329ed9e48bd41f4b32a0ce6d4f939cbbca2a60e81544afe"},
+    {"id":"sandbox-control","contract_id":"rumi.action.coding.sandbox.v1","loader":"python","module":"ecosystem.rumi_coding_sandbox_service_pack.runtime.sandbox","symbol":"create_sandbox_control","artifact_hash":"sha256:c4f467516519fb22b329ed9e48bd41f4b32a0ce6d4f939cbbca2a60e81544afe"}
+  ],
+  "resources":[],"storage":[{"namespace":"rumi.coding.sandboxes","schema_version":"1.0.0","authoritative":true,"retention":"until explicit discard/profile cleanup","export_import":false}],
+  "permissions":[{"capability":"coding.sandbox.observe","access":"observe","approval_required":false},{"capability":"coding.sandbox.control","access":"control","approval_required":true},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:c4f467516519fb22b329ed9e48bd41f4b32a0ce6d4f939cbbca2a60e81544afe","build_identity":"rumi-coding-sandbox-service-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.sandbox_workspace","defaultspack.blocks.coding.sandbox_common"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Discard staged sandboxes and select the pinned prior adapter; host workspace remains unchanged."},
+  "extensions":{"rumi.coding_sandbox.boundary":{"observe_control_split":true,"control_receipt":"required_per_operation","copy_on_write":true,"host_apply":false,"execution":"digest_pinned_local_docker","network":"none","capabilities":"drop_all","no_new_privileges":true,"resource_limits":true,"host_downgrade":false,"secret_stage":"deny"}}
+}
+

@@ -12,7 +12,7 @@ type Dict = Record<string, string>;
 const en: Dict = {
   'nav.home': 'Home',
   'nav.packs': 'Packs',
-  'nav.nodes': 'Component Catalog',
+  'nav.nodes': 'Capability Access',
   'nav.startup': 'Startup',
   'nav.flows': 'Flows',
   'nav.settings': 'Settings',
@@ -202,7 +202,7 @@ const en: Dict = {
 const ja: Dict = {
   'nav.home': '\u30db\u30fc\u30e0',
   'nav.packs': '\u30d1\u30c3\u30af',
-  'nav.nodes': 'コンポーネントカタログ',
+  'nav.nodes': 'Capability Access',
   'nav.startup': '\u8d77\u52d5\u30d7\u30ed\u30d5\u30a1\u30a4\u30eb',
   'nav.flows': '\u30d5\u30ed\u30fc',
   'nav.settings': '\u8a2d\u5b9a',

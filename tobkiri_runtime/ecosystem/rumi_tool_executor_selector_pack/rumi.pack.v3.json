@@ -1,0 +1,82 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.tool_executor_selector",
+    "version": "1.0.0",
+    "kind": "service",
+    "display_name": "Rumi Tool Executor Selector",
+    "description": "Manifest-driven executor selection by declared execution kind."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.service.tool.executor.select.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "tool-executor-selector.select",
+        "cardinality": "one",
+        "security": "sensitive",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "caller"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "tool.executor.select"
+        ]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "tool-executor-select",
+      "contract_id": "rumi.service.tool.executor.select.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_executor_selector_pack.runtime.selector",
+      "symbol": "create_select_operation",
+      "artifact_hash": "sha256:516b412da107fce6cf847c124a1c6605e10be25d877a15a53d1eb12d669fce3c"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "tool.executor.select",
+      "access": "execute",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:0c86922df38a44367222fcacb8c6cce59baad455241001bdc2b87af31d1fe2c0",
+    "build_identity": "rumi-tool-executor-selector-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.domain.tool.executor.dispatch"
+    ],
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Select the pinned prior selector."
+  },
+  "extensions": {
+    "rumi.tool_executor_selector.boundary": {
+      "tool_id_branches": false,
+      "execution": false,
+      "selection_source": "manifest_routing_keys"
+    }
+  }
+}

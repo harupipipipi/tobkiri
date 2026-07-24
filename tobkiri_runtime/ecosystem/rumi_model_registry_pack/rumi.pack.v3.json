@@ -1,0 +1,87 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.model_registry",
+    "version": "1.0.0",
+    "kind": "service",
+    "display_name": "Rumi Model Registry",
+    "description": "Provider-neutral saved model profiles, aliases, migration, and rollback."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.resource.ai.model.profile.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "model-registry.profile",
+        "cardinality": "one",
+        "security": "sensitive",
+        "failure": "isolate",
+        "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_model_registry_pack", "migration_id": "model-profiles-v1", "rollback_id": "model-profiles-v1"},
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["ai.model.profile.read"]
+      },
+      {
+        "id": "rumi.action.ai.model.profile.manage.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "model-registry.manage",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_model_registry_pack", "migration_id": "model-profiles-v1", "rollback_id": "model-profiles-v1"},
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["ai.model.profile.manage"]
+      },
+      {
+        "id": "rumi.action.ai.model.registry.migrate.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "model-registry.migrate",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_model_registry_pack", "migration_id": "model-profiles-v1", "rollback_id": "model-profiles-v1"},
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["ai.model.profile.migrate"]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {"id": "model-profile-resource", "contract_id": "rumi.resource.ai.model.profile.v1", "loader": "process", "module": "ecosystem.rumi_model_registry_pack.runtime.process", "artifact_hash": "sha256:a87b27c7ee0f22e45d05aa86db320e75d298f14831276681e935ac453d9c1099"},
+    {"id": "model-profile-manage", "contract_id": "rumi.action.ai.model.profile.manage.v1", "loader": "process", "module": "ecosystem.rumi_model_registry_pack.runtime.process", "artifact_hash": "sha256:a87b27c7ee0f22e45d05aa86db320e75d298f14831276681e935ac453d9c1099"},
+    {"id": "model-registry-migrate", "contract_id": "rumi.action.ai.model.registry.migrate.v1", "loader": "process", "module": "ecosystem.rumi_model_registry_pack.runtime.process", "artifact_hash": "sha256:a87b27c7ee0f22e45d05aa86db320e75d298f14831276681e935ac453d9c1099"}
+  ],
+  "resources": [],
+  "storage": [
+    {"namespace": "rumi.model_profiles", "schema_version": "1.0.0", "authoritative": true, "retention": "until explicit deletion or profile migration rollback", "export_import": true}
+  ],
+  "permissions": [
+    {"capability": "ai.model.profile.read", "access": "read", "approval_required": false},
+    {"capability": "ai.model.profile.manage", "access": "control", "approval_required": true},
+    {"capability": "ai.model.profile.migrate", "access": "control", "approval_required": true}
+  ],
+  "provenance": {
+    "content_hash": "sha256:a7570fbdfc47fe2ae4c80a29b28070da3b16825d97846439288a149d847614f6",
+    "build_identity": "rumi-model-registry-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": ["defaultspack.ai_client.saved_models", "defaultspack.ai_client.model_aliases"],
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Remove migrated owner state and restore the owner-only source backup."
+  },
+  "extensions": {
+    "rumi.model_registry.boundary": {
+      "catalog_owner": false,
+      "provider_execution_owner": false,
+      "provider_pack_id_branches": false,
+      "credential_values_accepted": false
+    }
+  }
+}

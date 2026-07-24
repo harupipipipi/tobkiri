@@ -1,0 +1,17 @@
+{
+  "pack_id": "rumi_clipboard_host_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_clipboard_host_service_pack",
+  "display_name": "Rumi Clipboard Host Service Pack",
+  "version": "1.0.0",
+  "description": "Independent clipboard read/write boundary for the Viewer host broker.",
+  "dependencies": {"rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"},
+  "connectivity": {"requires": ["rumi.service.host.authorize.v1"], "provides": ["rumi.resource.clipboard.v1", "rumi.action.clipboard.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["clipboard.read", "clipboard.write", "host.authority.consume"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": true,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:944e78c7320bcb99ef2191cbe43bb546a94060c913434e2e1b94a12f903eb75b", "build_identity": "rumi-clipboard-host-service-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"authority_split": ["read", "write"], "executor_owner": "rumi_viewer_host_broker", "runner": "runtime/runner.py invoked only by Viewer helper after token validation", "payload_persistence": false, "tool_or_ui_registry_imports": false}
+}
+

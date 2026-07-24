@@ -1,0 +1,19 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.kanban_state_store","version":"1.0.0","kind":"service","display_name":"Rumi Kanban State Store","description":"Authoritative Kanban state with receipt-bound mutations."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.kanban.v1","version":"1.0.0","provider_instance_id":"kanban-state.resource","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_kanban_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["kanban.state.read"]},
+    {"id":"rumi.action.kanban.v1","version":"1.0.0","provider_instance_id":"kanban-state.action","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_kanban_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["kanban.state.manage"]}
+  ],"requires":[{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"kanban-state-resource","contract_id":"rumi.resource.kanban.v1","loader":"python","module":"ecosystem.rumi_kanban_state_store_pack.runtime.store","symbol":"create_kanban_resource","artifact_hash":"sha256:ef59b4ba18f8711cb16c08524067c132459fbcb307f020f81e946fc0b1d532a7"},
+    {"id":"kanban-state-action","contract_id":"rumi.action.kanban.v1","loader":"python","module":"ecosystem.rumi_kanban_state_store_pack.runtime.store","symbol":"create_kanban_action","artifact_hash":"sha256:ef59b4ba18f8711cb16c08524067c132459fbcb307f020f81e946fc0b1d532a7"}
+  ],
+  "resources":[],
+  "storage":[{"namespace":"rumi.kanban.state","schema_version":"1.0.0","authoritative":true,"retention":"profile lifetime with explicit board deletion","export_import":true}],
+  "permissions":[{"capability":"kanban.state.read","access":"read","approval_required":false},{"capability":"kanban.state.manage","access":"control","approval_required":true},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:ef59b4ba18f8711cb16c08524067c132459fbcb307f020f81e946fc0b1d532a7","build_identity":"rumi-kanban-state-store-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.kanban.store","defaultspack.domain.kanban.service","defaultspack.blocks.kanban"],"compatibility_aliases":[],"compatibility_projection":"one_shot_snapshot_import","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop Kanban routing, retain the immutable source hash, and select one prior owner without dual writes."},
+  "extensions":{"rumi.kanban_state.boundary":{"chat":false,"company":false,"agent":false,"connectors":false,"scheduler":false,"ui":false,"revision_bound":true,"event_dedupe":true}}
+}
+

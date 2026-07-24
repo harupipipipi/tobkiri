@@ -1,0 +1,23 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.connector_outbound_broker","version":"1.0.0","kind":"service","display_name":"Rumi Connector Outbound Broker","description":"Receipt-gated delivery lifecycle and exact vendor handoff."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.connector.outbound.v1","version":"1.0.0","provider_instance_id":"connector-outbound.status","cardinality":"one","security":"sensitive","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_connector_outbound_broker_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.outbound.read"]},
+    {"id":"rumi.action.connector.outbound.v1","version":"1.0.0","provider_instance_id":"connector-outbound.control","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_connector_outbound_broker_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.outbound.control"]}
+  ],"requires":[
+    {"id":"rumi.resource.connector.registry.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.service.connector.adapter.v1","version":">=1.0.0,<2.0.0","cardinality":"many","optional":true,"failure":"isolate"},
+    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
+  ]},
+  "entrypoints":[
+    {"id":"connector-outbound-resource","contract_id":"rumi.resource.connector.outbound.v1","loader":"python","module":"ecosystem.rumi_connector_outbound_broker_pack.runtime.broker","symbol":"create_outbound_resource","artifact_hash":"sha256:cd1d89cfafa4c968b9c4793cf50a99fe55586989d256f5633c29263dad32568a"},
+    {"id":"connector-outbound-action","contract_id":"rumi.action.connector.outbound.v1","loader":"python","module":"ecosystem.rumi_connector_outbound_broker_pack.runtime.broker","symbol":"create_outbound_action","artifact_hash":"sha256:cd1d89cfafa4c968b9c4793cf50a99fe55586989d256f5633c29263dad32568a"}
+  ],
+  "resources":[],
+  "storage":[{"namespace":"rumi.connector.outbound_ledger","schema_version":"1.0.0","authoritative":true,"retention":"message until terminal delivery; redacted status by profile policy","export_import":false}],
+  "permissions":[{"capability":"connector.outbound.read","access":"read","approval_required":false},{"capability":"connector.outbound.control","access":"control","approval_required":true},{"capability":"connector.registry.read","access":"read","approval_required":false},{"capability":"connector.adapter.deliver","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:cd1d89cfafa4c968b9c4793cf50a99fe55586989d256f5633c29263dad32568a","build_identity":"rumi-connector-outbound-broker-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.external.response_adapter"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop delivery, preserve terminal IDs, and select one prior broker without replaying them."},
+  "extensions":{"rumi.connector_outbound.boundary":{"vendor_selection":"exact_instance_key","two_stage_receipt":true,"registry_toc_tou_recheck":true,"dedupe":true,"retry_limit":5,"raw_credentials":false,"chat_imports":false,"company_imports":false}}
+}
+

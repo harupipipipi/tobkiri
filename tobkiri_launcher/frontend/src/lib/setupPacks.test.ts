@@ -39,6 +39,10 @@ test('active setup-pack selection requires an active target pack', () => {
 test('setupPackSelectionUrl returns to panel setup for verification', () => {
   assert.equal(
     setupPackSelectionUrl(),
-    '/setup?return_to=%2Fpanel%2Fsetup%3Fsetup_pack_done%3D1',
+    '/setup?return_to=%2Fpanel%2Fsetup%3Fsetup_pack_done%3D1&color_mode=dark',
+  );
+  assert.equal(
+    setupPackSelectionUrl('/panel/setup?setup_pack_done=1', 'light'),
+    '/setup?return_to=%2Fpanel%2Fsetup%3Fsetup_pack_done%3D1&color_mode=light',
   );
 });

@@ -138,6 +138,24 @@ def test_user_shared_profiles_are_schema_validated(tmp_path) -> None:
     assert loader.diagnostics[0]["code"] == "invalid_profile_file"
 
 
+def test_invalid_profile_can_be_isolated_for_read_only_catalogs(tmp_path) -> None:
+    shared_dir = tmp_path / "user_data" / "shared" / "profiles"
+    shared_dir.mkdir(parents=True)
+    (shared_dir / "broken.profile.yaml").write_text(
+        yaml.safe_dump({"profile_id": "broken", "version": "wrong"}),
+        encoding="utf-8",
+    )
+    loader = CapabilityProfileLoader(
+        registry=_registry(),
+        approval_manager=FakeApprovalManager(),
+        shared_profiles_dir=shared_dir,
+        continue_on_invalid=True,
+    )
+
+    assert loader.load_all_profiles(register=False) == {}
+    assert loader.diagnostics[0]["code"] == "invalid_profile_file"
+
+
 def test_user_shared_profile_overrides_pack_profile(tmp_path) -> None:
     shared_dir = tmp_path / "profiles"
     shared_dir.mkdir()

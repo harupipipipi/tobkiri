@@ -15,7 +15,7 @@ from core_runtime.profile_runtime_selection import apply_profile_graph_selection
 from domain.external.input_profile_registry import InputProfileRegistry
 from domain.function_runtime.manifest_factory import FUNCTION_SPECS_BY_ID, FunctionSpec
 from domain.function_runtime.registry import function_id_for_block_module
-from domain.tool.registry import ToolRegistry
+from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.webhook.endpoint_store import WebhookEndpointStore
 from transport.registry import canonical_http_route_specs
 

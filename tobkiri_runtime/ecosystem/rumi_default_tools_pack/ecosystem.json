@@ -11,8 +11,30 @@
   "runtime": {
     "type": "python_host"
   },
+  "dependencies": {
+    "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0"
+  },
+  "connectivity": {
+    "requires": [
+      "rumi.resource.browser.host.v1",
+      "rumi.action.browser.host.v1",
+      "rumi.resource.desktop.host.v1",
+      "rumi.action.desktop.host.v1",
+      "rumi.resource.clipboard.v1",
+      "rumi.action.clipboard.v1"
+    ],
+    "provides": []
+  },
   "vocabulary": {
     "types": ["tool"]
+  },
+  "security_boundary": {
+    "host_execution": false,
+    "self_approval": false,
+    "client_approval_material": "discard",
+    "role": "finite_tool_compatibility_adapter"
   },
   "components": {},
   "load_order": []

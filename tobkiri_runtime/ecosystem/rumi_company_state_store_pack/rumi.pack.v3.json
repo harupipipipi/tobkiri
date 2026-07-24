@@ -1,0 +1,19 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.company_state_store","version":"1.0.0","kind":"service","display_name":"Rumi Company State Store","description":"Authoritative Company organization and operations state."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.company.v1","version":"1.0.0","provider_instance_id":"company-state.resource","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_company_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["company.state.read"]},
+    {"id":"rumi.action.company.state.v1","version":"1.0.0","provider_instance_id":"company-state.action","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_company_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["company.state.manage"]}
+  ],"requires":[{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"company-state-resource","contract_id":"rumi.resource.company.v1","loader":"python","module":"ecosystem.rumi_company_state_store_pack.runtime.store","symbol":"create_company_resource","artifact_hash":"sha256:a611c532f78c2c516be31c863c5f5e136af2301380f963b48a85c55b566ee5cd"},
+    {"id":"company-state-action","contract_id":"rumi.action.company.state.v1","loader":"python","module":"ecosystem.rumi_company_state_store_pack.runtime.store","symbol":"create_company_action","artifact_hash":"sha256:a611c532f78c2c516be31c863c5f5e136af2301380f963b48a85c55b566ee5cd"}
+  ],
+  "resources":[],
+  "storage":[{"namespace":"rumi.company.state","schema_version":"1.0.0","authoritative":true,"retention":"profile lifetime with explicit Company deletion","export_import":true}],
+  "permissions":[{"capability":"company.state.read","access":"read","approval_required":false},{"capability":"company.state.manage","access":"control","approval_required":true},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:a611c532f78c2c516be31c863c5f5e136af2301380f963b48a85c55b566ee5cd","build_identity":"rumi-company-state-store-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.company.store","defaultspack.domain.company.runtime_store","defaultspack.domain.company.task_store","defaultspack.domain.company.settings_store","rumi_operations_company_pack.user_data.shared.operations_company"],"compatibility_aliases":[],"compatibility_projection":"one_shot_snapshot_import","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop Company coordination, retain the immutable source hash, and select one prior owner without dual writes."},
+  "extensions":{"rumi.company_state.boundary":{"coordinator":false,"agent_runtime":false,"connectors":false,"scheduler":false,"ui":false,"revision_bound":true,"task_transitions":true,"timeline_dedupe":true}}
+}
+

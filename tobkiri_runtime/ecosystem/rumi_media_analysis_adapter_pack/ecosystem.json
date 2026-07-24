@@ -1,0 +1,17 @@
+{
+  "pack_id": "rumi_media_analysis_adapter_pack",
+  "pack_identity": "rumi:ecosystem/rumi_media_analysis_adapter_pack",
+  "display_name": "Rumi Media Analysis Adapter Pack",
+  "version": "1.0.0",
+  "description": "Contract-only workspace media adapter for vision and transcription.",
+  "dependencies": {"rumi_media_inspect_service_pack": ">=1.0.0,<2.0.0", "rumi_ai_modality_pack": ">=1.0.0,<2.0.0"},
+  "connectivity": {"requires": ["rumi.service.media.inspect.v1", "rumi.service.ai.image.v1", "rumi.service.ai.audio.transcribe.v1"], "provides": ["rumi.service.media.analysis.v1"]},
+  "required_secrets": [],
+  "required_capabilities": ["media.analysis", "media.inspect", "ai.image", "ai.audio.transcribe"],
+  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "host_execution": false,
+  "resources": [],
+  "provenance": {"content_hash": "sha256:ac3a90d1b02a8eae7e995d405ab51b6474a3bd8a72f536530b046c08d42508c2", "build_identity": "rumi-media-analysis-adapter-pack:1.0.0", "trust_class": "local", "signature": null},
+  "metadata": {"capture_authority": false, "provider_execution": false, "file_access": "global_contract_only", "tool_or_ui_registry_imports": false}
+}
+

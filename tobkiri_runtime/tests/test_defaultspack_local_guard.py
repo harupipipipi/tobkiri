@@ -788,6 +788,7 @@ def test_audit_redacts_secrets(tmp_path, monkeypatch):
 
 
 def test_viewer_local_auth_context_reaches_direct_registry_handlers():
+    from domain.tool_policy.internal_context import tool_server_approval_context_is_internal
     from transport.http import DefaultsHttpServer, _LOCAL_UI_APPROVAL_CONTEXT_FLAG
 
     captured = {}
@@ -811,5 +812,6 @@ def test_viewer_local_auth_context_reaches_direct_registry_handlers():
     assert result == {"status": "ok"}
     assert captured["args"] == {"input_text": "hello"}
     assert captured["context"]["_tool_server_approved"] is True
+    assert tool_server_approval_context_is_internal(captured["context"])
     assert captured["context"]["source"] == "defaultspack_local_ui"
     assert captured["context"]["approval_id"] == "defaultspack_local_ui"

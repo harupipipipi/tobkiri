@@ -12,14 +12,22 @@ export function workspaceKindForPathname(pathname: string): WorkspaceTabKind | n
   }
   if (normalized === "/coding") return "coding";
   if (normalized === "/calendar") return "calendar";
+  if (normalized === "/kanban") return "kanban";
   if (normalized === "/desktops") return "desktops";
+  if (normalized === "/subagents") return "subagents";
+  if (normalized === "/canvas") return "canvas";
+  if (normalized === "/tools") return "tools";
   return null;
 }
 
 function workspaceRoutePath(kind: WorkspaceTabKind): string {
   if (kind === "coding") return "/coding";
   if (kind === "calendar") return "/calendar";
+  if (kind === "kanban") return "/kanban";
   if (kind === "desktops") return "/desktops";
+  if (kind === "subagents") return "/subagents";
+  if (kind === "canvas") return "/canvas";
+  if (kind === "tools") return "/tools";
   return "/chat";
 }
 

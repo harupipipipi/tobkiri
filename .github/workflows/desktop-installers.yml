@@ -11,7 +11,7 @@ on:
       - "tobkiri_runtime/**"
       - "tobkiri_launcher/**"
   pull_request:
-    branches: [master, soon]
+    branches: [master, soon, codex/pack-architecture-program-soon]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths:
       - ".github/scripts/prepare_tauri_resources.py"

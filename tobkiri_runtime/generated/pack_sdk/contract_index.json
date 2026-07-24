@@ -1,0 +1,58 @@
+{
+  "generated": true,
+  "generator": "tobkiri.core_runtime.pack_sdk/v1",
+  "schemas": [
+    {
+      "definitions": [
+        "action",
+        "commandInvocationRequest",
+        "commandInvocationResult",
+        "commandPack",
+        "commandProtocolError",
+        "execution",
+        "form",
+        "formField",
+        "identity",
+        "localizedText",
+        "option",
+        "presentation",
+        "resolvedCatalog",
+        "resolvedCommand",
+        "searchSelect",
+        "select",
+        "toggle"
+      ],
+      "filename": "command-protocol-v1.schema.json",
+      "schema_id": "https://tobkiri.local/schemas/command-protocol-v1.schema.json",
+      "sha256": "745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a"
+    },
+    {
+      "definitions": [],
+      "filename": "global_contract_types.schema.json",
+      "schema_id": "https://schemas.rumi.local/global-contract-types.v1.schema.json",
+      "sha256": "dee1a00e778a8eb5654d2457d7c39aebe01e2684889ceb16f41d271afbb3dbc0"
+    },
+    {
+      "definitions": [
+        "compatibilityAlias",
+        "contractId",
+        "contracts",
+        "entrypoint",
+        "lifecycle",
+        "migration",
+        "packIdentity",
+        "permission",
+        "provenance",
+        "providedContract",
+        "requiredContract",
+        "resource",
+        "schemaSet",
+        "semver",
+        "storage"
+      ],
+      "filename": "pack_manifest_v3.schema.json",
+      "schema_id": "https://schemas.rumi.local/rumi.pack.v3/pack_manifest_v3.schema.json",
+      "sha256": "85692a9572158b331dd1676514892e6a68ba48ef0a9296b031638545ef82af47"
+    }
+  ]
+}

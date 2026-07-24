@@ -1483,7 +1483,22 @@ fn strip_approval_fields(args: &Value) -> Value {
 fn function_allowed(function_id: &str) -> bool {
     matches!(
         function_id,
-        "computer.doctor"
+        "browser.session"
+            | "browser.open_url"
+            | "browser.profiles.list"
+            | "browser.tabs"
+            | "browser.select_tab"
+            | "browser.downloads.list"
+            | "browser.download.collect"
+            | "browser.profile.create"
+            | "browser.profile.set_active"
+            | "browser.profile.delete"
+            | "browser.profile.clear_cache"
+            | "browser.profile.clear_cookies"
+            | "browser.cookies.list"
+            | "browser.cookies.import"
+            | "browser.cookies.delete"
+            | "computer.doctor"
             | "computer.observe"
             | "computer.screenshot"
             | "computer.ocr"
@@ -1559,7 +1574,22 @@ fn approval_result_for(
 fn high_risk_function(function_id: &str) -> bool {
     matches!(
         function_id,
-        "computer.screenshot"
+        "browser.session"
+            | "browser.open_url"
+            | "browser.profiles.list"
+            | "browser.tabs"
+            | "browser.select_tab"
+            | "browser.downloads.list"
+            | "browser.download.collect"
+            | "browser.profile.create"
+            | "browser.profile.set_active"
+            | "browser.profile.delete"
+            | "browser.profile.clear_cache"
+            | "browser.profile.clear_cookies"
+            | "browser.cookies.list"
+            | "browser.cookies.import"
+            | "browser.cookies.delete"
+            | "computer.screenshot"
             | "computer.ocr"
             | "computer.ax_tree"
             | "computer.move"
@@ -1883,6 +1913,7 @@ fn run_computer_helper(
         .env("RUMI_HOME", &config.rumi_home)
         .env("RUMI_USER_DATA", &config.user_data_dir)
         .env("RUMI_LOG_DIR", &config.log_dir)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

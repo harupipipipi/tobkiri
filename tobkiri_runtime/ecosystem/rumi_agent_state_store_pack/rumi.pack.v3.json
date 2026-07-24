@@ -1,0 +1,19 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.agent_state_store","version":"1.0.0","kind":"service","display_name":"Rumi Agent State Store","description":"Authoritative agent profile and run lifecycle state."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.agent.state.v1","version":"1.0.0","provider_instance_id":"agent-state.resource","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_agent_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["agent.state.read"]},
+    {"id":"rumi.action.agent.state.v1","version":"1.0.0","provider_instance_id":"agent-state.action","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_agent_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["agent.state.manage"]}
+  ],"requires":[{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"agent-state-resource","contract_id":"rumi.resource.agent.state.v1","loader":"python","module":"ecosystem.rumi_agent_state_store_pack.runtime.store","symbol":"create_agent_resource","artifact_hash":"sha256:81931268c6cc0b6d994c5f6887419d1227f2c0aadf7a346379994b0baf3f5439"},
+    {"id":"agent-state-action","contract_id":"rumi.action.agent.state.v1","loader":"python","module":"ecosystem.rumi_agent_state_store_pack.runtime.store","symbol":"create_agent_state_action","artifact_hash":"sha256:81931268c6cc0b6d994c5f6887419d1227f2c0aadf7a346379994b0baf3f5439"}
+  ],
+  "resources":[],
+  "storage":[{"namespace":"rumi.agent.state","schema_version":"1.0.0","authoritative":true,"retention":"profile lifetime with explicit run/profile deletion policy","export_import":true}],
+  "permissions":[{"capability":"agent.state.read","access":"read","approval_required":false},{"capability":"agent.state.manage","access":"control","approval_required":true},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:81931268c6cc0b6d994c5f6887419d1227f2c0aadf7a346379994b0baf3f5439","build_identity":"rumi-agent-state-store-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.agent.state","defaultspack.domain.agent.multi","defaultspack.domain.subagent_team"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop agent runtime, snapshot owner state, and select one prior owner without dual writes."},
+  "extensions":{"rumi.agent_state.boundary":{"runtime":false,"ai":false,"tools":false,"connectors":false,"company":false,"revision_bound":true,"subagent_limits":true,"cancellation_owned":true,"audit_events_owned":true}}
+}
+

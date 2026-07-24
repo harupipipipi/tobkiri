@@ -18,7 +18,15 @@ def default_runtime_config_path() -> Path:
 def user_runtime_config_path() -> Path:
     override = os.environ.get("RUMI_DEFAULTSPACK_RUNTIME_CONFIG_PATH", "").strip()
     if override:
-        return Path(override)
+        return Path(override).expanduser()
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return (
+            Path(user_data).expanduser()
+            / "defaultspack"
+            / "shared"
+            / "runtime_config.json"
+        )
     return _pack_root() / "user_data" / "shared" / "runtime_config.json"
 
 
@@ -61,6 +69,14 @@ def tool_policy_config() -> dict[str, Any]:
 
 def scheduler_config() -> dict[str, Any]:
     return section("scheduler")
+
+
+def scheduler_jobs_path_override() -> str:
+    """Return a user-configured scheduler jobs path, if one was supplied."""
+    scheduler = _load_json(user_runtime_config_path()).get("scheduler")
+    if not isinstance(scheduler, dict):
+        return ""
+    return str(scheduler.get("jobs_path") or "").strip()
 
 
 def gateway_config() -> dict[str, Any]:

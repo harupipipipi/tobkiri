@@ -43,11 +43,115 @@ class TestSetupHandlers(unittest.TestCase):
         handler = _Handler()
         with patch(
             "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked:
+        ) as mocked, patch.object(
+            SetupHandlersMixin,
+            "_recommended_default_profile_preview",
+            return_value={
+                "name": "Defaults Profile",
+                "pack_ids": ["defaultspack", "rumi"],
+            },
+        ):
             mocked.return_value.list_packs.return_value = {"packs": []}
             result = handler._setup_list_packs()
         self.assertEqual(result["packs"], [])
         self.assertRegex(result["review_revision"], r"^setup-review-v1:[0-9a-f]{64}$")
+        self.assertEqual(result["recommended_default_profile"]["pack_ids"], ["defaultspack", "rumi"])
+
+    def test_defaults_profile_preview_lists_official_bundled_setup_packs(self):
+        from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+        with patch(
+            "core_runtime.api.setup_handlers.get_setup_pack_manager"
+        ) as mocked:
+            mocked.return_value.list_packs.return_value = {
+                "packs": [
+                    {
+                        "pack_id": "tools-setup",
+                        "target_pack_id": "tools",
+                        "display_name": "Tools",
+                        "marketplace": {
+                            "registry": "bundled",
+                            "publisher": "rumi-ai",
+                            "status": "verified",
+                        },
+                        "signing": {
+                            "mode": "repository_reviewed",
+                            "verified": True,
+                        },
+                        "schema_issues": [],
+                    },
+                    {
+                        "pack_id": "defaultspack",
+                        "target_pack_id": "defaultspack",
+                        "display_name": "Tobkiri",
+                        "marketplace": {
+                            "registry": "bundled",
+                            "publisher": "rumi-ai",
+                            "status": "verified",
+                        },
+                        "signing": {
+                            "mode": "repository_reviewed",
+                            "verified": True,
+                        },
+                        "schema_issues": [],
+                    },
+                    {
+                        "pack_id": "third-party",
+                        "target_pack_id": "third-party",
+                        "display_name": "Third party",
+                        "marketplace": {
+                            "registry": "external",
+                            "publisher": "someone-else",
+                            "status": "verified",
+                        },
+                        "signing": {"mode": "repository_reviewed"},
+                        "schema_issues": [],
+                    },
+                    {
+                        "pack_id": "broken",
+                        "target_pack_id": "broken",
+                        "display_name": "Broken",
+                        "marketplace": {"publisher": "rumi-ai"},
+                        "signing": {"mode": "repository_reviewed"},
+                        "schema_issues": [{"code": "invalid"}],
+                    },
+                ]
+            }
+            preview = SetupHandlersMixin._recommended_default_profile_preview()
+
+        self.assertEqual(preview["base_pack"], "defaultspack")
+        self.assertEqual(preview["pack_ids"], ["defaultspack", "tools"])
+        self.assertEqual(
+            preview["packs"],
+            [
+                {"pack_id": "defaultspack", "display_name": "Tobkiri"},
+                {"pack_id": "tools", "display_name": "Tools"},
+            ],
+        )
+
+    def test_official_bundled_setup_pack_accepts_legacy_first_party_metadata(self):
+        from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+        self.assertTrue(
+            SetupHandlersMixin._is_official_bundled_setup_pack(
+                {
+                    "marketplace": {"id": "rumi.legacy"},
+                    "signing": {"mode": "repository_reviewed"},
+                }
+            )
+        )
+        self.assertFalse(
+            SetupHandlersMixin._is_official_bundled_setup_pack(
+                {
+                    "marketplace": {
+                        "publisher": "third-party",
+                        "registry": "bundled",
+                        "status": "verified",
+                    },
+                    "signing": {"mode": "repository_reviewed"},
+                }
+            )
+        )
 
     def test_setup_install_rejects_stale_tampered_and_unconfirmed_privileged_reviews(self):
         from core_runtime.api.setup_handlers import SetupHandlersMixin
@@ -77,6 +181,29 @@ class TestSetupHandlers(unittest.TestCase):
         self.assertEqual(tampered["status_code"], 409)
         self.assertEqual(unconfirmed["status_code"], 400)
         mocked.return_value.install.assert_not_called()
+
+    def test_all_ok_support_alone_does_not_require_setup_confirmation(self):
+        from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+        self.assertFalse(
+            SetupHandlersMixin._setup_pack_requires_confirmation(
+                {
+                    "risk_level": "low",
+                    "supports_all_ok": True,
+                    "required_permissions": [],
+                }
+            )
+        )
+        self.assertTrue(
+            SetupHandlersMixin._setup_pack_requires_confirmation(
+                {"risk_level": "high", "required_permissions": []}
+            )
+        )
+        self.assertTrue(
+            SetupHandlersMixin._setup_pack_requires_confirmation(
+                {"risk_level": "low", "required_permissions": ["host.execute"]}
+            )
+        )
 
     def test_setup_handler_filters_stale_selected_setup_packs(self):
         from core_runtime.api.setup_handlers import SetupHandlersMixin
@@ -181,6 +308,121 @@ class TestSetupHandlers(unittest.TestCase):
                 },
             },
         )
+
+    def test_setup_install_refreshes_running_kernel_approval_cache(self):
+        from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+        class _ApprovalManager:
+            def __init__(self):
+                self.initialize_count = 0
+
+            def initialize(self):
+                self.initialize_count += 1
+
+        class _Handler(SetupHandlersMixin):
+            def __init__(self):
+                self.approval_manager = _ApprovalManager()
+
+        handler = _Handler()
+        install_result = {
+            "success": True,
+            "active_target_pack_id": "defaultspack",
+            "installed_setup_pack_ids": ["defaultspack"],
+            "installed_target_pack_ids": ["defaultspack"],
+        }
+        with patch(
+            "core_runtime.api.setup_handlers.get_setup_pack_manager"
+        ) as mocked, patch(
+            "core_runtime.api.setup_handlers.get_container",
+            return_value=self._FakeContainer(),
+        ):
+            mocked.return_value.install.return_value = install_result
+            packs, payload = self._reviewed_payload(handler, ["defaultspack"])
+            mocked.return_value.list_packs.return_value = {"packs": packs}
+            handler._setup_install_pack(payload)
+
+        self.assertEqual(handler.approval_manager.initialize_count, 1)
+
+    def test_defaults_profile_install_approves_the_reviewed_profile_pack_set(self):
+        from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+        class _Handler(SetupHandlersMixin):
+            pass
+
+        handler = _Handler()
+        packs, payload = self._reviewed_payload(handler, ["defaultspack"])
+        payload.update(
+            {
+                "install_defaults_profile": True,
+                "confirmed_defaults_profile": True,
+                "reviewed_default_profile_pack_ids": ["defaultspack", "tools"],
+            }
+        )
+        install_result = {
+            "success": True,
+            "active_target_pack_id": "defaultspack",
+            "installed_target_pack_ids": [],
+        }
+        approval_result = {
+            "requested_pack_ids": ["defaultspack", "tools"],
+            "approved_pack_ids": ["tools"],
+            "already_approved_pack_ids": ["defaultspack"],
+            "failed": [],
+        }
+        with patch(
+            "core_runtime.api.setup_handlers.get_setup_pack_manager"
+        ) as mocked, patch.object(
+            SetupHandlersMixin,
+            "_recommended_default_profile_preview",
+            return_value={
+                "pack_ids": ["defaultspack", "tools"],
+                "setup_pack_ids": ["defaultspack"],
+            },
+        ), patch.object(
+            SetupHandlersMixin,
+            "_approve_defaults_profile_packs",
+            return_value=approval_result,
+        ) as approve, patch(
+            "core_runtime.api.setup_handlers.get_container",
+            return_value=self._FakeContainer(),
+        ):
+            mocked.return_value.list_packs.return_value = {"packs": packs}
+            mocked.return_value.install.return_value = install_result
+            result = handler._setup_install_pack(payload)
+
+        approve.assert_called_once_with(["defaultspack", "tools"])
+        self.assertEqual(result["default_profile_approval"], approval_result)
+
+    def test_defaults_profile_install_rejects_an_unreviewed_profile_plan(self):
+        from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+        class _Handler(SetupHandlersMixin):
+            pass
+
+        handler = _Handler()
+        packs, payload = self._reviewed_payload(handler, ["defaultspack"])
+        payload.update(
+            {
+                "install_defaults_profile": True,
+                "confirmed_defaults_profile": True,
+                "reviewed_default_profile_pack_ids": ["defaultspack"],
+            }
+        )
+        with patch(
+            "core_runtime.api.setup_handlers.get_setup_pack_manager"
+        ) as mocked, patch.object(
+            SetupHandlersMixin,
+            "_recommended_default_profile_preview",
+            return_value={
+                "pack_ids": ["defaultspack", "tools"],
+                "setup_pack_ids": ["defaultspack"],
+            },
+        ):
+            mocked.return_value.list_packs.return_value = {"packs": packs}
+            result = handler._setup_install_pack(payload)
+
+        self.assertEqual(result["status_code"], 409)
+        mocked.return_value.install.assert_not_called()
 
     def test_setup_handler_runs_migration_for_active_setup_target_when_supported(self):
         from core_runtime.api.setup_handlers import SetupHandlersMixin
@@ -482,19 +724,19 @@ class TestSetupHandlers(unittest.TestCase):
             source,
         )
         self.assertIn(
-            "all OK permissions are granted only to setup packs that explicitly support all OK",
+            "All OK を明示的にサポートする setup pack にだけ、個別の承認後に限定的な許可を付与します。",
             source,
         )
-        self.assertIn("Installs without all OK grants", source)
+        self.assertIn("All OK 許可なしでインストール", source)
         self.assertIn("return_to", source)
         self.assertIn("active_target_not_selected", source)
-        self.assertIn("no active setup pack selected", source)
+        self.assertIn("有効な setup pack が選択されていません", source)
         self.assertIn("payloadError", source)
         self.assertIn("payloadErrorItem", source)
         self.assertIn("PANEL_CSRF_STORAGE_KEY", source)
         self.assertIn('"X-Rumi-CSRF"', source)
         self.assertIn('credentials: "same-origin"', source)
-        self.assertIn("name.textContent = pack.display_name", source)
+        self.assertIn("name.textContent = setupPackName(pack)", source)
         self.assertIn("description.textContent = pack.description", source)
         self.assertIn("input.dataset.selectPack = pack.pack_id", source)
         self.assertIn("document.createTextNode", source)
@@ -516,7 +758,7 @@ class TestSetupHandlers(unittest.TestCase):
             r'async function installSelectedPacks\(\)[\s\S]*'
             r'getJson\("/api/setup/packs/install"[\s\S]*'
             r'catch \(error\) \{[\s\S]*'
-            r'setStatus\("Setup pack install failed"'
+            r'setStatus\("setup pack のインストールに失敗しました"'
         )
         self.assertRegex(source, install_error_pattern)
 

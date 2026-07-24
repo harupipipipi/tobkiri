@@ -1,12 +1,13 @@
 import {useEffect, useMemo, useState} from 'react';
-import {useSearchParams} from 'react-router-dom';
-import {AlertTriangle, Loader2, Network, RadioTower, Route, Sparkles, Wand2} from 'lucide-react';
+import {useSearchParams} from 'react-router';
+import {AlertTriangle, Network, RadioTower, Route, Sparkles, Wand2} from 'lucide-react';
 
 import {ProfileGraphCanvas} from '@/src/components/profile-graph/ProfileGraphCanvas';
 import {ProfileGraphInspector} from '@/src/components/profile-graph/ProfileGraphInspector';
 import {ProfileGraphPalette} from '@/src/components/profile-graph/ProfileGraphPalette';
 import {ProfileGraphToolbar} from '@/src/components/profile-graph/ProfileGraphToolbar';
 import {Badge} from '@/src/components/ui/Badge';
+import {TobkiriLoader} from '@/src/components/ui/TobkiriLoader';
 import {
   compileStartupProfileGraphPreview,
   fetchStartupProfileGraph,
@@ -204,12 +205,7 @@ export function ProfileGraphEditorShell({
           />
 
           {loading || graphLoading ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-border bg-bg-card">
-              <div className="flex items-center gap-3 text-text-muted">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span>Loading profile graph</span>
-              </div>
-            </div>
+            <TobkiriLoader className="rounded-xl border border-border bg-bg-card" label="Loading profile graph" />
           ) : (
             <div className="min-h-0 flex-1">
               <ProfileGraphCanvas
@@ -338,6 +334,8 @@ export function ProfileGraphEditorShell({
 
 export function ProfileGraphEditor() {
   const addToast = useAppStore((state) => state.addToast);
+  const advancedProfileId = useAppStore((state) => state.selectedStartupProfileId);
+  const setAdvancedProfileId = useAppStore((state) => state.setSelectedStartupProfileId);
   const [searchParams, setSearchParams] = useSearchParams();
   const [profiles, setProfiles] = useState<ApiStartupProfile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
@@ -371,8 +369,9 @@ export function ProfileGraphEditor() {
         }
         setProfiles(response.profiles);
         setActiveProfileId(response.active_profile_id);
-        const preferred = searchParams.get('profile') || response.active_profile_id || response.profiles[0]?.profile_id || '';
+        const preferred = searchParams.get('profile') || advancedProfileId || response.active_profile_id || response.profiles[0]?.profile_id || '';
         setSelectedProfileId((current) => current || preferred);
+        if (preferred) setAdvancedProfileId(preferred);
       })
       .catch((fetchError) => {
         if (!cancelled) {
@@ -427,6 +426,7 @@ export function ProfileGraphEditor() {
     const next = new URLSearchParams(searchParams);
     next.set('profile', profileId);
     setSearchParams(next, {replace: true});
+    setAdvancedProfileId(profileId);
   };
 
   const handleSelectProfile = (profileId: string) => {

@@ -259,6 +259,7 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
     MODEL_IDS = OPENAI_CHAT_MODELS | ANTHROPIC_MESSAGES_MODELS | set(MODEL_ALIASES)
     TOOL_CALL_MODELS = set(_OPENCODE_GO_TOOL_CALL_MODELS)
     KNOWN_MODELS = [_known_model_entry(spec) for spec in _OPENCODE_GO_MODEL_SPECS]
+    KNOWN_MODELS: List[Dict[str, Any]] = []
     _OPENAI_CHAT_PARAM_KEYS = {
         "temperature",
         "top_p",
@@ -291,7 +292,10 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
             base_url_env="OPENCODE_GO_BASE_URL",
             default_base_url=self.BASE_URL,
             credential_required=True,
-            known_models=self.KNOWN_MODELS,
+            known_models=[],
+            remote_model_discovery=True,
+            remote_model_list_path="/models",
+            remote_model_cache_ttl_seconds=3600,
         )
 
     @classmethod
@@ -304,21 +308,13 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
     @classmethod
     def _assert_supported_model(cls, model: str) -> str:
         model_id = cls._normalize_model_id(model)
-        if model_id not in cls.MODEL_IDS:
-            supported = ", ".join(sorted(cls.MODEL_IDS))
-            raise RuntimeError(
-                "opencode-go: unsupported model. "
-                f"defaultspack supports only: {supported}"
-            )
         return model_id
 
     @staticmethod
     def _translate_params(params):
         raw = dict(params or {})
         translated = {
-            key: raw[key]
-            for key in OpencodeGoProvider._OPENAI_CHAT_PARAM_KEYS
-            if key in raw
+            key: raw[key] for key in OpencodeGoProvider._OPENAI_CHAT_PARAM_KEYS if key in raw
         }
         for key in ("request_timeout", "timeout"):
             if key in raw:
@@ -344,11 +340,7 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
     @classmethod
     def _translate_messages_params(cls, params):
         raw = dict(params or {})
-        translated = {
-            key: raw[key]
-            for key in cls._MESSAGES_PARAM_KEYS
-            if key in raw
-        }
+        translated = {key: raw[key] for key in cls._MESSAGES_PARAM_KEYS if key in raw}
         max_tokens = raw.get("max_tokens", raw.get("max_completion_tokens", 4096))
         translated["max_tokens"] = max_tokens
         if "stop" in raw and "stop_sequences" not in translated:
@@ -377,7 +369,9 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
         self._ensure_runtime_config()
         url = self.BASE_URL + path
         data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers=self._messages_headers(), method="POST")
+        req = urllib.request.Request(
+            url, data=data, headers=self._messages_headers(), method="POST"
+        )
         try:
             with urllib.request.urlopen(req, context=self._ssl_ctx, timeout=timeout) as resp:
                 raw_bytes = resp.read().decode("utf-8")
@@ -396,7 +390,9 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
         body["stream"] = True
         url = self.BASE_URL + path
         data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers=self._messages_headers(), method="POST")
+        req = urllib.request.Request(
+            url, data=data, headers=self._messages_headers(), method="POST"
+        )
         try:
             return urllib.request.urlopen(req, context=self._ssl_ctx, timeout=timeout)
         except urllib.error.HTTPError as exc:
@@ -406,7 +402,7 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
             raise RuntimeError("OpenCode Go API connection error: {}".format(exc.reason))
 
     def list_models(self) -> List[Dict[str, Any]]:
-        return [dict(model) for model in self.KNOWN_MODELS]
+        return self._merge_remote_models([])
 
     def _messages_body(self, model_id, messages, params):
         params = self._translate_messages_params(params)
@@ -428,7 +424,9 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
 
     def _stream_messages(self, model_id, messages, params):
         body = self._messages_body(model_id, messages, params)
-        resp = self._request_messages_stream("/messages", body, **self._request_timeout_kwargs(params))
+        resp = self._request_messages_stream(
+            "/messages", body, **self._request_timeout_kwargs(params)
+        )
         usage_accum = {"input_tokens": 0, "output_tokens": 0}
         tool_call_state = {}
         try:
@@ -442,7 +440,9 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
                     usage = msg.get("usage", {})
                     usage_accum["input_tokens"] = usage.get("input_tokens", 0)
                 elif event_type == "content_block_start":
-                    yield from AnthropicProvider._anthropic_stream_tool_call_events(event_type, obj, tool_call_state)
+                    yield from AnthropicProvider._anthropic_stream_tool_call_events(
+                        event_type, obj, tool_call_state
+                    )
                 elif event_type == "content_block_delta":
                     delta = obj.get("delta", {})
                     if delta.get("type") == "text_delta":
@@ -450,9 +450,13 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
                             "type": "content_delta",
                             "delta": {"type": "text", "text": delta.get("text", "")},
                         }
-                    yield from AnthropicProvider._anthropic_stream_tool_call_events(event_type, obj, tool_call_state)
+                    yield from AnthropicProvider._anthropic_stream_tool_call_events(
+                        event_type, obj, tool_call_state
+                    )
                 elif event_type == "content_block_stop":
-                    yield from AnthropicProvider._anthropic_stream_tool_call_events(event_type, obj, tool_call_state)
+                    yield from AnthropicProvider._anthropic_stream_tool_call_events(
+                        event_type, obj, tool_call_state
+                    )
                 elif event_type == "message_delta":
                     delta = obj.get("delta", {})
                     usage = obj.get("usage", {})
@@ -465,14 +469,17 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
                         "tool_use": "tool_calls",
                     }
                     finish = finish_map.get(stop, stop)
-                    yield from AnthropicProvider._anthropic_stream_tool_call_end_events(tool_call_state)
+                    yield from AnthropicProvider._anthropic_stream_tool_call_end_events(
+                        tool_call_state
+                    )
                     yield {
                         "type": "stream_end",
                         "finish_reason": finish,
                         "usage": {
                             "input_tokens": usage_accum["input_tokens"],
                             "output_tokens": usage_accum["output_tokens"],
-                            "total_tokens": usage_accum["input_tokens"] + usage_accum["output_tokens"],
+                            "total_tokens": usage_accum["input_tokens"]
+                            + usage_accum["output_tokens"],
                         },
                     }
         finally:

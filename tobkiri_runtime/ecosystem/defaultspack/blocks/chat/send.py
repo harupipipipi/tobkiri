@@ -110,7 +110,7 @@ _COMPUTER_USE_CHATGPT_TARGET_RE = re.compile(r"chat\s*gpt|chatgpt", re.IGNORECAS
 
 def _conversation_system_prompt(conv, manager):
     from blocks.chat._prompt_helpers import resolve_conversation_system_prompt
-    from domain.kanban.service import append_kanban_system_prompt_note
+    from domain.kanban.prompt_note import append_kanban_system_prompt_note
 
     return append_kanban_system_prompt_note(resolve_conversation_system_prompt(conv, manager), conv)
 

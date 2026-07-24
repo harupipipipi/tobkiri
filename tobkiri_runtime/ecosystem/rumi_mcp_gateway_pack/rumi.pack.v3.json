@@ -1,0 +1,11 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {"id": "rumi.mcp_gateway", "version": "1.1.0", "kind": "adapter", "display_name": "Rumi MCP Gateway", "description": "Namespace-isolated approved MCP tool-call adapter and declarative gateway catalog."},
+  "contracts": {"provides": [{"id": "rumi.service.mcp.tool.call.v1", "version": "1.0.0", "provider_instance_id": "mcp-gateway.call", "routing_keys": ["mcp.*"], "cardinality": "many", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.1.0", "deprecated": false, "data_owner": "defaultspack-mcp-compat"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["mcp.tool.call"]}], "requires": []},
+  "entrypoints": [{"id": "mcp-tool-call", "contract_id": "rumi.service.mcp.tool.call.v1", "loader": "python", "module": "ecosystem.rumi_mcp_gateway_pack.runtime.gateway", "symbol": "create_call_operation", "artifact_hash": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162"}],
+  "resources": [{"id": "mcp-connector-catalog", "path": "catalog/connector_catalog.yaml", "kind": "catalog", "schema_version": "1.0.0", "content_hash": "sha256:b5be57f1888be312aeb0b9f3f92ebec36cef9d33403c1bcbc36b4faa992d743c"}],
+  "storage": [], "permissions": [{"capability": "mcp.tool.call", "access": "execute", "approval_required": true}, {"capability": "mcp.invoke", "access": "execute", "approval_required": true}],
+  "provenance": {"content_hash": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162", "build_identity": "rumi-mcp-gateway-pack:1.1.0", "trust_class": "local", "signature": null},
+  "migration": {"from": ["defaultspack.domain.tool.mcp_client", "defaultspack.blocks.tool.mcp_connect"], "compatibility_aliases": [], "compatibility_projection": "read_only", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Remove runtime entrypoint and retain the declarative gateway catalog."},
+  "extensions": {"rumi.mcp_gateway.boundary": {"namespace_required": true, "executor_consumer_only": true, "connection_approval_bypass": false, "tool_approval_bypass": false}}
+}

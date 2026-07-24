@@ -439,46 +439,45 @@ def test_get_extension_registry_force_reload_preserves_registry_identity(monkeyp
     assert reloaded.root == second_root
 
 
-def test_openrouter_provider_lists_curated_allowlist_from_catalog(monkeypatch):
+def test_openrouter_provider_uses_live_inventory_without_catalog_overlay(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "dummy-token")
     monkeypatch.setattr(
         OpenRouterProvider,
-        "_catalog_models",
-        classmethod(lambda cls: _openrouter_catalog_models()),
+        "_remote_discovered_models",
+        lambda self: [{
+            "id": "openrouter/openai/live-model",
+            "model_id": "openai/live-model",
+            "provider_id": "openrouter",
+            "provider": "openrouter",
+            "name": "Live model",
+            "display_name": "Live model",
+            "type": "chat",
+        }],
     )
 
     provider = OpenRouterProvider()
     models = provider.list_models()
-    assert {model["id"] for model in models} == {model["id"] for model in OPENROUTER_CURATED_ALLOWLIST}
+    model_ids = {model["id"] for model in models}
+    assert model_ids == {"openrouter/openai/live-model"}
     assert all(model["provider_id"] == "openrouter" for model in models)
 
 
-def test_openrouter_provider_loads_bundled_curated_catalog():
-    provider = OpenRouterProvider()
+def test_openrouter_provider_does_not_load_a_bundled_catalog(monkeypatch):
+    monkeypatch.setattr(OpenRouterProvider, "_remote_discovered_models", lambda self: [])
+    provider = OpenRouterProvider(known_models=[])
     model_ids = {model["model_id"] for model in provider.list_models()}
 
-    assert {
-        "cohere/north-mini-code:free",
-        "anthropic/claude-sonnet-5",
-        "openai/o3-pro",
-        "google/gemini-2.5-pro",
-        "z-ai/glm-5.2",
-        "moonshotai/kimi-k2.7-code",
-        "deepseek/deepseek-r1-0528",
-        "qwen/qwen3-coder-next",
-    }.issubset(model_ids)
+    assert model_ids == set()
+    assert OpenRouterProvider.KNOWN_MODELS == []
 
 
 def test_openrouter_provider_rejects_non_allowlisted_model(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "dummy-token")
-    monkeypatch.setattr(
-        OpenRouterProvider,
-        "_catalog_models",
-        classmethod(lambda cls: _openrouter_catalog_models()),
-    )
+    monkeypatch.setattr(OpenRouterProvider, "_load_remote_model_cache", lambda self: None)
+    monkeypatch.setattr(OpenRouterProvider, "_remote_discovered_models", lambda self: [])
 
     provider = OpenRouterProvider()
-    with pytest.raises(RuntimeError, match="unsupported model"):
+    with pytest.raises(RuntimeError, match="live or last-known-good catalog"):
         provider.complete("openai/gpt-4o-mini", [{"role": "user", "content": "hi"}], [], {})
 
 

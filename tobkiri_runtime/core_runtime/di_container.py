@@ -231,7 +231,9 @@ def _register_defaults(container: DIContainer) -> None:
     # --- Wave 1: core ---
     def _audit_logger_factory() -> "AuditLogger":  # noqa: F821
         from .audit_logger import AuditLogger
-        return AuditLogger()
+        from .paths import USER_DATA_DIR
+
+        return AuditLogger(str(USER_DATA_DIR / "audit"))
 
     def _hmac_key_manager_factory() -> "HMACKeyManager":  # noqa: F821
         from .hmac_key_manager import HMACKeyManager

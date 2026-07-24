@@ -1,0 +1,15 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.job_action_broker","version":"1.0.0","kind":"service","display_name":"Rumi Job Action Broker","description":"Deterministic global job adapter routing and replay protection."},
+  "contracts":{"provides":[
+    {"id":"rumi.action.job.v1","version":"1.0.0","provider_instance_id":"job-action.broker","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_job_action_broker_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["job.dispatch"]}
+  ],"requires":[{"id":"rumi.action.job.adapter.v1","version":">=1.0.0,<2.0.0","cardinality":"many","optional":true,"failure":"isolate"}]},
+  "entrypoints":[{"id":"job-action-broker","contract_id":"rumi.action.job.v1","loader":"python","module":"ecosystem.rumi_job_action_broker_pack.runtime.broker","symbol":"create_job_action","artifact_hash":"sha256:af2449859b11637b4bf4062b83fed69decf5a663f72ad77e81c05aab7265a51a"}],
+  "resources":[],
+  "storage":[{"namespace":"rumi.job.dispatch_ledger","schema_version":"1.0.0","authoritative":true,"retention":"profile policy","export_import":false}],
+  "permissions":[{"capability":"job.dispatch","access":"execute","approval_required":false},{"capability":"job.adapter.invoke","access":"execute","approval_required":false}],
+  "provenance":{"content_hash":"sha256:af2449859b11637b4bf4062b83fed69decf5a663f72ad77e81c05aab7265a51a","build_identity":"rumi-job-action-broker-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.scheduler.runner"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop dispatch, expire leases, then select the prior broker without replaying completed keys."},
+  "extensions":{"rumi.job_action.boundary":{"adapter_selection":"exact_instance_key","first_found_fallback":false,"idempotency":true,"replay_mismatch":"deny","target_imports":false}}
+}
+

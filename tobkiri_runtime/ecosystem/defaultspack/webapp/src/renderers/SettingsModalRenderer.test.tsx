@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { buildVisibleModelOptions, SettingsModalRenderer } from "./SettingsModalRenderer";
+import { buildVisibleModelOptions, SettingsModalRenderer, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
 import { CredentialTransferModal, credentialTransferCanClose, credentialTransferFocusTarget } from "../components/CredentialTransferModal";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
@@ -25,6 +25,51 @@ function makeModelOption(index: number) {
     model_id: `model-${index}`,
   };
 }
+
+
+test("settings close guard allows in-flight autosaves and guards only failed dirty changes", () => {
+  assert.equal(settingsCloseRequiresConfirmation({ status: "saving", dirtyKeys: [] }), false);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "saving", dirtyKeys: ["profiles.active_profile"] }), false);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "error", dirtyKeys: ["profiles.active_profile"] }), true);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "error", dirtyKeys: [] }), false);
+  assert.equal(settingsCloseRequiresConfirmation({ status: "saved", dirtyKeys: [], lastSavedAt: Date.now() }), false);
+});
+
+test("settings row selection clears when the selected row is clicked again", () => {
+  assert.equal(toggleSettingsRowSelection("provider:token", "provider:token"), "");
+  assert.equal(toggleSettingsRowSelection("provider:token", "provider:other"), "provider:other");
+  assert.equal(toggleSettingsRowSelection("", "provider:token"), "provider:token");
+});
+
+test("settings AI surface launches the normal chat with the Settings skill", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "quick_setup",
+    catalog: {
+      sidebar: { filters: [], items: [{ id: "browser", label: "Browser", category: "tool", description: "Inspect pages" }] },
+      settings: { sections: [], values: {} },
+      skills: [{ id: "review", label: "Review", description: "Review settings" }],
+      chat_rendering: { renderers: [] },
+      extension_points: [],
+    },
+    health: null,
+    previewsCount: 0,
+    settingsSections: [],
+    settingsValues: {},
+    saveState: { status: "idle", dirtyKeys: [] },
+    locale: "ja",
+    onClose: () => undefined,
+    onStartSettingsChat: () => undefined,
+    onSettingChange: () => undefined,
+  }));
+
+  assert.match(html, /AIアシスタント/);
+  assert.match(html, /AIと設定する/);
+  assert.match(html, /Settings Modeを開く/);
+  assert.match(html, /@Settings/);
+  assert.doesNotMatch(html, /設定について相談する/);
+  assert.doesNotMatch(html, /設定ホーム/);
+});
 
 test("CredentialTransferModal never renders cleartext credentials or a legacy QR payload", () => {
   const html = renderToStaticMarkup(createElement(CredentialTransferModal, {
@@ -216,7 +261,7 @@ test("SettingsModalRenderer renders template model_select with searchable model 
   assert.doesNotMatch(html, /type="text"[^>]*google\/gemini-2\.5-flash/);
 });
 
-test("SettingsModalRenderer shows simple main and lightweight model slots", () => {
+test("SettingsModalRenderer keeps everyday model slots visible and hides internal roles in standard mode", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
       isOpen: true,
@@ -272,8 +317,8 @@ test("SettingsModalRenderer shows simple main and lightweight model slots", () =
   assert.match(html, /Lightweight Model/);
   assert.match(html, /Main Choice/);
   assert.match(html, /Fast Choice/);
-  assert.match(html, /Advanced/);
-  assert.match(html, /Utility Models/);
+  assert.match(html, /Advanced settings are hidden/);
+  assert.doesNotMatch(html, /Utility Models/);
   assert.equal((html.match(/data-settings-renderer="model_select"/g) ?? []).length, 2);
 });
 
@@ -323,7 +368,7 @@ test("SettingsModalRenderer renders template slash command registration field", 
   assert.match(html, /YOLO/);
 });
 
-test("SettingsModalRenderer constrains long readonly paths inside settings cards", () => {
+test("SettingsModalRenderer keeps internal extension paths out of standard Pack settings", () => {
   const longTemplatePath = "/Users/demo/Library/Application Support/Rumi/extensions/external-custom/templates/very/deep/path/with/no-natural-breaks/ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns";
   const longProfilePath = "/Users/demo/Library/Application Support/Rumi/extensions/external-custom/profiles/another/very/deep/path/with/no-natural-breaks/ExternalCustomProfileExtensionThatWouldOtherwiseOverlap";
   const html = renderToStaticMarkup(
@@ -372,15 +417,131 @@ test("SettingsModalRenderer constrains long readonly paths inside settings cards
     }),
   );
 
-  assert.match(html, /External Custom/);
-  assert.match(html, /Template Extension Path/);
-  assert.match(html, /Profile Extension Paths/);
-  assert.match(html, /min-w-0 rounded-lg border border-zinc-800 bg-zinc-950\/50 p-4/);
-  assert.match(html, /group\/readonly flex min-w-0/);
-  assert.match(html, /min-w-0 flex-1 whitespace-pre-wrap break-all/);
-  assert.match(html, /ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns/);
-  assert.match(html, /ExternalCustomProfileExtensionThatWouldOtherwiseOverlap/);
-  assert.match(html, /title="Copy"/);
+  assert.match(html, /Advanced settings are hidden/);
+  assert.doesNotMatch(html, /Template Extension Path/);
+  assert.doesNotMatch(html, /Profile Extension Paths/);
+  assert.doesNotMatch(html, /ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns/);
+  assert.doesNotMatch(html, /ExternalCustomProfileExtensionThatWouldOtherwiseOverlap/);
+});
+
+test("Settings Profiles presents active/default routing and keeps profile secrets out of markup", () => {
+  const rawSecret = ["profile", "plain", "secret"].join("-");
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "profiles",
+      locale: "en",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "profiles",
+          label: "Profiles",
+          fields: [
+            { id: "profiles", label: "Profiles", type: "json" },
+            { id: "active_profile", label: "Active profile", type: "text" },
+            { id: "default_profile", label: "Default profile", type: "text" },
+          ] as unknown as SettingsSection["fields"],
+        },
+      ],
+      settingsValues: {
+        profiles: {
+          profiles: [
+            {
+              profile_id: "work/deep-focus",
+              display_name: "Deep Focus",
+              description: "Research and synthesis",
+              role: "Long-form analysis",
+              preferred_model: "openai/gpt-4.1",
+              api_key: rawSecret,
+              credential_ref: "RUMIAPI_OPENAI_PRIMARY",
+              editable: true,
+            },
+            {
+              profile_id: "work/fast",
+              display_name: "Fast Draft",
+              preferred_model: "local/qwen",
+              editable: true,
+            },
+          ],
+          active_profile: "work/deep-focus",
+          default_profile: "work/fast",
+        },
+        models: {
+          model_api_routes: "openai/gpt-4.1: openai/primary\n",
+        },
+        apis: {
+          api_keys: [
+            {
+              provider_id: "openai",
+              apis: [{ api_id: "primary", credential_ref: "RUMIAPI_OPENAI_PRIMARY" }],
+            },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-settings-profile-panel/);
+  assert.match(html, /Profile workspace/);
+  assert.match(html, /Deep Focus/);
+  assert.match(html, /Fast Draft/);
+  assert.match(html, /Active profile route/);
+  assert.match(html, /openai\/gpt-4\.1/);
+  assert.match(html, /openai\/primary/);
+  assert.match(html, /Create profile/);
+  assert.match(html, /Duplicate/);
+  assert.match(html, /Rename/);
+  assert.doesNotMatch(html, new RegExp(rawSecret));
+  assert.doesNotMatch(html, /data-settings-field="profiles\.(?:profiles|active_profile|default_profile)"/);
+});
+
+test("Settings keeps the modal header compact", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "profiles",
+      locale: "en",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [],
+      settingsValues: {},
+      backendConnectionState: "offline",
+      backendConnectionNote: "Backend reconnect is pending.",
+      saveState: {
+        status: "error",
+        dirtyKeys: ["profiles.profiles"],
+        message: "Profile changes were not confirmed.",
+      },
+      loadState: {
+        status: "error",
+        message: "Settings refresh failed.",
+      },
+      onRetryLoad: () => undefined,
+      onRetrySave: () => undefined,
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /id="rumi-settings-dialog-title"/);
+  assert.match(html, />Settings</);
+  assert.doesNotMatch(html, /rumi-settings-dialog-description/);
+  assert.doesNotMatch(html, /Backend reconnect is pending/);
 });
 
 test("slash command settings keep unsaved empty rows with stable row ids", () => {
@@ -675,7 +836,7 @@ test("SettingsModalRenderer renders continuity handoff controls", () => {
   assert.doesNotMatch(html, /COMPLETED/);
 });
 
-test("Settings > Tools contains tool experience settings tabs", () => {
+test("Settings > Tools keeps selector internals out of standard mode", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
       isOpen: true,
@@ -727,7 +888,7 @@ test("Settings > Tools contains tool experience settings tabs", () => {
   assert.match(html, /基本/);
   assert.match(html, /権限/);
   assert.match(html, /接続/);
-  assert.match(html, /高度な設定/);
+  assert.doesNotMatch(html, /高度な設定/);
   assert.match(html, /既定の使い方/);
   assert.match(html, /自動で選ぶ/);
 });
@@ -783,7 +944,7 @@ test("Settings > Tools defaults to the tool experience overview", () => {
 
   assert.match(html, /基本/);
   assert.match(html, /権限/);
-  assert.match(html, /1件/);
+  assert.doesNotMatch(html, />1件</);
   assert.match(html, /選んだ機能を回答内に表示/);
   assert.doesNotMatch(html, /Tool details/);
 });
@@ -887,6 +1048,46 @@ test("operations company model allowlist renders as an addable selection list", 
   assert.match(html, /stub\/default/);
   assert.match(html, /google\/gemini-2.5-flash/);
   assert.doesNotMatch(html, /<textarea[^>]*>stub\/default/);
+});
+
+test("MiMo model allowlist also uses the catalog picker instead of raw model IDs", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "mimo_coding_company",
+      locale: "ja",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "mimo_coding_company",
+        label: "MiMo Coding Company",
+        fields: [{
+          id: "model_allowlist",
+          label: "Model Allowlist",
+          type: "textarea",
+          default: "xiaomi-token-plan-sgp/mimo-v2.5-pro\nstub/default",
+        }],
+      }],
+      settingsValues: {
+        mimo_coding_company: {
+          model_allowlist: "xiaomi-token-plan-sgp/mimo-v2.5-pro\nstub/default",
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /MiMo Coding/);
+  assert.match(html, /モデルを追加/);
+  assert.match(html, /xiaomi-token-plan-sgp\/mimo-v2.5-pro/);
+  assert.doesNotMatch(html, /<textarea[^>]*>xiaomi-token-plan-sgp/);
 });
 
 test("settings system info renders viewer version and macOS permissions", () => {
@@ -1343,6 +1544,59 @@ test("settings help pane uses reported active profile with fallback when absent"
   assert.doesNotMatch(withoutProfile, />default</);
 });
 
+test("SettingsModalRenderer normalizes object profile references for the active profile route", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "models",
+      locale: "en",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "profiles",
+          label: "Profiles",
+          fields: [
+            { id: "profiles", label: "Profiles", type: "json" },
+            { id: "active_profile", label: "Active profile", type: "text" },
+          ] as unknown as SettingsSection["fields"],
+        },
+        { id: "models", label: "Models", fields: [] },
+      ],
+      settingsValues: {
+        profiles: {
+          profiles: [
+            { profile_id: "work/base", display_name: "Base", preferred_model: "local/base" },
+            { profile_id: "work/deep-focus", display_name: "Deep Focus", preferred_model: "openai/gpt-4.1" },
+          ],
+          active_profile: { profile_id: "work/deep-focus", display_name: "Deep Focus" },
+        },
+        models: {
+          model_api_routes: "openai/gpt-4.1: openai/primary",
+        },
+        apis: {
+          api_keys: [
+            { provider_id: "openai", apis: [{ api_id: "primary", credential_ref: "RUMIAPI_OPENAI_PRIMARY" }] },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /Active profile route/);
+  assert.match(html, /Deep Focus/);
+  assert.match(html, /work\/deep-focus/);
+  assert.doesNotMatch(html, /\[object Object\]/);
+});
+
 test("Settings modal exposes localized dialog semantics and task-oriented Japanese copy", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
@@ -1371,7 +1625,7 @@ test("Settings modal exposes localized dialog semantics and task-oriented Japane
   assert.match(html, /role="dialog"/);
   assert.match(html, /aria-modal="true"/);
   assert.match(html, /aria-labelledby="rumi-settings-dialog-title"/);
-  assert.match(html, /aria-describedby="rumi-settings-dialog-description"/);
+  assert.doesNotMatch(html, /aria-describedby="rumi-settings-dialog-description"/);
   assert.match(html, /aria-label="設定を閉じる"/);
   assert.match(html, />設定<\/h2>/);
   assert.match(html, /入力欄の案内文/);

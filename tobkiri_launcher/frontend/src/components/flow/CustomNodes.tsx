@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Play, Settings2, Square, CheckCircle2, XCircle, Loader2, Waypoints } from 'lucide-react';
+import { Play, Settings2, Square, CheckCircle2, XCircle, Waypoints } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useT } from '@/src/lib/i18n';
+import { TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
 import type {
   EndNode as EndNodeType,
   ExecutionStatus,
@@ -169,7 +170,7 @@ export function TriggerNode({ data, selected }: NodeProps<TriggerNodeType>) {
   const t = useT();
   const status = data.executionStatus;
   const icon = status === 'running'
-    ? <Loader2 className="h-4 w-4 animate-spin" />
+    ? <TobkiriLoadingMark />
     : status === 'success'
       ? <CheckCircle2 className="h-4 w-4" />
       : <Play className="h-4 w-4" />;
@@ -205,7 +206,7 @@ export function StepNode({ data, selected }: NodeProps<StepNodeType>) {
   }
 
   let icon: ReactNode = <Settings2 className="h-4 w-4" />;
-  if (data.executionStatus === 'running') icon = <Loader2 className="h-4 w-4 animate-spin" />;
+  if (data.executionStatus === 'running') icon = <TobkiriLoadingMark />;
   if (data.executionStatus === 'success') icon = <CheckCircle2 className="h-4 w-4" />;
   if (data.executionStatus === 'error') icon = <XCircle className="h-4 w-4" />;
 

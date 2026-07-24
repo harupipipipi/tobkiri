@@ -1,0 +1,17 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.ide_bridge_service","version":"1.0.0","kind":"service","display_name":"Rumi IDE Bridge Service","description":"Bounded IDE session envelopes independent of chat and UI."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.ide.session.v1","version":"1.0.0","provider_instance_id":"ide-bridge.observe","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_ide_bridge_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["ide.session.observe"]},
+    {"id":"rumi.action.ide.session.v1","version":"1.0.0","provider_instance_id":"ide-bridge.control","cardinality":"one","security":"restricted","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_ide_bridge_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["ide.session.control"]}
+  ],"requires":[{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"ide-observe","contract_id":"rumi.resource.ide.session.v1","loader":"python","module":"ecosystem.rumi_ide_bridge_service_pack.runtime.sessions","symbol":"create_ide_observe","artifact_hash":"sha256:57675999a0dfcdceab4c1da2b01358b41f4acf0d0a749be8af5fe5265b0d3d04"},
+    {"id":"ide-control","contract_id":"rumi.action.ide.session.v1","loader":"python","module":"ecosystem.rumi_ide_bridge_service_pack.runtime.sessions","symbol":"create_ide_control","artifact_hash":"sha256:57675999a0dfcdceab4c1da2b01358b41f4acf0d0a749be8af5fe5265b0d3d04"}
+  ],
+  "resources":[],"storage":[{"namespace":"rumi.ide.sessions.ephemeral","schema_version":"1.0.0","authoritative":true,"retention":"bounded process lifetime","export_import":false}],
+  "permissions":[{"capability":"ide.session.observe","access":"observe","approval_required":false},{"capability":"ide.session.control","access":"control","approval_required":true},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:57675999a0dfcdceab4c1da2b01358b41f4acf0d0a749be8af5fe5265b0d3d04","build_identity":"rumi-ide-bridge-service-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.blocks.coding.codex_app_server"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Close ephemeral sessions and select the pinned prior bridge adapter."},
+  "extensions":{"rumi.ide_bridge.boundary":{"observe_control_split":true,"control_receipt":"required_per_operation","chat":false,"llm_provider":false,"file_shell_git_authority":false,"client_approval":false,"max_sessions":64,"max_events":512}}
+}
+

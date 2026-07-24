@@ -1,0 +1,11 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.file_inspect","version":"1.0.0","kind":"service","display_name":"Rumi File Inspect","description":"Read-only workspace-jailed file inspection."},
+  "contracts":{"provides":[{"id":"rumi.service.file.inspect.v1","version":"1.0.0","provider_instance_id":"file-inspect.service","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["file.inspect"]}],"requires":[{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"file-inspect","contract_id":"rumi.service.file.inspect.v1","loader":"python","module":"ecosystem.rumi_file_inspect_pack.runtime.inspect","symbol":"create_file_inspect_operation","artifact_hash":"sha256:fb356fc67f751ed7bc2c8dfa42cbbd03cf02dc8b7c70fd54e9aca7623ecc7f86"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"file.inspect","access":"read","approval_required":false},{"capability":"workspace.metadata.read","access":"read","approval_required":false}],
+  "provenance":{"content_hash":"sha256:fb356fc67f751ed7bc2c8dfa42cbbd03cf02dc8b7c70fd54e9aca7623ecc7f86","build_identity":"rumi-file-inspect-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.file_ops.read","defaultspack.blocks.coding.file_read","defaultspack.blocks.coding.file_list","defaultspack.blocks.coding.file_search"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Select the pinned prior read adapter; no data migration exists."},
+  "extensions":{"rumi.file_inspect.boundary":{"write":false,"execute":false,"absolute_paths":false,"symlink_escape":"deny","max_read_bytes":4194304}}
+}
+

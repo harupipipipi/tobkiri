@@ -222,6 +222,40 @@ def test_profile_nodes_api_filters_palette_by_profile_state_and_locale() -> None
     assert result["nodes"][0]["state"]["status"] == "ready"
 
 
+def test_profile_nodes_api_tolerates_nodes_without_profile_state() -> None:
+    class PartialStateKernel(FakeKernel):
+        def _profile_node_state(self, args: dict, _ctx: dict) -> dict:
+            self._record("kernel:profile.node_state", args)
+            return {"_kernel_step_status": "success", "node_state": []}
+
+    result = _handler(kernel=PartialStateKernel())._capability_get_profile_nodes(
+        "coding"
+    )
+
+    assert result["count"] == 2
+    assert result["palette_nodes"] == []
+
+
+def test_profile_nodes_api_falls_back_when_state_registry_is_invalid() -> None:
+    class InvalidStateKernel(FakeKernel):
+        def _profile_node_state(self, args: dict, _ctx: dict) -> dict:
+            self._record("kernel:profile.node_state", args)
+            return {
+                "_kernel_step_status": "failed",
+                "_kernel_step_meta": {"error": "legacy profile is invalid"},
+            }
+
+    result = _handler(kernel=InvalidStateKernel())._capability_get_profile_nodes(
+        "coding"
+    )
+
+    assert result["count"] == 2
+    assert [node["node_id"] for node in result["palette_nodes"]] == [
+        "sample.agent"
+    ]
+    assert result["nodes"][1]["state"]["status"] == "disabled"
+
+
 def test_profiles_api_documents_startup_profile_boundary() -> None:
     handler = _handler(kernel=FakeKernel())
 

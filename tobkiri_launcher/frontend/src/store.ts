@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   checkHealth,
   fetchDashboard,
+  approvePack as apiApprovePack,
   fetchPacks,
   fetchFlows,
   fetchProfile,
@@ -154,6 +155,7 @@ const SIDEBAR_STORAGE_KEY = 'tobkiri-launcher-sidebar-open';
 const LEGACY_SIDEBAR_STORAGE_KEY = 'rumi-viewer-sidebar-open';
 const SETUP_STORAGE_KEY = 'tobkiri-launcher-setup';
 const LEGACY_SETUP_STORAGE_KEY = 'rumi-setup';
+const ADVANCED_PROFILE_STORAGE_KEY = 'tobkiri-launcher-advanced-profile';
 
 interface AppState {
   theme: Theme;
@@ -167,6 +169,9 @@ interface AppState {
 
   isSidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+
+  selectedStartupProfileId: string;
+  setSelectedStartupProfileId: (profileId: string) => void;
 
   toasts: Toast[];
   addToast: (message: string, type: 'success' | 'error') => void;
@@ -188,14 +193,20 @@ interface AppState {
   refreshRuntimeHealth: () => Promise<void>;
 
   packs: Pack[];
+  packsLoading: boolean;
+  packsError: string | null;
+  packTogglePending: Record<string, boolean>;
   loadPacks: () => Promise<void>;
-  togglePack: (id: string) => Promise<void>;
+  approvePack: (id: string) => Promise<void>;
+  togglePack: (id: string) => Promise<boolean>;
 
   flows: Flow[];
-  loadFlows: () => Promise<void>;
-  addFlow: (flow: { id: string; name: string; content: string }) => Promise<void>;
-  updateFlow: (id: string, content: string) => Promise<void>;
-  deleteFlow: (id: string) => Promise<void>;
+  flowsLoading: boolean;
+  flowsError: string | null;
+  loadFlows: () => Promise<boolean>;
+  addFlow: (flow: { id: string; name: string; content: string }) => Promise<boolean>;
+  updateFlow: (id: string, content: string) => Promise<boolean>;
+  deleteFlow: (id: string) => Promise<boolean>;
 
   dashboard: DashboardData;
   loadDashboard: () => Promise<void>;
@@ -204,7 +215,7 @@ interface AppState {
 
   profile: Profile;
   loadProfile: () => Promise<void>;
-  updateProfile: (profile: Partial<Profile>) => Promise<void>;
+  updateProfile: (profile: Partial<Profile>) => Promise<boolean>;
   connectAccount: () => Promise<void>;
 
   version: VersionInfo;
@@ -267,6 +278,11 @@ function transformUpdateInfo(update: {
   };
 }
 
+let packsLoadPromise: Promise<void> | null = null;
+let flowsLoadPromise: Promise<boolean> | null = null;
+let flowMutationVersion = 0;
+const packMutationVersions = new Map<string, number>();
+
 export const useAppStore = create<AppState>((set, get) => ({
   theme: normalizeTheme(readLocalStorage(THEME_STORAGE_KEY)),
   setTheme: (theme) => {
@@ -291,6 +307,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSidebarOpen: (open) => {
     writeLocalStorage(SIDEBAR_STORAGE_KEY, String(open));
     set({ isSidebarOpen: open });
+  },
+
+  selectedStartupProfileId: readLocalStorage(ADVANCED_PROFILE_STORAGE_KEY) ?? '',
+  setSelectedStartupProfileId: (profileId) => {
+    writeLocalStorage(ADVANCED_PROFILE_STORAGE_KEY, profileId);
+    set({ selectedStartupProfileId: profileId });
   },
 
   toasts: [],
@@ -351,32 +373,94 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ============================================================
 
   packs: [],
+  packsLoading: false,
+  packsError: null,
+  packTogglePending: {},
 
-  loadPacks: async () => {
-    set({ isLoading: true, apiError: null });
+  loadPacks: () => {
+    if (packsLoadPromise) return packsLoadPromise;
+    const versionsAtStart = new Map(packMutationVersions);
+    set({ packsLoading: true, packsError: null });
+    packsLoadPromise = (async () => {
+      try {
+        const data = await fetchPacks();
+        const latestState = get();
+        const currentById = new Map(latestState.packs.map((pack) => [pack.id, pack]));
+        const packs = transformPacks(data.packs).map((pack) => {
+          const before = versionsAtStart.get(pack.id) ?? 0;
+          const after = packMutationVersions.get(pack.id) ?? 0;
+          if (before === after && !latestState.packTogglePending[pack.id]) return pack;
+          const current = currentById.get(pack.id);
+          return current ? { ...pack, enabled: current.enabled } : pack;
+        });
+        set({ packs, packsError: null });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to load packs';
+        set({ packsError: msg });
+        get().addToast(msg, 'error');
+      }
+    })().finally(() => {
+      packsLoadPromise = null;
+      set({ packsLoading: false });
+    });
+    return packsLoadPromise;
+  },
+
+  approvePack: async (id) => {
     try {
-      const data = await fetchPacks();
-      set({ packs: transformPacks(data.packs), isLoading: false });
+      await apiApprovePack(id);
+      await get().loadPacks();
+      get().addToast('Pack approved.', 'success');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load packs';
-      set({ apiError: msg, isLoading: false });
+      const msg = e instanceof Error ? e.message : 'Failed to approve pack';
       get().addToast(msg, 'error');
+      throw e;
     }
   },
 
   togglePack: async (id) => {
-    const pack = get().packs.find((p) => p.id === id);
-    if (!pack) return;
+    const state = get();
+    const pack = state.packs.find((candidate) => candidate.id === id);
+    if (!pack || state.packTogglePending[id]) return false;
+
+    const version = (packMutationVersions.get(id) ?? 0) + 1;
+    packMutationVersions.set(id, version);
+    set((current) => ({
+      packs: current.packs.map((candidate) => (
+        candidate.id === id ? { ...candidate, enabled: !pack.enabled } : candidate
+      )),
+      packTogglePending: { ...current.packTogglePending, [id]: true },
+    }));
+
     try {
-      if (pack.enabled) {
-        await apiDisablePack(id);
-      } else {
-        await apiEnablePack(id);
+      const response = pack.enabled
+        ? await apiDisablePack(id)
+        : await apiEnablePack(id);
+      if (packMutationVersions.get(id) === version) {
+        set((current) => ({
+          packs: current.packs.map((candidate) => (
+            candidate.id === id ? { ...candidate, enabled: response.enabled } : candidate
+          )),
+        }));
       }
-      await get().loadPacks();
+      return true;
     } catch (e) {
+      if (packMutationVersions.get(id) === version) {
+        set((current) => ({
+          packs: current.packs.map((candidate) => (
+            candidate.id === id ? { ...candidate, enabled: pack.enabled } : candidate
+          )),
+        }));
+      }
       const msg = e instanceof Error ? e.message : 'Failed to toggle pack';
       get().addToast(msg, 'error');
+      return false;
+    } finally {
+      set((current) => {
+        const pending = { ...current.packTogglePending };
+        delete pending[id];
+        return { packTogglePending: pending };
+      });
     }
   },
 
@@ -385,17 +469,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ============================================================
 
   flows: [],
+  flowsLoading: false,
+  flowsError: null,
 
-  loadFlows: async () => {
-    set({ isLoading: true, apiError: null });
-    try {
-      const data = await fetchFlows();
-      set({ flows: transformFlows(data.flows), isLoading: false });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load flows';
-      set({ apiError: msg, isLoading: false });
-      get().addToast(msg, 'error');
-    }
+  loadFlows: () => {
+    if (flowsLoadPromise) return flowsLoadPromise;
+    const versionAtStart = flowMutationVersion;
+    set({ flowsLoading: true, flowsError: null });
+    flowsLoadPromise = (async () => {
+      try {
+        const data = await fetchFlows();
+        if (versionAtStart === flowMutationVersion) {
+          set({ flows: transformFlows(data.flows), flowsError: null });
+        }
+        return true;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to load flows';
+        set({ flowsError: msg });
+        get().addToast(msg, 'error');
+        return false;
+      }
+    })().finally(() => {
+      flowsLoadPromise = null;
+      set({ flowsLoading: false });
+    });
+    return flowsLoadPromise;
   },
 
   addFlow: async (flow) => {
@@ -405,30 +503,39 @@ export const useAppStore = create<AppState>((set, get) => ({
         yaml_content: flow.content,
         filename: flow.name,
       });
-      await get().loadFlows();
+      flowMutationVersion += 1;
+      if (flowsLoadPromise) await flowsLoadPromise;
+      return await get().loadFlows();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to create flow';
       get().addToast(msg, 'error');
+      return false;
     }
   },
 
   updateFlow: async (id, content) => {
     try {
       await apiUpdateFlow(id, { yaml_content: content });
-      await get().loadFlows();
+      flowMutationVersion += 1;
+      if (flowsLoadPromise) await flowsLoadPromise;
+      return await get().loadFlows();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to update flow';
       get().addToast(msg, 'error');
+      return false;
     }
   },
 
   deleteFlow: async (id) => {
     try {
       await apiDeleteFlow(id);
-      await get().loadFlows();
+      flowMutationVersion += 1;
+      if (flowsLoadPromise) await flowsLoadPromise;
+      return await get().loadFlows();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to delete flow';
       get().addToast(msg, 'error');
+      return false;
     }
   },
 
@@ -500,9 +607,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
       await apiUpdateProfile(payload);
       await get().loadProfile();
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to update profile';
       get().addToast(msg, 'error');
+      return false;
     }
   },
 

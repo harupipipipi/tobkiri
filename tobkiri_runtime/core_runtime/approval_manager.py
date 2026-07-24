@@ -33,7 +33,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 
 from .paths import (
@@ -47,18 +47,20 @@ from .paths import (
     check_pack_id_mismatch,
     PackLocation,
 )
-
-logger = logging.getLogger(__name__)
-
-
-TRUSTED_BUILTIN_PACK_IDS = {"defaultspack", "rumi_default_tools_pack", "rumi_host_capabilities_pack"}
-
-
 from .hmac_key_manager import (
     generate_or_load_signing_key,
     compute_data_hmac,
     verify_data_hmac,
 )
+
+logger = logging.getLogger(__name__)
+
+
+TRUSTED_BUILTIN_PACK_IDS = {
+    "defaultspack",
+    "rumi_default_tools_pack",
+    "rumi_host_capabilities_pack",
+}
 
 
 class PackStatus(Enum):
@@ -557,6 +559,29 @@ class ApprovalManager:
             return False, "hash_mismatch"
         
         return True, None
+
+    def get_verified_pack_trust(
+        self, pack_ids: Iterable[str]
+    ) -> Dict[str, str]:
+        """Return host-verified trust classes for authorized pack IDs.
+
+        Only canonical shipped core and trusted builtin locations receive
+        ``system`` trust. Other approved packs receive ``verified`` after the
+        normal approval and hash-verification path succeeds.
+        """
+        verified: Dict[str, str] = {}
+        for raw_pack_id in pack_ids:
+            pack_id = str(raw_pack_id or "").strip()
+            if not pack_id or pack_id in verified:
+                continue
+            if self._is_core_pack(pack_id) or self._is_trusted_builtin_pack(
+                pack_id
+            ):
+                verified[pack_id] = "system"
+                continue
+            if self.is_pack_approved_and_verified(pack_id)[0]:
+                verified[pack_id] = "verified"
+        return verified
     
     # ------------------------------------------------------------------ #
     # Wave 1-2: 開発モード自動承認

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 _PACK_SHELL_PATH_ENV = "RUMI_PACK_SHELL_PATH"
 _PACK_API_TOKEN_ENV = "RUMI_API_TOKEN"
 
-# 登録済みアプリのメタデータ保存先（REPO/user_data/apps/ 相当）
+# Development fallback for registered app metadata.
 _APPS_SUBDIR = "user_data/apps"
 
 
@@ -72,6 +72,14 @@ def _default_repo_dir() -> str:
     return str(Path(__file__).resolve().parents[1])
 
 
+def _default_apps_dir(repo_dir: str) -> str:
+    """Resolve durable app metadata storage, falling back to a development repo."""
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return str(Path(user_data).expanduser() / "apps")
+    return os.path.join(repo_dir, _APPS_SUBDIR)
+
+
 def _pack_shell_binary_name() -> str:
     return "pack-shell.exe" if sys.platform == "win32" else "pack-shell"
 
@@ -105,7 +113,7 @@ class DesktopAppManager:
 
     def __init__(self, repo_dir: Optional[str] = None):
         self._repo_dir = repo_dir or os.environ.get("REPO") or _default_repo_dir()
-        self._apps_dir = os.path.join(self._repo_dir, _APPS_SUBDIR) if self._repo_dir else ""
+        self._apps_dir = _default_apps_dir(self._repo_dir) if self._repo_dir else ""
         self._running: Dict[str, subprocess.Popen] = {}
 
     # ------------------------------------------------------------------

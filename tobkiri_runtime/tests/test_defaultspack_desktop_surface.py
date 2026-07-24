@@ -17,6 +17,74 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
 class TestDefaultspackDesktopSurface(unittest.TestCase):
+    def test_surface_url_passes_local_auth_only_in_fragment(self):
+        from defaultspack import desktop_app
+
+        with patch.dict(
+            os.environ,
+            {"RUMI_DEFAULTSPACK_LOCAL_TOKEN": "local-token"},
+            clear=True,
+        ):
+            url = desktop_app._surface_url("http://localhost:8766/chat")
+
+        self.assertEqual(
+            url,
+            "http://localhost:8766/chat#rumi_local_auth=local-token",
+        )
+        self.assertNotIn("?", url)
+
+    def test_surface_url_reads_launcher_token_file(self):
+        from defaultspack import desktop_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            user_data.mkdir()
+            (Path(tmp) / ".desktop_api_token").write_text(
+                "local token", encoding="utf-8"
+            )
+            with patch.dict(
+                os.environ,
+                {"RUMI_USER_DATA": str(user_data)},
+                clear=True,
+            ):
+                url = desktop_app._surface_url("http://localhost:8766/chat")
+
+        self.assertEqual(
+            url,
+            "http://localhost:8766/chat#rumi_local_auth=local%20token",
+        )
+
+    def test_desktop_state_migration_moves_bundle_local_settings_and_secrets(self):
+        from defaultspack import desktop_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            bundle_root = Path(tmp) / "replaceable-bundle"
+            legacy_root = bundle_root / "user_data"
+            legacy_secrets = legacy_root / "secrets"
+            legacy_settings = legacy_root / "shared" / "frontend_settings.json"
+            legacy_secrets.mkdir(parents=True, exist_ok=True)
+            legacy_settings.parent.mkdir(parents=True, exist_ok=True)
+            secret_file = legacy_secrets / "OPENROUTER_API_KEY.json"
+            key_file = legacy_root / ".secrets_key"
+            secret_file.write_text('{"encrypted": "fixture"}', encoding="utf-8")
+            key_file.write_text("fixture-key", encoding="utf-8")
+            legacy_settings.write_text('{"models": {"preferred_model": "openrouter/demo"}}', encoding="utf-8")
+            with patch.dict(os.environ, {"RUMI_USER_DATA": str(user_data)}, clear=True):
+                with patch.object(desktop_app, "_pack_root", return_value=bundle_root):
+                    desktop_app._configure_persistent_user_state()
+
+            self.assertTrue((user_data / "secrets" / secret_file.name).exists())
+            self.assertTrue((user_data / ".secrets_key").exists())
+            self.assertEqual(
+                json.loads(
+                    (user_data / "defaultspack" / "shared" / "frontend_settings.json").read_text(
+                        encoding="utf-8"
+                    )
+                )["models"]["preferred_model"],
+                "openrouter/demo",
+            )
+
     def test_surface_can_be_disabled_for_smoke_tests(self):
         from defaultspack.native_webview import open_desktop_surface
 

@@ -88,6 +88,18 @@ def run(context):
         ("POST", "/api/tools/browser-companion/bridge/result", _lazy("blocks.tool.browser_companion_bridge", "run_result"), {}),
         # ---- Capability catalog routes ----
         ("GET", "/api/capabilities", _lazy("blocks.capability.list"), {}),
+        ("GET", "/api/capabilities/catalog", _lazy("blocks.capability.api"), {}),
+        ("GET", "/api/capabilities/settings", _lazy("blocks.capability.api", "run", sensitive=True), {}),
+        ("PATCH", "/api/capabilities/settings", _lazy("blocks.capability.api", "run", sensitive=True), {}),
+        ("POST", "/api/capabilities/resolve", _lazy("blocks.capability.api", "run", sensitive=True), {}),
+        ("GET", "/api/capabilities/plans/{plan_id}", _lazy("blocks.capability.api", "run", sensitive=True), {"plan_id": "plan_id"}),
+        ("GET", "/api/capabilities/traces/{trace_id}", _lazy("blocks.capability.api", "run", sensitive=True), {"trace_id": "trace_id"}),
+        ("POST", "/api/capabilities/plans/{plan_id}/approve", _lazy("blocks.capability.api", "run", sensitive=True), {"plan_id": "plan_id"}),
+        ("POST", "/api/capabilities/plans/{plan_id}/execute", _lazy("blocks.capability.api", "run", sensitive=True), {"plan_id": "plan_id"}),
+        ("POST", "/api/capabilities/manifests/validate", _lazy("blocks.capability.api", "run"), {}),
+        ("POST", "/api/capabilities/schemas/compile", _lazy("blocks.capability.api", "run"), {}),
+        ("GET", "/api/skills", _lazy("blocks.capability.api", "run"), {}),
+        ("PATCH", "/api/skills/lifecycle", _lazy("blocks.capability.api", "run", sensitive=True), {}),
         ("GET", "/api/capabilities/{id}", _lazy("blocks.capability.manifest"), {"id": "capability_id"}),
         # ---- Dynamic tool routes ----
         ("POST", "/api/tools/create", _lazy("blocks.tool.create"), {}),
@@ -128,6 +140,28 @@ def run(context):
     ]
 
     for method, pattern, handler, path_inject in routes:
+        capability_actions = {
+            ("GET", "/api/capabilities/catalog"): "catalog",
+            ("GET", "/api/capabilities/settings"): "settings",
+            ("PATCH", "/api/capabilities/settings"): "update_settings",
+            ("POST", "/api/capabilities/resolve"): "resolve",
+            ("GET", "/api/capabilities/plans/{plan_id}"): "plan",
+            ("GET", "/api/capabilities/traces/{trace_id}"): "trace",
+            ("POST", "/api/capabilities/plans/{plan_id}/approve"): "approve",
+            ("POST", "/api/capabilities/plans/{plan_id}/execute"): "execute",
+            ("POST", "/api/capabilities/manifests/validate"): "validate_manifest",
+            ("POST", "/api/capabilities/schemas/compile"): "compile_schema",
+            ("GET", "/api/skills"): "skills",
+            ("PATCH", "/api/skills/lifecycle"): "update_skill",
+        }
+        action = capability_actions.get((method, pattern))
+        if action:
+            base_handler = handler
+
+            def handler(request_data, route_context, _handler=base_handler, _action=action):
+                payload = dict(request_data or {})
+                payload["action"] = _action
+                return _handler(payload, route_context)
         interface_registry.register(
             "io.http.route",
             {

@@ -1,0 +1,25 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.company_coordinator","version":"1.0.0","kind":"service","display_name":"Rumi Company Coordinator","description":"Contract-only Company routing, work dispatch, and supervision."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.company.runtime.v1","version":"1.0.0","provider_instance_id":"company.runtime","cardinality":"one","security":"internal","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_company_coordinator_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["company.runtime.observe"]},
+    {"id":"rumi.action.company.coordinator.v1","version":"1.0.0","provider_instance_id":"company.coordinator","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_company_coordinator_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["company.coordinate"]},
+    {"id":"rumi.action.job.adapter.v1","version":"1.0.0","provider_instance_id":"job-adapter.company-supervisor","instance_key":"company.supervisor","cardinality":"many","security":"sensitive","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_company_coordinator_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["job.adapter.invoke"]}
+  ],"requires":[
+    {"id":"rumi.resource.company.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.company.state.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
+    {"id":"rumi.action.company.work.v1","version":">=1.0.0,<2.0.0","cardinality":"many","failure":"fail_closed","selection":"exact_instance_key"},
+    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
+  ]},
+  "entrypoints":[
+    {"id":"company-runtime-resource","contract_id":"rumi.resource.company.runtime.v1","loader":"python","module":"ecosystem.rumi_company_coordinator_pack.runtime.coordinator","symbol":"create_company_runtime_resource","artifact_hash":"sha256:2cbc9e52e3ee88fc1d59ea1e83e98252d45c2c394c94d46c756e06a9a686ce0b"},
+    {"id":"company-coordinator-control","contract_id":"rumi.action.company.coordinator.v1","loader":"python","module":"ecosystem.rumi_company_coordinator_pack.runtime.coordinator","symbol":"create_company_control","artifact_hash":"sha256:2cbc9e52e3ee88fc1d59ea1e83e98252d45c2c394c94d46c756e06a9a686ce0b"},
+    {"id":"company-supervisor-job-adapter","contract_id":"rumi.action.job.adapter.v1","loader":"python","module":"ecosystem.rumi_company_coordinator_pack.runtime.coordinator","symbol":"create_company_job_adapter","artifact_hash":"sha256:2cbc9e52e3ee88fc1d59ea1e83e98252d45c2c394c94d46c756e06a9a686ce0b"}
+  ],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"company.runtime.observe","access":"observe","approval_required":false},{"capability":"company.coordinate","access":"control","approval_required":true},{"capability":"company.state.read","access":"read","approval_required":false},{"capability":"company.state.manage","access":"write","approval_required":false},{"capability":"company.work","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false},{"capability":"job.adapter.invoke","access":"execute","approval_required":false}],
+  "provenance":{"content_hash":"sha256:2cbc9e52e3ee88fc1d59ea1e83e98252d45c2c394c94d46c756e06a9a686ce0b","build_identity":"rumi-company-coordinator-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.company.coordinator","defaultspack.domain.company.supervisor"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop coordinator dispatch and select one prior implementation without dual writes."},
+  "extensions":{"rumi.company_coordinator.boundary":{"company_storage":false,"connector_imports":false,"scheduler_imports":false,"agent_imports":false,"ambiguous_route":"unassigned","fallback":"explicit_only","work_selection":"exact_instance_key","global_job_adapter":"company.supervisor"}}
+}
+

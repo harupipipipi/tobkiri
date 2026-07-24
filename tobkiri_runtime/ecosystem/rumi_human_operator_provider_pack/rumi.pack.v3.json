@@ -1,0 +1,131 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.human_operator_provider",
+    "version": "1.0.0",
+    "kind": "service",
+    "display_name": "Rumi Human Operator Provider",
+    "description": "Local provider producing approval-aware human handoff intents."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.service.ai.provider.generate.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "provider.human-operator.generate",
+        "routing_keys": [
+          "human-operator"
+        ],
+        "cardinality": "many",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "rumi_human_operator_provider_pack"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "ai.provider.human_handoff"
+        ]
+      },
+      {
+        "id": "rumi.service.ai.provider.stream.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "provider.human-operator.stream",
+        "routing_keys": [
+          "human-operator"
+        ],
+        "cardinality": "many",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "rumi_human_operator_provider_pack"
+        },
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "isolation": "in_process",
+        "required_capabilities": [
+          "ai.provider.human_handoff"
+        ]
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "human-generate",
+      "contract_id": "rumi.service.ai.provider.generate.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_human_operator_provider_pack.runtime.provider",
+      "symbol": "create_generate_operation",
+      "artifact_hash": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd"
+    },
+    {
+      "id": "human-stream",
+      "contract_id": "rumi.service.ai.provider.stream.v1",
+      "loader": "python",
+      "module": "ecosystem.rumi_human_operator_provider_pack.runtime.provider",
+      "symbol": "create_stream_operation",
+      "artifact_hash": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [
+    {
+      "capability": "ai.provider.human_handoff",
+      "access": "execute",
+      "approval_required": false
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:9049f47a5b5059631b49efa3f915e523152454030afef0066e04d255e7924520",
+    "build_identity": "rumi-human-operator-provider-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": [
+      "defaultspack.ai_client.providers.human_operator_provider"
+    ],
+    "compatibility_aliases": [
+      {
+        "legacy_id": "human-operator",
+        "target_contract": "rumi.service.ai.provider.generate.v1",
+        "target_revision": "sha256:9049f47a5b5059631b49efa3f915e523152454030afef0066e04d255e7924520",
+        "owner": "rumi_human_operator_provider_pack",
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      }
+    ],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Select the pinned previous human provider and discard unexecuted handoff intents."
+  },
+  "extensions": {
+    "rumi.human_operator.boundary": {
+      "self_approval": false,
+      "authority_owner": false,
+      "conversation_owner": false,
+      "ui_owner": false
+    }
+  }
+}

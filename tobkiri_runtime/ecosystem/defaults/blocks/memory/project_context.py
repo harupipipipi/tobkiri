@@ -41,7 +41,7 @@ def run(input_data: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
             return error("value is required for set action", "INVALID_INPUT")
 
         value = input_data["value"]
-        store.project_context[key] = value
+        store.put_project_context(key, value)
 
         return ok({"context": dict(store.project_context)})
 

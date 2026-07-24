@@ -1,6 +1,6 @@
 """defaults.media.screenshot — スクリーンショットブロック"""
-from blocks._common import ok, error
-from domain.media.processor import take_screenshot
+from blocks._common import error
+from domain.media.contract_adapter import MEDIA_CAPTURE, invoke_media_contract
 
 
 def run(input_data, context):
@@ -13,11 +13,15 @@ def run(input_data, context):
     Returns:
         dict: {"status": "ok", "data": {"path", "width", "height"}}
     """
-    # region は将来拡張用。現在は無視する。
-    _region = input_data.get("region")
-
     try:
-        result = take_screenshot()
-        return ok(result)
+        payload = {}
+        if input_data.get("region") is not None:
+            payload["region"] = input_data["region"]
+        return invoke_media_contract(
+            MEDIA_CAPTURE,
+            "host.screen.capture",
+            payload,
+            source_function_id="defaults.media.screenshot",
+        )
     except Exception as exc:
         return error(str(exc), code="SCREENSHOT_ERROR")

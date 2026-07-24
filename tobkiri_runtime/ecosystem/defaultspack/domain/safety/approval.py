@@ -675,9 +675,27 @@ def get_approval_request(request_id: str) -> dict[str, Any] | None:
         request = _REQUESTS.get(str(request_id)) or _request_from_mapping(
             get_approval_store().get_request(str(request_id))
         )
-    if request is None:
-        return None
-    return asdict(request)
+        if request is None:
+            return None
+        now = _now()
+        if request.status == "pending" and request.expires_at < now:
+            settled, latest = get_approval_store().settle_request(
+                request.request_id,
+                "expired",
+                allowed_statuses=("pending",),
+                decision_at=now,
+            )
+            request = (
+                request
+                if settled
+                else (_request_from_mapping(latest) or request)
+            )
+            if settled:
+                request.status = "expired"
+                request.decision_at = now
+            _REQUESTS[request.request_id] = request
+            _refresh_approval_state_mirrors_from_store()
+        return asdict(request)
 
 
 def list_approval_requests(

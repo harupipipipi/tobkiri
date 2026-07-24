@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, usesBrowserComputerApprovalEndpoint } from "./api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -25,6 +25,56 @@ import {
 import { shouldAutoCompactHistory } from "../App";
 import { ImportedConversationNotice, shareImportDestination, sharePreviewSummary, shareTokenFromPath } from "../pages/ConversationShareLanding";
 import type { ConversationShareRecord } from "./api";
+
+test("command event stream reconnects after fetch failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = (async () => {
+    attempts += 1;
+    if (attempts === 1) throw new TypeError("network unavailable");
+    return new Response(
+      'data: {"sequence":1,"type":"completed","payload":{}}\n\n',
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    );
+  }) as typeof fetch;
+  try {
+    const events: Array<Record<string, unknown>> = [];
+    for await (const event of streamCommandInvocationEvents("inv/retry", { waitSeconds: 0 })) {
+      events.push(event);
+    }
+    assert.equal(attempts, 2);
+    assert.deepEqual(events.map((event) => event.sequence), [1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("command event stream resumes clean EOF with Last-Event-ID", async () => {
+  const originalFetch = globalThis.fetch;
+  const headers: string[] = [];
+  let attempts = 0;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    attempts += 1;
+    headers.push(new Headers(init?.headers).get("Last-Event-ID") ?? "");
+    const body = attempts === 1
+      ? 'data: {"sequence":1,"type":"progress","payload":{}}\n\n'
+      : 'data: {"sequence":2,"type":"completed","payload":{}}\n\n';
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }) as typeof fetch;
+  try {
+    const sequences: number[] = [];
+    for await (const event of streamCommandInvocationEvents("inv/resume", { waitSeconds: 0 })) {
+      sequences.push(Number(event.sequence));
+    }
+    assert.deepEqual(sequences, [1, 2]);
+    assert.deepEqual(headers, ["", "1"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("shareTokenFromPath accepts only a single landing path segment", () => {
   assert.equal(shareTokenFromPath("/share/local-token_123"), "local-token_123");
@@ -694,6 +744,57 @@ test("composer command feedback surfaces pack block result messages and paths", 
   );
 });
 
+test("deepthink command feedback uses warning only while the mode is enabled", () => {
+  assert.equal(
+    composerCommandFeedbackTone({
+      command: {
+        id: "deepthink",
+        name: "deepthink",
+        label: "DeepThink",
+        category: "model",
+        visibility: "default",
+        risk: "medium",
+        execution: {
+          type: "rumi_function",
+          qualified_name: "defaultspack:ai_set_deepthink_enabled",
+        },
+      },
+      executed: true,
+      operation_status: "succeeded",
+      state_changes: [{
+        state_ref: "defaultspack:models.deepthink_enabled",
+        value: true,
+        revision: 1,
+      }],
+    }),
+    "warning",
+  );
+  assert.equal(
+    composerCommandFeedbackTone({
+      command: {
+        id: "deepthink",
+        name: "deepthink",
+        label: "DeepThink",
+        category: "model",
+        visibility: "default",
+        risk: "medium",
+        execution: {
+          type: "rumi_function",
+          qualified_name: "defaultspack:ai_set_deepthink_enabled",
+        },
+      },
+      executed: true,
+      operation_status: "succeeded",
+      state_changes: [{
+        state_ref: "defaultspack:models.deepthink_enabled",
+        value: false,
+        revision: 2,
+      }],
+    }),
+    "success",
+  );
+});
+
 test("template ai input selects composer and tool policy metadata", () => {
   const catalog = {
     ai_inputs: [
@@ -892,10 +993,10 @@ test("template composer widgets become safe tool toggle widgets", () => {
   });
 });
 
-test("ultra yolo restore state returns to the previous yolo mode", () => {
+test("yolo full access always toggles back to ask instead of restoring agent approval", () => {
   assert.deepEqual(
     resolveUltraYoloModeState({ yoloMode: false, ultraYoloMode: false, restoreYoloMode: false }, true),
-    { yoloMode: true, ultraYoloMode: true, restoreYoloMode: false },
+    { yoloMode: false, ultraYoloMode: true, restoreYoloMode: false },
   );
   assert.deepEqual(
     resolveUltraYoloModeState({ yoloMode: true, ultraYoloMode: true, restoreYoloMode: false }, false),
@@ -903,7 +1004,7 @@ test("ultra yolo restore state returns to the previous yolo mode", () => {
   );
   assert.deepEqual(
     resolveUltraYoloModeState({ yoloMode: true, ultraYoloMode: true, restoreYoloMode: true }, false),
-    { yoloMode: true, ultraYoloMode: false, restoreYoloMode: false },
+    { yoloMode: false, ultraYoloMode: false, restoreYoloMode: false },
   );
 });
 
@@ -913,55 +1014,106 @@ test("history sidebar auto-compacts on narrow screens", () => {
   assert.equal(shouldAutoCompactHistory(760), false);
 });
 
-test("executeUiCommand preserves model candidate results", async () => {
+test("command protocol catalog is authoritative and invocation preserves its envelope", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify({
-    status: "ok",
-    data: {
-      command: {
-        id: "model",
-        name: "model",
-        label: "Model",
-        category: "model",
-        visibility: "default",
-        risk: "low",
-        execution: { type: "model_command", action: "select_or_suggest_model" },
-      },
-      action: "show_model_candidates",
-      message: "Choose a model",
-      candidates: [
-        {
-          profile_id: "openai/gpt-5.1",
-          display_name: "GPT-5.1",
-          subtitle: "OpenAI / gpt-5.1",
-          requires_api_key: true,
-        },
-      ],
-      selected_model: {
-        profile_id: "google/gemini-2.5-flash",
-        display_name: "Gemini 2.5 Flash",
-        provider_id: "google",
-        model_id: "gemini-2.5-flash",
-        api_key_configured: true,
-      },
-    },
-  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  const requests: string[] = [];
+  const legacyCommand = {
+    id: "deepthink",
+    name: "deepthink",
+    label: "DeepThink",
+    category: "model",
+    visibility: "default",
+    risk: "medium",
+    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+    const data = url.endsWith("/catalog")
+      ? {
+          api_version: "tobkiri.commands/v1",
+          kind: "ResolvedCommandCatalog",
+          catalog_revision: "revision-1",
+          commands: [{
+            canonical_id: "defaultspack:deepthink",
+            pack_id: "defaultspack",
+            pack_generation: 1,
+            command_version: "1.0.0",
+            identity: { id: "deepthink", name: "deepthink", version: "1.0.0" },
+            presentation: {
+              label: { fallback: "DeepThink" },
+              category: "model",
+              visibility: "default",
+              icon: "deepthink",
+              input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+              mounts: [],
+            },
+            execution: { kind: "state_mutation", state_ref: "defaultspack:models.deepthink_enabled" },
+            availability: { status: "available" },
+            legacy: legacyCommand,
+          }],
+          state_snapshots: [],
+          diagnostics: [],
+        }
+      : {
+          api_version: "tobkiri.commands/v1",
+          operation_id: "operation-1",
+          status: "succeeded",
+          command_ref: "defaultspack:deepthink",
+          state_changes: [{
+            state_ref: "defaultspack:models.deepthink_enabled",
+            value: true,
+            revision: 1,
+            freshness: "authoritative",
+          }],
+          legacy_result: { command: legacyCommand, executed: true },
+        };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
 
   try {
-    const result = await api.executeUiCommand({ command: "model", args: { query: "gpt" } });
-    assert.equal(result.action, "show_model_candidates");
-    assert.equal(result.message, "Choose a model");
-    assert.equal(result.candidates?.[0]?.profile_id, "openai/gpt-5.1");
-    assert.equal(result.candidates?.[0]?.requires_api_key, true);
-    const selectedModel = result.selected_model as { profile_id?: string; api_key_configured?: boolean } | null | undefined;
-    if (!selectedModel) {
-      assert.fail("expected selected_model to be a model candidate object");
-    }
-    assert.equal(selectedModel.profile_id, "google/gemini-2.5-flash");
-    assert.equal(selectedModel.api_key_configured, true);
+    const catalog = await api.resolvedUiCommands();
+    const result = await api.executeResolvedUiCommand({
+      command: catalog.commands[0].canonical_id ?? "",
+      args: { enabled: true },
+    });
+    assert.equal(catalog.protocol?.catalog_revision, "revision-1");
+    assert.equal(catalog.commands[0].protocol_presentation?.input.kind, "toggle");
+    assert.equal(result.operation_id, "operation-1");
+    assert.equal(result.state_changes?.[0].value, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
+
+  assert.deepEqual(requests, [
+    "/api/command-protocol/v1/catalog",
+    "/api/command-protocol/v1/invoke",
+  ]);
+});
+
+test("updateUiSettingsPatches sends field-scoped settings mutations", async () => {
+  const originalFetch = globalThis.fetch;
+  let body: unknown;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    body = JSON.parse(String(init?.body ?? "{}"));
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: { values: { theme: { font_size: 16 } } },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    await api.updateUiSettingsPatches([
+      { section: "theme", field: "font_size", value: 16 },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(body, {
+    patches: [{ section: "theme", field: "font_size", value: 16 }],
+  });
 });
 
 test("listModelProfiles bypasses browser cache", async () => {
@@ -990,75 +1142,6 @@ test("listModelProfiles bypasses browser cache", async () => {
 
   assert.equal(requestUrl, "/api/ai/profiles");
   assert.equal(requestCache, "no-store");
-});
-
-test("kanban API methods use first-class board and card routes", async () => {
-  const requests: Array<{ input: string; init?: RequestInit }> = [];
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ input: String(input), init });
-    if (String(input).startsWith("/api/kanban/boards?")) {
-      return new Response(JSON.stringify({
-        status: "ok",
-        data: {
-          board: {
-            board_id: "board-1",
-            scope_type: "conversation",
-            scope_id: "conv 1",
-            title: "Chat board",
-          },
-          columns: [],
-          cards: [],
-        },
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    if (String(input).endsWith("/import-conversation")) {
-      return new Response(JSON.stringify({
-        status: "ok",
-        data: {
-          board: {
-            board_id: "board-1",
-            scope_type: "conversation",
-            scope_id: "conv 1",
-            title: "Chat board",
-          },
-          columns: [],
-          cards: [{ card_id: "card-imported", board_id: "board-1", column_id: "col-1", position: 1000, title: "Imported" }],
-        },
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    return new Response(JSON.stringify({
-      status: "ok",
-      data: {
-        card_id: "card-1",
-        board_id: "board-1",
-        column_id: "col-1",
-        position: 1000,
-        title: "Fix UI",
-      },
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
-  }) as typeof fetch;
-
-  try {
-    const board = await api.kanbanGetOrCreateBoard({ type: "conversation", id: "conv 1" });
-    const card = await api.kanbanCreateCard("board-1", { title: "Fix UI", column_id: "col-1" });
-    const imported = await api.kanbanImportConversation("board-1", { conversation_id: "conv 1", column_id: "col-1" });
-
-    assert.equal(board.board.board_id, "board-1");
-    assert.equal(card.card_id, "card-1");
-    assert.equal(imported.cards[0]?.card_id, "card-imported");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-
-  assert.equal(requests[0]?.input, "/api/kanban/boards?scope_type=conversation&scope_id=conv+1&bootstrap=true");
-  assert.equal(requests[0]?.init?.cache, "no-store");
-  assert.equal(requests[1]?.input, "/api/kanban/boards/board-1/cards");
-  assert.equal(requests[1]?.init?.method, "POST");
-  assert.deepEqual(JSON.parse(String(requests[1]?.init?.body ?? "{}")), { title: "Fix UI", column_id: "col-1" });
-  assert.equal(requests[2]?.input, "/api/kanban/boards/board-1/import-conversation");
-  assert.equal(requests[2]?.init?.method, "POST");
-  assert.deepEqual(JSON.parse(String(requests[2]?.init?.body ?? "{}")), { conversation_id: "conv 1", column_id: "col-1" });
 });
 
 test("defaultspack API errors include status and recovery context", () => {

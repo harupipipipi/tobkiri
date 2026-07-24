@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok, error
-from domain.ai_client.client import AIClient
+from domain.ai_client.modality_contract_client import invoke_modality
 
 
 def run(input_data, context):
@@ -16,8 +16,11 @@ def run(input_data, context):
     params = input_data.get("params", {})
 
     try:
-        client = AIClient()
-        result = client.image_gen(model, prompt, params=params)
+        result = invoke_modality(
+            "rumi.service.ai.image.v1",
+            "generate",
+            {"model_id": model, "prompt": prompt, "parameters": params},
+        )
         return ok(result)
     except RuntimeError as e:
         return error(str(e), "PROVIDER_ERROR")

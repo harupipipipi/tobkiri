@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 
 # ======================================================================
@@ -235,6 +235,45 @@ def discover_pack_locations(
 
     # pack_id 昇順で返す
     return sorted(found.values(), key=lambda loc: loc.pack_id)
+
+
+def resolve_pack_locations(
+    pack_ids: Iterable[str],
+    ecosystem_dir: Optional[str] = None,
+) -> List[PackLocation]:
+    """Resolve only explicitly named pack roots without listing siblings."""
+    root = Path(ecosystem_dir or ECOSYSTEM_DIR)
+    resolved: List[PackLocation] = []
+    seen: set[str] = set()
+    for raw_pack_id in pack_ids:
+        pack_id = str(raw_pack_id).strip()
+        if (
+            not pack_id
+            or pack_id in seen
+            or pack_id in {".", ".."}
+            or "/" in pack_id
+            or "\\" in pack_id
+        ):
+            continue
+        seen.add(pack_id)
+        for pack_dir, is_legacy in (
+            (root / pack_id, False),
+            (root / LEGACY_PACKS_SUBDIR / pack_id, True),
+        ):
+            ecosystem_json, pack_subdir = find_ecosystem_json(pack_dir)
+            if ecosystem_json is None or pack_subdir is None:
+                continue
+            resolved.append(
+                PackLocation(
+                    pack_dir=pack_dir,
+                    pack_id=pack_id,
+                    ecosystem_json_path=ecosystem_json,
+                    pack_subdir=pack_subdir,
+                    is_legacy=is_legacy,
+                )
+            )
+            break
+    return sorted(resolved, key=lambda item: item.pack_id)
 
 
 # ======================================================================

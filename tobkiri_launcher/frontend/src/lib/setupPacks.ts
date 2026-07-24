@@ -34,6 +34,8 @@ export async function hasSelectedSetupPack(): Promise<boolean> {
 
 export function setupPackSelectionUrl(
   returnTo = `${PANEL_BASE_PATH}${panelRoutes.setup}?${SETUP_PACK_RETURN_PARAM}=1`,
+  colorMode = 'dark',
 ): string {
-  return `/setup?return_to=${encodeURIComponent(returnTo)}`;
+  const normalizedColorMode = colorMode === 'light' ? 'light' : 'dark';
+  return `/setup?return_to=${encodeURIComponent(returnTo)}&color_mode=${normalizedColorMode}`;
 }

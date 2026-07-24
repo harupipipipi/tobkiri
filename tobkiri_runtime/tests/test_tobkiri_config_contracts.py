@@ -1,6 +1,10 @@
 import logging
 
+import pytest
+
 from core_runtime.env_compat import read_migrated_env, reset_migration_warnings_for_tests
+
+pytestmark = pytest.mark.contract
 
 
 def test_canonical_env_wins_over_legacy(caplog):

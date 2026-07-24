@@ -289,7 +289,7 @@ def test_dynamic_tool_cannot_self_declare_trusted(tmp_path, monkeypatch):
             handler_code="def run(args, context):\n    return {'result': 'ran'}\n",
         )
     except ValueError as exc:
-        assert "trusted first-party" in str(exc)
+        assert "migration_required" in str(exc)
     else:
         raise AssertionError("self-trusted dynamic tool was accepted")
 
@@ -473,6 +473,28 @@ def test_git_read_tools_remain_low_risk_without_security_approval():
     assert requires_approval_for_security(git_commit_tool) is True
 
 
+def test_dynamic_python_executor_contains_no_runtime_exec_path():
+    executor_source = (
+        ROOT
+        / "ecosystem"
+        / "defaultspack"
+        / "domain"
+        / "tool"
+        / "executor.py"
+    ).read_text(encoding="utf-8")
+    creator_source = (
+        ROOT
+        / "ecosystem"
+        / "defaultspack"
+        / "domain"
+        / "tool"
+        / "runtime_creator.py"
+    ).read_text(encoding="utf-8")
+
+    assert "exec(handler_code" not in executor_source
+    assert "exec(handler_code" not in creator_source
+
+
 def test_migrated_coding_function_does_not_fall_back_to_direct_local_tool():
     class FakeResponse:
         success = False
@@ -512,7 +534,7 @@ def test_permission_denied_function_call_never_falls_back_to_pack_function():
     assert result is None
 
 
-def test_approved_permission_denied_function_call_can_fallback_to_mapped_local_tool(monkeypatch):
+def test_approved_permission_denied_function_call_cannot_fallback_to_mapped_local_tool(monkeypatch):
     from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
     class FakeResponse:
@@ -545,8 +567,8 @@ def test_approved_permission_denied_function_call_can_fallback_to_mapped_local_t
         FakeResponse(),
     )
 
-    assert calls == [("todo", {"action": "list"})]
-    assert result == {"result": "todo ok", "is_error": False, "widget": None}
+    assert calls == []
+    assert result is None
 
 
 def test_high_risk_first_party_function_registry_unavailable_fails_closed():
@@ -766,7 +788,7 @@ def test_computer_use_requires_denied_returns_approval_before_local_execution(mo
     assert result["widget"]["arguments"]["action"] == "open_url"
 
 
-def test_computer_use_requires_denied_falls_back_after_tool_server_approval(monkeypatch):
+def test_computer_use_requires_denied_fails_closed_after_tool_server_approval(monkeypatch):
     class FakeCapabilityExecutor:
         def execute(self, principal_id, request):
             return SimpleNamespace(
@@ -775,13 +797,8 @@ def test_computer_use_requires_denied_falls_back_after_tool_server_approval(monk
                 error="Function requires permission 'computer.control' not granted",
             )
 
-    seen = {}
-
-    def fake_local(self, tool_name, arguments, context):
-        seen["tool_name"] = tool_name
-        seen["arguments"] = arguments
-        seen["context"] = context
-        return {"result": "local ok", "is_error": False, "widget": {"type": tool_name}}
+    def fake_local(*args, **kwargs):
+        raise AssertionError("computer_use must not bypass capability denial")
 
     monkeypatch.setattr(ToolExecutor, "_execute_local", fake_local)
 
@@ -806,10 +823,8 @@ def test_computer_use_requires_denied_falls_back_after_tool_server_approval(monk
         },
     )
 
-    assert result["is_error"] is False
-    assert result["result"] == "local ok"
-    assert seen["tool_name"] == "computer_use"
-    assert seen["arguments"]["action"] == "open_url"
+    assert result["is_error"] is True
+    assert "computer.control" in result["result"]
 
 
 def test_computer_use_pack_not_approved_returns_pack_error(monkeypatch):
@@ -928,9 +943,10 @@ def test_browser_computer_pack_not_approved_does_not_fall_back_after_tool_server
         },
     )
 
-    assert result["is_error"] is True
-    assert result["error_type"] == "pack_not_approved"
-    assert "Pack not approved" in result["result"]
+    # Caller-supplied approval flags are not trusted. The executor requests a
+    # real approval token instead of executing or falling back.
+    assert result["is_error"] is False
+    assert result["widget"]["type"] == "approval_request"
 
 
 def test_prefocus_computer_target_window_does_not_execute_without_approval(monkeypatch):

@@ -1,0 +1,11 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.file_patch","version":"1.0.0","kind":"service","display_name":"Rumi File Patch","description":"Previewable receipt-gated exact text patching."},
+  "contracts":{"provides":[{"id":"rumi.service.file.patch.v1","version":"1.0.0","provider_instance_id":"file-patch.service","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["file.patch"]}],"requires":[{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"file-patch","contract_id":"rumi.service.file.patch.v1","loader":"python","module":"ecosystem.rumi_file_patch_pack.runtime.patch","symbol":"create_file_patch_operation","artifact_hash":"sha256:9f0299403ddc59031a122213f31757578887ef0a746ec08a24c2a52dc135cde0"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"file.patch","access":"write","approval_required":true},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:9f0299403ddc59031a122213f31757578887ef0a746ec08a24c2a52dc135cde0","build_identity":"rumi-file-patch-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.file_ops.apply_patch_text","defaultspack.blocks.coding.file_patch"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Apply the inverse previewed patch or restore from caller-held checkpoint."},
+  "extensions":{"rumi.file_patch.boundary":{"preview_without_write":true,"apply_receipt":"required","old_match_count":1,"stale_hash":"fail_closed","post_authorization_recheck":true,"atomic_replace":true}}
+}
+

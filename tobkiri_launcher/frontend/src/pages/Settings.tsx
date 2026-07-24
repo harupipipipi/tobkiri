@@ -10,7 +10,7 @@ import { Button } from '@/src/components/ui/Button';
 import { Input } from '@/src/components/ui/Input';
 import { Badge } from '@/src/components/ui/Badge';
 import { Switch } from '@/src/components/ui/Switch';
-import { User, Settings as SettingsIcon, Globe, Briefcase, Palette, Moon, Sun, LogIn, Loader2, CheckCircle2, ChevronDown, RefreshCw, DownloadCloud, MonitorOff, ShieldCheck } from 'lucide-react';
+import { User, Settings as SettingsIcon, Globe, Briefcase, Palette, Moon, Sun, LogIn, CheckCircle2, ChevronDown, RefreshCw, DownloadCloud, MonitorOff, ShieldCheck } from 'lucide-react';
 import { LAUNCHER_DISPLAY_NAME, LAUNCHER_VERSION_LABEL, PRODUCT_DISPLAY_NAME } from '@/src/lib/launcherBrand';
 
 function permissionBadgeVariant(permission: DesktopPermissionStatus): 'success' | 'warning' | 'destructive' | 'secondary' {
@@ -149,8 +149,7 @@ export function Settings() {
   }, [profile]);
 
   const handleSave = async () => {
-    await updateProfile(formData);
-    addToast(t('settings.saved'), 'success');
+    if (await updateProfile(formData)) addToast(t('settings.saved'), 'success');
   };
 
   const handleConnect = async () => {

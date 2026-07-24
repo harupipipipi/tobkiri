@@ -1,43 +1,19 @@
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+"""Read-only legacy projection over gateway routing diagnostics."""
 
-from blocks._common import ok, error
-from domain.ai_client.client import AIClient
-from domain.ai_client.model_router import ModelRouter
+from blocks._common import error, ok
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import invoke_global_contract
 
 
 def run(input_data, context):
-    """ルーティングログ取得。
-
-    input_data:
-        limit: int (default 100)
-        offset: int (default 0)
-
-    Returns:
-        ok({
-            "entries": list[dict],
-            "total": int,
-            "limit": int,
-            "offset": int,
-        })
-    """
-    limit = input_data.get("limit", 100)
-    offset = input_data.get("offset", 0)
-
-    if not isinstance(limit, int) or limit < 1:
-        limit = 100
-    if not isinstance(offset, int) or offset < 0:
-        offset = 0
-
-    client = AIClient()
-    router = ModelRouter(client)
-    entries = router.routing_log.get_all(limit=limit, offset=offset)
-    total = router.routing_log.count()
-
-    return ok({
-        "entries": entries,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    })
+    del context
+    registry = get_container().get_or_none("interface_registry")
+    if registry is None:
+        return error("interface registry is unavailable", "UNAVAILABLE")
+    value = invoke_global_contract(
+        registry,
+        "rumi.resource.ai.routing.diagnostics.v1",
+        "list",
+        {"request_id": input_data.get("request_id")},
+    )
+    return ok(value)

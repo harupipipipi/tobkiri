@@ -10,6 +10,7 @@ import yaml
 from ..capability.catalog import CapabilityCatalog
 from .renderer import render
 from .resolver import PromptResolver
+from .studio_client import authored_prompt, prompt_owner_available
 from .trust import is_trusted_prompt_pack
 
 
@@ -183,7 +184,38 @@ def resolve_effective_prompt(input_data: dict[str, Any] | None) -> dict[str, Any
     base_pack = str(data.get("base_pack") or merged_profile.get("base_pack") or source_pack_id or "defaultspack").strip() or "defaultspack"
     source_chain: list[dict[str, Any]] = []
 
-    profile_candidates = _profile_prompt_candidates(prompts_dir, prompt_ids)
+    studio_prompt = authored_prompt(
+        str(data.get("profile_id") or merged_profile.get("profile_id") or ""),
+        prompt_ids,
+    )
+    if studio_prompt is not None:
+        prompt_id = str(studio_prompt.get("prompt_id") or prompt_ids[0])
+        source_chain.append(
+            _chain_entry(
+                source_type="global_contract",
+                layer="prompt_authoring_owner",
+                selected=True,
+                source="rumi.resource.prompt.studio.v1",
+                prompt_id=prompt_id,
+            )
+        )
+        return _effective_payload(
+            data,
+            prompt_id,
+            "global_contract",
+            "rumi.resource.prompt.studio.v1",
+            str(studio_prompt.get("body") or ""),
+            source_chain,
+            metadata={
+                "body_hash": studio_prompt.get("body_hash"),
+                "revision": studio_prompt.get("revision"),
+            },
+        )
+
+    owner_active = prompt_owner_available()
+    profile_candidates = (
+        [] if owner_active else _profile_prompt_candidates(prompts_dir, prompt_ids)
+    )
     profile_candidate = _select_existing_file(profile_candidates)
     if profile_candidate is not None:
         source_chain.append(

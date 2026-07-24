@@ -340,7 +340,9 @@ class AIClient:
         return provider, model_name
 
     def _settings_path(self):
-        return Path(__file__).resolve().parents[2] / "user_data" / "shared" / "frontend_settings.json"
+        from domain.frontend_settings_store import defaultspack_frontend_settings_path
+
+        return defaultspack_frontend_settings_path(Path(__file__).resolve().parents[2])
 
     def _api_routes(self):
         data = self._settings_data()

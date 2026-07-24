@@ -42,6 +42,8 @@ export function ProfileWorkspace() {
   const runtimeStatus = useAppStore((state) => state.runtimeStatus);
   const runtimeError = useAppStore((state) => state.runtimeError);
   const refreshRuntimeHealth = useAppStore((state) => state.refreshRuntimeHealth);
+  const advancedProfileId = useAppStore((state) => state.selectedStartupProfileId);
+  const setAdvancedProfileId = useAppStore((state) => state.setSelectedStartupProfileId);
   const [startupProfiles, setStartupProfiles] = useState<StartupProfilesResponseData | null>(null);
   const [workspace, setWorkspace] = useState<ApiProfileWorkspaceDetail | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
@@ -56,11 +58,21 @@ export function ProfileWorkspace() {
         const nextWorkspace = await fetchProfileWorkspace(profileId);
         setWorkspace(nextWorkspace);
         setSelectedProfileId(profileId);
+        setAdvancedProfileId(profileId);
       } else {
         const response = await fetchActiveProfileWorkspace();
         setStartupProfiles(response.startupProfiles);
         setWorkspace(response.workspace);
-        setSelectedProfileId(response.activeProfile?.profile_id ?? '');
+        const nextProfileId = response.startupProfiles.profiles.some(
+          (profile) => profile.profile_id === advancedProfileId,
+        )
+          ? advancedProfileId
+          : response.activeProfile?.profile_id || '';
+        setSelectedProfileId(nextProfileId);
+        if (nextProfileId && nextProfileId !== response.activeProfile?.profile_id) {
+          const selectedWorkspace = await fetchProfileWorkspace(nextProfileId);
+          setWorkspace(selectedWorkspace);
+        }
       }
       setError(null);
     } catch (loadError) {

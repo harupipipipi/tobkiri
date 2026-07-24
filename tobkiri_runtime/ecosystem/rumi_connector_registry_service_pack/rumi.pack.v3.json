@@ -1,0 +1,19 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.connector_registry_service","version":"1.0.0","kind":"service","display_name":"Rumi Connector Registry Service","description":"Canonical connector metadata without secret or transport ownership."},
+  "contracts":{"provides":[
+    {"id":"rumi.resource.connector.registry.v1","version":"1.0.0","provider_instance_id":"connector-registry.resource","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_connector_registry_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["connector.registry.read"]},
+    {"id":"rumi.action.connector.registry.v1","version":"1.0.0","provider_instance_id":"connector-registry.action","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_connector_registry_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["connector.registry.manage"]}
+  ],"requires":[{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[
+    {"id":"connector-registry-resource","contract_id":"rumi.resource.connector.registry.v1","loader":"python","module":"ecosystem.rumi_connector_registry_service_pack.runtime.registry","symbol":"create_connector_resource","artifact_hash":"sha256:77ae96f0f2b6b996ae63069535b0f14f597da9389685b4fa3fcba3463087cd79"},
+    {"id":"connector-registry-action","contract_id":"rumi.action.connector.registry.v1","loader":"python","module":"ecosystem.rumi_connector_registry_service_pack.runtime.registry","symbol":"create_connector_action","artifact_hash":"sha256:77ae96f0f2b6b996ae63069535b0f14f597da9389685b4fa3fcba3463087cd79"}
+  ],
+  "resources":[],
+  "storage":[{"namespace":"rumi.connector.registry","schema_version":"1.0.0","authoritative":true,"retention":"until explicit removal/profile cleanup","export_import":true}],
+  "permissions":[{"capability":"connector.registry.read","access":"read","approval_required":false},{"capability":"connector.registry.manage","access":"control","approval_required":true},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:77ae96f0f2b6b996ae63069535b0f14f597da9389685b4fa3fcba3463087cd79","build_identity":"rumi-connector-registry-service-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.external.store","defaultspack.domain.gateway_channels"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Restore one registry snapshot without enabling the legacy writer."},
+  "extensions":{"rumi.connector_registry.boundary":{"secrets":false,"transport":false,"chat":false,"company":false,"credential_ref":"opaque","secret_keys":"deny"}}
+}
+

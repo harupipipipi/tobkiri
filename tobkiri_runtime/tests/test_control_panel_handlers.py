@@ -144,6 +144,29 @@ class TestPanelGetPacks(unittest.TestCase):
             self.assertIsNone(pack["critical_changed"])
             self.assertEqual(pack["approval_issues"], ["not_approved"])
 
+    def test_approve_pack_returns_a_verified_approval_state(self):
+        class FakeApprovalManager:
+            def approve(self, pack_id):
+                self.pack_id = pack_id
+                return SimpleNamespace(
+                    success=True,
+                    error=None,
+                    status=SimpleNamespace(value="approved"),
+                )
+
+        manager = FakeApprovalManager()
+        handler = _FakeHandler()
+        with patch(
+            "core_runtime.approval_manager.get_approval_manager",
+            return_value=manager,
+        ):
+            result = handler._panel_approve_pack("pack_a")
+
+        self.assertEqual(manager.pack_id, "pack_a")
+        self.assertEqual(result["pack_id"], "pack_a")
+        self.assertTrue(result["approved"])
+        self.assertEqual(result["approval_status"], "approved")
+
 
 class TestPanelGetFlows(unittest.TestCase):
     """GET /api/panel/flows のレスポンス形式テスト"""

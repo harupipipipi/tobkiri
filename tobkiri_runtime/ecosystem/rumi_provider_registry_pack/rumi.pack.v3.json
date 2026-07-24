@@ -1,0 +1,27 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {"id": "rumi.provider_registry", "version": "1.0.0", "kind": "service", "display_name": "Rumi Provider Registry", "description": "Provider-neutral connection state, migration, rollback, and verified health evidence."},
+  "contracts": {
+    "provides": [
+      {"id": "rumi.resource.ai.provider.registry.v1", "version": "1.0.0", "provider_instance_id": "provider-registry.resource", "cardinality": "one", "security": "sensitive", "failure": "isolate", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_provider_registry_pack", "migration_id": "provider-connections-v1", "rollback_id": "provider-connections-v1"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["ai.provider.registry.read"]},
+      {"id": "rumi.action.ai.provider.registry.manage.v1", "version": "1.0.0", "provider_instance_id": "provider-registry.manage", "cardinality": "one", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_provider_registry_pack", "migration_id": "provider-connections-v1", "rollback_id": "provider-connections-v1"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["ai.provider.registry.manage"]},
+      {"id": "rumi.resource.ai.provider.health.v1", "version": "1.0.0", "provider_instance_id": "provider-registry.health", "cardinality": "many", "security": "sensitive", "failure": "isolate", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_provider_registry_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["ai.provider.health.read"]}
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {"id": "provider-registry-resource", "contract_id": "rumi.resource.ai.provider.registry.v1", "loader": "process", "module": "ecosystem.rumi_provider_registry_pack.runtime.process", "artifact_hash": "sha256:0b1c688720b296ac8c48f7b43b491a210fbfbf0eac7c13f7d77e6c81e76f8d3f"},
+    {"id": "provider-registry-manage", "contract_id": "rumi.action.ai.provider.registry.manage.v1", "loader": "process", "module": "ecosystem.rumi_provider_registry_pack.runtime.process", "artifact_hash": "sha256:0b1c688720b296ac8c48f7b43b491a210fbfbf0eac7c13f7d77e6c81e76f8d3f"},
+    {"id": "provider-registry-health", "contract_id": "rumi.resource.ai.provider.health.v1", "loader": "process", "module": "ecosystem.rumi_provider_registry_pack.runtime.health_process", "artifact_hash": "sha256:f2e3464ed467b6e85dae562a81fa3c0d5ac1c0fd338b96ff3159736f0320d537"}
+  ],
+  "resources": [],
+  "storage": [{"namespace": "rumi.provider_connections", "schema_version": "1.0.0", "authoritative": true, "retention": "until explicit deletion or profile migration rollback", "export_import": true}],
+  "permissions": [
+    {"capability": "ai.provider.registry.read", "access": "read", "approval_required": false},
+    {"capability": "ai.provider.registry.manage", "access": "control", "approval_required": true},
+    {"capability": "ai.provider.health.read", "access": "read", "approval_required": false}
+  ],
+  "provenance": {"content_hash": "sha256:bbd2df336da60bf1f79dde082eb35c3615a2ba871544e03ef6d7d70ba067f404", "build_identity": "rumi-provider-registry-pack:1.0.0", "trust_class": "local", "signature": null},
+  "migration": {"from": ["defaultspack.ai_client.provider_connections"], "compatibility_aliases": [], "compatibility_projection": "legacy_to_v3_read_only", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Remove migrated owner state and restore the owner-only source backup."},
+  "extensions": {"rumi.provider_registry.boundary": {"catalog_owner": false, "provider_execution_owner": false, "remote_health_unknown_until_verified": true, "credential_values_accepted": false}}
+}

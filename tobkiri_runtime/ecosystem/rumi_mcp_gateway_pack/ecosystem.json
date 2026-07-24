@@ -1,10 +1,10 @@
 {
   "pack_id": "rumi_mcp_gateway_pack",
   "pack_identity": "rumi:ecosystem/rumi_mcp_gateway_pack",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "metadata": {
     "name": "Rumi MCP Gateway Pack",
-    "description": "Optional declarative catalog and gateway profile for unsupported MCP server discovery, namespace routing, templates, registry metadata, and safety policy.",
+    "description": "Namespace-isolated MCP tool-call adapter plus declarative discovery, routing, template, registry, and safety metadata.",
     "author": "Rumi AI Team",
     "license": "MIT",
     "tags": [
@@ -16,9 +16,9 @@
     ],
     "required_secrets": [],
     "network_policy": "none_by_default",
-    "executable_connector_code": false,
+    "executable_connector_code": true,
     "dependency_notes": {
-      "defaultspack": "Uses defaultspack MCP connect/list, registry, approval, and tool execution as the executable boundary."
+      "defaultspack": "Finite connection-runtime compatibility source until Wave 10; approval and invocation are globally brokered."
     },
     "optional_integrations": [
       {

@@ -1,0 +1,11 @@
+{
+  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.file_mutation","version":"1.0.0","kind":"service","display_name":"Rumi File Mutation","description":"Receipt-gated workspace-jailed atomic file mutations."},
+  "contracts":{"provides":[{"id":"rumi.service.file.mutate.v1","version":"1.0.0","provider_instance_id":"file-mutation.service","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["file.mutate"]}],"requires":[{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"file-mutation","contract_id":"rumi.service.file.mutate.v1","loader":"python","module":"ecosystem.rumi_file_mutation_pack.runtime.mutate","symbol":"create_file_mutation_operation","artifact_hash":"sha256:eb699858cac86f4f2715981fe91f76c005200990427d9843ba6952a902292074"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"file.mutate","access":"write","approval_required":true},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:eb699858cac86f4f2715981fe91f76c005200990427d9843ba6952a902292074","build_identity":"rumi-file-mutation-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.domain.coding.file_ops.write","defaultspack.blocks.coding.file_write","defaultspack.blocks.coding.file_create","defaultspack.blocks.coding.file_delete"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Select the pinned prior mutation adapter; use caller-held checkpoints for content rollback."},
+  "extensions":{"rumi.file_mutation.boundary":{"read":false,"execute":false,"absolute_paths":false,"symlink_escape":"deny","authority_receipt":"required","stale_hash":"optional_fail_closed","atomic_replace":true}}
+}
+

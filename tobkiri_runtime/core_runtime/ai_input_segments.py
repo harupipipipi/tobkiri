@@ -16,7 +16,9 @@ if str(_DEFAULTSPACK_IMPORT_ROOT) not in sys.path:
     sys.path.insert(0, str(_DEFAULTSPACK_IMPORT_ROOT))
 
 from ecosystem.defaultspack.domain.prompt.effective import resolve_effective_prompt  # noqa: E402
-from ecosystem.defaultspack.domain.tool.registry import ToolRegistry  # noqa: E402
+from ecosystem.defaultspack.domain.tool.catalog_contract_client import (  # noqa: E402
+    ContractToolCatalog as ToolRegistry,
+)
 from ecosystem.defaultspack.domain.tool.schema_adapter import (  # noqa: E402
     adapt_tool_definition,
     tool_name_from_definition,

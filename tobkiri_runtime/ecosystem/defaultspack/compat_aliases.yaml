@@ -2030,76 +2030,6 @@ aliases:
     reason: legacy caller compatibility
     remove_after: v2.4
     replacement: defaultspack.prompt.active
-  defaults.prompt.compact.prompt:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.compact_prompt
-  defaults.prompt.compact_prompt:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.compact_prompt
-  defaults.prompt.convert:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.convert
-  defaults.prompt.create:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.create
-  defaults.prompt.create.override:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.create_override
-  defaults.prompt.create_override:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.create_override
-  defaults.prompt.delete:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.delete
-  defaults.prompt.diff:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.diff
-  defaults.prompt.editor.load:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.editor_load
-  defaults.prompt.editor.save:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.editor_save
-  defaults.prompt.editor_load:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.editor_load
-  defaults.prompt.editor_save:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.editor_save
-  defaults.prompt.lint.prompt:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.lint_prompt
-  defaults.prompt.lint_prompt:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.lint_prompt
   defaults.prompt.list:
     owner: prompt
     reason: legacy caller compatibility
@@ -2115,16 +2045,6 @@ aliases:
     reason: legacy caller compatibility
     remove_after: v2.3
     replacement: defaultspack.prompt.load_effective
-  defaults.prompt.preview.toggle:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.preview_toggle
-  defaults.prompt.preview_toggle:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.preview_toggle
   defaults.prompt.render:
     owner: prompt
     reason: legacy caller compatibility
@@ -2140,46 +2060,16 @@ aliases:
     reason: legacy caller compatibility
     remove_after: v2.3
     replacement: defaultspack.prompt.resolve_for_conversation
-  defaults.prompt.rollback:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.rollback
-  defaults.prompt.studio_test:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.test
   defaults.prompt.system.get:
     owner: prompt
     reason: legacy caller compatibility
     remove_after: v2.3
     replacement: defaultspack.prompt.system_get
-  defaults.prompt.system.set:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.system_set
   defaults.prompt.system_get:
     owner: prompt
     reason: legacy caller compatibility
     remove_after: v2.3
     replacement: defaultspack.prompt.system_get
-  defaults.prompt.system_set:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.system_set
-  defaults.prompt.test:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.test
-  defaults.prompt.toggle:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.toggle
   defaults.prompt.trace.get:
     owner: prompt
     reason: legacy caller compatibility
@@ -2200,11 +2090,6 @@ aliases:
     reason: legacy caller compatibility
     remove_after: v2.4
     replacement: defaultspack.prompt.trace_list
-  defaults.prompt.update:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.3
-    replacement: defaultspack.prompt.update
   defaults.prompt.validate.template:
     owner: prompt
     reason: legacy caller compatibility
@@ -2215,11 +2100,6 @@ aliases:
     reason: legacy caller compatibility
     remove_after: v2.3
     replacement: defaultspack.prompt.validate_template
-  defaults.prompt.versions:
-    owner: prompt
-    reason: legacy caller compatibility
-    remove_after: v2.4
-    replacement: defaultspack.prompt.versions
   defaults.recording.capture:
     owner: recording
     reason: legacy caller compatibility

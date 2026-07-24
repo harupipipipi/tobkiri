@@ -344,6 +344,9 @@ class ToolExecutor:
             )
             if approval_error is not None:
                 return approval_error
+            consume_error = self._consume_deferred_tool_approval(context)
+            if consume_error is not None:
+                return consume_error
             response = executor.execute(principal_id, request)
             if getattr(response, "error_type", "") == "caller_requires_denied":
                 logger.warning(
@@ -367,37 +370,18 @@ class ToolExecutor:
                 pack_id, _, _ = qualified_name.partition(":")
                 if pack_id and self._dev_auto_approve_pack(pack_id):
                     response = executor.execute(principal_id, request)
-            fallback = self._fallback_function_call_if_first_party_unapproved(
-                tool_def,
-                request,
-                context,
-                response,
-            )
-            if fallback is not None:
-                return fallback
-            denied_fallback = self._fallback_local_tool_if_first_party_capability_denied(
-                tool_def,
-                request,
-                context,
-                response,
-            )
-            if denied_fallback is not None:
-                return denied_fallback
-            fallback_tool = self._local_tool_fallback_for_capability_response(response, request)
-            if fallback_tool:
-                return self._execute_local(fallback_tool, request.get("args") or {}, context)
         except Exception as exc:
             return {
                 "result": "Capability execution failed: {}".format(exc),
                 "is_error": True,
                 "widget": None,
             }
-        result = self._tool_response_from_capability(response, tool_def, request.get("args") or {}, context)
-        if isinstance(result, dict) and not result.get("is_error"):
-            consume_error = self._consume_deferred_tool_approval(context)
-            if consume_error is not None:
-                return consume_error
-        return result
+        return self._tool_response_from_capability(
+            response,
+            tool_def,
+            request.get("args") or {},
+            context,
+        )
 
     @staticmethod
     def _function_call_pack_approval_status(capability_executor, pack_id):
@@ -442,6 +426,8 @@ class ToolExecutor:
     def _consume_deferred_tool_approval(self, context):
         if not isinstance(context, dict):
             return None
+        if context.get("_tool_server_approval_consumed") is True:
+            return None
         token = str(context.get("_tool_server_approval_token") or "").strip()
         operation = str(context.get("_tool_server_approval_operation") or "").strip()
         args_hash = str(context.get("_tool_server_approval_args_hash") or "").strip()
@@ -458,6 +444,7 @@ class ToolExecutor:
             conversation_id=conversation_id,
         )
         if verification.valid:
+            context["_tool_server_approval_consumed"] = True
             return None
         return {
             "result": verification.message or "approval token is invalid",
@@ -500,117 +487,31 @@ class ToolExecutor:
         return None
 
     def _fallback_local_tool_if_first_party_capability_denied(self, tool_def, request, context, response):
-        if request.get("type") != "function.call":
-            return None
-        if bool(getattr(response, "success", False)):
-            return None
-        error_type = getattr(response, "error_type", "")
-        if error_type not in {"caller_requires_denied", "pack_not_approved", "requires_denied"}:
-            return None
-        qualified_name = str(request.get("qualified_name") or "")
-        pack_id, _, function_id = qualified_name.partition(":")
-        local_tool = self._first_party_browser_computer_tool_for_function(pack_id, function_id)
-        if local_tool not in {"browser_computer", "browser_use", "computer_use"}:
-            return None
-        if error_type == "pack_not_approved":
-            return _pack_not_approved_tool_response(
-                tool_def,
-                response,
-                include_widget=not (isinstance(context, dict) and context.get("user_requested_computer_use")),
-            )
-        if _requires_approval(tool_def) and not _context_has_tool_server_approval(context):
-            return None
-        return self._execute_local_with_tool_def(local_tool, request.get("args") or {}, context, tool_def)
+        # Capability denials are terminal. Re-entering through a local adapter
+        # would bypass the plan, policy snapshot, and exact invocation approval.
+        return None
 
     @staticmethod
     def _first_party_browser_computer_tool_for_function(pack_id, function_id):
-        if pack_id != "rumi_default_tools_pack":
-            return None
-        return {
-            "browser_computer": "browser_computer",
-            "browser_use": "browser_use",
-            "computer_use": "computer_use",
-        }.get(function_id)
+        # Pack identity is not an execution capability. Browser/computer
+        # authority is resolved from the Tool manifest and Capability Plan.
+        del pack_id, function_id
+        return None
 
     @staticmethod
     def _local_tool_fallback_for_capability_response(response, request):
-        if bool(getattr(response, "success", False)):
-            return None
-        if request.get("type") != "function.call":
-            return None
-        if getattr(response, "error_type", None) not in {"function_not_found", "function_registry_unavailable"}:
-            return None
-        qualified_name = str(request.get("qualified_name") or "")
-        return {
-            "defaultspack:tool_calculator": "calculator",
-            "rumi_default_tools_pack:calculator": "calculator",
-        }.get(qualified_name)
+        # Registry failures must remain failures instead of silently selecting
+        # an implementation outside the immutable capability snapshot.
+        return None
 
     @staticmethod
     def _fallback_function_call_if_first_party_unapproved(tool_def, request, context, response):
-        if request.get("type") != "function.call":
-            return None
-        if bool(getattr(response, "success", False)):
-            return None
-        error_type = getattr(response, "error_type", "")
-        permission_denied = error_type == "permission_denied"
-        if error_type not in {
-            "function_not_found",
-            "function_registry_unavailable",
-            "pack_not_approved",
-        } and not (
-            error_type in {"caller_requires_denied", "requires_denied"}
-            and _context_has_tool_server_approval(context)
-        ) and not permission_denied:
-            return None
-        qualified_name = str(request.get("qualified_name") or "")
-        pack_id, _, function_id = qualified_name.partition(":")
-        if pack_id not in {"defaultspack", "rumi_default_tools_pack"} or not function_id:
-            return None
-        if _is_explicitly_untrusted_tool(tool_def if isinstance(tool_def, dict) else {}):
-            return None
-        local_tool = ToolExecutor._first_party_local_tool_for_function(pack_id, function_id)
-        if local_tool:
-            if permission_denied:
-                if local_tool != "todo" or not _context_has_tool_server_approval(context):
-                    return None
-            if local_tool in {"web_search", "reddit_search"} and error_type != "pack_not_approved":
-                return None
-            if _requires_approval(tool_def) and not _context_has_tool_server_approval(context):
-                return None
-            return ToolExecutor()._execute_local_with_tool_def(local_tool, request.get("args") or {}, context, tool_def)
-        if permission_denied:
-            if not (
-                (pack_id, function_id) == ("rumi_default_tools_pack", "rumi_api")
-                and tool_server_approval_context_is_internal(context)
-            ):
-                return None
-        if error_type == "pack_not_approved" and not _context_has_tool_server_approval(context):
-            return None
-        if not ToolExecutor._allows_direct_first_party_function_fallback(pack_id, function_id):
-            return None
-        try:
-            from core_runtime.pack_function_runtime import invoke_pack_function
-
-            fallback_context = dict(context or {}) if isinstance(context, dict) else {}
-            fallback_context.update(_function_call_context(fallback_context, tool_def))
-            output = invoke_pack_function(
-                pack_id,
-                function_id,
-                args=request.get("args") or {},
-                context=fallback_context,
-            )
-        except Exception:
-            return None
-        return ToolExecutor._tool_response_from_pack_function_output(output)
+        # A rejected or unavailable function call cannot be retried through a
+        # second execution path. The caller must create a new Capability Plan.
+        return None
 
     @staticmethod
     def _first_party_local_tool_for_function(pack_id, function_id):
-        if pack_id == "rumi_default_tools_pack":
-            return {
-                "calculator": "calculator",
-                "subagent": "subagent",
-            }.get(function_id)
         if pack_id == "defaultspack":
             return {
                 "tool_calculator": "calculator",
@@ -691,14 +592,9 @@ class ToolExecutor:
                 return executor
         except Exception:
             pass
-        try:
-            from core_runtime.capability_executor import CapabilityExecutor
-        except Exception as exc:
-            raise RuntimeError("CapabilityExecutor is not available: {}".format(exc)) from exc
-        executor = CapabilityExecutor()
-        if callable(getattr(executor, "initialize", None)):
-            executor.initialize()
-        return executor
+        raise RuntimeError(
+            "CapabilityExecutor is not bound; implicit executor creation is forbidden"
+        )
 
     @staticmethod
     def _ensure_shared_function_registered(qualified_name):
@@ -717,8 +613,12 @@ class ToolExecutor:
 
     @staticmethod
     def _load_pack_functions_into_registry(registry):
+        from core_runtime.resolved_profile_scope import effective_pack_ids
+
         ecosystem_dir = Path(__file__).resolve().parents[3]
-        for pack_root in sorted(ecosystem_dir.iterdir()):
+        effective = effective_pack_ids()
+        for pack_id in sorted(effective):
+            pack_root = ecosystem_dir / pack_id
             if not pack_root.is_dir() or not (pack_root / "ecosystem.json").exists():
                 continue
             try:
@@ -845,60 +745,25 @@ class ToolExecutor:
         }
 
     def _execute_dynamic(self, tool_def, arguments, context):
-        """
-        動的ツール実行。handler_code（Python 文字列）を exec() で実行する。
-        handler_code には def handler(arguments, context): ... が定義されている想定。
-        P1-2: __builtins__ を制限付きの安全なセットに差し替え。
-        """
-        handler_code = tool_def.get("handler_code", "")
-        if not handler_code:
-            return {
-                "result": "Dynamic tool '{}' has no handler_code".format(
-                    tool_def.get("name", "unknown")
-                ),
-                "is_error": True,
-                "widget": None,
-            }
+        """Permanently reject retired in-process Python Tool definitions."""
 
-        # P1-2: サンドボックス化 — 危険なビルトインを除去した制限付き globals
-        namespace = {"__builtins__": dict(_SAFE_BUILTINS)}
-        try:
-            exec(handler_code, namespace)
-        except Exception as exc:
-            return {
-                "result": "Failed to load handler_code: {}".format(exc),
-                "is_error": True,
-                "widget": None,
-            }
-
-        handler_fn = namespace.get("handler")
-        if handler_fn is None or not callable(handler_fn):
-            return {
-                "result": "handler_code does not define a callable 'handler' function",
-                "is_error": True,
-                "widget": None,
-            }
-
-        try:
-            result = handler_fn(arguments, context)
-        except Exception as exc:
-            return {
-                "result": "Dynamic tool execution failed: {}".format(exc),
-                "is_error": True,
-                "widget": None,
-            }
-
-        # result が dict ならそのまま返す、str なら wrap する
-        if isinstance(result, dict):
-            return {
-                "result": result.get("result", str(result)),
-                "is_error": result.get("is_error", False),
-                "widget": result.get("widget"),
-            }
+        del arguments, context
         return {
-            "result": str(result) if result is not None else "",
-            "is_error": False,
-            "widget": None,
+            "result": (
+                "Dynamic Python Tool '{}' is retired and cannot execute. "
+                "Migrate it to a reviewed pack, MCP server, or connector."
+            ).format(tool_def.get("name", tool_def.get("tool_id", "unknown"))),
+            "is_error": True,
+            "widget": {
+                "type": "tool_migration_required",
+                "migration_required": True,
+                "supported_targets": [
+                    "reviewed_pack",
+                    "mcp_server",
+                    "connector",
+                ],
+            },
+            "code": "MIGRATION_REQUIRED",
         }
 
     def _execute_handler(self, tool_def, arguments, context):
@@ -921,10 +786,6 @@ class ToolExecutor:
             return approval_error
 
         def finish_handler_result(result):
-            if isinstance(result, dict) and not result.get("is_error"):
-                consume_error = self._consume_deferred_tool_approval(next_context)
-                if consume_error is not None:
-                    return consume_error
             return result
 
         if _truthy(policy.get("yolo_mode")):
@@ -936,6 +797,9 @@ class ToolExecutor:
         elif _requires_approval(tool_def):
             return _approval_required_tool_response(tool_def, next_arguments, next_context)
 
+        consume_error = self._consume_deferred_tool_approval(next_context)
+        if consume_error is not None:
+            return consume_error
         module_name, attr_name = handler.split(":", 1)
         try:
             module = importlib.import_module(module_name)
@@ -980,11 +844,10 @@ class ToolExecutor:
         previous = getattr(self, "_current_local_tool_def", None)
         self._current_local_tool_def = tool_def
         try:
+            consume_error = self._consume_deferred_tool_approval(context)
+            if consume_error is not None:
+                return consume_error
             result = self._execute_local(tool_name, arguments, context)
-            if isinstance(result, dict) and not result.get("is_error"):
-                consume_error = self._consume_deferred_tool_approval(context)
-                if consume_error is not None:
-                    return consume_error
             return result
         finally:
             if had_previous:
@@ -1124,52 +987,6 @@ class ToolExecutor:
             if isinstance(result.get("recovery"), dict):
                 output["recovery"] = result.get("recovery")
             return output
-        elif tool_name == "browser_companion":
-            from ecosystem.rumi_default_tools_pack.domain.tool.browser_companion import BrowserCompanionController
-
-            action = str(arguments.get("action") or "session")
-            payload = {key: value for key, value in (arguments or {}).items() if key != "action"}
-            current_tool_def = explicit_tool_def if isinstance(explicit_tool_def, dict) else {
-                "tool_id": tool_name,
-                "name": tool_name,
-                "requires_approval": True,
-                "risk": "high",
-                "capability_grants": ["browser.control", "computer.control"],
-            }
-            next_context, approval_error = _context_with_tool_approval_token(context, current_tool_def, arguments)
-            if approval_error is not None:
-                return approval_error
-            result = BrowserCompanionController(
-                artifact_root=_conversation_browser_companion_artifact_root(next_context),
-            ).run(
-                action,
-                payload,
-                context=next_context if isinstance(next_context, dict) else {},
-            )
-            is_error = bool(result.get("is_error"))
-            summary = "{} {} {}".format(
-                tool_name,
-                result.get("action", "action"),
-                "failed" if is_error else "completed",
-            )
-            if result.get("reason"):
-                summary += ": {}".format(result.get("reason"))
-            if result.get("path"):
-                summary += "; artifact: {}".format(result.get("path"))
-            return {
-                "result": summary,
-                "is_error": is_error,
-                "widget": {"type": tool_name, **result},
-            }
-        elif tool_name == "todo":
-            from ecosystem.rumi_default_tools_pack.domain.tool.todo import TodoController
-
-            result = TodoController().run(arguments, context if isinstance(context, dict) else {})
-            return {
-                "result": result.get("summary", "todo updated"),
-                "is_error": False,
-                "widget": {"type": "todo", **result},
-            }
         elif tool_name in {"task_board", "tool_task_board"}:
             from domain.tool.task_board import TaskBoardController
 
@@ -1187,16 +1004,6 @@ class ToolExecutor:
                 "result": result.get("summary", "task board agent session updated"),
                 "is_error": False,
                 "widget": {"type": "task_board_agent_session", **result},
-            }
-        elif tool_name == "subagent":
-            from ecosystem.rumi_default_tools_pack.domain.tool.subagent import SubagentController
-
-            result = SubagentController().run(arguments, context if isinstance(context, dict) else {})
-            is_error = bool(result.get("is_error"))
-            return {
-                "result": result.get("summary", "subagent completed"),
-                "is_error": is_error,
-                "widget": {"type": "subagent", **result},
             }
         elif tool_name == "calculator":
             expression = arguments.get("expression", "")

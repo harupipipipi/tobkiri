@@ -58,7 +58,7 @@ ALLOWED_KINDS = frozenset({"data", "python", "binary"})
 # --- Security: subprocess environment whitelist (A-7) ---
 SUBPROCESS_ENV_WHITELIST = frozenset({
     "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE",
-    "TERM", "PYTHONPATH", "PYTHONHASHSEED",
+    "TERM", "PYTHONPATH", "PYTHONHASHSEED", "PYTHONDONTWRITEBYTECODE",
     "TMPDIR", "TMP", "TEMP",
 })
 

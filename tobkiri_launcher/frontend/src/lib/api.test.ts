@@ -5,6 +5,7 @@ import {
   addPackToStartupProfile,
   apiFetch,
   bootstrapPanelSession,
+  clearApiPrefetchCache,
   clearStartupProfileNodeOverride,
   compileStartupProfileGraphPreview,
   compileStartupProfileAiInputPreview,
@@ -20,6 +21,7 @@ import {
   isDesktopShellAvailable,
   launchDefaultspackDesktop,
   openExternalUrl,
+  prefetchApiGet,
   sendToBackground,
   setStartupProfileNodeOverride,
   showAppWindow,
@@ -220,6 +222,7 @@ function installFetchMock(): void {
 }
 
 beforeEach(() => {
+  clearApiPrefetchCache();
   lastFetchInit = undefined;
   lastFetchUrl = '';
   lastReplacedUrl = '';
@@ -232,6 +235,24 @@ beforeEach(() => {
   tauriDesktopLaunchCount = 0;
   installBrowser('http://127.0.0.1:8765/panel/');
   installFetchMock();
+});
+
+test('prefetchApiGet warms exactly the next matching page request', async () => {
+  let requestCount = 0;
+  fetchHandler = async () => {
+    requestCount += 1;
+    return new Response(JSON.stringify({data: {ok: true}, success: true}), {
+      headers: {'Content-Type': 'application/json'},
+      status: 200,
+    });
+  };
+
+  await prefetchApiGet('/api/panel/flows');
+  await apiFetch('/api/panel/flows');
+  assert.equal(requestCount, 1);
+
+  await apiFetch('/api/panel/flows');
+  assert.equal(requestCount, 2);
 });
 
 test('bootstrapPanelSession exchanges code and strips it from the URL', async () => {

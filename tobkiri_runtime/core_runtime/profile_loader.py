@@ -33,12 +33,20 @@ class CapabilityProfileLoader:
         approval_manager: Any = None,
         ecosystem_dir: Optional[str] = None,
         shared_profiles_dir: Optional[str | Path] = None,
+        effective_pack_ids: Optional[Iterable[str]] = None,
+        continue_on_invalid: bool = False,
     ) -> None:
         base_dir = Path(__file__).resolve().parent.parent
         self.registry = registry
         self.interface_registry = interface_registry
         self.approval_manager = approval_manager
         self.ecosystem_dir = ecosystem_dir
+        self.effective_pack_ids = (
+            frozenset(str(item) for item in effective_pack_ids)
+            if effective_pack_ids is not None
+            else None
+        )
+        self.continue_on_invalid = continue_on_invalid
         self.shared_profiles_dir = (
             Path(shared_profiles_dir)
             if shared_profiles_dir is not None
@@ -122,7 +130,8 @@ class CapabilityProfileLoader:
                 pack_id=pack_id,
                 path=str(profile_file),
             )
-            raise ProfileDiscoveryError(f"{profile_file}: {exc}") from exc
+            if not self.continue_on_invalid:
+                raise ProfileDiscoveryError(f"{profile_file}: {exc}") from exc
 
     def _register_profile(
         self,
@@ -190,20 +199,36 @@ class CapabilityProfileLoader:
             discovered.update(packs)
         for loc in self._discover_installed_packs():
             discovered.setdefault(loc.pack_id, loc)
-        return list(discovered.items())
+        return [
+            (pack_id, pack_info)
+            for pack_id, pack_info in discovered.items()
+            if self.effective_pack_ids is None
+            or pack_id in self.effective_pack_ids
+        ]
 
     def _discover_installed_packs(self) -> List[Any]:
-        from .paths import discover_pack_locations
+        from .paths import discover_pack_locations, resolve_pack_locations
 
         try:
+            if self.effective_pack_ids is not None:
+                return list(
+                    resolve_pack_locations(
+                        self.effective_pack_ids,
+                        self.ecosystem_dir,
+                    )
+                )
             return list(discover_pack_locations(self.ecosystem_dir))
         except Exception:
             return []
 
     def _load_registry(self) -> Any:
-        from .paths import discover_pack_locations
+        from .paths import discover_pack_locations, resolve_pack_locations
 
-        locations = discover_pack_locations(self.ecosystem_dir)
+        locations = (
+            resolve_pack_locations(self.effective_pack_ids, self.ecosystem_dir)
+            if self.effective_pack_ids is not None
+            else discover_pack_locations(self.ecosystem_dir)
+        )
         registry = type(
             "DiscoveredPackRegistry",
             (),

@@ -1,0 +1,210 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "rumi.prompt_studio",
+    "version": "1.0.0",
+    "kind": "service",
+    "display_name": "Rumi Prompt Studio",
+    "description": "Authoritative local prompt authoring, versioning, migration, and isolated UI."
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.resource.prompt.studio.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "prompt-studio.resource",
+        "cardinality": "one",
+        "security": "sensitive",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "rumi_prompt_studio_pack",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["profile.prompt.author.read"]
+      },
+      {
+        "id": "rumi.action.prompt.author.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "prompt-studio.author",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "rumi_prompt_studio_pack",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["profile.prompt.author.write"]
+      },
+      {
+        "id": "rumi.action.prompt.version.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "prompt-studio.version",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "rumi_prompt_studio_pack",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["profile.prompt.author.write"]
+      },
+      {
+        "id": "rumi.action.prompt.test.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "prompt-studio.test",
+        "cardinality": "one",
+        "security": "sensitive",
+        "failure": "isolate",
+        "lifecycle": {"introduced": "1.0.0", "deprecated": false},
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["profile.prompt.author.read"]
+      },
+      {
+        "id": "rumi.action.prompt.migrate.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "prompt-studio.migrate",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false,
+          "data_owner": "rumi_prompt_studio_pack",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "isolation": "process",
+        "required_capabilities": ["profile.prompt.author.migrate"]
+      }
+    ],
+    "requires": [
+      {
+        "id": "rumi.resource.profile.workspace.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": true
+      },
+      {
+        "id": "rumi.event.audit.recorded.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "fanout",
+        "optional": true
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "id": "prompt-studio-runtime",
+      "contract_id": "rumi.action.prompt.author.v1",
+      "loader": "process",
+      "module": "ecosystem.rumi_prompt_studio_pack.runtime.process",
+      "artifact_hash": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"
+    },
+    {
+      "id": "prompt-studio-resource",
+      "contract_id": "rumi.resource.prompt.studio.v1",
+      "loader": "process",
+      "module": "ecosystem.rumi_prompt_studio_pack.runtime.process",
+      "artifact_hash": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"
+    },
+    {
+      "id": "prompt-studio-version",
+      "contract_id": "rumi.action.prompt.version.v1",
+      "loader": "process",
+      "module": "ecosystem.rumi_prompt_studio_pack.runtime.process",
+      "artifact_hash": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"
+    },
+    {
+      "id": "prompt-studio-test",
+      "contract_id": "rumi.action.prompt.test.v1",
+      "loader": "process",
+      "module": "ecosystem.rumi_prompt_studio_pack.runtime.process",
+      "artifact_hash": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"
+    },
+    {
+      "id": "prompt-studio-migrate",
+      "contract_id": "rumi.action.prompt.migrate.v1",
+      "loader": "process",
+      "module": "ecosystem.rumi_prompt_studio_pack.runtime.process",
+      "artifact_hash": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"
+    }
+  ],
+  "resources": [
+    {
+      "id": "catalog/prompt_studio_prompt_library.yaml",
+      "kind": "prompt.library",
+      "content_hash": "sha256:75420fa0dc4632836135df7fe98686b5579beb822bcea5c3e447b6aa6a48627e"
+    }
+  ],
+  "storage": [
+    {
+      "namespace": "rumi.prompt_studio",
+      "schema_version": "1.0.0",
+      "authoritative": true,
+      "retention": "profile lifetime plus explicit export/backup retention",
+      "export_import": true
+    }
+  ],
+  "permissions": [
+    {"capability": "profile.prompt.author.read", "access": "read", "approval_required": false},
+    {"capability": "profile.prompt.author.write", "access": "write", "approval_required": true},
+    {"capability": "profile.prompt.author.migrate", "access": "control", "approval_required": true}
+  ],
+  "provenance": {
+    "content_hash": "sha256:4bb2b96ba25bfcdb335d86a543fe8c6aba0069d1b0740e385f42c434d721b5fa",
+    "build_identity": "rumi-prompt-studio-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  },
+  "migration": {
+    "from": ["defaultspack.prompt_studio", "defaultspack.prompt_editor"],
+    "compatibility_aliases": [
+      {
+        "legacy_id": "/api/prompts/*",
+        "target_contract": "rumi.action.prompt.author.v1",
+        "target_revision": "sha256:4bb2b96ba25bfcdb335d86a543fe8c6aba0069d1b0740e385f42c434d721b5fa",
+        "owner": "rumi_prompt_studio_pack",
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      },
+      {
+        "legacy_id": "prompt_editor_load",
+        "target_contract": "rumi.resource.prompt.studio.v1",
+        "target_revision": "sha256:4bb2b96ba25bfcdb335d86a543fe8c6aba0069d1b0740e385f42c434d721b5fa",
+        "owner": "rumi_prompt_studio_pack",
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      }
+    ],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Remove the owner marker and new store; legacy source files remain untouched and the migration backup is retained."
+  },
+  "extensions": {
+    "rumi.prompt_studio.security": {
+      "local_only": true,
+      "csrf_required": true,
+      "capability_scoped": true,
+      "optimistic_concurrency": true,
+      "audit_redaction": true
+    }
+  }
+}

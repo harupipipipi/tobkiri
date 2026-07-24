@@ -68,26 +68,26 @@ class TestExtractDependencies:
         result = extract_dependencies(pack)
         assert set(result) == {"pack_m", "pack_n"}
 
-    def test_extract_connectivity_requires(self):
-        """connectivity.requires がある場合"""
+    def test_ignores_connectivity_contract_requirements(self):
+        """connectivity.requires は Pack 依存ではなく契約として扱う。"""
         pack = {
             "connectivity": {
-                "requires": ["pack_p", "pack_q"]
+                "requires": ["rumi.action.browser.host.v1", "rumi.resource.workspace.v1"]
             }
         }
         result = extract_dependencies(pack)
-        assert result == ["pack_p", "pack_q"]
+        assert result == []
 
-    def test_extract_all_sources_combined(self):
-        """3 ソース全てがある場合に重複排除されること"""
+    def test_extract_all_pack_dependency_sources_combined(self):
+        """明示的な Pack 依存を重複なく結合する。"""
         pack = {
             "depends_on": [{"pack_id": "pack_a"}, {"pack_id": "pack_b"}],
             "dependencies": {"pack_b": {}, "pack_c": {}},
-            "connectivity": {"requires": ["pack_c", "pack_d"]},
+            "connectivity": {"requires": ["rumi.action.example.v1"]},
         }
         result = extract_dependencies(pack)
         # 出現順保持、重複なし
-        assert result == ["pack_a", "pack_b", "pack_c", "pack_d"]
+        assert result == ["pack_a", "pack_b", "pack_c"]
 
     def test_extract_empty(self):
         """全てが空 / None の場合に空リストが返ること"""

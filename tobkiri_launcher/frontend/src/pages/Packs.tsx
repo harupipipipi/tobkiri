@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useAppStore, type Pack } from '@/src/store';
 import { useT } from '@/src/lib/i18n';
 import { Input } from '@/src/components/ui/Input';
@@ -7,7 +7,8 @@ import { Badge } from '@/src/components/ui/Badge';
 import { Switch } from '@/src/components/ui/Switch';
 import { Card } from '@/src/components/ui/Card';
 import { panelRoutes } from '@/src/lib/routes';
-import { AlertTriangle, Search, Package, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Search, Package, ShieldCheck } from 'lucide-react';
+import { Button } from '@/src/components/ui/Button';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning';
@@ -31,31 +32,42 @@ function approvalIssueText(pack: Pack): string {
   return pack.approvalReason || pack.approvalIssues[0] || 'Pack approval needs attention.';
 }
 
+function PackListSkeleton() {
+  return (
+    <div className="grid gap-3" role="status" aria-label="Loading packs">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="h-28 animate-pulse rounded-xl border border-border bg-bg-card" />
+      ))}
+    </div>
+  );
+}
+
 export function Packs() {
   const t = useT();
   const packs = useAppStore(state => state.packs);
-  const isLoading = useAppStore(state => state.isLoading);
-  const apiError = useAppStore(state => state.apiError);
+  const packsLoading = useAppStore(state => state.packsLoading);
+  const packsError = useAppStore(state => state.packsError);
+  const packTogglePending = useAppStore(state => state.packTogglePending);
   const loadPacks = useAppStore(state => state.loadPacks);
+  const approvePack = useAppStore(state => state.approvePack);
   const togglePack = useAppStore(state => state.togglePack);
   const [search, setSearch] = useState('');
+  const [approvingPackId, setApprovingPackId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadPacks();
+    void loadPacks();
   }, [loadPacks]);
 
-  if (isLoading && packs.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 animate-spin text-accent" />
-          <span className="text-sm text-text-muted">{t('packs.loading')}</span>
-        </div>
-      </div>
-    );
-  }
-
   const filteredPacks = packs.filter(pack => pack.name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleApprove = async (packId: string) => {
+    setApprovingPackId(packId);
+    try {
+      await approvePack(packId);
+    } finally {
+      setApprovingPackId(null);
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto page-enter">
@@ -66,12 +78,12 @@ export function Packs() {
           <p className="mt-1 text-sm text-text-muted">Manage installed packs and their capabilities.</p>
         </div>
 
-        {apiError ? (
+        {packsError ? (
           <InlineLoadError
             title="Packs could not be loaded"
-            message={apiError}
+            message={packsError}
             onRetry={() => void loadPacks()}
-            retrying={isLoading}
+            retrying={packsLoading}
             stale={packs.length > 0}
           />
         ) : null}
@@ -89,7 +101,9 @@ export function Packs() {
         </div>
 
         {/* Pack list */}
-        {apiError && packs.length === 0 ? null : filteredPacks.length === 0 ? (
+        {packsLoading && packs.length === 0 ? (
+          <PackListSkeleton />
+        ) : packsError && packs.length === 0 ? null : filteredPacks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-bg-hover">
               <Package className="h-5 w-5 text-text-muted" />
@@ -138,10 +152,21 @@ export function Packs() {
                       </div>
                     )}
                   </Link>
-                  <div className="mx-2 flex min-h-11 min-w-11 shrink-0 items-center justify-center">
+                  <div className="mx-2 flex min-h-11 shrink-0 items-center gap-2">
+                    {!pack.approved ? (
+                      <Button
+                        size="sm"
+                        onClick={() => void handleApprove(pack.id)}
+                        loading={approvingPackId === pack.id}
+                        disabled={approvingPackId !== null}
+                      >
+                        Approve
+                      </Button>
+                    ) : null}
                     <Switch
                       checked={pack.enabled}
-                      onCheckedChange={() => togglePack(pack.id)}
+                      disabled={Boolean(packTogglePending[pack.id])}
+                      onCheckedChange={() => { void togglePack(pack.id); }}
                       aria-label={`Toggle ${pack.name}`}
                       className="relative after:absolute after:-inset-2.5"
                     />

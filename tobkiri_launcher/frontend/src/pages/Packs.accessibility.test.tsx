@@ -3,7 +3,7 @@ import test from 'node:test';
 import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
-import {MemoryRouter, Route, Routes} from 'react-router-dom';
+import {MemoryRouter, Route, Routes} from 'react-router';
 
 import {type Pack, useAppStore} from '@/src/store';
 import {Packs} from './Packs';
@@ -45,6 +45,7 @@ test('Packs provides independent semantic detail and switch actions', async () =
     loadPacks: async () => {},
     togglePack: async () => {
       toggleCount += 1;
+      return true;
     },
   });
   const container = document.querySelector<HTMLElement>('#root');

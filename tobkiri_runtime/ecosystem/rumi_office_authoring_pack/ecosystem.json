@@ -35,6 +35,9 @@
     "consumes_existing_sources_only": true,
     "output_effect": "draft_and_handoff_only",
     "defaultspack_promotion_eligible": false,
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
     "owner_surfaces": [
       "slide_deck_authoring_contract",
       "slide_storyboard",
@@ -170,5 +173,18 @@
     "rumi_office_authoring_pack.speaker_notes_contract",
     "rumi_office_authoring_pack.spreadsheet_workbook_authoring_contract",
     "rumi_office_authoring_pack.sheet_tab_plan"
-  ]
+  ],
+  "resources": [
+    {
+      "id": "frontend/contributions/office-authoring.json",
+      "kind": "ui.contribution",
+      "content_hash": "sha256:74dc86809cb8f6212614ce270a420865d1eec2d6dd5c82a5b106c5019755c7c1"
+    }
+  ],
+  "provenance": {
+    "content_hash": "sha256:7df981fa0208ae75751fb2688e92f8bc04e3b6f606e778cc45e9d5894e74ba58",
+    "build_identity": "rumi-office-authoring-content-pack:1.0.0",
+    "trust_class": "local",
+    "signature": null
+  }
 }

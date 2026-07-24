@@ -1,10 +1,11 @@
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
-import {useSearchParams} from 'react-router-dom';
-import {BrainCircuit, Eye, GitBranch, Loader2, RefreshCw, Save, Scissors, Sparkles, type LucideIcon} from 'lucide-react';
+import {useSearchParams} from 'react-router';
+import {BrainCircuit, Eye, GitBranch, RefreshCw, Save, Scissors, Sparkles, type LucideIcon} from 'lucide-react';
 
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
 import {Input} from '@/src/components/ui/Input';
+import {TobkiriLoader, TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
 import {
   compileStartupProfileAiInputPreview,
   fetchStartupProfileAiInput,
@@ -33,6 +34,8 @@ import {useAppStore} from '@/src/store';
 
 export function AiInputInspector() {
   const addToast = useAppStore((state) => state.addToast);
+  const advancedProfileId = useAppStore((state) => state.selectedStartupProfileId);
+  const setAdvancedProfileId = useAppStore((state) => state.setSelectedStartupProfileId);
   const [searchParams, setSearchParams] = useSearchParams();
   const [profiles, setProfiles] = useState<ApiStartupProfile[]>([]);
   const [profileId, setProfileId] = useState(searchParams.get('profile') || '');
@@ -70,9 +73,10 @@ export function AiInputInspector() {
     Promise.all([fetchStartupProfiles()])
       .then(async ([startupProfiles]) => {
         if (cancelled) return;
-        const nextProfileId = profileId || startupProfiles.active_profile_id || startupProfiles.profiles[0]?.profile_id || '';
+        const nextProfileId = profileId || advancedProfileId || startupProfiles.active_profile_id || startupProfiles.profiles[0]?.profile_id || '';
         setProfiles(startupProfiles.profiles);
         setProfileId(nextProfileId);
+        if (nextProfileId) setAdvancedProfileId(nextProfileId);
         if (nextProfileId) {
           const [response, traceResponse] = await Promise.all([
             fetchStartupProfileAiInput(nextProfileId, {include_text: includeText}),
@@ -100,6 +104,7 @@ export function AiInputInspector() {
 
   const loadProfile = async (nextProfileId: string, nextIncludeText = includeText) => {
     setProfileId(nextProfileId);
+    setAdvancedProfileId(nextProfileId);
     setPreview(null);
     setSearchParams(nextProfileId ? new URLSearchParams({profile: nextProfileId}) : new URLSearchParams(), {replace: true});
     if (!nextProfileId) {
@@ -234,11 +239,11 @@ export function AiInputInspector() {
           </p>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button type="button" onClick={handlePreview} disabled={!profileId || previewing} className="min-w-[108px]">
-              {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {previewing ? <TobkiriLoadingMark /> : <Sparkles className="h-4 w-4" />}
               Preview
             </Button>
             <Button type="button" variant="outline" onClick={handleApply} disabled={!dirty || saving} className="min-w-[96px]">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? <TobkiriLoadingMark /> : <Save className="h-4 w-4" />}
               Apply
             </Button>
           </div>
@@ -246,10 +251,7 @@ export function AiInputInspector() {
       </section>
 
       {loading ? (
-        <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-border bg-bg-card/60 text-text-muted">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          Loading AI input graph...
-        </div>
+        <TobkiriLoader className="min-h-[320px] rounded-2xl border border-border bg-bg-card/60" label="Loading AI input graph..." />
       ) : null}
 
       {!loading && visibleData ? (

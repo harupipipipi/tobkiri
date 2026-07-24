@@ -34,6 +34,7 @@ class AuditPolicy:
     source_roots: tuple[str, ...]
     extensions: frozenset[str]
     exclude_path_parts: frozenset[str]
+    exclude_globs: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -247,12 +248,17 @@ def load_policy(path: Path) -> AuditPolicy:
     roots = tuple(str(item).strip("/") for item in payload.get("source_roots", []) if str(item).strip())
     extensions = frozenset(str(item) for item in payload.get("extensions", []))
     excluded = frozenset(str(item) for item in payload.get("exclude_path_parts", []))
+    excluded_globs = tuple(
+        str(item)
+        for item in payload.get("exclude_globs", [])
+        if str(item).strip()
+    )
     if not roots or not extensions:
         raise AuditConfigurationError("Policy must contain source_roots and extensions")
     if not extensions.issubset(ALL_SOURCE_EXTENSIONS):
         unknown = sorted(extensions - ALL_SOURCE_EXTENSIONS)
         raise AuditConfigurationError(f"Unsupported extensions: {unknown}")
-    return AuditPolicy(roots, extensions, excluded)
+    return AuditPolicy(roots, extensions, excluded, excluded_globs)
 
 
 def load_baseline(path: Path, *, today: dt.date | None = None) -> tuple[BaselineEntry, ...]:
@@ -464,7 +470,13 @@ def scan_text(path: str, text: str) -> list[Finding]:
 
 
 def _is_excluded(path: Path, policy: AuditPolicy) -> bool:
-    return any(part in policy.exclude_path_parts for part in path.parts)
+    return (
+        any(part in policy.exclude_path_parts for part in path.parts)
+        or any(
+            fnmatch.fnmatch(path.as_posix(), pattern)
+            for pattern in policy.exclude_globs
+        )
+    )
 
 
 def iter_source_files(root: Path, policy: AuditPolicy, explicit_paths: Sequence[str] | None = None) -> Iterator[Path]:

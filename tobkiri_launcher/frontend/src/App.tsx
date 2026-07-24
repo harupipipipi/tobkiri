@@ -1,20 +1,9 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useDeferredValue, useEffect, useLayoutEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
 import { useAppStore } from '@/src/store';
 import { Layout } from '@/src/components/layout/Layout';
 import { Setup } from '@/src/pages/Setup';
 import { Dashboard } from '@/src/pages/Dashboard';
-import { Packs } from '@/src/pages/Packs';
-import { PackDetail } from '@/src/pages/PackDetail';
-import { NodeManager } from '@/src/pages/NodeManager';
-import { GraphEditor } from '@/src/pages/GraphEditor';
-import { ProfileGraphEditor } from '@/src/pages/ProfileGraphEditor';
-import { AiInputInspector } from '@/src/pages/AiInputInspector';
-import { ApiMap } from '@/src/pages/ApiMap';
-import { ProfileWorkspace } from '@/src/pages/ProfileWorkspace';
-import { StartupProfiles } from '@/src/pages/StartupProfiles';
-import { Flows } from '@/src/pages/Flows';
-import { Settings } from '@/src/pages/Settings';
 import { ToastContainer } from '@/src/components/ui/ToastContainer';
 import { DialogContainer } from '@/src/components/ui/DialogContainer';
 import { bootstrapPanelSession, hasPendingPanelBootstrapCode } from '@/src/lib/api';
@@ -22,14 +11,19 @@ import { applyAppearanceToRoot } from '@/src/lib/appearance';
 import { runtimeMonitorDelay } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';
 import { hasSelectedSetupPack } from '@/src/lib/setupPacks';
-
-function SetupVerificationGate() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-main p-6 text-sm text-text-muted">
-      Verifying setup...
-    </div>
-  );
-}
+import {
+  LazyAiInputInspector,
+  LazyApiMap,
+  LazyFlows,
+  LazyGraphEditor,
+  LazyNodeManager,
+  LazyPackDetail,
+  LazyPacks,
+  LazyProfileGraphEditor,
+  LazyProfileWorkspace,
+  LazySettings,
+  LazyStartupProfiles,
+} from '@/src/lib/routeModules';
 
 export default function App() {
   const theme = useAppStore(state => state.theme);
@@ -38,7 +32,6 @@ export default function App() {
   const setSetupDone = useAppStore(state => state.setSetupDone);
   const addToast = useAppStore(state => state.addToast);
   const refreshRuntimeHealth = useAppStore(state => state.refreshRuntimeHealth);
-  const [setupPackVerified, setSetupPackVerified] = useState(!isSetupDone);
 
   useLayoutEffect(() => {
     applyAppearanceToRoot(document.documentElement, { theme, colorMode });
@@ -56,30 +49,38 @@ export default function App() {
   }, [addToast]);
 
   useEffect(() => {
-    if (!isSetupDone) {
-      setSetupPackVerified(false);
-      return;
-    }
-
+    if (!isSetupDone) return;
+    type IdleWindow = Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const target = window as IdleWindow;
     let cancelled = false;
-    setSetupPackVerified(false);
-    void hasSelectedSetupPack()
-      .then((verified) => {
-        if (cancelled) return;
-        setSetupPackVerified(verified);
-        if (!verified) {
+    const verifySetupPack = () => {
+      void hasSelectedSetupPack()
+        .then((verified) => {
+          if (cancelled || verified) return;
+          addToast('The selected setup pack is no longer available. Setup must be completed again.', 'error');
           setSetupDone(false);
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setSetupPackVerified(false);
-        setSetupDone(false);
-        addToast(error instanceof Error ? error.message : 'Setup pack verification failed', 'error');
-      });
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          addToast(error instanceof Error ? error.message : 'Setup pack verification failed', 'error');
+        });
+    };
+
+    let cancelScheduled: () => void;
+    if (typeof target.requestIdleCallback === 'function') {
+      const handle = target.requestIdleCallback(verifySetupPack, { timeout: 1_000 });
+      cancelScheduled = () => target.cancelIdleCallback?.(handle);
+    } else {
+      const handle = window.setTimeout(verifySetupPack, 300);
+      cancelScheduled = () => window.clearTimeout(handle);
+    }
 
     return () => {
       cancelled = true;
+      cancelScheduled();
     };
   }, [isSetupDone, setSetupDone, addToast]);
 
@@ -130,31 +131,53 @@ export default function App() {
 
   return (
     <BrowserRouter basename="/panel">
-      <Routes>
+      <DeferredRouteTree isSetupDone={isSetupDone} />
+      <ToastContainer />
+      <DialogContainer />
+    </BrowserRouter>
+  );
+}
+
+function DeferredRouteTree({ isSetupDone }: { isSetupDone: boolean }) {
+  const location = useLocation();
+  const deferredLocation = useDeferredValue(location);
+  const routePending =
+    deferredLocation.pathname !== location.pathname ||
+    deferredLocation.search !== location.search ||
+    deferredLocation.hash !== location.hash;
+
+  return (
+    <>
+      <Routes location={deferredLocation}>
         <Route path={panelRoutes.setup} element={<Setup />} />
 
         <Route
           path={panelRoutes.home}
-          element={isSetupDone
-            ? (setupPackVerified ? <Layout /> : <SetupVerificationGate />)
-            : <Navigate to={panelRoutes.setup} replace />}
+          element={isSetupDone ? <Layout /> : <Navigate to={panelRoutes.setup} replace />}
         >
           <Route index element={<Dashboard />} />
-          <Route path={panelRoutes.packs.slice(1)} element={<Packs />} />
-          <Route path={`${panelRoutes.packs.slice(1)}/:id`} element={<PackDetail />} />
-          <Route path={panelRoutes.nodes.slice(1)} element={<NodeManager />} />
-          <Route path={panelRoutes.graphEditor.slice(1)} element={<GraphEditor />} />
-          <Route path={panelRoutes.profileGraph.slice(1)} element={<ProfileGraphEditor />} />
-          <Route path={panelRoutes.aiInput.slice(1)} element={<AiInputInspector />} />
-          <Route path={panelRoutes.apiMap.slice(1)} element={<ApiMap />} />
-          <Route path={panelRoutes.profileWorkspace.slice(1)} element={<ProfileWorkspace />} />
-          <Route path={panelRoutes.startup.slice(1)} element={<StartupProfiles />} />
-          <Route path={panelRoutes.flows.slice(1)} element={<Flows />} />
-          <Route path={panelRoutes.settings.slice(1)} element={<Settings />} />
+          <Route path={panelRoutes.packs.slice(1)} element={<LazyPacks />} />
+          <Route path={`${panelRoutes.packs.slice(1)}/:id`} element={<LazyPackDetail />} />
+          <Route path={panelRoutes.nodes.slice(1)} element={<LazyNodeManager />} />
+          <Route path={panelRoutes.graphEditor.slice(1)} element={<LazyGraphEditor />} />
+          <Route path={panelRoutes.profileGraph.slice(1)} element={<LazyProfileGraphEditor />} />
+          <Route path={panelRoutes.aiInput.slice(1)} element={<LazyAiInputInspector />} />
+          <Route path={panelRoutes.apiMap.slice(1)} element={<LazyApiMap />} />
+          <Route path={panelRoutes.profileWorkspace.slice(1)} element={<LazyProfileWorkspace />} />
+          <Route path={panelRoutes.startup.slice(1)} element={<LazyStartupProfiles />} />
+          <Route path={panelRoutes.flows.slice(1)} element={<LazyFlows />} />
+          <Route path={panelRoutes.settings.slice(1)} element={<LazySettings />} />
         </Route>
       </Routes>
-      <ToastContainer />
-      <DialogContainer />
-    </BrowserRouter>
+      {routePending && (
+        <div
+          role="status"
+          aria-label="Opening page"
+          className="pointer-events-none fixed inset-x-0 top-0 z-[100] h-0.5 overflow-hidden bg-accent/15"
+        >
+          <div className="h-full w-1/3 animate-pulse bg-accent" />
+        </div>
+      )}
+    </>
   );
 }

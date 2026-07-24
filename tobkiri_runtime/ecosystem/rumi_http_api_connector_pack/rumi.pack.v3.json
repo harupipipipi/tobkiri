@@ -1,0 +1,12 @@
+{
+  "pack_api_version":"rumi.pack.v3",
+  "pack":{"id":"rumi.http_api_connector","version":"1.0.0","kind":"provider","display_name":"Rumi HTTP API Connector","description":"Bearer-authenticated API normalization and HTTPS callbacks."},
+  "contracts":{"provides":[{"id":"rumi.service.connector.adapter.v1","version":"1.0.0","provider_instance_id":"connector.http_api","instance_key":"http_api","cardinality":"many","security":"critical","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.adapter.verify","connector.delivery.execute"]}],"requires":[{"id":"rumi.service.credential.resolve.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
+  "entrypoints":[{"id":"http-api-adapter","contract_id":"rumi.service.connector.adapter.v1","loader":"python","module":"ecosystem.rumi_http_api_connector_pack.runtime.adapter","symbol":"create_connector_adapter","artifact_hash":"sha256:26a12d4a2400757ccf22c0678f570afca759a725375ed7487046bc430580c28c"}],
+  "resources":[],"storage":[],
+  "permissions":[{"capability":"connector.adapter.verify","access":"execute","approval_required":false},{"capability":"connector.delivery.execute","access":"execute","approval_required":true},{"capability":"credential.resolve","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
+  "provenance":{"content_hash":"sha256:26a12d4a2400757ccf22c0678f570afca759a725375ed7487046bc430580c28c","build_identity":"rumi-http-api-connector-pack:1.0.0","trust_class":"local","signature":null},
+  "migration":{"from":["defaultspack.transport.http","defaultspack.domain.external.http_api"],"compatibility_aliases":["http_api"],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Disable API ingress and select one prior adapter after replay-ledger preservation."},
+  "extensions":{"rumi.connector_adapter.boundary":{"vendor":"http_api","chat_imports":false,"company_imports":false,"credential_scope_bound":true,"inbound_auth":"bearer-constant-time","idempotency_key_required":true,"outbound_receipt":true,"https_only":true,"redirects":false,"private_network":false}}
+}
+

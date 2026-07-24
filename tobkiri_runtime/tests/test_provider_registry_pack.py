@@ -1,0 +1,53 @@
+"""External-QA-oriented specifications for the provider registry pack."""
+
+from __future__ import annotations
+
+import pytest
+
+from ecosystem.rumi_provider_registry_pack.runtime.registry import (
+    ProviderRegistry,
+    ProviderRegistryConflict,
+)
+
+
+def test_provider_connection_is_redacted_and_health_starts_unknown(tmp_path) -> None:
+    registry = ProviderRegistry("default", user_data_root=tmp_path)
+    registry.save(
+        {
+            "provider_instance_id": "primary",
+            "adapter_id": "adapter.standard",
+            "credential_handle": "credential:opaque",
+            "health_evidence": {"status": "available", "verified": False},
+        },
+        expected_revision=0,
+    )
+
+    assert registry.health()["providers"] == [
+        {
+            "provider_instance_id": "primary",
+            "status": "unknown",
+            "observed_at": None,
+            "verified": False,
+        }
+    ]
+    assert "secret" not in str(registry.snapshot()).lower()
+
+
+def test_provider_registry_rejects_secret_and_stale_revision(tmp_path) -> None:
+    registry = ProviderRegistry("default", user_data_root=tmp_path)
+    with pytest.raises(ValueError, match="opaque handle"):
+        registry.save(
+            {
+                "provider_instance_id": "unsafe",
+                "adapter_id": "adapter.standard",
+                "credential_handle": "plain-secret",
+            },
+            expected_revision=0,
+        )
+    registry.save(
+        {"provider_instance_id": "safe", "adapter_id": "adapter.standard"},
+        expected_revision=0,
+    )
+    with pytest.raises(ProviderRegistryConflict):
+        registry.delete("safe", expected_revision=0)
+
