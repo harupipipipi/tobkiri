@@ -16,6 +16,7 @@ import {
   commandSupportsMode,
   frontendCommandArgs,
   keepSelectedToolsAfterSend,
+  mimoCodingWorkerSettingsPayload,
   parseCommandBoolean,
   parseSlashCommandInput,
   resolveMimoCodingModel,
@@ -512,6 +513,29 @@ test("MiMo Coding Company UI model fallbacks stay backend-compatible", () => {
     MIMO_CODING_DEFAULT_FAST_MODEL,
   );
   assert.equal(resolveMimoCodingModel("stub/default", ["stub/default"], []), "stub/default");
+});
+
+test("MiMo Coding Company worker settings emit one canonical execution mode", () => {
+  assert.deepEqual(
+    mimoCodingWorkerSettingsPayload({ worker_mode: "non_docker", docker_worker_count: 4 }),
+    { worker_mode: "managed_desktop", docker_worker_count: 0 },
+  );
+  assert.deepEqual(
+    mimoCodingWorkerSettingsPayload({ worker_mode: "managed-desktop", docker_worker_count: "12" }),
+    { worker_mode: "managed_desktop", docker_worker_count: 0 },
+  );
+  assert.deepEqual(
+    mimoCodingWorkerSettingsPayload({ worker_mode: "docker", docker_worker_count: 0 }),
+    { worker_mode: "docker", docker_worker_count: 1 },
+  );
+  assert.deepEqual(
+    mimoCodingWorkerSettingsPayload({ worker_mode: "docker", docker_worker_count: "17" }),
+    { worker_mode: "docker", docker_worker_count: 16 },
+  );
+  assert.deepEqual(
+    mimoCodingWorkerSettingsPayload({ docker_worker_count: 0 }),
+    { worker_mode: "managed_desktop", docker_worker_count: 0 },
+  );
 });
 
 test("startProviderOAuth posts scope mode and requested services", async () => {

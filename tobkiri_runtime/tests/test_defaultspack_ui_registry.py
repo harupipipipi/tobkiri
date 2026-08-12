@@ -67,6 +67,30 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertIn("sections", settings)
         self.assertIn("values", settings)
 
+    def test_mimo_company_settings_expose_canonical_execution_modes(self):
+        manifest_path = (
+            ROOT
+            / "ecosystem"
+            / "rumi_operations_company_pack"
+            / "frontend_extensions"
+            / "operations_company.ui.json"
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        section = next(
+            item
+            for item in manifest["settings_sections"]
+            if item["id"] == "mimo_coding_company"
+        )
+        fields = {field["id"]: field for field in section["fields"]}
+
+        self.assertEqual(fields["worker_mode"]["default"], "docker")
+        self.assertEqual(
+            {option["value"] for option in fields["worker_mode"]["options"]},
+            {"docker", "managed_desktop"},
+        )
+        self.assertEqual(fields["docker_worker_count"]["min"], 1)
+        self.assertEqual(fields["max_tool_calls"]["min"], 0)
+
     def test_lightweight_catalog_can_include_skills_without_full_hydration(self):
         from domain.frontend.registry import FrontendRegistry
 

@@ -75,7 +75,18 @@
         {"id": "review_interval_minutes", "label": "Improvement Loop Minutes", "type": "number", "default": 180, "min": 5, "max": 1440},
         {"id": "qa_interval_minutes", "label": "QA Loop Minutes", "type": "number", "default": 240, "min": 5, "max": 1440},
         {"id": "max_tool_calls", "label": "Max Tool Calls", "type": "number", "default": 0, "min": 0, "max": 200, "help": "0 leaves MiMo schedules unlimited."},
-        {"id": "docker_worker_count", "label": "Docker Worker Count", "type": "number", "default": 3, "min": 1, "max": 16},
+        {
+          "id": "worker_mode",
+          "label": "Worker Mode",
+          "type": "select",
+          "default": "docker",
+          "options": [
+            {"value": "docker", "label": "Docker worker swarm"},
+            {"value": "managed_desktop", "label": "Managed desktop / local browser QA"}
+          ],
+          "help": "Choose managed desktop for local browser QA without Docker workers."
+        },
+        {"id": "docker_worker_count", "label": "Docker Worker Count", "type": "number", "default": 3, "min": 1, "max": 16, "help": "Used only when Worker Mode is Docker worker swarm."},
         {"id": "run_initial_review_now", "label": "Trigger Initial Review Now", "type": "toggle", "default": true},
         {
           "id": "model_allowlist",

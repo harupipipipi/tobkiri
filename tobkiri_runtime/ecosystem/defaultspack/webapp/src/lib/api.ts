@@ -5014,6 +5014,7 @@ export const api = {
     vision_model?: string;
     fast_model?: string;
     qa_targets?: string[];
+    worker_mode?: "docker" | "managed_desktop";
     docker_worker_count?: number;
     docker_personas?: string[];
     workspace_id?: string | null;
