@@ -280,6 +280,7 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
         "metadata",
     }
     _anthropic_role = staticmethod(AnthropicProvider._anthropic_role)
+    _private_reasoning_text = staticmethod(AnthropicProvider._private_reasoning_text)
     _tool_use_parts = staticmethod(AnthropicProvider._tool_use_parts)
     _tool_result_part = staticmethod(AnthropicProvider._tool_result_part)
     _content_parts = staticmethod(AnthropicProvider._content_parts)
@@ -460,6 +461,9 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
                             "type": "content_delta",
                             "delta": {"type": "text", "text": delta.get("text", "")},
                         }
+                    reasoning_event = AnthropicProvider._anthropic_private_reasoning_event(delta)
+                    if reasoning_event:
+                        yield reasoning_event
                     yield from AnthropicProvider._anthropic_stream_tool_call_events(
                         event_type, obj, tool_call_state
                     )

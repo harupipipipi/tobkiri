@@ -36,6 +36,7 @@ class OpencodeZenProvider(AnthropicProvider):
         "parallel_tool_calls",
     }
     _message_reasoning_content = staticmethod(OpenAIProvider._message_reasoning_content)
+    _reasoning_text_from_mapping = staticmethod(OpenAIProvider._reasoning_text_from_mapping)
 
     def __init__(self) -> None:
         self._api_key = str(read_provider_api_key("opencode-zen", "default") or "")
@@ -324,15 +325,11 @@ class OpencodeZenProvider(AnthropicProvider):
                 text = delta.get("content")
                 if text:
                     yield {"type": "content_delta", "delta": {"type": "text", "text": text}}
-                reasoning_text = (
-                    delta.get("reasoning_content")
-                    or delta.get("reasoning")
-                    or delta.get("thinking")
-                )
+                reasoning_text = OpenAIProvider._reasoning_text_from_mapping(delta)
                 if reasoning_text:
                     yield {
                         "type": "reasoning_delta",
-                        "delta": {"type": "text", "text": str(reasoning_text)},
+                        "delta": {"type": "text", "text": reasoning_text},
                     }
                 yield from OpenAIProvider._stream_tool_call_events(delta, tool_call_state)
                 finish = choice.get("finish_reason")

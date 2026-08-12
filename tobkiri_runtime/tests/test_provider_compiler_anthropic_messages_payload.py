@@ -26,7 +26,19 @@ def test_anthropic_messages_compiler_tool_use_snapshot_and_parser():
         params={},
     )
     compiled = compiler.compile_complete(planned)
-    parsed = compiler.parse_response({"content": [{"type": "text", "text": "ok"}, {"type": "tool_use", "id": "tc2", "name": "lookup", "input": {}}], "usage": {"input_tokens": 1, "output_tokens": 1}}, compiled)
+    parsed = compiler.parse_response(
+        {
+            "content": [
+                {"type": "thinking", "thinking": "private plan"},
+                {"type": "text", "text": "ok"},
+                {"type": "tool_use", "id": "tc2", "name": "lookup", "input": {}},
+            ],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        },
+        compiled,
+    )
 
     assert compiled.body == json.loads((FIXTURES / "anthropic_messages_tool_use.json").read_text())
+    assert [block.type for block in parsed.content] == ["text", "tool_call"]
     assert parsed.content[1].tool_call.id == "tc2"
+    assert parsed.metadata["thinking"]["transcript"] == "private plan"

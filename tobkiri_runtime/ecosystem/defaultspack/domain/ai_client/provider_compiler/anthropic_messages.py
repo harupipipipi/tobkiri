@@ -4,6 +4,7 @@ import json
 
 from domain.ai_client.bridge_plan import PlannedProviderRequest
 from domain.ai_client.provider_compiler.base import CompiledProviderRequest, ProviderCompiler, standard_response_to_ir
+from domain.ai_client.providers.anthropic_provider import AnthropicProvider
 from domain.chat.ir_legacy_adapter import ir_to_legacy_standard_messages
 
 
@@ -52,6 +53,7 @@ class AnthropicMessagesCompiler(ProviderCompiler):
 
     def parse_response(self, raw, compiled):
         blocks = []
+        thinking_parts = []
         for part in raw.get("content", []) if isinstance(raw, dict) else []:
             if not isinstance(part, dict):
                 continue
@@ -59,6 +61,17 @@ class AnthropicMessagesCompiler(ProviderCompiler):
                 blocks.append({"type": "text", "text": part.get("text", "")})
             elif part.get("type") == "tool_use":
                 blocks.append({"type": "tool_use", "id": part.get("id", ""), "name": part.get("name", ""), "input": part.get("input", {})})
+            elif part.get("type") in {"thinking", "reasoning", "trace"}:
+                text = AnthropicProvider._private_reasoning_text(part)
+                if text:
+                    thinking_parts.append(text)
+        metadata = {"api_family": compiled.api_family, "tool_runtime": compiled.metadata.get("tool_runtime")}
+        if thinking_parts:
+            metadata["thinking"] = {
+                "state": "completed",
+                "transcript": "\n\n".join(thinking_parts),
+                "source": "provider_reasoning_trace",
+            }
         return standard_response_to_ir(
             {
                 "content": blocks,
@@ -68,7 +81,7 @@ class AnthropicMessagesCompiler(ProviderCompiler):
                     "output_tokens": (raw.get("usage") or {}).get("output_tokens", 0),
                     "total_tokens": (raw.get("usage") or {}).get("input_tokens", 0) + (raw.get("usage") or {}).get("output_tokens", 0),
                 },
-                "metadata": {"api_family": compiled.api_family, "tool_runtime": compiled.metadata.get("tool_runtime")},
+                "metadata": metadata,
             }
         )
 

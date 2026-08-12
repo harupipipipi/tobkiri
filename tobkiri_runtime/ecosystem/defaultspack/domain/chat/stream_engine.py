@@ -1228,7 +1228,7 @@ def _approval_request_from_tool_result(
 def _response_reasoning_content(response: dict[str, Any] | None) -> str:
     if not isinstance(response, dict):
         return ""
-    for key in ("reasoning_content", "reasoning", "thinking"):
+    for key in ("reasoning_content", "reasoning", "thinking", "trace"):
         value = response.get(key)
         if isinstance(value, str) and value.strip():
             return value

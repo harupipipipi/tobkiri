@@ -224,7 +224,12 @@ def test_opencode_zen_mimo_free_uses_openai_chat_completions(monkeypatch):
         return {
             "id": "chatcmpl_test",
             "model": "mimo-v2.5-free",
-            "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "message": {"trace": "private plan", "content": "OK"},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         }
 
@@ -257,6 +262,11 @@ def test_opencode_zen_mimo_free_uses_openai_chat_completions(monkeypatch):
     assert captured["body"]["tool_choice"] == "auto"
     assert "reasoning_effort" not in captured["body"]
     assert result["content"] == [{"type": "text", "text": "OK"}]
+    assert result["metadata"]["thinking"] == {
+        "state": "completed",
+        "transcript": "private plan",
+        "source": "provider_reasoning_trace",
+    }
 
 
 def test_opencode_zen_mimo_free_preserves_tool_call_continuations(monkeypatch):
@@ -487,12 +497,12 @@ def test_opencode_zen_reasoning_stream_omits_tools_and_applies_token_floor(
     assert response.closed is True
 
 
-def test_opencode_zen_mimo_free_stream_stops_on_done_without_finish_chunk(monkeypatch):
+def test_opencode_zen_mimo_free_stream_keeps_trace_private_and_stops_on_done(monkeypatch):
     provider = _provider(monkeypatch)
     captured = {}
     response = _FakeSseResponse(
         [
-            b'data: {"choices":[{"delta":{"reasoning_content":"The user wants"},'
+            b'data: {"choices":[{"delta":{"trace":"The user wants"},'
             b'"finish_reason":null}]}\n\n',
             b"data: [DONE]\n\n",
         ],

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
+import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, isPrivateReasoningBlockType, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
 import type { ChatUiMessage } from "./types";
 
 const RISKY_AUTHORITY_FOLLOWUP_PHRASES = [
@@ -714,6 +714,97 @@ test("prompt usage disclosure can be hidden from chat messages", () => {
 
   assert.match(visible, /Prompt used/);
   assert.doesNotMatch(hidden, /Prompt used/);
+});
+
+test("assistant reasoning trace transcript is hidden from default chat rendering", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      id: "assistant-trace",
+      rawText: "Final answer stays visible.",
+      content: [{ type: "text", text: "Final answer stays visible." }],
+      metadata: {
+        thinkingLabel: "completed",
+        thinkingTranscript: "private chain-of-thought planning trace",
+      },
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "json",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /Final answer stays visible/);
+  assert.doesNotMatch(html, /private chain-of-thought/);
+  assert.doesNotMatch(html, />Trace</);
+});
+
+test("assistant reasoning and trace content blocks are not rendered or copied", () => {
+  const traceMessage = message({
+    id: "assistant-trace-block",
+    rawText: "private reasoning block\nprivate trace block\nVisible final answer.",
+    content: [
+      { type: "reasoning", text: "private reasoning block" },
+      { type: "trace", text: "private trace block" },
+      { type: "text", text: "Visible final answer." },
+    ],
+  });
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [traceMessage],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "json",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.equal(isPrivateReasoningBlockType("trace"), true);
+  assert.match(html, /Visible final answer/);
+  assert.doesNotMatch(html, /private reasoning block/);
+  assert.doesNotMatch(html, /private trace block/);
+  assert.equal(messageCopyText(traceMessage), "Visible final answer.");
+});
+
+test("assistant reasoning-only blocks do not fall back to raw trace text", () => {
+  const traceMessage = message({
+    id: "assistant-reasoning-only",
+    rawText: "private raw trace fallback",
+    content: [
+      { type: "reasoning_delta", text: "private reasoning delta" },
+      { type: "trace_delta", text: "private trace delta" },
+    ],
+    metadata: { thinkingLabel: "completed" },
+  });
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [traceMessage],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "json",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.equal(isPrivateReasoningBlockType("TRACE_DELTA"), true);
+  assert.doesNotMatch(html, /private raw trace fallback/);
+  assert.doesNotMatch(html, /private reasoning delta/);
+  assert.doesNotMatch(html, /private trace delta/);
+  assert.equal(shouldShowEmptyResponseWarning(traceMessage, false), true);
+  assert.equal(messageCopyText(traceMessage), "");
 });
 
 test("long terminal-style output is detected for compact display", () => {

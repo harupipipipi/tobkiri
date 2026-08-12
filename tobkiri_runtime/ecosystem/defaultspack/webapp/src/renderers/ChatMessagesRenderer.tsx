@@ -635,6 +635,8 @@ function MessageBlock({
 }) {
   const blockType = String(block.type ?? "text");
 
+  if (isPrivateReasoningBlockType(blockType)) return null;
+
   if (blockType === "text" || blockType === "markdown") {
     const text = sanitizeText ? sanitizeText(String(block.text ?? "")) : String(block.text ?? "");
     if (!text.trim()) return null;
@@ -677,6 +679,19 @@ function MessageBlock({
   );
 }
 
+function shouldRenderContentBlockInChat(block: ChatContentBlock, _unknownStrategy: string): boolean {
+  const blockType = String(block.type ?? "text");
+  if (isPrivateReasoningBlockType(blockType)) return false;
+  const normalizedType = blockType.trim().toLowerCase();
+  if (normalizedType === "text" || normalizedType === "markdown" || normalizedType === "code") {
+    return String(block.text ?? "").trim().length > 0;
+  }
+  if (normalizedType === "image" || normalizedType === "image_url") {
+    return shouldRenderImageBlockInChat(block);
+  }
+  return true;
+}
+
 export function shouldRenderImageBlockInChat(block: ChatContentBlock): boolean {
   return (
     block.show_in_chat === true
@@ -686,8 +701,23 @@ export function shouldRenderImageBlockInChat(block: ChatContentBlock): boolean {
   );
 }
 
+export function isPrivateReasoningBlockType(blockType: string): boolean {
+  return [
+    "thinking",
+    "reasoning",
+    "reasoning_content",
+    "reasoning_delta",
+    "trace",
+    "trace_delta",
+  ].includes(blockType.trim().toLowerCase());
+}
+
 function messageDisplayText(message: ChatMessagesRendererProps["messages"][number], text: string): string {
   return message.role === "agent" ? sanitizeAssistantAuthorityBoilerplate(text) : text;
+}
+
+function messageHasPrivateReasoningBlock(message: ChatMessagesRendererProps["messages"][number]): boolean {
+  return message.content.some((block) => isPrivateReasoningBlockType(String(block.type ?? "")));
 }
 
 function messageVisibleText(message: ChatMessagesRendererProps["messages"][number]): string {
@@ -696,11 +726,17 @@ function messageVisibleText(message: ChatMessagesRendererProps["messages"][numbe
       if (String(block.type ?? "text") === "text" || String(block.type ?? "") === "markdown") {
         return String(block.text ?? "");
       }
+      if (isPrivateReasoningBlockType(String(block.type ?? ""))) {
+        return "";
+      }
       return "";
     })
     .join("")
     .trim();
-  return messageDisplayText(message, blockText || String(message.rawText ?? "").trim());
+  if (blockText || messageHasPrivateReasoningBlock(message)) {
+    return messageDisplayText(message, blockText);
+  }
+  return messageDisplayText(message, String(message.rawText ?? "").trim());
 }
 
 function messageMetadataRecord(message: ChatMessagesRendererProps["messages"][number]): Record<string, unknown> {
@@ -785,6 +821,9 @@ export function messageCopyText(message: ChatMessagesRendererProps["messages"][n
       if (blockType === "text" || blockType === "markdown" || blockType === "code") {
         return String(block.text ?? "");
       }
+      if (isPrivateReasoningBlockType(blockType)) {
+        return "";
+      }
       if (blockType === "image" || blockType === "image_url") {
         const imageUrl = block.image_url;
         const url = String(
@@ -799,7 +838,10 @@ export function messageCopyText(message: ChatMessagesRendererProps["messages"][n
     .filter((text) => text.trim().length > 0)
     .join("\n\n")
     .trim();
-  return messageDisplayText(message, blockText || String(message.rawText ?? "").trim());
+  if (blockText || messageHasPrivateReasoningBlock(message)) {
+    return messageDisplayText(message, blockText);
+  }
+  return messageDisplayText(message, String(message.rawText ?? "").trim());
 }
 
 export function formatMessageTimestamp(value: unknown): string {
@@ -1786,6 +1828,7 @@ export function ChatMessagesRenderer({
                 ? openToolActivityByMessageId[message.id] ?? toolActivity.hasRunningItems
                 : false;
               const isAuthorityPending = isAuthorityWaitingMessage(message);
+              const hasRenderableContent = message.content.some((block) => shouldRenderContentBlockInChat(block, unknownBlockStrategy));
               // Persisted conversations can retain a stale `thinking.state=streaming`
               // after the request has completed. Only the active tail response should
               // keep advancing its timer; historical messages use their recorded end.
@@ -1839,17 +1882,6 @@ export function ChatMessagesRenderer({
                           : "w-full text-zinc-200 bg-transparent",
                       )}
                     >
-                      {message.role === "agent" && message.metadata?.thinkingTranscript && (
-                        <details className="mb-3 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-400">
-                          <summary className="cursor-pointer select-none text-[11px] font-medium text-zinc-300">
-                            Trace
-                          </summary>
-                          <pre className="mt-2 max-h-40 overflow-x-auto overflow-y-auto whitespace-pre font-mono text-[11px] leading-relaxed text-zinc-400">
-                            {message.metadata.thinkingTranscript}
-                          </pre>
-                        </details>
-                      )}
-
                       {message.role === "user" && message.metadata?.mentions && (
                         <MessageMentionBadges mentions={message.metadata.mentions} />
                       )}
@@ -1859,7 +1891,7 @@ export function ChatMessagesRenderer({
                           ? (
                               <AuthorityPendingNotice />
                             )
-                          : message.content.length > 0 && (messageVisibleText(message) || message.content.some((block) => String(block.type ?? "text") !== "text"))
+                          : message.content.length > 0 && (messageVisibleText(message) || hasRenderableContent)
                           ? message.content.map((block, index) => (
                               <MessageBlock key={`${message.id}-${index}`} block={block} sanitizeText={sanitizeMessageText} unknownStrategy={unknownBlockStrategy} onOpenImagePreview={setImagePreview} />
                             ))
