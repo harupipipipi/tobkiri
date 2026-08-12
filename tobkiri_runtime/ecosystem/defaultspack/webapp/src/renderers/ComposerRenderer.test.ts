@@ -37,6 +37,9 @@ import {
   filterModelProfilesBySearch,
   resolveComposerWidgetDrop,
   shouldFocusComposerForSlashKey,
+  hasModelCommandInput,
+  hasSlashCommandInput,
+  isEscapedSlashInput,
   toolMentionIdsFromText,
   composerSubmissionSignature,
   composerInlineMentionParts,
@@ -823,6 +826,23 @@ test("slash key focuses composer only for plain document shortcuts", () => {
   assert.equal(shouldFocusComposerForSlashKey({ ...base, key: "a" }, null), false);
   assert.equal(shouldFocusComposerForSlashKey({ ...base, metaKey: true }, null), false);
   assert.equal(shouldFocusComposerForSlashKey({ ...base, defaultPrevented: true }, null), false);
+});
+
+test("composer slash input helpers identify reset-safe command states", () => {
+  assert.equal(isEscapedSlashInput("//clear"), true);
+  assert.equal(isEscapedSlashInput("/clear"), false);
+  assert.equal(hasSlashCommandInput("/", true, false), true);
+  assert.equal(hasSlashCommandInput("/clear", true, false), true);
+  assert.equal(hasSlashCommandInput("", true, false), false);
+  assert.equal(hasSlashCommandInput("hello /clear", true, false), false);
+  assert.equal(hasSlashCommandInput("//clear", true, false), false);
+  assert.equal(hasSlashCommandInput("/clear", false, false), false);
+  assert.equal(hasSlashCommandInput("/clear", true, true), false);
+  assert.equal(hasModelCommandInput("/model", true, false), true);
+  assert.equal(hasModelCommandInput("/models qwen", true, false), true);
+  assert.equal(hasModelCommandInput("/modelish", true, false), false);
+  assert.equal(hasModelCommandInput("/clear", true, false), false);
+  assert.equal(hasModelCommandInput("", true, false), false);
 });
 
 test("composer chrome widgets declare layout widths separately from actions", () => {
