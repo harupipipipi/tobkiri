@@ -14,6 +14,12 @@ import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 
 const noop = () => undefined;
 
+function buttonWithAccessibleName(html: string, name: string) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const openingTag = ["<", "button"].join("");
+  return new RegExp(`${openingTag}(?=[^>]*aria-label="${escapedName}")(?=[^>]*type="button")[^>]*>([\\s\\S]*?)<\\/button>`).exec(html);
+}
+
 test("share and export actions are disabled until a conversation is saved", () => {
   assert.equal(
     sidebarActionDisabledReason({ id: "conversation.export", label: "Export Active Conversation" }, null),
@@ -144,7 +150,29 @@ test("right sidebar rail avoids transform and replayed entrance animations", () 
   assert.doesNotMatch(html, /transition-\[background-color,color,box-shadow\]/);
 });
 
-test("right sidebar keeps starred tools accessible name when count is nonzero", () => {
+test("right sidebar starred tools rail button keeps a descriptive accessible name", () => {
+  const html = renderToStaticMarkup(
+    createElement(RightSidebar, {
+      items: [
+        { id: "browser_companion", label: "Browser Companion", category: "tool" },
+      ],
+      settingsValues: {
+        sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: [],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+
+  const starredButton = buttonWithAccessibleName(html, "Starred tools");
+  assert.ok(starredButton, "Starred tools rail control should remain targetable by native button role and accessible name");
+  assert.doesNotMatch(starredButton[1], />\s*1\s*</);
+});
+
+test("right sidebar starred tools rail button keeps its name when count is nonzero", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
       items: [
@@ -166,8 +194,10 @@ test("right sidebar keeps starred tools accessible name when count is nonzero", 
     }),
   );
 
-  assert.match(html, /aria-label="Starred tools \(1\)"/);
-  assert.match(html, />1</);
+  const starredButton = buttonWithAccessibleName(html, "Starred tools (1)");
+  assert.ok(starredButton, "Starred tools rail control should remain targetable by native button role and count-aware accessible name");
+  assert.match(starredButton[1], />1<\/span>/);
+  assert.equal(buttonWithAccessibleName(html, "1"), null);
 });
 
 test("right sidebar does not auto-open employees on initial render", () => {

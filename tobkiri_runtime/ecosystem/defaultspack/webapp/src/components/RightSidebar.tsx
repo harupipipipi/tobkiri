@@ -1088,6 +1088,7 @@ export function RightSidebar({
   const panelWidthPx = clampPanelWidth(panelWidth);
   const hasPromptWidget = Boolean(onLoadPromptActive && onTogglePromptEdge);
   const promptRailCount = Number(promptUsage?.active_count ?? promptUsage?.segments?.filter((segment) => segment.status === "active").length ?? promptUsage?.active_segments?.length ?? 0);
+  const starredToolsRailLabel = starredItemIds.length > 0 ? `Starred tools (${starredItemIds.length})` : "Starred tools";
   const disabledToolIdSet = useMemo(() => new Set(disabledToolIds), [disabledToolIds]);
   const hiddenToolIdSet = useMemo(() => new Set(hiddenToolIds), [hiddenToolIds]);
   const placementManifestMap = useMemo(
@@ -2496,12 +2497,8 @@ export function RightSidebar({
                         ? "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30"
                         : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50",
                     )}
-                    title="ピン留めした機能"
-                    aria-label={
-                      starredItemIds.length > 0
-                        ? `Starred tools (${starredItemIds.length})`
-                        : "Starred tools"
-                    }
+                    title={starredToolsRailLabel}
+                    aria-label={starredToolsRailLabel}
                   >
             <Star
               size={18}
