@@ -2913,9 +2913,12 @@ test("tool timeline shows streamed activity details", async ({ page }) => {
   await expect(page.locator(".rumi-tool-activity")).toHaveCount(1);
   const toggle = page.getByRole("button", { name: /作業状況を開く:/ });
   await expect(toggle).toBeVisible();
-  await expect(toggle).toContainText("詳細");
+  await expect(toggle).toContainText("開く");
 
   await toggle.click();
+  const preview = page.getByLabel("Activity preview");
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("coding_file_list");
   const expandedToggle = page.getByRole("button", { name: /作業状況を閉じる:/ });
   await expect(expandedToggle).toBeVisible();
   await expect(expandedToggle).toContainText("閉じる");
