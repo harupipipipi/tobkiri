@@ -2859,6 +2859,8 @@ export function RightSidebar({
                     tabIndex={buttonTabIndex}
                     onClick={onOpenSettings}
                     className={cn(RAIL_BUTTON_CLASS, "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 group/btn")}
+                    aria-label="Settings"
+                    data-testid="right-sidebar-global-settings"
                     title="Settings"
                   >
             <Settings size={16} className="h-4 w-4 shrink-0" />
