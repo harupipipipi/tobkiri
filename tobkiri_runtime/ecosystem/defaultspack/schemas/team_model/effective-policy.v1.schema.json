@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.local/schemas/effective-policy.v1.schema.json",
+  "title": "Tobkiri Effective Policy v1",
+  "type": "object",
+  "required": ["schema_version", "effective", "trace", "layers", "policy_hash"],
+  "properties": {
+    "schema_version": {"const": "tobkiri.effective-policy/v1"},
+    "effective": {"$ref": "#/$defs/policy"},
+    "trace": {"type": "array", "items": {"type": "object", "required": ["field", "scope", "rule", "before", "after"]}},
+    "layers": {"type": "array", "items": {"type": "string"}},
+    "policy_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "string_list": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "policy": {
+      "type": "object",
+      "required": ["schema_version"],
+      "properties": {
+        "schema_version": {"type": "string"},
+        "host": {"$ref": "#/$defs/string_list"},
+        "profile": {"$ref": "#/$defs/string_list"},
+        "workspace": {"$ref": "#/$defs/string_list"},
+        "authority": {"$ref": "#/$defs/string_list"},
+        "context": {"$ref": "#/$defs/string_list"},
+        "history": {"$ref": "#/$defs/string_list"},
+        "memory": {"$ref": "#/$defs/string_list"},
+        "network": {"$ref": "#/$defs/string_list"},
+        "secret": {"$ref": "#/$defs/string_list"},
+        "tool": {"$ref": "#/$defs/string_list"},
+        "command": {"$ref": "#/$defs/string_list"},
+        "capabilities": {"$ref": "#/$defs/string_list"},
+        "share_history": {"type": "boolean"},
+        "share_workspace": {"type": "boolean"},
+        "memory_read": {"type": "boolean"},
+        "memory_write": {"type": "boolean"},
+        "limits": {"type": "object"},
+        "required_review": {"enum": ["none", "self", "peer", "approval", "dual_control"]},
+        "required_assurance": {"enum": ["none", "standard", "high", "critical"]},
+        "mandatory_safety_checks": {"$ref": "#/$defs/string_list"},
+        "allowed_models": {"$ref": "#/$defs/string_list"},
+        "allowed_harnesses": {"$ref": "#/$defs/string_list"},
+        "model": {"type": ["string", "null"]},
+        "harness": {"type": ["string", "null"]},
+        "routing_hint": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    }
+  }
+}

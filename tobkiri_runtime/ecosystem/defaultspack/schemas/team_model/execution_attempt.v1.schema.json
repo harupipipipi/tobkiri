@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.local/schemas/execution_attempt.v1.schema.json",
+  "title": "Tobkiri Execution Attempt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "execution_attempt_id", "assignment_id", "team_id", "member_id", "attempt_number", "status", "policy_snapshot", "policy_snapshot_hash", "review_snapshot", "provenance", "attempt_hash"],
+  "properties": {
+    "schema_version": {"const": "tobkiri.execution-attempt/v1"},
+    "execution_attempt_id": {"type": "string"},
+    "assignment_id": {"type": "string"},
+    "team_id": {"type": "string"},
+    "team_generation": {"type": "integer", "minimum": 1},
+    "member_id": {"type": "string"},
+    "attempt_number": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["created", "queued", "running", "waiting_review", "completed", "failed", "cancelled"]},
+    "input_snapshot_hash": {"type": ["string", "null"]},
+    "policy_snapshot": {"type": "object"},
+    "policy_resolution_trace": {"type": "array", "items": {"type": "object"}},
+    "policy_snapshot_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "review_snapshot": {"type": "object"},
+    "provenance": {"type": "object", "required": ["assignment_hash", "profile_id", "adopted_profile_revision", "adopted_profile_hash"]},
+    "created_at": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "attempt_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

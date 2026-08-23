@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.local/schemas/assignment.v1.schema.json",
+  "title": "Tobkiri Assignment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "assignment_id", "team_id", "team_generation", "target_kind", "target_id", "dispatch_mode", "selected_member_ids", "policy_snapshot", "policy_resolution_trace", "policy_snapshot_hash", "review_snapshot", "state", "revision", "assignment_hash"],
+  "properties": {
+    "schema_version": {"const": "tobkiri.assignment/v1"},
+    "assignment_id": {"type": "string"},
+    "team_id": {"type": "string"},
+    "team_generation": {"type": "integer", "minimum": 1},
+    "target_kind": {"enum": ["member", "department", "member_pool"]},
+    "target_id": {"type": "string"},
+    "dispatch_mode": {"enum": ["select_one", "fanout", "quorum", "pipeline"]},
+    "selected_member_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "routing_reason": {"type": "string"},
+    "routing_snapshot": {"type": "object"},
+    "policy_snapshot": {"type": "object"},
+    "policy_resolution_trace": {"type": "array", "items": {"type": "object"}},
+    "policy_snapshot_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "review_snapshot": {"type": "object"},
+    "input_snapshot_hash": {"type": ["string", "null"]},
+    "state": {"enum": ["planned", "queued", "assigned", "running", "waiting_review", "completed", "failed", "cancelled"]},
+    "revision": {"type": "integer", "minimum": 1},
+    "created_at": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "assignment_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

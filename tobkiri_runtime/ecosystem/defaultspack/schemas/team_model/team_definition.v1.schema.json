@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.local/schemas/team_definition.v1.schema.json",
+  "title": "Tobkiri Team Definition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "team_definition_id", "revision", "members", "departments", "member_pools", "policy"],
+  "properties": {
+    "schema_version": {"const": "tobkiri.team-definition/v1"},
+    "team_definition_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "name": {"type": "string", "maxLength": 200},
+    "description": {"type": "string", "maxLength": 4000},
+    "manager_member_id": {"type": ["string", "null"]},
+    "members": {"type": "array", "items": {"$ref": "#/$defs/member"}},
+    "departments": {"type": "array", "items": {"$ref": "#/$defs/department"}},
+    "member_pools": {"type": "array", "items": {"$ref": "#/$defs/pool"}},
+    "policy": {"$ref": "effective-policy.v1.schema.json#/$defs/policy"},
+    "metadata": {"type": "object"}
+    ,"definition_hash": {"type": "string", "pattern": "^sha256:[0-9a-fA-F]{64}$"}
+    ,"aliases": {"type": "object", "additionalProperties": {"$ref": "#/$defs/id"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "hash": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "member_id", "profile_id", "adopted_profile_revision", "adopted_profile_hash", "configuration", "availability", "aliases", "policy"],
+      "properties": {
+        "schema_version": {"const": "tobkiri.member/v1"},
+        "member_id": {"$ref": "#/$defs/id"},
+        "profile_id": {"$ref": "#/$defs/id"},
+        "adopted_profile_revision": {"type": "integer", "minimum": 1},
+        "adopted_profile_hash": {"$ref": "#/$defs/hash"},
+        "primary_department_id": {"type": ["string", "null"]},
+        "configuration": {"enum": ["enabled", "disabled", "archived"]},
+        "availability": {"enum": ["offline", "idle", "assigned", "running", "blocked", "paused"]},
+        "aliases": {"type": "array", "items": {"type": "string", "maxLength": 255}},
+        "policy": {"$ref": "effective-policy.v1.schema.json#/$defs/policy"},
+        "overrides": {"type": "object"},
+        "display_name": {"type": "string", "maxLength": 200},
+        "labels": {"type": "array", "items": {"type": "string"}},
+        "metadata": {"type": "object"}
+        ,"adopted_profile_policy": {"type": "object"}
+        ,"adopted_profile_display_name": {"type": "string", "maxLength": 200}
+      }
+    },
+    "department": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "department_id", "status", "lead_member_id", "member_ids", "policy"],
+      "properties": {
+        "schema_version": {"const": "tobkiri.department/v1"},
+        "department_id": {"$ref": "#/$defs/id"},
+        "name": {"type": "string", "maxLength": 200},
+        "status": {"enum": ["enabled", "disabled", "archived"]},
+        "lead_member_id": {"type": ["string", "null"]},
+        "member_ids": {"type": "array", "items": {"$ref": "#/$defs/id"}},
+        "policy": {"$ref": "effective-policy.v1.schema.json#/$defs/policy"},
+        "metadata": {"type": "object"}
+      }
+    },
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "pool_id", "status", "member_ids", "selector", "routing_only"],
+      "properties": {
+        "schema_version": {"const": "tobkiri.member-pool/v1"},
+        "pool_id": {"$ref": "#/$defs/id"},
+        "name": {"type": "string", "maxLength": 200},
+        "status": {"enum": ["enabled", "disabled", "archived"]},
+        "member_ids": {"type": "array", "items": {"$ref": "#/$defs/id"}},
+        "selector": {"type": "object"},
+        "routing_only": {"const": true},
+        "metadata": {"type": "object"}
+      }
+    }
+  }
+}
