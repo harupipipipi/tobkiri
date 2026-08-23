@@ -964,9 +964,7 @@ def resolve_effective_policy(
                 denied=sorted(denied_models),
             )
         if "harnesses" in policy:
-            harnesses_before = (
-                None if allowed_harnesses is None else sorted(allowed_harnesses)
-            )
+            harnesses_before = None if allowed_harnesses is None else sorted(allowed_harnesses)
             incoming_harnesses = set(policy["harnesses"])
             allowed_harnesses = (
                 incoming_harnesses
@@ -982,9 +980,7 @@ def resolve_effective_policy(
                 incoming=sorted(incoming_harnesses),
             )
         if "deny_harnesses" in policy:
-            harnesses_before = (
-                None if allowed_harnesses is None else sorted(allowed_harnesses)
-            )
+            harnesses_before = None if allowed_harnesses is None else sorted(allowed_harnesses)
             denied_harnesses = set(policy["deny_harnesses"])
             if allowed_harnesses is not None:
                 allowed_harnesses -= denied_harnesses
@@ -1041,11 +1037,7 @@ def resolve_effective_policy(
     # catches a narrower later layer that arrived after the preference layer.
     for field_name, allowed in (("model", allowed_models), ("harness", allowed_harnesses)):
         preference_value = preferences.get(field_name)
-        if (
-            preference_value
-            and allowed is not None
-            and preference_value.casefold() not in allowed
-        ):
+        if preference_value and allowed is not None and preference_value.casefold() not in allowed:
             raise PolicyResolutionError(
                 f"Preferred {field_name} is outside the effective allow-list", trace
             )
@@ -1188,9 +1180,7 @@ def _member_map(team: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     raw_values = team.get("members")
     values = raw_values if isinstance(raw_values, list) else []
     return {
-        str(value.get("member_id")): dict(value)
-        for value in values
-        if isinstance(value, Mapping)
+        str(value.get("member_id")): dict(value) for value in values if isinstance(value, Mapping)
     }
 
 
@@ -1212,9 +1202,7 @@ def _pool_map(team: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     )
     values = values if isinstance(values, list) else []
     return {
-        str(value.get("pool_id")): dict(value)
-        for value in values
-        if isinstance(value, Mapping)
+        str(value.get("pool_id")): dict(value) for value in values if isinstance(value, Mapping)
     }
 
 
