@@ -123,6 +123,7 @@ domains:
     - domain/chat
     - domain/input
     - domain/safety
+    - domain/team_model
     - domain/tool_policy
     path: domain/company
     public_imports:
@@ -371,6 +372,9 @@ domains:
   templates:
     may_import: []
     path: domain/templates
+  team_model:
+    may_import: []
+    path: domain/team_model
   temporal_context:
     may_import: []
     path: domain/temporal_context.py
