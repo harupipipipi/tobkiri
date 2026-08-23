@@ -1622,8 +1622,8 @@
     {
       "path": "tobkiri_protocol/schemas/worktree_team_task_v1.schema.json",
       "type": "regular-file",
-      "size": 4004,
-      "sha256": "baec05f669a654bf67b706f545f3ca3738b203d832e7c50beee46283d7f25595",
+      "size": 4122,
+      "sha256": "03c3b3af529c2974dac536e64d4dc3f85ea01644cc0a5df07337109cfaceaa1a",
       "executable": false
     },
     {

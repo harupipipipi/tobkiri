@@ -67,7 +67,11 @@ WORKTREE_TASK_PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 SENSITIVE_KEYS = re.compile(
-    r"(?:api[_-]?key|access[_-]?token|bearer|credential|password|private[_-]?key|secret|environment|env)",
+    r"(?:api[_-]?key|access[_-]?token|approval[_-]?token|bearer|credential|password|private[_-]?key|secret|environment|env|hidden[_-]?prompt|system[_-]?prompt)",
+    re.IGNORECASE,
+)
+SENSITIVE_VALUES = re.compile(
+    r"(?:\bBearer\s+[A-Za-z0-9._~-]{16,}|\bsk-[A-Za-z0-9_-]{20,}|\bgh[oprsu]_[A-Za-z0-9]{20,})",
     re.IGNORECASE,
 )
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -89,6 +93,8 @@ def normalize_task_request(value: Mapping[str, Any]) -> dict[str, Any]:
     raw = deepcopy(dict(value))
     _reject_sensitive_values(raw)
     task_id = _required_identifier(raw, "task_id")
+    run_id = _required_identifier(raw, "run_id")
+    worktree_id = _required_identifier(raw, "worktree_id")
     parent_id = _optional_identifier(raw.get("parent_id"), "parent_id")
     pm_id = _required_identifier(raw, "pm_id")
     role = str(raw.get("role") or "").strip().lower()
@@ -151,6 +157,8 @@ def normalize_task_request(value: Mapping[str, Any]) -> dict[str, Any]:
     manifest = {
         "contract_version": CONTRACT_VERSION,
         "task_id": task_id,
+        "run_id": run_id,
+        "worktree_id": worktree_id,
         "parent_id": parent_id,
         "pm_id": pm_id,
         "role": role,
@@ -207,7 +215,7 @@ class WorktreeTeamLedger:
                 "SELECT 1 FROM worktree_tasks WHERE task_id = ?", (manifest["task_id"],)
             ).fetchone():
                 raise WorktreeContractError("TASK_EXISTS", "Task ID already exists")
-            self._require_predecessors(connection, manifest)
+            predecessor_evidence = self._require_predecessors(connection, manifest)
             conflicts = self._ownership_conflicts(connection, manifest["ownership"])
             status = "hold" if conflicts else "admitted"
             record = {
@@ -218,6 +226,7 @@ class WorktreeTeamLedger:
                 "gates": {},
                 "handoff": None,
                 "ownership_conflicts": conflicts,
+                "predecessor_evidence": predecessor_evidence,
                 "revision": 1,
                 "created_at": now,
                 "updated_at": now,
@@ -410,6 +419,30 @@ class WorktreeTeamLedger:
                 self._event(connection, task_id, "review.invalidated", {"output": normalized})
             return deepcopy(record)
 
+    def reconcile_dependencies(self, task_id: str) -> dict[str, Any]:
+        """Invalidate reviewed evidence when an exact predecessor handoff changes."""
+
+        with self._transaction() as connection:
+            record = self._record_for_update(connection, task_id)
+            expected = record.get("predecessor_evidence") or {}
+            current: dict[str, str] = {}
+            for predecessor in record["manifest"]["required_predecessor_pass"]:
+                row = connection.execute(
+                    "SELECT record_json FROM worktree_tasks WHERE task_id = ?", (predecessor,)
+                ).fetchone()
+                predecessor_record = json.loads(row[0]) if row else {}
+                handoff = predecessor_record.get("handoff") or {}
+                current[predecessor] = str(handoff.get("handoff_digest") or "missing")
+            if current != expected:
+                record["promotion_state"] = "candidate"
+                record["status"] = "unverified"
+                if record.get("handoff"):
+                    record["handoff"]["overall"] = "UNVERIFIED"
+                record["dependency_change"] = {"expected": expected, "current": current}
+                self._save_record(connection, task_id, record)
+                self._event(connection, task_id, "review.invalidated_by_dependency", record["dependency_change"])
+            return deepcopy(record)
+
     def release(self, task_id: str, *, clean_boundary: bool) -> dict[str, Any]:
         if not clean_boundary:
             raise WorktreeContractError("DIRTY_HANDOFF", "Ownership cannot be released at a dirty boundary")
@@ -509,6 +542,8 @@ class WorktreeTeamLedger:
         packet = {
             "handoff_version": HANDOFF_VERSION,
             "task_id": manifest["task_id"],
+            "run_id": manifest["run_id"],
+            "worktree_id": manifest["worktree_id"],
             "input": manifest["starting"],
             "output": output,
             "output_digest": _digest(output),
@@ -540,7 +575,10 @@ class WorktreeTeamLedger:
             for operation, budget in budgets.items()
         }
 
-    def _require_predecessors(self, connection: sqlite3.Connection, manifest: Mapping[str, Any]) -> None:
+    def _require_predecessors(
+        self, connection: sqlite3.Connection, manifest: Mapping[str, Any]
+    ) -> dict[str, str]:
+        evidence: dict[str, str] = {}
         for predecessor in manifest["required_predecessor_pass"]:
             row = connection.execute(
                 "SELECT record_json FROM worktree_tasks WHERE task_id = ?", (predecessor,)
@@ -549,6 +587,8 @@ class WorktreeTeamLedger:
                 raise WorktreeContractError(
                     "PREDECESSOR_NOT_PASSED", f"Required predecessor {predecessor} has no exact PASS handoff"
                 )
+            evidence[predecessor] = str((json.loads(row[0]).get("handoff") or {})["handoff_digest"])
+        return evidence
 
     def _ownership_conflicts(
         self, connection: sqlite3.Connection, ownership: Mapping[str, Any]
@@ -839,6 +879,12 @@ def _reject_sensitive_values(value: Any, path: tuple[str, ...] = ()) -> None:
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         for index, child in enumerate(value):
             _reject_sensitive_values(child, (*path, str(index)))
+    elif isinstance(value, str) and SENSITIVE_VALUES.search(value):
+        raise WorktreeContractError(
+            "SENSITIVE_INPUT_FORBIDDEN",
+            "Credential-shaped values cannot enter a worktree contract",
+            details={"field": ".".join(path)},
+        )
 
 
 def _digest(value: Any) -> str:

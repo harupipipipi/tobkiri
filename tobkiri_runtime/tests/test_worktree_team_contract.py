@@ -25,6 +25,8 @@ EVIDENCE_SHA = "d" * 64
 def request(task_id: str, *, file: str = "src/owned.py", harness: str = "native") -> dict:
     value = {
         "task_id": task_id,
+        "run_id": f"run-{task_id}",
+        "worktree_id": f"wt-{task_id}",
         "parent_id": "run-parent",
         "pm_id": "pm-orion",
         "role": "implementation",
@@ -119,6 +121,12 @@ def test_manifest_rejects_dirty_start_vendor_pin_and_credentials() -> None:
         normalize_task_request(secret)
     assert secret_error.value.code == "SENSITIVE_INPUT_FORBIDDEN"
 
+    shaped = request("task-shaped-secret")
+    shaped["model_policy"]["note"] = "sk-" + "x" * 32
+    with pytest.raises(WorktreeContractError) as shaped_error:
+        normalize_task_request(shaped)
+    assert shaped_error.value.code == "SENSITIVE_INPUT_FORBIDDEN"
+
 
 def test_concurrent_duplicate_claim_allows_exactly_one_admission(tmp_path: Path) -> None:
     ledger = WorktreeTeamLedger(str(tmp_path / "ledger.sqlite3"))
@@ -203,6 +211,9 @@ def test_exact_pass_handoff_and_ordered_promotion(tmp_path: Path) -> None:
     result = pass_task(ledger, "task-pass")
     packet = result["handoff"]
     assert packet["overall"] == "PASS"
+    assert (packet["task_id"], packet["run_id"], packet["worktree_id"]) == (
+        "task-pass", "run-task-pass", "wt-task-pass"
+    )
     assert packet["commands"][0]["argv"] == ["pytest", "-q"]
     assert packet["input"]["commit_sha"] == SHA_A
     assert packet["attempts"]["build"] == {"consumed": 0, "remaining": 1}
@@ -230,6 +241,34 @@ def test_rebase_or_semantic_output_change_invalidates_review(tmp_path: Path) -> 
     assert invalidated["promotion_state"] == "candidate"
     assert invalidated["status"] == "unverified"
     assert invalidated["handoff"]["overall"] == "UNVERIFIED"
+
+
+def test_changed_predecessor_handoff_invalidates_dependent_review(tmp_path: Path) -> None:
+    ledger = WorktreeTeamLedger(str(tmp_path / "ledger.sqlite3"))
+    ledger.admit(request("task-upstream"))
+    upstream = pass_task(ledger, "task-upstream")
+    ledger.release("task-upstream", clean_boundary=True)
+
+    dependent_request = request("task-dependent")
+    dependent_request["dependencies"] = ["task-upstream"]
+    dependent_request["required_predecessor_pass"] = ["task-upstream"]
+    admitted = ledger.admit(dependent_request)
+    assert admitted["predecessor_evidence"] == {
+        "task-upstream": upstream["handoff"]["handoff_digest"]
+    }
+    dependent = pass_task(ledger, "task-dependent")
+    ledger.promote(
+        "task-dependent", "reviewed", exact_output_digest=dependent["handoff"]["output_digest"]
+    )
+
+    ledger.invalidate_review(
+        "task-upstream",
+        {"commit_sha": SHA_C, "tree_sha": SHA_A, "ordered_parents": [SHA_B], "clean": True},
+    )
+    reconciled = ledger.reconcile_dependencies("task-dependent")
+    assert reconciled["promotion_state"] == "candidate"
+    assert reconciled["status"] == "unverified"
+    assert reconciled["handoff"]["overall"] == "UNVERIFIED"
 
 
 def test_partial_or_dirty_completion_can_never_claim_pass(tmp_path: Path) -> None:

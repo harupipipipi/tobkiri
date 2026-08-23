@@ -7,6 +7,8 @@
   "required": [
     "contract_version",
     "task_id",
+    "run_id",
+    "worktree_id",
     "pm_id",
     "role",
     "model_policy",
@@ -28,6 +30,8 @@
   "properties": {
     "contract_version": { "const": "io.tobkiri.worktree-team-task.v1" },
     "task_id": { "$ref": "#/$defs/id" },
+    "run_id": { "$ref": "#/$defs/id" },
+    "worktree_id": { "$ref": "#/$defs/id" },
     "parent_id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
     "pm_id": { "$ref": "#/$defs/id" },
     "role": { "enum": ["implementation", "review", "integration_pm", "package", "gui"] },
