@@ -15,6 +15,24 @@ import {
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
 import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
+import { conversationMenuPosition } from "./history/ConversationPinStarMenu";
+
+test("conversation actions menu stays inside the viewport and flips above overflow", () => {
+  assert.deepEqual(
+    conversationMenuPosition(
+      { top: 40, bottom: 68, right: 312 },
+      { width: 320, height: 640 },
+    ),
+    { left: 136, top: 72 },
+  );
+  assert.deepEqual(
+    conversationMenuPosition(
+      { top: 590, bottom: 618, right: 30 },
+      { width: 320, height: 640 },
+    ),
+    { left: 8, top: 466 },
+  );
+});
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
   const chats: ChatItem[] = [

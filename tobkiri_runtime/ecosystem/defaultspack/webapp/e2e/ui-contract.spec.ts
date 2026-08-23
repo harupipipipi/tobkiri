@@ -2867,6 +2867,87 @@ test("history card drag uses rumi history MIME and sends dropped_widgets metadat
   });
 });
 
+test("history actions are portaled, isolated from the row, and copy the chat id", async ({ page }) => {
+  test.slow();
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as unknown as { __rumiCopiedChatId?: string }).__rumiCopiedChatId = text;
+        },
+      },
+    });
+  });
+  await installDefaultspackApiMocks(page);
+  await page.goto("/chat");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible({ timeout: 30_000 });
+
+  const card = page.getByTestId("history-chat-card-c-smoke");
+  const actions = card.getByRole("button", { name: "Conversation actions" });
+  await card.hover();
+  await actions.focus();
+  await actions.press("ArrowDown");
+
+  const menu = page.getByRole("menu", { name: "Conversation actions" });
+  const copyAction = menu.getByRole("menuitem", { name: "Copy chat ID" });
+  await expect(menu).toBeVisible();
+  await expect(copyAction).toBeFocused();
+  await expect(menu).toHaveCSS("position", "fixed");
+  expect(await menu.evaluate((node) => node.parentElement?.id)).toBe("rumi-layer-globalOverlay");
+
+  const menuBox = await menu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox!.y).toBeGreaterThanOrEqual(0);
+  expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(1440);
+  expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(900);
+  await expect(card.locator("input")).toHaveCount(0);
+
+  await copyAction.click();
+  await expect(menu.getByRole("menuitem", { name: "Copied chat ID" })).toBeVisible();
+  await expect.poll(() => page.evaluate(
+    () => (window as unknown as { __rumiCopiedChatId?: string }).__rumiCopiedChatId,
+  )).toBe("c-smoke");
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(actions).toBeFocused();
+  await expect(card.locator("input")).toHaveCount(0);
+});
+
+test("history actions stay reachable on touch viewports and report copy failure", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 900, height: 667 },
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => { throw new Error("denied"); } },
+    });
+  });
+  await installDefaultspackApiMocks(page);
+  await page.goto("/chat");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible({ timeout: 15_000 });
+
+  const actions = page
+    .getByTestId("history-chat-card-c-smoke")
+    .getByRole("button", { name: "Conversation actions" });
+  await expect(actions).toBeVisible();
+  await actions.click();
+  const menu = page.getByRole("menu", { name: "Conversation actions" });
+  await menu.getByRole("menuitem", { name: "Copy chat ID" }).click();
+  await expect(menu.getByRole("menuitem", { name: "Copy failed" })).toBeVisible();
+
+  const menuBox = await menu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(900);
+  expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(667);
+  await context.close();
+});
+
 test("late stream activity after final message does not leave an empty draft pending", async ({ page }) => {
   await openDefaultspack(page, "/chat", {
     streamEvents: (message) => [
