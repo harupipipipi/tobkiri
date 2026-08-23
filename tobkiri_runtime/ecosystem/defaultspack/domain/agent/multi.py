@@ -1,25 +1,31 @@
+import hashlib
+import os
+import re
+import sys
+import threading
+from pathlib import Path
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
 LEGACY_ONLY = True
 LEGACY_NOTICE = (
     "domain.agent.multi is legacy-only. Primary company coordination is handled "
     "by domain.company.message_router.CompanySlackRuntime."
 )
 
-import hashlib
-import re
-import threading
-from pathlib import Path
-
-from blocks._common import gen_id, timestamp
-from domain.agent.agent_def import AgentDefinition
-from domain.ai_client.client import AIClient
-from domain.coding.checkout_isolation import (
+from blocks._common import gen_id, timestamp  # noqa: E402
+from domain.agent.agent_def import AgentDefinition  # noqa: E402
+from domain.ai_client.client import AIClient  # noqa: E402
+from domain.coding.checkout_isolation import (  # noqa: E402
     CheckoutProvisioner,
     CheckoutRequest,
     CheckoutSecurityError,
     canonical_mode,
 )
-from domain.coding.workspace_policy import require_registered_trusted_workspace
-from domain.coding.workspace_resolver import WorkspaceResolver
+from domain.coding.workspace_policy import (  # noqa: E402
+    require_registered_trusted_workspace,
+)
+from domain.coding.workspace_resolver import WorkspaceResolver  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -287,22 +293,9 @@ def _agent_workspace_contract(
         raise CheckoutSecurityError("workspace root must be a real directory")
     contract["base_workspace_root"] = str(base)
     if resolved_mode == "metadata_only":
-        # Metadata mode intentionally does not copy repository contents or
-        # register a checkout.  Keep empty, state-only directories for the
-        # legacy session envelope (older clients use their existence as a
-        # session marker), while the explicit ``write_scope`` and
-        # ``worktree.path`` fields make the no-checkout contract unambiguous.
-        allocation_root = base.parent / ".tobkiri-workspaces" / _safe_workspace_segment(session_id)
-        allocation_root.mkdir(parents=True, exist_ok=True)
-        shared_dir = allocation_root / "shared"
-        shared_dir.mkdir(parents=True, exist_ok=True)
-        agent_dir = allocation_root / "agents" / _safe_workspace_segment(
-            agent_def.agent_id or agent_def.name
-        )
-        agent_dir.mkdir(parents=True, exist_ok=True)
-        contract["mode"] = "isolated_workspace"
-        contract["workspace_root"] = str(agent_dir)
-        contract["shared_workspace_root"] = str(shared_dir)
+        # Metadata mode is descriptive only.  In particular it must not hand
+        # an agent a writable directory that callers could mistake for an
+        # isolated checkout.
         return contract
 
     allocation_root = base.parent / ".tobkiri-workspaces" / _safe_workspace_segment(session_id)

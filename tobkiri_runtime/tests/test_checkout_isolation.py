@@ -185,6 +185,32 @@ def test_isolated_copy_size_admission_is_atomic(tmp_path):
     assert record.state == "failed"
 
 
+def test_non_git_isolated_copy_requires_an_explicit_allowlist(tmp_path):
+    root = tmp_path / "plain"
+    root.mkdir()
+    (root / "allowed.txt").write_text("allowed\n", encoding="utf-8")
+    (root / "ambient.txt").write_text("ambient\n", encoding="utf-8")
+    registry = CheckoutRegistry(tmp_path / "registry.json")
+
+    with pytest.raises(CheckoutSecurityError, match="explicit allowlist"):
+        CheckoutProvisioner(registry=registry).provision(
+            _request(root, tmp_path / "alloc", "isolated_copy", "attempt-unbounded")
+        )
+
+    record, _lease, _token = CheckoutProvisioner(registry=registry).provision(
+        _request(
+            root,
+            tmp_path / "alloc",
+            "isolated_copy",
+            "attempt-bounded",
+            allow_paths=("allowed.txt",),
+        )
+    )
+    destination = Path(record.path or "")
+    assert (destination / "allowed.txt").read_text(encoding="utf-8") == "allowed\n"
+    assert not (destination / "ambient.txt").exists()
+
+
 def test_cleanup_refuses_dirty_checkout_and_reconcile_quarantines_missing_path(tmp_path):
     root, _commit = _repo(tmp_path)
     registry = CheckoutRegistry(tmp_path / "registry.json")
@@ -205,6 +231,33 @@ def test_cleanup_refuses_dirty_checkout_and_reconcile_quarantines_missing_path(t
     _git(root, "worktree", "remove", "--force", str(record.path))
     findings = provisioner.reconcile()["findings"]
     assert findings[0]["status"] == "quarantine"
+
+
+def test_released_checkout_can_be_cleaned_with_the_same_fenced_lease(tmp_path):
+    root, _commit = _repo(tmp_path)
+    registry = CheckoutRegistry(tmp_path / "registry.json")
+    provisioner = CheckoutProvisioner(registry=registry)
+    record, lease, token = provisioner.provision(
+        _request(root, tmp_path / "alloc", "git_worktree", "attempt-release")
+    )
+    assert lease is not None and token
+    released = provisioner.release(
+        record.checkout_id,
+        attempt_id=lease.attempt_id,
+        lease_id=lease.lease_id,
+        fencing_token=lease.fencing_token,
+        token=token,
+    )
+    assert released.state == "released"
+    removed = provisioner.cleanup(
+        record.checkout_id,
+        attempt_id=lease.attempt_id,
+        lease_id=lease.lease_id,
+        fencing_token=lease.fencing_token,
+        token=token,
+    )
+    assert removed.state == "removed"
+    assert removed.path is None
 
 
 def test_legacy_worktree_copy_is_never_migrated_as_git_provenance(tmp_path):

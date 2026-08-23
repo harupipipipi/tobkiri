@@ -848,7 +848,22 @@ class CheckoutProvisioner:
             request.allocation_root, request.allocation_identity
         ):
             raise CheckoutSecurityError("checkout allocation root identity changed")
-        commit, resolved_ref = _resolve_base_commit(repository, request.base_commit, request.base_ref)
+        if identity.get("git_common_dir") is None:
+            if mode != "isolated_copy" or not request.allow_paths:
+                raise CheckoutSecurityError(
+                    "a non-Git isolated_copy requires an explicit allowlist"
+                )
+            if request.base_commit or request.base_ref:
+                raise CheckoutSecurityError(
+                    "non-Git isolated_copy cannot claim Git base provenance"
+                )
+            commit, resolved_ref = None, None
+        else:
+            commit, resolved_ref = _resolve_base_commit(
+                repository,
+                request.base_commit,
+                request.base_ref,
+            )
         lease = self.registry.issue_lease(request.attempt_id)
         checkout_id = f"checkout_{uuid.uuid4().hex}"
         lease = CheckoutLease(lease.lease_id, lease.attempt_id, lease.fencing_token, lease.token, "admitted")
@@ -1062,6 +1077,7 @@ class CheckoutProvisioner:
         lease_id: str,
         fencing_token: int,
         token: str,
+        allow_terminal_states: frozenset[str] = frozenset(),
     ) -> CheckoutRecord:
         record = self.registry.get(checkout_id)
         if record is None:
@@ -1073,7 +1089,10 @@ class CheckoutProvisioner:
             or record.lease_token_hash != _token_hash(str(lease_id), str(token))
         ):
             raise CheckoutLeaseError("checkout lease or fencing token is stale")
-        if record.state in TERMINAL_STATES:
+        if (
+            record.state in TERMINAL_STATES
+            and record.state not in allow_terminal_states
+        ):
             raise CheckoutLeaseError("checkout lease is no longer active")
         if record.path and not Path(record.path).exists():
             raise CheckoutLeaseError("checkout path no longer exists")
@@ -1160,6 +1179,7 @@ class CheckoutProvisioner:
             lease_id=lease_id,
             fencing_token=fencing_token,
             token=token,
+            allow_terminal_states=frozenset({"released", "failed"}),
         )
         if record.state not in {"ready", "released", "failed"}:
             raise CheckoutLifecycleError(f"checkout state {record.state!r} is not cleanable")
