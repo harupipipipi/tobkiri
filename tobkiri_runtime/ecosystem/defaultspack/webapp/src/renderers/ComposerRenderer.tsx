@@ -122,6 +122,7 @@ import {
 import { HISTORY_CHAT_DROP_MIME, parseHistoryChatDrop } from "../lib/historyComposer";
 import { activeMentionAtCursor, isMentionStart, utf16OffsetToCodePointIndex } from "../lib/mentionContract";
 import { sortedToolGroups, toolGroupFor } from "../lib/toolUi";
+import { declarativeIconForName } from "../lib/declarativeIcons";
 import { startPinchAudioRecorder, type ActiveAudioRecorder, type AmbientAudioRecording } from "../ambient/ambientMedia";
 import composerPaletteTemplateJson from "../templates/composerPalette.template.json";
 
@@ -354,6 +355,8 @@ function ComposerTextareaResizeButton({
 }
 
 function composerIconForName(iconName: string | undefined, fallback: LucideIcon): LucideIcon {
+  const declaredIcon = declarativeIconForName(iconName);
+  if (declaredIcon) return declaredIcon;
   const normalized = String(iconName ?? "").trim().toLowerCase();
   if (/search|browser|web|globe/.test(normalized)) return Search;
   if (/file|document|pdf|text/.test(normalized)) return FileText;

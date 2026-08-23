@@ -436,6 +436,22 @@ const sidebarItems = [
       ],
     },
   },
+  {
+    id: "notifications",
+    label: "Notifications",
+    category: "tool",
+    description: "Show notification controls.",
+    risk: "low",
+    ui: {
+      group_id: "notifications",
+      group_label: "Notifications",
+      item_icon: "notification",
+      widget_kind: "tool_toggle",
+      drop_capabilities: ["composer.toggle_chip"],
+      composer_label: "Notifications",
+      composer_description: "Show notification controls.",
+    },
+  },
 ];
 
 const catalogSkills = [
@@ -2659,6 +2675,49 @@ test("resizable canvas and tool widgets persist width choices", async ({ page })
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-right-sidebar-panel-width"))).not.toBeNull();
   const storedToolWidth = await page.evaluate(() => Number(localStorage.getItem("rumi-right-sidebar-panel-width")));
   expect(storedToolWidth).toBeGreaterThanOrEqual(320);
+});
+
+test("declarative notification icons survive real sidebar rendering and grouping", async ({ page }) => {
+  await openDefaultspack(page);
+  await page.locator('button[title="機能"]').click();
+  await page.locator('button[title="Filter: Activities"]').click();
+  await page.getByRole("button", { name: /Advanced Tools/ }).click();
+
+  const notificationGroup = page.getByRole("button", { name: "Notifications tool folder" });
+  const researchGroup = page.getByRole("button", { name: "Research tool folder" });
+  await expect(notificationGroup.locator('[data-tool-group-icon="item"] .lucide-bell-ring')).toBeVisible();
+  await expect(researchGroup.locator('[data-tool-group-icon="folder"] .lucide-folder')).toBeVisible();
+  await expect(notificationGroup.locator("span").filter({ hasText: /^1$/ })).toHaveCount(0);
+  await expect(researchGroup.locator("span").filter({ hasText: /^2$/ })).toHaveCount(0);
+
+  await notificationGroup.hover();
+  await expect(notificationGroup.locator(".lucide-bell-ring")).toBeVisible();
+  await notificationGroup.click();
+  await expect(notificationGroup).toHaveAttribute("aria-expanded", "true");
+  const notificationItem = page.getByRole("button", { name: /Notifications/ }).last();
+  await expect(notificationItem.locator(".lucide-bell-ring")).toBeVisible();
+  await notificationItem.evaluate((source) => {
+    const target = document.querySelector(".rumi-composer-shell");
+    if (!target) throw new Error("composer drop target not found");
+    const dataTransfer = new DataTransfer();
+    source.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer }));
+    target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+  });
+
+  const notificationChip = page.locator(".rumi-composer-context-strip").getByRole("button", { name: /Notifications/ });
+  await expect(notificationChip.locator(".lucide-bell-ring")).toBeVisible();
+  await expect(notificationChip).toHaveClass(/border-white/);
+  await notificationChip.click();
+  await expect(notificationChip.locator(".lucide-bell-ring")).toBeVisible();
+  await expect(notificationChip).toHaveClass(/border-sky-400/);
+
+  await page.setViewportSize({ width: 390, height: 820 });
+  await expect(notificationChip.locator(".lucide-bell-ring")).toBeVisible();
+  const compactChipBox = await notificationChip.boundingBox();
+  expect(compactChipBox).not.toBeNull();
+  expect(compactChipBox!.x).toBeGreaterThanOrEqual(0);
+  expect(compactChipBox!.x + compactChipBox!.width).toBeLessThanOrEqual(390);
 });
 
 test("open utility panel never covers the Home composer at desktop breakpoints", async ({ page }) => {

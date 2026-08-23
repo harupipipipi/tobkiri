@@ -51,6 +51,7 @@ import {
   MoreVertical,
   Pin,
   PinOff,
+  Folder,
   FolderCheck,
   FolderX,
   Plus,
@@ -79,6 +80,7 @@ import { WorkspaceTabRailPanel, type WorkspaceTab, type WorkspaceTabKind } from 
 import { LayerPortal } from "../ui/layers/LayerPortal";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 import type { ContextUsageInfo } from "../renderers/types";
+import { declarativeIconForName } from "../lib/declarativeIcons";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -215,22 +217,6 @@ const CATEGORY_META: Record<SidebarCategory | "all", { label: string; icon: Reac
   system: { label: "System", icon: <Settings size={16} /> },
   integration: { label: "Integrations", icon: <Blocks size={16} /> },
   capability: { label: "Capabilities", icon: <ShieldCheck size={16} /> },
-};
-
-const TOOL_GROUP_ICONS: Record<string, ReactElement> = {
-  agent: <Cpu size={16} />,
-  browser: <Monitor size={16} />,
-  build: <Hammer size={16} />,
-  coding: <Code2 size={16} />,
-  computer: <Monitor size={16} />,
-  file: <FileText size={16} />,
-  git: <GitBranch size={16} />,
-  planning: <ListTodo size={16} />,
-  research: <Search size={16} />,
-  operate: <Monitor size={16} />,
-  manage: <Cpu size={16} />,
-  terminal: <Terminal size={16} />,
-  other: <Wrench size={16} />,
 };
 
 const TOOL_GROUP_LABELS: Record<string, string> = {
@@ -487,8 +473,10 @@ export function sidebarActionDisabledReason(action: SidebarAction, activeConvers
   return "";
 }
 
-function iconForItem(item: SidebarItem) {
+export function iconForItem(item: SidebarItem) {
   const declaredIcon = item.ui?.item_icon || item.ui?.group_icon;
+  const DeclaredIcon = declarativeIconForName(declaredIcon);
+  if (DeclaredIcon) return <DeclaredIcon size={18} />;
   if (declaredIcon && ITEM_ICONS[declaredIcon]) return ITEM_ICONS[declaredIcon];
 
   // Legacy fallback for pre-ui metadata tools.
@@ -507,6 +495,10 @@ function iconForItem(item: SidebarItem) {
   return byCategory[item.category];
 }
 
+export function toolGroupRailIcon(item: SidebarItem, count: number): ReactElement {
+  return count === 1 ? iconForItem(item) : <Folder size={18} />;
+}
+
 function railIcon(item: ReactElement, size = 18): ReactElement {
   const props = item.props as Record<string, unknown>;
   return cloneElement(item as ReactElement<Record<string, unknown>>, {
@@ -516,16 +508,17 @@ function railIcon(item: ReactElement, size = 18): ReactElement {
 }
 
 const StableToolGroupRailGlyph = memo(function StableToolGroupRailGlyph({
-  iconName,
-  groupId,
+  count,
+  item,
 }: {
-  iconName?: string;
-  groupId: string;
+  count: number;
+  item: SidebarItem;
 }) {
-  const icon = (iconName && TOOL_GROUP_ICONS[iconName]) || TOOL_GROUP_ICONS[groupId] || TOOL_GROUP_ICONS.other;
+  const icon = toolGroupRailIcon(item, count);
   return (
     <span
       aria-hidden="true"
+      data-tool-group-icon={count === 1 ? "item" : "folder"}
       className="rumi-rail-stable-glyph pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center text-zinc-400 [backface-visibility:hidden] [transform:translateZ(0)] [will-change:transform] [&>svg]:block"
     >
       {railIcon(icon, 20)}
@@ -2658,10 +2651,7 @@ export function RightSidebar({
                               )}
                     title={`${group.path?.length ? group.path.join(" / ") : group.label || TOOL_GROUP_LABELS[group.id] || group.id} (${group.count})`}
                   >
-                    <StableToolGroupRailGlyph iconName={group.icon} groupId={group.id} />
-                    <span className="absolute -top-0.5 -right-0.5 text-[7px] bg-zinc-700 text-zinc-300 px-0.5 rounded-full leading-tight">
-                      {group.count}
-                    </span>
+                    <StableToolGroupRailGlyph count={group.count} item={group.items[0]} />
                     <span className="absolute right-full mr-2 px-2 py-1 bg-zinc-800 text-zinc-200 text-[10px] rounded-md opacity-0 group-hover/group:opacity-100 pointer-events-none transition-opacity whitespace-nowrap border border-zinc-700 shadow-lg rumi-layer-global-overlay">
                       {group.path?.length && group.path.length > 1 ? group.path.join(" / ") : group.label || TOOL_GROUP_LABELS[group.id] || group.id}
                     </span>

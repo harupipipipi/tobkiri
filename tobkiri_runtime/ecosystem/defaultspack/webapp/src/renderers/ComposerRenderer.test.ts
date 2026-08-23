@@ -400,6 +400,43 @@ test("composer runtime state hides persistent toggle indicators while they are o
   assert.doesNotMatch(html, /data-state="off"/);
 });
 
+test("composer chips render allowlisted notification icon aliases in every widget state", () => {
+  const html = renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "",
+    placeholder: "Message Tobkiri...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    droppedWidgets: [
+      { id: "enabled", type: "tool", label: "Enabled", icon: "notification", enabled: true },
+      { id: "disabled", type: "tool", label: "Disabled", icon: "notifications", enabled: false },
+      { id: "button", type: "widget", widgetKind: "button", label: "Button", icon: "notify" },
+      { id: "panel", type: "widget", widgetKind: "panel", label: "Panel", icon: "bell" },
+      { id: "selector", type: "widget", widgetKind: "selector", label: "Selector", icon: "bell_ring" },
+    ],
+    selectedToolIds: ["enabled"],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  }));
+
+  assert.equal((html.match(/lucide-bell-ring/g) ?? []).length, 5);
+  assert.match(html, /Enabled/);
+  assert.match(html, /Disabled/);
+  assert.match(html, /border-sky-400\/25/);
+  assert.match(html, /border-white\/\[0\.07\]/);
+});
+
 test("composer runtime state updates the DeepThink SVG indicator when enabled", () => {
   const deepthink: ComposerCommandItem = {
     id: "deepthink",

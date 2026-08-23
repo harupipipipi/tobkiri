@@ -5,14 +5,29 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   getRailFloatingMenuPosition,
+  iconForItem,
   RightSidebar,
   shouldShowToolManagerEmptyState,
   sidebarActionDisabledReason,
+  toolGroupRailIcon,
   toolManagerBaseItemsForNameSearch,
 } from "./RightSidebar";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 
 const noop = () => undefined;
+
+test("declarative notification icons render on items and single-item rails", () => {
+  const notificationItem = {
+    id: "notifications",
+    label: "Notifications",
+    category: "widget" as const,
+    ui: { item_icon: "notification" },
+  };
+
+  assert.match(renderToStaticMarkup(iconForItem(notificationItem)), /lucide-bell-ring/);
+  assert.match(renderToStaticMarkup(toolGroupRailIcon(notificationItem, 1)), /lucide-bell-ring/);
+  assert.match(renderToStaticMarkup(toolGroupRailIcon(notificationItem, 2)), /lucide-folder/);
+});
 
 test("share and export actions are disabled until a conversation is saved", () => {
   assert.equal(
