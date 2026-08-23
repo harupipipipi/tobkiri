@@ -3939,6 +3939,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/schemas/worktree_team_task_v1.schema.json",
+      "type": "regular-file",
+      "size": 4004,
+      "sha256": "baec05f669a654bf67b706f545f3ca3738b203d832e7c50beee46283d7f25595",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/secure_persistence.py",
       "type": "regular-file",
       "size": 36853,

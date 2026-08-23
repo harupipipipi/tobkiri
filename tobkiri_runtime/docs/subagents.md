@@ -66,3 +66,9 @@ Using a compatibility `subagent` alias does not bypass:
 
 If delegated work needs tools, it should use the same policy and approval path as any
 other run.
+
+For delegated coding in independent Git worktrees, use the normalized admission,
+attempt-budget, evidence, and handoff contract in
+[`worktree-team-contract.md`](worktree-team-contract.md). It applies equally to
+native and external-harness workers and keeps candidate evidence distinct from
+reviewed, stable, and final output.

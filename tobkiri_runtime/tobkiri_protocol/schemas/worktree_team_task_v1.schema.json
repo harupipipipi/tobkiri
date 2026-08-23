@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.dev/schemas/worktree_team_task_v1.schema.json",
+  "title": "Evidence-bound worktree team task",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "task_id",
+    "pm_id",
+    "role",
+    "model_policy",
+    "starting",
+    "ownership",
+    "dependencies",
+    "required_predecessor_pass",
+    "estimates",
+    "attempt_budgets",
+    "forbidden_capabilities",
+    "forbidden_paths",
+    "required_gates",
+    "required_evidence",
+    "required_handoff_fields",
+    "harness",
+    "stop",
+    "contract_digest"
+  ],
+  "properties": {
+    "contract_version": { "const": "io.tobkiri.worktree-team-task.v1" },
+    "task_id": { "$ref": "#/$defs/id" },
+    "parent_id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+    "pm_id": { "$ref": "#/$defs/id" },
+    "role": { "enum": ["implementation", "review", "integration_pm", "package", "gui"] },
+    "model_policy": { "type": "object" },
+    "starting": { "$ref": "#/$defs/provenance" },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "semantic_fields", "collision_globs"],
+      "properties": {
+        "files": { "$ref": "#/$defs/stringList" },
+        "semantic_fields": { "$ref": "#/$defs/stringList" },
+        "collision_globs": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "dependencies": { "$ref": "#/$defs/stringList" },
+    "required_predecessor_pass": { "$ref": "#/$defs/stringList" },
+    "estimates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkout_bytes", "output_bytes"],
+      "properties": {
+        "checkout_bytes": { "type": "integer", "minimum": 0 },
+        "output_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "attempt_budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "build", "package", "gui", "push"],
+      "properties": {
+        "commit": { "$ref": "#/$defs/budget" },
+        "build": { "$ref": "#/$defs/budget" },
+        "package": { "$ref": "#/$defs/budget" },
+        "gui": { "$ref": "#/$defs/budget" },
+        "push": { "$ref": "#/$defs/budget" }
+      }
+    },
+    "forbidden_capabilities": { "$ref": "#/$defs/stringList" },
+    "forbidden_paths": { "$ref": "#/$defs/stringList" },
+    "required_gates": { "$ref": "#/$defs/nonEmptyStringList" },
+    "required_evidence": { "$ref": "#/$defs/stringList" },
+    "required_handoff_fields": { "$ref": "#/$defs/stringList" },
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapter_id"],
+      "properties": {
+        "kind": { "enum": ["native", "external"] },
+        "adapter_id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] }
+      }
+    },
+    "stop": {
+      "const": { "first_material_blocker": true, "blind_retry": false }
+    },
+    "contract_digest": { "pattern": "^sha256:[0-9a-f]{64}$" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "budget": { "type": "integer", "minimum": 0, "maximum": 16 },
+    "stringList": {
+      "type": "array",
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "nonEmptyStringList": {
+      "allOf": [{ "$ref": "#/$defs/stringList" }, { "minItems": 1 }]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit_sha", "tree_sha", "ordered_parents", "clean"],
+      "properties": {
+        "commit_sha": { "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
+        "tree_sha": { "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
+        "ordered_parents": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" }
+        },
+        "clean": { "type": "boolean" }
+      }
+    }
+  }
+}
