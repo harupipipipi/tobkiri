@@ -1977,3 +1977,41 @@ test("English Settings empty section keeps registry contribution guidance", () =
   assert.match(html, /Pack or provider contributions for this section will appear here after registry validation\./);
   assert.doesNotMatch(html, /パックや外部サービスから追加される設定/);
 });
+
+test("Settings category navigation stays inside the mobile modal width", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "general",
+      locale: "en",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: { status: "ok", pack: "defaultspack", ts: "" },
+      previewsCount: 0,
+      settingsSections: [
+        { id: "general", label: "General", fields: [] },
+        { id: "models", label: "Models", fields: [] },
+        { id: "operations_company", label: "Operations Company", fields: [] },
+        { id: "computer_automation", label: "Computer Automation", fields: [] },
+      ] as SettingsSection[],
+      settingsValues: {},
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+  const navMarkup = html.match(/<nav\b[^>]*>/)?.[0] ?? "";
+
+  assert.match(navMarkup, /aria-label="Settings categories"/);
+  assert.match(navMarkup, /max-h-\[40vh\]/);
+  assert.match(navMarkup, /overflow-x-hidden/);
+  assert.match(navMarkup, /overflow-y-auto/);
+  assert.doesNotMatch(navMarkup, /overflow-x-auto/);
+  assert.match(html, /grid min-w-0 gap-4 sm:grid-cols-2 lg:block/);
+  assert.match(html, /grid min-w-0 gap-1\.5 lg:mb-5 lg:block/);
+  assert.match(html, /min-h-11 min-w-0 w-full/);
+  assert.doesNotMatch(html, /min-w-\[154px\]/);
+});
