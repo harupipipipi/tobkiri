@@ -1,0 +1,28 @@
+id: generic.input.default
+direction: input
+provider: generic
+display_name: Generic Webhook Input
+summary: Receive a shared-secret-protected generic webhook and normalize it to Tobkiri input.
+setup_steps:
+  - Select Generic Webhook Input.
+  - Choose an endpoint ID and generate a public URL for /api/webhooks/inbound/{webhook_id}.
+  - Replace {webhook_id} with the configured endpoint ID before sharing the URL.
+  - Save a Webhook Shared Secret in External Tokens.
+  - Enable the endpoint after checking its source and delivery rules.
+input_profile_id: generic.webhook.default
+endpoint:
+  id: test-webhook
+  kind: generic
+  route: /api/webhooks/inbound/{webhook_id}
+  security:
+    mode: shared_secret
+    header: x-rumi-webhook-token
+tokens:
+  - kind: webhook_shared_secret
+    label: Webhook Shared Secret
+default_response:
+  mode: same_response
+  include_source_context: true
+  source_context_format: "${provider} input."
+response_prompt:
+  enabled: false

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
-
 from blocks._common import error, ok
+from domain.webhook.url_defaults import default_local_url
 from domain.webhook.url_providers.cloudflare_quick_tunnel import CloudflareQuickTunnelProvider
 from domain.webhook.url_providers.static import StaticWebhookUrlProvider
 
@@ -11,12 +10,6 @@ def _provider(provider_id: str):
     if provider_id == "cloudflare_quick_tunnel":
         return CloudflareQuickTunnelProvider()
     return StaticWebhookUrlProvider()
-
-
-def _default_local_url() -> str:
-    host = os.environ.get("DEFAULTS_HTTP_HOST") or "127.0.0.1"
-    port = os.environ.get("DEFAULTS_HTTP_PORT") or "8766"
-    return f"http://{host}:{port}"
 
 
 def run(input_data, context):
@@ -31,12 +24,12 @@ def run(input_data, context):
                     {"provider_id": "cloudflare_quick_tunnel", "label": "Cloudflare Quick Tunnel", "temporary": True},
                     {"provider_id": "static", "label": "Static URL", "temporary": False},
                 ],
-                "default_local_url": _default_local_url(),
+                "default_local_url": default_local_url(),
             }
         )
     if method == "POST":
         result = provider.create_url(
-            local_url=str(data.get("local_url") or _default_local_url()),
+            local_url=str(data.get("local_url") or default_local_url()),
             route_path=str(data.get("route_path") or "/"),
             ttl_seconds=int(data.get("ttl_seconds") or 0),
             context=context or {},

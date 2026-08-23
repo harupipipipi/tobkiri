@@ -1567,7 +1567,7 @@ function ProviderOAuthPanel({
   );
 }
 
-function PublicUrlField({
+export function PublicUrlField({
   sectionId,
   field,
   value,
@@ -1579,8 +1579,9 @@ function PublicUrlField({
   onChange: (sectionId: string, fieldId: string, value: unknown) => void;
 }) {
   const config = publicUrlConfig(value, field.default);
+  const appOrigin = typeof window === "undefined" ? "http://127.0.0.1:8766" : window.location.origin;
   const [providerId, setProviderId] = useState(String(config.provider_id ?? "cloudflare_quick_tunnel"));
-  const [localUrl, setLocalUrl] = useState(String(config.local_url ?? "http://127.0.0.1:8766"));
+  const [localUrl, setLocalUrl] = useState(String(config.local_url ?? appOrigin));
   const [routePath, setRoutePath] = useState(String(config.route_path ?? settingsApiResources.canonicalRouteKey("api/integrations/line/webhook")));
   const [result, setResult] = useState<Record<string, unknown> | null>(
     config.result && typeof config.result === "object" ? config.result as Record<string, unknown> : null,
@@ -1591,7 +1592,7 @@ function PublicUrlField({
   useEffect(() => {
     const next = publicUrlConfig(value, field.default);
     setProviderId(String(next.provider_id ?? "cloudflare_quick_tunnel"));
-    setLocalUrl(String(next.local_url ?? "http://127.0.0.1:8766"));
+    setLocalUrl(String(next.local_url ?? appOrigin));
     setRoutePath(String(next.route_path ?? settingsApiResources.canonicalRouteKey("api/integrations/line/webhook")));
     setResult(next.result && typeof next.result === "object" ? next.result as Record<string, unknown> : null);
   }, [field.default, value]);
@@ -1656,12 +1657,12 @@ function PublicUrlField({
           <CustomSelect value={providerId} onChange={setProviderId} options={providerOptions} />
         </label>
         <label className="space-y-1.5">
-          <span className="text-[11px] font-medium uppercase text-zinc-500">Local Rumi URL</span>
+          <span className="text-[11px] font-medium uppercase text-zinc-500">Local Tobkiri URL</span>
           <input
             value={localUrl}
             onChange={(event) => setLocalUrl(event.target.value)}
             className="w-full rounded-lg border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-500"
-            placeholder="http://127.0.0.1:8766"
+            placeholder={appOrigin}
           />
         </label>
         <label className="space-y-1.5">

@@ -4,6 +4,10 @@ import assert from "node:assert/strict";
 import type { SettingsSection } from "../lib/api";
 import { settingsFieldSearchText } from "../lib/settingsSearch";
 import {
+  externalInputPolicySummary,
+  externalInputSetupGuide,
+} from "../features/settings/externalInputPresentation";
+import {
   buildCodexAppServerPrelude,
   buildAccountConnectionPrelude,
   buildControlCenterSections,
@@ -30,6 +34,34 @@ test("settings control center keeps the required section order", () => {
     "Advanced Settings",
     "Diagnostics & Support",
   ]);
+});
+
+test("external input guidance and policy follow the selected provider", () => {
+  const discordGuide = externalInputSetupGuide({
+    provider: "discord",
+    setup_steps: [
+      "Select Discord Input.",
+      "Save the Discord Public Key.",
+      "Enable discord-main.",
+    ],
+  }, "discord");
+
+  assert.equal(
+    discordGuide,
+    "1. Select Discord Input.\n2. Save the Discord Public Key.\n3. Enable discord-main.",
+  );
+  assert.doesNotMatch(discordGuide, /LINE|line-main/);
+  assert.match(externalInputPolicySummary("discord"), /^discord\.production:/);
+  assert.match(externalInputPolicySummary("slack"), /^slack\.production:/);
+  assert.match(externalInputPolicySummary("generic"), /^Generic endpoint policy:/);
+});
+
+test("external input guidance includes the built-in generic webhook path", () => {
+  const guide = externalInputSetupGuide(null, "generic");
+
+  assert.match(guide, /Generic Webhook Input/);
+  assert.match(guide, /\/api\/webhooks\/inbound\/\{webhook_id\}/);
+  assert.match(guide, /Webhook Shared Secret/);
 });
 
 test("control center canonical section ids round-trip through settings navigation", () => {

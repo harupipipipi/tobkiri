@@ -51,6 +51,12 @@ Quick Tunnel button creates a temporary public URL for the selected route path,
 for example `/api/integrations/line/webhook`, so the user can paste the full URL
 into the provider dashboard.
 
+The Setup Flow and Audience Policies summaries follow the selected built-in
+provider/template. The editable Local Tobkiri URL defaults to the active
+`DEFAULTS_HTTP_HOST` and `DEFAULTS_HTTP_PORT`; an untouched legacy
+`http://127.0.0.1:8766` default is migrated to that runtime address, while an
+explicitly edited URL is preserved.
+
 `submit_input` is the compatibility entrypoint after profile transformation.
 Internally it now forwards to `dispatch_input`, which routes a
 `RumiInputEnvelope` by `delivery.action_id`.

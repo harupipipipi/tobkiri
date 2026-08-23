@@ -1255,6 +1255,9 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertNotIn(
             "custom", {option["value"] for option in input_fields["input_provider"]["options"]}
         )
+        self.assertIn(
+            "generic", {option["value"] for option in input_fields["input_provider"]["options"]}
+        )
         self.assertNotIn(
             "custom.input",
             {option["value"] for option in input_fields["input_template_id"]["options"]},
@@ -1298,6 +1301,11 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         )
 
         self.assertEqual(updated["external_input"]["input_template_id"], "slack.input.default")
+        self.assertNotIn("LINE", updated["external_input"]["input_setup_guide"])
+        self.assertIn("Slack", updated["external_input"]["input_setup_guide"])
+        self.assertTrue(
+            updated["external_input"]["policy_summary"].startswith("slack.production:")
+        )
         self.assertEqual(
             updated["external_input"]["public_url_launcher"]["route_path"],
             "/api/integrations/slack/events",
@@ -1306,6 +1314,65 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             updated["external_output"]["output_template_id"], "discord.output.bot_channel"
         )
         self.assertEqual(updated["external_output"]["output_profile_id"], "discord.bot_channel")
+
+        generic = FrontendRegistry(pack_root=DEFAULTSPACK_ROOT)._refresh_derived_settings(
+            {
+                **values,
+                "external_input": {
+                    **values["external_input"],
+                    "input_provider": "generic",
+                    "input_endpoint_id": "test-webhook",
+                },
+            }
+        )
+        self.assertEqual(
+            generic["external_input"]["input_template_id"],
+            "generic.input.default",
+        )
+        self.assertEqual(
+            generic["external_input"]["input_profile_id"],
+            "generic.webhook.default",
+        )
+        self.assertEqual(
+            generic["external_input"]["public_url_launcher"]["route_path"],
+            "/api/webhooks/inbound/{webhook_id}",
+        )
+        self.assertIn("Webhook Shared Secret", generic["external_input"]["input_setup_guide"])
+        self.assertTrue(
+            generic["external_input"]["policy_summary"].startswith(
+                "Generic endpoint policy:"
+            )
+        )
+
+    def test_external_input_local_url_tracks_runtime_and_preserves_edits(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"DEFAULTS_HTTP_HOST": "127.0.0.1", "DEFAULTS_HTTP_PORT": "8791"},
+        ):
+            pack_root = Path(tmpdir)
+            shutil.copytree(
+                DEFAULTSPACK_ROOT / "external_io_templates",
+                pack_root / "external_io_templates",
+            )
+            with patch("domain.frontend.registry.AIClient") as mock_client:
+                mock_client.return_value.list_models.return_value = [{"id": "stub/default"}]
+                values = FrontendRegistry(pack_root=pack_root).get_settings()["values"]
+
+            self.assertEqual(
+                values["external_input"]["public_url_launcher"]["local_url"],
+                "http://127.0.0.1:8791",
+            )
+
+            values["external_input"]["public_url_launcher"]["local_url"] = (
+                "http://127.0.0.1:9900"
+            )
+            refreshed = FrontendRegistry(pack_root=pack_root)._refresh_derived_settings(values)
+            self.assertEqual(
+                refreshed["external_input"]["public_url_launcher"]["local_url"],
+                "http://127.0.0.1:9900",
+            )
 
     def test_external_token_status_keeps_custom_provider_rows(self):
         from domain.external.token_store import external_token_status, set_external_token

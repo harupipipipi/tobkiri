@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { buildVisibleModelOptions, SettingsModalRenderer, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
+import { buildVisibleModelOptions, PublicUrlField, SettingsModalRenderer, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
 import { CredentialTransferModal, credentialTransferCanClose, credentialTransferFocusTarget } from "../components/CredentialTransferModal";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
@@ -86,6 +86,29 @@ test("settings row selection clears when the selected row is clicked again", () 
   assert.equal(toggleSettingsRowSelection("provider:token", "provider:token"), "");
   assert.equal(toggleSettingsRowSelection("provider:token", "provider:other"), "provider:other");
   assert.equal(toggleSettingsRowSelection("", "provider:token"), "provider:token");
+});
+
+test("public URL settings render the runtime URL as an editable Tobkiri value", () => {
+  const field: SettingsSection["fields"][number] = {
+    id: "public_url_launcher",
+    label: "Temporary Public URL",
+    type: "public_url",
+    default: {},
+  };
+  const html = renderToStaticMarkup(createElement(PublicUrlField, {
+    sectionId: "external_input",
+    field,
+    value: {
+      provider_id: "cloudflare_quick_tunnel",
+      local_url: "http://127.0.0.1:8791",
+      route_path: "/api/integrations/discord/interactions",
+    },
+    onChange: () => undefined,
+  }));
+
+  assert.match(html, /Local Tobkiri URL/);
+  assert.match(html, /value="http:\/\/127\.0\.0\.1:8791"/);
+  assert.doesNotMatch(html, /Local Rumi URL/);
 });
 
 test("settings AI surface launches the normal chat with the Settings skill", () => {
