@@ -117,18 +117,26 @@ class ProviderRegistry:
             evidence = evidence if isinstance(evidence, Mapping) else {}
             verified = bool(evidence.get("verified"))
             status = str(evidence.get("status") or "unknown")
-            if not verified or status not in {"available", "unavailable"}:
+            if not verified or status not in {
+                "available",
+                "invalid",
+                "limited",
+                "unavailable",
+            }:
                 status = "unknown"
+            observed_at = (
+                float(evidence["observed_at"])
+                if verified and evidence.get("observed_at") is not None
+                else None
+            )
             providers.append(
                 {
                     "provider_instance_id": item["provider_instance_id"],
                     "status": status,
-                    "observed_at": (
-                        float(evidence["observed_at"])
-                        if verified and evidence.get("observed_at") is not None
-                        else None
-                    ),
+                    "observed_at": observed_at,
                     "verified": verified,
+                    "freshness": "fresh" if observed_at is not None else "unknown",
+                    "reason_code": status,
                 }
             )
         return {"providers": providers}

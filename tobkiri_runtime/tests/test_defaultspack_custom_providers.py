@@ -13,6 +13,121 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
 class TestDefaultspackCustomProviderRegistry(unittest.TestCase):
+    def test_provider_key_status_never_falls_back_to_legacy_default_authority(self):
+        from domain.ai_client import api_key_store
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUMI_DEFAULTSPACK_SECRETS_DIR": tmpdir},
+                    clear=True,
+                ),
+                patch.object(
+                    api_key_store,
+                    "_provider_authority_status",
+                    return_value={},
+                ),
+                patch.object(
+                    api_key_store,
+                    "provider_has_api_key",
+                    side_effect=AssertionError("legacy authority consulted"),
+                ),
+            ):
+                rows = api_key_store.provider_key_status()
+
+        opencode = next(row for row in rows if row["provider_id"] == "opencode-zen")
+        self.assertFalse(opencode["default_api_key_configured"])
+        self.assertEqual(opencode["credential_presence"], "missing")
+
+    def test_provider_key_status_projects_v4_default_credential_without_secret_data(self):
+        from domain.ai_client import api_key_store
+
+        authority = {
+            "opencode-zen": {
+                "provider_id": "opencode-zen",
+                "status": "unknown",
+                "runtime": {
+                    "verified": False,
+                    "observed_at": None,
+                },
+                "credential": {
+                    "configured": True,
+                    "source": "provider_default",
+                    "masked": True,
+                    "scopes": ["ai.generate"],
+                    "opaque_id": "credential-status:fixture",
+                    "reason_code": "not_verified",
+                },
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUMI_DEFAULTSPACK_SECRETS_DIR": tmpdir},
+                    clear=True,
+                ),
+                patch.object(
+                    api_key_store,
+                    "_provider_authority_status",
+                    return_value=authority,
+                ),
+            ):
+                rows = api_key_store.provider_key_status()
+
+        opencode = next(row for row in rows if row["provider_id"] == "opencode-zen")
+        self.assertTrue(opencode["configured"])
+        self.assertTrue(opencode["default_api_key_configured"])
+        self.assertEqual(opencode["credential_presence"], "present")
+        self.assertEqual(opencode["credential_source"], "provider_default")
+        self.assertTrue(opencode["credential_readonly"])
+        self.assertEqual(
+            opencode["credential_opaque_id"],
+            "credential-status:fixture",
+        )
+        self.assertEqual(opencode["credential_usability"], "present_unverified")
+        self.assertEqual(opencode["credential_health"]["status"], "present_unverified")
+        self.assertEqual(opencode["credential_health"]["granted_scopes"], ["ai.generate"])
+        rendered = repr(opencode)
+        self.assertNotIn("OPENCODE_ZEN_API_KEY", rendered)
+        self.assertNotIn("credential:opaque", rendered)
+
+    def test_provider_key_status_keeps_verified_health_separate_from_presence(self):
+        from domain.ai_client.api_key_store import _provider_status_row
+
+        base = {
+            "provider_id": "opencode-zen",
+            "apis": [],
+        }
+        unavailable = _provider_status_row(
+            provider_id="opencode-zen",
+            authority={
+                "status": "unavailable",
+                "runtime": {"verified": True, "observed_at": 123.0},
+                "credential": {"configured": True, "scopes": []},
+            },
+            default_api_key_configured=False,
+            oauth_configured=False,
+            row=base,
+        )
+        usable = _provider_status_row(
+            provider_id="opencode-zen",
+            authority={
+                "status": "available",
+                "runtime": {"verified": True, "observed_at": 124.0},
+                "credential": {"configured": True, "scopes": []},
+            },
+            default_api_key_configured=False,
+            oauth_configured=False,
+            row=base,
+        )
+
+        self.assertEqual(unavailable["credential_presence"], "present")
+        self.assertEqual(unavailable["credential_usability"], "unavailable")
+        self.assertEqual(usable["credential_presence"], "present")
+        self.assertEqual(usable["credential_usability"], "verified_usable")
+
     def test_named_key_for_unknown_provider_auto_registers_custom_provider(self):
         from domain.ai_client.api_key_store import (
             list_custom_providers,

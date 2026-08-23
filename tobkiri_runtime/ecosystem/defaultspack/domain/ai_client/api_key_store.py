@@ -92,6 +92,23 @@ _KIND_CUSTOM = "custom"
 _VALID_KINDS = {_KIND_LLM, _KIND_CUSTOM}
 _CREDENTIAL_MODE_API_KEY = "api_key"
 _CREDENTIAL_MODE_NONE = "none"
+_USABLE_HEALTH_STATUSES = {"available", "healthy", "usable", "verified_usable"}
+_LIMITED_HEALTH_STATUSES = {"limited", "verified_limited"}
+_INVALID_HEALTH_STATUSES = {"invalid", "unauthorized", "forbidden"}
+_UNAVAILABLE_HEALTH_STATUSES = {"unavailable", "offline", "provider_unavailable"}
+_SAFE_CREDENTIAL_SOURCES = {
+    "device_transfer",
+    "environment",
+    "oauth",
+    "opaque_handle",
+    "provider_default",
+    "secret_store",
+}
+_SAFE_CREDENTIAL_REASON_CODES = {
+    "expired",
+    "not_configured",
+    "not_verified",
+}
 
 
 def _pack_root() -> Path:
@@ -846,23 +863,33 @@ def read_provider_api_key(provider_id: str, api_id: str, *, pack_root: Path | No
 def provider_key_status(*, pack_root: Path | None = None) -> list[dict[str, Any]]:
     program_manifests = provider_program_manifests()
     builtin_provider_ids = sorted(set(PROVIDER_SECRET_KEYS) | set(program_manifests))
+    authority_status = _provider_authority_status(builtin_provider_ids)
     builtin_rows = [
-        {
-            "provider_id": provider_id,
-            "key": keys[0] if keys else named_provider_secret_key(provider_id, api_id="DEFAULT"),
-            "keys": list(keys),
-            "kind": _KIND_LLM,
-            "builtin": True,
-            "label": str(program_manifests.get(provider_id, {}).get("display_name") or provider_id),
-            "configured": (
-                provider_has_api_key(provider_id, pack_root=pack_root)
-                or provider_has_oauth_connection(provider_id, pack_root=pack_root)
+        _provider_status_row(
+            provider_id=provider_id,
+            authority=authority_status.get(provider_id, {}),
+            default_api_key_configured=False,
+            oauth_configured=provider_has_oauth_connection(
+                provider_id,
+                pack_root=pack_root,
             ),
-            "apis": provider_named_api_keys(provider_id, pack_root=pack_root),
-            "oauth": provider_oauth_status(provider_id, pack_root=pack_root),
-        }
+            row={
+                "provider_id": provider_id,
+                # Public Settings metadata must not reveal environment-variable
+                # names. Credential resolution remains owned by the broker.
+                "key": f"provider-default:{provider_id}",
+                "keys": [],
+                "kind": _KIND_LLM,
+                "builtin": True,
+                "label": str(
+                    program_manifests.get(provider_id, {}).get("display_name")
+                    or provider_id
+                ),
+                "apis": provider_named_api_keys(provider_id, pack_root=pack_root),
+                "oauth": provider_oauth_status(provider_id, pack_root=pack_root),
+            },
+        )
         for provider_id in builtin_provider_ids
-        for keys in [PROVIDER_SECRET_KEYS.get(provider_id, [])]
     ]
 
     seen_ids = {row["provider_id"] for row in builtin_rows}
@@ -889,19 +916,158 @@ def provider_key_status(*, pack_root: Path | None = None) -> list[dict[str, Any]
                 break
         apis = provider_named_api_keys(provider_id, pack_root=pack_root)
         custom_rows.append(
-            {
-                "provider_id": provider_id,
-                "key": named_provider_secret_key(provider_id, api_id="DEFAULT"),
-                "keys": [],
-                "kind": kind_value,
-                "builtin": False,
-                "label": str(definition.get("label") or provider_id),
-                "configured": any(api.get("configured") for api in apis),
-                "apis": apis,
-                "oauth": provider_oauth_status(provider_id, pack_root=pack_root),
-            }
+            _provider_status_row(
+                provider_id=provider_id,
+                authority=authority_status.get(provider_id, {}),
+                default_api_key_configured=False,
+                oauth_configured=provider_has_oauth_connection(
+                    provider_id,
+                    pack_root=pack_root,
+                ),
+                row={
+                    "provider_id": provider_id,
+                    "key": named_provider_secret_key(provider_id, api_id="DEFAULT"),
+                    "keys": [],
+                    "kind": kind_value,
+                    "builtin": False,
+                    "label": str(definition.get("label") or provider_id),
+                    "apis": apis,
+                    "oauth": provider_oauth_status(provider_id, pack_root=pack_root),
+                },
+            )
         )
     return builtin_rows + custom_rows
+
+
+def _provider_authority_status(
+    provider_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Read redacted v4 provider state without probing or resolving credentials."""
+
+    try:
+        from .provider_health import provider_health_report
+
+        report = provider_health_report(provider_ids=provider_ids)
+    except Exception:
+        # Settings must remain local-first while the v4 dispatch session starts.
+        # Absence of contract evidence never grants credential authority.
+        return {}
+    providers = report.get("providers") if isinstance(report, dict) else []
+    if not isinstance(providers, list):
+        return {}
+    return {
+        str(item.get("provider_id") or "").strip(): dict(item)
+        for item in providers
+        if isinstance(item, dict) and str(item.get("provider_id") or "").strip()
+    }
+
+
+def _provider_status_row(
+    *,
+    provider_id: str,
+    authority: dict[str, Any],
+    default_api_key_configured: bool,
+    oauth_configured: bool,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    """Add redacted presence and usability metadata to a Settings provider row."""
+
+    credential = authority.get("credential")
+    credential = credential if isinstance(credential, dict) else {}
+    runtime = authority.get("runtime")
+    runtime = runtime if isinstance(runtime, dict) else {}
+    broker_configured = bool(credential.get("configured"))
+    default_configured = bool(default_api_key_configured or broker_configured)
+    named_configured = any(
+        bool(item.get("configured"))
+        for item in row.get("apis", [])
+        if isinstance(item, dict)
+    )
+    credential_present = bool(default_configured or named_configured or oauth_configured)
+    health_status = str(authority.get("status") or "unknown").strip().lower()
+    verified = bool(runtime.get("verified"))
+    observed_at = runtime.get("observed_at")
+    usability_status = _credential_usability_status(
+        present=credential_present,
+        verified=verified,
+        health_status=health_status,
+        observed_at=observed_at,
+    )
+    if broker_configured:
+        projected_source = str(credential.get("source") or "opaque_handle")
+        source = (
+            projected_source
+            if projected_source in _SAFE_CREDENTIAL_SOURCES
+            else "opaque_handle"
+        )
+    elif default_api_key_configured or named_configured:
+        source = "secret_store"
+    elif oauth_configured:
+        source = "oauth"
+    else:
+        source = "none"
+    projected_reason = str(credential.get("reason_code") or "")
+    if projected_reason in _SAFE_CREDENTIAL_REASON_CODES:
+        safe_reason_code = projected_reason
+    elif health_status in (
+        _USABLE_HEALTH_STATUSES
+        | _LIMITED_HEALTH_STATUSES
+        | _INVALID_HEALTH_STATUSES
+        | _UNAVAILABLE_HEALTH_STATUSES
+        | {"unknown"}
+    ):
+        safe_reason_code = health_status
+    else:
+        safe_reason_code = "unknown"
+    return {
+        **row,
+        "provider_default_ref": f"provider-default:{provider_id}",
+        "configured": credential_present,
+        "default_api_key_configured": default_configured,
+        "oauth_configured": bool(oauth_configured),
+        "credential_presence": "present" if credential_present else "missing",
+        "credential_source": source,
+        "credential_readonly": broker_configured,
+        "credential_opaque_id": credential.get("opaque_id"),
+        "credential_usability": usability_status,
+        "credential_health": {
+            "status": usability_status,
+            "last_checked_at": observed_at,
+            "freshness": (
+                "fresh"
+                if verified and observed_at is not None
+                else "stale"
+                if observed_at is not None
+                else "unknown"
+            ),
+            "granted_scopes": list(credential.get("scopes") or []),
+            "safe_reason_code": safe_reason_code,
+        },
+    }
+
+
+def _credential_usability_status(
+    *,
+    present: bool,
+    verified: bool,
+    health_status: str,
+    observed_at: Any,
+) -> str:
+    """Keep credential presence distinct from provider usability evidence."""
+
+    if not present:
+        return "missing"
+    if verified and health_status in _USABLE_HEALTH_STATUSES:
+        return "verified_usable"
+    if verified and health_status in _LIMITED_HEALTH_STATUSES:
+        return "verified_limited"
+    if verified and health_status in _INVALID_HEALTH_STATUSES:
+        return "invalid"
+    if verified and health_status in _UNAVAILABLE_HEALTH_STATUSES:
+        return "unavailable"
+    if observed_at is not None:
+        return "unknown_stale"
+    return "present_unverified"
 
 
 def builtin_provider_ids() -> list[str]:

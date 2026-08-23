@@ -52,6 +52,10 @@ import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsF
 import { ModelRoutingOverview } from "./settings/ModelRoutingOverview";
 import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
 import { buildSettingsProfileWorkspace } from "./settings/settingsProfileModel";
+import {
+  ProviderDefaultCredentialNotice,
+  providerDefaultApiRows,
+} from "./settings/providerDefaultCredential";
 
 const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
   ...builtinSettingsFieldRendererEntries,
@@ -2316,6 +2320,12 @@ function SettingsField({
       const selectedProvider = routeProviderForOption(selectedOption, selectedModel);
       const isLocalModel = Boolean(selectedOption?.local) || selectedProvider === "stub";
       const providerRows = fieldApiProviderRows(field);
+      const selectedProviderRow = providerRows.find(
+        (provider) => String(provider.provider_id ?? "") === selectedProvider,
+      );
+      const selectedProviderDefault = providerDefaultApiRows(
+        selectedProviderRow ? [selectedProviderRow] : [],
+      )[0];
       const providerOptionsForRoutes = collectApiProviderOptions(providerRows)
         .filter((option) => option.kind === "llm");
       const allRegisteredApis = registeredApiRows(providerRows);
@@ -2477,6 +2487,8 @@ function SettingsField({
                     );
                   })}
                 </div>
+              ) : selectedProviderDefault && !trimmedSearch && !routeShowAllProviders ? (
+                <ProviderDefaultCredentialNotice api={selectedProviderDefault} />
               ) : (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100">
                   {trimmedSearch
