@@ -303,7 +303,8 @@ class TransactionalTeamStore:
                     "updated_at_ms": now_ms,
                 }
                 lease = {
-                    "id": lease_id,
+                    "id": work_item_id,
+                    "lease_id": lease_id,
                     "work_item_id": work_item_id,
                     "attempt_id": attempt_id,
                     "holder_member_id": member_id,
