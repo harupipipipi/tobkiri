@@ -33,6 +33,14 @@ def run(input_data, context=None):
         workspace_root=workspace_root,
         workspace_id=workspace_id,
         worktree_mode=input_data.get("worktree_mode") or "metadata_only",
+        execution_attempt_id=(
+            input_data.get("execution_attempt_id")
+            or input_data.get("attempt_id")
+            or context.get("execution_attempt_id")
+            or context.get("attempt_id")
+        ),
+        base_commit=input_data.get("base_commit") or context.get("base_commit"),
+        base_ref=input_data.get("base_ref") or context.get("base_ref"),
         context=context,
     )
     if result.get("status") == "error":
