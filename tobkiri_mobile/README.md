@@ -62,8 +62,9 @@ The PC side (defaultspack webapp **Settings → アプリ**) emits JSON QR codes
   "expiresAt": 1781830000000
 }
 
-Rumi Remote Mobile is the Flutter client for managing a PC-hosted Rumi
-`defaultspack` from iOS and Android devices on a trusted network.
+Tobkiri Mobile is the Flutter client for accessible chat and management of a
+PC-hosted Tobkiri `defaultspack` from iOS and Android devices on a trusted
+network.
 
 The app targets the Kernel Pack API on port `8765`, not the standalone
 defaultspack chat transport on port `8766`. The Kernel API requires a bearer
@@ -163,6 +164,25 @@ normal pairing tests.
 
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
+
+Chat uses only the canonical scoped mobile routes under
+`/api/mobile/v1/conversations`. The app fails closed until an exact
+`chat.read`/`chat.write` device connection has been securely provisioned. It
+does not run tools on the phone or fall back to legacy host execution routes.
+
+## Accessibility
+
+- Message announcements identify the author, processing/error state, and
+  content once. Empty pending and failed messages remain meaningful.
+- Composer actions use stable Japanese and English labels and a 48 logical
+  pixel minimum target in add, field, send, and stop order.
+- Copy controls stay hidden until long-press or keyboard focus, while a screen
+  reader copy action remains available on non-empty messages.
+- HTTP(S) links have separate localized 48 logical pixel actions.
+
+For release validation, enable TalkBack and VoiceOver on real app builds. Check
+user, assistant, pending, error, and empty announcements; traverse add, field,
+and send/stop in order; then exercise copy, link, keyboard send, and stop.
 
 ## Development
 
