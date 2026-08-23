@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+from core_runtime import WorktreeTeamLedger as PublicWorktreeTeamLedger
 from core_runtime.worktree_team_contract import (
     CONTRACT_VERSION,
     WorktreeContractError,
@@ -85,6 +86,10 @@ def test_normalized_manifest_is_exposed_and_schema_valid() -> None:
     assert manifest["harness"] == {"kind": "external", "adapter_id": "external.codex-cli"}
     assert manifest["stop"] == {"first_material_blocker": True, "blind_retry": False}
     assert manifest["contract_digest"].startswith("sha256:")
+    from tobkiri_protocol.validation import validate_document
+
+    validate_document(manifest, "worktree_team_task")
+    assert PublicWorktreeTeamLedger is WorktreeTeamLedger
 
 
 def test_vendor_neutral_presets_cover_implementation_review_and_one_shot_work() -> None:
