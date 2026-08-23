@@ -202,6 +202,41 @@ class PackRepairManager:
             raise PackRepairError("CONFLICT_NOT_FOUND", "Pack conflict does not exist")
         return json.loads(row[0])
 
+    def list_conflict_reviews(self) -> list[dict[str, Any]]:
+        """Return Launcher-safe reports plus the latest inspectable repair state."""
+
+        reports = self.list_conflicts()
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT conflict_id, record_json FROM repair_packs ORDER BY updated_at, repair_id"
+            ).fetchall()
+        latest = {row[0]: json.loads(row[1]) for row in rows}
+        result: list[dict[str, Any]] = []
+        for report in reports:
+            item = deepcopy(report)
+            record = latest.get(report["conflict_id"])
+            if record is not None:
+                validation = record.get("validation") or {}
+                dry_run = validation.get("dry_run") or {}
+                approval = record.get("approval") or {}
+                warnings: list[str] = []
+                if validation and not validation.get("passed"):
+                    warnings.append(str(dry_run.get("reason") or "Repair validation did not pass"))
+                if record.get("stale"):
+                    warnings.append("Source Pack binding changed; regeneration and review are required")
+                item["repair"] = {
+                    "repair_id": record["repair_id"],
+                    "artifact_hash": record["artifact_hash"],
+                    "state": record["state"],
+                    "capability_delta": validation.get("capability_delta") or [],
+                    "validation_passed": validation.get("passed") is True,
+                    "dry_run_resolved": dry_run.get("resolved") is True,
+                    "warnings": warnings,
+                    "approval_actor_id": approval.get("actor_id"),
+                }
+            result.append(item)
+        return result
+
     def plan(self, conflict_id: str, *, repair_kind: str, generation_run_id: str) -> dict[str, Any]:
         report = self.get_conflict(conflict_id)
         if repair_kind not in report["safe_repair_kinds"]:
@@ -272,12 +307,15 @@ class PackRepairManager:
                 raise
             raise PackRepairError("GENERATOR_UNAVAILABLE", "Repair generator failed or is unavailable") from error
         pack_id = repair["pack_id"]
-        target = self.generated_workspace / pack_id
+        repair_id = "rpr_" + hashlib.sha256(
+            _json({"plan_id": plan_id, "repair": repair}).encode()
+        ).hexdigest()[:24]
+        target = self.generated_workspace / f"{pack_id}--{repair_id[4:]}"
         if target.exists():
             raise PackRepairError("REPAIR_PACK_EXISTS", "Generated repair Pack already exists")
-        with tempfile.TemporaryDirectory(prefix=".repair-stage-", dir=self.generated_workspace) as temp:
-            stage_parent = Path(temp)
-            try:
+        try:
+            with tempfile.TemporaryDirectory(prefix=".repair-stage-", dir=self.generated_workspace) as temp:
+                stage_parent = Path(temp)
                 manifest_path = scaffold_pack(
                     stage_parent / pack_id,
                     pack_id=pack_id,
@@ -298,9 +336,7 @@ class PackRepairManager:
                 source_path.write_text(_pretty(source), encoding="utf-8")
                 metadata = {
                     "repair_api_version": REPAIR_API_VERSION,
-                    "repair_id": "rpr_" + hashlib.sha256(
-                        _json({"plan_id": plan_id, "repair": repair}).encode()
-                    ).hexdigest()[:24],
+                    "repair_id": repair_id,
                     "plan_id": plan_id,
                     "conflict_id": plan["conflict_id"],
                     "repair_kind": plan["repair_kind"],
@@ -322,10 +358,18 @@ class PackRepairManager:
                 self._static_validate(root, plan, metadata)
                 artifact_hash = _directory_hash(root)
                 os.replace(root, target)
-            except PackRepairError:
+        except Exception as error:
+            with self._transaction() as connection:
+                self._audit(connection, plan["conflict_id"], "repair.generation_failed", {
+                    "plan_id": plan_id, "error_type": type(error).__name__
+                })
+            if isinstance(error, PackRepairError):
                 raise
-            except (PackSdkError, OSError, ValueError) as error:
-                raise PackRepairError("GENERATED_PACK_INVALID", "Generated output did not form a valid Pack") from error
+            if isinstance(error, (PackSdkError, OSError, ValueError)):
+                raise PackRepairError(
+                    "GENERATED_PACK_INVALID", "Generated output did not form a valid Pack"
+                ) from error
+            raise
         record = {
             "repair_id": metadata["repair_id"],
             "plan_id": plan_id,
@@ -480,10 +524,23 @@ class PackRepairManager:
             ).fetchall()
         repairs = [json.loads(row[0]) for row in rows]
         active = [item for item in repairs if item["active"] and not item["stale"]]
+        lock_override = None
+        if len(active) == 1:
+            selected = active[0]
+            plan = self._get_plan(selected["plan_id"])
+            lock_override = {
+                "pack_id": selected["pack_id"],
+                "artifact_hash": selected["artifact_hash"],
+                "repair_id": selected["repair_id"],
+                "repairs_conflict_id": conflict_id,
+                "profile_fingerprint": plan["profile_fingerprint"],
+                "source_packs": plan["packs"],
+            }
         return {
             "conflict_id": conflict_id,
             "resolved": len(active) == 1,
             "active_repair_id": active[0]["repair_id"] if len(active) == 1 else None,
+            "profile_lock_override": lock_override,
             "repair_states": [{"repair_id": item["repair_id"], "state": item["state"]} for item in repairs],
         }
 
@@ -506,7 +563,7 @@ class PackRepairManager:
 
         request = dict(payload)
         handlers: dict[str, tuple[set[str], Callable[[], Any]]] = {
-            "pack.conflicts.list": (set(), self.list_conflicts),
+            "pack.conflicts.list": (set(), self.list_conflict_reviews),
             "pack.conflicts.get": (
                 {"conflict_id"},
                 lambda: self.get_conflict(str(request["conflict_id"])),
@@ -676,6 +733,16 @@ class PackRepairManager:
             "INSERT INTO repair_audit(conflict_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)",
             (conflict_id, event_type, _json(payload), time.time()),
         )
+        connection.execute(
+            """
+            DELETE FROM repair_audit
+            WHERE conflict_id = ? AND event_id NOT IN (
+                SELECT event_id FROM repair_audit
+                WHERE conflict_id = ? ORDER BY event_id DESC LIMIT 1024
+            )
+            """,
+            (conflict_id, conflict_id),
+        )
 
     def _initialize(self) -> None:
         with closing(self._connect()) as connection:
@@ -732,7 +799,10 @@ class _Transaction:
 
 def _directory_hash(root: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+    entries = sorted(root.rglob("*"))
+    if any(path.is_symlink() for path in entries):
+        raise PackRepairError("ARTIFACT_LINK_FORBIDDEN", "Repair Pack artifacts cannot contain links")
+    for path in (item for item in entries if item.is_file()):
         relative = path.relative_to(root).as_posix()
         digest.update(relative.encode())
         digest.update(b"\0")

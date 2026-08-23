@@ -431,6 +431,54 @@ export interface DebugApprovalStatus {
 export interface PacksResponseData extends PackControlBinding {
   packs: ApiPack[];
   count: number;
+  pack_conflicts?: PackConflictReport[];
+}
+
+export type RepairPackState =
+  | 'generated'
+  | 'validated'
+  | 'blocked'
+  | 'approved'
+  | 'installed'
+  | 'active'
+  | 'stale'
+  | 'modified'
+  | 'removed';
+
+export interface PackConflictSource {
+  pack_id: string;
+  version: string;
+  artifact_hash: string;
+  provider_instance_id?: string;
+}
+
+export interface PackRepairReview {
+  repair_id: string;
+  artifact_hash: string;
+  state: RepairPackState;
+  capability_delta: string[];
+  validation_passed: boolean;
+  dry_run_resolved: boolean;
+  warnings: string[];
+  approval_actor_id?: string | null;
+}
+
+export interface PackConflictReport {
+  conflict_api_version: 'io.tobkiri.pack-conflict-report.v1';
+  conflict_id: string;
+  kind: string;
+  profile_id: string;
+  profile_fingerprint: string;
+  involved_packs: PackConflictSource[];
+  affected_contracts: string[];
+  affected_resources: string[];
+  schemas: Record<string, unknown>[];
+  constraints: string[];
+  safe_repair_kinds: string[];
+  repairable: boolean;
+  diagnostics: string[];
+  validation_requirements: string[];
+  repair?: PackRepairReview | null;
 }
 
 export interface PackInstallResponseData extends PackControlBinding {

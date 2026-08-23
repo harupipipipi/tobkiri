@@ -13,6 +13,7 @@ import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
 import { isPackInCatalogScope } from '@/src/lib/packScope';
+import {PackConflictCenter} from '@/src/components/packs/PackConflictCenter';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning';
 
@@ -168,6 +169,12 @@ export function Packs() {
             stale={packs.length > 0}
           />
         ) : null}
+
+        <PackConflictCenter
+          conflicts={packConflicts}
+          pending={packRepairPending}
+          onAction={runPackRepairAction}
+        />
 
         {/* Search */}
         <div className="relative">

@@ -20,6 +20,7 @@ import type {
   PackControlBinding,
   ApiSupervisorDashboard,
   HealthResponseData,
+  PackConflictReport,
   RuntimeStatus,
 } from './lib/apiTypes';
 import {transformPacks} from './lib/transforms';
@@ -135,6 +136,16 @@ export interface PackVMDoctorRefreshOptions {
   reconcile?: boolean;
 }
 
+export type PackRepairAction =
+  | 'generate'
+  | 'review'
+  | 'approve'
+  | 'install'
+  | 'activate'
+  | 'disable'
+  | 'remove'
+  | 'regenerate';
+
 export interface Activity {
   id: number;
   timestamp: string;
@@ -219,6 +230,7 @@ interface AppState {
     force?: boolean,
     options?: {skipMutationReconciliation?: boolean},
   ) => Promise<void>;
+  runPackRepairAction: (conflictId: string, action: PackRepairAction) => Promise<void>;
   loadFrontendCatalog: (force?: boolean) => Promise<void>;
   refreshPackVMDoctor: (
     options?: PackVMDoctorRefreshOptions,
@@ -881,6 +893,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({packsLoading: false});
     });
     return packsLoadPromise;
+  },
+
+  runPackRepairAction: async (conflictId, action) => {
+    const key = `${conflictId}:${action}`;
+    if (get().packRepairPending[key]) return;
+    set((state) => ({
+      packRepairPending: {...state.packRepairPending, [key]: true},
+    }));
+    try {
+      throw new Error(
+        `Pack repair operation ${action} is unavailable in the captured runtime Profile.`,
+      );
+    } catch (error) {
+      get().addToast(error instanceof Error ? error.message : 'Pack repair operation failed', 'error');
+    } finally {
+      set((state) => {
+        const pending = {...state.packRepairPending};
+        delete pending[key];
+        return {packRepairPending: pending};
+      });
+    }
   },
 
   loadFrontendCatalog: (force = false) => {

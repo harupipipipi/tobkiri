@@ -137,12 +137,16 @@ def test_ambiguous_provider_fake_ai_lifecycle_is_explicit_and_removable(
     assert approved["state"] == "approved"
     assert manager.install(generated["repair_id"], _packs())["state"] == "installed"
     assert manager.activate(generated["repair_id"])["state"] == "active"
-    assert manager.resolution_status(report["conflict_id"])["resolved"] is True
+    active_status = manager.resolution_status(report["conflict_id"])
+    assert active_status["resolved"] is True
+    assert active_status["profile_lock_override"]["source_packs"] == _packs()
 
     removed = manager.remove(generated["repair_id"])
     assert removed["state"] == "removed"
     assert pack_root.is_dir()
-    assert manager.resolution_status(report["conflict_id"])["resolved"] is False
+    removed_status = manager.resolution_status(report["conflict_id"])
+    assert removed_status["resolved"] is False
+    assert removed_status["profile_lock_override"] is None
 
 
 def test_fixture_schema_adapter_resolves_only_after_proof(tmp_path: Path) -> None:
@@ -328,6 +332,9 @@ def test_vendor_neutral_operations_keep_generation_and_activation_separate(
         generator=lambda request: _selection_output(),
     )
     assert generated["state"] == "generated"
+    reviews = manager.dispatch("pack.conflicts.list", {})
+    assert reviews[0]["repair"]["state"] == "generated"
+    assert reviews[0]["repair"]["artifact_hash"] == generated["artifact_hash"]
     assert manager.dispatch(
         "pack.repair.status", {"conflict_id": report["conflict_id"]}
     )["resolved"] is False
