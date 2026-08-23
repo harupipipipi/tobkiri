@@ -224,12 +224,7 @@ export function toolActivityPreviewKey(
 export function previewableToolActivityKeys(events: ChatActivityEvent[]): Set<string> {
   const keys = new Set<string>();
   for (const event of events) {
-    if (
-      event.type !== "browser_screenshot"
-      && event.type !== "browser_state_snapshot"
-      && event.type !== "browser_dom_snapshot"
-      && event.type !== "tool_call_completed"
-    ) continue;
+    if (!hasPreviewableToolActivityEvent(event)) continue;
     if (activityEventValue(event, "provider_attempt_discarded") === true) continue;
     const callId = String(activityEventValue(event, "tool_call_id") ?? "").trim();
     if (!callId) continue;
@@ -251,6 +246,38 @@ export function toolActivityPreviewId(
     item.providerAttemptGeneration,
   );
   return previewableKeys.has(key) ? item.toolCallId : undefined;
+}
+
+export function hasPreviewableToolActivityEvent(event: ChatActivityEvent): boolean {
+  if (
+    event.type === "browser_screenshot"
+    || event.type === "browser_state_snapshot"
+    || event.type === "browser_dom_snapshot"
+  ) {
+    return true;
+  }
+  if (
+    event.type !== "tool_call_completed"
+    && event.type !== "tool_result"
+    && event.phase !== "tool_call_completed"
+    && event.phase !== "tool_result"
+  ) {
+    return false;
+  }
+  return Boolean(
+    event.result !== undefined
+    || event.artifact !== undefined
+    || event.artifacts !== undefined
+    || event.output !== undefined
+    || event.screenshot !== undefined
+    || String(
+      event.display_text
+      ?? event.display_summary
+      ?? event.summary
+      ?? event.message
+      ?? "",
+    ).trim(),
+  );
 }
 
 function shortDetail(value: unknown, limit = 420): string {
@@ -1583,12 +1610,14 @@ function ToolActivityTimelineRow({
           <span className="block max-w-full truncate text-[10px] leading-4 text-zinc-600">{item.nextStep}</span>
         )}
       </span>
+      {hasPreview && <span className="mt-[5px] shrink-0 text-[10px] leading-4 text-zinc-500">開く</span>}
       {hasPreview && <ChevronRight size={12} className="mt-[5px] shrink-0 text-zinc-600" />}
     </>
   );
   const row = hasPreview ? (
     <button
       type="button"
+      aria-label={`${item.title || item.detail || "tool activity"} のプレビューを開く`}
       className={cn("group/tool flex min-h-7 w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded px-1.5 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-600 sm:min-h-8", activityRowTone(item.status))}
       onClick={() => {
         if (previewId) onOpenToolPreview?.(previewId);

@@ -5,6 +5,7 @@ import {
   type ChatActivityEvent,
   type ChatMessage,
 } from "./api";
+import { summarizeToolArguments } from "./toolActivity";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -39,6 +40,29 @@ function dataUrlName(value: string): string {
   const match = value.match(/^data:image\/([a-z0-9.+-]+);/i);
   const extension = match?.[1]?.replace("jpeg", "jpg").split("+")[0] || "png";
   return `screenshot.${extension}`;
+}
+
+function compactText(value: unknown, limit = 1200): string {
+  let text = "";
+  if (typeof value === "string") {
+    text = value;
+  } else if (value !== undefined && value !== null) {
+    try {
+      text = JSON.stringify(value, null, 2);
+    } catch {
+      text = String(value);
+    }
+  }
+  const trimmed = text.trim();
+  return trimmed.length > limit ? `${trimmed.slice(0, limit - 3)}...` : trimmed;
+}
+
+function safePreviewFilename(value: string): string {
+  return value
+    .trim()
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/^[._]+|_+$/g, "")
+    .slice(0, 80) || "tool";
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -399,6 +423,65 @@ function inlineImagePreview(
   };
 }
 
+function activityDetailPreview(
+  {
+    id,
+    toolStepId,
+    timestamp,
+    toolName,
+    event,
+    values,
+  }: {
+    id: string;
+    toolStepId: string;
+    timestamp: number;
+    toolName: string;
+    event: ChatActivityEvent;
+    values: unknown[];
+  },
+): ToolPreviewItem | null {
+  const args = isRecord(event.arguments) ? event.arguments : {};
+  const argumentSummary = summarizeToolArguments(toolName, args);
+  const summary = stringValue(event.display_text)
+    || stringValue(event.display_summary)
+    || stringValue(event.summary)
+    || stringValue(event.message);
+  const nextStep = stringValue(event.next_step) || stringValue(event.nextStep);
+  const status = stringValue(event.status)
+    || stringValue(event.phase)
+    || (isRecord(event.result) ? stringValue(event.result.status) : "");
+  const resultText = compactText(
+    values.map((value) => compactText(value)).filter(Boolean).join("\n\n"),
+    2400,
+  );
+  const hasDetail = Boolean(summary || argumentSummary || resultText || nextStep);
+  if (!hasDetail) return null;
+
+  const lines = [
+    "# Tool activity detail",
+    "",
+    `Tool: ${toolName}`,
+    `Call: ${toolStepId}`,
+    ...(status ? [`Status: ${status}`] : []),
+    ...(summary ? ["", "Summary:", summary] : []),
+    ...(argumentSummary ? ["", "Input:", argumentSummary] : []),
+    ...(nextStep ? ["", "Next:", nextStep] : []),
+    ...(resultText ? ["", "Result:", resultText] : []),
+  ];
+
+  return {
+    id,
+    toolStepId,
+    timestamp,
+    data: {
+      type: "file" as const,
+      filename: `${safePreviewFilename(toolName)}.activity.md`,
+      size: "activity detail",
+      content: lines.join("\n"),
+    },
+  };
+}
+
 function previewIdentity(preview: ToolPreviewItem): string {
   const data = preview.data;
   if (data.type === "web") return `web:${normalizePreviewUrl(data.url)}`;
@@ -464,9 +547,9 @@ export function toolPreviewsFromMessages(messages: ChatMessage[]): ToolPreviewIt
       eventMap.set(key, existing ? mergeStreamActivityEvent(existing, event) : event);
     }
     const eventPreviews = [...eventMap.values()].flatMap((event, index) => {
+      if (event.provider_attempt_discarded === true) return [];
       if (toolResultFailed(event) || toolResultPendingApproval(event)) return [];
       const values = resultValuesForToolEvent(event);
-      if (values.length === 0) return [];
       const toolName = String(event.tool_name ?? "tool");
       const toolStepId = String(event.tool_call_id ?? toolName);
       const timestamp = typeof event.timestamp === "number" ? event.timestamp : message.created_at + index + 0.01;
@@ -491,7 +574,19 @@ export function toolPreviewsFromMessages(messages: ChatMessage[]): ToolPreviewIt
         timestamp: timestamp + fileArtifacts.length + inlinePreviews.length + urlIndex + 0.1,
         url,
       }));
-      return [...pathPreviews, ...inlinePreviews, ...urlPreviews];
+      const artifactPreviews = [...pathPreviews, ...inlinePreviews, ...urlPreviews];
+      if (artifactPreviews.length > 0) return artifactPreviews;
+      const detailPreview = isToolEndEvent(event)
+        ? activityDetailPreview({
+            id: `message-tool-event-detail-${message.id}-${eventKey}`,
+            toolStepId,
+            timestamp,
+            toolName,
+            event,
+            values,
+          })
+        : null;
+      return detailPreview ? [detailPreview] : [];
     });
 
     return [...logPreviews, ...eventPreviews];
