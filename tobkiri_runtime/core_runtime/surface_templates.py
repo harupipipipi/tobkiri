@@ -798,8 +798,8 @@ def resolve_surface_templates(
     selected_set = set(selected) if selected is not None else set(by_pack)
     selected_packs: list[SurfacePack] = []
     for pack_id in sorted(selected_set):
-        pack = by_pack.get(pack_id)
-        if pack is None:
+        selected_pack = by_pack.get(pack_id)
+        if selected_pack is None:
             diagnostics.append(
                 _diag(
                     "SURFACE_PACK_MISSING",
@@ -809,7 +809,7 @@ def resolve_surface_templates(
                 )
             )
             continue
-        if lock_digests is not None and lock_digests.get(pack_id) != pack.artifact_digest:
+        if lock_digests is not None and lock_digests.get(pack_id) != selected_pack.artifact_digest:
             diagnostics.append(
                 _diag(
                     "SURFACE_PACK_DIGEST_MISMATCH",
@@ -849,7 +849,7 @@ def resolve_surface_templates(
                 )
             )
             continue
-        selected_packs.append(pack)
+        selected_packs.append(selected_pack)
 
     logic_packs = tuple(item for item in selected_packs if item.role in {"logic", "mixed"})
     registry = operation_registry or OperationRegistry.from_packs(logic_packs)
@@ -941,14 +941,14 @@ def resolve_surface_templates(
     fallback: list[str] = []
     renderer_pins: list[RendererPin] = []
     for pattern in required_patterns:
-        candidates = [
+        renderer_candidates = [
             item
             for item in renderers
             if item.enabled
             and item.renderer_api_version == SURFACE_RENDERER_API_VERSION
             and pattern in item.supported_patterns
         ]
-        if len(candidates) > 1:
+        if len(renderer_candidates) > 1:
             diagnostics.append(
                 _diag(
                     "SURFACE_RENDERER_COLLISION",
@@ -958,8 +958,8 @@ def resolve_surface_templates(
                 )
             )
             continue
-        if len(candidates) == 1:
-            candidate = candidates[0]
+        if len(renderer_candidates) == 1:
+            candidate = renderer_candidates[0]
             if not candidate.trusted and pattern in _SECURITY_SENSITIVE_PATTERNS:
                 diagnostics.append(
                     _diag(
@@ -1439,10 +1439,12 @@ def _normalize_renderers(
                         pack_id=pack.pack_id,
                     )
                 )
-    for raw in explicit:
+    for renderer_raw in explicit:
         try:
             values.append(
-                raw if isinstance(raw, RendererProvider) else RendererProvider.from_mapping(raw)
+                renderer_raw
+                if isinstance(renderer_raw, RendererProvider)
+                else RendererProvider.from_mapping(renderer_raw)
             )
         except SurfaceTemplateError as error:
             diagnostics.append(_diag("SURFACE_RENDERER_INVALID", "error", str(error)))
