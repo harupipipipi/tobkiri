@@ -1,0 +1,60 @@
+{
+  "id": "desktop_frame_evidence",
+  "description": "Explicitly commit, export, delete, or clean up a revision-bound managed desktop screenshot for visual QA evidence.",
+  "metadata": {
+    "aliases": ["desktop.frame.evidence", "save desktop screenshot evidence"],
+    "keywords": ["desktop", "frame", "screenshot", "evidence", "visual qa"]
+  },
+  "config": {
+    "tool_id": "desktop_frame_evidence",
+    "name": "Desktop Frame Evidence",
+    "summary": "Manage an explicitly approved desktop screenshot evidence artifact.",
+    "tool_category": "desktop",
+    "action_type": "write",
+    "write_action": true,
+    "requires_approval": true,
+    "risk": "high",
+    "tags": ["desktop", "computer_use", "screenshot", "evidence"],
+    "ui": {
+      "group_id": "desktop",
+      "group_label": "Desktop",
+      "group_icon": "monitor",
+      "item_icon": "image",
+      "widget_kind": "tool_toggle",
+      "composer_label": "Desktop Frame Evidence",
+      "composer_description": "Save a specific desktop frame as private, expiring QA evidence.",
+      "composer_icon": "image"
+    },
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["persist", "export", "delete", "cleanup_run"],
+            "default": "persist"
+          },
+          "seat_id": { "type": "string", "minLength": 1 },
+          "frame_seq": { "type": "integer", "minimum": 1 },
+          "artifact_ref": { "type": "string", "minLength": 1 },
+          "purpose": {
+            "type": "string",
+            "enum": ["visual_qa", "bug_report", "accessibility_qa"]
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 2592000,
+            "default": 604800
+          }
+        },
+        "required": ["seat_id"]
+      }
+    },
+    "execution": {
+      "type": "local",
+      "handler": "domain.tool.desktop_tools:desktop_frame_evidence"
+    }
+  }
+}

@@ -146,6 +146,7 @@ IMPROVEMENT_STREAMS = [
             "desktop_list",
             "desktop_create",
             "desktop_frame",
+            "desktop_frame_evidence",
             "desktop_input",
             "todo",
         ],
@@ -263,6 +264,7 @@ TOOL_ALLOWLIST = [
     "desktop_list",
     "desktop_create",
     "desktop_frame",
+    "desktop_frame_evidence",
     "desktop_input",
     "coding_file_read",
     "coding_file_search",
@@ -370,6 +372,7 @@ ROLE_DEFINITIONS = [
             "desktop_list",
             "desktop_create",
             "desktop_frame",
+            "desktop_frame_evidence",
             "desktop_input",
             "web_search",
         ],
@@ -812,6 +815,7 @@ class MimoCodingCompanyRuntime:
                     "desktop_list",
                     "desktop_create",
                     "desktop_frame",
+                    "desktop_frame_evidence",
                     "desktop_input",
                     "web_search",
                 ],
@@ -1305,7 +1309,13 @@ class MimoCodingCompanyRuntime:
             "prompt_style": "Keep prompts short, concrete, and evidence-first. For desktop/sandbox tools, rely on the server-provided principal context; do not add payload owner_id as proof of access.",
             "reporting_policy": "For each evidence-backed bug, include exact repro steps or screenshots and hand a fix task to MiMo V2.5 Free.",
             "tools_hint": ["browser_use", "browser_companion", "computer_use"],
-            "desktop_tools_hint": ["desktop_list", "desktop_create", "desktop_frame", "desktop_input"],
+            "desktop_tools_hint": [
+                "desktop_list",
+                "desktop_create",
+                "desktop_frame",
+                "desktop_frame_evidence",
+                "desktop_input",
+            ],
             "model_hint": DEFAULT_VISION_MODEL,
         }
 
@@ -3401,6 +3411,7 @@ class MimoCodingCompanyRuntime:
                 "desktop_list",
                 "desktop_create",
                 "desktop_frame",
+                "desktop_frame_evidence",
                 "desktop_input",
                 "coding_file_read",
                 "coding_file_search",
@@ -4039,7 +4050,13 @@ class MimoCodingCompanyRuntime:
                 "coordinator_agent_id": "browser_qa",
                 "reporting_policy": "Evidence first; hand bugs to MiMo V2.5 Free for fixes, then ask reviewer to verify. Stay quiet if the assigned path passes.",
                 "managed_desktop_fallback": {
-                    "tools": ["desktop_list", "desktop_create", "desktop_frame", "desktop_input"],
+                    "tools": [
+                        "desktop_list",
+                        "desktop_create",
+                        "desktop_frame",
+                        "desktop_frame_evidence",
+                        "desktop_input",
+                    ],
                     "create_defaults": {
                         "template_id": "desktop.browser",
                         "starter": "browser_url",
@@ -4077,7 +4094,13 @@ class MimoCodingCompanyRuntime:
             "coordinator_agent_id": "browser_qa",
             "reporting_policy": "Evidence first; hand bugs to MiMo V2.5 Free for fixes, then ask reviewer to verify. Stay quiet if the assigned path passes.",
             "managed_desktop_fallback": {
-                "tools": ["desktop_list", "desktop_create", "desktop_frame", "desktop_input"],
+                "tools": [
+                    "desktop_list",
+                    "desktop_create",
+                    "desktop_frame",
+                    "desktop_frame_evidence",
+                    "desktop_input",
+                ],
                 "create_defaults": {
                     "template_id": "desktop.browser",
                     "starter": "browser_url",
@@ -4151,7 +4174,13 @@ class MimoCodingCompanyRuntime:
             + (" Assignments: " + summary + "." if summary else "")
             + (" Managed desktop target URLs: " + target_summary + "." if target_summary else "")
             + " First call desktop_list. Reuse only desktops whose status is running and whose startup.browser_url, desktop_spec.browser_url, or metadata startup browser_url exactly matches the managed desktop target URL. Ignore destroyed, failed, stale, or wrong-target seats. If no current-target running browser desktop is available, create a managed desktop with desktop_create using template_id=desktop.browser, starter=browser_url, browser_url=<managed desktop target URL>, assigned_agent=browser_qa. Desktop and sandbox access comes from trusted local/server context; do not add payload owner_id as proof of access. If a frame shows ERR_CONNECTION_REFUSED or a different address-bar URL, treat that seat as stale/wrong-target and create a current-target desktop. For desktop_frame and desktop_input, use the selected desktop's seat_id directly and let the server-provided principal context authorize access. For desktop_input, always include action: type text with action=type_text and text, press Enter with action=key and key=Enter, and never send a text-only payload. Prefer desktop_create with starter=browser_url and browser_url=<managed desktop target URL> for URL navigation when possible. Do not use rumi_api for desktop frames or inputs; /api/desktops/{seat_id}/frame is a GET route, never POST. "
-            "Click around, use browser_use, browser_companion, computer_use, or managed desktop tools as needed, and prioritize workers missing status or browser launch before broad exploration. "
+            + (
+                "Ordinary desktop_frame reads are never saved. After a useful frame "
+                "is captured, call desktop_frame_evidence with action=persist, the "
+                "exact returned frame_seq, and purpose=visual_qa only when durable "
+                "screenshot evidence is necessary and approval is granted. "
+            )
+            + "Click around, use browser_use, browser_companion, computer_use, or managed desktop tools as needed, and prioritize workers missing status or browser launch before broad exploration. "
             "For every evidence-backed bug, hand a fix task with repro steps to @coding_engineer, ask @reviewer to verify the patch, and create an issue only if the fix is blocked or needs external tracking. "
             + self._scheduler_noise_prompt()
             + " Stay quiet if everything passes."

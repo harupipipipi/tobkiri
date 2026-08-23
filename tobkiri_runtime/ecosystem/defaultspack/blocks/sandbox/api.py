@@ -34,6 +34,12 @@ from ecosystem.defaultspack.backend.sandbox.cancellation import (
 )
 from ecosystem.defaultspack.backend.sandbox.errors import SandboxContractError
 from ecosystem.defaultspack.backend.sandbox.frame_cache import FrameCache
+from ecosystem.defaultspack.backend.sandbox.frame_evidence_store import (
+    DEFAULT_TTL_SECONDS,
+    FrameEvidenceBinding,
+    FrameEvidenceError,
+    FrameEvidenceStore,
+)
 from ecosystem.defaultspack.backend.sandbox.models import (
     EnsureRuntimeRequest,
     OperationResult,
@@ -55,7 +61,6 @@ from ecosystem.defaultspack.backend.sandbox.providers import (
 )
 from ecosystem.defaultspack.backend.sandbox.sandbox_manager import SandboxManager
 from ecosystem.defaultspack.backend.sandbox.template_catalog import sandbox_template_catalog
-from ecosystem.defaultspack.domain.artifact.store import ArtifactStore
 from ecosystem.defaultspack.domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
@@ -160,6 +165,8 @@ def run(input_data: dict[str, Any] | None, context: dict[str, Any] | None = None
             return _desktop_lifecycle(service, payload, context_payload, action=handler.removeprefix("desktop_"))
         if handler == "desktop_frame":
             return _desktop_frame(service, payload, context_payload)
+        if handler == "desktop_frame_evidence":
+            return _desktop_frame_evidence(service, payload, context_payload)
         if handler == "desktop_input":
             return _desktop_input(service, payload, context_payload)
         if handler == "desktop_ai_input":
@@ -827,24 +834,119 @@ def _desktop_frame(service: _SandboxApiService, payload: dict[str, Any], context
         }
     assert fetched.frame is not None
     frame = fetched.frame
-    artifact = _persist_desktop_frame_artifact(frame)
     return {
         "_binary": True,
         "status_code": 200,
         "content_type": frame.content_type,
         "body": frame.data,
-        "artifacts": [artifact],
-        "artifact_paths": [artifact["path"]],
         "headers": {
             "Cache-Control": "no-store",
             "X-Rumi-Frame-Seq": str(frame.frame_seq),
             "X-Rumi-Frame-Width": str(frame.width),
             "X-Rumi-Frame-Height": str(frame.height),
             "X-Rumi-Captured-At": str(frame.captured_at),
-            "X-Rumi-Artifact-Path": artifact["path"],
-            "X-Rumi-Artifact-Id": artifact["artifact_id"],
         },
     }
+
+
+def _desktop_frame_evidence(
+    service: _SandboxApiService,
+    payload: dict[str, Any],
+    context: dict[str, Any],
+) -> Any:
+    seat_id = str(payload.get("seat_id") or "").strip()
+    action = str(payload.get("action") or "persist").strip().lower()
+    operations = {
+        "persist": "desktop.frame.evidence.persist",
+        "export": "desktop.frame.evidence.export",
+        "delete": "desktop.frame.evidence.delete",
+        "cleanup_run": "desktop.frame.evidence.cleanup_run",
+    }
+    operation = operations.get(action)
+    if operation is None:
+        return _api_error(
+            f"Unknown desktop frame evidence action: {action}",
+            "DESKTOP_FRAME_EVIDENCE_ACTION_INVALID",
+            400,
+        )
+    access_error = _desktop_access_error(service, seat_id, operation, payload, context)
+    if access_error is not None:
+        return access_error
+    try:
+        binding = _desktop_frame_evidence_binding(context, seat_id=seat_id)
+        store = _frame_evidence_store(service)
+        if action == "persist":
+            frame_seq = _positive_int(payload.get("frame_seq"), 0)
+            if frame_seq < 1:
+                return _api_error(
+                    "A positive frame_seq from desktop_frame is required.",
+                    "DESKTOP_FRAME_EVIDENCE_REVISION_REQUIRED",
+                    400,
+                )
+            fetched = service.frame_cache.get_frame(seat_id)
+            assert fetched.frame is not None
+            frame = fetched.frame
+            if frame.frame_seq != frame_seq:
+                return _api_error(
+                    "The requested desktop frame revision is stale.",
+                    "DESKTOP_FRAME_EVIDENCE_STALE_REVISION",
+                    409,
+                    details={
+                        "requested_frame_seq": frame_seq,
+                        "current_frame_seq": frame.frame_seq,
+                    },
+                )
+            artifact = store.persist(
+                frame,
+                binding=binding,
+                purpose=str(payload.get("purpose") or ""),
+                ttl_seconds=payload.get("ttl_seconds", DEFAULT_TTL_SECONDS),
+            )
+            _audit_desktop_frame_evidence(context, "persist", artifact)
+            return ok({
+                "seat_id": seat_id,
+                "frame_seq": frame_seq,
+                "artifact_ref": artifact["artifact_ref"],
+                "summary": (
+                    "Saved desktop visual QA evidence with bounded private retention."
+                ),
+                "artifact_refs": [artifact["artifact_ref"]],
+                "artifacts": [artifact],
+            })
+        artifact_ref = str(payload.get("artifact_ref") or "").strip()
+        if action == "export":
+            artifact, content = store.export(artifact_ref, binding=binding)
+            _audit_desktop_frame_evidence(context, "export", artifact)
+            return ok({
+                "artifact_ref": artifact["artifact_ref"],
+                "content_type": artifact["mime_type"],
+                "data_base64": base64.b64encode(content).decode("ascii"),
+                "summary": (
+                    "Exported desktop visual QA evidence after authority verification."
+                ),
+                "artifacts": [artifact],
+            })
+        if action == "delete":
+            result = store.delete(artifact_ref, binding=binding)
+            _audit_desktop_frame_evidence(context, "delete", result)
+            return ok({**result, "summary": "Deleted desktop visual QA evidence."})
+        removed = store.cleanup_run(binding=binding)
+        result = {"removed": removed, "retention": "explicit_run_cleanup"}
+        _audit_desktop_frame_evidence(context, "cleanup_run", result)
+        return ok({
+            **result,
+            "summary": (
+                f"Removed {removed} desktop frame evidence artifact(s) for this run."
+            ),
+        })
+    except FrameEvidenceError as exc:
+        return _api_error(exc.message, exc.code, exc.status_code)
+    except OSError:
+        return _api_error(
+            "Desktop frame evidence storage is unavailable.",
+            "DESKTOP_FRAME_EVIDENCE_STORAGE_UNAVAILABLE",
+            507,
+        )
 
 
 def _desktop_input(service: _SandboxApiService, payload: dict[str, Any], context: dict[str, Any]):
@@ -1336,45 +1438,72 @@ def _frame_bytes(screenshot: dict[str, Any]) -> tuple[bytes, str]:
     raise SandboxContractError("FRAME_NOT_FOUND", "Desktop screenshot did not include frame bytes", status_code=404)
 
 
-def _persist_desktop_frame_artifact(frame) -> dict[str, Any]:
-    extension = _frame_extension(frame.content_type)
-    captured_at = datetime.fromtimestamp(frame.captured_at, timezone.utc)
-    stamp = captured_at.strftime("%Y%m%dT%H%M%SZ")
-    path = f"desktop_frames/{frame.seat_id}/{stamp}-seq{frame.frame_seq}.{extension}"
-    artifact = ArtifactStore(_defaultspack_root()).create_binary(
-        "desktop_frame",
-        f"Desktop frame {frame.seat_id} #{frame.frame_seq}",
-        frame.data,
-        path=path,
-        mime_type=frame.content_type,
-        source_task="desktop_frame",
-        metadata={
-            "seat_id": frame.seat_id,
-            "frame_seq": frame.frame_seq,
-            "width": frame.width,
-            "height": frame.height,
-            "captured_at": frame.captured_at,
-            "source": frame.source,
-        },
-    )
-    return {
-        "artifact_id": artifact["artifact_id"],
-        "path": artifact["path"],
-        "mime_type": artifact.get("mime_type") or frame.content_type,
-        "size": artifact.get("size") or len(frame.data),
-        "type": artifact.get("type") or "desktop_frame",
-        "title": artifact.get("title") or "Desktop frame",
-        "content_ref": artifact.get("content_ref"),
+def _frame_evidence_store(service: _SandboxApiService) -> FrameEvidenceStore:
+    store = getattr(service, "frame_evidence_store", None)
+    if isinstance(store, FrameEvidenceStore):
+        return store
+    store = FrameEvidenceStore(_defaultspack_root())
+    setattr(service, "frame_evidence_store", store)
+    return store
+
+
+def _desktop_frame_evidence_binding(
+    context: dict[str, Any],
+    *,
+    seat_id: str,
+) -> FrameEvidenceBinding:
+    values = {
+        "run_id": context.get("run_id") or context.get("request_id"),
+        "conversation_id": context.get("conversation_id") or context.get("chat_id"),
+        "workspace_id": context.get("workspace_id"),
+        "seat_id": seat_id,
+        "principal_id": _desktop_principal_id(context),
     }
+    missing = [key for key, value in values.items() if not str(value or "").strip()]
+    if missing:
+        raise FrameEvidenceError(
+            "DESKTOP_FRAME_EVIDENCE_CONTEXT_REQUIRED",
+            "Server-derived run, conversation, workspace, seat, and principal "
+            "context is required.",
+            status_code=403,
+        )
+    normalized: dict[str, str] = {}
+    for key, value in values.items():
+        text = str(value).strip()
+        if len(text) > 200 or "\x00" in text or any(char in text for char in "\r\n"):
+            raise FrameEvidenceError(
+                "DESKTOP_FRAME_EVIDENCE_CONTEXT_INVALID",
+                f"Server-derived evidence context field is invalid: {key}.",
+                status_code=403,
+            )
+        normalized[key] = text
+    return FrameEvidenceBinding(**normalized)
 
 
-def _frame_extension(content_type: str) -> str:
-    normalized = str(content_type or "").split(";", 1)[0].strip().lower()
-    if normalized == "image/jpeg":
-        return "jpg"
-    if normalized == "image/webp":
-        return "webp"
-    return "png"
+def _audit_desktop_frame_evidence(
+    context: dict[str, Any],
+    action: str,
+    result: dict[str, Any],
+) -> None:
+    try:
+        from ecosystem.defaultspack.domain.tool_policy.audit import audit_tool_policy
+
+        audit_tool_policy(
+            context,
+            f"desktop_frame_evidence.{action}",
+            {
+                "artifact_ref": result.get("artifact_ref"),
+                "sha256": result.get("sha256"),
+                "size": result.get("size"),
+                "purpose": result.get("purpose"),
+                "expires_at": result.get("expires_at"),
+                "retention": result.get("retention"),
+                "removed": result.get("removed"),
+                "deleted": result.get("deleted"),
+            },
+        )
+    except Exception:
+        return
 
 
 def _default_provider_id() -> str:

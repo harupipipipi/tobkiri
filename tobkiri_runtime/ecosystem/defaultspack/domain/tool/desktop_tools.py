@@ -70,6 +70,27 @@ def desktop_frame(arguments: dict[str, Any], context: dict[str, Any] | None = No
     }
 
 
+def desktop_frame_evidence(
+    arguments: dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Commit, export, or delete approved visual QA frame evidence."""
+    approval_error = _require_server_side_approval(context)
+    if approval_error is not None:
+        return approval_error
+    payload = dict(arguments or {})
+    seat_id = str(payload.get("seat_id") or payload.get("desktop_id") or "").strip()
+    if not seat_id:
+        return err("'seat_id' is required", "INVALID_INPUT")
+    payload["seat_id"] = seat_id
+    desktop_context, owner_id, context_error = _trusted_desktop_context(context)
+    if context_error is not None:
+        return context_error
+    _apply_trusted_owner(payload, owner_id)
+    payload["_handler"] = "desktop_frame_evidence"
+    return _sandbox_api().run(payload, desktop_context)
+
+
 def desktop_input(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
     approval_error = _require_server_side_approval(context)
     if approval_error is not None:
