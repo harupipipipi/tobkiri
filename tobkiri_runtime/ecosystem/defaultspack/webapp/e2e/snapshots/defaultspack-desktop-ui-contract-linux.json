@@ -1,0 +1,53 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "elements": {
+    "history-card": {
+      "box": {
+        "x": 4,
+        "y": 376,
+        "width": 276,
+        "height": 28
+      },
+      "text": "Preview Calendar Chat"
+    },
+    "activity-timeline": {
+      "box": {
+        "x": 324,
+        "y": 288,
+        "width": 752,
+        "height": 148
+      },
+      "text": "ツール履歴 Webで検索: defaultspack smoke ✓ 2件の作業 · 5s 閉じる ✓ ファイル一覧を確認: src 3s Listed 2 files Ready for implementation ✓ Webで検索: defaultspack smoke 0s 1 result"
+    },
+    "composer": {
+      "box": {
+        "x": 320,
+        "y": 764,
+        "width": 768,
+        "height": 128
+      },
+      "text": "Enterで送信 · / でコマンド · @ で候補 承認 Project モデル: Stub Default"
+    },
+    "right-sidebar-heading": {
+      "box": {
+        "x": 1144,
+        "y": 44,
+        "width": 28,
+        "height": 20
+      },
+      "text": "機能"
+    },
+    "tool-search-menu": {
+      "box": {
+        "x": 1128,
+        "y": 288,
+        "width": 248,
+        "height": 96
+      },
+      "text": "候補 1 / 4 Web Search Search the web from the composer."
+    }
+  }
+}

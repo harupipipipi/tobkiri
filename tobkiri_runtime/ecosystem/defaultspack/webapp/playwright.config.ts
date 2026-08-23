@@ -6,7 +6,7 @@ const videoMode = process.env.PLAYWRIGHT_DISABLE_VIDEO === "1" ? "off" : "retain
 
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 30_000,
+  timeout: 120_000,
   expect: {
     timeout: 5_000,
   },

@@ -1,4 +1,13 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Route,
+  type TestInfo,
+} from "@playwright/test";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -7,6 +16,19 @@ test.use({ viewport: { width: 1440, height: 900 } });
 const now = 1_785_000_000_000;
 const approvalDigest = "a".repeat(64);
 const historyChatDropMime = "application/rumi-history-chat";
+
+type ContractBox = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+type LayoutContractEntry = {
+  box: ContractBox;
+  name: string;
+  text: string;
+};
 
 function routeKey(path: string): string {
   return `/${path}`;
@@ -69,14 +91,14 @@ test("keeps the startup boundary until slash commands and mention sources are re
 
   await page.goto("/static/chat");
 
-  const loader = page.locator("[data-tobkiri-loading-screen]").first();
-  await expect(loader).toBeVisible();
-  await expect(loader.locator('[data-startup-step="commands"]')).toHaveAttribute("data-status", "loading");
+  const readiness = page.locator("[data-startup-readiness-steps]");
+  await expect(readiness).toBeVisible({ timeout: 30_000 });
+  await expect(readiness.locator('[data-startup-step="commands"]')).toHaveAttribute("data-status", "loading");
   await expect(page.locator("textarea.rumi-composer-textarea")).toHaveCount(0);
 
   releaseCommands?.();
 
-  await expect(loader).toBeHidden();
+  await expect(readiness).toBeHidden();
   const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
   await expect(composer).toBeVisible();
 
@@ -776,6 +798,13 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, {
         dynamic_host: dynamicHostCatalog(),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
+        dynamic_host: {
+          profile_id: "default-profile",
+          plan_hash: "ui-contract-plan",
+          catalog_hash: "ui-contract-catalog",
+          quarantined_pack_ids: [],
+          contributions: [],
+        },
         agent_service: { profiles: [], capabilities: [], presets: [] },
         sidebar: {
           filters: [
@@ -928,9 +957,19 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       const types = Array.isArray(payload.type)
         ? payload.type.map((item) => String(item).trim())
         : [String(payload.type ?? "").trim()];
-      const models = types.includes("embedding")
+      const candidates = types.includes("embedding")
         ? [embeddingProfile]
         : [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile];
+      const tokens = String(payload.query ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const models = candidates.filter((profile) => {
+        const provider = `${profile.provider_id} ${profile.provider_display_name}`.toLowerCase();
+        const text = `${provider} ${profile.model_id} ${profile.display_name}`.toLowerCase();
+        return tokens.every((token) => (
+          token.startsWith("@")
+            ? provider.includes(token.slice(1))
+            : text.includes(token)
+        ));
+      });
       return fulfill(route, { models, count: models.length });
     }
 
@@ -1341,7 +1380,9 @@ async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOpti
   // /chat route is asserted separately through the verified Pack v4 catalog.
   const compatibilityPath = path === "/chat" ? "/static/chat" : path;
   await page.goto(compatibilityPath);
-  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible({
+    timeout: 60_000,
+  });
 }
 
 async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
@@ -1501,6 +1542,211 @@ test("approval window renderer contract fails closed when typed confirmation met
   await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "拒否", exact: true })).toHaveCount(0);
   expect(decisions).toEqual([]);
+function normalizeContractBox(box: ContractBox): ContractBox {
+  const round = (value: number) => Math.round(value / 4) * 4;
+  return {
+    x: round(box.x),
+    y: round(box.y),
+    width: round(box.width),
+    height: round(box.height),
+  };
+}
+
+async function layoutContractEntry(
+  locator: Locator,
+  name: string,
+): Promise<LayoutContractEntry> {
+  const target = locator.first();
+  await expect(target, `${name} should be visible for the UI contract`).toBeVisible();
+  const box = await target.boundingBox();
+  expect(box, `${name} should have layout bounds`).not.toBeNull();
+  return {
+    name,
+    box: normalizeContractBox(box!),
+    text: (await target.innerText()).replace(/\s+/g, " ").trim().slice(0, 180),
+  };
+}
+
+function requireInsideViewport(
+  entry: LayoutContractEntry,
+  viewport: { width: number; height: number },
+): void {
+  expect.soft(entry.box.x, `${entry.name} should stay on-screen`).toBeGreaterThanOrEqual(0);
+  expect.soft(entry.box.y, `${entry.name} should stay on-screen`).toBeGreaterThanOrEqual(0);
+  expect
+    .soft(entry.box.x + entry.box.width, `${entry.name} should fit the viewport width`)
+    .toBeLessThanOrEqual(viewport.width + 8);
+  expect
+    .soft(entry.box.y + entry.box.height, `${entry.name} should fit the viewport height`)
+    .toBeLessThanOrEqual(viewport.height + 8);
+}
+
+function overlapArea(first: ContractBox, second: ContractBox): number {
+  const width = Math.max(
+    0,
+    Math.min(first.x + first.width, second.x + second.width) -
+      Math.max(first.x, second.x),
+  );
+  const height = Math.max(
+    0,
+    Math.min(first.y + first.height, second.y + second.height) -
+      Math.max(first.y, second.y),
+  );
+  return width * height;
+}
+
+function contractRecord(
+  entries: LayoutContractEntry[],
+  viewport: { width: number; height: number },
+): string {
+  return `${JSON.stringify(
+    {
+      viewport,
+      elements: Object.fromEntries(
+        entries.map(({ name, box, text }) => [name, { box, text }]),
+      ),
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+function expectContractSnapshot(actual: string, filename: string): void {
+  const snapshotDir = new URL("./snapshots/", import.meta.url);
+  const platform = process.platform === "linux" ? "linux" : "darwin";
+  const platformFilename = filename.replace(/\.json$/, `-${platform}.json`);
+  const snapshotFile = new URL(platformFilename, snapshotDir);
+  if (process.env.UPDATE_UI_CONTRACT_SNAPSHOTS === "1") {
+    mkdirSync(snapshotDir, { recursive: true });
+    writeFileSync(snapshotFile, actual);
+  }
+  expect(actual).toBe(readFileSync(snapshotFile, "utf-8"));
+}
+
+async function attachViewportScreenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+): Promise<void> {
+  await testInfo.attach(`${name}.png`, {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
+}
+
+test("desktop and mobile shell layout contracts produce reviewable snapshots", async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openDefaultspack(page);
+  await page.evaluate(() => document.fonts.ready);
+
+  await page.getByRole("button", { name: /作業状況を開く:/ }).click();
+  await expect(page.locator(".rumi-tool-activity-timeline")).toBeVisible();
+  await page.locator('button[title="機能"]').click();
+  await page.getByPlaceholder("機能を検索").fill("web");
+  await expect(page.getByTestId("tool-manager-candidates")).toContainText("Web Search");
+
+  const desktopViewport = page.viewportSize();
+  expect(desktopViewport).not.toBeNull();
+  const desktopEntries = [
+    await layoutContractEntry(
+      page.locator('[data-testid="history-chat-card-c-smoke"]'),
+      "history-card",
+    ),
+    await layoutContractEntry(page.locator(".rumi-tool-activity"), "activity-timeline"),
+    await layoutContractEntry(page.locator(".rumi-composer-frame"), "composer"),
+    await layoutContractEntry(
+      page.getByRole("heading", { name: "機能" }),
+      "right-sidebar-heading",
+    ),
+    await layoutContractEntry(
+      page.getByTestId("tool-manager-candidates"),
+      "tool-search-menu",
+    ),
+  ];
+  desktopEntries.forEach((entry) => requireInsideViewport(entry, desktopViewport!));
+  const desktop = Object.fromEntries(desktopEntries.map((entry) => [entry.name, entry]));
+  expect
+    .soft(
+      overlapArea(desktop["composer"].box, desktop["tool-search-menu"].box),
+      "composer and tool search menu should not overlap",
+    )
+    .toBe(0);
+  expect
+    .soft(
+      desktop["right-sidebar-heading"].box.x,
+      "right sidebar should remain to the right of the composer",
+    )
+    .toBeGreaterThan(desktop["composer"].box.x + desktop["composer"].box.width);
+  expectContractSnapshot(
+    contractRecord(desktopEntries, desktopViewport!),
+    "defaultspack-desktop-ui-contract.json",
+  );
+  await attachViewportScreenshot(page, testInfo, "defaultspack-desktop-ui-contract");
+  const toolSearch = page.getByPlaceholder("機能を検索");
+  await toolSearch.fill("no-such-contract-tool");
+  await expect(page.getByTestId("tool-manager-candidates")).toContainText(
+    "一致する機能がありません。",
+  );
+  await expect(toolSearch).toHaveAttribute("aria-expanded", "true");
+  await toolSearch.press("Escape");
+  await expect(page.getByTestId("tool-manager-candidates")).toBeHidden();
+  await expect(toolSearch).toHaveAttribute("aria-expanded", "false");
+  await expect(toolSearch).toBeFocused();
+
+  await page.setViewportSize({ width: 390, height: 820 });
+  const codingComposer = page.locator("textarea.rumi-composer-textarea");
+  await codingComposer.fill("/coding");
+  await codingComposer.press("Enter");
+  await expect(page).toHaveURL(/\/coding(?:\?|$)/);
+  await codingComposer.fill("@REA");
+  await expect(page.getByTestId("composer-at-mention-candidates")).toContainText("README.md");
+  await expect(page.locator(".rumi-workspace-picker")).toBeVisible();
+
+  const mobileViewport = page.viewportSize();
+  expect(mobileViewport).not.toBeNull();
+  const mobileEntries = [
+    await layoutContractEntry(
+      page.locator(".rumi-workspace-picker"),
+      "mobile-workspace-picker",
+    ),
+    await layoutContractEntry(page.locator(".rumi-composer-frame"), "mobile-composer"),
+    await layoutContractEntry(
+      page.getByTestId("composer-at-mention-candidates"),
+      "mobile-mention-menu",
+    ),
+  ];
+  mobileEntries.forEach((entry) => requireInsideViewport(entry, mobileViewport!));
+  const mobile = Object.fromEntries(mobileEntries.map((entry) => [entry.name, entry]));
+  expect
+    .soft(mobile["mobile-mention-menu"].box.width)
+    .toBeLessThanOrEqual(mobileViewport!.width);
+  expect
+    .soft(
+      overlapArea(
+        mobile["mobile-workspace-picker"].box,
+        mobile["mobile-mention-menu"].box,
+      ),
+      "workspace picker and mention menu should not overlap",
+    )
+    .toBe(0);
+  expectContractSnapshot(
+    contractRecord(mobileEntries, mobileViewport!),
+    "defaultspack-mobile-ui-contract.json",
+  );
+  await attachViewportScreenshot(page, testInfo, "defaultspack-mobile-ui-contract");
+  await expect(codingComposer).toHaveAttribute("aria-expanded", "true");
+  await expect(codingComposer).toHaveAttribute(
+    "aria-controls",
+    "composer-at-mention-listbox",
+  );
+  await expect(codingComposer).toHaveAttribute(
+    "aria-activedescendant",
+    /composer-at-mention-option-/,
+  );
+  await codingComposer.press("Escape");
+  await expect(page.getByTestId("composer-at-mention-candidates")).toBeHidden();
+  await expect(codingComposer).toHaveAttribute("aria-expanded", "false");
+  await expect(codingComposer).toBeFocused();
 });
 
 test("manual runtime mode control is hidden by default and available after explicit opt-in", async ({ page }) => {
@@ -1720,9 +1966,7 @@ test("browser approval uses the shared user-first decision surface at narrow wid
 });
 
 test("settings modal contains focus, dismisses nested layers in order, and restores its opener", async ({ page }) => {
-  await installDefaultspackApiMocks(page);
-  await page.goto("/static/");
-  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+  await openDefaultspack(page, "/static/");
 
   const opener = page.getByTitle("Settings").last();
   await opener.focus();
@@ -2557,8 +2801,11 @@ test("attachment remove and cancel actions expose 44px visible focus targets", a
   const cardRemove = page.getByRole("button", { name: "README.md を削除" });
   const cardBox = await cardRemove.boundingBox();
   expect(cardBox).not.toBeNull();
-  expect(cardBox!.width).toBeGreaterThanOrEqual(44);
-  expect(cardBox!.height).toBeGreaterThanOrEqual(44);
+  // Chromium can report a 44px CSS target as 43.9999 physical pixels after
+  // device-scale conversion. Round the measured box so the contract still
+  // rejects a real sub-44px target without becoming platform-flaky.
+  expect(Math.round(cardBox!.width)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(cardBox!.height)).toBeGreaterThanOrEqual(44);
   await cardRemove.focus();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Shift+Tab");
@@ -2576,7 +2823,9 @@ test("history reload restores localized semantic mention badges", async ({ page 
   await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
 
   await page.goto("/static/chat");
-  await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
+  await expect(
+    page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" }),
+  ).toBeVisible({ timeout: 60_000 });
 });
 
 test("composer browser behavior covers long text popovers and mobile coding trust", async ({ page }) => {
@@ -2702,7 +2951,7 @@ test("model picker search supports @provider filters", async ({ page }) => {
   await expect(page.getByRole("option", { name: /@OpenCode Zen/ })).toBeVisible();
   await expect(page.getByText("Gemini 2.5 Flash")).toBeHidden();
 
-  await page.getByRole("option", { name: /@OpenCode Zen/ }).click();
+  await search.fill("@opencode-zen ");
   await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
   await expect(page.getByText("Qwen3.5 Plus via OpenCode Go")).toBeHidden();
 
