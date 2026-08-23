@@ -39,6 +39,23 @@ export type WorkspaceTab = {
   createdAt: number;
 };
 
+export type ClosedWorkspaceTab = {
+  index: number;
+  tab: WorkspaceTab;
+};
+
+export type WorkspaceTabCloseResult = {
+  closedTab: ClosedWorkspaceTab | null;
+  nextActiveTab: WorkspaceTab | null;
+  tabs: WorkspaceTab[];
+};
+
+export type WorkspaceTabRestoreResult = {
+  closedTabs: ClosedWorkspaceTab[];
+  restoredTab: WorkspaceTab | null;
+  tabs: WorkspaceTab[];
+};
+
 export type WorkspaceTabCreateOption = {
   kind: WorkspaceTabKind;
   label: string;
@@ -138,6 +155,46 @@ export function workspaceTabDisplayTitle(tab: WorkspaceTab): string {
   const title = tab.title.trim();
   if (title) return title;
   return workspaceTabOption(tab.kind).label;
+}
+
+/** Close one workspace tab while preserving browser-like adjacent selection. */
+export function closeWorkspaceTab(
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  tabId: string,
+): WorkspaceTabCloseResult {
+  if (tabs.length <= 1) return { closedTab: null, nextActiveTab: null, tabs };
+  const closedIndex = tabs.findIndex((tab) => tab.id === tabId);
+  if (closedIndex < 0) return { closedTab: null, nextActiveTab: null, tabs };
+  const closed = tabs[closedIndex];
+  const nextTabs = tabs.filter((tab) => tab.id !== tabId);
+  const nextActiveTab = activeTabId === tabId
+    ? nextTabs[Math.max(0, closedIndex - 1)] ?? nextTabs[0] ?? null
+    : null;
+  return {
+    closedTab: { index: closedIndex, tab: closed },
+    nextActiveTab,
+    tabs: nextTabs,
+  };
+}
+
+/** Restore the newest non-duplicate closed tab at its previous position. */
+export function restoreLastClosedWorkspaceTab(
+  tabs: WorkspaceTab[],
+  closedTabs: ClosedWorkspaceTab[],
+): WorkspaceTabRestoreResult {
+  const remaining = [...closedTabs];
+  while (remaining.length > 0) {
+    const candidate = remaining.pop();
+    if (!candidate || tabs.some((tab) => tab.id === candidate.tab.id)) continue;
+    const insertAt = Math.max(0, Math.min(candidate.index, tabs.length));
+    return {
+      closedTabs: remaining,
+      restoredTab: candidate.tab,
+      tabs: [...tabs.slice(0, insertAt), candidate.tab, ...tabs.slice(insertAt)],
+    };
+  }
+  return { closedTabs: remaining, restoredTab: null, tabs };
 }
 
 function iconForKind(kind: WorkspaceTabKind): LucideIcon {

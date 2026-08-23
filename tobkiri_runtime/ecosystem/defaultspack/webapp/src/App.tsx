@@ -37,8 +37,11 @@ import {
   WORKSPACE_TAB_CREATE_OPTIONS,
   WorkspaceLaunchpad,
   WorkspaceTabBar,
+  closeWorkspaceTab,
   createWorkspaceTab,
+  restoreLastClosedWorkspaceTab,
   workspaceTabDisplayTitle,
+  type ClosedWorkspaceTab,
   type WorkspaceTab,
   type WorkspaceTabKind,
 } from "./components/WorkspaceTabs";
@@ -119,6 +122,8 @@ import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSys
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { shortcutLabel, shortcutSpecMatchesEvent, workspaceTabShortcutAction } from "./lib/keyboardShortcuts";
+import { PENDING_CHAT_REQUEST_TTL_MS, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -2595,6 +2600,7 @@ export function ChatApp() {
   const [showPromptUsageInMessages, setShowPromptUsageInMessages] = useLocalStorage("rumi-show-prompt-usage-in-messages", true);
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => initialWorkspaceTabsForPathname(window.location.pathname));
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(() => initialActiveWorkspaceTabIdForPathname(window.location.pathname));
+  const closedWorkspaceTabsRef = useRef<ClosedWorkspaceTab[]>([]);
   const [isHistoryMinimized, setIsHistoryMinimized] = useLocalStorage("rumi-history-minimized", false);
   const [isNewChatLaunching, setIsNewChatLaunching] = useState(false);
   const [modelSteerStatus, setModelSteerStatus] = useState<ComposerSteerStatus | null>(null);
@@ -5563,26 +5569,55 @@ export function ChatApp() {
     if (tab) activateWorkspaceTab(tab);
   };
 
-  const handleWorkspaceTabCreate = (kind: WorkspaceTabKind) => {
+  const handleWorkspaceTabCreate = (kind: WorkspaceTabKind): boolean => {
     const option = WORKSPACE_TAB_CREATE_OPTIONS.find((candidate) => candidate.kind === kind);
-    if (option?.disabled) return;
+    if (option?.disabled) return false;
     const tab = createWorkspaceTab(kind, {
       title: kind === "chat" ? "New Conversation" : option?.label,
     });
     setWorkspaceTabs((current) => [...current, tab]);
     activateWorkspaceTab(tab);
+    return true;
   };
 
-  const handleWorkspaceTabClose = (tabId: string) => {
-    if (workspaceTabs.length <= 1) return;
-    const closedIndex = workspaceTabs.findIndex((tab) => tab.id === tabId);
-    const nextTabs = workspaceTabs.filter((tab) => tab.id !== tabId);
-    setWorkspaceTabs(nextTabs);
-    if (activeWorkspaceTabId === tabId) {
-      const nextTab = nextTabs[Math.max(0, closedIndex - 1)] ?? nextTabs[0];
-      if (nextTab) activateWorkspaceTab(nextTab);
-    }
+  const handleWorkspaceTabClose = (tabId: string): boolean => {
+    const result = closeWorkspaceTab(workspaceTabs, activeWorkspaceTabId, tabId);
+    if (!result.closedTab) return false;
+    closedWorkspaceTabsRef.current = [...closedWorkspaceTabsRef.current, result.closedTab];
+    setWorkspaceTabs(result.tabs);
+    if (result.nextActiveTab) activateWorkspaceTab(result.nextActiveTab);
+    return true;
   };
+
+  const handleWorkspaceTabRestore = (): boolean => {
+    const result = restoreLastClosedWorkspaceTab(workspaceTabs, closedWorkspaceTabsRef.current);
+    closedWorkspaceTabsRef.current = result.closedTabs;
+    if (!result.restoredTab) return false;
+    setWorkspaceTabs(result.tabs);
+    activateWorkspaceTab(result.restoredTab);
+    return true;
+  };
+
+  useEffect(() => {
+    const handleWorkspaceTabShortcut = (event: KeyboardEvent) => {
+      const action = workspaceTabShortcutAction(event);
+      if (!action) return;
+      let handled = false;
+      if (action === "create_chat") {
+        handled = handleWorkspaceTabCreate("chat");
+      } else if (action === "close_active") {
+        // Consuming the last-tab close keeps the host window open by design.
+        handled = workspaceTabs.length <= 1 || handleWorkspaceTabClose(activeWorkspaceTabId);
+      } else {
+        // An empty app restore must not fall through to browser-level tab restore.
+        handleWorkspaceTabRestore();
+        handled = true;
+      }
+      if (handled) event.preventDefault();
+    };
+    window.addEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
+    return () => window.removeEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
+  }, [activeConversationId, activeWorkspaceTabId, workspaceTabs]);
 
   const handleCodingBranchSwitch = (branch: string, create = false) => {
     void api.switchGitBranch(branch, create, { workspace_id: effectiveWorkspaceId })
