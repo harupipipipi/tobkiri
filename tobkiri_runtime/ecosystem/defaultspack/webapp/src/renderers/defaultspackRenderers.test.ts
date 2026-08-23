@@ -11,6 +11,7 @@ import { CompanyTree } from "../components/company/CompanyTree";
 import {
   COMPANY_WORKSPACE_MORE_TABS_LABEL,
   COMPANY_WORKSPACE_MORE_MENU_ID,
+  COMPANY_WORKSPACE_TAB_PANEL_ID,
   COMPANY_WORKSPACE_TAB_RAIL_LABEL,
   CompanyWorkspaceOverflowMenu,
   CompanyWorkspacePanel,
@@ -104,6 +105,10 @@ test("company workspace keeps primary tabs inside a bounded rail", () => {
   assert.match(html, /grid-cols-\[minmax\(0,1fr\)_2rem\]/);
   assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
   assert.equal((html.match(/role="tablist"/g) ?? []).length, 1);
+  assert.equal(
+    (html.match(new RegExp(`aria-controls="${COMPANY_WORKSPACE_TAB_PANEL_ID}"`, "g")) ?? []).length,
+    3,
+  );
   assert.match(html, />Tasks</);
   assert.match(html, />Channels</);
   assert.match(html, />Agents</);
@@ -265,6 +270,7 @@ test("company workspace renders a visible empty state before a chat exists", () 
   assert.match(html, /Main Agent &amp; Subagents/);
   assert.match(html, /Subagent Team/);
   assert.match(html, /More Subagent Team tabs/);
+  assert.match(html, new RegExp(`id="${COMPANY_WORKSPACE_TAB_PANEL_ID}" role="tabpanel"`));
   assert.doesNotMatch(html, />Routes</);
   assert.doesNotMatch(html, />P2P</);
   assert.match(html, /Start or send a chat message to create its Subagent Team/);

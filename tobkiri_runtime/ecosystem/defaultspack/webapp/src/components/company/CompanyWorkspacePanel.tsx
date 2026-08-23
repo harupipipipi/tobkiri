@@ -40,6 +40,7 @@ export const COMPANY_WORKSPACE_VISIBLE_TAB_LIMIT = 3;
 export const COMPANY_WORKSPACE_TAB_RAIL_LABEL = "Subagent Team sections";
 export const COMPANY_WORKSPACE_MORE_TABS_LABEL = "More Subagent Team tabs";
 export const COMPANY_WORKSPACE_MORE_MENU_ID = "company-workspace-more-tabs";
+export const COMPANY_WORKSPACE_TAB_PANEL_ID = "company-workspace-tab-panel";
 
 /** Split the fixed-width rail into always-visible and overflow tab groups. */
 export function getCompanyWorkspaceTabGroups(visibleTabLimit = COMPANY_WORKSPACE_VISIBLE_TAB_LIMIT) {
@@ -105,11 +106,11 @@ export function CompanyWorkspaceOverflowMenu({
             aria-label={tab.label}
             title={tab.label}
             autoFocus={index === 0}
+            onClick={() => onSelectTab(tab.id)}
             ref={(element) => {
               itemRefs.current[index] = element;
             }}
             onKeyDown={(event) => onMenuKeyDown(event, index)}
-            onClick={() => onSelectTab(tab.id)}
             className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors ${
               selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
             }`}
@@ -169,9 +170,10 @@ export function CompanyWorkspaceTabRail({
                 type="button"
                 role="tab"
                 aria-selected={selected}
+                aria-controls={COMPANY_WORKSPACE_TAB_PANEL_ID}
                 title={tab.label}
                 onClick={() => onSelectTab(tab.id)}
-                className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] transition-colors ${
+                className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors ${
                   selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
                 }`}
               >
@@ -908,7 +910,11 @@ export function CompanyWorkspacePanel({
         onToggleMore={() => setIsMoreMenuOpen((open) => !open)}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div
+        id={COMPANY_WORKSPACE_TAB_PANEL_ID}
+        role="tabpanel"
+        className="min-h-0 flex-1 overflow-y-auto pb-3"
+      >
         {renderTab()}
       </div>
 
