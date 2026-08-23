@@ -132,7 +132,7 @@ def normalize_task_request(value: Mapping[str, Any]) -> dict[str, Any]:
             )
         budgets[operation] = budget
 
-    required_gates = _unique_strings(raw.get("required_gates") or ["tests", "review"])
+    required_gates = _ordered_unique_strings(raw.get("required_gates") or ["tests", "review"])
     if not required_gates:
         raise WorktreeContractError("GATES_REQUIRED", "At least one evidence gate is required")
     required_evidence = _unique_strings(raw.get("required_evidence") or [])
@@ -784,6 +784,17 @@ def _ordered_strings(value: Any, label: str) -> list[str]:
     result = [str(item) for item in _sequence(value, label)]
     if any(not item or len(item) > 4096 for item in result):
         raise WorktreeContractError("VALUE_INVALID", f"{label} contains an empty or oversized value")
+    return result
+
+
+def _ordered_unique_strings(value: Any) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in _ordered_strings(value, "ordered string list"):
+        normalized = item.strip()
+        if normalized and normalized not in seen:
+            result.append(normalized)
+            seen.add(normalized)
     return result
 
 
