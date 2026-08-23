@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tobkiri Browser Companion Help</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="page">
+      <section class="card">
+        <h1>Tobkiri Browser Companion</h1>
+        <p class="lede">Connection, access, and safety help for this browser profile.</p>
+        <h2>Status labels</h2>
+        <ul class="capabilities">
+          <li><strong>Connected:</strong> the latest local bridge poll succeeded.</li>
+          <li><strong>Connecting:</strong> a poll is in progress or has not completed yet.</li>
+          <li><strong>Setup required:</strong> the server URL or pairing token is missing.</li>
+          <li><strong>Connection error:</strong> the configured local bridge did not respond.</li>
+        </ul>
+        <h2>Current-page access</h2>
+        <p>
+          The companion can inspect page content and act on supported web pages in this browser
+          profile only when Tobkiri sends an approved browser command. Browser-internal pages and
+          other restricted URLs do not allow extension access.
+        </p>
+        <h2>Safety</h2>
+        <ul class="capabilities">
+          <li>Pair only with a local Tobkiri server you control.</li>
+          <li>Do not share the pairing token.</li>
+          <li>The pairing token stays in this browser profile's local extension storage.</li>
+          <li>Use the toolbar popup to check the endpoint and profile before running commands.</li>
+        </ul>
+        <button id="open-settings" type="button">Open settings</button>
+      </section>
+    </main>
+    <script src="help.js"></script>
+  </body>
+</html>

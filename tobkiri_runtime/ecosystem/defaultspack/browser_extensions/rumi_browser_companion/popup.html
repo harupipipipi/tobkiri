@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tobkiri Browser Companion</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <p class="eyebrow">Tobkiri</p>
+        <h1>Browser Companion</h1>
+      </header>
+
+      <section id="connection-card" class="status-card" aria-labelledby="status-title">
+        <div class="status-heading">
+          <span id="status-symbol" class="status-symbol" aria-hidden="true">…</span>
+          <div>
+            <p class="section-label">Connection</p>
+            <h2 id="status-title">Checking status</h2>
+          </div>
+        </div>
+        <p id="status-message" class="status-message" role="status" aria-live="polite">
+          Reading the latest local bridge status.
+        </p>
+        <dl class="details">
+          <div>
+            <dt>Endpoint</dt>
+            <dd id="endpoint">Checking…</dd>
+          </div>
+          <div>
+            <dt>Profile</dt>
+            <dd id="profile">Checking…</dd>
+          </div>
+          <div>
+            <dt>Last successful poll</dt>
+            <dd id="last-success">Never</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="scope-card" aria-labelledby="scope-title">
+        <p class="section-label">Current-tab scope</p>
+        <h2 id="scope-title">Checking current tab</h2>
+        <p id="scope-origin" class="scope-origin"></p>
+        <p id="scope-detail" class="scope-detail">
+          Reading the access available on this page.
+        </p>
+      </section>
+
+      <p id="popup-error" class="popup-error" role="alert" hidden></p>
+
+      <div class="primary-actions">
+        <button id="poll-now" type="button">Poll bridge now</button>
+        <button id="open-settings" type="button" class="secondary">Open settings</button>
+      </div>
+      <button id="open-help" type="button" class="text-button">Help and safety</button>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

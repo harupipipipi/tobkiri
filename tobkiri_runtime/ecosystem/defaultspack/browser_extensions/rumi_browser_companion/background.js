@@ -13,6 +13,7 @@ const CLIENT_ID_KEY = "rumiBrowserCompanionClientId";
 const INSTALLATION_ID_KEY = "rumiBrowserCompanionInstallationId";
 const BROWSER_PROFILE_ID_KEY = "rumiBrowserCompanionProfileId";
 const LAST_STATUS_KEY = "rumiBrowserCompanionLastStatus";
+const LAST_SUCCESSFUL_POLL_KEY = "rumiBrowserCompanionLastSuccessfulPoll";
 const ALARM_NAME = "rumi-browser-companion-poll";
 const BRIDGE_POLL_PATH = "/api/tools/browser-companion/bridge/poll";
 const BRIDGE_RESULT_PATH = "/api/tools/browser-companion/bridge/result";
@@ -29,6 +30,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   const settings = await ensureSettings();
   await ensureClientIdentity();
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: normalizePollInterval(settings.pollIntervalMinutes) });
+  await refreshActionIndicator();
   await chrome.runtime.openOptionsPage();
   void pollBridge("onInstalled");
 });
@@ -37,6 +39,7 @@ chrome.runtime.onStartup.addListener(async () => {
   const settings = await ensureSettings();
   await ensureClientIdentity();
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: normalizePollInterval(settings.pollIntervalMinutes) });
+  await refreshActionIndicator();
   void pollBridge("onStartup");
 });
 
@@ -69,6 +72,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.type) {
       case "rumi:get-status":
         sendResponse(await getStatus());
+        return;
+      case "rumi:get-popup-state":
+        sendResponse(await getPopupState());
         return;
       case "rumi:poll-now":
         sendResponse(await pollBridge("manual"));
@@ -199,16 +205,171 @@ function stringOrEmpty(value) {
 
 async function getStatus() {
   const stored = await chrome.storage.local.get(LAST_STATUS_KEY);
-  return stored[LAST_STATUS_KEY] || { ok: true, state: "idle" };
+  if (stored[LAST_STATUS_KEY]) {
+    return stored[LAST_STATUS_KEY];
+  }
+  const settings = await getSettings();
+  if (!settings.serverUrl || !settings.pairingToken) {
+    return {
+      ok: false,
+      state: "not_configured",
+      message: "Add a server URL and pairing token in Settings."
+    };
+  }
+  return {
+    ok: false,
+    state: "connecting",
+    message: "Waiting for the first bridge poll."
+  };
 }
 
 async function setStatus(status) {
+  const updatedAt = new Date().toISOString();
+  const stored = await chrome.storage.local.get(LAST_SUCCESSFUL_POLL_KEY);
+  let lastSuccessfulPollAt = stringOrEmpty(stored[LAST_SUCCESSFUL_POLL_KEY]) || null;
+  if (status.ok && status.state === "connected") {
+    lastSuccessfulPollAt = updatedAt;
+  }
   const withTimestamp = {
     ...status,
-    updatedAt: new Date().toISOString()
+    updatedAt,
+    lastSuccessfulPollAt
   };
-  await chrome.storage.local.set({ [LAST_STATUS_KEY]: withTimestamp });
+  const updates = { [LAST_STATUS_KEY]: withTimestamp };
+  if (lastSuccessfulPollAt) {
+    updates[LAST_SUCCESSFUL_POLL_KEY] = lastSuccessfulPollAt;
+  }
+  await chrome.storage.local.set(updates);
+  await updateActionIndicator(withTimestamp);
   return withTimestamp;
+}
+
+async function refreshActionIndicator() {
+  await updateActionIndicator(await getStatus());
+}
+
+async function updateActionIndicator(status) {
+  const presentation = actionIndicatorForStatus(status);
+  try {
+    await chrome.action.setBadgeText({ text: presentation.badgeText });
+    await chrome.action.setBadgeBackgroundColor({ color: presentation.badgeColor });
+    await chrome.action.setTitle({ title: presentation.title });
+  } catch (error) {
+    console.warn("Could not update Browser Companion action indicator", error);
+  }
+}
+
+function actionIndicatorForStatus(status) {
+  switch (status?.state) {
+    case "connected":
+      return {
+        badgeText: "OK",
+        badgeColor: "#176b3a",
+        title: "Tobkiri Browser Companion — connected"
+      };
+    case "connecting":
+      return {
+        badgeText: "…",
+        badgeColor: "#685c28",
+        title: "Tobkiri Browser Companion — connecting"
+      };
+    case "not_configured":
+      return {
+        badgeText: "SET",
+        badgeColor: "#5b4a76",
+        title: "Tobkiri Browser Companion — setup required"
+      };
+    default:
+      return {
+        badgeText: "ERR",
+        badgeColor: "#9b2c2c",
+        title: "Tobkiri Browser Companion — connection error"
+      };
+  }
+}
+
+async function getPopupState() {
+  const [settings, status, activeTabs] = await Promise.all([
+    getSettings(),
+    getStatus(),
+    chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  ]);
+  const activeTab = activeTabs[0] || null;
+  return {
+    ok: true,
+    status: popupStatusForDisplay(status),
+    configured: Boolean(settings.serverUrl && settings.pairingToken),
+    endpoint: endpointForDisplay(settings.serverUrl),
+    profileLabel:
+      stringOrEmpty(settings.profileLabel) ||
+      stringOrEmpty(settings.clientLabel) ||
+      "Default browser profile",
+    currentTab: currentTabScope(activeTab)
+  };
+}
+
+function popupStatusForDisplay(status) {
+  const state = ["connected", "connecting", "not_configured", "bridge_error"].includes(
+    status?.state
+  )
+    ? status.state
+    : "bridge_error";
+  const messages = {
+    connected: "The local bridge responded to the latest poll.",
+    connecting: "Waiting for the local bridge to respond.",
+    not_configured: "Add a server URL and pairing token in Settings.",
+    bridge_error: "The local bridge could not be reached. Check Settings and poll again."
+  };
+  return {
+    ok: state === "connected",
+    state,
+    message: messages[state],
+    updatedAt: status?.updatedAt || null,
+    lastSuccessfulPollAt: status?.lastSuccessfulPollAt || null
+  };
+}
+
+function endpointForDisplay(value) {
+  try {
+    const parsed = new URL(String(value || ""));
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch (_error) {
+    return value ? "Configured endpoint" : "Not configured";
+  }
+}
+
+function currentTabScope(tab) {
+  if (!tab) {
+    return {
+      available: false,
+      label: "No active tab",
+      detail: "Open a web page to inspect its Browser Companion scope."
+    };
+  }
+  const restrictedScope = {
+    available: false,
+    label: tab.title || "Restricted browser page",
+    detail: "Browser-internal and other restricted pages do not allow companion access."
+  };
+  try {
+    const parsed = new URL(tab.url || "");
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return {
+        available: true,
+        label: tab.title || parsed.hostname || "Current web page",
+        origin: parsed.origin,
+        detail:
+          "Can inspect page content and act on this tab only when Tobkiri sends an approved browser command."
+      };
+    }
+  } catch (_error) {
+    return restrictedScope;
+  }
+  return restrictedScope;
 }
 
 function normalizePollInterval(value) {
@@ -231,15 +392,22 @@ async function pollBridge(trigger) {
     });
   }
 
-  const metadata = await buildClientMetadata(settings, identity);
-  const requestBody = {
-    event: "poll",
+  await setStatus({
+    ok: false,
+    state: "connecting",
     trigger,
-    pairing_token: settings.pairingToken,
-    client: metadata
-  };
+    serverUrl: settings.serverUrl,
+    message: "Contacting the local bridge."
+  });
 
   try {
+    const metadata = await buildClientMetadata(settings, identity);
+    const requestBody = {
+      event: "poll",
+      trigger,
+      pairing_token: settings.pairingToken,
+      client: metadata
+    };
     const response = await fetch(joinUrl(settings.serverUrl, BRIDGE_POLL_PATH), {
       method: "POST",
       headers: {
@@ -272,12 +440,13 @@ async function pollBridge(trigger) {
       serverUrl: settings.serverUrl
     });
   } catch (error) {
+    console.warn("Browser Companion bridge poll failed", error);
     return setStatus({
       ok: false,
       state: "bridge_error",
       trigger,
       serverUrl: settings.serverUrl,
-      message: String(error && error.message ? error.message : error)
+      message: "The local bridge could not be reached or rejected the poll."
     });
   }
 }

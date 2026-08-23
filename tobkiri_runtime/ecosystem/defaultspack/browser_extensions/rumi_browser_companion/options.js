@@ -65,8 +65,18 @@ function renderStatus(status) {
   }
   const message = status.ok
     ? `Status: ${status.state || "ok"}${status.commandCount != null ? `, commands: ${status.commandCount}` : ""}`
-    : `Status: ${status.state || "error"}${status.message ? `, ${status.message}` : ""}`;
+    : publicErrorStatus(status);
   setStatus(message, Boolean(status.ok));
+}
+
+function publicErrorStatus(status) {
+  if (status.state === "not_configured") {
+    return "Status: setup required. Add a server URL and pairing token.";
+  }
+  if (status.state === "connecting") {
+    return "Status: connecting to the local bridge.";
+  }
+  return "Status: connection error. Check the endpoint and poll again.";
 }
 
 function setStatus(message, isOk) {
