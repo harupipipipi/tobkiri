@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import time
@@ -16,7 +17,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from core_runtime.runtime_state import sqlite_wal_connection
 
@@ -25,6 +26,7 @@ LEGACY_VERSION = "rumi.company-state.v1"
 MAX_PAYLOAD_BYTES = 256 * 1024
 MAX_HISTORY_LIMIT = 1_000
 DEFAULT_HISTORY_LIMIT = 10_000
+_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
 
 ENTITY_TABLES = {
     "roles": "roles",
@@ -157,6 +159,7 @@ class TransactionalTeamStore:
     def get(self, team_id: str) -> dict[str, Any] | None:
         """Return one exact compatibility projection without mutating it."""
 
+        team_id = _identifier(team_id)
         with closing(self.connection()) as connection:
             connection.execute("BEGIN")
             value = self._project(connection, team_id)
@@ -166,6 +169,7 @@ class TransactionalTeamStore:
     def lookup(self, team_id: str) -> dict[str, Any]:
         """Distinguish a missing, archived, deleted, or active Team."""
 
+        team_id = _identifier(team_id)
         with closing(self.connection()) as connection:
             row = connection.execute(
                 "SELECT status, deleted_at_ms, revision FROM teams WHERE team_id=?",
@@ -179,7 +183,7 @@ class TransactionalTeamStore:
     def apply(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Apply one Team-scoped CAS mutation atomically."""
 
-        team_id = str(arguments["company_id"])
+        team_id = _identifier(arguments["company_id"])
         expected = int(arguments["expected_revision"])
         with closing(self.connection()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -224,6 +228,7 @@ class TransactionalTeamStore:
     ) -> dict[str, Any]:
         """Return a stable append-only timeline page without loading Team graphs."""
 
+        team_id = _identifier(team_id)
         limit = _bounded_limit(limit, maximum=MAX_HISTORY_LIMIT)
         with closing(self.connection()) as connection:
             rows = connection.execute(
@@ -250,6 +255,10 @@ class TransactionalTeamStore:
     ) -> dict[str, Any]:
         """Atomically assign, start an attempt, and acquire a fenced lease."""
 
+        team_id = _identifier(team_id)
+        work_item_id = _identifier(work_item_id)
+        member_id = _identifier(member_id)
+        idempotency_key = _bounded_key(idempotency_key)
         now_ms = _now_ms()
         with closing(self.connection()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -322,7 +331,7 @@ class TransactionalTeamStore:
                     work_item_id,
                     lease,
                     fencing_token=fence,
-                    expires_at_ms=lease["expires_at_ms"],
+                    expires_at_ms=int(lease["expires_at_ms"]),
                 )
                 revision = self._advance(connection, team_id, expected_revision)
                 result = {
@@ -551,7 +560,7 @@ class TransactionalTeamStore:
             return {"company": self._project(connection, team_id)}
         if name == "agent.upsert":
             role = dict(arguments["role"])
-            role_id = str(role["id"])
+            role_id = _identifier(role["id"])
             role = self._normalized_named(connection, "roles", team_id, role_id, role, now_ms)
             self._put_entity(connection, "roles", team_id, role_id, role, arguments)
             member = self._normalized_member(
@@ -575,7 +584,7 @@ class TransactionalTeamStore:
         }
         if prefix in table_for_prefix and name.endswith(".upsert"):
             table = table_for_prefix[prefix]
-            entity_id = str(arguments["record_id"])
+            entity_id = _identifier(arguments["record_id"])
             record = dict(arguments["record"])
             if table == "members":
                 record = self._normalized_member(connection, team_id, entity_id, record, now_ms)
@@ -592,7 +601,7 @@ class TransactionalTeamStore:
             return {prefix if prefix != "task" else "task": record}
         if prefix in table_for_prefix and name.endswith(".delete"):
             table = table_for_prefix[prefix]
-            entity_id = str(arguments["record_id"])
+            entity_id = _identifier(arguments["record_id"])
             if table == "members":
                 self._assert_member_idle(connection, team_id, entity_id)
             deleted = connection.execute(
@@ -606,7 +615,7 @@ class TransactionalTeamStore:
             self._touch_team(connection, team_id, now_ms)
             return {f"deleted_{prefix}_id": entity_id}
         if name == "agent.delete":
-            entity_id = str(arguments["record_id"])
+            entity_id = _identifier(arguments["record_id"])
             self._assert_member_idle(connection, team_id, entity_id)
             deleted = connection.execute(
                 "DELETE FROM members WHERE team_id=? AND entity_id=?",
@@ -819,7 +828,7 @@ class TransactionalTeamStore:
         record: Mapping[str, Any],
         now_ms: int,
     ) -> dict[str, Any]:
-        role_id = str(record.get("role_id") or "")
+        role_id = _identifier(record.get("role_id"))
         if self._entity(connection, "roles", team_id, role_id) is None:
             raise KeyError("Team member role is unknown")
         current = self._entity(connection, "members", team_id, entity_id)
@@ -1229,6 +1238,7 @@ class TransactionalTeamStore:
         )
         for key, table in ENTITY_TABLES.items():
             records = value.get(key, {})
+            iterable: Iterable[tuple[Any, Any]]
             if isinstance(records, Mapping):
                 iterable = records.items()
             elif isinstance(records, list):
@@ -1241,6 +1251,7 @@ class TransactionalTeamStore:
                 iterable = ()
             for entity_id, record in iterable:
                 self._put_entity(connection, table, team_id, str(entity_id), record)
+        self._sync_default_channels(connection, team_id, updated)
         for key, kind in (("inbound", "inbound"), ("messages", "message")):
             records = value.get(key, [])
             if not isinstance(records, list):
@@ -1286,7 +1297,7 @@ def _empty_collections() -> dict[str, Any]:
 
 def _timeline(value: Mapping[str, Any], now_ms: int) -> dict[str, Any]:
     return {
-        "id": str(value.get("id") or uuid.uuid4()),
+        "id": _identifier(value.get("id") or uuid.uuid4()),
         "type": str(value.get("type") or "message")[:120],
         "actor_id": str(value.get("actor_id") or "")[:255],
         "channel_id": str(value.get("channel_id") or "")[:255],
@@ -1309,6 +1320,20 @@ def _bounded_limit(value: int, *, maximum: int) -> int:
     return value
 
 
+def _identifier(value: Any) -> str:
+    identifier = str(value or "").strip()
+    if not _ID.fullmatch(identifier):
+        raise ValueError("Team identifier is invalid")
+    return identifier
+
+
+def _bounded_key(value: Any) -> str:
+    key = str(value or "").strip()
+    if not key or len(key) > 255 or "\x00" in key:
+        raise ValueError("idempotency key is invalid")
+    return key
+
+
 def _assert_payload(encoded: str) -> None:
     if len(encoded.encode("utf-8")) > MAX_PAYLOAD_BYTES:
         raise ValueError("Team entity payload is too large")
@@ -1325,7 +1350,14 @@ def _json_object(value: Any) -> dict[str, Any]:
 
 
 def _encode(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+        allow_nan=False,
+    )
 
 
 def _decode(value: str) -> Any:

@@ -27,9 +27,7 @@ class ConnectorCompanyAdapter:
         connector = _mapping(payload.get("connector"))
         config = _mapping(connector.get("config"))
         routes = config.get("routes")
-        enabled_routes = (
-            {str(item) for item in routes} if isinstance(routes, list) else set()
-        )
+        enabled_routes = {str(item) for item in routes} if isinstance(routes, list) else set()
         if "company" not in enabled_routes:
             return {"status": "skipped", "reason": "company route is not enabled"}
         company_id = str(config.get("company_id") or "")
@@ -42,9 +40,7 @@ class ConnectorCompanyAdapter:
         connector_id = str(payload.get("connector_id") or connector.get("id") or "")
         if not connector_id:
             raise ValueError("connector_id is required")
-        inbound_id = "connector-" + _hash(
-            f"{company_id}\0{connector_id}\0{event_id}"
-        )[:40]
+        inbound_id = "connector-" + _hash(f"{company_id}\0{connector_id}\0{event_id}")[:40]
         record = {
             "id": inbound_id,
             "type": str(event.get("type") or "message"),
@@ -76,14 +72,16 @@ class ConnectorCompanyAdapter:
         company_id: str,
         record: Mapping[str, Any],
     ) -> dict[str, Any]:
-        snapshot = self.client.invoke(
+        company = self.client.invoke(
             COMPANY_RESOURCE,
-            "list",
-            {"profile_id": profile_id},
+            "get",
+            {"profile_id": profile_id, "company_id": company_id},
         )
+        if not isinstance(company, Mapping):
+            raise KeyError("Company is unknown")
         arguments = {
             "company_id": company_id,
-            "expected_revision": int(snapshot.get("revision") or 0),
+            "expected_revision": int(company.get("revision") or 0),
             "record": dict(record),
         }
         receipt = self._authorize(
@@ -204,4 +202,3 @@ def _mapping(value: Any) -> Mapping[str, Any]:
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
