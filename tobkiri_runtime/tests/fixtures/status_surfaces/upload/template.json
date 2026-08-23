@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "fixture.status.upload",
+  "kind": "pack",
+  "version": "1.0.0",
+  "status": "active",
+  "pieces": [
+    {
+      "id": "upload.active",
+      "kind": "function",
+      "role": "data_source",
+      "data_source": "upload.active",
+      "revision": 3,
+      "snapshot": {
+        "status": "uploading",
+        "name": "Release artifacts",
+        "sent": 8,
+        "total": 10
+      }
+    },
+    {
+      "id": "active-upload",
+      "kind": "status_surface",
+      "slot": "chat_header",
+      "surface": {
+        "id": "active-upload",
+        "data_source": "upload.active",
+        "title_path": "name",
+        "status_path": "status",
+        "progress": {
+          "current_path": "sent",
+          "total_path": "total"
+        }
+      }
+    }
+  ]
+}

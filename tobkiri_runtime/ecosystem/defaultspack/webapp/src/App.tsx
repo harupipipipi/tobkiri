@@ -119,7 +119,11 @@ import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSys
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
-import { statusSurfacesForSlot } from "./lib/statusSurfaces";
+import {
+  resolveStatusSurfaces,
+  type StatusSurfaceActionRequest,
+  type StatusSurfaceOption,
+} from "./lib/statusSurfaces";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -140,6 +144,7 @@ import { createWidgetConversationContext } from "./lib/widgetContext";
 import { promptResources } from "./features/prompts/resources/promptResources";
 import { manualRuntimeModeSelectionEnabled } from "./features/runtimeMode/runtimeMode";
 import { resolveDefaultspackRenderers } from "./renderers/defaultspackRenderers";
+import { StatusSurfaceHost } from "./renderers/status/StatusSurfaceHost";
 import { RendererBoundary } from "./renderers/trustedRendererLoader";
 import type { AppMode, AttachedFile, ChatUiMessage, CodingContext, ComposerExtensionItem, ComposerModelStatusIndicator, ComposerSkillItem, ComposerSteerStatus, ContextUsageInfo, DroppedWidget, SettingsLoadState, SettingsSaveState } from "./renderers/types";
 import { LayerPortal } from "./ui/layers/LayerPortal";
@@ -2906,10 +2911,6 @@ export function ChatApp() {
       .filter((item) => !templateHasToolAllowlist || templateAllowedToolIdSet.has(item.id)),
     [disabledToolIdSet, sidebarItems, templateAllowedToolIdSet, templateHasToolAllowlist],
   );
-  const composerStatusSurfaces = useMemo(
-    () => statusSurfacesForSlot(catalog, "above_composer"),
-    [catalog],
-  );
   const templateComposerWidgets = useMemo(
     () => templateComposerWidgetsForInput(catalog, templateAiInputMetadata, composerInputMetadata, composerExtensions),
     [catalog, templateAiInputMetadata, composerInputMetadata, composerExtensions],
@@ -3075,6 +3076,36 @@ export function ChatApp() {
           registeredSlashCommandsFromSettings(settingsValues.commands?.registered_slash_commands),
         )
   ), [commandCatalog, settingsValues.commands?.registered_slash_commands, usesResolvedCommandProtocol]);
+  const resolvedStatusSurfaces = useMemo(
+    () => resolveStatusSurfaces(catalog, effectiveCommandCatalog).surfaces,
+    [catalog, effectiveCommandCatalog],
+  );
+  const statusSurfaceModelOptions = useMemo(
+    () => selectableModelProfiles.map((profile): StatusSurfaceOption => ({
+      value: profile.profile_id,
+      label: profile.display_name || profile.profile_id,
+    })),
+    [selectableModelProfiles],
+  );
+  const statusSurfaceProviderOptions = useMemo(() => Array.from(new Map(
+    selectableModelProfiles.flatMap((profile) => {
+      const providerId = profile.provider_id?.trim();
+      return providerId
+        ? [[providerId, {
+            value: providerId,
+            label: profile.provider_display_name || providerId,
+          }] as const]
+        : [];
+    }),
+  ).values()), [selectableModelProfiles]);
+  const statusSurfaceThinkingOptions = useMemo(
+    () => (activeProfile?.supports_thinking
+      ? (activeProfile.thinking_levels?.length
+          ? activeProfile.thinking_levels
+          : ["low", "medium", "high"])
+      : []).map((level): StatusSurfaceOption => ({ value: level, label: level })),
+    [activeProfile],
+  );
 
   useEffect(() => {
     if (!usesResolvedCommandProtocol || pendingCommandApproval || effectiveCommandCatalog.length === 0) return;
@@ -6156,6 +6187,7 @@ export function ChatApp() {
         );
       }
       setPendingCommandApproval(null);
+      await refreshCatalog();
     } catch (approvalError) {
       setError(
         approvalError instanceof Error
@@ -6984,6 +7016,83 @@ export function ChatApp() {
     openKanbanScope({ type: "group", id: group.id }, group.title);
   };
 
+  const handleStatusSurfaceAction = async (
+    request: StatusSurfaceActionRequest,
+  ): Promise<void> => {
+    const command = effectiveCommandCatalog.find((candidate) => (
+      candidate.canonical_id === request.actionId
+      || candidate.id === request.actionId
+      || candidate.name === request.actionId
+      || candidate.aliases?.includes(request.actionId)
+    ));
+    if (!command) {
+      throw new Error("The registered backend action is no longer available.");
+    }
+    const commandRef = command.canonical_id ?? command.name ?? command.id;
+    const invocationId = createCommandInvocationId(`status-${request.surfaceId}`);
+    const parsedRevision = Number(request.sourceRevision);
+    void followCommandProgress(invocationId);
+    const result = await api.executeResolvedUiCommand({
+      command: commandRef,
+      args: {
+        surface_id: request.surfaceId,
+        control_id: request.controlId,
+        ...(request.value !== undefined ? { value: request.value } : {}),
+        ...(request.dataSourceId
+          ? { data_source_id: request.dataSourceId }
+          : {}),
+        ...(request.sourceRevision !== undefined
+          ? { source_revision: request.sourceRevision }
+          : {}),
+      },
+      conversation_id: activeConversationId,
+      mode: mode as ComposerCommandMode,
+      invocation_id: invocationId,
+      idempotency_key: invocationId,
+      expected_revision: Number.isInteger(parsedRevision) && parsedRevision >= 0
+        ? parsedRevision
+        : undefined,
+    });
+    applyAuthoritativeCommandState(result);
+    if (result.requires_approval) {
+      if (result.approval_request_id && result.operation_id) {
+        setPendingCommandApproval({
+          requestId: result.approval_request_id,
+          invocationId: result.operation_id,
+          commandRef,
+          command,
+          args: {
+            surface_id: request.surfaceId,
+            control_id: request.controlId,
+            ...(request.value !== undefined ? { value: request.value } : {}),
+            ...(request.dataSourceId
+              ? { data_source_id: request.dataSourceId }
+              : {}),
+            ...(request.sourceRevision !== undefined
+              ? { source_revision: request.sourceRevision }
+              : {}),
+          },
+          conversationId: activeConversationId,
+          mode: mode as ComposerCommandMode,
+          approvalKind: result.approval_kind === "authority"
+            ? "authority"
+            : "coding",
+        });
+      }
+      throw new Error(
+        result.message
+          ?? "This action is waiting for approval; displayed state was retained.",
+      );
+    }
+    if (result.executed !== true) {
+      throw new Error(
+        result.message
+          ?? "The backend did not confirm authoritative action execution.",
+      );
+    }
+    await refreshCatalog();
+  };
+
   const renderComposer = (isCentered = false) => {
     if (!isCentered && activeConversation?.metadata?.shared_read_only === true) {
       return <div role="status" className="mx-3 mb-3 flex min-h-14 items-center justify-center border border-zinc-800 bg-zinc-950 px-4 text-center text-sm text-zinc-400">Read-only imported copy. Import the share again with continue mode to send messages.</div>;
@@ -7031,7 +7140,7 @@ export function ChatApp() {
       steerBusy={modelSteerBusy}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
       steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
-      statusSurfaces={isCentered ? [] : composerStatusSurfaces}
+      statusSurfaces={isCentered ? [] : resolvedStatusSurfaces}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
@@ -7054,27 +7163,7 @@ export function ChatApp() {
       onSubmit={handleSubmit}
       onStopGenerating={handleStopGenerating}
       onSteerSubmit={(prompt) => void queueConversationSteer(prompt)}
-      onStatusSurfaceAction={async (request) => {
-        const result = await api.executeUiCommand({
-          command: request.actionId,
-          args: {
-            surface_id: request.surfaceId,
-            control_id: request.controlId,
-            ...(request.value !== undefined ? { value: request.value } : {}),
-            ...(request.dataSourceId ? { data_source_id: request.dataSourceId } : {}),
-            ...(request.sourceRevision ? { source_revision: request.sourceRevision } : {}),
-          },
-          conversation_id: activeConversationId,
-          mode,
-        });
-        if (result.requires_approval) {
-          throw new Error(result.message ?? "This status action requires approval before it can run.");
-        }
-        if (result.executed !== true) {
-          throw new Error(result.message ?? "The backend did not confirm authoritative action execution.");
-        }
-        await refreshCatalog();
-      }}
+      onStatusSurfaceAction={handleStatusSurfaceAction}
       onModeChange={handleModeChange}
       onFileAttach={handleFileAttach}
       onAtFileAttach={handleAtFileAttach}
@@ -7207,17 +7296,36 @@ export function ChatApp() {
             />
 
             {showRegion("chat_header") && isChatWorkspace && !isCalendarMode && !isKanbanMode && (
-              <Renderers.chatHeader
-                title={activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : activeChatTitle}
-                showPreview={effectiveShowPreview}
-                canShowPreview={showRegion("activity_preview") && canShowCanvas}
-                canOpenSettings={showRegion("settings_modal")}
-                onTogglePreview={() => {
-                  if (canShowCanvas) setShowPreview((value) => !value);
-                }}
-                onOpenSettings={openSettingsHome}
-              />
+              <>
+                <Renderers.chatHeader
+                  title={activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : activeChatTitle}
+                  showPreview={effectiveShowPreview}
+                  canShowPreview={showRegion("activity_preview") && canShowCanvas}
+                  canOpenSettings={showRegion("settings_modal")}
+                  onTogglePreview={() => {
+                    if (canShowCanvas) setShowPreview((value) => !value);
+                  }}
+                  onOpenSettings={openSettingsHome}
+                />
+                <StatusSurfaceHost
+                  surfaces={resolvedStatusSurfaces}
+                  slot="chat_header"
+                  modelOptions={statusSurfaceModelOptions}
+                  providerOptions={statusSurfaceProviderOptions}
+                  thinkingOptions={statusSurfaceThinkingOptions}
+                  onAction={handleStatusSurfaceAction}
+                />
+              </>
             )}
+
+            <StatusSurfaceHost
+              surfaces={resolvedStatusSurfaces}
+              slot="workspace_panel"
+              modelOptions={statusSurfaceModelOptions}
+              providerOptions={statusSurfaceProviderOptions}
+              thinkingOptions={statusSurfaceThinkingOptions}
+              onAction={handleStatusSurfaceAction}
+            />
 
             {backendConnectionState !== "online" && (
               <ErrorNotice
@@ -7493,6 +7601,14 @@ export function ChatApp() {
 
         {showRegion("right_sidebar") && (
           <div className="rumi-anim-fade-right">
+          <StatusSurfaceHost
+            surfaces={resolvedStatusSurfaces}
+            slot="sidebar"
+            modelOptions={statusSurfaceModelOptions}
+            providerOptions={statusSurfaceProviderOptions}
+            thinkingOptions={statusSurfaceThinkingOptions}
+            onAction={handleStatusSurfaceAction}
+          />
           <Renderers.rightSidebar
             widgetContext={widgetContext}
             items={sidebarItems}

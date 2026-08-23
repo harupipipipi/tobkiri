@@ -4544,6 +4544,19 @@ export function ComposerRenderer({
                 value: profile.profile_id,
                 label: profile.display_name || profile.profile_id,
               }))}
+              providerOptions={Array.from(new Map(modelProfiles.flatMap((profile) => {
+                const providerId = profile.provider_id?.trim();
+                return providerId
+                  ? [[providerId, {
+                      value: providerId,
+                      label: profile.provider_display_name || providerId,
+                    }] as const]
+                  : [];
+              })).values())}
+              thinkingOptions={levels.map((level) => ({
+                value: level,
+                label: THINKING_LABELS[level] ?? level,
+              }))}
               onAction={onStatusSurfaceAction}
             />
           )}
@@ -4939,6 +4952,30 @@ export function ComposerRenderer({
             </div>
           )}
         </form>
+        {!isNewConversation && statusSurfaces.length > 0 && (
+          <StatusSurfaceHost
+            surfaces={statusSurfaces}
+            slot="below_composer"
+            modelOptions={modelProfiles.map((profile) => ({
+              value: profile.profile_id,
+              label: profile.display_name || profile.profile_id,
+            }))}
+            providerOptions={Array.from(new Map(modelProfiles.flatMap((profile) => {
+              const providerId = profile.provider_id?.trim();
+              return providerId
+                ? [[providerId, {
+                    value: providerId,
+                    label: profile.provider_display_name || providerId,
+                  }] as const]
+                : [];
+            })).values())}
+            thinkingOptions={levels.map((level) => ({
+              value: level,
+              label: THINKING_LABELS[level] ?? level,
+            }))}
+            onAction={onStatusSurfaceAction}
+          />
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import sys
 from pathlib import Path
 
@@ -13,6 +14,46 @@ from domain.templates import ResolvedTemplate, parse_template, project_resolved_
 
 
 def _resolved(template_id: str, surface: dict, *, trust_level: str = "local") -> ResolvedTemplate:
+    surface = dict(surface)
+    data_source_id = str(surface.setdefault("data_source", f"{template_id}.active"))
+    action_ids = sorted(
+        {
+            str(control["action_id"])
+            for control in surface.get("controls", [])
+            if isinstance(control, dict) and control.get("action_id")
+        }
+    )
+    pieces = [
+        {
+            "id": data_source_id,
+            "kind": "function",
+            "role": "data_source",
+            "data_source": data_source_id,
+            "snapshot": {},
+        },
+        *[
+            {
+                "id": action_id,
+                "kind": "composer_command",
+                "command": {
+                    "id": action_id,
+                    "name": action_id,
+                    "label": action_id,
+                    "execution": {
+                        "type": "pack_block",
+                        "qualified_name": f"{template_id}:{action_id}",
+                    },
+                },
+            }
+            for action_id in action_ids
+        ],
+        {
+            "id": surface["id"],
+            "kind": "status_surface",
+            "slot": surface.get("slot", "above_composer"),
+            "surface": surface,
+        },
+    ]
     result = parse_template(
         {
             "schema_version": 1,
@@ -20,18 +61,12 @@ def _resolved(template_id: str, surface: dict, *, trust_level: str = "local") ->
             "kind": "pack",
             "version": "1.0.0",
             "status": "active",
-            "pieces": [
-                {
-                    "id": surface["id"],
-                    "kind": "status_surface",
-                    "slot": surface.get("slot", "above_composer"),
-                    "surface": surface,
-                }
-            ],
+            "pieces": pieces,
         },
         trust_level=trust_level,
     )
     assert result.template is not None, result.diagnostics
+    assert result.ok, result.diagnostics
     return ResolvedTemplate(result.template, result.diagnostics)
 
 
@@ -113,3 +148,77 @@ def test_frontend_catalog_exposes_projected_status_surfaces_to_the_webapp():
     }
 
     assert "status_surfaces" in returned_keys
+
+
+def test_two_unrelated_sibling_pack_fixtures_validate_and_project_from_disk():
+    fixture_root = ROOT / "tests" / "fixtures" / "status_surfaces"
+    resolved = []
+    for fixture_name in ("review", "upload"):
+        path = fixture_root / fixture_name / "template.json"
+        result = parse_template(
+            json.loads(path.read_text(encoding="utf-8")),
+            source_path=str(path),
+            trust_level="local",
+        )
+        assert result.ok, result.diagnostics
+        assert result.template is not None
+        resolved.append(ResolvedTemplate(result.template, result.diagnostics))
+
+    catalog = project_resolved_templates(resolved)
+
+    assert [surface["surface_id"] for surface in catalog["status_surfaces"]] == [
+        "active-review",
+        "active-upload",
+    ]
+    assert {source["data_source"] for source in catalog["data_sources"]} == {
+        "review.active",
+        "upload.active",
+    }
+    assert any(command["id"] == "review.pause" for command in catalog["commands"])
+
+
+def test_status_surface_schema_rejects_unregistered_and_unsafe_contract_fields():
+    result = parse_template(
+        {
+            "schema_version": 1,
+            "id": "fixture.status.invalid",
+            "kind": "pack",
+            "version": "1.0.0",
+            "status": "active",
+            "pieces": [
+                {
+                    "id": "invalid-surface",
+                    "kind": "status_surface",
+                    "slot": "floating_script",
+                    "surface": {
+                        "id": "invalid-surface",
+                        "api_version": "rumi.status_surface.v99",
+                        "data_source": "missing.source",
+                        "title_path": "constructor.prototype.title",
+                        "progress": {"current_path": "done"},
+                        "visible_when": {"__proto__.visible": True},
+                        "controls": [
+                            {
+                                "id": "invalid control id",
+                                "type": "button",
+                                "action_id": "missing.action",
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+        trust_level="local",
+    )
+
+    assert result.template is not None
+    assert not result.ok
+    codes = {diagnostic.code for diagnostic in result.diagnostics}
+    assert {
+        "template.reference.status_surface_unsupported_version",
+        "template.reference.status_surface_invalid_slot",
+        "template.reference.status_surface_unknown_data_source",
+        "template.reference.status_surface_invalid_path",
+        "template.reference.status_surface_invalid_control_id",
+        "template.reference.status_surface_unknown_action",
+    } <= codes

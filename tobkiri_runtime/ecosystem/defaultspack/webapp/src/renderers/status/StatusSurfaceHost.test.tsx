@@ -37,19 +37,25 @@ test("renders accessible status, timer, progress, details control, and registere
       details: [{ label: "Gate", value: "No critical findings" }],
       controls: [
         { id: "model", type: "model_select", label: "Model", actionId: "review.model", value: "model-a", disabled: false, options: [] },
+        { id: "provider", type: "provider_select", label: "Provider", actionId: "review.provider", value: "provider-a", disabled: false, options: [] },
+        { id: "thinking", type: "thinking_select", label: "Thinking", actionId: "review.thinking", value: "high", disabled: false, options: [] },
         { id: "details", type: "expand", label: "Details", disabled: false, options: [] },
       ],
     })],
     modelOptions: [{ value: "model-a", label: "Model A" }],
+    providerOptions: [{ value: "provider-a", label: "Provider A" }],
+    thinkingOptions: [{ value: "high", label: "High" }],
     onAction: () => undefined,
   }));
-  assert.match(html, /aria-label="Active status surfaces"/);
+  assert.match(html, /aria-label="Active status surfaces: above composer"/);
   assert.match(html, /Security review/);
   assert.match(html, /Review iterations/);
   assert.match(html, /role="progressbar"/);
   assert.match(html, /aria-valuenow="2"/);
   assert.match(html, /aria-expanded="false"/);
   assert.match(html, /Model A/);
+  assert.match(html, /Provider A/);
+  assert.match(html, />High</);
   assert.match(html, /authentication &amp; authorization/);
 });
 
@@ -59,8 +65,9 @@ test("bounds overflow and exposes a keyboard button to reveal remaining surfaces
     maxVisible: 2,
     surfaces: [surface("one"), surface("two"), surface("three"), surface("four")],
   }));
+  assert.match(html, /data-status-surface-id="four"/);
   assert.match(html, /data-status-surface-id="one"/);
-  assert.match(html, /data-status-surface-id="two"/);
+  assert.doesNotMatch(html, /data-status-surface-id="two"/);
   assert.doesNotMatch(html, /data-status-surface-id="three"/);
   assert.match(html, /Show 2 more status surfaces/);
   assert.match(html, /aria-expanded="false"/);
@@ -96,6 +103,23 @@ test("does not render surfaces assigned to another slot", () => {
     surfaces: [surface("composer-only")],
   }));
   assert.equal(html, "");
+});
+
+test("renders every approved shell slot through the generic host", () => {
+  for (const slot of [
+    "above_composer",
+    "below_composer",
+    "chat_header",
+    "sidebar",
+    "workspace_panel",
+  ] as const) {
+    const html = renderToStaticMarkup(createElement(StatusSurfaceHost, {
+      slot,
+      surfaces: [surface(slot, { slot })],
+    }));
+    assert.match(html, new RegExp(`data-status-surface-host="${slot}"`));
+    assert.match(html, new RegExp(`data-status-surface-id="${slot}"`));
+  }
 });
 
 test("the real Composer host renders a declarative above-composer surface", () => {

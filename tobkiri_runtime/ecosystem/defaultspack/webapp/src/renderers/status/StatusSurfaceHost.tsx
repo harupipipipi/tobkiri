@@ -30,6 +30,8 @@ export type StatusSurfaceHostProps = {
   surfaces: ResolvedStatusSurface[];
   slot: StatusSurfaceSlot;
   modelOptions?: StatusSurfaceOption[];
+  providerOptions?: StatusSurfaceOption[];
+  thinkingOptions?: StatusSurfaceOption[];
   maxVisible?: number;
   onAction?: (request: StatusSurfaceActionRequest) => Promise<unknown> | unknown;
 };
@@ -81,12 +83,16 @@ function useElapsedClock(enabled: boolean): number {
   return now;
 }
 
-function selectOptions(control: ResolvedStatusSurfaceControl, modelOptions: StatusSurfaceOption[]): StatusSurfaceOption[] {
+function selectOptions(
+  control: ResolvedStatusSurfaceControl,
+  modelOptions: StatusSurfaceOption[],
+  providerOptions: StatusSurfaceOption[],
+  thinkingOptions: StatusSurfaceOption[],
+): StatusSurfaceOption[] {
   if (control.options.length > 0) return control.options;
   if (control.type === "model_select") return modelOptions;
-  if (control.type === "thinking_select") {
-    return ["none", "low", "medium", "high", "xhigh"].map((value): StatusSurfaceOption => ({ value, label: value }));
-  }
+  if (control.type === "provider_select") return providerOptions;
+  if (control.type === "thinking_select") return thinkingOptions;
   return [];
 }
 
@@ -100,6 +106,8 @@ function StatusControl({
   control,
   state,
   modelOptions,
+  providerOptions,
+  thinkingOptions,
   onInvoke,
   onToggleDetails,
   detailsExpanded,
@@ -109,6 +117,8 @@ function StatusControl({
   control: ResolvedStatusSurfaceControl;
   state: ActionState;
   modelOptions: StatusSurfaceOption[];
+  providerOptions: StatusSurfaceOption[];
+  thinkingOptions: StatusSurfaceOption[];
   onInvoke: (control: ResolvedStatusSurfaceControl, value?: string | boolean | number | null) => void;
   onToggleDetails: () => void;
   detailsExpanded: boolean;
@@ -130,7 +140,12 @@ function StatusControl({
   }
 
   const disabled = control.disabled || state.status === "pending" || !actionAvailable;
-  const options = selectOptions(control, modelOptions);
+  const options = selectOptions(
+    control,
+    modelOptions,
+    providerOptions,
+    thinkingOptions,
+  );
   if (["model_select", "provider_select", "thinking_select", "select", "menu"].includes(control.type)) {
     return (
       <label className="grid min-w-28 gap-1 text-[10px] font-medium text-zinc-400">
@@ -139,6 +154,7 @@ function StatusControl({
           className="min-h-9 max-w-52 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           value={typeof control.value === "string" || typeof control.value === "number" ? String(control.value) : ""}
           disabled={disabled}
+          aria-busy={state.status === "pending"}
           aria-label={`${surface.title}: ${control.label}`}
           title={control.disabledReason}
           onChange={(event) => onInvoke(control, event.target.value)}
@@ -160,6 +176,7 @@ function StatusControl({
       type="button"
       className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-zinc-700/80 px-2.5 text-xs font-medium text-zinc-100 hover:bg-zinc-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
       disabled={disabled}
+      aria-busy={state.status === "pending"}
       aria-pressed={control.type === "toggle_button" ? toggled : undefined}
       title={control.disabledReason}
       onClick={() => onInvoke(control, control.type === "toggle_button" ? !toggled : control.value)}
@@ -173,10 +190,14 @@ function StatusControl({
 function StatusSurfaceCard({
   surface,
   modelOptions,
+  providerOptions,
+  thinkingOptions,
   onAction,
 }: {
   surface: ResolvedStatusSurface;
   modelOptions: StatusSurfaceOption[];
+  providerOptions: StatusSurfaceOption[];
+  thinkingOptions: StatusSurfaceOption[];
   onAction?: StatusSurfaceHostProps["onAction"];
 }) {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -236,6 +257,8 @@ function StatusSurfaceCard({
                 control={control}
                 state={actionStates[control.id] ?? { status: "idle" }}
                 modelOptions={modelOptions}
+                providerOptions={providerOptions}
+                thinkingOptions={thinkingOptions}
                 onInvoke={(target, value) => void invoke(target, value)}
                 onToggleDetails={() => setDetailsExpanded((current) => !current)}
                 detailsExpanded={detailsExpanded}
@@ -296,12 +319,20 @@ export function StatusSurfaceHost({
   surfaces,
   slot,
   modelOptions = [],
+  providerOptions = [],
+  thinkingOptions = [],
   maxVisible = 3,
   onAction,
 }: StatusSurfaceHostProps) {
   const [overflowExpanded, setOverflowExpanded] = useState(false);
   const matching = useMemo(
-    () => surfaces.filter((surface) => surface.slot === slot),
+    () => surfaces
+      .filter((surface) => surface.slot === slot)
+      .sort((left, right) => (
+        right.priority - left.priority
+        || left.order - right.order
+        || left.id.localeCompare(right.id)
+      )),
     [slot, surfaces],
   );
   if (matching.length === 0) return null;
@@ -310,9 +341,20 @@ export function StatusSurfaceHost({
   const overflow = matching.length - visible.length;
 
   return (
-    <section className="mx-2 mt-1 grid gap-1.5 max-[640px]:mx-1.5" aria-label="Active status surfaces" data-status-surface-host={slot}>
+    <section
+      className="mx-2 mt-1 grid min-w-0 gap-1.5 max-[640px]:mx-1.5"
+      aria-label={`Active status surfaces: ${slot.replace(/_/g, " ")}`}
+      data-status-surface-host={slot}
+    >
       {visible.map((surface) => (
-        <StatusSurfaceCard key={surface.id} surface={surface} modelOptions={modelOptions} onAction={onAction} />
+        <StatusSurfaceCard
+          key={surface.id}
+          surface={surface}
+          modelOptions={modelOptions}
+          providerOptions={providerOptions}
+          thinkingOptions={thinkingOptions}
+          onAction={onAction}
+        />
       ))}
       {(matching.length > limit || overflowExpanded) && (
         <button

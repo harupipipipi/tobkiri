@@ -1,4 +1,8 @@
-import type { TemplateCatalogMetadataItem, UICatalog } from "./api";
+import type {
+  ComposerCommandItem,
+  TemplateCatalogMetadataItem,
+  UICatalog,
+} from "./api";
 
 export const STATUS_SURFACE_API_VERSION = "rumi.status_surface.v1";
 
@@ -68,7 +72,7 @@ export type ResolvedStatusSurface = {
   details: Array<{ label?: string; value: string }>;
   controls: ResolvedStatusSurfaceControl[];
   dataSourceId?: string;
-  sourceRevision?: string;
+  sourceRevision?: string | number;
   templateId?: string;
   sourcePackId?: string;
   trustLevel?: string;
@@ -87,10 +91,17 @@ export type StatusSurfaceActionRequest = {
   actionId: string;
   value?: string | boolean | number | null;
   dataSourceId?: string;
-  sourceRevision?: string;
+  sourceRevision?: string | number;
 };
 
 type JsonRecord = Record<string, unknown>;
+type RegisteredAction = Pick<ComposerCommandItem, "id" | "name" | "execution">
+  & Partial<Pick<ComposerCommandItem, "canonical_id">>
+  & {
+    action_id?: unknown;
+    command_id?: unknown;
+    command?: unknown;
+  };
 
 const VALID_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const VALID_PATH_SEGMENT = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
@@ -173,13 +184,15 @@ function sourceIdentity(item: TemplateCatalogMetadataItem): string[] {
     .filter((value): value is string => Boolean(value));
 }
 
-function actionIdentity(item: TemplateCatalogMetadataItem): string[] {
-  return [item.action_id, item.command_id, item.id, item.name]
+function actionIdentity(item: RegisteredAction | TemplateCatalogMetadataItem): string[] {
+  return [item.action_id, item.command_id, item.canonical_id, item.id, item.name]
     .map((value) => safeId(value))
     .filter((value): value is string => Boolean(value));
 }
 
-function executableActionIdentity(item: TemplateCatalogMetadataItem): string[] {
+function executableActionIdentity(
+  item: RegisteredAction | TemplateCatalogMetadataItem,
+): string[] {
   const nestedCommand = record(item.command);
   const execution = record(item.execution) ?? record(nestedCommand?.execution);
   if (!execution) return [];
@@ -260,7 +273,18 @@ function normalizeControls(
     diagnostics.push(diagnostic(surfaceId, raw, "status_surface.invalid_controls", "controls must be an array", "controls"));
     return [];
   }
+  if (rawControls.length > 20) {
+    diagnostics.push(diagnostic(
+      surfaceId,
+      raw,
+      "status_surface.too_many_controls",
+      "controls must contain at most 20 entries",
+      "controls",
+    ));
+    return [];
+  }
 
+  const seenControlIds = new Set<string>();
   return rawControls.slice(0, 20).flatMap((candidate, index) => {
     const control = record(candidate);
     if (!control) {
@@ -272,7 +296,29 @@ function normalizeControls(
       diagnostics.push(diagnostic(surfaceId, raw, "status_surface.unknown_control", `unsupported control: ${kind ?? "missing"}`, `controls.${index}.type`));
       return [];
     }
-    const id = safeId(control.id) ?? `${kind}_${index}`;
+    const configuredId = control.id;
+    const id = safeId(configuredId) ?? `${kind}_${index}`;
+    if (configuredId !== undefined && !safeId(configuredId)) {
+      diagnostics.push(diagnostic(
+        surfaceId,
+        raw,
+        "status_surface.invalid_control_id",
+        "control ID must be a bounded opaque registry ID",
+        `controls.${index}.id`,
+      ));
+      return [];
+    }
+    if (seenControlIds.has(id)) {
+      diagnostics.push(diagnostic(
+        surfaceId,
+        raw,
+        "status_surface.duplicate_control",
+        `duplicate control ID: ${id}`,
+        `controls.${index}.id`,
+      ));
+      return [];
+    }
+    seenControlIds.add(id);
     const actionId = safeId(control.action_id ?? control.actionId);
     if (ACTION_CONTROL_KINDS.has(kind) && (!actionId || !registeredActions.has(actionId))) {
       diagnostics.push(diagnostic(
@@ -301,6 +347,16 @@ function normalizeControls(
     }
     const currentValue = valuePath === undefined ? control.value : readStatusSurfacePath(state, valuePath);
     const options = normalizeOptions(optionsPath === undefined ? control.options : readStatusSurfacePath(state, optionsPath));
+    if ((kind === "select" || kind === "menu") && options.length === 0) {
+      diagnostics.push(diagnostic(
+        surfaceId,
+        raw,
+        "status_surface.missing_options",
+        `control ${id} requires registered options`,
+        `controls.${index}.options`,
+      ));
+      return [];
+    }
     return [{
       id,
       type: kind,
@@ -344,7 +400,17 @@ function visibleForState(
 
 function normalizeDetails(config: JsonRecord, state: JsonRecord, diagnostics: StatusSurfaceDiagnostic[], surfaceId: string, raw: TemplateCatalogMetadataItem) {
   const configured = config.details;
-  if (!Array.isArray(configured)) return [];
+  if (configured === undefined) return [];
+  if (!Array.isArray(configured) || configured.length > MAX_DETAILS) {
+    diagnostics.push(diagnostic(
+      surfaceId,
+      raw,
+      "status_surface.invalid_details",
+      `details must contain at most ${MAX_DETAILS} entries`,
+      "details",
+    ));
+    return [];
+  }
   return configured.slice(0, MAX_DETAILS).flatMap((candidate, index) => {
     if (typeof candidate === "string" || typeof candidate === "number") {
       const value = text(candidate);
@@ -406,13 +472,33 @@ function resolveOne(
   registeredActions: Set<string>,
 ): ResolvedStatusSurface | null {
   const config = surfacePayload(raw);
-  const surfaceId = safeId(config.surface_id ?? config.id ?? raw.id) ?? `invalid_${text(raw.piece_id, 64) ?? "surface"}`;
+  const configuredSurfaceId = config.surface_id ?? config.id ?? raw.id;
+  const surfaceId = safeId(configuredSurfaceId) ?? `invalid_${text(raw.piece_id, 64) ?? "surface"}`;
   const slotValue = text(config.slot ?? raw.slot, 40) ?? "above_composer";
-  if (!STATUS_SURFACE_SLOTS.includes(slotValue as StatusSurfaceSlot)) return null;
-  const slot = slotValue as StatusSurfaceSlot;
+  const slot = STATUS_SURFACE_SLOTS.includes(slotValue as StatusSurfaceSlot)
+    ? slotValue as StatusSurfaceSlot
+    : "above_composer";
   const priority = numberValue(config.priority) ?? 0;
   const order = numberValue(config.order ?? raw.order) ?? 0;
   const diagnostics: StatusSurfaceDiagnostic[] = [];
+  if (!safeId(configuredSurfaceId)) {
+    diagnostics.push(diagnostic(
+      surfaceId,
+      raw,
+      "status_surface.invalid_id",
+      "status surface ID must be a bounded opaque registry ID",
+      "id",
+    ));
+  }
+  if (slotValue !== slot) {
+    diagnostics.push(diagnostic(
+      surfaceId,
+      raw,
+      "status_surface.invalid_slot",
+      `unsupported status surface slot: ${slotValue}`,
+      "slot",
+    ));
+  }
   const apiVersion = text(config.api_version ?? config.apiVersion, 80) ?? STATUS_SURFACE_API_VERSION;
   if (apiVersion !== STATUS_SURFACE_API_VERSION) {
     diagnostics.push(diagnostic(surfaceId, raw, "status_surface.incompatible_version", `unsupported API version: ${apiVersion}`, "api_version"));
@@ -424,14 +510,22 @@ function resolveOne(
   const configuredDataSource = config.data_source ?? config.dataSource;
   const dataSourceId = safeId(configuredDataSource);
   const source = dataSourceId ? sources.get(dataSourceId) : undefined;
+  if (configuredDataSource === undefined) {
+    diagnostics.push(diagnostic(
+      surfaceId,
+      raw,
+      "status_surface.missing_data_source",
+      "status surface must bind a registered backend data source",
+      "data_source",
+    ));
+  }
   if (configuredDataSource !== undefined && !dataSourceId) {
     diagnostics.push(diagnostic(surfaceId, raw, "status_surface.invalid_data_source", "data source must be an opaque registered ID", "data_source"));
   }
   if (dataSourceId && !source) {
     diagnostics.push(diagnostic(surfaceId, raw, "status_surface.unregistered_data_source", `unregistered data source: ${dataSourceId}`, "data_source"));
   }
-  const inlineState = record(config.snapshot) ?? record(config.data) ?? record(config.state);
-  const state = dataSourceSnapshot(source) ?? inlineState ?? {};
+  const state = dataSourceSnapshot(source) ?? {};
   const visible = visibleForState(config.visible_when ?? config.visibleWhen, state, surfaceId, raw, diagnostics);
   if (!visible && diagnostics.length === 0) return null;
 
@@ -439,6 +533,17 @@ function resolveOne(
   for (const pathKey of pathKeys) {
     if (config[pathKey] !== undefined && !safePath(config[pathKey])) {
       diagnostics.push(diagnostic(surfaceId, raw, "status_surface.invalid_path", `invalid ${pathKey}`, pathKey));
+    } else if (
+      config[pathKey] !== undefined
+      && readStatusSurfacePath(state, config[pathKey]) === undefined
+    ) {
+      diagnostics.push(diagnostic(
+        surfaceId,
+        raw,
+        "status_surface.unresolved_path",
+        `${pathKey} did not resolve in the authoritative data source snapshot`,
+        pathKey,
+      ));
     }
   }
   const progressConfig = record(config.progress);
@@ -447,6 +552,23 @@ function resolveOne(
       if (progressConfig[pathKey] !== undefined && !safePath(progressConfig[pathKey])) {
         diagnostics.push(diagnostic(surfaceId, raw, "status_surface.invalid_path", `invalid progress ${pathKey}`, `progress.${pathKey}`));
       }
+    }
+    const current = numberValue(readStatusSurfacePath(
+      state,
+      progressConfig.current_path,
+    ));
+    const total = numberValue(readStatusSurfacePath(
+      state,
+      progressConfig.total_path,
+    ));
+    if (current === undefined || total === undefined || total <= 0) {
+      diagnostics.push(diagnostic(
+        surfaceId,
+        raw,
+        "status_surface.invalid_progress",
+        "progress paths must resolve to finite values with total greater than zero",
+        "progress",
+      ));
     }
   }
 
@@ -462,6 +584,9 @@ function resolveOne(
   const title = text(valueAtPathOrLiteral(state, config, "title_path", "title"), 200) ?? surfaceId;
   const status = text(valueAtPathOrLiteral(state, config, "status_path", "status"), 120);
   const count = numberValue(valueAtPathOrLiteral(state, config, "count_path", "count"));
+  const rawSourceRevision = source?.revision
+    ?? source?.source_revision
+    ?? state.revision;
   return {
     id: surfaceId,
     apiVersion: STATUS_SURFACE_API_VERSION,
@@ -479,7 +604,10 @@ function resolveOne(
     details,
     controls,
     dataSourceId,
-    sourceRevision: text(source?.revision ?? source?.source_revision ?? state.revision, 160),
+    sourceRevision: typeof rawSourceRevision === "number"
+      && Number.isFinite(rawSourceRevision)
+      ? rawSourceRevision
+      : text(rawSourceRevision, 160),
     templateId: text(raw.template_id, 160),
     sourcePackId: text(raw.source_pack_id ?? record(raw.origin)?.pack_id, 160),
     trustLevel: text(raw.trust_level, 40),
@@ -488,7 +616,10 @@ function resolveOne(
   };
 }
 
-export function resolveStatusSurfaces(catalog: UICatalog | null | undefined): StatusSurfaceResolution {
+export function resolveStatusSurfaces(
+  catalog: UICatalog | null | undefined,
+  commandCatalog: ComposerCommandItem[] = [],
+): StatusSurfaceResolution {
   const diagnostics: StatusSurfaceDiagnostic[] = [];
   const sources = new Map<string, TemplateCatalogMetadataItem>();
   for (const source of catalog?.data_sources ?? []) {
@@ -498,10 +629,13 @@ export function resolveStatusSurfaces(catalog: UICatalog | null | undefined): St
   }
   const registeredActions = new Set<string>();
   for (const command of catalog?.commands ?? []) {
-    for (const id of actionIdentity(command)) registeredActions.add(id);
+    for (const id of executableActionIdentity(command)) registeredActions.add(id);
   }
   for (const action of catalog?.actions ?? []) {
     for (const id of executableActionIdentity(action)) registeredActions.add(id);
+  }
+  for (const command of commandCatalog) {
+    for (const id of executableActionIdentity(command)) registeredActions.add(id);
   }
 
   const candidates = (catalog?.status_surfaces ?? [])

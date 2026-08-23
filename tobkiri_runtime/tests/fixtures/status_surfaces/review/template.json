@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "id": "fixture.status.review",
+  "kind": "pack",
+  "version": "1.0.0",
+  "status": "active",
+  "pieces": [
+    {
+      "id": "review.active",
+      "kind": "function",
+      "role": "data_source",
+      "data_source": "review.active",
+      "revision": 7,
+      "snapshot": {
+        "status": "running",
+        "instruction": "Review the authority boundary",
+        "iteration": 2,
+        "max_iterations": 5,
+        "paused": false
+      }
+    },
+    {
+      "id": "review.pause",
+      "kind": "composer_command",
+      "command": {
+        "id": "review.pause",
+        "name": "review.pause",
+        "label": "Pause review",
+        "execution": {
+          "type": "pack_block",
+          "qualified_name": "fixture.status.review:pause"
+        }
+      }
+    },
+    {
+      "id": "active-review",
+      "kind": "status_surface",
+      "slot": "above_composer",
+      "surface": {
+        "id": "active-review",
+        "data_source": "review.active",
+        "title": "Review",
+        "summary_path": "instruction",
+        "status_path": "status",
+        "progress": {
+          "current_path": "iteration",
+          "total_path": "max_iterations"
+        },
+        "controls": [
+          {
+            "id": "pause",
+            "type": "toggle_button",
+            "label": "Pause",
+            "value_path": "paused",
+            "action_id": "review.pause"
+          }
+        ]
+      }
+    }
+  ]
+}

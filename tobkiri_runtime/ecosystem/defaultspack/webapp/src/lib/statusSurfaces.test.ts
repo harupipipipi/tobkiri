@@ -119,8 +119,8 @@ test("only returns surfaces for an approved requested slot", () => {
   catalog.status_surfaces?.push({
     id: "sidebar-build",
     slot: "sidebar",
+    data_source: "review.active",
     title: "Sidebar build",
-    snapshot: { status: "running" },
   });
   assert.deepEqual(statusSurfacesForSlot(catalog, "sidebar").map((surface) => surface.id), ["sidebar-build"]);
   assert.deepEqual(statusSurfacesForSlot(catalog, "chat_header"), []);
@@ -131,6 +131,7 @@ test("unknown controls fail closed to visible provenance-rich fallback", () => {
   catalog.status_surfaces = [{
     id: "unsafe-control",
     slot: "above_composer",
+    data_source: "review.active",
     title: "Unsafe",
     controls: [{ type: "javascript", callback: "alert(1)" }],
     template_id: "fixture.unsafe",
@@ -169,6 +170,7 @@ test("ID-only action metadata is not mistaken for an executable backend registra
   catalog.status_surfaces = [{
     id: "claimed",
     slot: "above_composer",
+    data_source: "review.active",
     title: "Claimed action",
     controls: [{ type: "button", action_id: "claimed.action", label: "Run" }],
   }];
@@ -183,7 +185,7 @@ test("prototype and expression-like paths fail closed", () => {
   catalog.status_surfaces = [{
     id: "bad-path",
     slot: "above_composer",
-    snapshot: { title: "Safe title" },
+    data_source: "review.active",
     title_path: "constructor.prototype.polluted",
   }];
   const [surface] = resolveStatusSurfaces(catalog).surfaces;
@@ -194,11 +196,31 @@ test("prototype and expression-like paths fail closed", () => {
   assert.equal(readStatusSurfacePath({}, "items[0]"), undefined);
 });
 
+test("malformed IDs and oversized control collections fail closed", () => {
+  const catalog = catalogFixture();
+  catalog.status_surfaces = [{
+    id: "invalid surface id",
+    slot: "above_composer",
+    data_source: "review.active",
+    controls: Array.from({ length: 21 }, (_, index) => ({
+      id: `control-${index}`,
+      type: "button",
+      action_id: "review.pause",
+    })),
+  }];
+  const [surface] = resolveStatusSurfaces(catalog).surfaces;
+  assert.equal(surface.unsupported, true);
+  assert.deepEqual(surface.controls, []);
+  assert.ok(surface.diagnostics.some((item) => item.code === "status_surface.invalid_id"));
+  assert.ok(surface.diagnostics.some((item) => item.code === "status_surface.too_many_controls"));
+});
+
 test("unsupported API versions render a deterministic fallback", () => {
   const catalog = catalogFixture();
   catalog.status_surfaces = [{
     id: "future",
     slot: "above_composer",
+    data_source: "review.active",
     api_version: "rumi.status_surface.v99",
     title: "Future",
   }];
@@ -210,8 +232,8 @@ test("unsupported API versions render a deterministic fallback", () => {
 test("duplicate IDs retain the highest-priority declaration and emit diagnostics", () => {
   const catalog = catalogFixture();
   catalog.status_surfaces = [
-    { id: "same", slot: "above_composer", priority: 1, title: "Low" },
-    { id: "same", slot: "above_composer", priority: 10, title: "High" },
+    { id: "same", slot: "above_composer", priority: 1, data_source: "review.active", title: "Low" },
+    { id: "same", slot: "above_composer", priority: 10, data_source: "review.active", title: "High" },
   ];
   const result = resolveStatusSurfaces(catalog);
   assert.equal(result.surfaces.length, 1);
