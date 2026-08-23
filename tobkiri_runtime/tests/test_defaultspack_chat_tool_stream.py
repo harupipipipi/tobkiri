@@ -54,6 +54,7 @@ def test_chat_run_engine_streams_tool_call_events_and_final_message(tmp_path, mo
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
     ChatStore._instance = None
 
+
     class FakeClient:
         def __init__(self):
             self.calls = 0
@@ -128,6 +129,167 @@ def test_chat_run_engine_streams_tool_call_events_and_final_message(tmp_path, mo
     assert completed["data"]["next_step"] == "結果をもとに次の応答へ進みます。"
     final_message = [event["data"]["message"] for event in events if event["type"] == "done"][-1]
     assert final_message["raw_text"] == "4"
+    ChatStore._instance = None
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("19*23", "437"),
+        ("1.5*2", "3.0"),
+        ("-7*6", "-42"),
+        ("2*1000", "2000"),
+    ],
+)
+def test_issue_848_calculator_accepts_integer_decimal_and_negative_inputs(
+    expression,
+    expected,
+):
+    from domain.function_runtime.dispatcher import run_defaultspack_function
+
+    result = run_defaultspack_function(
+        "tool_calculator",
+        {"expression": expression},
+        {"flow_id": "issue_848_calculator_contract"},
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["is_error"] is False
+    assert result["data"]["result"] == f"Calculated: {expression} = {expected}"
+
+
+def test_issue_848_calculator_rejects_malformed_expression():
+    from domain.function_runtime.dispatcher import run_defaultspack_function
+
+    result = run_defaultspack_function(
+        "tool_calculator",
+        {"expression": "19**"},
+        {"flow_id": "issue_848_calculator_contract"},
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["is_error"] is True
+    assert result["data"]["result"].startswith("Calculator error:")
+
+
+def test_issue_848_calculator_stream_completes_without_approval_and_persists(
+    tmp_path,
+    monkeypatch,
+):
+    from domain.chat.store import ChatStore
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.function_runtime.dispatcher import run_defaultspack_function
+    from domain.tool.executor import ToolExecutor
+
+    storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
+    ChatStore._instance = None
+
+    class FakeMimoClient:
+        def __init__(self):
+            self.calls = 0
+            self.messages = []
+
+        def supports_stream(self, model):
+            return True
+
+        def stream(self, model, messages, tools=None, params=None):
+            del model, tools, params
+            self.calls += 1
+            self.messages.append(messages)
+            if self.calls == 1:
+                raise TimeoutError("OpenCode Zen request timed out before response activity")
+            if self.calls == 2:
+                yield {
+                    "type": "tool_call_start",
+                    "id": "call_calculator_848",
+                    "name": "calculator",
+                }
+                yield {
+                    "type": "tool_call_delta",
+                    "id": "call_calculator_848",
+                    "name": "calculator",
+                    "arguments_chunk": '{"expression":"19*23"}',
+                }
+                yield {
+                    "type": "tool_call_end",
+                    "id": "call_calculator_848",
+                    "name": "calculator",
+                }
+                yield {"type": "stream_end", "finish_reason": "tool_calls", "usage": {}}
+                return
+            yield {
+                "type": "content_delta",
+                "delta": {"type": "text", "text": "19×23＝437"},
+            }
+            yield {"type": "stream_end", "finish_reason": "stop", "usage": {}}
+
+        def complete(self, model, messages, tools=None, params=None):
+            raise AssertionError("MiMo calculator regression must stay on the stream path")
+
+    client = FakeMimoClient()
+
+    def execute_calculator(_self, tool_name, arguments, context):
+        assert tool_name == "calculator"
+        result = run_defaultspack_function(
+            "tool_calculator",
+            arguments,
+            {**context, "flow_id": "issue_848_chat_stream"},
+        )
+        assert result["status"] == "ok"
+        return result["data"]
+
+    monkeypatch.setattr(ToolExecutor, "execute", execute_calculator)
+    monkeypatch.setattr(
+        ChatRunEngine,
+        "_provider_supports_stream_tool_calls",
+        staticmethod(lambda _model: True),
+    )
+    store = ChatStore()
+    conversation = store.create_conversation(model="opencode-zen/mimo-v2.5-free")
+    events = list(
+        ChatRunEngine(client=client).stream(
+            {
+                "conversation_id": conversation["id"],
+                "message": {
+                    "role": "user",
+                    "content": "19*23 を calculator tool で計算してください。",
+                },
+                "tools": [{"kind": "tool", "id": "calculator"}],
+                "params": {
+                    "request_timeout": 5,
+                    "retry": {"max_attempts": 2, "delays": [0]},
+                    "tool_selection": {
+                        "mode": "manual",
+                        "include": ["calculator"],
+                        "must_use": True,
+                    },
+                },
+            },
+            {"principal_capabilities": ["developer"]},
+            stream_mode=True,
+        )
+    )
+
+    event_types = [event["type"] for event in events]
+    assert "tool_call_started" in event_types
+    assert "tool_call_completed" in event_types
+    assert "ai_retry_scheduled" in event_types
+    assert "authority_approval_required" not in event_types
+    assert "approval_required" not in event_types
+    completed = next(event for event in events if event["type"] == "tool_call_completed")
+    assert completed["data"]["status"] == "completed"
+    assert "437" in str(completed["data"]["result"])
+    assert "437" in str(client.messages[2][-1]["content"])
+
+    final_message = [event["data"]["message"] for event in events if event["type"] == "done"][-1]
+    assert final_message["raw_text"] == "19×23＝437"
+    assert final_message["finish_reason"] == "stop"
+    assert final_message["metadata"]["thinking"]["state"] == "completed"
+    assert "streaming" not in final_message["metadata"]
+    stored = store.get_conversation(conversation["id"])
+    assert stored is not None
+    assert stored["messages"][-1]["raw_text"] == "19×23＝437"
     ChatStore._instance = None
 
 
