@@ -10,7 +10,7 @@ from core_runtime.pack_trust import is_pack_trusted
 TRUSTED_BUILTIN_PROMPT_PACK_IDS = {
     "defaultspack",
     "rumi_default_tools_pack",
-    "rumi_operations_company_pack",
+    "rumi_operations_team_pack",
 }
 
 

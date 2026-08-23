@@ -1,0 +1,178 @@
+{
+  "components": {},
+  "dependencies": {},
+  "description": "Declarative async agent workroom contracts for run state, plans, progress events, checkpoint/resume, intervention, replay, and run-board review.",
+  "display_name": "Rumi Agent Workroom Pack",
+  "host_execution": false,
+  "load_order": [],
+  "metadata": {
+    "asset_index": {
+      "catalog": [
+        "catalog/handoff_matrix.yaml",
+        "catalog/quality_matrix.yaml",
+        "catalog/taxonomy.yaml",
+        "catalog/workflows.yaml"
+      ],
+      "checklist": [
+        "checklists/review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/compatibility.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/checkpoint_resume.example.yaml",
+        "examples/redirect_running_plan.example.yaml",
+        "examples/replay_divergence.example.yaml",
+        "examples/run_board_review.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/contract_fixture.yaml",
+        "fixtures/negative_cases.yaml"
+      ],
+      "frontend": [
+        "frontend_extensions/run_board.ui.json"
+      ],
+      "index": [
+        "asset_index.json",
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/handoff.policy.yaml",
+        "policies/safety.policy.yaml"
+      ],
+      "presets": [
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml",
+        "presets/safe_default.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/workroom_operator.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/workroom_orchestrator.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/agent_run.schema.json",
+        "schemas/checkpoint.schema.json",
+        "schemas/control_request.schema.json",
+        "schemas/handoff_envelope.schema.json",
+        "schemas/intervention.schema.json",
+        "schemas/progress_event.schema.json",
+        "schemas/replay_index.schema.json",
+        "schemas/run_board_view.schema.json",
+        "schemas/run_event.schema.json",
+        "schemas/task_plan.schema.json",
+        "schemas/workroom_session.schema.json"
+      ],
+      "template": [
+        "templates/handoff.template.md",
+        "templates/review_report.template.md",
+        "templates/ui_contract.template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:d50963d18073808ab415fd7389d37893935aece85c0838f33d7f6ef373fd0ad2",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:23a67f431398ac09c65c2780834e6a2567ef291d013a0980810c98a6898666af"
+    },
+    "consumes_existing_sources_only": true,
+    "declarative_only": true,
+    "defaultspack_promotion_eligible": false,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:23a67f431398ac09c65c2780834e6a2567ef291d013a0980810c98a6898666af"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
+    "non_owner_surfaces": [
+      "tool execution",
+      "browser action",
+      "desktop action",
+      "schedule execution",
+      "file persistence",
+      "metrics collection",
+      "subagent PR management",
+      "model routing"
+    ],
+    "optional_integrations": [
+      {
+        "pack_id": "rumi_default_tools_pack",
+        "reason": "Owns concrete tool execution plus browser and desktop actions after the workroom emits approved handoff packets."
+      },
+      {
+        "pack_id": "defaultspack",
+        "reason": "Owns scheduler wakeups, durable run-adjacent persistence, and metrics receipts."
+      },
+      {
+        "pack_id": "rumi_operations_team_pack",
+        "reason": "Owns adjacent agent-service choreography and cross-worker PR/status orchestration after the workroom emits approved handoff packets."
+      },
+      {
+        "pack_id": "rumi_model_catalog_pack",
+        "reason": "Owns model availability and model-routing policy."
+      }
+    ],
+    "output_effect": "draft_and_handoff_only",
+    "owner_surfaces": [
+      "agent_workroom_session",
+      "run_event_log",
+      "task_plan_contract",
+      "progress_event_contract",
+      "checkpoint_resume_contract",
+      "interrupt_redirect_cancel_contract",
+      "deterministic_replay_index",
+      "run_board_ui_contract"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_setup_pack"
+  },
+  "pack_id": "rumi_run_lifecycle_pack",
+  "pack_identity": "rumi:ecosystem/rumi_run_lifecycle_pack",
+  "provenance": {
+    "build_identity": "rumi_run_lifecycle_pack:0.1.0",
+    "content_hash": "sha256:d50963d18073808ab415fd7389d37893935aece85c0838f33d7f6ef373fd0ad2",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "fixture",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
+  }
+}

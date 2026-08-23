@@ -12,7 +12,7 @@ taxonomy:
   - decision_record
   handoff_targets:
   - defaultspack
-  - rumi_operations_company_pack
+  - rumi_operations_team_pack
   forbidden_ownership:
   - analytics execution
   - production rollout

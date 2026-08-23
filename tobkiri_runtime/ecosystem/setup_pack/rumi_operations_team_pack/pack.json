@@ -1,0 +1,28 @@
+{
+  "pack_id": "rumi_operations_team_pack",
+  "display_name": "Rumi Operations Company Pack",
+  "description": "Optional long-running operations company profile and UI entry.",
+  "target_pack_id": "rumi_operations_team_pack",
+  "version": "1.0.0",
+  "compatibility": {
+    "target_pack_version": ">=1.0.0",
+    "python": ">=3.10",
+    "platforms": [
+      "windows",
+      "linux",
+      "macos"
+    ]
+  },
+  "marketplace": {
+    "registry": "bundled",
+    "publisher": "rumi-ai",
+    "status": "verified"
+  },
+  "signing": {
+    "mode": "repository_reviewed",
+    "verified": true
+  },
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": true
+}

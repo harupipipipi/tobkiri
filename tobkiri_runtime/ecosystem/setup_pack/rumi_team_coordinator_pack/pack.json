@@ -1,0 +1,49 @@
+{
+  "pack_id": "rumi_team_coordinator_pack",
+  "display_name": "Rumi Company Coordinator Pack",
+  "description": "Contract-only Company routing, work dispatch, supervision, and cancellation.",
+  "target_pack_id": "rumi_team_coordinator_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "critical",
+  "supports_all_ok": false,
+  "depends_on": [
+    "rumi_team_state_store_pack",
+    "rumi_host_authority_bridge_pack"
+  ],
+  "required_permissions": [
+    "team.runtime.observe",
+    "team.coordinate",
+    "team.state.read",
+    "team.state.manage",
+    "team.work",
+    "host.authority.consume",
+    "job.adapter.invoke"
+  ],
+  "conflicts_with": [],
+  "compatibility": {
+    "python": ">=3.10",
+    "platforms": [
+      "macos",
+      "linux",
+      "windows"
+    ]
+  },
+  "marketplace": {
+    "id": "rumi.company_coordinator",
+    "registry": "bundled",
+    "publisher": "rumi-ai",
+    "status": "verified",
+    "category": "company",
+    "channel": "experimental"
+  },
+  "signing": {
+    "mode": "repository_reviewed",
+    "verified": true
+  },
+  "security_notes": [
+    "Ambiguous or missing routes remain unassigned.",
+    "Only exact work adapter instance keys are selected.",
+    "No connector, scheduler, agent, or Company state implementation is imported."
+  ]
+}

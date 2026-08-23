@@ -17,8 +17,8 @@ handoff_matrix:
     resolution: handoff_to_rumi_meeting_intelligence_pack
     requires_human_review: true
   - surface: external_business_action
-    resolution: handoff_to_rumi_operations_company_pack
+    resolution: handoff_to_rumi_operations_team_pack
     requires_human_review: true
   - surface: real_world_action_risk_review
-    resolution: handoff_to_rumi_operations_company_pack
+    resolution: handoff_to_rumi_operations_team_pack
     requires_human_review: true

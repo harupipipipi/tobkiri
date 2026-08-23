@@ -33,7 +33,7 @@ def test_prompt_resolver_reads_component_backed_prompts():
 
 
 def test_prompt_resolver_reads_pack_backed_prompt_when_source_pack_is_known(monkeypatch):
-    selected = frozenset({"defaultspack", "rumi_operations_company_pack"})
+    selected = frozenset({"defaultspack", "rumi_operations_team_pack"})
     monkeypatch.setattr(
         "core_runtime.resolved_profile_scope.effective_pack_ids",
         lambda: selected,
@@ -44,13 +44,13 @@ def test_prompt_resolver_reads_pack_backed_prompt_when_source_pack_is_known(monk
     )
     monkeypatch.setattr(
         "domain.prompt.resolver.prompt_pack_is_trusted",
-        lambda pack_id: str(pack_id) in {"defaultspack", "rumi_operations_company_pack"},
+        lambda pack_id: str(pack_id) in {"defaultspack", "rumi_operations_team_pack"},
     )
     resolver = PromptResolver()
 
     content = resolver.resolve_prompt_text(
         "mimo_coding_company",
-        source_pack_id="rumi_operations_company_pack",
+        source_pack_id="rumi_operations_team_pack",
     )
 
     assert content is not None

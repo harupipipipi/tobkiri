@@ -18,7 +18,7 @@ taxonomy:
   - git branch creation switching push
   handoff_targets:
   - defaultspack_or_coding_owner
-  - rumi_agent_workroom_pack
+  - rumi_run_lifecycle_pack
   - rumi_memory_knowledge_pack
   - rumi_observability_pack
   - rumi_workflow_scheduler_pack

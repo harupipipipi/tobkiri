@@ -14,7 +14,7 @@ handoff_matrix:
     resolution: handoff_to_defaultspack_tool_runtime
     requires_human_review: true
   - surface: business_decision_execution
-    resolution: handoff_to_rumi_operations_company_pack
+    resolution: handoff_to_rumi_operations_team_pack
     requires_human_review: true
   - surface: feature_flag_mutation
     resolution: handoff_to_defaultspack_tool_runtime

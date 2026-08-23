@@ -87,5 +87,5 @@ workflows:
     - limitations_present
     handoffs:
     - defaultspack
-    - rumi_operations_company_pack
+    - rumi_operations_team_pack
     execution: declarative_only

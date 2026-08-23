@@ -1,0 +1,221 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:2f2fc9c44f190755ba564dcada9467edbf4b5969c2f622274ee995f8b61a5714",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "kind": "executable",
+      "path": "runtime/coordinator.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.team.coordinate.v1",
+      "operations": [
+        "rumi_team_coordinator_pack.team-coordinate-control"
+      ],
+      "revision_digest": "sha256:6fae4f5a5dd18b2e09f7329a5b0af1becf1c7b4fb9c1d0740b547d564f889306"
+    },
+    {
+      "contract_id": "tobkiri.action.job.adapter.v1",
+      "operations": [
+        "rumi_team_coordinator_pack.team-supervisor-job-adapter"
+      ],
+      "revision_digest": "sha256:086b92fb87a1a02d3e4ff1d679b3b23beb8885ecec2d47299588a7a5ee2e064d"
+    },
+    {
+      "contract_id": "tobkiri.resource.team.runtime.v1",
+      "operations": [
+        "rumi_team_coordinator_pack.team-runtime-resource"
+      ],
+      "revision_digest": "sha256:2efd1c0f122aabc9ee2eff00116f831132d9fcb884b9f50d7e7224a1ac429a36"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:086b92fb87a1a02d3e4ff1d679b3b23beb8885ecec2d47299588a7a5ee2e064d",
+      "id": "rumi_team_coordinator_pack.job-adapter.team-supervisor",
+      "implementation_digest": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_team_coordinator_pack.team-supervisor-job-adapter"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:6fae4f5a5dd18b2e09f7329a5b0af1becf1c7b4fb9c1d0740b547d564f889306",
+      "id": "rumi_team_coordinator_pack.team.coordinate",
+      "implementation_digest": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_team_coordinator_pack.team-coordinate-control"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:2efd1c0f122aabc9ee2eff00116f831132d9fcb884b9f50d7e7224a1ac429a36",
+      "id": "rumi_team_coordinator_pack.team.runtime",
+      "implementation_digest": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_team_coordinator_pack.team-runtime-resource"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:2d6f877eb16dab71c7c71ec979d54d3fc0ad99fbfffd3f8646230ed52adbc023",
+    "contract_catalog_digest": "sha256:9b13e8bc9d9c8dbd23a01e1e02e03bc3368801057e6d78b5d0d29b5c5895a3b1",
+    "source_identity": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.company.coordinator.v1",
+      "rumi.action.job.adapter.v1",
+      "rumi.resource.company.runtime.v1",
+      "rumi:ecosystem/rumi_company_coordinator_pack",
+      "rumi_company_coordinator_pack",
+      "tobkiri.action.company.coordinator.v1",
+      "tobkiri.resource.company.runtime.v1"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.team.coordinate.v1",
+      "effect_ceiling": [
+        "capability:team.coordinate"
+      ],
+      "operation_id": "rumi_team_coordinator_pack.team-coordinate-control",
+      "owner": "rumi_team_coordinator_pack",
+      "provider_id": "rumi_team_coordinator_pack.team.coordinate",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.team.runtime.v1",
+      "effect_ceiling": [
+        "capability:team.runtime.observe"
+      ],
+      "operation_id": "rumi_team_coordinator_pack.team-runtime-resource",
+      "owner": "rumi_team_coordinator_pack",
+      "provider_id": "rumi_team_coordinator_pack.team.runtime",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.job.adapter.v1",
+      "effect_ceiling": [
+        "capability:job.adapter.invoke"
+      ],
+      "operation_id": "rumi_team_coordinator_pack.team-supervisor-job-adapter",
+      "owner": "rumi_team_coordinator_pack",
+      "provider_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:2d6f877eb16dab71c7c71ec979d54d3fc0ad99fbfffd3f8646230ed52adbc023",
+    "display_name": "Rumi Team Coordinator Pack",
+    "id": "rumi_team_coordinator_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_team_coordinator_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.job.adapter.v1",
+      "operations": [
+        "rumi_team_coordinator_pack.team-supervisor-job-adapter"
+      ],
+      "owner": "rumi_team_coordinator_pack",
+      "provider_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor"
+    },
+    {
+      "contract_reference": "tobkiri.action.team.coordinate.v1",
+      "operations": [
+        "rumi_team_coordinator_pack.team-coordinate-control"
+      ],
+      "owner": "rumi_team_coordinator_pack",
+      "provider_id": "rumi_team_coordinator_pack.team.coordinate"
+    },
+    {
+      "contract_reference": "tobkiri.resource.team.runtime.v1",
+      "operations": [
+        "rumi_team_coordinator_pack.team-runtime-resource"
+      ],
+      "owner": "rumi_team_coordinator_pack",
+      "provider_id": "rumi_team_coordinator_pack.team.runtime"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "team.coordinate",
+      "team.runtime.observe",
+      "team.state.manage",
+      "team.state.read",
+      "team.work",
+      "host.authority.consume",
+      "job.adapter.invoke"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.team.state.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.action.team.work.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.team.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+      "rumi_team_state_store_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

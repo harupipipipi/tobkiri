@@ -1,0 +1,59 @@
+{
+  "components": {
+    "operations_company": {
+      "connectivity": {
+        "provides": [
+          "rumi.operations_company.manifest",
+          "rumi.operations_company.status",
+          "rumi.operations_company.bootstrap",
+          "rumi.mimo_coding_company.manifest",
+          "rumi.mimo_coding_company.status",
+          "rumi.mimo_coding_company.bootstrap"
+        ]
+      },
+      "id": "operations_company",
+      "path": "blocks/agent",
+      "type": "agent"
+    }
+  },
+  "load_order": [
+    "agent:operations_company"
+  ],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:1688e552051d403ce9225509e3bd22d8da103eabda043b5ab6a60865f094b2b1",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:101c7ab6badfadeb23628d84979c5ffd4c2a3045cfac174357f6c9fe6e80db29"
+    },
+    "description": "Operations Company and MiMo Coding Company profiles, routes, prompts, and UI extensions.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:101c7ab6badfadeb23628d84979c5ffd4c2a3045cfac174357f6c9fe6e80db29"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Operations Company Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_operations_team_pack",
+  "pack_identity": "rumi:ecosystem/rumi_operations_team_pack",
+  "provenance": {
+    "build_identity": "rumi_operations_team_pack:1.0.0",
+    "content_hash": "sha256:1688e552051d403ce9225509e3bd22d8da103eabda043b5ab6a60865f094b2b1",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "agent"
+    ]
+  }
+}

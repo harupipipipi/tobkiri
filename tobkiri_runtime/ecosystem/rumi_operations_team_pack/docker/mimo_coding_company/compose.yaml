@@ -1,0 +1,16 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rumiai/mimo-coding-team-worker:latest
+    environment:
+      DISPLAY: ":99"
+      WORKER_ROLE: "browser_qa"
+      START_URL: ""
+    working_dir: /workspace
+    volumes:
+      - ../../../../..:/workspace
+    shm_size: "1gb"
+    tty: true
+    stdin_open: true

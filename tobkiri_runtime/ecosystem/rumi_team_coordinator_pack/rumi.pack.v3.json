@@ -1,0 +1,289 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.team.runtime.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_team_coordinator_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "company.runtime",
+        "required_capabilities": [
+          "team.runtime.observe"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "internal",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.team.coordinate.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_team_coordinator_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "company.coordinator",
+        "required_capabilities": [
+          "team.coordinate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.action.job.adapter.v1",
+        "instance_key": "company.supervisor",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_team_coordinator_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "job-adapter.team-supervisor",
+        "required_capabilities": [
+          "job.adapter.invoke"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.team.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.team.state.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "id": "rumi.action.team.work.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "contract_id": "rumi.resource.team.runtime.v1",
+      "id": "team-runtime-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+      "symbol": "create_team_runtime_resource"
+    },
+    {
+      "artifact_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "contract_id": "rumi.action.team.coordinate.v1",
+      "id": "team-coordinate-control",
+      "loader": "python",
+      "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+      "symbol": "create_team_control"
+    },
+    {
+      "artifact_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "contract_id": "rumi.action.job.adapter.v1",
+      "id": "company-supervisor-job-adapter",
+      "loader": "python",
+      "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+      "symbol": "create_team_job_adapter"
+    }
+  ],
+  "extensions": {
+    "rumi.company_coordinator.boundary": {
+      "agent_imports": false,
+      "ambiguous_route": "unassigned",
+      "company_storage": false,
+      "connector_imports": false,
+      "fallback": "explicit_only",
+      "global_job_adapter": "company.supervisor",
+      "scheduler_imports": false,
+      "work_selection": "exact_instance_key"
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+        "rumi_team_state_store_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.job.adapter.v1",
+            "rumi.action.team.coordinate.v1",
+            "rumi.resource.team.runtime.v1"
+          ],
+          "requires": [
+            "rumi.action.team.state.v1",
+            "rumi.action.team.work.v1",
+            "rumi.resource.team.v1",
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+          "rumi_team_state_store_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Contract-only Company routing, work dispatch, and supervision.",
+        "display_name": "Rumi Company Coordinator",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:2d6f877eb16dab71c7c71ec979d54d3fc0ad99fbfffd3f8646230ed52adbc023",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd"
+          },
+          "owner_surfaces": [
+            "company_coordination_process_state"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_team_coordinator_pack",
+        "pack_identity": "rumi:ecosystem/rumi_team_coordinator_pack",
+        "provenance": {
+          "build_identity": "rumi_team_coordinator_pack:1.0.0",
+          "content_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "job.adapter.invoke",
+          "team.coordinate",
+          "team.runtime.observe",
+          "team.state.manage",
+          "team.state.read",
+          "team.work"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_team_coordinator_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_team_coordinator_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.company.coordinator",
+      "defaultspack.domain.company.supervisor"
+    ],
+    "removal_wave": 10,
+    "rollback": "Stop coordinator dispatch and select one prior implementation without dual writes.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Contract-only Company routing, work dispatch, and supervision.",
+    "display_name": "Rumi Company Coordinator",
+    "id": "rumi.company_coordinator",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "observe",
+      "approval_required": false,
+      "capability": "team.runtime.observe"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "team.coordinate"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "team.state.read"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "team.state.manage"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "team.work"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "job.adapter.invoke"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_team_coordinator_pack:1.0.0",
+    "content_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

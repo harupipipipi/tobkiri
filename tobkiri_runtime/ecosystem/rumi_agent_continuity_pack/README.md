@@ -28,7 +28,7 @@
 
     ## Handoff Boundaries
 
-    - `run_board_events_checkpoints` -> `handoff_to_rumi_agent_workroom_pack`
+    - `run_board_events_checkpoints` -> `handoff_to_rumi_run_lifecycle_pack`
 - `memory_storage_recall` -> `handoff_to_rumi_memory_knowledge_pack`
 - `metrics_telemetry_ledgers` -> `handoff_to_rumi_observability_pack`
 - `schedules_wakeups_retries` -> `handoff_to_rumi_workflow_scheduler_pack`

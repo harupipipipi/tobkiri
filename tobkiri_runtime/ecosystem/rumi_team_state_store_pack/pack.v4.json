@@ -1,0 +1,162 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:ebeb18c3b38d16e817bce805d204ae2660cf55f523145c656db2d2497b8f537f",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:f774e6a4cc47d27ad059dd5cf627b29c4560c660789fbe0a823a49d227bc4270",
+      "kind": "executable",
+      "path": "runtime/store.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.team.state.v1",
+      "operations": [
+        "rumi_team_state_store_pack.team-state-action"
+      ],
+      "revision_digest": "sha256:20d41dcac9e304fcd8739b5f17bf0dfcba6b5de2e3c98ee352a263b21006945f"
+    },
+    {
+      "contract_id": "tobkiri.resource.team.v1",
+      "operations": [
+        "rumi_team_state_store_pack.team-state-resource"
+      ],
+      "revision_digest": "sha256:ab43ca0fb6443f954a9db9c1e07ca93c535902de2c3e407579316d06cd9752d1"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:20d41dcac9e304fcd8739b5f17bf0dfcba6b5de2e3c98ee352a263b21006945f",
+      "id": "rumi_team_state_store_pack.team-state.action",
+      "implementation_digest": "sha256:f774e6a4cc47d27ad059dd5cf627b29c4560c660789fbe0a823a49d227bc4270",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_team_state_store_pack.team-state-action"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:ab43ca0fb6443f954a9db9c1e07ca93c535902de2c3e407579316d06cd9752d1",
+      "id": "rumi_team_state_store_pack.team-state.resource",
+      "implementation_digest": "sha256:f774e6a4cc47d27ad059dd5cf627b29c4560c660789fbe0a823a49d227bc4270",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_team_state_store_pack.team-state-resource"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:39e2228a060eeb75dc077f5428f33d199aebdc4cc07b434a5f80765e8198af44",
+    "contract_catalog_digest": "sha256:ec029c025469a8834116dd2483aba8ad306e571f08125369f318c931de1855ce",
+    "source_identity": "sha256:869feb31d20a843784442f32b777ac69b6404fbb80405f32fed3e9fb77ffc76e"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.company.state.v1",
+      "rumi.resource.company.v1",
+      "rumi:ecosystem/rumi_company_state_store_pack",
+      "rumi_company_state_store_pack",
+      "tobkiri.action.company.state.v1",
+      "tobkiri.resource.company.v1"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.team.state.v1",
+      "effect_ceiling": [
+        "capability:team.state.manage"
+      ],
+      "operation_id": "rumi_team_state_store_pack.team-state-action",
+      "owner": "rumi_team_state_store_pack",
+      "provider_id": "rumi_team_state_store_pack.team-state.action",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.team.v1",
+      "effect_ceiling": [
+        "capability:team.state.read"
+      ],
+      "operation_id": "rumi_team_state_store_pack.team-state-resource",
+      "owner": "rumi_team_state_store_pack",
+      "provider_id": "rumi_team_state_store_pack.team-state.resource",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:39e2228a060eeb75dc077f5428f33d199aebdc4cc07b434a5f80765e8198af44",
+    "display_name": "Rumi Team State Store Pack",
+    "id": "rumi_team_state_store_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:869feb31d20a843784442f32b777ac69b6404fbb80405f32fed3e9fb77ffc76e",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:869feb31d20a843784442f32b777ac69b6404fbb80405f32fed3e9fb77ffc76e",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_team_state_store_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.team.state.v1",
+      "operations": [
+        "rumi_team_state_store_pack.team-state-action"
+      ],
+      "owner": "rumi_team_state_store_pack",
+      "provider_id": "rumi_team_state_store_pack.team-state.action"
+    },
+    {
+      "contract_reference": "tobkiri.resource.team.v1",
+      "operations": [
+        "rumi_team_state_store_pack.team-state-resource"
+      ],
+      "owner": "rumi_team_state_store_pack",
+      "provider_id": "rumi_team_state_store_pack.team-state.resource"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "team.state.manage",
+      "team.state.read",
+      "host.authority.consume"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

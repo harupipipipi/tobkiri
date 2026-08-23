@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.connector.route.v1"
+    ],
+    "requires": [
+      "rumi.action.team.coordinate.v1",
+      "rumi.action.team.state.v1",
+      "rumi.resource.team.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_team_coordinator_pack": ">=1.0.0,<2.0.0",
+    "rumi_team_state_store_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Explicit connector-event projection into Company contracts.",
+  "display_name": "Rumi Connector Company Adapter",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:dc089ec820b4e17de2452aecc5a6622344e4dd780045ada831ebc7825a5f767e",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:50588f5f2981fb8e8d8616b9b713c89117c05a1f8bba2ddb3a0200fb9b0c5464"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:50588f5f2981fb8e8d8616b9b713c89117c05a1f8bba2ddb3a0200fb9b0c5464"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_team_adapter_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_team_adapter_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_team_adapter_pack:1.0.0",
+    "content_hash": "sha256:67a51afd30629cd6d005b35a6c865e50c9a6f67425a11dd288c3185478afb42d",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.route",
+    "host.authority.consume",
+    "team.coordinate",
+    "team.state.manage",
+    "team.state.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

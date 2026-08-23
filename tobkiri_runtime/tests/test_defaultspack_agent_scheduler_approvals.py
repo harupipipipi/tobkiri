@@ -4431,7 +4431,7 @@ def test_mimo_status_recovers_externally_approved_scheduled_approval(tmp_path, m
 
     monkeypatch.setattr("blocks.chat.send.run", fake_send_chat)
 
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
 
     try:
         runtime = MimoCodingCompanyRuntime()
@@ -4711,7 +4711,7 @@ def test_mimo_status_recovers_scheduled_desktop_frame_approval_card(tmp_path, mo
 
     monkeypatch.setattr("blocks.chat.send.run", fake_send_chat)
 
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
 
     try:
         runtime = MimoCodingCompanyRuntime()

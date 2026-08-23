@@ -31,7 +31,7 @@ edge is inactive and the disabled segment records
 
 The shipped prompt-only trusted set is intentionally small:
 `defaultspack`, `rumi_default_tools_pack`, and
-`rumi_operations_company_pack`. Extension and component prompt manifests must
+`rumi_operations_team_pack`. Extension and component prompt manifests must
 also resolve from inside the claimed shipped pack root, so a manifest cannot
 gain trust only by spoofing `source_pack_id`. This trust only allows passive
 prompt text to enter model input; it does not grant tool, provider, filesystem,

@@ -8,7 +8,7 @@ example:
   evidence_refs:
   - evidence:review-note
   - evidence:source-fragment
-  handoff_owner: rumi_agent_workroom_pack
+  handoff_owner: rumi_run_lifecycle_pack
   review_gate: all_blocking_checks
   expected_result: reviewed_handoff_packet
   must_not:

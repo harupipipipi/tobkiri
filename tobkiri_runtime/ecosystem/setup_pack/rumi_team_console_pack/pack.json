@@ -1,0 +1,44 @@
+{
+  "pack_id": "rumi_team_console_pack",
+  "display_name": "Rumi Company Surface Pack",
+  "description": "Read-only Company status route supplied by the selected profile.",
+  "target_pack_id": "rumi_team_console_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "sensitive",
+  "supports_all_ok": false,
+  "depends_on": [
+    "rumi_team_state_store_pack",
+    "rumi_team_coordinator_pack"
+  ],
+  "required_permissions": [
+    "team.state.read",
+    "team.runtime.observe"
+  ],
+  "conflicts_with": [],
+  "compatibility": {
+    "python": ">=3.10",
+    "platforms": [
+      "macos",
+      "linux",
+      "windows"
+    ]
+  },
+  "marketplace": {
+    "id": "rumi.company_surface",
+    "registry": "bundled",
+    "publisher": "rumi-ai",
+    "status": "verified",
+    "category": "productivity",
+    "channel": "experimental"
+  },
+  "signing": {
+    "mode": "repository_reviewed",
+    "verified": true
+  },
+  "security_notes": [
+    "The isolated route is read-only.",
+    "Company mutations and dispatch require separate approved actions.",
+    "The surface has no connector, scheduler, agent, or state ownership."
+  ]
+}

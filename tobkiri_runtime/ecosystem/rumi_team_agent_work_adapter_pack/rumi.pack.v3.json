@@ -1,0 +1,206 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.action.team.work.v1",
+        "instance_key": "agent",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_team_state_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "team-work.agent",
+        "required_capabilities": [
+          "team.work"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.conversation.manage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.message.manage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.job.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:c5de5e80b78cf77bb38407d2bfe8cbc6ae0a55ca93d9c7305dc96a9d70f52e1a",
+      "contract_id": "rumi.action.team.work.v1",
+      "id": "team-agent-work",
+      "loader": "python",
+      "module": "ecosystem.rumi_team_agent_work_adapter_pack.runtime.adapter",
+      "symbol": "create_team_work_adapter"
+    }
+  ],
+  "extensions": {
+    "rumi.company_work.boundary": {
+      "agent_imports": false,
+      "company_imports": false,
+      "conversation_owner": false,
+      "deterministic_conversation_id": true,
+      "deterministic_message_id": true,
+      "global_job_only": true,
+      "work_type": "agent"
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_job_action_broker_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.team.work.v1"
+          ],
+          "requires": [
+            "rumi.action.conversation.manage.v1",
+            "rumi.action.job.v1",
+            "rumi.action.message.manage.v1",
+            "rumi.resource.conversation.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+          "rumi_job_action_broker_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Company task projection into conversation and agent job contracts.",
+        "display_name": "Rumi Company Agent Adapter",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:c69b1c95e4ac98d7749f006d6c7ea9d65e956eec06f281b379d0935835ef1a24",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:010538ef93861a406e751c6540bbb17f89e03a1e7c87584ea630cd582fdfe3b3"
+          },
+          "owner_surfaces": [],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_team_agent_work_adapter_pack",
+        "pack_identity": "rumi:ecosystem/rumi_team_agent_work_adapter_pack",
+        "provenance": {
+          "build_identity": "rumi_team_agent_work_adapter_pack:1.0.0",
+          "content_hash": "sha256:c5de5e80b78cf77bb38407d2bfe8cbc6ae0a55ca93d9c7305dc96a9d70f52e1a",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "conversation.manage",
+          "conversation.read",
+          "job.dispatch",
+          "message.manage",
+          "team.work"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_team_agent_work_adapter_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_team_agent_work_adapter_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:010538ef93861a406e751c6540bbb17f89e03a1e7c87584ea630cd582fdfe3b3"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.company.run_dispatcher",
+      "defaultspack.domain.company.dispatch"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove this adapter; Company state and agent runtime remain independent.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Company task projection into conversation and agent job contracts.",
+    "display_name": "Rumi Company Agent Adapter",
+    "id": "rumi.company_agent_adapter",
+    "kind": "adapter",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "team.work"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "conversation.read"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "conversation.manage"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "message.manage"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "job.dispatch"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_team_agent_work_adapter_pack:1.0.0",
+    "content_hash": "sha256:c5de5e80b78cf77bb38407d2bfe8cbc6ae0a55ca93d9c7305dc96a9d70f52e1a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

@@ -113,7 +113,7 @@
     },
     "handoff_owner": {
       "type": "string",
-      "const": "rumi_operations_company_pack"
+      "const": "rumi_operations_team_pack"
     }
   }
 }

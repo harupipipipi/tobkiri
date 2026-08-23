@@ -31,7 +31,7 @@ def _mimo_state_path_candidates():
     ecosystem_root = Path(__file__).resolve().parents[3]
     yield (
         ecosystem_root
-        / "rumi_operations_company_pack"
+        / "rumi_operations_team_pack"
         / "user_data"
         / "shared"
         / "mimo_coding_company"

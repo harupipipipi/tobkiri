@@ -22,7 +22,7 @@ policy:
   - branch_resume_packet
   - health_note
   handoff_required_for:
-    run_board_events_checkpoints: rumi_agent_workroom_pack
+    run_board_events_checkpoints: rumi_run_lifecycle_pack
     memory_storage_recall: rumi_memory_knowledge_pack
     metrics_telemetry_ledgers: rumi_observability_pack
     schedules_wakeups_retries: rumi_workflow_scheduler_pack

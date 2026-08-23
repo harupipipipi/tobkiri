@@ -20,7 +20,7 @@ Design-only records must set `result_claim.status` to `not_claimed`. Claims abou
 ## Handoff Owners
 
 - `defaultspack`: Runs analytics queries, telemetry-adjacent tooling, rollout prep, feature-flag handoff packets, and model-benchmark handoff packets outside this pack.
-- `rumi_operations_company_pack`: Owns approval-aware downstream business execution when a design packet is ready for operating review.
+- `rumi_operations_team_pack`: Owns approval-aware downstream business execution when a design packet is ready for operating review.
 
 ## Required Secrets
 

@@ -115,7 +115,7 @@
         "reason": "Consume reviewed, redacted transcript packets for meeting recap and follow-up artifacts."
       },
       {
-        "pack_id": "rumi_operations_company_pack",
+        "pack_id": "rumi_operations_team_pack",
         "reason": "Own approval-aware escalation, real-world action risk review, and downstream business workflow execution after human approval."
       }
     ],

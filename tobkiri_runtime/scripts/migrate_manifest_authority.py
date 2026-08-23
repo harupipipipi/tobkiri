@@ -305,7 +305,8 @@ def _normalize_artifact_index(
         return None
     index_path = (pack_root / relative).resolve()
     index_path.relative_to(pack_root.resolve())
-    original = index_path.read_text(encoding="utf-8")
+    original_bytes = index_path.read_bytes()
+    original = original_bytes.decode("utf-8")
     payload = json.loads(original)
     artifacts = payload.get("artifacts")
     if not isinstance(artifacts, list):
@@ -335,10 +336,13 @@ def _normalize_artifact_index(
             payload, ensure_ascii=False, indent=2, sort_keys=True
         ) + "\n"
     if check:
-        if index_path.read_text(encoding="utf-8") != expected:
+        if original_bytes != expected.encode("utf-8"):
             raise SystemExit(f"artifact index drift: {index_path}")
     else:
-        index_path.write_text(expected, encoding="utf-8")
+        # Write the exact bytes whose digest is returned below.  ``write_text``
+        # performs newline translation on Windows, which previously made the
+        # persisted sidecar diverge from projection provenance immediately.
+        index_path.write_bytes(expected.encode("utf-8"))
     if not referenced:
         return None
     return "sha256:" + hashlib.sha256(expected.encode("utf-8")).hexdigest()

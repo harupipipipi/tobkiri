@@ -33,7 +33,7 @@ workflows:
     - consent_decline_aborts
     - forbidden_topics_present
     handoffs:
-    - rumi_operations_company_pack
+    - rumi_operations_team_pack
     execution: declarative_only
   - id: never_call_screen
     purpose: Block any task whose phone target alias is active in the never-call list.
@@ -85,8 +85,8 @@ workflows:
     - pii_classes_configured
     - review_state_not_blocked
     handoffs:
-    - rumi_meeting_intelligence_pack
-    - rumi_operations_company_pack
+    - rumi_local_agent_pack
+    - rumi_operations_team_pack
     execution: declarative_only
   - id: escalation_takeover
     purpose: Abort or hand off when user, recipient, or policy requires takeover.
@@ -99,5 +99,5 @@ workflows:
     - abort_required_respected
     - takeover_abort_required
     handoffs:
-    - rumi_operations_company_pack
+    - rumi_operations_team_pack
     execution: declarative_only

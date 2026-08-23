@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "path": "frontend/contributions/companies.json",
+      "role": "ui_contribution",
+      "sha256": "sha256:754b8987b8715214ce449a035e6b519ec3a02b02ae4280d0d97eafad7394003d"
+    },
+    {
+      "path": "ui/app.js",
+      "role": "isolated_ui",
+      "sha256": "sha256:f7108a7aad96882c34d841ff4fc0b5deb83d807bdb040c9e69086ef88a482b1c"
+    },
+    {
+      "path": "ui/index.html",
+      "role": "isolated_ui",
+      "sha256": "sha256:6ac91d25d326c3afc3998a26d9a7e5b1790c3d4ca102ef9d9421c4de11306f53"
+    },
+    {
+      "path": "ui/style.css",
+      "role": "isolated_ui",
+      "sha256": "sha256:b9d378f1c75cd3ff6977660deb62c9de5bc23100968de08d91daf46a8a0ad3d2"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}
