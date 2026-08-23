@@ -101,6 +101,72 @@ test("verified Pack v4 conversation boots from the dynamic-host catalog", async 
   await expect(page.getByText("Pack v4 fixture response.", { exact: true })).toBeVisible();
 });
 
+test("company workspace tabs stay bounded and support keyboard overflow navigation", async ({ page }) => {
+  test.setTimeout(120_000);
+  await installDefaultspackApiMocks(page);
+  await page.goto("/chat");
+  await expect(page.getByRole("combobox", { name: "Rumiにメッセージを送信" })).toBeVisible({ timeout: 60_000 });
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  await page.getByRole("button", { name: "Employees", exact: true }).click();
+  const rail = page.getByTestId("company-workspace-tab-rail");
+  await expect(rail).toBeVisible();
+  await expect(rail.getByRole("tab")).toHaveCount(3);
+  await expect(rail.getByRole("tab", { name: "Tasks" })).toBeVisible();
+  await expect(rail.getByRole("tab", { name: "Channels" })).toBeVisible();
+  await expect(rail.getByRole("tab", { name: "Agents" })).toBeVisible();
+
+  const bounds = await rail.evaluate((element) => {
+    const railRect = element.getBoundingClientRect();
+    return {
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      railLeft: railRect.left,
+      railRight: railRect.right,
+      buttons: Array.from(element.querySelectorAll("button"), (button) => {
+        const rect = button.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      }),
+    };
+  });
+  expect(bounds.scrollWidth).toBe(bounds.clientWidth);
+  expect(bounds.railRight).toBeLessThanOrEqual(1280);
+  for (const button of bounds.buttons) {
+    expect(button.left).toBeGreaterThanOrEqual(bounds.railLeft);
+    expect(button.right).toBeLessThanOrEqual(bounds.railRight);
+  }
+
+  const more = page.getByRole("button", { name: "More Subagent Team tabs", exact: true });
+  await more.focus();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "More Subagent Team tabs" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveCount(3);
+  await expect(menu.getByRole("menuitem", { name: "Routes" })).toBeFocused();
+
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "Settings" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("button", { name: "More Subagent Team tabs: Settings selected" })).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(menu.getByRole("menuitem", { name: "Routes" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("button", { name: "More Subagent Team tabs: Settings selected" })).toBeFocused();
+
+  await page.setViewportSize({ width: 900, height: 600 });
+  await expect(rail).toBeVisible();
+  const narrowBounds = await rail.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    right: element.getBoundingClientRect().right,
+  }));
+  expect(narrowBounds.scrollWidth).toBe(narrowBounds.clientWidth);
+  expect(narrowBounds.right).toBeLessThanOrEqual(900);
+});
+
 type ApiMockOptions = {
   beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
@@ -966,6 +1032,14 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     if (path === routeKey("api/chat/conversations") && method === "POST") {
       options.onConversationCreate?.(request.postDataJSON() as Record<string, unknown>);
       return fulfill(route, conversation);
+    }
+
+    if (path === routeKey("api/company")) {
+      return fulfill(route, { companies: [], total: 0 });
+    }
+
+    if (path === routeKey("api/p2p/status")) {
+      return fulfill(route, { enabled: false, peers: [] });
     }
 
     if (path === routeKey("api/command-protocol/v1/invocations/events/query") && method === "POST") {
