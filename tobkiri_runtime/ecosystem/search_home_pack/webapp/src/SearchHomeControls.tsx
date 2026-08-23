@@ -169,7 +169,7 @@ export function SearchHomeControls({
     <>
       <div className="hero-header">
         <div>
-          <span className="product-mark">Rumi Search Home</span>
+          <span className="product-mark">Tobkiri Search Home</span>
           <h1>何を探しましょう？</h1>
         </div>
         <div className="model-control" ref={modelPickerRef}>
