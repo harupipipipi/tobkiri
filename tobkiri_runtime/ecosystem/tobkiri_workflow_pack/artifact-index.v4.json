@@ -1,28 +1,28 @@
 {
-  "artifact_set_digest": "sha256:102ba424d6048109af3d3abab0462c8a0d3740c86393bebadb0b100ed54c0a8f",
+  "artifact_set_digest": "sha256:d38af08f9b4bf192c603c1615535cc1868f0875d0691b4002ae4534f463176ef",
   "artifacts": [
     {
-      "digest": "sha256:981110c65d6f6a849e104413ea25737cbc6b6bf95e6053de8d94da6b56708c11",
+      "digest": "sha256:5ac115b79c5004203944f6f9b931e4a236a18abfb7a6f52ae7a753fa343ac6a0",
       "path": "backend-integrity.v4.json",
       "role": "asset"
     },
     {
-      "digest": "sha256:a72750d21c16d0b0dff192da7dbb495c6c23b60d0eda12b27e340f79a0584137",
+      "digest": "sha256:55ae2bc1e58753d74e732a5c598a1e924a10699306abb393fdb7c0572c5f8780",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:ef08aed1a3b67f94352f05d947c93d932904735a038a55143859df72f98fbf1c",
+      "digest": "sha256:ec925091a8737b66f06d231ce01a8585dd4a133d114244c7ae91c768fba8d3c8",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:26cef1a25d1184d03285cf1a261372e73cf47d9a4ff0b65cee1acf55366fdb86",
+      "digest": "sha256:0095d1dbc4be9f7ce336d791fde45486a29fce2697db350dcbd1d797953606c9",
       "path": "frontend_contract_map.v4.json",
       "role": "asset"
     },
     {
-      "digest": "sha256:96a7de3c879c280208b201844ad17dd03f7bed718d21974fbfa8e55b0ea2a8f6",
+      "digest": "sha256:370236a53119467c10340c4fca45a805842d07198dabc4c9618ec0a027af1349",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -34,6 +34,11 @@
     {
       "digest": "sha256:6f8979544b0979978815aecc6c59f1372f036e6d128318687a0e4e71ba6f8b9e",
       "path": "schemas/frontend-contract-map.v4.schema.json",
+      "role": "schema"
+    },
+    {
+      "digest": "sha256:162dee9d19424c6316739b973e97607491a9a607b1b009590373ebc1c41d182b",
+      "path": "schemas/rumi-graph.v1.schema.json",
       "role": "schema"
     },
     {
@@ -60,8 +65,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:77b99ba69ba3309523cd11fea69185210d15558943217229328ab2d7261c6a26"
+    "signed_digest": "sha256:5cb2b5ae952fcabbc1ebe0be2fa81dec53ed0e991592451e39ebf0be7620af2a"
   },
   "pack_id": "tobkiri_workflow_pack",
-  "source_identity": "sha256:8378c6f70e659bce336f2fc9a1e7d63e9a57cb18a491dc26dfa4408d2f6d295c"
+  "source_identity": "sha256:492acf9081d62462b995621451c1629ae34073f6b8b69fbeb00ba16fc6792f95"
 }

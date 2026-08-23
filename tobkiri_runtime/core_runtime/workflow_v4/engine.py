@@ -21,6 +21,7 @@ from .models import (
     digest,
     require_mapping,
 )
+from .graph_compiler import GraphCompilerV4
 from .protocols import (
     AuthorityProvider,
     ContractCatalogProvider,
@@ -70,6 +71,7 @@ class WorkflowEngineV4:
                 "function_principal_id": item.function_principal_id,
                 "provider_id": item.provider_id,
                 "input_schema_digest": item.input_schema_digest,
+                "output_schema_digest": item.output_schema_digest,
                 "effect_ceiling": list(item.effect_ceiling),
             }
             for item in sorted(bindings.values(), key=lambda value: value.key)
@@ -199,6 +201,31 @@ class WorkflowEngineV4:
             "steps": compiled_steps,
         }
         return {**compiled, "compile_digest": digest(compiled)}
+
+    def compile_graph_preview(self, graph: Mapping[str, Any]) -> dict[str, Any]:
+        """Compile editor metadata into exact Workflow v4 runtime steps.
+
+        Port contracts come only from explicit graph metadata or schema digests
+        in the captured active Contract catalog.  The result reserves no
+        authority and cannot execute a Provider.
+        """
+
+        snapshot = self._catalog.snapshot()
+        adapter = GraphCompilerV4(snapshot)
+        graph_result = adapter.compile(graph)
+        document = require_mapping(graph_result["document"], "compiled graph document")
+        compiled = self.compile_preview(document)
+        if compiled["catalog_digest"] != adapter.catalog_digest:
+            raise WorkflowDenied("active Contract catalog changed during graph compilation")
+        body = {
+            "graph_compile_api_version": "io.tobkiri.rumi-graph-compile.v4",
+            "catalog_digest": adapter.catalog_digest,
+            "security_epoch": adapter.security_epoch,
+            "document": dict(document),
+            "normalized_graph": graph_result["normalized_graph"],
+            "compiled": compiled,
+        }
+        return {**body, "graph_compile_digest": digest(body)}
 
     def start_run(
         self,
@@ -769,6 +796,7 @@ class WorkflowEngineV4:
                 function_principal_id=str(raw["function_principal_id"]),
                 provider_id=str(raw["provider_id"]),
                 input_schema_digest=str(raw["input_schema_digest"]),
+                output_schema_digest=str(raw["output_schema_digest"]),
                 effect_ceiling=tuple(sorted(str(value) for value in raw["effect_ceiling"])),
             )
             if item.key in result:

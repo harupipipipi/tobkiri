@@ -69,14 +69,15 @@ src/
 └── main.tsx       エントリーポイント
 ```
 
-## Graph Editor Extensions
+## Workflow graph status
 
-`Flows` ページの graph editor は、単純な縦並び step 表示から次の拡張に対応しました。
+The historical Launcher graph editor is retired. The current Flow page is a
+read-only projection of exact Pack-declared compositions and can invoke only
+fresh, authoritative Contract operations. It does not save, compile, or
+simulate `rumi_graph` documents.
 
-- `rumi_start` を起点にした graph 編集
-- ノードごとの複数ポート
-- ポートごとの `contracts`（独自規格タグ）による接続制約
-- `rumi_graph` メタデータとして YAML 内へ editor 状態を保持
-- `basepack` を flow メタデータとして保持
-
-`rumi_graph` はランタイム互換を壊さないための editor 向けメタデータです。既存ランタイムが読める `steps` も同時に出力しつつ、viewer ではポート/接続情報を復元できます。
+Graph-capable clients must use `tobkiri_workflow_pack`'s finite
+`graph.compile-preview` operation. That backend operation validates port
+contracts and emits Workflow v4 steps without granting execution authority.
+Adding a future visual editor must preserve this Contract boundary and must not
+restore the removed panel graph endpoints or client-only execution path.

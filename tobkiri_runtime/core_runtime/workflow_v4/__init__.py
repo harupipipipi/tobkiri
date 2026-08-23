@@ -6,6 +6,7 @@ protocols exported here.
 """
 
 from .engine import WorkflowEngineV4
+from .graph_compiler import GraphCompilerV4
 from .models import (
     ApprovalState,
     DefinitionState,
@@ -22,6 +23,7 @@ from .store import WorkflowStoreV4
 __all__ = [
     "ApprovalState",
     "DefinitionState",
+    "GraphCompilerV4",
     "RunState",
     "StepAttemptState",
     "WorkflowConflict",

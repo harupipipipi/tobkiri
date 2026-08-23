@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from tests.v4_batch_support import assert_route_cutover
+
+RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _assert_retired(method: str, path: str) -> None:
@@ -67,3 +72,21 @@ def test_core_control_panel_registers_capability_graph_api_routes() -> None:
         ("POST", "/api/graphs/coding_graph/compile"),
     ):
         _assert_retired(method, path)
+
+
+def test_retired_graph_routes_are_absent_from_legacy_panel_manifest() -> None:
+    """A stale panel manifest cannot advertise removed graph handlers."""
+
+    manifest = json.loads(
+        (
+            RUNTIME_ROOT
+            / "core_runtime/core_pack/core_control_panel/ecosystem.json"
+        ).read_text(encoding="utf-8")
+    )
+    routes = manifest["api_routes"]
+    assert not any(
+        str(route.get("path", route.get("path_pattern", ""))).startswith(
+            ("/api/graphs", "/api/panel/graphs")
+        )
+        for route in routes
+    )

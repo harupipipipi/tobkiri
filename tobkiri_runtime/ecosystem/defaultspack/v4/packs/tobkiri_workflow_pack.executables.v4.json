@@ -1,33 +1,51 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:7f90e3e06897fb3da229445d31188c5b66e29cf9bb576210743fe246dff3792f",
   "pack_id": "tobkiri_workflow_pack",
-  "source_identity": "sha256:96a7de3c879c280208b201844ad17dd03f7bed718d21974fbfa8e55b0ea2a8f6",
+  "source_identity": "sha256:492acf9081d62462b995621451c1629ae34073f6b8b69fbeb00ba16fc6792f95",
   "variants": [
     {
-      "variant_id": "tobkiri.workflow.provider.python",
-      "function_id": "tobkiri.workflow.provider",
-      "implementation_path": "runtime/provider.py",
-      "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
-      "execution_kind": "host_extension",
-      "platform": "any",
       "architecture": "any",
-      "runtime_abi": "python3.13",
       "backend": "tobkiri.python-host-v4",
-      "materialization_mode": "on_demand",
       "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "tobkiri.workflow.provider",
+      "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "implementation_path": "runtime/provider.py",
+      "materialization_mode": "on_demand",
       "operations": [
         {
           "contract_id": "tobkiri.workflow.v4",
           "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "effect_class": "privileged",
+          "error_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "diagnostic_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.archive",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -35,6 +53,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -54,23 +80,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.create",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -78,6 +96,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -97,23 +123,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.delete",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -121,6 +139,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -140,23 +166,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.get",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -164,6 +182,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -183,23 +209,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.list",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -207,6 +225,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -226,23 +252,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.publish",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -250,6 +268,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -269,23 +295,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.update",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -293,6 +311,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -312,23 +338,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.validate",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -336,6 +354,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -355,23 +381,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "definition.compile-preview",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -379,6 +397,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -398,23 +424,58 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
+          "operation_id": "graph.compile-preview",
+          "output_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 128,
+            "type": "object"
+          },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
+          "timeout_hard_max_ms": 300000
         },
         {
           "contract_id": "tobkiri.workflow.v4",
           "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "effect_class": "privileged",
+          "error_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "diagnostic_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "operation.palette",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -422,6 +483,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -441,23 +510,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.cancel",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -465,6 +526,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -484,23 +553,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.advance",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -508,6 +569,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -527,23 +596,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.create",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -551,6 +612,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -570,23 +639,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.get",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -594,6 +655,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -613,23 +682,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.pause",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -637,6 +698,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -656,23 +725,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.reconcile-recovery",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -680,6 +741,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -699,23 +768,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.resume",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -723,6 +784,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -742,23 +811,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.step.execute",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -766,6 +827,14 @@
             "maxProperties": 128,
             "type": "object"
           },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -785,23 +854,15 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
-        },
-        {
-          "contract_id": "tobkiri.workflow.v4",
-          "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
           "operation_id": "run.step.resume",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
           "output_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -809,49 +870,14 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "error_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "diagnostic_id": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "required": [
-              "code"
-            ],
-            "type": "object"
-          },
-          "effect_class": "privileged",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
+          "timeout_hard_max_ms": 300000
         },
         {
           "contract_id": "tobkiri.workflow.v4",
           "contract_version": "4.0.0",
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
-          "operation_id": "run.step.retry",
-          "input_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 64,
-            "type": "object"
-          },
-          "output_schema": {
-            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "additionalProperties": true,
-            "maxProperties": 128,
-            "type": "object"
-          },
+          "effect_class": "privileged",
           "error_schema": {
             "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -871,14 +897,30 @@
             ],
             "type": "object"
           },
-          "effect_class": "privileged",
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
+          "operation_id": "run.step.retry",
+          "output_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 128,
+            "type": "object"
+          },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000,
-          "idempotency": "none"
+          "timeout_hard_max_ms": 300000
         }
-      ]
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "tobkiri.workflow.provider.python"
     }
-  ],
-  "materialization_catalog_digest": "sha256:632c74dd048a8d40242921b13f550707d716889aaa1c5d1368dab251547e09a0",
-  "catalog_digest": "sha256:f4657c71acebea8fcda68652e24956c9143d15a90c362d6d0b1683652d57ef94"
+  ]
 }

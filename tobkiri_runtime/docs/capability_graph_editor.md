@@ -1,19 +1,12 @@
-# Capability Graph Editor
+# Capability Graph Editor (retired)
 
-The panel exposes graph editor APIs under `/api/panel/graphs`.
+The historical `/api/graphs` and `/api/panel/graphs` routes are retired. They
+have no current handler, persistence, compiler, or execution authority and
+must not be restored as a fallback around Pack Architecture v4.
 
-Core endpoints:
-
-```text
-GET  /api/panel/graphs
-GET  /api/panel/graphs/{graph_id}
-POST /api/panel/graphs
-PUT  /api/panel/graphs/{graph_id}
-POST /api/panel/graphs/{graph_id}/validate
-POST /api/panel/graphs/{graph_id}/compile
-POST /api/panel/graphs/edge-compatibility
-GET  /api/panel/runtime-profile/current
-```
-
-Validate and compile accept an optional draft `graph` object in the request body.
-Saved graphs are written to `user_data/shared/graphs`.
+Graph-capable clients use `tobkiri_workflow_pack`'s exact
+`graph.compile-preview` Contract operation. It compiles a bounded
+`rumi_graph` document against the activation-scoped catalog into a Workflow v4
+Definition without saving the graph or reserving execution authority. See
+[the Workflow graph compiler contract](flow_graph_editor_todo.md) for the
+supported schema, runtime mapping, and simulation boundary.

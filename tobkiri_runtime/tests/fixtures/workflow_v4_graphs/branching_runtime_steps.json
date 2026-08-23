@@ -1,0 +1,47 @@
+[
+  {
+    "id": "prepare",
+    "request": {
+      "contract_id": "example.echo.v1",
+      "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "operation_id": "echo",
+      "function_principal_id": "example.echo.provider",
+      "input": {"message": "prepare"}
+    }
+  },
+  {
+    "id": "left",
+    "request": {
+      "contract_id": "example.echo.v1",
+      "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "operation_id": "echo",
+      "function_principal_id": "example.echo.provider",
+      "input": {"message": "left"}
+    },
+    "depends_on": ["prepare"],
+    "when": "inputs.route == 'left'"
+  },
+  {
+    "id": "right",
+    "request": {
+      "contract_id": "example.echo.v1",
+      "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "operation_id": "echo",
+      "function_principal_id": "example.echo.provider",
+      "input": {"message": "right"}
+    },
+    "depends_on": ["prepare"],
+    "when": "inputs.route != 'left'"
+  },
+  {
+    "id": "join",
+    "request": {
+      "contract_id": "example.echo.v1",
+      "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "operation_id": "echo",
+      "function_principal_id": "example.echo.provider",
+      "input": {"message": "join"}
+    },
+    "depends_on": ["left", "right"]
+  }
+]

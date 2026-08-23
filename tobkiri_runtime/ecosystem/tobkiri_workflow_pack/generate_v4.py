@@ -32,6 +32,7 @@ FRONTEND_MAP_PATH = "frontend_contract_map.v4.json"
 BACKEND_INTEGRITY_PATH = "backend-integrity.v4.json"
 SCHEMA_PATHS = (
     "schemas/workflow-definition.v4.schema.json",
+    "schemas/rumi-graph.v1.schema.json",
     "schemas/workflow-operation.v4.schema.json",
     "schemas/workflow-result.v4.schema.json",
     "schemas/workflow-error.v4.schema.json",
@@ -48,6 +49,7 @@ _PAYLOAD_KEYS = {
     "definition.update": ["definition_id", "document", "if_match"],
     "definition.validate": ["document"],
     "definition.compile-preview": ["document"],
+    "graph.compile-preview": ["rumi_graph"],
     "operation.palette": [],
     "run.advance": ["run_id"],
     "run.cancel": ["run_id"],

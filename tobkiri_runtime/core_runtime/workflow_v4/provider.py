@@ -19,6 +19,7 @@ WORKFLOW_OPERATIONS = (
     "definition.update",
     "definition.validate",
     "definition.compile-preview",
+    "graph.compile-preview",
     "operation.palette",
     "run.cancel",
     "run.advance",
@@ -54,6 +55,7 @@ class WorkflowProviderV4:
             "definition.update": self._update,
             "definition.validate": self._validate,
             "definition.compile-preview": self._compile_preview,
+            "graph.compile-preview": self._graph_compile_preview,
             "operation.palette": self._palette,
             "run.cancel": self._cancel,
             "run.advance": self._advance,
@@ -123,6 +125,11 @@ class WorkflowProviderV4:
 
     def _compile_preview(self, payload: Mapping[str, Any]) -> Any:
         return self._engine.compile_preview(require_mapping(payload.get("document"), "document"))
+
+    def _graph_compile_preview(self, payload: Mapping[str, Any]) -> Any:
+        return self._engine.compile_graph_preview(
+            require_mapping(payload.get("rumi_graph"), "rumi_graph")
+        )
 
     def _palette(self, payload: Mapping[str, Any]) -> Any:
         if payload:

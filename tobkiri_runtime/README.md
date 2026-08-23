@@ -313,22 +313,21 @@ project_root/
 | `pack_importer.py` | Pack import（zip/folder → staging） |
 | `pack_applier.py` | Pack apply（staging → ecosystem） |
 
-## Viewer Graph Editor
+## Workflow v4 graph compiler
 
 The canonical frontend source for the control panel lives in `../tobkiri_launcher/frontend`.
 `core_runtime/core_pack/core_control_panel/web` contains the built static artifact served by the kernel at `/panel/`.
 
 Prompt behavior lives in `ecosystem/defaultspack/domain/prompt/` and `ecosystem/defaultspack/blocks/prompt/`. Tool behavior lives in `ecosystem/defaultspack/domain/tool/` and `ecosystem/defaultspack/blocks/tool/`. The old top-level `prompt/`, `tool/`, and `supporter/` import shims have been removed; new supporter-like behavior should be implemented as defaultspack functions, agents, prompts, memory, or extensions.
 
-`../tobkiri_launcher/frontend/src/pages/Flows.tsx` の graph editor は、Pack 特化の固定 UI ではなく、拡張用の graph metadata を持つ editor として扱います。
-
-- 起点ノードは `rumi_start`
-- ノードは複数ポートを持てる
-- ポートは `contracts` を複数保持できる
-- `contracts` が一致しないポート同士は接続不可
-- YAML には `rumi_graph` を保存し、viewer 側の構造を復元する
-
-この設計により、変換専用の特別機能を増やさなくても、異なる入力/出力契約を持つノードを Pack 側で定義すれば変換的な役割も表現できます。
+The retired `Flows.tsx` editor and legacy graph endpoints are not runtime
+surfaces. Future graph-capable clients use the finite Workflow Pack
+`graph.compile-preview` Contract operation. It converts a bounded
+`rumi_graph` document into exact Workflow v4 `steps`, derives default editor
+ports from the captured operation schema digests, and fails closed on missing
+ports, incompatible edges, cycles, unreachable steps, or non-exact operation
+identities. See [the graph compiler contract](docs/flow_graph_editor_todo.md)
+for the simulation/runtime boundary and conformance fixtures.
 
 ## Basepack
 

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:632c74dd048a8d40242921b13f550707d716889aaa1c5d1368dab251547e09a0",
+  "catalog_digest": "sha256:7f90e3e06897fb3da229445d31188c5b66e29cf9bb576210743fe246dff3792f",
   "pack_id": "tobkiri_workflow_pack",
-  "source_identity": "sha256:8378c6f70e659bce336f2fc9a1e7d63e9a57cb18a491dc26dfa4408d2f6d295c",
+  "source_identity": "sha256:492acf9081d62462b995621451c1629ae34073f6b8b69fbeb00ba16fc6792f95",
   "variants": [
     {
       "architecture": "any",
@@ -53,7 +53,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -96,7 +96,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -139,7 +139,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -182,7 +182,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -225,7 +225,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -268,7 +268,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -311,7 +311,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -354,7 +354,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -397,7 +397,50 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "4.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-error.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "diagnostic_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-operation.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 64,
+            "type": "object"
+          },
+          "operation_id": "graph.compile-preview",
+          "output_schema": {
+            "$id": "https://schemas.tobkiri.local/io.tobkiri/workflow-result.v4.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": true,
+            "maxProperties": 128,
+            "type": "object"
+          },
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -440,7 +483,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -483,7 +526,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -526,7 +569,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -569,7 +612,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -612,7 +655,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -655,7 +698,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -698,7 +741,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -741,7 +784,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -784,7 +827,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -827,7 +870,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         },
@@ -870,7 +913,7 @@
             "maxProperties": 128,
             "type": "object"
           },
-          "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+          "revision_digest": "sha256:c6d90526965f5d4864ccb8c65810e7753d7619d9f5b2439cfb1de3671afa71ce",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

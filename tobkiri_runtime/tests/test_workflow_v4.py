@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from core_runtime.workflow_v4 import (
     ApprovalState,
@@ -32,11 +33,13 @@ from tobkiri_protocol.validation import validate_document
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_BACKEND_ROOT = RUNTIME_ROOT / "core_runtime" / "workflow_v4"
+GRAPH_FIXTURE_ROOT = RUNTIME_ROOT / "tests" / "fixtures" / "workflow_v4_graphs"
 
 CATALOG_REVISION = "sha256:" + "1" * 64
 CATALOG_DIGEST = "sha256:" + "2" * 64
 ACTIVATION_DIGEST = "sha256:" + "3" * 64
 INPUT_SCHEMA_DIGEST = "sha256:" + "4" * 64
+OUTPUT_SCHEMA_DIGEST = INPUT_SCHEMA_DIGEST
 
 
 class Catalog:
@@ -58,6 +61,7 @@ class Catalog:
                     "function_principal_id": "example.echo.provider",
                     "provider_id": "example.echo",
                     "input_schema_digest": INPUT_SCHEMA_DIGEST,
+                    "output_schema_digest": OUTPUT_SCHEMA_DIGEST,
                     "effect_ceiling": ["capability:echo"],
                 }
             ],
@@ -182,6 +186,16 @@ def definition(input_value: Any = "${inputs.message}") -> dict[str, Any]:
     }
 
 
+def graph_fixture() -> dict[str, Any]:
+    """Load an isolated representative ``rumi_graph`` fixture."""
+
+    return json.loads(
+        (GRAPH_FIXTURE_ROOT / "branching_rumi_graph.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
 def publish(provider: WorkflowProviderV4) -> dict[str, Any]:
     """Create and publish a fixture Definition."""
 
@@ -261,6 +275,7 @@ def test_palette_is_exact_catalog_and_rejects_unpinned_operation(
             "function_principal_id": "example.echo.provider",
             "provider_id": "example.echo",
             "input_schema_digest": INPUT_SCHEMA_DIGEST,
+            "output_schema_digest": OUTPUT_SCHEMA_DIGEST,
             "effect_ceiling": ["capability:echo"],
         }
     ]
@@ -434,7 +449,7 @@ def test_stale_catalog_tampered_authority_and_store_records_fail_closed(
 
 
 def test_pack_artifacts_are_deterministic_valid_and_have_no_legacy_dispatch() -> None:
-    assert generate(check=True) == {"packs": 1, "contracts": 1, "operations": 20}
+    assert generate(check=True) == {"packs": 1, "contracts": 1, "operations": 21}
     pack = validate_document((PACK_ROOT / "pack.v4.json").read_bytes(), "pack")
     contracts = validate_document(
         (PACK_ROOT / "contracts.v4.json").read_bytes(), "pack_contract_catalog"
@@ -454,6 +469,7 @@ def test_pack_artifacts_are_deterministic_valid_and_have_no_legacy_dispatch() ->
         "definition.delete",
         "definition.validate",
         "definition.compile-preview",
+        "graph.compile-preview",
         "run.create",
         "run.step.retry",
         "run.step.resume",

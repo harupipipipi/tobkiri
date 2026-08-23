@@ -180,26 +180,6 @@
     },
     {
       "method": "GET",
-      "path": "/api/graphs",
-      "handler": "_capability_get_graphs"
-    },
-    {
-      "method": "GET",
-      "path": "/api/panel/graphs",
-      "handler": "_capability_get_graphs"
-    },
-    {
-      "method": "GET",
-      "path_pattern": "/api/graphs/{id}",
-      "handler": "_capability_get_graph"
-    },
-    {
-      "method": "GET",
-      "path_pattern": "/api/panel/graphs/{id}",
-      "handler": "_capability_get_graph"
-    },
-    {
-      "method": "GET",
       "path": "/api/panel/runtime-profile/current",
       "handler": "_capability_get_current_runtime_profile"
     },
@@ -292,42 +272,6 @@
     },
     {
       "method": "POST",
-      "path": "/api/panel/graphs",
-      "handler": "_capability_create_graph",
-      "pass_body": true
-    },
-    {
-      "method": "POST",
-      "path": "/api/panel/graphs/edge-compatibility",
-      "handler": "_capability_edge_compatibility",
-      "pass_body": true
-    },
-    {
-      "method": "POST",
-      "path_pattern": "/api/graphs/{id}/validate",
-      "handler": "_capability_validate_graph",
-      "pass_body": true
-    },
-    {
-      "method": "POST",
-      "path_pattern": "/api/panel/graphs/{id}/validate",
-      "handler": "_capability_validate_graph",
-      "pass_body": true
-    },
-    {
-      "method": "POST",
-      "path_pattern": "/api/graphs/{id}/compile",
-      "handler": "_capability_compile_graph",
-      "pass_body": true
-    },
-    {
-      "method": "POST",
-      "path_pattern": "/api/panel/graphs/{id}/compile",
-      "handler": "_capability_compile_graph",
-      "pass_body": true
-    },
-    {
-      "method": "POST",
       "path_pattern": "/api/panel/profiles/{id}/clone",
       "handler": "_capability_clone_profile",
       "pass_body": true
@@ -387,12 +331,6 @@
       "method": "PUT",
       "path_pattern": "/api/panel/flows/{id}",
       "handler": "_panel_update_flow",
-      "pass_body": true
-    },
-    {
-      "method": "PUT",
-      "path_pattern": "/api/panel/graphs/{id}",
-      "handler": "_capability_update_graph",
       "pass_body": true
     },
     {

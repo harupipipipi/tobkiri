@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "flow_id": "graph.branching",
+  "max_concurrency": 2,
+  "entrypoint_node_id": "start",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "trigger",
+      "data": {
+        "type": "rumi_start",
+        "ports": [
+          {
+            "id": "start-output",
+            "direction": "output",
+            "contracts": ["sha256:4444444444444444444444444444444444444444444444444444444444444444"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "prepare-node",
+      "type": "step",
+      "data": {
+        "id": "prepare",
+        "request": {
+          "contract_id": "example.echo.v1",
+          "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "operation_id": "echo",
+          "function_principal_id": "example.echo.provider",
+          "input": {"message": "prepare"}
+        }
+      }
+    },
+    {
+      "id": "left-node",
+      "type": "step",
+      "data": {
+        "id": "left",
+        "request": {
+          "contract_id": "example.echo.v1",
+          "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "operation_id": "echo",
+          "function_principal_id": "example.echo.provider",
+          "input": {"message": "left"}
+        }
+      }
+    },
+    {
+      "id": "right-node",
+      "type": "step",
+      "data": {
+        "id": "right",
+        "request": {
+          "contract_id": "example.echo.v1",
+          "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "operation_id": "echo",
+          "function_principal_id": "example.echo.provider",
+          "input": {"message": "right"}
+        }
+      }
+    },
+    {
+      "id": "join-node",
+      "type": "step",
+      "data": {
+        "id": "join",
+        "request": {
+          "contract_id": "example.echo.v1",
+          "contract_revision_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "operation_id": "echo",
+          "function_principal_id": "example.echo.provider",
+          "input": {"message": "join"}
+        }
+      }
+    },
+    {
+      "id": "finish",
+      "type": "end",
+      "data": {
+        "ports": [
+          {
+            "id": "finish-input",
+            "direction": "input",
+            "contracts": ["sha256:4444444444444444444444444444444444444444444444444444444444444444"]
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e-start", "source": "start", "target": "prepare-node", "sourceHandle": "start-output", "targetHandle": "contract-input"},
+    {"id": "e-left", "source": "prepare-node", "target": "left-node", "sourceHandle": "contract-output", "targetHandle": "contract-input", "data": {"when": "inputs.route == 'left'"}},
+    {"id": "e-right", "source": "prepare-node", "target": "right-node", "sourceHandle": "contract-output", "targetHandle": "contract-input", "data": {"when": "inputs.route != 'left'"}},
+    {"id": "e-join-left", "source": "left-node", "target": "join-node", "sourceHandle": "contract-output", "targetHandle": "contract-input"},
+    {"id": "e-join-right", "source": "right-node", "target": "join-node", "sourceHandle": "contract-output", "targetHandle": "contract-input"},
+    {"id": "e-finish", "source": "join-node", "target": "finish", "sourceHandle": "contract-output", "targetHandle": "finish-input"}
+  ]
+}

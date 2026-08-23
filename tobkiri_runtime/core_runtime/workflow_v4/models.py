@@ -179,6 +179,7 @@ class OperationBinding:
     function_principal_id: str
     provider_id: str
     input_schema_digest: str
+    output_schema_digest: str
     effect_ceiling: tuple[str, ...]
 
     @property

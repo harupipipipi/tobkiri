@@ -159,6 +159,23 @@
       ]
     },
     {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/graph.compile-preview",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "rumi_graph"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.graph.compile-preview",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "graph.compile-preview",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
       "method": "GET",
       "path": "/api/contracts/tobkiri_workflow_pack/operation.palette",
       "presentation": "broker_result",

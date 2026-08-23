@@ -34,6 +34,7 @@ class _ResolvedCatalog:
         self.schemas: dict[str, Mapping[str, Any]] = {}
         for binding in context.catalog_bindings:
             input_digest = canonical_digest(binding.operation.input_schema)
+            output_digest = canonical_digest(binding.operation.output_schema)
             self.schemas[input_digest] = binding.operation.input_schema
             operation = {
                 "contract_id": binding.operation.contract_id,

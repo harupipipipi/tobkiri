@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Added a captured-catalog `rumi_graph` compiler with Workflow v4 conformance fixtures and deterministic round-trip coverage.
 - Added Quick Start section to README.md for easier onboarding
 - Added Troubleshooting section to README.md with common issues and solutions
 - Added Contributing section to README.md with development workflow guidelines
