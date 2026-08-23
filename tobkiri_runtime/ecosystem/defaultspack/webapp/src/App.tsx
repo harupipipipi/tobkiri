@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
@@ -85,6 +85,7 @@ import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { loadConversationForRefresh, resolveSupersededConversationRedirect } from "./lib/chatRouteLoading";
 import { cn } from "./lib/cn";
 import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
+import { calendarEscapeAction, calendarOverlayPointerAction, calendarTimeMenuKeyAction, placeCalendarFloatingOverlay, type CalendarPopoverPlacement } from "./lib/calendarPopover";
 import {
   canExecuteComposerEndpointAction,
   composerMentionMetadataFromWidgets,
@@ -691,11 +692,13 @@ function resolveCalendarAgentModel(settings: CalendarSettings, activeModelId: st
 
 function CalendarComposerPanel({
   conversationId,
+  higherPriorityOverlayOpen,
   modelId,
   modelProfiles,
   settings,
 }: {
   conversationId: string | null;
+  higherPriorityOverlayOpen: boolean;
   modelId: string;
   modelProfiles: ModelProfile[];
   settings: CalendarSettings;
@@ -720,9 +723,31 @@ function CalendarComposerPanel({
   const [draftError, setDraftError] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isTimeMenuOpen, setIsTimeMenuOpen] = useState(false);
+  const [timeMenuActiveIndex, setTimeMenuActiveIndex] = useState(-1);
+  const [editorPopoverPlacement, setEditorPopoverPlacement] = useState<CalendarPopoverPlacement | null>(null);
+  const [timeMenuPlacement, setTimeMenuPlacement] = useState<CalendarPopoverPlacement | null>(null);
   const [lastAgentResult, setLastAgentResult] = useState<string | null>(null);
   const calendarRef = useRef<HTMLElement | null>(null);
+  const calendarCellRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const editorPopoverRef = useRef<HTMLFormElement | null>(null);
+  const editorFocusReturnRef = useRef<HTMLElement | null>(null);
+  const timeInputRef = useRef<HTMLInputElement | null>(null);
+  const timeMenuRef = useRef<HTMLDivElement | null>(null);
+  const timeOptionRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const suppressNextCellOpenRef = useRef(false);
+
+  const closeCalendarEditor = useCallback((restoreFocus: boolean) => {
+    const focusReturnTarget = editorFocusReturnRef.current;
+    setActiveEditor(null);
+    setDragState(null);
+    setIsTimeMenuOpen(false);
+    setTimeMenuActiveIndex(-1);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        if (focusReturnTarget?.isConnected) focusReturnTarget.focus();
+      });
+    }
+  }, []);
 
   useEffect(() => {
     setDraftKind(settings.defaultItemType);
@@ -730,29 +755,51 @@ function CalendarComposerPanel({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setActiveEditor(null);
-        setDragState(null);
-        setIsTimeMenuOpen(false);
-      }
+      if (event.key !== "Escape") return;
+      const target = event.target instanceof Element ? event.target : null;
+      const higherPriorityOverlayOwnsEvent = Boolean(target?.closest([
+        ".rumi-layer-modal-backdrop",
+        ".rumi-layer-modal",
+        ".rumi-layer-command-palette",
+        "[aria-modal='true']",
+      ].join(",")));
+      const action = calendarEscapeAction({
+        hasActiveEditor: Boolean(activeEditor),
+        isTimeMenuOpen,
+        higherPriorityOverlayOwnsEvent,
+      });
+      if (action.closeTimeMenu) setIsTimeMenuOpen(false);
+      if (action.closeEditor) closeCalendarEditor(true);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [activeEditor, closeCalendarEditor, isTimeMenuOpen]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (!calendarRef.current?.contains(target)) {
-        setActiveEditor(null);
-        setDragState(null);
-        setIsTimeMenuOpen(false);
-      }
+      const targetElement = target instanceof Element ? target : target.parentElement;
+      const action = calendarOverlayPointerAction({
+        hasActiveEditor: Boolean(activeEditor),
+        higherPriorityOverlayOwnsEvent: Boolean(targetElement?.closest([
+          ".rumi-layer-modal-backdrop",
+          ".rumi-layer-modal",
+          ".rumi-layer-command-palette",
+          "[aria-modal='true']",
+        ].join(","))),
+        insideCalendar: Boolean(calendarRef.current?.contains(target)),
+        insideEditorPopover: Boolean(editorPopoverRef.current?.contains(target)),
+        insideTimeInput: Boolean(timeInputRef.current?.contains(target)),
+        insideTimeMenu: Boolean(timeMenuRef.current?.contains(target)),
+        isTimeMenuOpen,
+      });
+      if (action.closeTimeMenu) setIsTimeMenuOpen(false);
+      if (action.closeEditor) closeCalendarEditor(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+  }, [activeEditor, closeCalendarEditor, isTimeMenuOpen]);
 
   const calendarCells = Array.from({ length: 42 }, (_, index): CalendarCell => {
     const date = new Date(year, month, 1 + index - monthStartOffset);
@@ -788,18 +835,113 @@ function CalendarComposerPanel({
   const dragRangeKeys = dragState ? new Set(calendarKeysBetween(dragState.startKey, dragState.currentKey)) : new Set<string>();
   const activeItem = activeEditor?.itemId ? items.find((item) => item.id === activeEditor.itemId) ?? null : null;
   const timeOptions = buildCalendarTimeOptions(settings.timeSlotMinutes);
-  const popoverStyle = activeEditor ? {
-    left: `${(activeEditor.cell.col / 7) * 100}%`,
-    top: `${(activeEditor.cell.row / 6) * 100}%`,
-    transform: `${activeEditor.cell.col >= 5 ? "translateX(calc(-100% - 10px))" : "translateX(10px)"} ${activeEditor.cell.row >= 4 ? "translateY(calc(-100% - 10px))" : "translateY(36px)"}`,
+  const normalizedDraftTime = normalizeCalendarTimeInput(draftTime, settings.defaultTime);
+  const selectedTimeIndex = timeOptions.indexOf(normalizedDraftTime);
+  const activeTimeOption = timeMenuActiveIndex >= 0 ? timeOptions[timeMenuActiveIndex] : undefined;
+  const activeTimeOptionId = isTimeMenuOpen && activeTimeOption ? `calendar-time-option-${activeTimeOption.replace(":", "")}` : undefined;
+  const editorPopoverStyle: CSSProperties | undefined = editorPopoverPlacement ? {
+    left: editorPopoverPlacement.left,
+    maxHeight: editorPopoverPlacement.maxHeight,
+    top: editorPopoverPlacement.top,
+    transformOrigin: editorPopoverPlacement.transformOrigin,
+    width: editorPopoverPlacement.width,
   } : undefined;
+  const timeMenuStyle: CSSProperties | undefined = timeMenuPlacement ? {
+    left: timeMenuPlacement.left,
+    maxHeight: timeMenuPlacement.maxHeight,
+    top: timeMenuPlacement.top,
+    transformOrigin: timeMenuPlacement.transformOrigin,
+    width: timeMenuPlacement.width,
+  } : undefined;
+
+  const updateEditorPopoverPlacement = useCallback(() => {
+    if (!activeEditor) return setEditorPopoverPlacement(null);
+    const anchor = calendarCellRefs.current.get(activeEditor.cell.key)?.getBoundingClientRect();
+    if (!anchor) return setEditorPopoverPlacement(null);
+    setEditorPopoverPlacement(placeCalendarFloatingOverlay(
+      anchor,
+      { height: window.innerHeight, width: window.innerWidth },
+      { preferredHeight: 520, preferredWidth: 320 },
+    ));
+  }, [activeEditor]);
+
+  const updateTimeMenuPlacement = useCallback(() => {
+    if (!isTimeMenuOpen || !settings.showTimePicker) return setTimeMenuPlacement(null);
+    const anchor = timeInputRef.current?.getBoundingClientRect();
+    if (!anchor) return setTimeMenuPlacement(null);
+    setTimeMenuPlacement(placeCalendarFloatingOverlay(
+      anchor,
+      { height: window.innerHeight, width: window.innerWidth },
+      { gap: 6, preferredHeight: 300, preferredWidth: 210 },
+    ));
+  }, [isTimeMenuOpen, settings.showTimePicker]);
+
+  useLayoutEffect(() => updateEditorPopoverPlacement(), [updateEditorPopoverPlacement]);
+  useLayoutEffect(() => updateTimeMenuPlacement(), [updateTimeMenuPlacement]);
+
+  useEffect(() => {
+    if (!activeEditor) return undefined;
+    const update = () => updateEditorPopoverPlacement();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [activeEditor, updateEditorPopoverPlacement]);
+
+  useEffect(() => {
+    if (!isTimeMenuOpen || !settings.showTimePicker) return undefined;
+    const update = () => updateTimeMenuPlacement();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [isTimeMenuOpen, settings.showTimePicker, updateTimeMenuPlacement]);
+
+  useEffect(() => {
+    if (!isTimeMenuOpen || timeMenuActiveIndex < 0) return;
+    timeOptionRefs.current.get(timeMenuActiveIndex)?.scrollIntoView({ block: "nearest" });
+  }, [isTimeMenuOpen, timeMenuActiveIndex]);
+
+  const openTimeMenu = () => {
+    if (!settings.showTimePicker) return;
+    setIsTimeMenuOpen(true);
+    setTimeMenuActiveIndex(selectedTimeIndex >= 0 ? selectedTimeIndex : 0);
+  };
+
+  const selectTimeOption = (option: string, index: number) => {
+    setDraftTime(formatCalendarTime(option));
+    setTimeMenuActiveIndex(index);
+    setIsTimeMenuOpen(false);
+    window.requestAnimationFrame(() => timeInputRef.current?.focus());
+  };
+
+  const handleTimeInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    const action = calendarTimeMenuKeyAction({
+      activeIndex: timeMenuActiveIndex,
+      isOpen: isTimeMenuOpen && settings.showTimePicker,
+      key: event.key,
+      optionCount: timeOptions.length,
+      selectedIndex: selectedTimeIndex,
+    });
+    if (action.handled) {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsTimeMenuOpen(action.nextOpen);
+      setTimeMenuActiveIndex(action.nextActiveIndex);
+      if (typeof action.selectedIndex === "number") selectTimeOption(timeOptions[action.selectedIndex], action.selectedIndex);
+    } else if (event.key === "Enter") {
+      setIsTimeMenuOpen(false);
+    }
+  };
 
   const dismissActiveEditorForSelection = (suppressCellMouseUp = false) => {
     if (!activeEditor) return false;
     suppressNextCellOpenRef.current = suppressCellMouseUp;
-    setActiveEditor(null);
-    setDragState(null);
-    setIsTimeMenuOpen(false);
+    closeCalendarEditor(false);
     return true;
   };
 
@@ -833,10 +975,12 @@ function CalendarComposerPanel({
   const openCreateEditor = (cell: CalendarCell, startKey = cell.key, endKey = cell.key) => {
     if (!settings.quickAddEnabled) return;
     resetDraftForCreate(settings.defaultItemType);
+    editorFocusReturnRef.current = calendarCellRefs.current.get(cell.key) ?? null;
     setActiveEditor({ mode: "create", cell, startKey, endKey });
   };
 
   const openEditEditor = (item: CalendarItem, cell: CalendarCell) => {
+    editorFocusReturnRef.current = calendarCellRefs.current.get(cell.key) ?? null;
     setActiveEditor({
       mode: "edit",
       itemId: item.id,
@@ -942,9 +1086,8 @@ function CalendarComposerPanel({
       setItems((current) => activeEditor.mode === "edit"
         ? current.map((item) => item.id === itemId ? nextItem : item)
         : [...current, nextItem]);
-      setActiveEditor(null);
+      closeCalendarEditor(true);
       setDraftTitle("");
-      setIsTimeMenuOpen(false);
     } catch (error) {
       setDraftError(error instanceof Error ? error.message : "Agent task schedule failed.");
     } finally {
@@ -959,7 +1102,7 @@ function CalendarComposerPanel({
     try {
       await deleteCalendarScheduleBeforeLocalChange(activeItem.scheduleId, api.deleteSchedule);
       setItems((current) => current.filter((item) => item.id !== activeItem.id));
-      setActiveEditor(null);
+      closeCalendarEditor(true);
     } catch (error) {
       setDraftError(error instanceof Error ? error.message : "Delete failed.");
     } finally {
@@ -995,7 +1138,7 @@ function CalendarComposerPanel({
   };
 
   const handleCellMouseUp = (event: ReactMouseEvent<HTMLDivElement>, cell: CalendarCell) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || cell.isCurrentMonth === false && !settings.showOutsideDays) return;
     event.preventDefault();
     if (suppressNextCellOpenRef.current) {
       suppressNextCellOpenRef.current = false;
@@ -1063,12 +1206,18 @@ function CalendarComposerPanel({
           const isDragSelected = dragRangeKeys.has(cell.key);
           return (
             <div
-              key={`${cell.date.toISOString()}-${index}`}
+              key={`${cell.key}-${index}`}
+              ref={(node) => {
+                if (node) calendarCellRefs.current.set(cell.key, node);
+                else calendarCellRefs.current.delete(cell.key);
+              }}
               role="button"
               tabIndex={isOutsideHidden ? -1 : 0}
+              aria-disabled={isOutsideHidden || undefined}
               data-testid={`calendar-day-${cell.key}`}
               aria-label={`${calendarDateLabel(cell.date)} の予定を追加`}
               onKeyDown={(event) => {
+                if (isOutsideHidden) return;
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   if (dismissActiveEditorForSelection()) return;
@@ -1133,24 +1282,28 @@ function CalendarComposerPanel({
           );
         })}
       </div>
-      {activeEditor && settings.quickAddEnabled && (
-        <form
-          key={`${activeEditor.mode}-${activeEditor.itemId ?? "new"}-${activeEditor.startKey}-${activeEditor.endKey}`}
-          role="dialog"
-          aria-label={`${calendarRangeLabel(activeEditor.startKey, activeEditor.endKey)}に追加`}
-          className="rumi-calendar-popover absolute rumi-layer-global-overlay w-[min(320px,calc(100%-24px))] rounded-2xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-[0_24px_70px_rgba(0,0,0,0.65)] backdrop-blur"
-          style={popoverStyle}
-          onPointerDown={(event) => {
-            const target = event.target as HTMLElement | null;
-            if (target?.closest("button, input, textarea, label, [role='listbox'], [role='option']")) {
+      {activeEditor && settings.quickAddEnabled && editorPopoverPlacement && (
+        <LayerPortal layer="globalOverlay">
+          <form
+            ref={editorPopoverRef}
+            key={`${activeEditor.mode}-${activeEditor.itemId ?? "new"}-${activeEditor.startKey}-${activeEditor.endKey}`}
+            role="dialog"
+            aria-label={`${calendarRangeLabel(activeEditor.startKey, activeEditor.endKey)}に追加`}
+            aria-hidden={higherPriorityOverlayOpen || undefined}
+            inert={higherPriorityOverlayOpen ? true : undefined}
+            data-testid="calendar-editor-popover"
+            className="rumi-calendar-popover fixed rumi-layer-global-overlay w-[min(320px,calc(100vw-24px))] max-w-[calc(100vw-24px)] overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-[0_24px_70px_rgba(0,0,0,0.65)] backdrop-blur"
+            style={editorPopoverStyle}
+            onPointerDown={(event) => {
               event.stopPropagation();
-              return;
-            }
-            dismissActiveEditorForSelection(true);
-          }}
-          onClick={(event) => event.stopPropagation()}
-          onSubmit={submitDraft}
-        >
+              const target = event.target;
+              if (target instanceof Node && !timeInputRef.current?.contains(target)) {
+                setIsTimeMenuOpen(false);
+              }
+            }}
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={submitDraft}
+          >
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-600">{activeEditor.mode === "edit" ? "項目を編集" : "新規項目"}</p>
@@ -1158,7 +1311,7 @@ function CalendarComposerPanel({
             </div>
             <button
               type="button"
-              onClick={() => setActiveEditor(null)}
+              onClick={() => closeCalendarEditor(true)}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
               aria-label="カレンダーのクイック追加を閉じる"
             >
@@ -1196,52 +1349,71 @@ function CalendarComposerPanel({
             <label className="relative flex-1">
               <span className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-zinc-600">時刻</span>
               <input
+                ref={timeInputRef}
                 type="text"
                 value={draftTime}
                 aria-label="カレンダー項目の時刻"
-                onClick={() => setIsTimeMenuOpen(settings.showTimePicker)}
-                onFocus={() => setIsTimeMenuOpen(settings.showTimePicker)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.stopPropagation();
-                    setIsTimeMenuOpen(false);
-                  }
-                  if (event.key === "Enter") {
-                    setIsTimeMenuOpen(false);
-                  }
-                }}
-                onBlur={() => window.setTimeout(() => setIsTimeMenuOpen(false), 120)}
+                role="combobox"
+                aria-expanded={isTimeMenuOpen && settings.showTimePicker}
+                aria-controls="calendar-time-menu"
+                aria-activedescendant={activeTimeOptionId}
+                aria-autocomplete="list"
+                aria-haspopup="listbox"
+                onClick={openTimeMenu}
+                onFocus={openTimeMenu}
+                onKeyDown={handleTimeInputKeyDown}
                 onChange={(event) => {
-                  setDraftTime(event.target.value);
-                  setIsTimeMenuOpen(settings.showTimePicker);
+                  const nextValue = event.target.value;
+                  setDraftTime(nextValue);
+                  if (settings.showTimePicker) {
+                    setIsTimeMenuOpen(true);
+                    const nextIndex = timeOptions.indexOf(normalizeCalendarTimeInput(nextValue, settings.defaultTime));
+                    setTimeMenuActiveIndex(nextIndex >= 0 ? nextIndex : 0);
+                  }
                 }}
                 className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-zinc-600"
               />
-              {isTimeMenuOpen && settings.showTimePicker && (
-                <div
-                  role="listbox"
-                  aria-label="カレンダー時刻候補"
-                  className="absolute bottom-11 left-0 rumi-layer-global-overlay max-h-[300px] w-[210px] overflow-y-auto rounded-[22px] border border-zinc-700 bg-zinc-800 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)]"
-                >
-                  {timeOptions.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      role="option"
-                      aria-selected={normalizeCalendarTimeInput(draftTime, settings.defaultTime) === option}
-                      className={cn(
-                        "block w-full rounded-xl px-3 py-2 text-left text-[15px] leading-6 text-zinc-100 hover:bg-zinc-700",
-                        normalizeCalendarTimeInput(draftTime, settings.defaultTime) === option && "bg-zinc-700",
-                      )}
-                      onClick={() => {
-                        setDraftTime(formatCalendarTime(option));
-                        setIsTimeMenuOpen(false);
-                      }}
-                    >
-                      {formatCalendarTime(option)}
-                    </button>
-                  ))}
-                </div>
+              {isTimeMenuOpen && settings.showTimePicker && timeMenuPlacement && (
+                <LayerPortal layer="globalOverlay">
+                  <div
+                    ref={timeMenuRef}
+                    id="calendar-time-menu"
+                    role="listbox"
+                    aria-label="カレンダー時刻候補"
+                    aria-hidden={higherPriorityOverlayOpen || undefined}
+                    inert={higherPriorityOverlayOpen ? true : undefined}
+                    data-testid="calendar-time-menu"
+                    className="fixed rumi-layer-global-overlay overflow-y-auto rounded-[22px] border border-zinc-700 bg-zinc-800 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)]"
+                    style={timeMenuStyle}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {timeOptions.map((option, index) => (
+                      <button
+                        ref={(node) => {
+                          if (node) timeOptionRefs.current.set(index, node);
+                          else timeOptionRefs.current.delete(index);
+                        }}
+                        key={option}
+                        id={`calendar-time-option-${option.replace(":", "")}`}
+                        type="button"
+                        role="option"
+                        tabIndex={-1}
+                        aria-selected={normalizedDraftTime === option}
+                        className={cn(
+                          "block w-full rounded-xl px-3 py-2 text-left text-[15px] leading-6 text-zinc-100 hover:bg-zinc-700 focus:outline-none",
+                          normalizedDraftTime === option && "bg-zinc-700",
+                          timeMenuActiveIndex === index && "ring-1 ring-inset ring-blue-400/70",
+                        )}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onMouseEnter={() => setTimeMenuActiveIndex(index)}
+                        onClick={() => selectTimeOption(option, index)}
+                      >
+                        {formatCalendarTime(option)}
+                      </button>
+                    ))}
+                  </div>
+                </LayerPortal>
               )}
             </label>
             <button
@@ -1315,7 +1487,8 @@ function CalendarComposerPanel({
               readOnly
             />
           </div>
-        </form>
+          </form>
+        </LayerPortal>
       )}
     </section>
   );
@@ -7231,6 +7404,7 @@ export function ChatApp() {
               <div className="flex min-h-0 flex-1 p-1.5">
                 <CalendarComposerPanel
                   conversationId={activeConversationId}
+                  higherPriorityOverlayOpen={isSettingsOpen}
                   modelId={activeModelId}
                   modelProfiles={selectableModelProfiles}
                   settings={calendarSettings}

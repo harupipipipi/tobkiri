@@ -743,18 +743,9 @@ body {
 }
 
 .rumi-calendar-popover {
-  pointer-events: none;
+  pointer-events: auto;
   transform-origin: 18px 18px;
   animation: rumi-calendar-popover-enter 180ms cubic-bezier(0.2, 0.82, 0.2, 1) both;
-}
-
-.rumi-calendar-popover button,
-.rumi-calendar-popover input,
-.rumi-calendar-popover textarea,
-.rumi-calendar-popover label,
-.rumi-calendar-popover [role="listbox"],
-.rumi-calendar-popover [role="option"] {
-  pointer-events: auto;
 }
 
 .rumi-history-rail {
