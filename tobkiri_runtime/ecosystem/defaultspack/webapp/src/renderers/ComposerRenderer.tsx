@@ -3078,7 +3078,13 @@ export function ComposerRenderer({
       setAttachmentMenuOpen(false);
     };
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAttachmentMenuOpen(false);
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setAttachmentMenuOpen(false);
+      window.requestAnimationFrame(() => {
+        attachmentMenuButtonRef.current?.focus({ preventScroll: true });
+      });
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleDocumentKeyDown);
@@ -3806,7 +3812,9 @@ export function ComposerRenderer({
             type="button"
             tabIndex={chromeButtonTabIndex}
             aria-label="ファイルを添付"
+            aria-haspopup="menu"
             aria-expanded={attachmentMenuOpen}
+            aria-controls={attachmentMenuOpen ? "composer-attachment-menu" : undefined}
             disabled={!templateAllowsFileAttachments}
             title="写真とファイルを追加"
             onClick={() => setAttachmentMenuOpen((open) => !open)}
@@ -3816,6 +3824,7 @@ export function ComposerRenderer({
           </button>
           {attachmentMenuOpen && (
             <div
+              id="composer-attachment-menu"
               ref={attachmentMenuRef}
               role="menu"
               aria-label="添付メニュー"
@@ -4660,7 +4669,7 @@ export function ComposerRenderer({
                         handleInputChange(event.currentTarget.value);
                       }}
                       placeholder={effectiveComposerPlaceholder}
-                      aria-label="Rumiにメッセージを送信"
+                      aria-label="Tobkiriにメッセージを送信"
                       aria-autocomplete="list"
                       aria-controls={activeComposerListboxId}
                       aria-activedescendant={activeComposerOptionId}
@@ -4763,7 +4772,7 @@ export function ComposerRenderer({
                       handleInputChange(event.currentTarget.value);
                     }}
                     placeholder={effectiveComposerPlaceholder}
-                    aria-label="Rumiにメッセージを送信"
+                    aria-label="Tobkiriにメッセージを送信"
                     aria-autocomplete="list"
                     aria-controls={activeComposerListboxId}
                     aria-activedescendant={activeComposerOptionId}

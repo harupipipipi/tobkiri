@@ -23,6 +23,8 @@
 ### Fixed
 - Fixed broken internal links in documentation
 - Improved documentation consistency across project
+- Restored composer attachment-menu focus after Escape and completed its
+  accessible popup relationship for keyboard and screen-reader users.
 
 ## Previous Changes
 
