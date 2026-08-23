@@ -16,6 +16,11 @@ from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
 
+from .team_store import (
+    TeamStateConflict,
+    TransactionalTeamStore,
+)
+
 AUTHORITY = "rumi.service.host.authorize.v1"
 SERVICE_PACK_ID = "rumi_company_state_store_pack"
 VERSION = "rumi.company-state.v1"
@@ -30,21 +35,17 @@ _TASK_TRANSITIONS = {
 }
 
 
-class CompanyStateConflict(RuntimeError):
+class _LegacyCompanyStateConflict(RuntimeError):
     """Raised for stale state or invalid Company lifecycle transitions."""
 
 
-class CompanyStateStore:
+class _LegacyCompanyStateStore:
     """Own canonical Company data without coordination or transport logic."""
 
     def __init__(self, profile_id: str, *, root: Path | None = None) -> None:
         self.profile_id = validate_profile_id(profile_id)
         self.root = (
-            Path(root or USER_DATA_DIR)
-            / "packs"
-            / SERVICE_PACK_ID
-            / "profiles"
-            / self.profile_id
+            Path(root or USER_DATA_DIR) / "packs" / SERVICE_PACK_ID / "profiles" / self.profile_id
         )
         self.path = self.root / "companies.json"
         self.lock_root = self.root / "locks"
@@ -57,9 +58,7 @@ class CompanyStateStore:
             "version": VERSION,
             "profile_id": self.profile_id,
             "revision": state["revision"],
-            "companies": [
-                state["companies"][key] for key in sorted(state["companies"])
-            ],
+            "companies": [state["companies"][key] for key in sorted(state["companies"])],
         }
 
     def get(self, company_id: str) -> dict[str, Any] | None:
@@ -99,9 +98,7 @@ class CompanyStateStore:
                 "status": "active",
                 "settings": _copy(arguments["settings"]),
                 "metadata": _copy(arguments["metadata"]),
-                "conversation_group_id": str(
-                    arguments["conversation_group_id"]
-                )[:255],
+                "conversation_group_id": str(arguments["conversation_group_id"])[:255],
                 "roles": {},
                 "members": {},
                 "channels": {},
@@ -150,9 +147,7 @@ class CompanyStateStore:
                     **_copy(updates["metadata"]),
                 }
             if "conversation_group_id" in updates:
-                company["conversation_group_id"] = str(
-                    updates["conversation_group_id"]
-                )[:255]
+                company["conversation_group_id"] = str(updates["conversation_group_id"])[:255]
             company["updated_at_ms"] = now_ms
             return {"company": _copy(company)}
         if name == "agent.upsert":
@@ -397,9 +392,7 @@ class CompanyStateStore:
             "id": member_id,
             "display_name": str(record.get("display_name") or member_id)[:200],
             "role_id": role_id,
-            "agent_profile_id": _identifier(
-                record.get("agent_profile_id") or "default"
-            ),
+            "agent_profile_id": _identifier(record.get("agent_profile_id") or "default"),
             "mentions": sorted(
                 {str(item).casefold()[:100] for item in record.get("mentions") or []}
             )[:100],
@@ -441,6 +434,21 @@ class CompanyStateStore:
 
     def _write(self, value: Mapping[str, Any]) -> None:
         _atomic_json(self.path, value)
+
+
+# Compatibility names are intentionally Company-shaped while the sole owner is Team.
+CompanyStateConflict = TeamStateConflict
+
+
+class CompanyStateStore(TransactionalTeamStore):
+    """Compatibility adapter over the canonical transactional Team store."""
+
+    def __init__(self, profile_id: str, *, root: Path | None = None) -> None:
+        validated = validate_profile_id(profile_id)
+        owner_root = (
+            Path(root or USER_DATA_DIR) / "packs" / SERVICE_PACK_ID / "profiles" / validated
+        )
+        super().__init__(validated, owner_root)
 
 
 def create_company_resource(client: Any) -> Callable[[str, Mapping[str, Any]], Any]:
@@ -498,18 +506,16 @@ def _arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         "company_id": str(payload.get("company_id") or ""),
         "expected_revision": max(0, int(payload.get("expected_revision") or 0)),
     }
+    if "expected_entity_revision" in payload:
+        arguments["expected_entity_revision"] = max(0, int(payload["expected_entity_revision"]))
     if name == "company.create":
         arguments["name"] = str(payload.get("name") or "Company")
         arguments["settings"] = dict(_mapping(payload.get("settings")))
         arguments["description"] = str(payload.get("description") or "")
         arguments["metadata"] = dict(_mapping(payload.get("metadata")))
-        arguments["conversation_group_id"] = str(
-            payload.get("conversation_group_id") or ""
-        )
+        arguments["conversation_group_id"] = str(payload.get("conversation_group_id") or "")
     elif name == "migration.operations.import":
-        arguments["legacy_state"] = _legacy_operations_state(
-            payload.get("legacy_state")
-        )
+        arguments["legacy_state"] = _legacy_operations_state(payload.get("legacy_state"))
     elif name == "company.update":
         updates = dict(_mapping(payload.get("updates")))
         if set(updates) - {
@@ -719,4 +725,3 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-

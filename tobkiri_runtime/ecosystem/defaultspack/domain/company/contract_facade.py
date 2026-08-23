@@ -104,7 +104,9 @@ class CompanyContractFacade:
         if operation == "upsert_route":
             return self._upsert_named(_company_id(self.input), "route")
         if operation == "delete_route":
-            return self._delete_named(_company_id(self.input), "route", _required_id(self.input, "route_id"))
+            return self._delete_named(
+                _company_id(self.input), "route", _required_id(self.input, "route_id")
+            )
         if operation == "append_inbound":
             return self._append_inbound(_company_id(self.input))
         if operation == "list_messages":
@@ -156,9 +158,7 @@ class CompanyContractFacade:
         if not name:
             raise CompanyFacadeError("INVALID_INPUT", "name is required")
         company_id = str(
-            self.input.get("company_id")
-            or self.input.get("id")
-            or "company-" + uuid.uuid4().hex
+            self.input.get("company_id") or self.input.get("id") or "company-" + uuid.uuid4().hex
         ).strip()
         result = self._mutate(
             "company.create",
@@ -168,15 +168,11 @@ class CompanyContractFacade:
                 "description": str(self.input.get("description") or ""),
                 "settings": _object(self.input.get("settings"), "settings"),
                 "metadata": _object(self.input.get("metadata"), "metadata"),
-                "conversation_group_id": str(
-                    self.input.get("conversation_group_id") or ""
-                ),
+                "conversation_group_id": str(self.input.get("conversation_group_id") or ""),
             },
         )
         value = result.get("company")
-        return _legacy_company(value) if isinstance(value, Mapping) else self._required(
-            company_id
-        )
+        return _legacy_company(value) if isinstance(value, Mapping) else self._required(company_id)
 
     def _update(self, company_id: str) -> dict[str, Any] | None:
         updates = self.input.get("updates")
@@ -200,8 +196,7 @@ class CompanyContractFacade:
         if unsupported:
             raise CompanyFacadeError(
                 "COMPANY_LEGACY_FIELD_DEPRECATED",
-                "use Company member, role, channel, or task routes for: "
-                + ", ".join(unsupported),
+                "use Company member, role, channel, or task routes for: " + ", ".join(unsupported),
                 410,
             )
         normalized = dict(updates)
@@ -214,9 +209,7 @@ class CompanyContractFacade:
             {"company_id": company_id, "updates": normalized},
         )
         value = result.get("company")
-        return _legacy_company(value) if isinstance(value, Mapping) else self._required(
-            company_id
-        )
+        return _legacy_company(value) if isinstance(value, Mapping) else self._required(company_id)
 
     def _delete(self, company_id: str) -> bool:
         if self._get(company_id) is None:
@@ -264,11 +257,7 @@ class CompanyContractFacade:
         if company is None:
             return None
         return next(
-            (
-                agent
-                for agent in _legacy_agents(company)
-                if agent["agent_id"] == agent_id
-            ),
+            (agent for agent in _legacy_agents(company) if agent["agent_id"] == agent_id),
             None,
         )
 
@@ -284,9 +273,7 @@ class CompanyContractFacade:
         if not agent_id:
             agent_id = "agent-" + uuid.uuid4().hex
         role_id = str(agent.get("role_key") or agent_id).strip()
-        display_name = str(
-            agent.get("display_name") or agent.get("agent_name") or agent_id
-        ).strip()
+        display_name = str(agent.get("display_name") or agent.get("agent_name") or agent_id).strip()
         legacy_metadata = {
             key: value
             for key, value in agent.items()
@@ -385,9 +372,7 @@ class CompanyContractFacade:
                 }
             }
         channel = _object(channel, "channel")
-        channel_id = str(
-            channel.get("channel_id") or channel.get("id") or ""
-        ).strip()
+        channel_id = str(channel.get("channel_id") or channel.get("id") or "").strip()
         if not channel_id:
             channel_id = "channel-" + uuid.uuid4().hex
         company = self._raw_company(company_id)
@@ -402,9 +387,13 @@ class CompanyContractFacade:
             },
         )
         value = result.get("channel")
-        return dict(value) if isinstance(value, Mapping) else self._get_channel(
-            company_id,
-            channel_id,
+        return (
+            dict(value)
+            if isinstance(value, Mapping)
+            else self._get_channel(
+                company_id,
+                channel_id,
+            )
         )
 
     def _delete_channel(self, company_id: str, channel_id: str) -> bool:
@@ -424,7 +413,9 @@ class CompanyContractFacade:
             return None
         tasks = company.get("tasks")
         tasks = dict(tasks) if isinstance(tasks, Mapping) else {}
-        return [_legacy_task(item) for _key, item in sorted(tasks.items()) if isinstance(item, Mapping)]
+        return [
+            _legacy_task(item) for _key, item in sorted(tasks.items()) if isinstance(item, Mapping)
+        ]
 
     def _get_task(self, company_id: str, task_id: str) -> dict[str, Any] | None:
         company = self._raw_company(company_id)
@@ -460,7 +451,11 @@ class CompanyContractFacade:
         record = _state_task(source)
         result = self._mutate("task.upsert", {"company_id": company_id, "record": record})
         value = result.get("task")
-        return _legacy_task(value) if isinstance(value, Mapping) else self._get_task(company_id, task_id)
+        return (
+            _legacy_task(value)
+            if isinstance(value, Mapping)
+            else self._get_task(company_id, task_id)
+        )
 
     def _delete_task(self, company_id: str, task_id: str) -> bool:
         company = self._raw_company(company_id)
@@ -504,15 +499,16 @@ class CompanyContractFacade:
         return value
 
     def _mutate(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        snapshot = self._resource("list", {})
-        if not isinstance(snapshot, Mapping):
+        company_id = str(arguments.get("company_id") or "")
+        current = None if name == "company.create" else self._raw_company(company_id)
+        if name != "company.create" and not isinstance(current, Mapping):
             raise CompanyFacadeError(
                 "COMPANY_OWNER_UNAVAILABLE",
                 "Company owner is unavailable",
                 503,
             )
         exact = {
-            "expected_revision": int(snapshot.get("revision") or 0),
+            "expected_revision": int((current or {}).get("revision") or 0),
             **dict(arguments),
         }
         receipt = _receipt(self.input, self.context, self.profile_id, name, exact)
@@ -549,11 +545,19 @@ class CompanyContractFacade:
     def _upsert_named(self, company_id: str, kind: str) -> dict[str, Any] | None:
         record = _object(self.input.get(kind), kind)
         if not record:
-            record = {key: value for key, value in self.input.items() if key not in {"company_id", "action", "approval_token", "_headers"}}
-        record_id = str(record.get("id") or record.get(f"{kind}_id") or f"{kind}-" + uuid.uuid4().hex)
+            record = {
+                key: value
+                for key, value in self.input.items()
+                if key not in {"company_id", "action", "approval_token", "_headers"}
+            }
+        record_id = str(
+            record.get("id") or record.get(f"{kind}_id") or f"{kind}-" + uuid.uuid4().hex
+        )
         if self._raw_company(company_id) is None:
             return None
-        result = self._mutate(f"{kind}.upsert", {"company_id": company_id, "record": {"id": record_id, **record}})
+        result = self._mutate(
+            f"{kind}.upsert", {"company_id": company_id, "record": {"id": record_id, **record}}
+        )
         value = result.get(kind)
         return dict(value) if isinstance(value, Mapping) else None
 
@@ -572,13 +576,18 @@ class CompanyContractFacade:
         route_id = str(self.input.get("route_id") or "").strip()
         if route_id:
             metadata["route_id"] = route_id
-        record = {"id": "inbound-" + uuid.uuid4().hex, "type": "inbound", "actor_id": str(self.input.get("sender_id") or "external"), "channel_id": str(self.input.get("channel_id") or ""), "text": str(self.input.get("content") or ""), "metadata": metadata}
+        record = {
+            "id": "inbound-" + uuid.uuid4().hex,
+            "type": "inbound",
+            "actor_id": str(self.input.get("sender_id") or "external"),
+            "channel_id": str(self.input.get("channel_id") or ""),
+            "text": str(self.input.get("content") or ""),
+            "metadata": metadata,
+        }
         result = self._mutate("inbound.append", {"company_id": company_id, "record": record})
         return dict(result.get("inbound") or {})
 
-    def _list_timeline(
-        self, company_id: str, key: str
-    ) -> dict[str, Any] | None:
+    def _list_timeline(self, company_id: str, key: str) -> dict[str, Any] | None:
         company = self._raw_company(company_id)
         if company is None:
             return None
@@ -590,21 +599,22 @@ class CompanyContractFacade:
         projected = [dict(item) for item in records if isinstance(item, Mapping)]
         if channel_id:
             projected = [
-                item for item in projected
-                if str(item.get("channel_id") or "") == channel_id
+                item for item in projected if str(item.get("channel_id") or "") == channel_id
             ]
         if thread_id:
             projected = [
-                item for item in projected
+                item
+                for item in projected
                 if str(_object(item.get("metadata"), "metadata").get("thread_id") or "")
                 == thread_id
             ]
         descending = str(self.input.get("order") or "").strip().lower() in {
-            "desc", "descending", "latest", "newest"
+            "desc",
+            "descending",
+            "latest",
+            "newest",
         }
-        projected.sort(
-            key=lambda item: int(item.get("created_at_ms") or 0), reverse=descending
-        )
+        projected.sort(key=lambda item: int(item.get("created_at_ms") or 0), reverse=descending)
         total = len(projected)
         limit = _bounded_limit(self.input.get("limit"), 50)
         offset = _nonnegative_int(self.input.get("offset"), 0)
@@ -612,9 +622,7 @@ class CompanyContractFacade:
             offset = max(total - limit, 0)
         return {"messages": projected[offset : offset + limit], "total": total}
 
-    def _get_message(
-        self, company_id: str, message_id: str
-    ) -> dict[str, Any] | None:
+    def _get_message(self, company_id: str, message_id: str) -> dict[str, Any] | None:
         company = self._raw_company(company_id)
         if company is None:
             return None
@@ -631,9 +639,7 @@ class CompanyContractFacade:
             return None
         metadata = _object(self.input.get("metadata"), "metadata")
         metadata["thread_id"] = str(self.input.get("thread_id") or "")
-        metadata["target_agent_ids"] = list(
-            self.input.get("target_agent_ids") or []
-        )
+        metadata["target_agent_ids"] = list(self.input.get("target_agent_ids") or [])
         metadata["task_ids"] = list(self.input.get("task_ids") or [])
         record = {
             "id": "message-" + uuid.uuid4().hex,
@@ -643,9 +649,7 @@ class CompanyContractFacade:
             "text": str(self.input.get("content") or ""),
             "metadata": metadata,
         }
-        result = self._mutate(
-            "message.append", {"company_id": company_id, "record": record}
-        )
+        result = self._mutate("message.append", {"company_id": company_id, "record": record})
         return dict(result.get("message") or {})
 
     def _status(self) -> dict[str, Any]:
@@ -696,9 +700,11 @@ class CompanyContractFacade:
             if mention in {"team", "channel"}:
                 continue
             target = _MENTION_ALIASES.get(mention, mention)
-            candidates = agents if target == "all" else [
-                agent for agent in agents if target in _agent_mention_keys(agent)
-            ]
+            candidates = (
+                agents
+                if target == "all"
+                else [agent for agent in agents if target in _agent_mention_keys(agent)]
+            )
             if not candidates:
                 unresolved.append(mention)
                 continue
@@ -791,7 +797,9 @@ class CompanyContractFacade:
             default_agents,
         )
 
-        company_id = _conversation_company_id(conversation_id) if conversation_id else DEFAULT_COMPANY_ID
+        company_id = (
+            _conversation_company_id(conversation_id) if conversation_id else DEFAULT_COMPANY_ID
+        )
         existing = self._raw_company(company_id)
         if isinstance(existing, Mapping):
             return dict(existing)
@@ -808,8 +816,18 @@ class CompanyContractFacade:
             "company.create",
             {
                 "company_id": company_id,
-                "name": str(metadata.get("name") or ("Executive Team" if conversation_id else DEFAULT_COMPANY_NAME)),
-                "description": str(metadata.get("description") or ("Employee group delegated from the current chat." if conversation_id else DEFAULT_COMPANY_DESCRIPTION)),
+                "name": str(
+                    metadata.get("name")
+                    or ("Executive Team" if conversation_id else DEFAULT_COMPANY_NAME)
+                ),
+                "description": str(
+                    metadata.get("description")
+                    or (
+                        "Employee group delegated from the current chat."
+                        if conversation_id
+                        else DEFAULT_COMPANY_DESCRIPTION
+                    )
+                ),
                 "settings": dict(DEFAULT_SETTINGS),
                 "metadata": metadata,
                 "conversation_group_id": "company:" + company_id,
@@ -817,7 +835,9 @@ class CompanyContractFacade:
         )
         company = result.get("company")
         if not isinstance(company, Mapping):
-            raise CompanyFacadeError("COMPANY_OWNER_UNAVAILABLE", "Company creation returned invalid data", 503)
+            raise CompanyFacadeError(
+                "COMPANY_OWNER_UNAVAILABLE", "Company creation returned invalid data", 503
+            )
         agents = default_agents()
         if employee_model:
             for agent in agents:
@@ -836,7 +856,11 @@ def _receipt(
     arguments: Mapping[str, Any],
 ) -> dict[str, Any]:
     return _receipt_for(
-        input_data, context, profile_id, name, arguments,
+        input_data,
+        context,
+        profile_id,
+        name,
+        arguments,
         service_pack_id=STATE_PACK_ID,
         authority="company.state.manage",
         operation=f"company.state.{name}",
@@ -844,9 +868,15 @@ def _receipt(
 
 
 def _receipt_for(
-    input_data: Mapping[str, Any], context: Mapping[str, Any], profile_id: str,
-    name: str, arguments: Mapping[str, Any], *, service_pack_id: str,
-    authority: str, operation: str,
+    input_data: Mapping[str, Any],
+    context: Mapping[str, Any],
+    profile_id: str,
+    name: str,
+    arguments: Mapping[str, Any],
+    *,
+    service_pack_id: str,
+    authority: str,
+    operation: str,
 ) -> dict[str, Any]:
     if not tool_server_approval_context_is_internal(dict(context)):
         token = _approval_token(input_data)
@@ -869,9 +899,7 @@ def _receipt_for(
                 403,
             )
     caller_id = str(
-        context.get("principal_id")
-        or context.get("user_id")
-        or "defaultspack.local_user"
+        context.get("principal_id") or context.get("user_id") or "defaultspack.local_user"
     )
     scope = {
         "service_pack_id": service_pack_id,
@@ -906,15 +934,10 @@ def _legacy_company(value: Mapping[str, Any]) -> dict[str, Any]:
     """Project the Company state record into the established route shape."""
 
     company = dict(value)
-    members = (
-        company.get("members")
-        if isinstance(company.get("members"), Mapping)
-        else {}
-    )
+    members = company.get("members") if isinstance(company.get("members"), Mapping) else {}
     roles = company.get("roles") if isinstance(company.get("roles"), Mapping) else {}
     agents = {
-        agent["agent_id"]: agent
-        for agent in _legacy_agents({"members": members, "roles": roles})
+        agent["agent_id"]: agent for agent in _legacy_agents({"members": members, "roles": roles})
     }
     return {
         "id": str(company.get("id") or ""),
@@ -984,11 +1007,7 @@ def _legacy_agent(
         "status": str(legacy.get("status") or "idle"),
         "work_type": str(role.get("work_type") or "agent"),
         "metadata": metadata,
-        **{
-            key: value
-            for key, value in legacy.items()
-            if key not in {"model", "status"}
-        },
+        **{key: value for key, value in legacy.items() if key not in {"model", "status"}},
     }
 
 
@@ -1087,9 +1106,7 @@ def _approval_token(input_data: Mapping[str, Any]) -> str:
     headers = input_data.get("_headers")
     if not isinstance(headers, Mapping):
         return ""
-    return str(
-        headers.get("X-Rumi-Approval") or headers.get("x-rumi-approval") or ""
-    ).strip()
+    return str(headers.get("X-Rumi-Approval") or headers.get("x-rumi-approval") or "").strip()
 
 
 def _enabled(value: Any) -> bool:
@@ -1123,11 +1140,15 @@ def _state_blocker_summary(company: Mapping[str, Any] | None) -> dict[str, Any]:
     if not isinstance(company, Mapping):
         return {"blocker_count": 0, "latest_signal": None, "signals": []}
     tasks = company.get("tasks")
-    blocked = [
-        dict(task)
-        for task in tasks.values()
-        if isinstance(task, Mapping) and task.get("status") == "blocked"
-    ] if isinstance(tasks, Mapping) else []
+    blocked = (
+        [
+            dict(task)
+            for task in tasks.values()
+            if isinstance(task, Mapping) and task.get("status") == "blocked"
+        ]
+        if isinstance(tasks, Mapping)
+        else []
+    )
     blocked.sort(key=lambda task: int(task.get("updated_at_ms") or 0), reverse=True)
     return {
         "blocker_count": len(blocked),
