@@ -524,20 +524,42 @@ class CheckoutRegistry:
         with self._lock:
             try:
                 payload = json.loads(self.path.read_text(encoding="utf-8"))
-            except (FileNotFoundError, json.JSONDecodeError, OSError):
+            except FileNotFoundError:
                 return self._empty()
+            except (json.JSONDecodeError, OSError) as exc:
+                raise CheckoutSecurityError(
+                    "checkout registry is unreadable or corrupt"
+                ) from exc
             if not isinstance(payload, dict):
-                return self._empty()
+                raise CheckoutSecurityError("checkout registry must be a JSON object")
+            try:
+                schema_version = int(payload.get("schema_version") or 1)
+                next_fencing_token = int(payload.get("next_fencing_token") or 0)
+            except (TypeError, ValueError) as exc:
+                raise CheckoutSecurityError(
+                    "checkout registry counters are malformed"
+                ) from exc
+            if schema_version not in {1, 2} or next_fencing_token < 0:
+                raise CheckoutSecurityError("checkout registry schema is unsupported")
             result = self._empty()
-            result["next_fencing_token"] = int(payload.get("next_fencing_token") or 0)
+            result["next_fencing_token"] = next_fencing_token
             records = payload.get("checkouts")
-            if isinstance(records, dict):
-                for key, value in records.items():
-                    if isinstance(value, dict):
-                        try:
-                            result["checkouts"][str(key)] = CheckoutRecord.from_dict(value).to_dict()
-                        except (TypeError, ValueError):
-                            continue
+            if not isinstance(records, dict):
+                raise CheckoutSecurityError("checkout registry records are malformed")
+            for key, value in records.items():
+                if not isinstance(value, dict):
+                    raise CheckoutSecurityError("checkout registry record is malformed")
+                try:
+                    record = CheckoutRecord.from_dict(value)
+                except (TypeError, ValueError) as exc:
+                    raise CheckoutSecurityError(
+                        "checkout registry record is malformed"
+                    ) from exc
+                if not record.checkout_id or record.checkout_id != str(key):
+                    raise CheckoutSecurityError(
+                        "checkout registry record identity is malformed"
+                    )
+                result["checkouts"][str(key)] = record.to_dict()
             return result
 
     def get(self, checkout_id: str) -> CheckoutRecord | None:

@@ -286,6 +286,15 @@ def test_registry_is_json_and_never_persists_lease_secret(tmp_path):
     assert record.lease_token_hash in serialized
 
 
+def test_corrupt_registry_fails_closed_instead_of_reissuing_leases(tmp_path):
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{not-json", encoding="utf-8")
+    registry = CheckoutRegistry(registry_path)
+
+    with pytest.raises(CheckoutSecurityError, match="corrupt"):
+        registry.issue_lease("attempt-corrupt")
+
+
 def test_multi_agent_worktree_mode_uses_distinct_real_checkouts(tmp_path, monkeypatch):
     from domain.agent.multi import MultiAgentOrchestrator
     from domain.coding.workspace_store import WorkspaceStore
