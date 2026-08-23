@@ -1419,8 +1419,8 @@
     {
       "path": "tobkiri_protocol/schema_hashes.json",
       "type": "regular-file",
-      "size": 3259,
-      "sha256": "f81649ac6ab0752e194db3f20e405fa01e3e34d455eeed528e3c1aab7f84e2d9",
+      "size": 3648,
+      "sha256": "4bb7a55105d3a8529fd1837ad527ce88459f2da8542cf5ad6c0fe2cb1f6d8c86",
       "executable": false
     },
     {
