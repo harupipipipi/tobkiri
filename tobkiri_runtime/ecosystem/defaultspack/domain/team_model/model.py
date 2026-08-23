@@ -819,40 +819,32 @@ def resolve_effective_policy(
         scope_names.append(scope)
         for field_name in _SECURITY_SET_FIELDS:
             if field_name in policy:
-                before = (
-                    None
-                    if effective_sets[field_name] is None
-                    else sorted(effective_sets[field_name] or [])
-                )
-                incoming = set(policy[field_name])
+                current_set = effective_sets[field_name]
+                set_before = None if current_set is None else sorted(current_set)
+                incoming_set = set(policy[field_name])
                 effective_sets[field_name] = (
-                    incoming
-                    if effective_sets[field_name] is None
-                    else effective_sets[field_name] & incoming
+                    incoming_set if current_set is None else current_set & incoming_set
                 )
                 add_trace(
                     field_name,
                     scope,
                     "intersection",
-                    before,
+                    set_before,
                     sorted(effective_sets[field_name] or []),
-                    incoming=sorted(incoming),
+                    incoming=sorted(incoming_set),
                 )
             deny_key = "deny_" + field_name
             if deny_key in policy:
-                before = (
-                    None
-                    if effective_sets[field_name] is None
-                    else sorted(effective_sets[field_name] or [])
-                )
+                current_set = effective_sets[field_name]
+                set_before = None if current_set is None else sorted(current_set)
                 denied = set(policy[deny_key])
-                if effective_sets[field_name] is not None:
-                    effective_sets[field_name] -= denied
+                if current_set is not None:
+                    effective_sets[field_name] = current_set - denied
                 add_trace(
                     field_name,
                     scope,
                     "deny_wins",
-                    before,
+                    set_before,
                     None
                     if effective_sets[field_name] is None
                     else sorted(effective_sets[field_name] or []),
@@ -861,67 +853,91 @@ def resolve_effective_policy(
         for field_name in _SECURITY_BOOL_FIELDS:
             if field_name not in policy:
                 continue
-            before = effective_bools[field_name]
-            value = bool(policy[field_name])
-            effective_bools[field_name] = value if before is None else before and value
-            add_trace(field_name, scope, "deny_wins", before, effective_bools[field_name])
+            bool_before = effective_bools[field_name]
+            bool_value = bool(policy[field_name])
+            effective_bools[field_name] = (
+                bool_value if bool_before is None else bool_before and bool_value
+            )
+            add_trace(
+                field_name,
+                scope,
+                "deny_wins",
+                bool_before,
+                effective_bools[field_name],
+            )
         for field_name in _LIMIT_FIELDS:
             if field_name not in policy:
                 continue
-            before = effective_limits.get(field_name)
-            incoming = policy[field_name]
-            effective_limits[field_name] = _strictest_limit(before, incoming)
-            if incoming == _UNLIMITED:
+            limit_before = effective_limits.get(field_name)
+            incoming_limit: int | float | str = policy[field_name]
+            effective_limits[field_name] = _strictest_limit(limit_before, incoming_limit)
+            if incoming_limit == _UNLIMITED:
                 explicit_unlimited[field_name] += 1
-            add_trace(field_name, scope, "strictest_bound", before, effective_limits[field_name])
+            add_trace(
+                field_name,
+                scope,
+                "strictest_bound",
+                limit_before,
+                effective_limits[field_name],
+            )
         if "required_review" in policy:
-            before = effective_reviews
+            review_before = effective_reviews
             incoming_review = str(policy["required_review"])
             effective_reviews = _strictest_level(effective_reviews, incoming_review, REVIEW_LEVELS)
-            add_trace("required_review", scope, "strictest_review", before, effective_reviews)
+            add_trace(
+                "required_review",
+                scope,
+                "strictest_review",
+                review_before,
+                effective_reviews,
+            )
         if "required_assurance" in policy:
-            before = effective_assurance
+            assurance_before = effective_assurance
             incoming_assurance = str(policy["required_assurance"])
             effective_assurance = _strictest_level(
                 effective_assurance, incoming_assurance, ASSURANCE_LEVELS
             )
             add_trace(
-                "required_assurance", scope, "strictest_assurance", before, effective_assurance
+                "required_assurance",
+                scope,
+                "strictest_assurance",
+                assurance_before,
+                effective_assurance,
             )
         if "mandatory_safety_checks" in policy:
-            before = sorted(effective_checks)
+            checks_before = sorted(effective_checks)
             effective_checks.update(policy["mandatory_safety_checks"])
             add_trace(
                 "mandatory_safety_checks",
                 scope,
                 "union",
-                before,
+                checks_before,
                 sorted(effective_checks),
                 added=sorted(set(policy["mandatory_safety_checks"])),
             )
         if "acceptance_criteria" in policy:
-            before = sorted(effective_acceptance_criteria)
+            criteria_before = sorted(effective_acceptance_criteria)
             effective_acceptance_criteria.update(policy["acceptance_criteria"])
             add_trace(
                 "acceptance_criteria",
                 scope,
                 "union",
-                before,
+                criteria_before,
                 sorted(effective_acceptance_criteria),
                 added=sorted(set(policy["acceptance_criteria"])),
             )
         if "evidence_required" in policy:
-            before = evidence_required
+            evidence_before = evidence_required
             evidence_required = evidence_required or bool(policy["evidence_required"])
             add_trace(
                 "evidence_required",
                 scope,
                 "strictest_requirement",
-                before,
+                evidence_before,
                 evidence_required,
             )
         if "models" in policy:
-            before = None if allowed_models is None else sorted(allowed_models)
+            models_before = None if allowed_models is None else sorted(allowed_models)
             incoming_models = set(policy["models"])
             allowed_models = (
                 incoming_models if allowed_models is None else allowed_models & incoming_models
@@ -930,12 +946,12 @@ def resolve_effective_policy(
                 "models",
                 scope,
                 "intersection",
-                before,
+                models_before,
                 sorted(allowed_models),
                 incoming=sorted(incoming_models),
             )
         if "deny_models" in policy:
-            before = None if allowed_models is None else sorted(allowed_models)
+            models_before = None if allowed_models is None else sorted(allowed_models)
             denied_models = set(policy["deny_models"])
             if allowed_models is not None:
                 allowed_models -= denied_models
@@ -943,12 +959,14 @@ def resolve_effective_policy(
                 "models",
                 scope,
                 "deny_wins",
-                before,
+                models_before,
                 None if allowed_models is None else sorted(allowed_models),
                 denied=sorted(denied_models),
             )
         if "harnesses" in policy:
-            before = None if allowed_harnesses is None else sorted(allowed_harnesses)
+            harnesses_before = (
+                None if allowed_harnesses is None else sorted(allowed_harnesses)
+            )
             incoming_harnesses = set(policy["harnesses"])
             allowed_harnesses = (
                 incoming_harnesses
@@ -959,12 +977,14 @@ def resolve_effective_policy(
                 "harnesses",
                 scope,
                 "intersection",
-                before,
+                harnesses_before,
                 sorted(allowed_harnesses),
                 incoming=sorted(incoming_harnesses),
             )
         if "deny_harnesses" in policy:
-            before = None if allowed_harnesses is None else sorted(allowed_harnesses)
+            harnesses_before = (
+                None if allowed_harnesses is None else sorted(allowed_harnesses)
+            )
             denied_harnesses = set(policy["deny_harnesses"])
             if allowed_harnesses is not None:
                 allowed_harnesses -= denied_harnesses
@@ -972,7 +992,7 @@ def resolve_effective_policy(
                 "harnesses",
                 scope,
                 "deny_wins",
-                before,
+                harnesses_before,
                 None if allowed_harnesses is None else sorted(allowed_harnesses),
                 denied=sorted(denied_harnesses),
             )
@@ -980,7 +1000,7 @@ def resolve_effective_policy(
             if field_name not in policy:
                 continue
             candidate = str(policy[field_name])
-            before = preferences.get(field_name)
+            preference_before = preferences.get(field_name)
             if field_name == "model":
                 allowed = allowed_models
                 available = (
@@ -1006,7 +1026,13 @@ def resolve_effective_policy(
             elif available is not None and candidate.casefold() not in available:
                 candidate = _choose_fallback(field_name, fallback, allowed, available, scope)
             preferences[field_name] = candidate
-            add_trace(field_name, scope, "most_specific_valid_preference", before, candidate)
+            add_trace(
+                field_name,
+                scope,
+                "most_specific_valid_preference",
+                preference_before,
+                candidate,
+            )
     if allowed_models is not None and not allowed_models:
         raise PolicyResolutionError("Policy layers have no common allowed model", trace)
     if allowed_harnesses is not None and not allowed_harnesses:
@@ -1014,8 +1040,12 @@ def resolve_effective_policy(
     # A selected preference must remain within the final capability set.  This
     # catches a narrower later layer that arrived after the preference layer.
     for field_name, allowed in (("model", allowed_models), ("harness", allowed_harnesses)):
-        value = preferences.get(field_name)
-        if value and allowed is not None and value.casefold() not in allowed:
+        preference_value = preferences.get(field_name)
+        if (
+            preference_value
+            and allowed is not None
+            and preference_value.casefold() not in allowed
+        ):
             raise PolicyResolutionError(
                 f"Preferred {field_name} is outside the effective allow-list", trace
             )
@@ -1023,13 +1053,15 @@ def resolve_effective_policy(
     # not an explicit permit, so retain an unspecified bounded value rather
     # than accidentally turning one layer's preference into unlimited access.
     if normalized_layers:
-        for field_name, value in list(effective_limits.items()):
-            if value == _UNLIMITED and explicit_unlimited[field_name] != len(normalized_layers):
+        for field_name, limit_value in list(effective_limits.items()):
+            if limit_value == _UNLIMITED and explicit_unlimited[field_name] != len(
+                normalized_layers
+            ):
                 add_trace(
                     field_name,
                     "resolver",
                     "unlimited_requires_explicit_all_layers",
-                    value,
+                    limit_value,
                     None,
                 )
                 effective_limits.pop(field_name, None)
@@ -1153,14 +1185,22 @@ def materialize_team(
 
 
 def _member_map(team: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    values = team.get("members") if isinstance(team.get("members"), list) else []
-    return {str(value.get("member_id")): value for value in values if isinstance(value, Mapping)}
+    raw_values = team.get("members")
+    values = raw_values if isinstance(raw_values, list) else []
+    return {
+        str(value.get("member_id")): dict(value)
+        for value in values
+        if isinstance(value, Mapping)
+    }
 
 
 def _department_map(team: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    values = team.get("departments") if isinstance(team.get("departments"), list) else []
+    raw_values = team.get("departments")
+    values = raw_values if isinstance(raw_values, list) else []
     return {
-        str(value.get("department_id")): value for value in values if isinstance(value, Mapping)
+        str(value.get("department_id")): dict(value)
+        for value in values
+        if isinstance(value, Mapping)
     }
 
 
@@ -1171,7 +1211,11 @@ def _pool_map(team: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
         else team.get("pools")
     )
     values = values if isinstance(values, list) else []
-    return {str(value.get("pool_id")): value for value in values if isinstance(value, Mapping)}
+    return {
+        str(value.get("pool_id")): dict(value)
+        for value in values
+        if isinstance(value, Mapping)
+    }
 
 
 def resolve_member_alias(team: Mapping[str, Any], alias: str) -> dict[str, Any]:
@@ -1203,7 +1247,8 @@ def _pool_candidates(team: Mapping[str, Any], pool: Mapping[str, Any]) -> list[d
         candidates = [members[item] for item in static_ids if item in members]
     else:
         candidates = list(members.values())
-    selector = pool.get("selector") if isinstance(pool.get("selector"), Mapping) else {}
+    raw_selector = pool.get("selector")
+    selector = dict(raw_selector) if isinstance(raw_selector, Mapping) else {}
     department_id = selector.get("department_id")
     configuration = selector.get("configuration")
     availability = selector.get("availability")
@@ -1266,17 +1311,15 @@ def _manager_policy(team: Mapping[str, Any]) -> Mapping[str, Any]:
     manager = _member_map(team).get(manager_id)
     if not manager:
         return {}
-    return manager.get("policy") if isinstance(manager.get("policy"), Mapping) else {}
+    policy = manager.get("policy")
+    return dict(policy) if isinstance(policy, Mapping) else {}
 
 
 def _department_policy(team: Mapping[str, Any], member: Mapping[str, Any]) -> Mapping[str, Any]:
     department_id = str(member.get("primary_department_id") or "")
     department = _department_map(team).get(department_id)
-    return (
-        department.get("policy")
-        if isinstance(department, Mapping) and isinstance(department.get("policy"), Mapping)
-        else {}
-    )
+    policy = department.get("policy") if isinstance(department, Mapping) else None
+    return dict(policy) if isinstance(policy, Mapping) else {}
 
 
 def _profile_policy(member: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -1368,9 +1411,10 @@ def create_assignment(
         # Quorum still needs an aggregation rule, which is represented in the
         # review/assignment options rather than inferred from pool membership.
         raise TeamValidationError("quorum Assignment requires explicit review/aggregation policy")
-    requested_policy = requested_policy if isinstance(requested_policy, Mapping) else {}
-    target_layers = [
-        ("team", team.get("policy") if isinstance(team.get("policy"), Mapping) else {}),
+    requested_policy = dict(requested_policy) if isinstance(requested_policy, Mapping) else {}
+    team_policy = team.get("policy")
+    target_layers: list[Mapping[str, Any] | tuple[str, Mapping[str, Any]]] = [
+        ("team", dict(team_policy) if isinstance(team_policy, Mapping) else {}),
         ("manager", _manager_policy(team)),
     ]
     # Department, Profile, and Member policy are resolved per selected Member.
@@ -1379,11 +1423,15 @@ def create_assignment(
     # a deterministic child Assignment at the coordinator boundary.
     member_resolutions = []
     for member in selected:
-        layers = [
+        member_policy = member.get("policy")
+        layers: list[Mapping[str, Any] | tuple[str, Mapping[str, Any]]] = [
             *target_layers,
             ("department", _department_policy(team, member)),
             ("profile", _profile_policy(member)),
-            (f"member:{member['member_id']}", member.get("policy") or {}),
+            (
+                f"member:{member['member_id']}",
+                dict(member_policy) if isinstance(member_policy, Mapping) else {},
+            ),
             ("assignment", requested_policy),
         ]
         member_resolutions.append(
@@ -1643,8 +1691,8 @@ def materialization_plan(
             )
         elif old != new:
             changes.append({"kind": "member_changed", "member_id": member_id})
-    old_departments = {
-        item.get("department_id"): item
+    old_departments: dict[str, Mapping[str, Any]] = {
+        str(item.get("department_id")): item
         for item in current_team.get("departments", [])
         if isinstance(item, Mapping)
     }
@@ -1906,13 +1954,18 @@ def team_console_snapshot(team: Mapping[str, Any]) -> dict[str, Any]:
     members = _member_map(team)
     output_members: list[dict[str, Any]] = []
     for member in sorted(members.values(), key=lambda value: str(value.get("member_id"))):
+        team_policy = team.get("policy")
+        member_policy = member.get("policy")
         resolution = resolve_effective_policy(
             [
-                ("team", team.get("policy") if isinstance(team.get("policy"), Mapping) else {}),
+                ("team", dict(team_policy) if isinstance(team_policy, Mapping) else {}),
                 ("manager", _manager_policy(team)),
                 ("department", _department_policy(team, member)),
                 ("profile", _profile_policy(member)),
-                (f"member:{member['member_id']}", member.get("policy") or {}),
+                (
+                    f"member:{member['member_id']}",
+                    dict(member_policy) if isinstance(member_policy, Mapping) else {},
+                ),
             ]
         )
         output_members.append(
