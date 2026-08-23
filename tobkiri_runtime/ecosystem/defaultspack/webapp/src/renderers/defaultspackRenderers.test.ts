@@ -47,6 +47,7 @@ test("defaultspack renderer registry exposes render modules", () => {
   assert.equal(typeof defaultspackRenderers.toolPreviewPanel, "function");
   assert.equal(typeof defaultspackRenderers.rightSidebar, "function");
   assert.equal(typeof defaultspackRenderers.settingsModal, "function");
+  assert.equal(typeof defaultspackRenderers.surfaceTemplate, "function");
 });
 
 test("defaultspack renderer resolver keeps builtin fallback for untrusted modules", () => {

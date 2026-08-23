@@ -1,0 +1,145 @@
+[
+  {
+    "pack_id": "logic.image.inspect",
+    "artifact_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "role": "logic",
+    "trust_class": "local",
+    "operations": [
+      {
+        "contract_id": "example.image.inspect.v1",
+        "operation_id": "inspect",
+        "output_schema_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "error_schema_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "progress_schema_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "resource_kinds": ["image"]
+      }
+    ]
+  },
+  {
+    "pack_id": "logic.search.choice",
+    "artifact_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "role": "logic",
+    "trust_class": "local",
+    "operations": [
+      {
+        "contract_id": "example.search.v1",
+        "operation_id": "search",
+        "authority_required": false
+      }
+    ]
+  },
+  {
+    "pack_id": "surface.image.inspect",
+    "artifact_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "role": "surface",
+    "trust_class": "local",
+    "templates": [
+      {
+        "surface_api_version": "io.tobkiri.surface-template.v1",
+        "template_id": "example.image.inspect.default",
+        "version": "1.0.0",
+        "binds": {
+          "contract_id": "example.image.inspect.v1",
+          "operation_id": "inspect",
+          "output_schema_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "error_schema_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_schema_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "input": {
+          "pattern": "resource_input",
+          "accepts": {
+            "resource_kinds": ["image"],
+            "media_types": ["image/*"],
+            "multiple": false
+          },
+          "effect": "inspect",
+          "bind_to": "$.resource"
+        },
+        "outcomes": {
+          "success": {"pattern": "content", "data": "$.result"},
+          "error": {
+            "pattern": "problem",
+            "code": "$.error.code",
+            "message": "$.error.message",
+            "details": "$.error.details"
+          },
+          "progress": {
+            "pattern": "progress",
+            "current": "$.progress.current",
+            "total": "$.progress.total"
+          },
+          "notice": {
+            "pattern": "notice",
+            "level": "$.notice.level",
+            "message": "$.notice.message",
+            "dedupe_key": "$.notice.dedupe_key"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "pack_id": "surface.search.choice",
+    "artifact_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "role": "surface",
+    "trust_class": "local",
+    "templates": [
+      {
+        "surface_api_version": "io.tobkiri.surface-template.v1",
+        "template_id": "example.search.choice.default",
+        "version": "1.0.0",
+        "binds": {
+          "contract_id": "example.search.v1",
+          "operation_id": "search"
+        },
+        "input": {"pattern": "form", "options": "$.input.query", "label": "Search"},
+        "outcomes": {
+          "success": {"pattern": "collection", "items": "$.result.items"},
+          "error": {
+            "pattern": "problem",
+            "code": "$.error.code",
+            "message": "$.error.message"
+          },
+          "progress": {
+            "pattern": "progress",
+            "current": "$.progress.current",
+            "total": "$.progress.total"
+          }
+        },
+        "actions": [
+          {
+            "contract_id": "example.search.v1",
+            "operation_id": "search",
+            "payload_binding": {"query": "$.input.query"},
+            "label": "Search"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "pack_id": "renderer.defaultspack.react",
+    "artifact_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "role": "renderer",
+    "trust_class": "system",
+    "renderers": [
+      {
+        "renderer_id": "defaultspack.react.surface",
+        "renderer_api_version": "io.tobkiri.surface-renderer.v1",
+        "supported_patterns": [
+          "content",
+          "problem",
+          "notice",
+          "progress",
+          "resource_input",
+          "choice",
+          "form",
+          "collection",
+          "detail"
+        ],
+        "renderer_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "trusted": true
+      }
+    ]
+  }
+]

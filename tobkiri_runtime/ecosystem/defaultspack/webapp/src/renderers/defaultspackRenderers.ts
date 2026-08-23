@@ -9,6 +9,7 @@ import { SettingsModalRenderer } from "./SettingsModalRenderer";
 import { TitleBarRenderer } from "./TitleBarRenderer";
 import { ToolPreviewPanelRenderer } from "./ToolPreviewPanelRenderer";
 import { loadTrustedRenderer } from "./trustedRendererLoader";
+import { SurfaceTemplateRenderer } from "../surface/SurfaceTemplateRenderer";
 
 export const defaultspackRendererIds = [
   "title_bar",
@@ -32,6 +33,7 @@ export const defaultspackRenderers = {
   toolPreviewPanel: ToolPreviewPanelRenderer,
   rightSidebar: RightSidebarRenderer,
   settingsModal: SettingsModalRenderer,
+  surfaceTemplate: SurfaceTemplateRenderer,
 } as const;
 
 export function resolveDefaultspackRenderers(catalog: UICatalog | null | undefined) {
