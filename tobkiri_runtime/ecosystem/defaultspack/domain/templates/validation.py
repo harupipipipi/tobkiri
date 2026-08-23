@@ -573,7 +573,9 @@ def _validate_references(template: RumiTemplate) -> list[TemplateDiagnostic]:
                     )
                 )
 
-    declared_status_actions = set(action_ids) | command_ids
+    # Status controls execute only through the resolved Command Protocol.
+    # Generic action metadata has no independent execution endpoint here.
+    declared_status_actions = command_ids
     for index, piece in enumerate(template.pieces):
         if _value(piece.kind) != TemplatePieceKind.STATUS_SURFACE.value:
             continue

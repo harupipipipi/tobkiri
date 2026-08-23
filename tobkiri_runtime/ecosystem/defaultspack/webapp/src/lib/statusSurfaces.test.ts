@@ -15,10 +15,34 @@ function catalogFixture(): UICatalog {
     settings: { sections: [], values: {} },
     chat_rendering: { renderers: [] },
     extension_points: [],
-    actions: [
-      { id: "review.pause", action_id: "review.pause", execution: { type: "pack_block" } },
-      { id: "review.cancel", action_id: "review.cancel", execution: { type: "pack_block" } },
-      { id: "build.stop", action_id: "build.stop", execution: { type: "pack_block" } },
+    commands: [
+      {
+        id: "review.pause",
+        name: "review.pause",
+        label: "Pause review",
+        category: "coding",
+        visibility: "default",
+        risk: "low",
+        execution: { type: "pack_block", qualified_name: "fixture.review:pause" },
+      },
+      {
+        id: "review.cancel",
+        name: "review.cancel",
+        label: "Cancel review",
+        category: "coding",
+        visibility: "default",
+        risk: "low",
+        execution: { type: "pack_block", qualified_name: "fixture.review:cancel" },
+      },
+      {
+        id: "build.stop",
+        name: "build.stop",
+        label: "Stop build",
+        category: "coding",
+        visibility: "default",
+        risk: "low",
+        execution: { type: "pack_block", qualified_name: "fixture.build:stop" },
+      },
     ],
     data_sources: [
       {
@@ -164,9 +188,13 @@ test("unregistered data sources and actions never become executable controls", (
   assert.ok(surface.diagnostics.some((item) => item.code === "status_surface.unregistered_action"));
 });
 
-test("ID-only action metadata is not mistaken for an executable backend registration", () => {
+test("generic action metadata is not mistaken for a resolved command registration", () => {
   const catalog = catalogFixture();
-  catalog.actions = [{ id: "claimed.action", action_id: "claimed.action" }];
+  catalog.actions = [{
+    id: "claimed.action",
+    action_id: "claimed.action",
+    execution: { type: "pack_block" },
+  }];
   catalog.status_surfaces = [{
     id: "claimed",
     slot: "above_composer",

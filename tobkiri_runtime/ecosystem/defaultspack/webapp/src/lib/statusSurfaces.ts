@@ -631,9 +631,6 @@ export function resolveStatusSurfaces(
   for (const command of catalog?.commands ?? []) {
     for (const id of executableActionIdentity(command)) registeredActions.add(id);
   }
-  for (const action of catalog?.actions ?? []) {
-    for (const id of executableActionIdentity(action)) registeredActions.add(id);
-  }
   for (const command of commandCatalog) {
     for (const id of executableActionIdentity(command)) registeredActions.add(id);
   }
