@@ -3,6 +3,7 @@
   "$id": "https://tobkiri.local/schemas/effective-policy.v1.schema.json",
   "title": "Tobkiri Effective Policy v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "effective", "trace", "layers", "policy_hash"],
   "properties": {
     "schema_version": {"const": "tobkiri.effective-policy/v1"},
@@ -38,6 +39,8 @@
         "required_review": {"enum": ["none", "self", "peer", "approval", "dual_control"]},
         "required_assurance": {"enum": ["none", "standard", "high", "critical"]},
         "mandatory_safety_checks": {"$ref": "#/$defs/string_list"},
+        "acceptance_criteria": {"$ref": "#/$defs/string_list"},
+        "evidence_required": {"type": "boolean"},
         "allowed_models": {"$ref": "#/$defs/string_list"},
         "allowed_harnesses": {"$ref": "#/$defs/string_list"},
         "model": {"type": ["string", "null"]},

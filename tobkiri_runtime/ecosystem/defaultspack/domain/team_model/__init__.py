@@ -53,6 +53,7 @@ from .model import (
     team_console_snapshot,
     update_member_state,
     validate_policy_snapshot,
+    validate_assignment_snapshot,
     validate_team_definition,
 )
 
@@ -102,5 +103,6 @@ __all__ = [
     "team_console_snapshot",
     "update_member_state",
     "validate_policy_snapshot",
+    "validate_assignment_snapshot",
     "validate_team_definition",
 ]

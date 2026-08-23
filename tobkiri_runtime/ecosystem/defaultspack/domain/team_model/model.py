@@ -108,6 +108,7 @@ _POLICY_ALIASES = {
     "safety_checks": "mandatory_safety_checks",
     "review": "required_review",
     "assurance": "required_assurance",
+    "required_acceptance_criteria": "acceptance_criteria",
     "tools": "tool",
     "commands": "command",
     "secrets": "secret",
@@ -387,6 +388,14 @@ def normalize_policy(raw: Mapping[str, Any] | None, *, scope: str = "policy") ->
             continue
         if key in {"models", "harnesses", "mandatory_safety_checks"}:
             policy[key] = sorted(_as_set(raw_value, f"{scope}.{raw_key}"))
+            continue
+        if key == "acceptance_criteria":
+            policy[key] = sorted(_as_set(raw_value, f"{scope}.{raw_key}"))
+            continue
+        if key == "evidence_required":
+            if not isinstance(raw_value, bool):
+                raise TeamValidationError(f"{scope}.{raw_key} must be boolean")
+            policy[key] = raw_value
             continue
         if key in {"deny_models", "deny_harnesses"}:
             policy[key] = sorted(_as_set(raw_value, f"{scope}.{raw_key}"))
@@ -784,6 +793,8 @@ def resolve_effective_policy(
     effective_reviews = "none"
     effective_assurance = "none"
     effective_checks: set[str] = set()
+    effective_acceptance_criteria: set[str] = set()
+    evidence_required = False
     allowed_models: set[str] | None = None
     allowed_harnesses: set[str] | None = None
     preferences: dict[str, str] = {}
@@ -887,6 +898,27 @@ def resolve_effective_policy(
                 before,
                 sorted(effective_checks),
                 added=sorted(set(policy["mandatory_safety_checks"])),
+            )
+        if "acceptance_criteria" in policy:
+            before = sorted(effective_acceptance_criteria)
+            effective_acceptance_criteria.update(policy["acceptance_criteria"])
+            add_trace(
+                "acceptance_criteria",
+                scope,
+                "union",
+                before,
+                sorted(effective_acceptance_criteria),
+                added=sorted(set(policy["acceptance_criteria"])),
+            )
+        if "evidence_required" in policy:
+            before = evidence_required
+            evidence_required = evidence_required or bool(policy["evidence_required"])
+            add_trace(
+                "evidence_required",
+                scope,
+                "strictest_requirement",
+                before,
+                evidence_required,
             )
         if "models" in policy:
             before = None if allowed_models is None else sorted(allowed_models)
@@ -1012,6 +1044,8 @@ def resolve_effective_policy(
     effective["required_review"] = effective_reviews
     effective["required_assurance"] = effective_assurance
     effective["mandatory_safety_checks"] = sorted(effective_checks)
+    effective["acceptance_criteria"] = sorted(effective_acceptance_criteria)
+    effective["evidence_required"] = evidence_required
     effective["allowed_models"] = sorted(allowed_models) if allowed_models is not None else []
     effective["allowed_harnesses"] = (
         sorted(allowed_harnesses) if allowed_harnesses is not None else []
@@ -1202,18 +1236,20 @@ def _target_members(
         member = members.get(target_id)
         if member is None:
             raise TeamValidationError(f"Unknown target Member {target_id}")
-        if member.get("configuration") != "enabled":
-            raise TeamValidationError(f"Member {target_id} is not enabled for new Assignment")
+        if not can_accept_assignment(team, target_id):
+            raise TeamValidationError(f"Member {target_id} cannot accept a new Assignment")
         return [_copy(member)]
     if target_kind == "department":
         department = _department_map(team).get(target_id)
         if department is None:
             raise TeamValidationError(f"Unknown target Department {target_id}")
+        if department.get("status") != "enabled":
+            raise TeamValidationError(f"Department {target_id} is not enabled")
         return sorted(
             [
                 members[item]
                 for item in department.get("member_ids", [])
-                if item in members and members[item].get("configuration") == "enabled"
+                if item in members and can_accept_assignment(team, item)
             ],
             key=lambda item: str(item.get("member_id")),
         )
@@ -1277,9 +1313,23 @@ def _review_snapshot(
         "required_review": level,
         "reviewer_member_id": reviewer_id,
         "reviewed_input_revision": input_revision or None,
-        "evidence_required": bool(requested.get("evidence_required", level != "none")),
-        "acceptance_criteria": _string_list(
-            requested.get("acceptance_criteria"), field_name="review.acceptance_criteria"
+        "evidence_required": bool(
+            policy.get("evidence_required")
+            or requested.get("evidence_required")
+            or level != "none"
+        ),
+        "acceptance_criteria": sorted(
+            {
+                *(
+                    str(value)
+                    for value in policy.get("acceptance_criteria", [])
+                    if str(value).strip()
+                ),
+                *_string_list(
+                    requested.get("acceptance_criteria"),
+                    field_name="review.acceptance_criteria",
+                ),
+            }
         ),
     }
 
@@ -1302,6 +1352,8 @@ def create_assignment(
 
     if str(team.get("schema_version") or "") != TEAM_SCHEMA_VERSION:
         raise TeamValidationError("Assignment requires a canonical Team runtime record")
+    if str(team.get("state") or "") != "active":
+        raise TeamValidationError("Only an active Team can create a new Assignment")
     target_kind = str(target_kind or "").casefold()
     if target_kind not in TARGET_KINDS:
         raise TeamValidationError("Assignment target_kind is invalid")
@@ -1370,6 +1422,14 @@ def create_assignment(
                 str(member["member_id"]): member.get("configuration") for member in selected
             },
         },
+        "member_profile_snapshots": {
+            str(member["member_id"]): {
+                "profile_id": str(member["profile_id"]),
+                "adopted_profile_revision": int(member["adopted_profile_revision"]),
+                "adopted_profile_hash": str(member["adopted_profile_hash"]),
+            }
+            for member in selected
+        },
         "policy_snapshot": _copy(first.effective),
         "policy_resolution_trace": [_copy(item) for item in first.trace],
         "policy_snapshot_hash": canonical_hash(first.effective),
@@ -1406,6 +1466,7 @@ def create_attempt(
         raise TeamValidationError("Execution Attempt requires a canonical Assignment")
     if str(assignment.get("team_id") or "") != str(team.get("team_id") or ""):
         raise TeamValidationError("Assignment belongs to a different Team")
+    validate_assignment_snapshot(assignment)
     if (
         isinstance(attempt_number, bool)
         or not isinstance(attempt_number, int)
@@ -1416,11 +1477,12 @@ def create_attempt(
     chosen = str(member_id or (selected[0] if selected else "")).strip()
     if chosen not in selected:
         raise TeamValidationError("Attempt member_id must be one selected by the Assignment")
-    member = _member_map(team).get(chosen)
-    if member is None:
-        raise TeamValidationError("Attempt Member is missing from Team")
-    if member.get("configuration") == "archived":
-        raise TeamValidationError("Archived Member cannot receive an Attempt")
+    profile_snapshots = assignment.get("member_profile_snapshots")
+    profile_snapshot = (
+        profile_snapshots.get(chosen) if isinstance(profile_snapshots, Mapping) else None
+    )
+    if not isinstance(profile_snapshot, Mapping):
+        raise SnapshotIntegrityError("Assignment is missing frozen Member Profile provenance")
     validate_policy_snapshot(
         assignment.get("policy_snapshot"), assignment.get("policy_snapshot_hash")
     )
@@ -1446,9 +1508,13 @@ def create_attempt(
         "review_snapshot": _copy(assignment.get("review_snapshot") or {}),
         "provenance": {
             "assignment_hash": str(assignment.get("assignment_hash") or ""),
-            "profile_id": str(member.get("profile_id") or ""),
-            "adopted_profile_revision": int(member.get("adopted_profile_revision") or 0),
-            "adopted_profile_hash": str(member.get("adopted_profile_hash") or ""),
+            "profile_id": str(profile_snapshot.get("profile_id") or ""),
+            "adopted_profile_revision": int(
+                profile_snapshot.get("adopted_profile_revision") or 0
+            ),
+            "adopted_profile_hash": str(
+                profile_snapshot.get("adopted_profile_hash") or ""
+            ),
         },
         "created_at": timestamp,
         "updated_at": timestamp,
@@ -1472,6 +1538,23 @@ def validate_policy_snapshot(snapshot: Any, expected_hash: Any) -> None:
     expected = str(expected_hash or "")
     if actual != expected:
         raise SnapshotIntegrityError("Policy snapshot hash does not match frozen provenance")
+
+
+def validate_assignment_snapshot(assignment: Mapping[str, Any]) -> None:
+    """Verify all hash-bound Assignment fields before creating an Attempt."""
+
+    if not isinstance(assignment, Mapping):
+        raise SnapshotIntegrityError("Assignment snapshot is missing")
+    expected = str(assignment.get("assignment_hash") or "")
+    actual = canonical_hash(
+        {
+            key: value
+            for key, value in assignment.items()
+            if key not in {"assignment_hash", "created_at", "updated_at"}
+        }
+    )
+    if actual != expected:
+        raise SnapshotIntegrityError("Assignment hash does not match frozen provenance")
 
 
 def can_accept_assignment(team: Mapping[str, Any], member_id: str) -> bool:
@@ -1716,15 +1799,52 @@ def plan_profile_update(
     plan["profile_updates"] = [
         change for change in plan["changes"] if change.get("kind") == "profile_changed"
     ]
-    plan["policy_diff"] = [
-        {
-            "member_id": member.get("member_id"),
-            "profile_id": member.get("profile_id"),
-            "adopted_revision": member.get("adopted_profile_revision"),
-            "adopted_hash": member.get("adopted_profile_hash"),
-        }
-        for member in definition["members"]
-    ]
+    next_definition = plan["definition"]
+    next_team = {
+        **_copy(dict(team)),
+        "members": _copy(next_definition["members"]),
+        "departments": _copy(next_definition["departments"]),
+        "member_pools": _copy(next_definition["member_pools"]),
+        "manager_member_id": next_definition["manager_member_id"],
+        "policy": _copy(next_definition["policy"]),
+    }
+    current_members = _member_map(team)
+    next_members = _member_map(next_team)
+    policy_diff = []
+    for update in plan["profile_updates"]:
+        member_id = str(update["member_id"])
+        current_member = current_members[member_id]
+        next_member = next_members[member_id]
+        before = resolve_effective_policy(
+            [
+                ("team", team.get("policy") or {}),
+                ("manager", _manager_policy(team)),
+                ("department", _department_policy(team, current_member)),
+                ("profile", _profile_policy(current_member)),
+                (f"member:{member_id}", current_member.get("policy") or {}),
+            ]
+        )
+        after = resolve_effective_policy(
+            [
+                ("team", next_team.get("policy") or {}),
+                ("manager", _manager_policy(next_team)),
+                ("department", _department_policy(next_team, next_member)),
+                ("profile", _profile_policy(next_member)),
+                (f"member:{member_id}", next_member.get("policy") or {}),
+            ]
+        )
+        policy_diff.append(
+            {
+                "member_id": member_id,
+                "profile_id": next_member["profile_id"],
+                "from_policy_hash": canonical_hash(before.effective),
+                "to_policy_hash": canonical_hash(after.effective),
+                "from_effective_policy": _copy(before.effective),
+                "to_effective_policy": _copy(after.effective),
+                "changed": before.effective != after.effective,
+            }
+        )
+    plan["policy_diff"] = policy_diff
     plan["active_work_impact"] = [
         {"assignment_id": str(value), "required_action": "old_snapshot_preserved"}
         for value in (active_assignment_ids or [])
@@ -1754,6 +1874,10 @@ def adopt_profile_revision(
     target = _member_map(result).get(str(member_id))
     if target is None:
         raise ProfileAdoptionError(f"Unknown Member {member_id}")
+    if str(target.get("profile_id") or "") != normalized_profile["profile_id"]:
+        raise ProfileAdoptionError(
+            "Profile revision adoption cannot change a Member's profile_id"
+        )
     for member in result.get("members", []):
         if isinstance(member, dict) and member.get("member_id") == str(member_id):
             member["adopted_profile_revision"] = normalized_profile["revision"]
@@ -1793,6 +1917,7 @@ def team_console_snapshot(team: Mapping[str, Any]) -> dict[str, Any]:
         resolution = resolve_effective_policy(
             [
                 ("team", team.get("policy") if isinstance(team.get("policy"), Mapping) else {}),
+                ("manager", _manager_policy(team)),
                 ("department", _department_policy(team, member)),
                 ("profile", _profile_policy(member)),
                 (f"member:{member['member_id']}", member.get("policy") or {}),

@@ -4,7 +4,7 @@
   "title": "Tobkiri Assignment v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "assignment_id", "team_id", "team_generation", "target_kind", "target_id", "dispatch_mode", "selected_member_ids", "policy_snapshot", "policy_resolution_trace", "policy_snapshot_hash", "review_snapshot", "state", "revision", "assignment_hash"],
+  "required": ["schema_version", "assignment_id", "team_id", "team_generation", "target_kind", "target_id", "dispatch_mode", "selected_member_ids", "member_profile_snapshots", "policy_snapshot", "policy_resolution_trace", "policy_snapshot_hash", "review_snapshot", "state", "revision", "assignment_hash"],
   "properties": {
     "schema_version": {"const": "tobkiri.assignment/v1"},
     "assignment_id": {"type": "string"},
@@ -16,6 +16,19 @@
     "selected_member_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "routing_reason": {"type": "string"},
     "routing_snapshot": {"type": "object"},
+    "member_profile_snapshots": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profile_id", "adopted_profile_revision", "adopted_profile_hash"],
+        "properties": {
+          "profile_id": {"type": "string"},
+          "adopted_profile_revision": {"type": "integer", "minimum": 1},
+          "adopted_profile_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+        }
+      }
+    },
     "policy_snapshot": {"type": "object"},
     "policy_resolution_trace": {"type": "array", "items": {"type": "object"}},
     "policy_snapshot_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},

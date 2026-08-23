@@ -8,6 +8,8 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 DEFAULTSPACK_ROOT = Path(__file__).parents[1] / "ecosystem" / "defaultspack"
 if str(DEFAULTSPACK_ROOT) not in sys.path:
@@ -37,6 +39,7 @@ from domain.team_model import (  # noqa: E402
     team_console_snapshot,
     update_member_state,
     validate_policy_snapshot,
+    validate_assignment_snapshot,
 )
 
 
@@ -304,6 +307,34 @@ def test_review_cannot_be_weakened_and_reviewer_input_revision_is_frozen() -> No
     assert assignment["review_snapshot"]["reviewer_member_id"] == "reviewer"
 
 
+def test_review_evidence_and_acceptance_criteria_cannot_be_weakened() -> None:
+    profile = _profile(
+        policy={
+            "tool": ["coding_file_read"],
+            "required_review": "peer",
+            "evidence_required": True,
+            "acceptance_criteria": ["profile-check"],
+        }
+    )
+    _profile_value, _definition, team = _team(profile=profile)
+    assignment = create_assignment(
+        team,
+        target_kind="member",
+        target_id="coder",
+        review={
+            "reviewer_member_id": "reviewer",
+            "reviewed_input_revision": "input-8",
+            "evidence_required": False,
+            "acceptance_criteria": ["assignment-check"],
+        },
+    )
+    assert assignment["review_snapshot"]["evidence_required"] is True
+    assert assignment["review_snapshot"]["acceptance_criteria"] == [
+        "assignment-check",
+        "profile-check",
+    ]
+
+
 def test_assignment_and_attempt_snapshots_do_not_drift_after_team_edit() -> None:
     _profile_value, _definition, team = _team()
     assignment = create_assignment(
@@ -322,6 +353,28 @@ def test_assignment_and_attempt_snapshots_do_not_drift_after_team_edit() -> None
     attempt["policy_snapshot"]["tool"] = []
     with pytest.raises(SnapshotIntegrityError):
         validate_policy_snapshot(attempt["policy_snapshot"], attempt["policy_snapshot_hash"])
+
+
+def test_attempt_uses_assignment_profile_provenance_after_profile_adoption() -> None:
+    old_profile, _definition, team = _team()
+    assignment = create_assignment(
+        team,
+        target_kind="member",
+        target_id="coder",
+        review={"reviewer_member_id": "reviewer", "reviewed_input_revision": "input-2"},
+    )
+    new_profile = _profile(revision=2)
+    updated_team = adopt_profile_revision(team, "coder", new_profile, approved=True)
+    attempt = create_attempt(updated_team, assignment, member_id="coder")
+    assert attempt["provenance"]["adopted_profile_revision"] == 1
+    assert attempt["provenance"]["adopted_profile_hash"] == old_profile["content_hash"]
+
+    tampered = deepcopy(assignment)
+    tampered["selected_member_ids"].append("manager")
+    with pytest.raises(SnapshotIntegrityError, match="Assignment hash"):
+        validate_assignment_snapshot(tampered)
+    with pytest.raises(SnapshotIntegrityError, match="Assignment hash"):
+        create_attempt(updated_team, tampered, member_id="coder")
 
 
 def test_profile_update_requires_explicit_plan_and_preserves_old_provenance() -> None:
@@ -369,6 +422,9 @@ def test_direct_profile_adoption_requires_approval_and_keeps_team_identity() -> 
     member = next(item for item in adopted["members"] if item["member_id"] == "coder")
     assert member["adopted_profile_revision"] == 2
     assert member["adopted_profile_hash"] == new_profile["content_hash"]
+    different_profile = _profile(profile_id="different-profile", revision=2)
+    with pytest.raises(ProfileAdoptionError, match="cannot change"):
+        adopt_profile_revision(team, "coder", different_profile, approved=True)
 
 
 def test_configuration_and_availability_are_separate_and_never_done() -> None:
@@ -386,6 +442,28 @@ def test_configuration_and_availability_are_separate_and_never_done() -> None:
     )
     with pytest.raises(TeamValidationError):
         update_member_state(team, "coder", availability="done")
+
+
+def test_only_active_teams_and_enabled_available_targets_accept_new_work() -> None:
+    _profile_value, _definition, team = _team()
+    paused_team = deepcopy(team)
+    paused_team["state"] = "paused"
+    with pytest.raises(TeamValidationError, match="active Team"):
+        create_assignment(paused_team, target_kind="member", target_id="coder")
+
+    busy_team = update_member_state(team, "coder", availability="running")
+    with pytest.raises(TeamValidationError, match="cannot accept"):
+        create_assignment(busy_team, target_kind="member", target_id="coder")
+
+    disabled_department = deepcopy(team)
+    disabled_department["departments"][0]["status"] = "disabled"
+    with pytest.raises(TeamValidationError, match="Department engineering is not enabled"):
+        create_assignment(
+            disabled_department,
+            target_kind="department",
+            target_id="engineering",
+            dispatch_mode="fanout",
+        )
 
 
 def test_aliases_are_exact_and_ambiguous_routing_fails_closed() -> None:
@@ -454,6 +532,11 @@ def test_console_exposes_generation_profile_revision_and_resolution_trace() -> N
     assert view["profile_generation"] == 1
     assert view["members"]
     assert view["members"][0]["policy_resolution_trace"]
+    assert "manager" in {
+        item["scope"]
+        for member in view["members"]
+        for item in member["policy_resolution_trace"]
+    }
     assert view["team_policy_snapshot_hash"].startswith("sha256:")
 
 
@@ -472,3 +555,41 @@ def test_versioned_team_schemas_are_valid_json() -> None:
         payload = json.loads(path.read_text(encoding="utf-8"))
         assert payload["$schema"].endswith("2020-12/schema")
         assert payload["$id"].startswith("https://tobkiri.local/")
+
+
+def test_versioned_schemas_validate_canonical_resources() -> None:
+    profile, definition, team = _team()
+    assignment = create_assignment(
+        team,
+        target_kind="member",
+        target_id="coder",
+        assignment_id="assignment-schema",
+        review={"reviewer_member_id": "reviewer", "reviewed_input_revision": "input-schema"},
+    )
+    attempt = create_attempt(
+        team,
+        assignment,
+        member_id="coder",
+        attempt_id="attempt-schema",
+    )
+    resolution = resolve_effective_policy(
+        [("team", team["policy"]), ("profile", profile["policy"])]
+    ).to_dict()
+    schema_root = (
+        Path(__file__).parents[1] / "ecosystem" / "defaultspack" / "schemas" / "team_model"
+    )
+    schemas = {
+        path.name: json.loads(path.read_text(encoding="utf-8"))
+        for path in schema_root.glob("*.json")
+    }
+    registry = Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema)) for schema in schemas.values()
+    )
+    instances = {
+        "team_definition.v1.schema.json": definition,
+        "effective-policy.v1.schema.json": resolution,
+        "assignment.v1.schema.json": assignment,
+        "execution_attempt.v1.schema.json": attempt,
+    }
+    for name, instance in instances.items():
+        Draft202012Validator(schemas[name], registry=registry).validate(instance)
