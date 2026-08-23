@@ -17,6 +17,7 @@ import {
   composerToolMentionDisplay,
   composerToolMentionWidget,
   filterComposerSkillMentions,
+  filterComposerToolMentions,
   isSafeLocalEndpoint,
   reconcileComposerSemanticDraft,
   resolveComposerWidgetDrop,
@@ -231,6 +232,103 @@ test("composer mention display keeps internal ids out of normal UI", () => {
     label: "Live Review",
     description: "Require evidence-backed verification.",
   });
+});
+
+test("composer tool mentions rank Calculator ahead of description-only matches", () => {
+  const tools = [
+    {
+      id: "chart_create",
+      label: "Chart Create",
+      category: "tool",
+      description: "Create charts from calculated values.",
+    },
+    {
+      id: "sheet_create",
+      label: "Sheet Create",
+      category: "tool",
+      description: "Create a sheet and recalculate formulas.",
+    },
+    {
+      id: "sheet_read",
+      label: "Sheet Read",
+      category: "tool",
+      description: "Read calculation results from a sheet.",
+    },
+    {
+      id: "calculator",
+      label: "Calculator",
+      category: "tool",
+      description: "Run arithmetic.",
+      tags: ["math"],
+    },
+  ] satisfies ComposerExtensionItem[];
+
+  for (const query of ["calc", "CALC", " calc ", "ＣＡＬＣ"]) {
+    assert.deepEqual(
+      filterComposerToolMentions(tools, query).map((tool) => tool.id),
+      ["calculator", "chart_create", "sheet_create", "sheet_read"],
+      query,
+    );
+  }
+  assert.deepEqual(
+    filterComposerToolMentions(tools, "calculator").map((tool) => tool.id),
+    ["calculator"],
+  );
+});
+
+test("composer tool mention ranking preserves safe catalog-search fallbacks", () => {
+  const tools = [
+    {
+      id: "chart_create",
+      label: "Chart Create",
+      category: "tool",
+      description: "Create charts from calculation results.",
+      tags: ["visualization"],
+    },
+    {
+      id: "sheet_update",
+      label: "Sheet Update",
+      category: "tool",
+      description: "Update calculation inputs, units, and currency columns.",
+      tags: ["spreadsheet"],
+    },
+    {
+      id: "calculator",
+      label: "Calculator",
+      category: "tool",
+      description: "Run exact arithmetic with negative and decimal values.",
+      tags: ["math"],
+    },
+  ] satisfies ComposerExtensionItem[];
+
+  const goldenCases = [
+    { query: "chart", expected: ["chart_create"] },
+    { query: "spread", expected: ["sheet_update"] },
+    { query: "calculation", expected: ["chart_create", "sheet_update"] },
+    { query: "unit", expected: ["sheet_update"] },
+    { query: "currency", expected: ["sheet_update"] },
+    { query: "negative", expected: ["calculator"] },
+    { query: "decimal", expected: ["calculator"] },
+    { query: "2+2", expected: [] },
+    { query: "convert 5 usd", expected: [] },
+    { query: "カレンダー", expected: [] },
+  ];
+
+  for (const { query, expected } of goldenCases) {
+    assert.deepEqual(
+      filterComposerToolMentions(tools, query).map((tool) => tool.id),
+      expected,
+      query,
+    );
+  }
+  assert.deepEqual(
+    filterComposerToolMentions(tools, "").map((tool) => tool.id),
+    ["chart_create", "sheet_update", "calculator"],
+  );
+  assert.deepEqual(
+    filterComposerToolMentions([{ ...tools[2], disabled: true }], "calc"),
+    [],
+  );
 });
 
 test("semantic mention metadata keeps stable ids separate from human labels", () => {
