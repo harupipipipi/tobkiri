@@ -1314,9 +1314,7 @@ def _review_snapshot(
         "reviewer_member_id": reviewer_id,
         "reviewed_input_revision": input_revision or None,
         "evidence_required": bool(
-            policy.get("evidence_required")
-            or requested.get("evidence_required")
-            or level != "none"
+            policy.get("evidence_required") or requested.get("evidence_required") or level != "none"
         ),
         "acceptance_criteria": sorted(
             {
@@ -1509,12 +1507,8 @@ def create_attempt(
         "provenance": {
             "assignment_hash": str(assignment.get("assignment_hash") or ""),
             "profile_id": str(profile_snapshot.get("profile_id") or ""),
-            "adopted_profile_revision": int(
-                profile_snapshot.get("adopted_profile_revision") or 0
-            ),
-            "adopted_profile_hash": str(
-                profile_snapshot.get("adopted_profile_hash") or ""
-            ),
+            "adopted_profile_revision": int(profile_snapshot.get("adopted_profile_revision") or 0),
+            "adopted_profile_hash": str(profile_snapshot.get("adopted_profile_hash") or ""),
         },
         "created_at": timestamp,
         "updated_at": timestamp,
@@ -1875,9 +1869,7 @@ def adopt_profile_revision(
     if target is None:
         raise ProfileAdoptionError(f"Unknown Member {member_id}")
     if str(target.get("profile_id") or "") != normalized_profile["profile_id"]:
-        raise ProfileAdoptionError(
-            "Profile revision adoption cannot change a Member's profile_id"
-        )
+        raise ProfileAdoptionError("Profile revision adoption cannot change a Member's profile_id")
     for member in result.get("members", []):
         if isinstance(member, dict) and member.get("member_id") == str(member_id):
             member["adopted_profile_revision"] = normalized_profile["revision"]

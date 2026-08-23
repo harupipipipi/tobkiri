@@ -533,9 +533,7 @@ def test_console_exposes_generation_profile_revision_and_resolution_trace() -> N
     assert view["members"]
     assert view["members"][0]["policy_resolution_trace"]
     assert "manager" in {
-        item["scope"]
-        for member in view["members"]
-        for item in member["policy_resolution_trace"]
+        item["scope"] for member in view["members"] for item in member["policy_resolution_trace"]
     }
     assert view["team_policy_snapshot_hash"].startswith("sha256:")
 
