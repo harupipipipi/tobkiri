@@ -166,10 +166,12 @@ class TransactionalTeamStore:
             connection.commit()
         return value
 
-    def lookup(self, team_id: str) -> dict[str, Any]:
+    def lookup(self, team_id: str, *, authorized: bool = True) -> dict[str, Any]:
         """Distinguish a missing, archived, deleted, or active Team."""
 
         team_id = _identifier(team_id)
+        if not authorized:
+            return {"state": "unauthorized", "team_id": team_id}
         with closing(self.connection()) as connection:
             row = connection.execute(
                 "SELECT status, deleted_at_ms, revision FROM teams WHERE team_id=?",
@@ -211,7 +213,18 @@ class TransactionalTeamStore:
                     if current != expected:
                         self._stale(team_id, expected, current)
                     result = self._mutate(connection, team_id, name, arguments)
+                    if result.get("deduplicated"):
+                        connection.commit()
+                        return {
+                            **result,
+                            "revision": current,
+                            "source_revision": current,
+                        }
                 revision = self._advance(connection, team_id, expected)
+                company = result.get("company")
+                if isinstance(company, dict):
+                    company["revision"] = revision
+                    company["source_revision"] = revision
                 connection.commit()
                 return {**result, "revision": revision, "source_revision": revision}
             except Exception:
@@ -738,6 +751,19 @@ class TransactionalTeamStore:
             record = _timeline(arguments["record"], now_ms)
             encoded = _encode(record)
             _assert_payload(encoded)
+            existing = connection.execute(
+                "SELECT payload_json FROM timeline_events WHERE team_id=? AND event_id=?",
+                (team_id, record["id"]),
+            ).fetchone()
+            if existing:
+                prior = _decode(existing["payload_json"])
+                if _without_created_at(prior) != _without_created_at(record):
+                    raise TeamStateConflict(
+                        "Timeline event identifier already has different content",
+                        team_id=team_id,
+                        entity_id=str(record["id"]),
+                    )
+                return {kind: prior, "deduplicated": True}
             try:
                 connection.execute(
                     "INSERT INTO timeline_events"
@@ -750,7 +776,7 @@ class TransactionalTeamStore:
                     (team_id, record["id"]),
                 ).fetchone()
                 prior = _decode(existing["payload_json"])
-                if prior != record:
+                if _without_created_at(prior) != _without_created_at(record):
                     raise TeamStateConflict(
                         "Timeline event identifier already has different content",
                         team_id=team_id,
@@ -1403,6 +1429,12 @@ def _strip_projection(value: Mapping[str, Any]) -> dict[str, Any]:
     result = dict(value)
     for key in ("revision", "source_revision", "counts"):
         result.pop(key, None)
+    return result
+
+
+def _without_created_at(value: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(value)
+    result.pop("created_at_ms", None)
     return result
 
 

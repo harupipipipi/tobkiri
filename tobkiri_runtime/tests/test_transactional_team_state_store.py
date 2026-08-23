@@ -158,6 +158,16 @@ def test_reads_are_pure_and_timeline_is_stably_paginated(tmp_path: Path) -> None
             },
         )
     before = store.get("team")
+    duplicate = store.apply(
+        "message.append",
+        {
+            "company_id": "team",
+            "expected_revision": 6,
+            "record": {"id": "message-4", "text": "4"},
+        },
+    )
+    assert duplicate["deduplicated"] is True
+    assert duplicate["revision"] == 6
     first = store.list_timeline("team", limit=2)
     store.get("team")
     after = store.get("team")
@@ -328,6 +338,8 @@ def test_sqlite_only_runtime_migrates_and_is_idempotent(tmp_path: Path) -> None:
 
 def test_schema_has_all_independent_team_entities(tmp_path: Path) -> None:
     store = CompanyStateStore("default", root=tmp_path)
+    assert store.lookup("team")["state"] == "missing"
+    assert store.lookup("team", authorized=False)["state"] == "unauthorized"
     with closing(store.connection()) as connection:
         tables = {
             row["name"]
