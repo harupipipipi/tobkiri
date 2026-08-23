@@ -115,6 +115,7 @@ type ApiMockOptions = {
   structuredComposer?: boolean;
   interactiveApproval?: InteractiveApprovalFixture;
   onInteractiveApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
+  preserveStorage?: boolean;
 };
 
 type InteractiveApprovalFixture = {
@@ -642,10 +643,12 @@ async function fulfillStreamEvents(route: Route, events: Record<string, unknown>
 }
 
 async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions = {}) {
-  await page.addInitScript(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  });
+  if (!options.preserveStorage) {
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+  }
   await page.addInitScript(() => {
     const fixtureWindow = window as Window & {
       __approvalRendererFixture?: {
@@ -871,6 +874,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         catalog_revision: "e2e-revision-1",
         commands: [
           protocolCommand("coding", "Coding Mode", "low", "set_mode_coding"),
+          protocolCommand("clear", "Clear Draft", "low", "clear_composer_state"),
           protocolCommand("yolo", "Full Access (YOLO)", "medium", "toggle_ultra_yolo"),
         ],
         state_snapshots: [],
@@ -893,6 +897,17 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
             execution: { type: "frontend", action: "set_mode_coding" },
           },
           {
+            id: "clear",
+            name: "clear",
+            label: "Clear Draft",
+            description: "Clear the local composer draft.",
+            category: "conversation",
+            visibility: "default",
+            risk: "low",
+            modes: ["chat", "coding", "agent"],
+            execution: { type: "frontend", action: "clear_composer_state" },
+          },
+          {
             id: "yolo",
             name: "yolo",
             label: "Full Access (YOLO)",
@@ -913,6 +928,8 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         executed: true,
         action: payload.command === "coding"
           ? "set_mode_coding"
+          : String(payload.command).includes("clear")
+            ? "clear_composer_state"
           : payload.command === "yolo"
             ? "toggle_ultra_yolo"
             : "",
@@ -2253,6 +2270,44 @@ test("starting a new draft discards a pending workspace mention result", async (
   releaseRead();
   await expect(page.getByRole("button", { name: "README.md を削除" })).toHaveCount(0);
   await expect(page.getByRole("status", { name: "README.md を読み込み中" })).toHaveCount(0);
+});
+
+test("reload New Chat and clear discard a persisted slash draft and command menu", async ({ page }) => {
+  test.setTimeout(120_000);
+  await installDefaultspackApiMocks(page, {
+    preserveStorage: true,
+  });
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("issue588-slash-draft-seeded") !== "1") {
+      localStorage.setItem("rumi-input", JSON.stringify("/"));
+      sessionStorage.setItem("issue588-slash-draft-seeded", "1");
+    }
+  });
+  await page.goto("/chat");
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const commandCandidates = page.getByTestId("composer-slash-command-candidates");
+  await expect(composer).toBeVisible({ timeout: 60_000 });
+  await expect(composer).toHaveValue("");
+  await expect(commandCandidates).toHaveCount(0);
+
+  await composer.fill("ordinary recovery draft");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-input")))
+    .toBe(JSON.stringify("ordinary recovery draft"));
+  await page.reload();
+  await expect(composer).toBeVisible({ timeout: 60_000 });
+  await expect(composer).toHaveValue("ordinary recovery draft");
+
+  await composer.fill("/");
+  await expect(commandCandidates).toBeVisible();
+  await page.getByTitle("New Chat").first().click();
+  await expect(composer).toHaveValue("");
+  await expect(commandCandidates).toHaveCount(0);
+
+  await composer.fill("/clear");
+  await expect(commandCandidates).toBeVisible();
+  await commandCandidates.getByRole("option").filter({ hasText: "Clear Draft" }).click();
+  await expect(composer).toHaveValue("");
+  await expect(commandCandidates).toHaveCount(0);
 });
 
 test("migrated keyboard navigation marker keeps composer controls reachable", async ({ page }) => {

@@ -153,6 +153,7 @@ type ComposerDraftResetTargets = {
   setInput: (value: string) => void;
   setAttachedFiles: (value: AttachedFile[]) => void;
   setDroppedWidgets: (value: DroppedWidget[]) => void;
+  setStructuredComposerValues: (value: Record<string, string>) => void;
   setComposerCandidateMenu: (value: ComposerCandidateMenuState) => void;
   bumpResetToken?: () => void;
 };
@@ -161,8 +162,14 @@ export function clearComposerDraft(targets: ComposerDraftResetTargets) {
   targets.setInput("");
   targets.setAttachedFiles([]);
   targets.setDroppedWidgets([]);
+  targets.setStructuredComposerValues({});
   targets.setComposerCandidateMenu(null);
   targets.bumpResetToken?.();
+}
+
+export function restorePersistedComposerDraft(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.startsWith("/") && !value.startsWith("//") ? "" : value;
 }
 
 type BackendConnectionState = "online" | "degraded" | "offline";
@@ -1337,11 +1344,17 @@ function CalendarComposerPanel({
   );
 }
 
-function useLocalStorage<T>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] {
+function useLocalStorage<T>(
+  key: string,
+  defaultValue: T,
+  restoreValue?: (value: unknown) => T,
+): [T, (v: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => {
     try {
       const saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : defaultValue;
+      if (saved === null) return defaultValue;
+      const parsed = JSON.parse(saved) as unknown;
+      return restoreValue ? restoreValue(parsed) : parsed as T;
     } catch {
       return defaultValue;
     }
@@ -2575,7 +2588,11 @@ export function ChatApp() {
   );
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [activeHistoryCompanyId, setActiveHistoryCompanyId] = useState<string | null>(null);
-  const [input, setInput] = useLocalStorage("rumi-input", "");
+  const [input, setInput] = useLocalStorage(
+    "rumi-input",
+    "",
+    restorePersistedComposerDraft,
+  );
   const [customHomeTitle, setCustomHomeTitle] = useLocalStorage(
     "rumi-home-title",
     DEFAULT_COMPOSER_HOME_TITLE,
@@ -2583,6 +2600,7 @@ export function ChatApp() {
   const [structuredComposerValues, setStructuredComposerValues] = useState<Record<string, string>>({});
   const [composerCandidateMenu, setComposerCandidateMenu] = useState<ComposerCandidateMenuState>(null);
   const [composerResetToken, setComposerResetToken] = useState(0);
+  const composerResetGenerationRef = useRef(0);
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   const [spotlightQuery, setSpotlightQuery] = useState("");
   const [spotlightFilter, setSpotlightFilter] = useState<SpotlightFilter>("all");
@@ -2703,10 +2721,12 @@ export function ChatApp() {
   };
 
   const resetComposerDraft = () => {
+    composerResetGenerationRef.current += 1;
     clearComposerDraft({
       setInput,
       setAttachedFiles,
       setDroppedWidgets,
+      setStructuredComposerValues,
       setComposerCandidateMenu,
       bumpResetToken: () => setComposerResetToken((value) => value + 1),
     });
@@ -5318,6 +5338,10 @@ export function ChatApp() {
       setError(`/${parsed.command.name} は ${mode} mode では利用できません。`);
       return false;
     }
+    if (isClearComposerCommandInput(rawInput)) {
+      resetComposerDraft();
+    }
+    const composerResetGeneration = composerResetGenerationRef.current;
     try {
       setError(null);
       const highRiskRef = highRiskCommandRef(parsed.command);
@@ -5445,6 +5469,9 @@ export function ChatApp() {
         return;
       }
       if (isModelCommand(parsed.command)) {
+        if (composerResetGeneration !== composerResetGenerationRef.current) {
+          return true;
+        }
         if (result.action === "show_model_candidates") {
           setComposerCandidateMenu({
             mode: "model",
@@ -6558,6 +6585,15 @@ export function ChatApp() {
 
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
+    const inputForSubmit = override?.input ?? input;
+    if (!override && isClearComposerCommandInput(inputForSubmit)) {
+      resetComposerDraft();
+      if (activeConversationId) {
+        forgetPendingRequest(activeConversationId);
+        replaceChatIdInUrl(activeConversationId, false);
+      }
+      return;
+    }
     if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
       setError("前の送信結果を確認中です。新しいturnとして再送しません。");
       return;
@@ -6570,7 +6606,6 @@ export function ChatApp() {
       setError("workspace file の読み込みが終わるまでお待ちください。");
       return;
     }
-    const inputForSubmit = override?.input ?? input;
     const attachmentsForSubmit = override?.attachments ?? attachedFiles;
     const requestedDroppedWidgets = override?.droppedWidgets ?? droppedWidgets;
     if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGenerating) return;
@@ -6582,15 +6617,6 @@ export function ChatApp() {
       });
     }
     setRetryableSubmission(null);
-
-    if (!override && isClearComposerCommandInput(inputForSubmit)) {
-      resetComposerDraft();
-      if (activeConversationId) {
-        forgetPendingRequest(activeConversationId);
-        replaceChatIdInUrl(activeConversationId, false);
-      }
-      return;
-    }
 
     const commandInput = override ? null : parseSlashCommandInput(inputForSubmit, effectiveCommandCatalog, { enabled: slashCommandsEnabled });
     if (commandInput) {
