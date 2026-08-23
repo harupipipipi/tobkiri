@@ -282,6 +282,7 @@ class TransactionalTeamStore:
                 assignment_id = str(uuid.uuid4())
                 attempt_id = str(uuid.uuid4())
                 lease_id = str(uuid.uuid4())
+                expires_at_ms = now_ms + max(1, lease_duration_ms)
                 fence = int(
                     connection.execute(
                         "SELECT COALESCE(MAX(fencing_token), 0) + 1 AS token "
@@ -318,7 +319,7 @@ class TransactionalTeamStore:
                     "attempt_id": attempt_id,
                     "holder_member_id": member_id,
                     "fencing_token": fence,
-                    "expires_at_ms": now_ms + max(1, lease_duration_ms),
+                    "expires_at_ms": expires_at_ms,
                     "created_at_ms": now_ms,
                     "updated_at_ms": now_ms,
                 }
@@ -331,7 +332,7 @@ class TransactionalTeamStore:
                     work_item_id,
                     lease,
                     fencing_token=fence,
-                    expires_at_ms=int(lease["expires_at_ms"]),
+                    expires_at_ms=expires_at_ms,
                 )
                 revision = self._advance(connection, team_id, expected_revision)
                 result = {
@@ -434,6 +435,22 @@ class TransactionalTeamStore:
                             },
                         )
                     self._import_legacy_runtime_rows(connection, team_id, extracted, now_ms)
+                    connection.execute(
+                        "INSERT OR REPLACE INTO migration_records"
+                        "(migration_id,team_id,source_kind,source_digest,status,"
+                        "backup_path,started_at_ms,activated_at_ms) "
+                        "VALUES(?,?,?,?,?,?,?,?)",
+                        (
+                            f"{migration_id}:{team_id}",
+                            team_id,
+                            "company-runtime-sqlite",
+                            _digest({"team_id": team_id, "rows": extracted}),
+                            "activated",
+                            str(backup),
+                            now_ms,
+                            now_ms,
+                        ),
+                    )
                 connection.execute(
                     "INSERT INTO migration_records"
                     "(migration_id,team_id,source_kind,source_digest,status,backup_path,"
@@ -458,6 +475,65 @@ class TransactionalTeamStore:
             "deduplicated": False,
             "team_ids": team_ids,
         }
+
+    def renew_lease(
+        self,
+        team_id: str,
+        work_item_id: str,
+        *,
+        fencing_token: int,
+        expected_revision: int,
+        lease_duration_ms: int,
+    ) -> dict[str, Any]:
+        """Renew a durable lease only for its current fencing token."""
+
+        team_id = _identifier(team_id)
+        work_item_id = _identifier(work_item_id)
+        with closing(self.connection()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                current = self._team_revision(connection, team_id)
+                if current != expected_revision:
+                    self._stale(team_id, expected_revision, current or 0)
+                row = connection.execute(
+                    "SELECT revision,fencing_token,payload_json "
+                    "FROM execution_leases WHERE team_id=? AND entity_id=?",
+                    (team_id, work_item_id),
+                ).fetchone()
+                if row is None:
+                    raise KeyError("Execution lease is unknown")
+                if int(row["fencing_token"]) != fencing_token:
+                    raise TeamStateConflict(
+                        "Execution lease fencing token is stale",
+                        team_id=team_id,
+                        entity_id=work_item_id,
+                        expected_revision=fencing_token,
+                        current_revision=int(row["fencing_token"]),
+                    )
+                now_ms = _now_ms()
+                lease = _decode(row["payload_json"])
+                lease["expires_at_ms"] = now_ms + max(1, lease_duration_ms)
+                lease["updated_at_ms"] = now_ms
+                self._put_entity(
+                    connection,
+                    "execution_leases",
+                    team_id,
+                    work_item_id,
+                    lease,
+                    {"expected_entity_revision": int(row["revision"])},
+                    fencing_token=fencing_token,
+                    expires_at_ms=int(lease["expires_at_ms"]),
+                )
+                revision = self._advance(connection, team_id, expected_revision)
+                connection.commit()
+                return {
+                    "lease": lease,
+                    "revision": revision,
+                    "source_revision": revision,
+                }
+            except Exception:
+                connection.rollback()
+                raise
 
     def _initialize(self) -> None:
         with closing(self.connection()) as connection:
@@ -1175,6 +1251,22 @@ class TransactionalTeamStore:
             try:
                 for team_id in sorted(value["companies"]):
                     self._import_legacy_team(connection, str(team_id), value["companies"][team_id])
+                    connection.execute(
+                        "INSERT OR REPLACE INTO migration_records"
+                        "(migration_id,team_id,source_kind,source_digest,status,"
+                        "backup_path,started_at_ms,activated_at_ms) "
+                        "VALUES(?,?,?,?,?,?,?,?)",
+                        (
+                            f"{migration_id}:{team_id}",
+                            str(team_id),
+                            "companies-json",
+                            _digest(value["companies"][team_id]),
+                            "activated",
+                            str(backup),
+                            now_ms,
+                            now_ms,
+                        ),
+                    )
                 connection.execute(
                     "INSERT OR REPLACE INTO migration_records"
                     "(migration_id,team_id,source_kind,source_digest,status,backup_path,"

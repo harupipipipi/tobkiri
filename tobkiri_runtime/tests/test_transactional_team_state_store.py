@@ -216,6 +216,22 @@ def test_claim_is_atomic_idempotent_and_fence_survives_restart(tmp_path: Path) -
     )
     assert repeated == claim
     assert restarted.get("team")["execution_leases"]["work"]["fencing_token"] == 1
+    renewed = restarted.renew_lease(
+        "team",
+        "work",
+        fencing_token=1,
+        expected_revision=5,
+        lease_duration_ms=120_000,
+    )
+    assert renewed["revision"] == 6
+    with pytest.raises(TeamStateConflict):
+        restarted.renew_lease(
+            "team",
+            "work",
+            fencing_token=0,
+            expected_revision=6,
+            lease_duration_ms=120_000,
+        )
 
 
 def test_json_migration_is_idempotent_private_and_crash_safe(
