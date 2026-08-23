@@ -147,7 +147,10 @@ def _same_identity(path: Path, identity: Mapping[str, Any]) -> bool:
     )
 
 
-def _canonical_existing_directory(value: str | os.PathLike[str], field_name: str) -> Path:
+def _canonical_existing_directory(
+    value: str | os.PathLike[str] | None,
+    field_name: str,
+) -> Path:
     if value is None or str(value).strip() == "":
         raise CheckoutSecurityError(f"{field_name} is required")
     candidate = Path(str(value)).expanduser()
@@ -471,7 +474,7 @@ class CheckoutRecord:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "CheckoutRecord":
-        defaults = {
+        defaults: dict[str, Any] = {
             "checkout_id": "",
             "mode": "metadata_only",
             "path": None,
@@ -889,6 +892,10 @@ class CheckoutProvisioner:
         self.registry.put(record)
         try:
             if mode == "git_worktree":
+                if commit is None:  # pragma: no cover - Git identity guarantees this
+                    raise CheckoutSecurityError(
+                        "git_worktree requires a pinned Git commit"
+                    )
                 self._provision_git_worktree(record, request, repository, commit)
             elif mode == "isolated_copy":
                 self._provision_isolated_copy(record, request, repository)
