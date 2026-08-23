@@ -279,8 +279,8 @@ test("empty mention listbox is visible and announced", () => {
   assert.match(html, /一致する候補はありません/);
   assert.doesNotMatch(html, /role="option"/);
   assert.match(html, /data-composer-mention-menu="true"/);
-  assert.match(html, /rumi-composer-mention-menu absolute bottom-full left-0 mb-2/);
-  assert.doesNotMatch(html, /fixed rumi-layer-modal/);
+  assert.match(html, /rumi-composer-mention-menu rumi-composer-candidate-popover fixed rumi-layer-modal/);
+  assert.match(html, /data-composer-candidate-scroller="true"/);
 });
 
 test("JSON list panel renders trigger-neutral payload data", () => {
@@ -701,6 +701,53 @@ test("model candidate popup stays inside the viewport when anchored near the lef
       left: 8,
       top: 202,
       width: 344,
+      transform: "translateY(-100%)",
+    },
+  );
+});
+
+test("composer candidates cap and scroll above a narrow mobile composer", () => {
+  assert.deepEqual(
+    modelCandidatePopupStyleForAnchor(
+      { left: 64, right: 382, top: 725, bottom: 769 },
+      { width: 390, height: 844 },
+    ),
+    {
+      left: 8,
+      top: 717,
+      width: 374,
+      maxHeight: 384,
+      transform: "translateY(-100%)",
+    },
+  );
+});
+
+test("composer candidates move below the anchor when an IME shrinks the visual viewport", () => {
+  assert.deepEqual(
+    modelCandidatePopupStyleForAnchor(
+      { left: 64, right: 382, top: 230, bottom: 274 },
+      { width: 390, height: 360, offsetTop: 200 },
+    ),
+    {
+      left: 8,
+      top: 282,
+      width: 374,
+      maxHeight: 270,
+    },
+  );
+});
+
+test("composer candidates honor visual viewport offsets during browser zoom", () => {
+  assert.deepEqual(
+    modelCandidatePopupStyleForAnchor(
+      { left: 112, right: 382, top: 450, bottom: 494 },
+      { width: 320, height: 420, offsetLeft: 40, offsetTop: 100 },
+    ),
+    {
+      left: 48,
+      top: 442,
+      width: 304,
+      maxHeight: 334,
       transform: "translateY(-100%)",
     },
   );

@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -2038,6 +2038,87 @@ test("slash and mention candidates share one full-width JSON palette", async ({ 
   await expect(composer).toHaveAttribute("aria-activedescendant", "composer-slash-command-option-0");
 });
 
+test("mobile composer and candidate palettes remain inside the visual viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDefaultspack(page, "/chat");
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const composerShell = page.locator(".rumi-composer-shell");
+  const historyRail = page.locator(".rumi-history-rail");
+  const assertHorizontalContainment = async (viewportWidth: number) => {
+    const geometry = await page.evaluate(() => {
+      const shell = document.querySelector(".rumi-composer-shell")?.getBoundingClientRect();
+      const textarea = document.querySelector("textarea.rumi-composer-textarea")?.getBoundingClientRect();
+      const send = document.querySelector(".rumi-send-button")?.getBoundingClientRect();
+      const rail = document.querySelector(".rumi-history-rail")?.getBoundingClientRect();
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        shell: shell && { left: shell.left, right: shell.right },
+        textarea: textarea && { left: textarea.left, right: textarea.right },
+        send: send && { left: send.left, right: send.right },
+        rail: rail && { left: rail.left, right: rail.right },
+      };
+    });
+    expect(geometry.documentWidth).toBeLessThanOrEqual(viewportWidth);
+    for (const rect of [geometry.shell, geometry.textarea, geometry.send, geometry.rail]) {
+      if (!rect) continue;
+      expect(rect.left).toBeGreaterThanOrEqual(0);
+      expect(rect.right).toBeLessThanOrEqual(viewportWidth);
+    }
+  };
+  const assertPaletteContainment = async (
+    palette: Locator,
+    viewport: { width: number; height: number },
+  ) => {
+    await expect(palette).toBeVisible();
+    const box = await palette.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+    const scrollState = await palette.locator("[data-composer-candidate-scroller]").evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      overflowY: getComputedStyle(element).overflowY,
+    }));
+    expect(scrollState.clientHeight).toBeLessThanOrEqual(scrollState.scrollHeight);
+    expect(scrollState.overflowY).toBe("auto");
+  };
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+    { width: 320, height: 620 },
+    { width: 390, height: 340 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(composerShell).toBeVisible();
+    await assertHorizontalContainment(viewport.width);
+
+    await composer.fill("@");
+    const mentions = page.getByTestId("composer-at-mention-candidates");
+    await assertPaletteContainment(mentions, viewport);
+    await composer.press("Escape");
+    await expect(mentions).toBeHidden();
+
+    await composer.fill("/");
+    const commands = page.getByTestId("composer-slash-command-candidates");
+    await assertPaletteContainment(commands, viewport);
+    await page.getByRole("button", { name: "close composer candidates" }).click({ position: { x: 1, y: 1 } });
+    await expect(commands).toBeHidden();
+    await composer.fill("");
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await composer.focus();
+  await composer.press("Tab");
+  await expect(composer).not.toBeFocused();
+  await expect(historyRail).toBeVisible();
+  await assertHorizontalContainment(390);
+});
+
 test("composer removes file mention metadata when its attachment is removed", async ({ page }) => {
   const fileRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
@@ -2619,7 +2700,7 @@ test("composer browser behavior covers long text popovers and mobile coding trus
   expect(mentionBox!.y).toBeGreaterThanOrEqual(0);
   expect(mentionBox!.x + mentionBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  await page.getByLabel("close mention menu").click({ position: { x: 4, y: 4 } });
+  await page.getByLabel("close composer candidates").click({ position: { x: 4, y: 4 } });
   await expect(mentions).toBeHidden();
 
   await page.setViewportSize({ width: 390, height: 820 });

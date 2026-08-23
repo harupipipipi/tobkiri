@@ -2092,15 +2092,20 @@ export function JsonListPanel({
   activeIndex,
   onActiveIndexChange,
   onSelect,
+  positionStyle,
 }: {
   payload: JsonListPanelPayload;
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
   onSelect: (index: number) => void;
+  positionStyle?: CSSProperties;
 }) {
   const HeaderIcon = composerIconForName(payload.header.icon, Wrench);
   const maxHeightRem = Math.min(Math.max(payload.maxHeightRem ?? 24, 12), 32);
-  const style = { "--rumi-json-list-max-height": `${maxHeightRem}rem` } as CSSProperties;
+  const style = {
+    "--rumi-json-list-max-height": `${maxHeightRem}rem`,
+    ...positionStyle,
+  } as CSSProperties;
 
   return (
     <div
@@ -2111,16 +2116,16 @@ export function JsonListPanel({
       data-json-list-template={payload.id}
       data-composer-mention-menu
       style={style}
-      className="rumi-composer-mention-menu absolute bottom-full left-0 mb-2 rumi-layer-modal w-full overflow-hidden rumi-popover"
+      className="rumi-composer-mention-menu rumi-composer-candidate-popover fixed rumi-layer-modal overflow-hidden rumi-popover"
     >
-      <div className="border-b border-white/[0.06] px-3 py-2 flex items-center justify-between gap-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2">
         <span className="inline-flex min-w-0 items-center gap-2">
           <HeaderIcon size={13} className="text-zinc-500" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{payload.header.label}</span>
+          <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{payload.header.label}</span>
         </span>
         {payload.header.showCount !== false && <span className="text-[10px] text-zinc-600">{payload.items.length}</span>}
       </div>
-      <div className="overflow-y-auto py-1">
+      <div data-composer-candidate-scroller className="min-h-0 flex-1 overflow-y-auto py-1">
         {payload.items.length === 0 && (
           <div role="status" aria-live="polite" data-testid={`${payload.id}-empty`} className="px-3 py-4 text-sm leading-relaxed text-zinc-400">
             {payload.empty.message}
@@ -2155,7 +2160,7 @@ export function JsonListPanel({
                 </span>
               </span>
               {item.badges && item.badges.length > 0 && (
-                <span className="flex flex-shrink-0 items-center gap-1">
+                <span data-composer-candidate-badges className="flex max-w-[45%] flex-shrink-0 flex-wrap items-center justify-end gap-1">
                   {item.badges.map((badge, badgeIndex) => (
                     <span key={`${badge.label}:${badgeIndex}`} className={`rounded-full border px-1.5 py-0.5 text-[9px] leading-none ${JSON_LIST_BADGE_TONE_CLASS[badge.tone]}`}>
                       {badge.label}
@@ -2509,23 +2514,76 @@ function modelCandidateApiKeyBadge(candidate: ModelCommandCandidate): string | n
   return null;
 }
 
-type PopupAnchorRect = Pick<DOMRect, "left" | "right" | "top">;
+type PopupAnchorRect = Pick<DOMRect, "left" | "right" | "top"> & {
+  bottom?: number;
+};
+
+export type ComposerCandidateViewport = {
+  width: number;
+  height: number;
+  offsetLeft?: number;
+  offsetTop?: number;
+};
+
+const COMPOSER_CANDIDATE_MARGIN = 8;
+const COMPOSER_CANDIDATE_GAP = 8;
+const COMPOSER_CANDIDATE_MAX_HEIGHT = 384;
+const COMPOSER_CANDIDATE_MIN_USEFUL_HEIGHT = 144;
 
 export function modelCandidatePopupStyleForAnchor(
   anchorRect: PopupAnchorRect | null,
-  viewportWidth: number,
+  viewportOrWidth: ComposerCandidateViewport | number,
   preferredWidth = 460,
 ): CSSProperties | undefined {
-  if (!anchorRect || viewportWidth <= 0) return undefined;
-  const width = Math.min(preferredWidth, Math.max(260, viewportWidth - 16));
-  const left = Math.max(8, Math.min(anchorRect.right - width, viewportWidth - width - 8));
-  const top = Math.max(8, anchorRect.top - 8);
-  return {
+  const viewport = typeof viewportOrWidth === "number"
+    ? { width: viewportOrWidth, height: 0, offsetLeft: 0, offsetTop: 0 }
+    : viewportOrWidth;
+  if (!anchorRect || viewport.width <= 0) return undefined;
+
+  const viewportLeft = viewport.offsetLeft ?? 0;
+  const viewportTop = viewport.offsetTop ?? 0;
+  const viewportRight = viewportLeft + viewport.width;
+  const viewportBottom = viewportTop + viewport.height;
+  const width = Math.min(
+    preferredWidth,
+    Math.max(0, viewport.width - COMPOSER_CANDIDATE_MARGIN * 2),
+  );
+  const left = Math.max(
+    viewportLeft + COMPOSER_CANDIDATE_MARGIN,
+    Math.min(
+      anchorRect.right - width,
+      viewportRight - width - COMPOSER_CANDIDATE_MARGIN,
+    ),
+  );
+  const topEdge = viewportTop + COMPOSER_CANDIDATE_MARGIN;
+  const bottomEdge = viewportBottom - COMPOSER_CANDIDATE_MARGIN;
+  const anchorBottom = anchorRect.bottom ?? anchorRect.top;
+  const availableAbove = Math.max(
+    0,
+    anchorRect.top - COMPOSER_CANDIDATE_GAP - topEdge,
+  );
+  const availableBelow = viewport.height > 0
+    ? Math.max(0, bottomEdge - anchorBottom - COMPOSER_CANDIDATE_GAP)
+    : 0;
+  const placeAbove = viewport.height <= 0
+    || availableAbove >= COMPOSER_CANDIDATE_MIN_USEFUL_HEIGHT
+    || availableAbove >= availableBelow;
+
+  const style: CSSProperties = {
     left,
-    top,
+    top: placeAbove
+      ? Math.max(topEdge, anchorRect.top - COMPOSER_CANDIDATE_GAP)
+      : Math.min(bottomEdge, anchorBottom + COMPOSER_CANDIDATE_GAP),
     width,
-    transform: "translateY(-100%)",
   };
+  if (placeAbove) style.transform = "translateY(-100%)";
+  if (viewport.height > 0) {
+    style.maxHeight = Math.min(
+      COMPOSER_CANDIDATE_MAX_HEIGHT,
+      placeAbove ? availableAbove : availableBelow,
+    );
+  }
+  return style;
 }
 
 function ModelCommandCandidatePopup({
@@ -2550,9 +2608,9 @@ function ModelCommandCandidatePopup({
       role="listbox"
       aria-label="Model candidates"
       style={style}
-      className="fixed rumi-layer-modal w-[min(460px,calc(100vw-32px))] overflow-hidden rumi-popover"
+      className="rumi-composer-candidate-popover fixed rumi-layer-modal flex flex-col overflow-hidden rumi-popover"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Models</span>
         {onClose && (
           <button
@@ -2565,7 +2623,7 @@ function ModelCommandCandidatePopup({
           </button>
         )}
       </div>
-      <div className="max-h-64 overflow-y-auto py-1">
+      <div data-composer-candidate-scroller className="min-h-0 flex-1 overflow-y-auto py-1">
         {candidates.map((candidate, index) => {
           const badge = modelCandidateApiKeyBadge(candidate);
           return (
@@ -2964,14 +3022,14 @@ export function ComposerRenderer({
     ? AT_MENTION_LISTBOX_ID
     : showCommandSuggestions
       ? COMMAND_LISTBOX_ID
-      : commandArgumentPalette
+      : commandArgumentPalette && textareaFocused
         ? COMMAND_ARGUMENT_LISTBOX_ID
         : undefined;
   const activeComposerOptionId = atMentionOpen && atMentionCandidates.length > 0
     ? `composer-at-mention-option-${selectedAtMentionIndex}`
     : showCommandSuggestions && matchedCommands.length > 0
       ? `composer-slash-command-option-${selectedCommandIndex}`
-      : commandArgumentPalette
+      : commandArgumentPalette && textareaFocused
         ? `${commandArgumentPalette.id}-option-0`
         : undefined;
 
@@ -2985,7 +3043,23 @@ export function ComposerRenderer({
   const updateComposerPopoverAnchor = useCallback(() => {
     if (typeof window === "undefined") return;
     const anchorRect = textareaRef.current?.getBoundingClientRect() ?? null;
-    setComposerPopoverStyle(modelCandidatePopupStyleForAnchor(anchorRect, window.innerWidth));
+    const visualViewport = window.visualViewport;
+    const viewport: ComposerCandidateViewport = visualViewport
+      ? {
+          width: visualViewport.width,
+          height: visualViewport.height,
+          offsetLeft: visualViewport.offsetLeft,
+          offsetTop: visualViewport.offsetTop,
+        }
+      : {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          offsetLeft: 0,
+          offsetTop: 0,
+        };
+    setComposerPopoverStyle(
+      modelCandidatePopupStyleForAnchor(anchorRect, viewport),
+    );
   }, []);
 
   const resizeComposerTextarea = useCallback(
@@ -3148,16 +3222,25 @@ export function ComposerRenderer({
     setOpenFolder("tools");
   }, [openFolder, templateAllowsSlashCommands]);
 
+  const hasComposerCandidateSurface = hasModelCommandCandidates
+    || showCommandSuggestions
+    || Boolean(commandArgumentPalette && textareaFocused)
+    || atMentionOpen;
+
   useEffect(() => {
-    if (!hasModelCommandCandidates) return;
+    if (!hasComposerCandidateSurface) return;
     updateComposerPopoverAnchor();
     window.addEventListener("resize", updateComposerPopoverAnchor);
     window.addEventListener("scroll", updateComposerPopoverAnchor, true);
+    window.visualViewport?.addEventListener("resize", updateComposerPopoverAnchor);
+    window.visualViewport?.addEventListener("scroll", updateComposerPopoverAnchor);
     return () => {
       window.removeEventListener("resize", updateComposerPopoverAnchor);
       window.removeEventListener("scroll", updateComposerPopoverAnchor, true);
+      window.visualViewport?.removeEventListener("resize", updateComposerPopoverAnchor);
+      window.visualViewport?.removeEventListener("scroll", updateComposerPopoverAnchor);
     };
-  }, [hasModelCommandCandidates, updateComposerPopoverAnchor]);
+  }, [hasComposerCandidateSurface, updateComposerPopoverAnchor]);
 
   useEffect(() => {
     textareaRef.current?.focus({ preventScroll: true });
@@ -3280,9 +3363,9 @@ export function ComposerRenderer({
   }, [input, textareaFocused, updateAtMentionStateFromInput]);
 
   useIsomorphicLayoutEffect(() => {
-    if (!hasModelCommandCandidates) return;
+    if (!hasComposerCandidateSurface) return;
     updateComposerPopoverAnchor();
-  }, [hasModelCommandCandidates, updateComposerPopoverAnchor]);
+  }, [hasComposerCandidateSurface, updateComposerPopoverAnchor]);
 
   const handleInputChange = useCallback(
     (value: string) => {
@@ -4233,13 +4316,71 @@ export function ComposerRenderer({
         ["models", "Models", SlidersHorizontal],
       ] as const);
 
+  const candidateSurface = hasComposerCandidateSurface ? (
+    <>
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="close composer candidates"
+        className="fixed inset-0 rumi-layer-global-overlay cursor-default bg-transparent"
+        onClick={() => {
+          setAtMentionOpen(false);
+          setTextareaFocused(false);
+          onModelCommandCandidatesClose?.();
+        }}
+      />
+      {hasModelCommandCandidates && (
+        <ModelCommandCandidatePopup
+          candidates={modelCommandCandidates}
+          activeIndex={selectedModelCandidateIndex}
+          onActiveIndexChange={setSelectedModelCandidateIndex}
+          onSelect={chooseModelCommandCandidate}
+          onClose={onModelCommandCandidatesClose}
+          style={composerPopoverStyle}
+        />
+      )}
+      {showCommandSuggestions && (
+        <JsonListPanel
+          payload={commandPalette}
+          activeIndex={selectedCommandIndex}
+          onActiveIndexChange={setSelectedCommandIndex}
+          onSelect={(index) => chooseCommand(matchedCommands[index].id)}
+          positionStyle={composerPopoverStyle}
+        />
+      )}
+      {commandArgumentPalette && textareaFocused && (
+        <JsonListPanel
+          payload={commandArgumentPalette}
+          activeIndex={0}
+          onActiveIndexChange={() => undefined}
+          onSelect={() => textareaRef.current?.focus({ preventScroll: true })}
+          positionStyle={composerPopoverStyle}
+        />
+      )}
+      {atMentionOpen && (
+        <JsonListPanel
+          payload={atMentionPalette}
+          activeIndex={selectedAtMentionIndex}
+          onActiveIndexChange={setSelectedAtMentionIndex}
+          onSelect={(index) => handleAtMentionSelect(atMentionCandidates[index])}
+          positionStyle={composerPopoverStyle}
+        />
+      )}
+    </>
+  ) : null;
+
   return (
     <div
-      className={`${isNewConversation ? "w-full px-4" : "rumi-composer-dock px-4 pb-3 pt-2 bg-[#09090b] flex-shrink-0 max-[640px]:px-2 max-[640px]:pb-2"}`}
+      className={`min-w-0 max-w-full overflow-x-clip box-border ${isNewConversation ? "w-full px-4" : "rumi-composer-dock px-4 pb-3 pt-2 bg-[#09090b] flex-shrink-0 max-[640px]:px-2 max-[640px]:pb-2"}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      <div className={`rumi-composer-shell ${isNewConversation ? "rumi-composer-shell-new mx-auto" : "mx-auto"}`}>
+      {candidateSurface && (
+        typeof document !== "undefined"
+          ? createPortal(candidateSurface, document.body)
+          : candidateSurface
+      )}
+      <div className={`rumi-composer-shell min-w-0 max-w-full box-border ${isNewConversation ? "rumi-composer-shell-new mx-auto" : "mx-auto"}`}>
         <RuntimeCapabilityBanner
           visible={imageBridgePlanned}
           onSwitchToVisionModel={onSwitchToVisionModel}
@@ -4252,7 +4393,7 @@ export function ComposerRenderer({
             isNewConversation
               ? "rumi-composer-new border-transparent bg-transparent"
               : "rounded-2xl max-[640px]:rounded-2xl"
-          } relative flex flex-col border overflow-visible`}
+          } relative flex min-w-0 max-w-full flex-col border overflow-visible box-border`}
         >
           {apiKeyPromptProfile && (
             <ProviderApiKeyPrompt
@@ -4261,52 +4402,6 @@ export function ComposerRenderer({
               onSave={saveProviderApiKey}
             />
           )}
-          {hasModelCommandCandidates && (
-            <ModelCommandCandidatePopup
-              candidates={modelCommandCandidates}
-              activeIndex={selectedModelCandidateIndex}
-              onActiveIndexChange={setSelectedModelCandidateIndex}
-              onSelect={chooseModelCommandCandidate}
-              onClose={onModelCommandCandidatesClose}
-              style={composerPopoverStyle}
-            />
-          )}
-          {showCommandSuggestions && (
-            <JsonListPanel
-              payload={commandPalette}
-              activeIndex={selectedCommandIndex}
-              onActiveIndexChange={setSelectedCommandIndex}
-              onSelect={(index) => chooseCommand(matchedCommands[index].id)}
-            />
-          )}
-
-          {commandArgumentPalette && (
-            <JsonListPanel
-              payload={commandArgumentPalette}
-              activeIndex={0}
-              onActiveIndexChange={() => undefined}
-              onSelect={() => textareaRef.current?.focus({ preventScroll: true })}
-            />
-          )}
-
-          {atMentionOpen && (
-            <>
-              <button
-                type="button"
-                tabIndex={-1}
-                aria-label="close mention menu"
-                className="fixed inset-0 rumi-layer-local-popover cursor-default"
-                onClick={() => setAtMentionOpen(false)}
-              />
-              <JsonListPanel
-                payload={atMentionPalette}
-              activeIndex={selectedAtMentionIndex}
-              onActiveIndexChange={setSelectedAtMentionIndex}
-                onSelect={(index) => handleAtMentionSelect(atMentionCandidates[index])}
-              />
-            </>
-          )}
-
           {menuOpen && (
             <>
                       <button
@@ -4664,7 +4759,7 @@ export function ComposerRenderer({
                       aria-autocomplete="list"
                       aria-controls={activeComposerListboxId}
                       aria-activedescendant={activeComposerOptionId}
-                      aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette)}
+                      aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette && textareaFocused)}
                       role="combobox"
                       className={`rumi-composer-input-new rumi-composer-textarea relative rumi-layer-panel block min-h-[44px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-0 py-2.5 text-[16px] font-medium leading-[24px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-9" : ""}`}
                       onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
@@ -4767,7 +4862,7 @@ export function ComposerRenderer({
                     aria-autocomplete="list"
                     aria-controls={activeComposerListboxId}
                     aria-activedescendant={activeComposerOptionId}
-                    aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette)}
+                    aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette && textareaFocused)}
                     role="combobox"
                     className={`rumi-composer-textarea relative min-h-[24px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-2 pb-0 pt-2.5 text-[15px] leading-[22px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 max-[640px]:min-h-[24px] max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
                     onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}

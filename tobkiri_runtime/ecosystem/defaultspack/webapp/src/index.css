@@ -1704,24 +1704,32 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
   }
 }
 
-/* Keep @ candidates in the composer frame so they cannot drift with viewport
-   coordinates. The candidate list grows upward from the composer and scrolls
-   only after it reaches the available desktop height. */
-.rumi-composer-mention-menu {
+/* Candidate surfaces share one fixed, body-portaled geometry contract. Their
+   inline placement is derived from the visual viewport so browser zoom, safe
+   area offsets and an open software keyboard cannot move them offscreen. */
+.rumi-composer-candidate-popover {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  /* The composer can sit at the bottom of a conversation or around the middle
-     of a new-chat screen. Half the viewport minus the title/chrome allowance
-     is the safe space common to both placements, so the JSON maximum never
-     pushes the panel beyond the top edge. */
-  max-height: min(var(--rumi-json-list-max-height, 24rem), calc(50dvh - 6rem));
+  max-width: calc(100vw - 16px);
+  max-height: min(var(--rumi-json-list-max-height, 24rem), calc(100dvh - 16px));
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
-.rumi-composer-mention-menu > div:last-child {
+.rumi-composer-candidate-popover [data-composer-candidate-scroller] {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+@supports not (height: 100dvh) {
+  .rumi-composer-candidate-popover {
+    max-height: min(var(--rumi-json-list-max-height, 24rem), calc(100vh - 16px));
+  }
 }
 
 @media (max-width: 720px) {
