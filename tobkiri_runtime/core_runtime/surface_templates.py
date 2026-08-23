@@ -819,7 +819,7 @@ def resolve_surface_templates(
                 )
             )
             continue
-        if not pack.installed:
+        if not selected_pack.installed:
             diagnostics.append(
                 _diag(
                     "SURFACE_PACK_UNINSTALLED",
@@ -829,7 +829,7 @@ def resolve_surface_templates(
                 )
             )
             continue
-        if not pack.enabled:
+        if not selected_pack.enabled:
             diagnostics.append(
                 _diag(
                     "SURFACE_PACK_DISABLED",
@@ -839,7 +839,7 @@ def resolve_surface_templates(
                 )
             )
             continue
-        if not pack.approved:
+        if not selected_pack.approved:
             diagnostics.append(
                 _diag(
                     "SURFACE_PACK_UNAPPROVED",
