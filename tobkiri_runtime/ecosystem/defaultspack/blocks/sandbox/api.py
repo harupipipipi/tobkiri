@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import platform
 import threading
 import uuid
 from dataclasses import fields, is_dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +45,11 @@ from ecosystem.defaultspack.backend.sandbox.models import (
     UpdateRuntimeRequest,
 )
 from ecosystem.defaultspack.backend.sandbox.lifecycle_sweeper import LifecycleSweeper
-from ecosystem.defaultspack.backend.sandbox.operation_store import RuntimeOperationStore
+from ecosystem.defaultspack.backend.sandbox.operation_store import (
+    RuntimeOperationConflict,
+    RuntimeOperationLeaseLost,
+    RuntimeOperationStore,
+)
 from ecosystem.defaultspack.backend.sandbox.provider_registry import ProviderRegistry
 from ecosystem.defaultspack.backend.sandbox.providers import (
     CloudflareSandboxBridgeProvider,
@@ -63,6 +68,8 @@ RUNTIME_NOT_READY = "MANAGED_RUNTIME_NOT_READY"
 LOCAL_DESKTOP_PRINCIPAL_ID = "local-user"
 RUNNING_STATES = {"ready", "busy", "running"}
 DESKTOP_RUNTIME_CAPABILITIES = frozenset({"sandbox.desktop", "sandbox.desktop_input", "sandbox.snapshot"})
+_RUNTIME_OPERATION_LEASE_SECONDS = 30.0
+_RUNTIME_OPERATION_DEADLINE_SECONDS = 3600.0
 
 
 class _SandboxApiService:
@@ -79,12 +86,12 @@ class _SandboxApiService:
         )
         self.operation_store = RuntimeOperationStore(self.manager.state_dir / "runtime_operations.json")
         self.operation_cancellations = CancellationRegistry()
-        self.operation_store.interrupt_nonterminal(
-            updated_at=timestamp(),
-            message="Runtime operation was interrupted by a Rumi service restart. Start the operation again to continue.",
-        )
+        self.operation_worker_id = f"runtime-worker-{uuid.uuid4().hex}"
+        self.operation_recovery_lock = threading.RLock()
+        self.operation_recovering: set[str] = set()
         self.frame_cache = FrameCache()
         self.lease_manager = ControlLeaseManager()
+        _recover_runtime_operations(self, None)
         self.lifecycle_sweeper = LifecycleSweeper(
             lambda: _sweep_lifecycle(self),
             interval_seconds=lifecycle_sweep_interval_seconds,
@@ -117,17 +124,27 @@ def run(input_data: dict[str, Any] | None, context: dict[str, Any] | None = None
         if handler == "runtime_doctor":
             return ok(_runtime_doctor(service))
         if handler == "runtime_ensure":
-            return ok(_runtime_ensure(service, payload))
+            return _runtime_operation_response(_runtime_ensure(service, payload, context_payload))
         if handler == "runtime_update":
-            return ok(_runtime_update(service, payload))
+            return _runtime_operation_response(_runtime_update(service, payload, context_payload))
         if handler == "runtime_uninstall":
-            return _runtime_operation_response(_runtime_uninstall(service, payload))
+            return _runtime_operation_response(_runtime_uninstall(service, payload, context_payload))
         if handler == "runtime_operations":
-            return ok({"operations": _operation_store(service).list()})
+            _recover_runtime_operations(service, context_payload)
+            operations = _operation_store(service).list_projected(now=timestamp())
+            return ok(
+                {
+                    "operations": [
+                        operation
+                        for operation in operations
+                        if _runtime_operation_visible(operation, context_payload)
+                    ]
+                }
+            )
         if handler in {"runtime_operation", "runtime_operation_get"}:
-            return _runtime_operation_get(service, payload)
+            return _runtime_operation_get(service, payload, context_payload)
         if handler in {"runtime_cancel", "runtime_operation_cancel"}:
-            return _runtime_operation_cancel(service, payload)
+            return _runtime_operation_cancel(service, payload, context_payload)
         if handler == "sandbox_templates":
             return ok({"templates": _template_summaries()})
         if handler == "sandboxes_list":
@@ -232,6 +249,7 @@ def _runtime_operation_response(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _sweep_lifecycle(service: _SandboxApiService) -> list[dict[str, Any]]:
+    _recover_runtime_operations(service, None)
     results = service.manager.enforce_lifecycle()
     _cleanup_lifecycle_results(service, results)
     return results
@@ -251,20 +269,26 @@ def _cleanup_lifecycle_results(service: _SandboxApiService, results: list[dict[s
 
 
 class _RecordingProgressSink:
-    def __init__(self, service: _SandboxApiService, *, provider_id: str, operation_id: str) -> None:
+    def __init__(
+        self,
+        service: _SandboxApiService,
+        *,
+        provider_id: str,
+        operation_id: str,
+        worker_id: str,
+        fencing_token: int,
+    ) -> None:
         self._service = service
         self._provider_id = provider_id
         self._operation_id = operation_id
+        self._worker_id = worker_id
+        self._fencing_token = fencing_token
         self.events: list[ProgressEvent] = []
 
     def emit(self, event: ProgressEvent) -> None:
         current = _operation_store(self._service).get(self._operation_id)
-        if isinstance(current, dict) and current.get("status") == "cancelled":
-            raise SandboxContractError(
-                "RUNTIME_OPERATION_CANCELLED",
-                "Runtime operation was cancelled.",
-                status_code=409,
-            )
+        if isinstance(current, dict) and current.get("status") in {"cancel_requested", "cancelled"}:
+            raise RuntimeOperationCancelled("Runtime operation was cancelled.")
         normalized = ProgressEvent(
             operation_id=self._operation_id,
             stage=event.stage,
@@ -276,13 +300,12 @@ class _RecordingProgressSink:
             _progress_event_payload(normalized),
             provider_id=self._provider_id,
             updated_at=timestamp(),
+            worker_id=self._worker_id,
+            fencing_token=self._fencing_token,
+            lease_expires_at=_future_timestamp(_RUNTIME_OPERATION_LEASE_SECONDS),
         )
-        if updated.get("status") == "cancelled":
-            raise SandboxContractError(
-                "RUNTIME_OPERATION_CANCELLED",
-                "Runtime operation was cancelled.",
-                status_code=409,
-            )
+        if updated.get("status") in {"cancel_requested", "cancelled"}:
+            raise RuntimeOperationCancelled("Runtime operation was cancelled.")
         self.events.append(normalized)
 
 
@@ -329,7 +352,7 @@ def _runtime_doctor(service: _SandboxApiService) -> dict[str, Any]:
     }
 
 
-def _runtime_ensure(service: _SandboxApiService, payload: dict[str, Any]) -> dict[str, Any]:
+def _runtime_ensure(service: _SandboxApiService, payload: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     provider_id = str(payload.get("provider_id") or _default_provider_id())
     requirements = RuntimeRequirements(provider_id=provider_id)
     try:
@@ -337,37 +360,55 @@ def _runtime_ensure(service: _SandboxApiService, payload: dict[str, Any]) -> dic
     except SandboxContractError:
         return _record_operation(service, _runtime_operation("failed", provider_id=provider_id))
     operation_id = _runtime_operation_id(payload, provider_id=provider_id, action="ensure")
+    target_revision = _runtime_target_revision(payload, "ensure")
     operation = _start_runtime_operation(
         service,
         operation_id=operation_id,
         provider_id=provider_id,
         action="ensure",
+        payload=payload,
+        context=context,
         worker=lambda sink: provider.ensure(
-            EnsureRuntimeRequest(provider_id=provider_id, requirements=requirements),
+            EnsureRuntimeRequest(
+                provider_id=provider_id,
+                requirements=requirements,
+                operation_id=operation_id,
+                target_revision=target_revision,
+            ),
             sink,
         ),
     )
     return operation
 
 
-def _runtime_update(service: _SandboxApiService, payload: dict[str, Any]) -> dict[str, Any]:
+def _runtime_update(service: _SandboxApiService, payload: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     provider_id = str(payload.get("provider_id") or _default_provider_id())
     try:
         provider = service.provider_registry.get(provider_id)
     except SandboxContractError:
         return _record_operation(service, _runtime_operation("failed", provider_id=provider_id, operation_id="managed-runtime-update"))
     operation_id = _runtime_operation_id(payload, provider_id=provider_id, action="update")
+    target_revision = _runtime_target_revision(payload, "update")
     operation = _start_runtime_operation(
         service,
         operation_id=operation_id,
         provider_id=provider_id,
         action="update",
-        worker=lambda sink: provider.update(UpdateRuntimeRequest(provider_id=provider_id), sink),
+        payload=payload,
+        context=context,
+        worker=lambda sink: provider.update(
+            UpdateRuntimeRequest(
+                provider_id=provider_id,
+                operation_id=operation_id,
+                target_revision=target_revision,
+            ),
+            sink,
+        ),
     )
     return operation
 
 
-def _runtime_uninstall(service: _SandboxApiService, payload: dict[str, Any]) -> dict[str, Any]:
+def _runtime_uninstall(service: _SandboxApiService, payload: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     confirmation_error = _destructive_confirmation_error(payload, action="uninstall", resource="runtime")
     if confirmation_error is not None:
         return confirmation_error
@@ -378,12 +419,15 @@ def _runtime_uninstall(service: _SandboxApiService, payload: dict[str, Any]) -> 
     except SandboxContractError:
         return _record_operation(service, _runtime_operation("failed", provider_id=provider_id, operation_id="managed-runtime-uninstall"))
     operation_id = _runtime_operation_id(payload, provider_id=provider_id, action="uninstall")
+    target_revision = _runtime_target_revision(payload, "uninstall")
 
     def worker(sink: _RecordingProgressSink) -> OperationResult:
         result = provider.uninstall(
             UninstallRuntimeRequest(
                 provider_id=provider_id,
                 remove_state=remove_state,
+                operation_id=operation_id,
+                target_revision=target_revision,
             ),
             sink,
         )
@@ -398,30 +442,65 @@ def _runtime_uninstall(service: _SandboxApiService, payload: dict[str, Any]) -> 
         operation_id=operation_id,
         provider_id=provider_id,
         action="uninstall",
+        payload=payload,
+        context=context,
         worker=worker,
     )
 
 
-def _runtime_operation_get(service: _SandboxApiService, payload: dict[str, Any]):
+def _runtime_operation_get(
+    service: _SandboxApiService,
+    payload: dict[str, Any],
+    context: dict[str, Any],
+):
     operation_id = str(payload.get("operation_id") or "").strip()
-    operation = _operation_store(service).get(operation_id)
+    _recover_runtime_operations(service, context)
+    operation = _operation_store(service).get_projected(operation_id, now=timestamp())
     if operation is None:
         return _api_error(f"Runtime operation not found: {operation_id}", "RUNTIME_OPERATION_NOT_FOUND", 404)
+    if not _runtime_operation_visible(operation, context):
+        return _api_error("Runtime operation authority does not match.", "RUNTIME_OPERATION_FORBIDDEN", 403)
     return ok(operation)
 
 
-def _runtime_operation_cancel(service: _SandboxApiService, payload: dict[str, Any]):
+def _runtime_operation_cancel(
+    service: _SandboxApiService,
+    payload: dict[str, Any],
+    context: dict[str, Any],
+):
     operation_id = str(payload.get("operation_id") or "").strip()
-    operation = _operation_store(service).cancel(operation_id, updated_at=timestamp())
+    cancellations = _operation_cancellations(service)
+    store = _operation_store(service)
+    current = store.get_projected(operation_id, now=timestamp())
+    if isinstance(current, dict) and not _runtime_operation_visible(current, context):
+        return _api_error("Runtime operation authority does not match.", "RUNTIME_OPERATION_FORBIDDEN", 403)
+    worker_active = cancellations.contains(operation_id) or bool(
+        isinstance(current, dict) and current.get("worker_availability") == "available"
+    )
+    operation = store.request_cancel(
+        operation_id,
+        updated_at=timestamp(),
+        worker_active=worker_active,
+    )
     if operation is None:
         return _api_error(f"Runtime operation not found: {operation_id}", "RUNTIME_OPERATION_NOT_FOUND", 404)
-    if operation.get("cancelled") is True:
-        _operation_cancellations(service).cancel(operation_id)
+    if worker_active:
+        cancellations.cancel(operation_id)
     return ok(operation)
 
 
-def _record_operation(service: _SandboxApiService, operation: dict[str, Any]) -> dict[str, Any]:
-    return _operation_store(service).put(operation)
+def _record_operation(
+    service: _SandboxApiService,
+    operation: dict[str, Any],
+    *,
+    worker_id: str | None = None,
+    fencing_token: int | None = None,
+) -> dict[str, Any]:
+    return _operation_store(service).put(
+        operation,
+        worker_id=worker_id,
+        fencing_token=fencing_token,
+    )
 
 
 def _start_runtime_operation(
@@ -430,93 +509,446 @@ def _start_runtime_operation(
     operation_id: str,
     provider_id: str,
     action: str,
+    payload: dict[str, Any],
+    context: dict[str, Any],
     worker: Any,
 ) -> dict[str, Any]:
-    operation, reserved = _operation_store(service).reserve_provider_operation({
-        "operation_id": operation_id,
-        "status": "running",
-        "step": "queued",
-        "message": f"Runtime {action} operation queued.",
-        "progress": 0,
-        "progress_events": [],
-        "reboot_required": False,
+    idempotency_key = str(payload.get("idempotency_key") or payload.get("request_id") or operation_id).strip()
+    target_revision = _runtime_target_revision(payload, action)
+    if not _runtime_target_revision_supported(action, target_revision):
+        return _api_error(
+            f"Runtime provider does not support target revision: {target_revision}",
+            "RUNTIME_TARGET_REVISION_UNSUPPORTED",
+            422,
+        )
+    authority_binding = _runtime_authority_binding(context)
+    request_contract = {
+        "action": action,
         "provider_id": provider_id,
-        "updated_at": timestamp(),
-        "error": None,
-    })
+        "target_revision": target_revision,
+        "remove_state": bool(payload.get("remove_state")),
+        "authority_binding": authority_binding,
+    }
+    requested_at = timestamp()
+    try:
+        operation, reserved = _operation_store(service).reserve_provider_operation({
+            "operation_id": operation_id,
+            "idempotency_key": idempotency_key,
+            "request_digest": _runtime_request_digest(request_contract),
+            "action": action,
+            "requested_target_revision": target_revision,
+            "request_contract": request_contract,
+            "authority_binding": authority_binding,
+            "status": "queued",
+            "step": "queued",
+            "message": f"Runtime {action} operation queued.",
+            "progress": 0,
+            "progress_events": [],
+            "reboot_required": False,
+            "provider_id": provider_id,
+            "created_at": requested_at,
+            "updated_at": requested_at,
+            "deadline_at": _future_timestamp(_RUNTIME_OPERATION_DEADLINE_SECONDS),
+            "error": None,
+        })
+    except RuntimeOperationConflict as exc:
+        return _api_error(str(exc), "RUNTIME_OPERATION_IDEMPOTENCY_CONFLICT", 409)
     if not reserved:
         return operation
-    cancel_token = CancellationToken()
-    _operation_cancellations(service).register(operation_id, cancel_token)
+    leased, acquired = _operation_store(service).acquire_lease(
+        operation_id,
+        worker_id=_runtime_worker_id(service),
+        acquired_at=timestamp(),
+        lease_expires_at=_future_timestamp(_RUNTIME_OPERATION_LEASE_SECONDS),
+    )
+    if not acquired or leased is None:
+        return operation
+    _launch_runtime_worker(service, leased, worker)
+    return leased
+
+
+def _launch_runtime_worker(service: _SandboxApiService, operation: dict[str, Any], worker: Any) -> None:
+    provider_id = str(operation["provider_id"])
+    action = str(operation.get("action") or "runtime")
 
     def run_worker() -> None:
-        sink = _RecordingProgressSink(service, provider_id=provider_id, operation_id=operation_id)
-        try:
-            with cancellation_context(cancel_token):
-                result = worker(sink)
-            _record_operation(
-                service,
-                _operation_payload(result, progress_events=sink.events, operation_id=operation_id),
-            )
-        except RuntimeOperationCancelled as exc:
-            _record_operation(
-                service,
-                {
-                    "operation_id": operation_id,
-                    "status": "cancelled",
-                    "cancelled": True,
-                    "step": "cancelled",
-                    "message": str(exc) or "Runtime operation was cancelled.",
-                    "progress": 0,
-                    "progress_events": [_progress_event_payload(event) for event in sink.events],
-                    "reboot_required": False,
-                    "provider_id": provider_id,
-                    "updated_at": timestamp(),
-                    "error": None,
-                },
-            )
-        except SandboxContractError as exc:
-            _record_operation(
-                service,
-                {
-                    "operation_id": operation_id,
-                    "status": "failed",
-                    "step": "failed",
-                    "message": exc.message,
-                    "progress": 0,
-                    "progress_events": [_progress_event_payload(event) for event in sink.events],
-                    "reboot_required": False,
-                    "provider_id": provider_id,
-                    "updated_at": timestamp(),
-                    "error": {"code": exc.code, "message": exc.message, "details": _jsonable(exc.details)},
-                },
-            )
-        except Exception as exc:
-            _record_operation(
-                service,
-                {
-                    "operation_id": operation_id,
-                    "status": "failed",
-                    "step": "failed",
-                    "message": f"Runtime {action} operation failed: {exc}",
-                    "progress": 0,
-                    "progress_events": [_progress_event_payload(event) for event in sink.events],
-                    "reboot_required": False,
-                    "provider_id": provider_id,
-                    "updated_at": timestamp(),
-                    "error": {"code": RUNTIME_NOT_READY, "message": str(exc)},
-                },
-            )
-        finally:
-            _operation_cancellations(service).unregister(operation_id, cancel_token)
+        with _operation_store(service).provider_execution(provider_id):
+            _run_runtime_worker(service, operation, worker)
 
     thread = threading.Thread(
         target=run_worker,
-        name=f"rumi-runtime-{provider_id}-{action}",
+        name=f"tobkiri-runtime-{provider_id}-{action}",
         daemon=True,
     )
     thread.start()
-    return operation
+
+
+def _run_runtime_worker(service: _SandboxApiService, operation: dict[str, Any], worker: Any) -> None:
+    operation_id = str(operation["operation_id"])
+    provider_id = str(operation["provider_id"])
+    action = str(operation.get("action") or "runtime")
+    worker_id = str(operation["worker_id"])
+    fencing_token = int(operation["fencing_token"])
+    cancel_token = CancellationToken()
+    _operation_cancellations(service).register(operation_id, cancel_token)
+
+    heartbeat_stop = threading.Event()
+    heartbeat_thread = threading.Thread(
+        target=_heartbeat_runtime_worker,
+        args=(service, operation_id, worker_id, fencing_token, heartbeat_stop),
+        name=f"tobkiri-runtime-heartbeat-{operation_id}",
+        daemon=True,
+    )
+    sink = _RecordingProgressSink(
+        service,
+        provider_id=provider_id,
+        operation_id=operation_id,
+        worker_id=worker_id,
+        fencing_token=fencing_token,
+    )
+    try:
+        current = _operation_store(service).heartbeat(
+            operation_id,
+            worker_id=worker_id,
+            fencing_token=fencing_token,
+            heartbeat_at=timestamp(),
+            lease_expires_at=_future_timestamp(_RUNTIME_OPERATION_LEASE_SECONDS),
+        )
+        if current.get("status") == "cancel_requested":
+            raise RuntimeOperationCancelled("Runtime operation was cancelled.")
+        heartbeat_thread.start()
+        with cancellation_context(cancel_token):
+            result = worker(sink)
+        _record_operation(
+            service,
+            _operation_payload(result, progress_events=sink.events, operation_id=operation_id),
+            worker_id=worker_id,
+            fencing_token=fencing_token,
+        )
+    except RuntimeOperationCancelled:
+        _operation_store(service).acknowledge_cancel(
+            operation_id,
+            updated_at=timestamp(),
+            worker_id=worker_id,
+            fencing_token=fencing_token,
+        )
+    except SandboxContractError as exc:
+        _record_operation(
+            service,
+            {
+                "operation_id": operation_id,
+                "status": "failed",
+                "step": "failed",
+                "message": exc.message,
+                "progress": 0,
+                "progress_events": [_progress_event_payload(event) for event in sink.events],
+                "reboot_required": False,
+                "provider_id": provider_id,
+                "updated_at": timestamp(),
+                "error": {"code": exc.code, "message": exc.message, "details": _jsonable(exc.details)},
+            },
+            worker_id=worker_id,
+            fencing_token=fencing_token,
+        )
+    except RuntimeOperationLeaseLost:
+        return
+    except Exception as exc:  # pragma: no cover - provider boundary defense
+        _record_operation(
+            service,
+            {
+                "operation_id": operation_id,
+                "status": "failed",
+                "step": "failed",
+                "message": f"Runtime {action} operation failed: {exc}",
+                "progress": 0,
+                "progress_events": [_progress_event_payload(event) for event in sink.events],
+                "reboot_required": False,
+                "provider_id": provider_id,
+                "updated_at": timestamp(),
+                "error": {"code": RUNTIME_NOT_READY, "message": str(exc)},
+            },
+            worker_id=worker_id,
+            fencing_token=fencing_token,
+        )
+    finally:
+        final_operation = _operation_store(service).get(operation_id)
+        if (
+            isinstance(final_operation, dict)
+            and final_operation.get("status") == "cancel_requested"
+        ):
+            try:
+                _operation_store(service).acknowledge_cancel(
+                    operation_id,
+                    updated_at=timestamp(),
+                    worker_id=worker_id,
+                    fencing_token=fencing_token,
+                )
+            except RuntimeOperationLeaseLost:
+                pass
+        heartbeat_stop.set()
+        _operation_cancellations(service).unregister(operation_id, cancel_token)
+
+
+def _heartbeat_runtime_worker(
+    service: _SandboxApiService,
+    operation_id: str,
+    worker_id: str,
+    fencing_token: int,
+    stop: threading.Event,
+) -> None:
+    interval = max(0.1, _RUNTIME_OPERATION_LEASE_SECONDS / 3)
+    while not stop.wait(interval):
+        try:
+            operation = _operation_store(service).heartbeat(
+                operation_id,
+                worker_id=worker_id,
+                fencing_token=fencing_token,
+                heartbeat_at=timestamp(),
+                lease_expires_at=_future_timestamp(_RUNTIME_OPERATION_LEASE_SECONDS),
+            )
+            if operation.get("status") == "cancel_requested":
+                _operation_cancellations(service).cancel(operation_id)
+                return
+        except RuntimeOperationLeaseLost:
+            return
+
+
+def _recover_runtime_operations(
+    service: _SandboxApiService,
+    context: dict[str, Any] | None,
+) -> None:
+    store = _operation_store(service)
+    recovery_lock: Any = getattr(service, "operation_recovery_lock", None)
+    if not hasattr(recovery_lock, "__enter__"):
+        recovery_lock = threading.RLock()
+        setattr(service, "operation_recovery_lock", recovery_lock)
+    recovering_value = getattr(service, "operation_recovering", None)
+    recovering: set[str]
+    if isinstance(recovering_value, set):
+        recovering = recovering_value
+    else:
+        recovering = set()
+        setattr(service, "operation_recovering", recovering)
+    now = timestamp()
+    store.expire_deadlines(now=now)
+    for operation in store.recoverable(now=now):
+        if context is None:
+            if not _runtime_operation_has_bound_authority(operation):
+                continue
+        elif not _runtime_operation_visible(operation, context):
+            continue
+        operation_id = str(operation.get("operation_id") or "")
+        with recovery_lock:
+            if operation_id in recovering:
+                continue
+            recovering.add(operation_id)
+        thread = threading.Thread(
+            target=_recover_runtime_operation,
+            args=(service, operation_id),
+            name=f"tobkiri-runtime-recovery-{operation_id}",
+            daemon=True,
+        )
+        thread.start()
+
+
+def _recover_runtime_operation(service: _SandboxApiService, operation_id: str) -> None:
+    store = _operation_store(service)
+    try:
+        operation = store.get(operation_id)
+        if not isinstance(operation, dict):
+            return
+        provider_id = str(operation.get("provider_id") or "")
+        if not provider_id:
+            return
+        with store.provider_execution(provider_id):
+            now = timestamp()
+            operation = store.get(operation_id)
+            if not isinstance(operation, dict):
+                return
+            projected = store.project(operation, now=now)
+            if projected.get("freshness") == "authoritative":
+                return
+            if str(operation.get("status") or "") == "cancel_requested":
+                store.acknowledge_cancel(operation_id, updated_at=now)
+                return
+            worker = _recovery_worker(service, operation)
+            if worker is None:
+                return
+            leased, acquired = store.acquire_lease(
+                operation_id,
+                worker_id=_runtime_worker_id(service),
+                acquired_at=now,
+                lease_expires_at=_future_timestamp(_RUNTIME_OPERATION_LEASE_SECONDS),
+            )
+            if acquired and leased is not None:
+                _run_runtime_worker(service, leased, worker)
+    finally:
+        recovery_lock: Any = getattr(
+            service,
+            "operation_recovery_lock",
+            threading.RLock(),
+        )
+        with recovery_lock:
+            recovering_value: Any = getattr(
+                service,
+                "operation_recovering",
+                set(),
+            )
+            if isinstance(recovering_value, set):
+                recovering_value.discard(operation_id)
+
+
+def _recovery_worker(service: _SandboxApiService, operation: dict[str, Any]) -> Any | None:
+    action = str(operation.get("action") or "")
+    provider_id = str(operation.get("provider_id") or "")
+    if action not in {"ensure", "update", "uninstall"} or not provider_id:
+        return None
+    try:
+        provider = service.provider_registry.get(provider_id)
+        provider_status = provider.doctor(RuntimeRequirements(provider_id=provider_id))
+    except (SandboxContractError, OSError):
+        return None
+    target_revision = str(operation.get("requested_target_revision") or "")
+    if action == "ensure" and provider_status.ready and (
+        target_revision in {"", "ready-current", "latest"}
+        or target_revision == str(provider_status.version or "")
+    ):
+        return lambda sink: OperationResult(
+            ok=True,
+            provider_id=provider_id,
+            operation_id=str(operation["operation_id"]),
+            status="reconciled_ready",
+        )
+    if action == "uninstall" and not provider_status.installed:
+        return lambda sink: OperationResult(
+            ok=True,
+            provider_id=provider_id,
+            operation_id=str(operation["operation_id"]),
+            status="reconciled_absent",
+        )
+    if action == "ensure":
+        return lambda sink: provider.ensure(
+            EnsureRuntimeRequest(
+                provider_id=provider_id,
+                requirements=RuntimeRequirements(provider_id=provider_id),
+                operation_id=str(operation["operation_id"]),
+                target_revision=target_revision,
+            ),
+            sink,
+        )
+    if action == "update":
+        if target_revision not in {"", "latest"} and target_revision == str(
+            provider_status.version or ""
+        ):
+            return lambda sink: OperationResult(
+                ok=True,
+                provider_id=provider_id,
+                operation_id=str(operation["operation_id"]),
+                status="reconciled_ready",
+            )
+        return lambda sink: provider.update(
+            UpdateRuntimeRequest(
+                provider_id=provider_id,
+                operation_id=str(operation["operation_id"]),
+                target_revision=target_revision,
+            ),
+            sink,
+        )
+    request_contract = operation.get("request_contract")
+    remove_state = bool(request_contract.get("remove_state") if isinstance(request_contract, dict) else False)
+
+    def uninstall_worker(sink: _RecordingProgressSink) -> OperationResult:
+        result = provider.uninstall(
+            UninstallRuntimeRequest(
+                provider_id=provider_id,
+                remove_state=remove_state,
+                operation_id=str(operation["operation_id"]),
+                target_revision=target_revision,
+            ),
+            sink,
+        )
+        if result.ok:
+            for seat_id in service.manager.mark_provider_uninstalled(provider_id, remove_state=remove_state):
+                service.frame_cache.discard(seat_id)
+                service.lease_manager.invalidate(seat_id)
+        return result
+
+    return uninstall_worker
+
+
+def _runtime_worker_id(service: _SandboxApiService) -> str:
+    worker_id = str(getattr(service, "operation_worker_id", "") or "")
+    if worker_id:
+        return worker_id
+    worker_id = f"runtime-worker-{uuid.uuid4().hex}"
+    setattr(service, "operation_worker_id", worker_id)
+    return worker_id
+
+
+def _runtime_request_digest(request_contract: dict[str, Any]) -> str:
+    canonical = json.dumps(request_contract, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _runtime_authority_binding(context: dict[str, Any]) -> dict[str, str]:
+    principal_value = context.get("_authenticated_principal")
+    principal: dict[str, Any] = (
+        principal_value if isinstance(principal_value, dict) else {}
+    )
+    return {
+        "principal_id": str(context.get("authority_principal_id") or context.get("principal_id") or principal.get("principal_id") or "local-user")[:256],
+        "profile_id": str(context.get("profile_id") or principal.get("profile_id") or "")[:256],
+        "workspace_id": str(context.get("workspace_id") or "")[:256],
+        "authority_request_id": str(context.get("authority_request_id") or context.get("request_id") or "")[:256],
+        "authority_grant_id": str(context.get("authority_grant_id") or context.get("approval_id") or "")[:256],
+        "plan_digest": str(context.get("plan_digest") or context.get("resolved_plan_digest") or "")[:256],
+        "profile_revision": str(context.get("profile_revision") or "")[:128],
+    }
+
+
+def _runtime_operation_visible(
+    operation: dict[str, Any],
+    context: dict[str, Any],
+) -> bool:
+    stored = operation.get("authority_binding")
+    if not _runtime_operation_has_bound_authority(operation):
+        return False
+    assert isinstance(stored, dict)
+    current = _runtime_authority_binding(context)
+    for field in ("principal_id", "profile_id", "workspace_id"):
+        if str(stored.get(field) or "") != current[field]:
+            return False
+    for field in ("plan_digest", "profile_revision"):
+        expected = str(stored.get(field) or "")
+        if expected and expected != current[field]:
+            return False
+    return True
+
+
+def _runtime_operation_has_bound_authority(operation: dict[str, Any]) -> bool:
+    binding = operation.get("authority_binding")
+    return isinstance(binding, dict) and bool(str(binding.get("principal_id") or ""))
+
+
+def _future_timestamp(seconds: float) -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=max(0.0, seconds))).isoformat().replace("+00:00", "Z")
+
+
+def _runtime_target_revision(payload: dict[str, Any], action: str) -> str:
+    defaults = {
+        "ensure": "ready-current",
+        "update": "latest",
+        "uninstall": "absent",
+    }
+    return str(payload.get("target_revision") or defaults.get(action, "current")).strip()
+
+
+def _runtime_target_revision_supported(action: str, target_revision: str) -> bool:
+    return target_revision == {
+        "ensure": "ready-current",
+        "update": "latest",
+        "uninstall": "absent",
+    }.get(action)
 
 
 def _runtime_operation_id(payload: dict[str, Any], *, provider_id: str, action: str) -> str:

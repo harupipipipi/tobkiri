@@ -100,12 +100,16 @@ class EnsureRuntimeRequest:
     provider_id: str
     requirements: RuntimeRequirements = field(default_factory=RuntimeRequirements)
     approval_reference: str | None = None
+    operation_id: str | None = None
+    target_revision: str | None = None
 
 
 @dataclass(frozen=True)
 class UpdateRuntimeRequest:
     provider_id: str
     approval_reference: str | None = None
+    operation_id: str | None = None
+    target_revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -113,6 +117,8 @@ class UninstallRuntimeRequest:
     provider_id: str
     remove_state: bool = False
     approval_reference: str | None = None
+    operation_id: str | None = None
+    target_revision: str | None = None
 
 
 @dataclass(frozen=True)

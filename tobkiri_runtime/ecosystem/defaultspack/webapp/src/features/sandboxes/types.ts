@@ -83,6 +83,7 @@ export type RuntimeOperationStatus =
   | "reboot_pending"
   | "starting_agent"
   | "health_checking"
+  | "cancel_requested"
   | "completed"
   | "failed"
   | "cancelled";
@@ -97,6 +98,8 @@ export type RuntimeOperation = {
   error?: RuntimeDoctorIssue | string | null;
   provider_id?: string | null;
   updated_at?: string;
+  worker_availability?: "available" | "unavailable" | "not_applicable";
+  freshness?: "authoritative" | "last_known_good";
   progress_events?: Array<{
     operation_id: string;
     stage: string;
