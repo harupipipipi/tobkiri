@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "92247604f4c33545821dd3b9a797cc99cdd85bf6cc6934408a318f76080d1e06",
+    "digest": "e17465c150c4fac2c4084bd1bf6b388d5e54e8c9d7f135a71a7cc2f0da2888e7",
     "entries": [
       {
         "path": "index.html",
@@ -955,8 +955,8 @@
       },
       {
         "path": "src/features/settings/externalInputPresentation.ts",
-        "size": 3345,
-        "sha256": "a396bfc5e571d975ac042b61f39aeb3be9adbc9e5b6061a613567d75b1c631ce"
+        "size": 3344,
+        "sha256": "f1fb2f3db7637655d97582abcf01dbf8cae877aaac084d213507a838f2d970a7"
       },
       {
         "path": "src/features/settings/resources/settingsApiResources.ts",
