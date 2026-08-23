@@ -7,11 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..extensions.activation import (
-    DEFAULT_PACK_ID,
-    selected_extension_pack_ids,
-    setup_pack_selection_path,
-)
+from ..extensions.activation import selected_extension_pack_ids
 from ._helpers import canonical_json
 from .discovery import TemplateRoot, default_template_roots
 from .models import CURRENT_TEMPLATE_SCHEMA_VERSION, TemplateTrustLevel
@@ -140,7 +136,6 @@ def _catalog_generation(
         "selected_pack_ids": sorted(
             _selected_pack_ids_for_generation(defaultspack_root, roots, descriptors)
         ),
-        "selection_sha256": _selection_sha256(defaultspack_root, roots),
         "schema_version": CURRENT_TEMPLATE_SCHEMA_VERSION,
         "files": [
             {
@@ -216,11 +211,7 @@ def _pack_manifest_sha256(root: TemplateRoot) -> str:
     if root.source_kind != "selected_sibling_pack":
         return ""
     pack_root = root.path.parent
-    for manifest_name in ("rumi-pack.json", "ecosystem.json"):
-        manifest_path = pack_root / manifest_name
-        if manifest_path.is_file():
-            return _file_sha256(manifest_path)
-    return ""
+    return _file_sha256(pack_root / "pack.v4.json")
 
 
 def _selected_pack_ids_for_generation(
@@ -233,19 +224,8 @@ def _selected_pack_ids_for_generation(
     }
     if roots is not None:
         return selected
-    configured = selected_extension_pack_ids(_default_root(defaultspack_root))
-    if configured is not None:
-        selected.update(configured - {DEFAULT_PACK_ID})
+    selected.update(selected_extension_pack_ids(_default_root(defaultspack_root)))
     return selected
-
-
-def _selection_sha256(
-    defaultspack_root: str | Path | None,
-    roots: list[str | Path | TemplateRoot] | None,
-) -> str:
-    if roots is not None:
-        return ""
-    return _file_sha256(setup_pack_selection_path(_default_root(defaultspack_root)))
 
 
 def _relative_template_path(path: Path, roots: list[Path]) -> str:

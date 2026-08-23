@@ -74,6 +74,13 @@ def build_template_catalog(
         resolved_templates.append(resolved)
         diagnostics.extend(resolved.diagnostics)
 
+    source_templates = {template.id: template for template in registry.list()}
+    for diagnostic in diagnostics:
+        _attach_source_provenance(diagnostic, source_templates)
+    for resolved in resolved_templates:
+        for diagnostic in resolved.diagnostics:
+            _attach_source_provenance(diagnostic, source_templates)
+
     catalog = project_resolved_templates(resolved_templates, activation_plan=activation_plan)
     adapter_root = (
         Path(defaultspack_root).resolve()
@@ -93,6 +100,23 @@ def build_template_catalog(
         [*catalog["template_diagnostics"], *(_diagnostic_to_dict(item) for item in diagnostics)]
     )
     return catalog
+
+
+def _attach_source_provenance(
+    diagnostic: TemplateDiagnostic,
+    templates: dict[str, RumiTemplate],
+) -> None:
+    """Add loader-owned Pack provenance to template diagnostics."""
+
+    template = templates.get(str(diagnostic.template_id or ""))
+    if template is None:
+        return
+    source_pack_id = str(template.metadata.get("source_pack_id") or "").strip()
+    source_kind = str(template.metadata.get("source_kind") or "").strip()
+    if source_pack_id:
+        diagnostic.details.setdefault("source_pack_id", source_pack_id)
+    if source_kind:
+        diagnostic.details.setdefault("source_kind", source_kind)
 
 
 def project_resolved_templates(

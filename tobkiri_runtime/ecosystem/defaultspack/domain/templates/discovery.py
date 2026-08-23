@@ -6,11 +6,9 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..extensions.activation import (
-    DEFAULT_PACK_ID,
-    selected_extension_pack_ids,
-    setup_pack_selection_path,
-)
+from core_runtime.paths import resolve_pack_locations
+
+from ..extensions.activation import selected_extension_pack_ids
 from .models import RumiTemplate, TemplateDiagnostic, TemplateTrustLevel
 from .validation import parse_template
 
@@ -49,7 +47,6 @@ def _default_template_roots_with_diagnostics(
 ) -> tuple[list[TemplateRoot], list[TemplateDiagnostic]]:
     root = _defaultspack_root(defaultspack_root)
     sibling_roots, diagnostics = _selected_sibling_template_roots(root)
-    diagnostics = [*_selection_file_diagnostics(root), *diagnostics]
     roots = [
         TemplateRoot(root / "templates", TemplateTrustLevel.BUILTIN),
         *sibling_roots,
@@ -161,10 +158,20 @@ def load_template_file(
 
 def _iter_template_files(root: Path) -> list[Path]:
     if root.is_file():
-        return [root] if root.name == "template.json" else []
+        return (
+            [root]
+            if root.name == "template.json"
+            and not root.is_symlink()
+            and _is_relative_to(root, root.parent)
+            else []
+        )
     if not root.exists():
         return []
-    return sorted(path for path in root.rglob("template.json") if path.is_file())
+    return sorted(
+        path
+        for path in root.rglob("template.json")
+        if path.is_file() and not path.is_symlink() and _is_relative_to(path, root)
+    )
 
 
 def _normalize_roots(
@@ -226,13 +233,9 @@ def _selected_sibling_template_roots(
     defaultspack_root: Path,
 ) -> tuple[list[TemplateRoot], list[TemplateDiagnostic]]:
     selected_pack_ids = selected_extension_pack_ids(defaultspack_root)
-    # A missing selection file does not authorize an all-installed-pack scan.
-    if selected_pack_ids is None:
-        return [], []
-
     roots: list[TemplateRoot] = []
     diagnostics: list[TemplateDiagnostic] = []
-    for pack_id in sorted(selected_pack_ids - {DEFAULT_PACK_ID}):
+    for pack_id in sorted(selected_pack_ids):
         if not _PACK_ID_PATTERN.fullmatch(pack_id) or pack_id in {".", ".."}:
             diagnostics.append(
                 TemplateDiagnostic(
@@ -244,19 +247,26 @@ def _selected_sibling_template_roots(
             continue
         located, mismatch = _locate_selected_pack(defaultspack_root, pack_id)
         if located is None:
+            if mismatch:
+                diagnostics.append(
+                    TemplateDiagnostic(
+                        code="template.discovery.selected_pack_manifest_mismatch",
+                        message=(f"selected sibling Pack has a mismatched v4 identity: {pack_id}"),
+                        details={"source_pack_id": pack_id},
+                    )
+                )
+            continue
+        template_root = located / "templates"
+        if template_root.exists() and not _is_relative_to(template_root, located):
             diagnostics.append(
                 TemplateDiagnostic(
-                    code=(
-                        "template.discovery.selected_pack_manifest_mismatch"
-                        if mismatch
-                        else "template.discovery.selected_pack_not_found"
-                    ),
-                    message=(f"selected template pack could not be resolved safely: {pack_id}"),
+                    code="template.discovery.selected_pack_template_root_escape",
+                    message=f"selected sibling Pack template root escapes its Pack: {pack_id}",
+                    source_path=str(template_root),
                     details={"source_pack_id": pack_id},
                 )
             )
             continue
-        template_root = located / "templates"
         roots.append(
             TemplateRoot(
                 template_root,
@@ -268,49 +278,26 @@ def _selected_sibling_template_roots(
     return roots, diagnostics
 
 
-def _selection_file_diagnostics(defaultspack_root: Path) -> list[TemplateDiagnostic]:
-    path = setup_pack_selection_path(defaultspack_root)
-    if not path.is_file():
-        return []
-    try:
-        selection = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return [
-            TemplateDiagnostic(
-                code="template.discovery.setup_pack_selection_invalid",
-                message=f"setup-pack selection is unreadable or invalid: {exc}",
-                source_path=str(path),
-            )
-        ]
-    if isinstance(selection, dict):
-        return []
-    return [
-        TemplateDiagnostic(
-            code="template.discovery.setup_pack_selection_invalid",
-            message="setup-pack selection must be a JSON object",
-            source_path=str(path),
-        )
-    ]
-
-
 def _locate_selected_pack(
     defaultspack_root: Path,
     pack_id: str,
 ) -> tuple[Path | None, bool]:
     mismatch = False
     for ecosystem_root in _candidate_ecosystem_roots(defaultspack_root):
-        candidate = (ecosystem_root / pack_id).resolve()
-        if (
-            candidate.parent != ecosystem_root.resolve()
-            or candidate == defaultspack_root.resolve()
-            or not candidate.is_dir()
-        ):
-            continue
-        manifest_pack_id = _manifest_pack_id(candidate)
-        if manifest_pack_id != pack_id:
-            mismatch = True
-            continue
-        return candidate, mismatch
+        locations = resolve_pack_locations([pack_id], str(ecosystem_root))
+        for location in locations:
+            candidate = location.pack_dir.resolve()
+            if (
+                location.is_legacy
+                or candidate.parent != ecosystem_root.resolve()
+                or candidate == defaultspack_root.resolve()
+            ):
+                continue
+            manifest_pack_id = _manifest_pack_id(candidate)
+            if manifest_pack_id != pack_id:
+                mismatch = True
+                continue
+            return candidate, mismatch
     return None, mismatch
 
 
@@ -332,20 +319,16 @@ def _candidate_ecosystem_roots(defaultspack_root: Path) -> list[Path]:
 
 
 def _manifest_pack_id(pack_root: Path) -> str:
-    for manifest_name in ("rumi-pack.json", "ecosystem.json"):
-        manifest_path = pack_root / manifest_name
-        if not manifest_path.is_file():
-            continue
-        try:
-            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return ""
-        if not isinstance(raw, dict):
-            return ""
-        pack_id = str(raw.get("pack_id") or raw.get("id") or "").strip()
-        if pack_id:
-            return pack_id
-    return ""
+    manifest_path = pack_root / "pack.v4.json"
+    if not manifest_path.is_file():
+        return ""
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(raw, dict) or not isinstance(raw.get("pack"), dict):
+        return ""
+    return str(raw["pack"].get("id") or "").strip()
 
 
 def _configured_extra_template_roots() -> list[TemplateRoot]:
