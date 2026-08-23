@@ -57,6 +57,18 @@ npm test
 
 テストは Node.js の組み込みテストランナーと `tsx` で実行します。React の表示確認は SSR または JSDOM を使うため、Vitest 固有の実行環境は必要ありません。
 
+## Launcher version 表示
+
+Home の右下には、スクリーンショットから実行中の build を識別できるように、
+小さな非インタラクティブの Launcher version label を表示します。表示値は
+`package.json` を canonical source とする `src/lib/launcherMetadata.ts` から取得します。
+frontend package/lock、Tauri、Cargo の version は同じ値に保ち、
+`ViewerVersionLabel.test.tsx` が不一致を拒否します。
+
+label は Home の scrollable content の外側に配置され、pointer event と text selection を
+受け取りません。狭い window や長い prerelease version では省略表示して layout overflow を
+防ぎますが、accessibility label には完全な version を残します。
+
 ## ディレクトリ構成
 
 ```
