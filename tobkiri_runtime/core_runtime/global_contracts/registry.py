@@ -95,6 +95,20 @@ class ContractRegistry:
                 if requirement.optional
                 else ContractStatus.MISSING_PROVIDER
             )
+            metadata: dict[str, Any] = {"revision": revision}
+            conflict_report = _build_resolution_conflict(
+                kind="incompatible_semantic",
+                requirement=requirement,
+                providers=candidates,
+                revision=revision,
+                diagnostics=(
+                    f"no compatible provider for {requirement.contract_id} "
+                    f"{requirement.version_range}",
+                    *invalid_versions,
+                ),
+            )
+            if conflict_report is not None:
+                metadata["conflict_report"] = conflict_report
             return ContractResult(
                 status,
                 diagnostics=(
@@ -102,6 +116,7 @@ class ContractRegistry:
                     f"{requirement.version_range}",
                     *invalid_versions,
                 ),
+                metadata=metadata,
             )
         ordered = tuple(
             sorted(
@@ -117,12 +132,23 @@ class ContractRegistry:
             top_priority = ordered[0].priority
             tied = tuple(item for item in ordered if item.priority == top_priority)
             if len(tied) != 1:
+                ambiguity_diagnostic = (
+                    "ambiguous one-provider resolution: "
+                    + ", ".join(item.provider_instance_id for item in tied)
+                )
                 return ContractResult(
                     ContractStatus.INCOMPATIBLE,
-                    diagnostics=(
-                        "ambiguous one-provider resolution: "
-                        + ", ".join(item.provider_instance_id for item in tied),
-                    ),
+                    diagnostics=(ambiguity_diagnostic,),
+                    metadata={
+                        "revision": revision,
+                        "conflict_report": _build_resolution_conflict(
+                            kind="ambiguous_one_provider",
+                            requirement=requirement,
+                            providers=tied,
+                            revision=revision,
+                            diagnostics=(ambiguity_diagnostic,),
+                        ),
+                    },
                 )
             return ContractResult(
                 ContractStatus.OK,
@@ -268,3 +294,48 @@ def _order_chain(
         cycle = sorted(provider_id for provider_id, count in incoming.items() if count)
         return (), "chain dependency cycle: " + ", ".join(cycle)
     return tuple(result), None
+
+
+def _build_resolution_conflict(
+    *,
+    kind: str,
+    requirement: ContractRequirement,
+    providers: tuple[ProviderDescriptor, ...],
+    revision: str,
+    diagnostics: tuple[str, ...],
+) -> dict[str, Any] | None:
+    """Project a resolver failure without exposing provider implementation source."""
+
+    if len(providers) < 2:
+        return None
+    # Local import keeps the contract model usable without initializing the repair
+    # workspace and avoids giving conflict detection any generator capability.
+    from ..pack_repair import build_pack_conflict_report
+
+    return build_pack_conflict_report(
+        kind=kind,
+        profile_id="contract-registry",
+        profile_fingerprint=revision,
+        involved_packs=[
+            {
+                "pack_id": provider.source_pack_id,
+                "version": provider.source_pack_version,
+                "artifact_hash": provider.content_hash,
+                "provider_instance_id": provider.provider_instance_id,
+            }
+            for provider in providers
+        ],
+        affected_contracts=(requirement.contract_id,),
+        schemas=[
+            schema
+            for provider in providers
+            for schema in (
+                provider.contract.input_schema,
+                provider.contract.output_schema,
+                provider.contract.event_schema,
+            )
+            if schema is not None
+        ],
+        constraints=(requirement.version_range, requirement.cardinality.value),
+        diagnostics=diagnostics,
+    )

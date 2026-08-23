@@ -29,6 +29,10 @@ _PUBLIC_EXPORTS: Dict[str, _ExportTarget] = {
     "AuditLogger": (".audit_logger", "AuditLogger"),
     "get_audit_logger": (".audit_logger", "get_audit_logger"),
     "L": (".lang", "L"),
+    "PackRepairError": (".pack_repair", "PackRepairError"),
+    "PackRepairManager": (".pack_repair", "PackRepairManager"),
+    "PACK_REPAIR_OPERATIONS": (".pack_repair", "PACK_REPAIR_OPERATIONS"),
+    "build_pack_conflict_report": (".pack_repair", "build_pack_conflict_report"),
 }
 
 

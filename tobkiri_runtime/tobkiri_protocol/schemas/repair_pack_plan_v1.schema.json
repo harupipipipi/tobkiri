@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/repair-pack-plan.v1.schema.json",
+  "title": "Tobkiri generated repair Pack plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plan_api_version", "plan_id", "conflict_id", "repair_kind", "generation_run_id", "profile_fingerprint", "packs", "inputs", "expected_outputs", "forbidden", "validation_requirements"],
+  "properties": {
+    "plan_api_version": {"const": "io.tobkiri.repair-pack-plan.v1"},
+    "plan_id": {"type": "string", "pattern": "^rpp_[0-9a-f]{24}$"},
+    "conflict_id": {"type": "string", "pattern": "^pcf_[0-9a-f]{24}$"},
+    "repair_kind": {"enum": ["provider_selection", "schema_adapter", "contract_alias", "namespace_mapping", "profile_routing", "constraint_refinement", "policy_chain"]},
+    "generation_run_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
+    "profile_fingerprint": {"$ref": "#/$defs/digest"},
+    "packs": {"type": "array", "minItems": 2, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/pack-conflict-report.v1.schema.json#/$defs/pack"}},
+    "inputs": {"type": "object", "additionalProperties": false, "required": ["contracts", "resources", "schemas", "constraints"], "properties": {"contracts": {"$ref": "#/$defs/strings"}, "resources": {"$ref": "#/$defs/strings"}, "schemas": {"type": "array", "items": {"type": "object"}}, "constraints": {"$ref": "#/$defs/strings"}}},
+    "expected_outputs": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string"}},
+    "forbidden": {"type": "object", "additionalProperties": false, "required": ["source_pack_writes", "private_source_imports", "permission_expansion", "self_approval", "automatic_activation", "secrets"], "properties": {"source_pack_writes": {"const": true}, "private_source_imports": {"const": true}, "permission_expansion": {"const": true}, "self_approval": {"const": true}, "automatic_activation": {"const": true}, "secrets": {"const": true}}},
+    "validation_requirements": {"$ref": "#/$defs/strings"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "strings": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}}
+  }
+}

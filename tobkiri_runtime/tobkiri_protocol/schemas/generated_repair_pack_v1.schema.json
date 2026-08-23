@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/generated-repair-pack.v1.schema.json",
+  "title": "Tobkiri generated repair Pack metadata v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repair_api_version", "repair_id", "plan_id", "conflict_id", "repair_kind", "generated", "generator", "generated_for", "repair", "permissions"],
+  "properties": {
+    "repair_api_version": {"const": "io.tobkiri.generated-repair-pack.v1"},
+    "repair_id": {"type": "string", "pattern": "^rpr_[0-9a-f]{24}$"},
+    "plan_id": {"type": "string", "pattern": "^rpp_[0-9a-f]{24}$"},
+    "conflict_id": {"type": "string", "pattern": "^pcf_[0-9a-f]{24}$"},
+    "repair_kind": {"enum": ["provider_selection", "schema_adapter", "contract_alias", "namespace_mapping", "profile_routing", "constraint_refinement", "policy_chain"]},
+    "generated": {"const": true},
+    "generator": {"type": "object", "additionalProperties": false, "required": ["kind", "run_id"], "properties": {"kind": {"const": "ai"}, "run_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"}}},
+    "generated_for": {"type": "object", "additionalProperties": false, "required": ["profile_fingerprint", "packs"], "properties": {"profile_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "packs": {"type": "array", "minItems": 2, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/pack-conflict-report.v1.schema.json#/$defs/pack"}}}},
+    "repair": {"type": "object"},
+    "permissions": {"const": []}
+  }
+}

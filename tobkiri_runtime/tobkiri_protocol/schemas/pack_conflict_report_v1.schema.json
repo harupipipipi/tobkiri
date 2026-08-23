@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/pack-conflict-report.v1.schema.json",
+  "title": "Tobkiri Pack conflict report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["conflict_api_version", "conflict_id", "kind", "profile_id", "profile_fingerprint", "involved_packs", "affected_contracts", "affected_resources", "schemas", "constraints", "safe_repair_kinds", "repairable", "diagnostics", "validation_requirements"],
+  "properties": {
+    "conflict_api_version": {"const": "io.tobkiri.pack-conflict-report.v1"},
+    "conflict_id": {"type": "string", "pattern": "^pcf_[0-9a-f]{24}$"},
+    "kind": {"enum": ["ambiguous_one_provider", "compatible_schema_version", "contract_alias_required", "resource_id_collision", "profile_route_ambiguity", "compatible_version_constraint", "policy_chain_supported", "incompatible_semantic", "authority_conflict"]},
+    "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
+    "profile_fingerprint": {"$ref": "#/$defs/digest"},
+    "involved_packs": {"type": "array", "minItems": 2, "maxItems": 1024, "items": {"$ref": "#/$defs/pack"}},
+    "affected_contracts": {"$ref": "#/$defs/strings"},
+    "affected_resources": {"$ref": "#/$defs/strings"},
+    "schemas": {"type": "array", "maxItems": 1024, "items": {"type": "object"}},
+    "constraints": {"$ref": "#/$defs/strings"},
+    "safe_repair_kinds": {"type": "array", "uniqueItems": true, "items": {"enum": ["provider_selection", "schema_adapter", "contract_alias", "namespace_mapping", "profile_routing", "constraint_refinement", "policy_chain"]}},
+    "repairable": {"type": "boolean"},
+    "diagnostics": {"$ref": "#/$defs/strings"},
+    "validation_requirements": {"$ref": "#/$defs/strings"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "strings": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+    "pack": {"type": "object", "additionalProperties": false, "required": ["pack_id", "version", "artifact_hash"], "properties": {"pack_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"}, "version": {"type": "string", "minLength": 1}, "artifact_hash": {"$ref": "#/$defs/digest"}, "provider_instance_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"}}}
+  }
+}
