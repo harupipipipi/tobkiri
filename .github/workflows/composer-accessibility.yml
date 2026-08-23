@@ -1,0 +1,51 @@
+name: Composer accessibility
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/composer-accessibility.yml"
+      - "tobkiri_runtime/ecosystem/defaultspack/webapp/e2e/ui-contract.spec.ts"
+      - "tobkiri_runtime/ecosystem/defaultspack/webapp/src/index.css"
+      - "tobkiri_runtime/ecosystem/defaultspack/webapp/src/renderers/ComposerRenderer.tsx"
+      - "tobkiri_runtime/ecosystem/defaultspack/webapp/src/renderers/ComposerRenderer.test.ts"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: composer-accessibility-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  browser-contract:
+    name: browser-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: >-
+            tobkiri_runtime/ecosystem/defaultspack/webapp/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install isolated Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run composer keyboard and ARIA browser contracts
+        env:
+          PLAYWRIGHT_DISABLE_VIDEO: "1"
+        run: >-
+          npm run test:e2e:ui-contract --
+          --grep
+          "composer mention keyboard and ARIA|composer controls are keyboard reachable|composer uses a leading plus menu|attachment remove and cancel actions"
