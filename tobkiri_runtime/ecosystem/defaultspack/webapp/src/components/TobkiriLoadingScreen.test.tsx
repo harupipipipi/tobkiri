@@ -9,7 +9,31 @@ import {
   TOBKIRI_STARTUP_ERROR_LABEL,
   TobkiriLoadingScreen,
 } from "./TobkiriLoadingScreen";
-import { HostBootstrap, HostBootstrapFallback } from "../host/HostBootstrap";
+import {
+  HostBootstrap,
+  HostBootstrapFallback,
+  type UiReadinessSnapshot,
+  uiReadinessFailureSummary,
+  validUiReadiness,
+} from "../host/HostBootstrap";
+
+const completeReadiness = (overrides: Partial<UiReadinessSnapshot> = {}): UiReadinessSnapshot => ({
+  schema: "io.tobkiri.ui-readiness.v1",
+  status: "UP",
+  ready: true,
+  probes: Object.fromEntries([
+    "static_bundle",
+    "chat_route",
+    "ui_catalog",
+    "settings",
+    "model_catalog",
+    "tool_catalog",
+    "conversation_bootstrap",
+    "default_conversation_load",
+    "auth_session",
+  ].map((name) => [name, { status: "UP", code: "READY" }])) as UiReadinessSnapshot["probes"],
+  ...overrides,
+});
 
 test("renders the Tobkiri Launcher animation as the accessible shell loading state", () => {
   const markup = renderToStaticMarkup(<TobkiriLoadingScreen />);
@@ -95,6 +119,29 @@ test("every unresolved route remains unavailable without a Chat fallback", () =>
   assert.match(markup, />Retry</);
   assert.doesNotMatch(markup, /Legacy ChatApp|data-legacy-chat-app/);
   }
+});
+
+test("validates the complete readiness contract and the explicit recovery exception", () => {
+  assert.equal(validUiReadiness(completeReadiness()), true);
+  assert.equal(validUiReadiness(completeReadiness({ probes: {} })), false);
+  assert.equal(validUiReadiness(completeReadiness({ status: "DEGRADED" })), false);
+  assert.equal(validUiReadiness(completeReadiness({
+    status: "DEGRADED",
+    mode: "profile_reconfirmation_required",
+  })), true);
+});
+
+test("readiness failure details name the failed probe and safe code", () => {
+  const readiness = completeReadiness({
+    status: "DOWN",
+    ready: false,
+  });
+  readiness.probes.settings = { status: "DOWN", code: "PROBE_TIMEOUT" };
+
+  assert.equal(
+    uiReadinessFailureSummary(readiness),
+    "UI readiness DOWN: settings (PROBE_TIMEOUT)",
+  );
 });
 
 test("vendors the exact local animation shipped by Tobkiri Launcher", async () => {

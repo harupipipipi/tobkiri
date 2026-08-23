@@ -34,6 +34,31 @@ type UiCatalogEnvelope = {
   dynamic_host?: FrontendCatalog | null;
 };
 
+export type UiReadinessProbe = {
+  status: "UP" | "DOWN" | "DEGRADED" | "UNKNOWN";
+  code: string;
+};
+
+export type UiReadinessSnapshot = {
+  schema: "io.tobkiri.ui-readiness.v1";
+  status: "UP" | "DOWN" | "DEGRADED";
+  ready: boolean;
+  mode?: string;
+  probes: Record<string, UiReadinessProbe>;
+};
+
+const REQUIRED_UI_READINESS_PROBES = [
+  "static_bundle",
+  "chat_route",
+  "ui_catalog",
+  "settings",
+  "model_catalog",
+  "tool_catalog",
+  "conversation_bootstrap",
+  "default_conversation_load",
+  "auth_session",
+] as const;
+
 export class FrontendCapabilityError extends Error {
   code?: string;
 
@@ -54,6 +79,46 @@ export async function fetchDynamicCatalog(): Promise<FrontendCatalog> {
     throw new Error("dynamic_frontend_catalog_unavailable");
   }
   return catalog;
+}
+
+export function uiReadinessFailureSummary(snapshot: UiReadinessSnapshot): string {
+  const failures = Object.entries(snapshot.probes)
+    .filter(([, probe]) => probe.status !== "UP")
+    .map(([name, probe]) => `${name} (${probe.code || "INVALID_PROBE"})`);
+  return failures.length > 0
+    ? `UI readiness ${snapshot.status}: ${failures.join(", ")}`
+    : `UI readiness ${snapshot.status}: readiness contract was not satisfied`;
+}
+
+export function validUiReadiness(snapshot: UiReadinessSnapshot): boolean {
+  const complete = REQUIRED_UI_READINESS_PROBES.every((name) => {
+    const probe = snapshot.probes?.[name];
+    return probe
+      && ["UP", "DOWN", "DEGRADED", "UNKNOWN"].includes(probe.status)
+      && typeof probe.code === "string"
+      && probe.code.trim().length > 0;
+  });
+  if (!complete || snapshot.schema !== "io.tobkiri.ui-readiness.v1") return false;
+  if (snapshot.status === "UP") return snapshot.ready === true;
+  return snapshot.status === "DEGRADED"
+    && snapshot.ready === true
+    && snapshot.mode === "profile_reconfirmation_required";
+}
+
+async function fetchUiReadiness(): Promise<UiReadinessSnapshot> {
+  const response = await defaultspackApiFetch("/ui-readiness", {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  const envelope = await response.json() as ApiEnvelope<UiReadinessSnapshot>;
+  const snapshot = envelope.data;
+  if (!response.ok || envelope.success !== true || !snapshot) {
+    throw new Error("readiness_endpoint (READINESS_ENDPOINT_UNAVAILABLE)");
+  }
+  if (!validUiReadiness(snapshot)) {
+    throw new Error(uiReadinessFailureSummary(snapshot));
+  }
+  return snapshot;
 }
 
 export async function invokeCapability(
@@ -183,14 +248,36 @@ export function HostBootstrap({
     return value;
   }, []);
 
+  const refreshBootstrap = useCallback(async (): Promise<void> => {
+    setReadinessError(null);
+    setReadiness(null);
+    try {
+      const snapshot = await fetchUiReadiness();
+      setReadiness(snapshot);
+      try {
+        await refreshCatalog();
+      } catch {
+        if (snapshot.mode === "profile_reconfirmation_required") {
+          setFailed(true);
+          return;
+        }
+        setReadinessError("ui_catalog (CATALOG_UNAVAILABLE_AFTER_READINESS)");
+      }
+    } catch (error) {
+      setReadinessError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "readiness_endpoint (INVALID_READINESS)",
+      );
+    }
+  }, [refreshCatalog]);
+
   useEffect(() => {
     if (hostRoute !== null) return undefined;
     let active = true;
-    void refreshCatalog().catch(
-      () => {
-        if (active) setFailed(true);
-      },
-    );
+    void refreshBootstrap().catch(() => {
+      if (active) setReadinessError("readiness_endpoint (READINESS_ENDPOINT_UNAVAILABLE)");
+    });
     return () => {
       active = false;
     };
@@ -218,8 +305,17 @@ export function HostBootstrap({
     };
   }, [refreshCatalog]);
 
+  if (readinessError) {
+    return (
+      <TobkiriLoadingScreen
+        error={readinessError}
+        onRetry={() => void refreshBootstrap()}
+      />
+    );
+  }
+  if (!readiness) return <TobkiriLoadingScreen />;
   const retry = () => {
-    void refreshCatalog().catch(() => undefined);
+    void refreshBootstrap().catch(() => undefined);
   };
   if (!requested) {
     if (hostRoute === "/approval") {

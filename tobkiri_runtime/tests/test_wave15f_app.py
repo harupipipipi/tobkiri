@@ -67,7 +67,7 @@ class TestHealthFlag(unittest.TestCase):
 
     def test_health_flag_exits_one_on_down(self):
         code, result, _kernel = _run_app(["--health"], {"status": "DOWN"})
-        assert code == 0
+        assert code == 1
         assert result["status"] == "DOWN"
 
     def test_health_flag_outputs_valid_json(self):
@@ -97,6 +97,27 @@ class TestHealthFlag(unittest.TestCase):
         assert code == 0
         assert "SystemDrive" not in _app_source()
         kernel.run_startup.assert_called_once()
+
+    def test_legacy_module_health_delegates_only_to_canonical_host(self):
+        import app
+        from rumi_ai import __main__ as compatibility
+
+        with patch.object(app, "main", return_value=1) as host_main:
+            with patch.object(compatibility, "runtime_main") as runtime_main:
+                code = compatibility.main(["--health"])
+
+        assert code == 1
+        host_main.assert_called_once_with(["--health"])
+        runtime_main.assert_not_called()
+
+    def test_legacy_module_keeps_non_health_startup_fail_closed(self):
+        from rumi_ai import __main__ as compatibility
+
+        with patch.object(compatibility, "runtime_main", return_value=7) as runtime_main:
+            code = compatibility.main(["--headless"])
+
+        assert code == 7
+        runtime_main.assert_called_once_with(["--headless"])
 
 
 class TestExistingFlagsNotBroken(unittest.TestCase):

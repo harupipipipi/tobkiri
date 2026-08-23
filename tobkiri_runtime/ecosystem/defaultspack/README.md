@@ -99,7 +99,38 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 | HTTP エンドポイントを見たい | `docs/chat.md`, `transport/http.py` |
 | viewer 経由の起動フローを知りたい | `../../docs/tobkiri_launcher_start.md` |
 
-`webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
+`webapp/` は `Tobkiri` の standalone frontend source です。production の operation は
+captured Frontend Contract Map を経由し、Host の `/health` は process liveness、
+authenticated `/ui-readiness` は Host lifecycle UI bootstrap の named probe 専用です。
+`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/chat`
+と `/static/...` で配信します。
+
+### UI readiness
+
+Launcher と defaultspack desktop entrypoint は surface を開く前に
+`GET /ui-readiness` を確認します。response schema は
+`io.tobkiri.ui-readiness.v1` で、static bundle、`/chat`、UI/settings/model/tool catalog、
+panel auth/session、conversation list/bootstrap、server-authoritative default conversation
+load の九つを常に named probe として返します。probe は bounded timeout と安全な code
+だけを公開し、credential、cookie、provider payload はログへ出しません。
+各 API probe は generated Frontend Contract Map の exact route/Provider を実行します。
+未公開の bootstrap route は推測や代替 operation へ置き換えず
+`BOOTSTRAP_ROUTE_MISSING` として `DOWN` に残るため、部分的な UI を開きません。
+
+通常 launch は `UP` のみを受理します。Profile の明示的な再確認が必要な recovery
+surface は static/chat/auth が利用可能な場合だけ `DEGRADED` を受理します。`DOWN` の場合、
+surface は開かれず、desktop JSONL と Launcher guardian audit に failing probe name/code が
+記録されます。canonical CLI の `python -m rumi_ai --health` も同じ snapshot を出力し、
+`UP` 以外は非ゼロで終了します。
+
+surface navigation は Launcher-issued one-time panel code を既存の authenticated mount
+bootstrap page が即座に消費し、`/api/panel/auth/exchange` で HttpOnly session cookie に
+交換して code のない `/chat` へ遷移してから readiness を取得します。Launcher の診断 log
+から code は除去され、retired bearer credential は readiness や v4 operation の認証に
+使用しません。
+Launcher の liveness と UI readiness は同じ Host-owned secret から別々の
+domain key を導出して署名するため、unauthenticated `/health` challenge response を
+readiness authorization として再利用できません。
 
 ## AI Agent Service Defaults
 

@@ -35,6 +35,7 @@ from ..pack_control_v4 import (
 )
 from ..global_contracts.http_contract_dispatch import HTTPContractBinding
 from ..runtime_port import resolve_runtime_port
+from ..ui_readiness import defaultspack_ui_web_mounts
 from tobkiri_host.runtime import V4DispatchSession, install_dispatch_session
 from .production_v4 import capture_production_dispatch
 from .profile_capture import (
@@ -322,6 +323,7 @@ class Kernel:
                     capability_snapshot_factory=self._capability_snapshot_factory,
                     application_presentation=self._application_presentation,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    web_mounts=defaultspack_ui_web_mounts(),
                 )
             mark_runtime_ready()
             return {"status": "ok", "runtime_ready": True}
@@ -330,6 +332,10 @@ class Kernel:
         """Run the complete packaged bootstrap for headless callers."""
         result = self.run_startup_until(self.API_INIT_STEP)
         result.update(self.run_startup_remaining())
+        if self._server is not None:
+            ui_readiness = self._server.ui_readiness_snapshot(force=True)
+            result["ui_readiness"] = ui_readiness
+            result["status"] = ui_readiness["status"]
         return result
 
     def shutdown(self) -> None:

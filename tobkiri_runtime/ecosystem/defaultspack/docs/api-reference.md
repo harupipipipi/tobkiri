@@ -883,9 +883,9 @@ tool ↔ prompt の相互変換を行う。内部で `blocks.prompt.convert` を
 
 ## System — システム情報
 
-### GET /api/health
+### GET /health
 
-ヘルスチェック。block を呼び出さず、直接レスポンスを返す。
+canonical Host の process liveness。UI bootstrap や business data の readiness には使わない。
 
 **Request Body:** なし
 
@@ -893,11 +893,41 @@ tool ↔ prompt の相互変換を行う。内部で `blocks.prompt.convert` を
 
 | フィールド | 型 | 説明 |
 |---|---|---|
-| `status` | `string` | `"healthy"` |
-| `pack` | `string` | `"defaults"` |
-| `ts` | `string` | ISO 8601 タイムスタンプ |
+| `status` | `string` | `"ok"` または `"error"` |
+| `runtime_status` | `string` | Host lifecycle state |
+| `runtime_ready` | `boolean` | captured runtime lifecycle state |
 
 **エラーケース:** なし
+
+---
+
+### GET /ui-readiness
+
+Launcher-bound request proof または panel session で認証された、bounded UI bootstrap
+assessment。認証前に deep probe は実行されない。
+
+**Response (`data`):**
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `schema` | `string` | `io.tobkiri.ui-readiness.v1` |
+| `status` | `string` | `UP`, `DEGRADED`, `DOWN` |
+| `ready` | `boolean` | surface を開けるときだけ `true` |
+| `profile_id` | `string` | captured v4 Profile identity（capture がある場合） |
+| `plan_digest` | `string` | captured ResolvedPlan digest（capture がある場合） |
+| `contract_map_digest` | `string` | exact route/target snapshot digest |
+| `probes` | `object` | 九つの required named probe と safe status/code/message/duration |
+
+required probe は `static_bundle`, `chat_route`, `ui_catalog`, `settings`,
+`model_catalog`, `tool_catalog`, `auth_session`, `conversation_bootstrap`,
+`default_conversation_load`。credential、cookie、Broker/provider payload は返さない。
+
+**エラーケース:** 認証されていない request は `401 Unauthorized`。missing/stale/timeout
+dependency は HTTP success envelope 内の該当 named probe を `DOWN` にする。
+UI readiness request/response proof と legacy desktop liveness proof は別々の
+domain-derived key を使用し、`/health` を readiness signing oracle として利用できない。
+generated Frontend Contract Map に未公開の required bootstrap API は
+`BOOTSTRAP_ROUTE_MISSING` となり、別 operation や legacy route へ fallback しない。
 
 ---
 

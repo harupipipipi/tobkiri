@@ -77,7 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = kernel.run_startup()
         if args.health:
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-            return 0
+            return 0 if result.get("status") == "UP" else 1
         if args.headless:
             return 0
 

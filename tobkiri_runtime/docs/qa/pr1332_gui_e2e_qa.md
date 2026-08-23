@@ -31,7 +31,8 @@ PR #1332 の追加 acceptance gate です。Launcher frontend の恒久的な pr
 operation は、生成済み
 `tobkiri_runtime/ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json` を
 artifact manifest の digest で pin した `Frontend Contract Map` から解決されます。認証・
-setup・Host-owned PackVM lifecycle・health だけは、下記の狭い allowlist を例外として使えます。
+setup・Host-owned PackVM lifecycle・liveness/UI readiness だけは、下記の狭い
+allowlist を例外として使えます。
 
 ```text
 /api/contracts/defaultspack/<url-encoded METHOD /api/...>
@@ -87,7 +88,22 @@ canonical map 外の未許可 route です。
 | POST | `/api/v4/packvm/cancel` | 同一 PackVM operation の cancel | いいえ |
 | POST | `/api/v4/packvm/stop` | typed cleanup/stop boundary | いいえ |
 | POST | `/api/v4/packvm/cleanup` | typed PackVM cleanup boundary | いいえ |
-| GET | `/health` | local Host liveness/readiness probe | いいえ。business data の代替取得ではない |
+| GET | `/health` | local Host liveness probe | いいえ。UI readiness や business data の代替取得ではない |
+| GET | `/ui-readiness` | authenticated, bounded Host lifecycle bootstrap assessment | いいえ。named probe と captured v4 identity の診断専用 |
+
+`/ui-readiness` は `io.tobkiri.ui-readiness.v1` の単一 snapshot を返し、
+`static_bundle`、`chat_route`、`ui_catalog`、`settings`、`model_catalog`、
+`tool_catalog`、`auth_session`、`conversation_bootstrap`、
+`default_conversation_load` を必ず含める。各 contract probe は同じ captured
+ProfileLock/ResolvedPlan/DispatchSession と exact Frontend Contract Map target を使う。
+map に未公開の required route は named `BOOTSTRAP_ROUTE_MISSING` で `DOWN` とし、
+旧 Registry、推測 route、別 Provider、host execution fallback を使わない。Launcher の
+challenge/request proof または panel session で認証される前に deep probe を実行しては
+ならない。通常 surface は `status=UP, ready=true` のときだけ開く。
+`profile_reconfirmation_required` は static/chat/auth が `UP` の場合に限り
+`status=DEGRADED, ready=true` で recovery surface を開ける唯一の例外とする。
+desktop liveness と UI readiness の HMAC は domain-derived key を分離し、`/health` の
+caller-selected challenge response から readiness authorization を作れないこと。
 
 `GET /api/setup/status`、`GET /api/setup/migration/status` は Host/bootstrap 側の既存
 surface として negative/compatibility test では確認してよいが、Launcher frontend の
@@ -101,7 +117,7 @@ product callsite としては許可しない。現在の read-only tree で見�
 | Surface | 許可される非-map call | それ以外の data/mutation 経路 |
 | --- | --- | --- |
 | Setup / activation | `GET /api/setup/packs`（review と active-state revalidation）、`POST /api/setup/packs/install`（exact confirmation の activation のみ） | setup response を Packs/Home/Advanced/Settings の一般データに流用しない。失敗時に旧 panel/Registryへ fallback しない |
-| Home / Packs / Pack detail | `/health` GET（liveness/readiness）と canonical map→Broker→Kernel | health/setup/PackVM の payload を Pack catalog・dynamic contribution・Profile config の代替にしない |
+| Home / Packs / Pack detail | `/health` GET（liveness）、`/ui-readiness` GET（authenticated Host bootstrap diagnosis）、canonical map→Broker→Kernel | health/readiness/setup/PackVM の payload を Pack catalog・dynamic contribution・Profile config の代替にしない |
 | PackVM lifecycle panel | exact PackVM allowlist（doctor/prepare/consent/provision/progress/cancel/stop/cleanup） | Pack operation や Profile read の direct endpoint fallback にしない |
 | restored Profile / Advanced | runtime/profile/topology data は generated map の exact route のみ。Tauri は window/menu/native lifecycle と Shell launch の presentation-only action のみ | Tauri payload、setup、PackVM、health、legacy API、Registry discovery を Profile/Advanced data の供給元にしない |
 | restored Settings | runtime/profile/topology/activation/approval data は canonical map のみ。theme/sidebar/viewport等の user-local settings は frontend state/local storage | Tauri の authority/approval/debug mutation、old `/settings` route/API、panel route、setup/PackVM を fallback にしない |

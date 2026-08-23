@@ -357,10 +357,16 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                 clear=True,
             ):
                 with patch("core_runtime.pack_api_server.PackAPIServer", return_value=fake_server):
-                    with patch.object(desktop_app, "_wait_until_ready", return_value=True):
-                        with patch.object(desktop_app, "_wait_until_chat_ready", return_value=True):
-                            with patch("defaultspack.native_webview.open_desktop_surface", return_value="webview"):
-                                result = desktop_app.main()
+                    with patch.object(
+                        desktop_app,
+                        "_wait_until_ui_ready",
+                        return_value={"status": "UP", "ready": True, "probes": {}},
+                    ):
+                        with patch(
+                            "defaultspack.native_webview.open_desktop_surface",
+                            return_value="webview",
+                        ):
+                            result = desktop_app.main()
 
         self.assertEqual(result, 0)
         self.assertTrue(fake_server.started)
@@ -525,12 +531,18 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                             FakeServer,
                         ):
                             with patch.object(
-                                desktop_app, "_wait_until_ready", return_value=True
+                                desktop_app,
+                                "_wait_until_ui_ready",
+                                return_value={
+                                    "status": "DEGRADED",
+                                    "ready": True,
+                                    "mode": "profile_reconfirmation_required",
+                                    "probes": {},
+                                },
                             ):
-                                with patch.object(
-                                    desktop_app,
-                                    "_wait_until_chat_ready",
-                                    return_value=True,
+                                with patch(
+                                    "defaultspack.native_webview.open_desktop_surface",
+                                    return_value="webview",
                                 ):
                                     with patch(
                                         "defaultspack.native_webview.open_desktop_surface",
@@ -591,18 +603,19 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
             }
             with patch.dict(os.environ, env, clear=True):
                 with patch("core_runtime.pack_api_server.PackAPIServer", return_value=fake_server):
-                    with patch.object(desktop_app, "_wait_until_ready", return_value=True):
-                        with patch.object(desktop_app, "_wait_until_chat_ready", return_value=True):
-                            with patch.object(
-                                desktop_app,
-                                "_port_owner_snapshot",
-                                return_value=[{"pid": "123", "command": "python3"}],
+                    with patch.object(
+                        desktop_app,
+                        "_port_owner_snapshot",
+                        return_value=[{"pid": "123", "command": "python3"}],
+                    ):
+                        with patch(
+                            "defaultspack.native_webview.open_desktop_surface",
+                            return_value="browser",
+                        ):
+                            with self.assertRaisesRegex(
+                                OSError, "address already in use"
                             ):
-                                with patch("defaultspack.native_webview.open_desktop_surface", return_value="browser"):
-                                    with self.assertRaisesRegex(
-                                        OSError, "address already in use"
-                                    ):
-                                        desktop_app.main()
+                                desktop_app.main()
 
             self.assertFalse(fake_server.stopped)
             events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 from functools import partial
+import hmac
 import json
 import logging
 import os
 import signal
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -860,9 +862,10 @@ def main(argv: list[str] | None = None) -> int:
         chat_ready = health_ready and _wait_until_chat_ready(url)
     _write_launch_event(
         "readiness_complete",
-        chat_ready=chat_ready,
-        health_ready=health_ready,
+        failures=readiness_failures,
         port=port,
+        ready=ui_readiness.get("ready") is True,
+        status=ui_readiness.get("status"),
         url=url,
     )
     if not chat_ready:

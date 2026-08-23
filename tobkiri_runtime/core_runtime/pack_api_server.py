@@ -801,6 +801,7 @@ class PackAPIHandler(
     _workspace_binding_resolver: WorkspaceBindingResolver | None = None
     _host_contract_snapshot: Mapping[str, Any] | None = None
     _instance_web_mounts: tuple[WebMountEntry, ...] | None = None
+    _ui_readiness_checker: UIReadinessChecker | None = None
     app_lifecycle_manager: LifecyclePort | None = None
     _runtime_port = 8765
     _request_auth_mode: str | None = None
@@ -869,6 +870,7 @@ class PackAPIHandler(
             _packvm_lifecycle = bound_packvm_lifecycle
             _host_contract_snapshot = bound_host_contract
             _instance_web_mounts = bound_web_mounts
+            _ui_readiness_checker = bound_ui_readiness_checker
             _runtime_refresh = (
                 staticmethod(bound_runtime_refresh) if bound_runtime_refresh is not None else None
             )
@@ -2696,6 +2698,9 @@ location.replace({target_literal})}})
             # same request-local capture, just like canonical Contract reads.
             with profile_capture_scope():
                 self._handle_health()
+            return
+        if path == UI_READINESS_PATH:
+            self._handle_ui_readiness()
             return
         if path == "/":
             self.send_response(302)

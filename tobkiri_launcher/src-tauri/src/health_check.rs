@@ -3,6 +3,7 @@
 //! The Kernel exposes `GET /health` on its API port (default 8765).
 //! A 200 response means the Kernel is ready to serve requests.
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use crate::host_contract::ExecutionProfileIdentity;
 
 /// Reusable blocking HTTP client for health checks.
 static HEALTH_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+static UI_READINESS_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 struct ApiEnvelope<T> {
@@ -35,7 +37,39 @@ struct HealthPayload {
     plan_digest: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct UIReadinessProbe {
+    pub(crate) status: String,
+    pub(crate) code: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct UIReadinessPayload {
+    pub(crate) schema: String,
+    pub(crate) status: String,
+    pub(crate) ready: bool,
+    pub(crate) mode: Option<String>,
+    pub(crate) probes: BTreeMap<String, UIReadinessProbe>,
+    desktop_challenge_response: Option<String>,
+}
+
 const DESKTOP_HEALTH_CHALLENGE_HEADER: &str = "X-Rumi-Desktop-Health-Challenge";
+const UI_READINESS_AUTHORIZATION_HEADER: &str = "X-Tobkiri-UI-Readiness-Authorization";
+const UI_READINESS_SCHEMA: &str = "io.tobkiri.ui-readiness.v1";
+const PROFILE_RECONFIRMATION_MODE: &str = "profile_reconfirmation_required";
+const DESKTOP_HEALTH_KEY_LABEL: &str = "tobkiri-desktop-health-key-v1";
+const UI_READINESS_KEY_LABEL: &str = "tobkiri-ui-readiness-key-v1";
+const REQUIRED_UI_READINESS_PROBES: [&str; 9] = [
+    "static_bundle",
+    "chat_route",
+    "ui_catalog",
+    "settings",
+    "model_catalog",
+    "tool_catalog",
+    "conversation_bootstrap",
+    "default_conversation_load",
+    "auth_session",
+];
 
 fn generate_health_challenge() -> String {
     rand::thread_rng()
@@ -53,7 +87,18 @@ fn hex_lower(bytes: &[u8]) -> String {
     output
 }
 
-fn hmac_sha256_hex(secret: &str, message: &str) -> String {
+fn constant_time_hex_eq(actual: &str, expected: &str) -> bool {
+    if actual.len() != expected.len() || actual.len() != 64 {
+        return false;
+    }
+    let mut difference = 0_u8;
+    for (left, right) in actual.bytes().zip(expected.bytes()) {
+        difference |= left ^ right;
+    }
+    difference == 0
+}
+
+pub(crate) fn hmac_sha256_hex(secret: &str, message: &str) -> String {
     const BLOCK_SIZE: usize = 64;
 
     let mut key = secret.as_bytes().to_vec();
@@ -80,6 +125,38 @@ fn hmac_sha256_hex(secret: &str, message: &str) -> String {
     hex_lower(&outer.finalize())
 }
 
+pub(crate) fn ui_readiness_request_proof(secret: &str, challenge: &str) -> String {
+    domain_separated_proof(
+        secret,
+        UI_READINESS_KEY_LABEL,
+        &format!("request:{challenge}"),
+    )
+}
+
+pub(crate) fn ui_readiness_response_proof(secret: &str, challenge: &str) -> String {
+    domain_separated_proof(
+        secret,
+        UI_READINESS_KEY_LABEL,
+        &format!("response:{challenge}"),
+    )
+}
+
+fn desktop_health_response_proof(secret: &str, challenge: &str) -> String {
+    domain_separated_proof(secret, DESKTOP_HEALTH_KEY_LABEL, challenge)
+}
+
+fn domain_separated_proof(secret: &str, label: &str, message: &str) -> String {
+    let derived_key = hmac_sha256_hex(secret, label);
+    hmac_sha256_hex(&derived_key, message)
+}
+
+pub(crate) fn ui_readiness_allows_launch(payload: &UIReadinessPayload) -> bool {
+    payload.ready
+        && (payload.status == "UP"
+            || (payload.status == "DEGRADED"
+                && payload.mode.as_deref() == Some(PROFILE_RECONFIRMATION_MODE)))
+}
+
 fn health_client() -> &'static reqwest::blocking::Client {
     HEALTH_CLIENT.get_or_init(|| {
         reqwest::blocking::Client::builder()
@@ -91,6 +168,70 @@ fn health_client() -> &'static reqwest::blocking::Client {
             .build()
             .expect("failed to build health-check HTTP client")
     })
+}
+
+fn ui_readiness_client() -> &'static reqwest::blocking::Client {
+    UI_READINESS_CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_millis(3_500))
+            .build()
+            .expect("failed to build UI-readiness HTTP client")
+    })
+}
+
+/// Fetch a complete UI readiness assessment and authenticate the listener.
+pub(crate) fn check_authenticated_ui_readiness(
+    port: u16,
+    bootstrap_secret: &str,
+) -> Result<Option<UIReadinessPayload>> {
+    if bootstrap_secret.is_empty() {
+        return Ok(None);
+    }
+    let challenge = generate_health_challenge();
+    let url = format!("http://127.0.0.1:{port}/ui-readiness");
+    let response = match ui_readiness_client()
+        .get(url)
+        .header(DESKTOP_HEALTH_CHALLENGE_HEADER, &challenge)
+        .header(
+            UI_READINESS_AUTHORIZATION_HEADER,
+            ui_readiness_request_proof(bootstrap_secret, &challenge),
+        )
+        .send()
+    {
+        Ok(response) => response,
+        Err(_) => return Ok(None),
+    };
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+    let envelope: ApiEnvelope<UIReadinessPayload> = match response.json() {
+        Ok(payload) => payload,
+        Err(_) => return Ok(None),
+    };
+    if !envelope.success {
+        return Ok(None);
+    }
+    let Some(payload) = envelope.data else {
+        return Ok(None);
+    };
+    let expected = ui_readiness_response_proof(bootstrap_secret, &challenge);
+    let authenticated = payload
+        .desktop_challenge_response
+        .as_deref()
+        .is_some_and(|actual| constant_time_hex_eq(actual, &expected));
+    let complete = payload.schema == UI_READINESS_SCHEMA
+        && REQUIRED_UI_READINESS_PROBES.iter().all(|name| {
+            payload.probes.get(*name).is_some_and(|probe| {
+                matches!(
+                    probe.status.as_str(),
+                    "UP" | "DOWN" | "DEGRADED" | "UNKNOWN"
+                ) && !probe.code.trim().is_empty()
+            })
+        });
+    if !authenticated || !complete {
+        return Ok(None);
+    }
+    Ok(Some(payload))
 }
 
 fn fetch_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<Option<HealthPayload>> {
@@ -128,11 +269,11 @@ fn fetch_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<Optio
         return Ok(None);
     }
 
-    let expected = hmac_sha256_hex(bootstrap_secret, &challenge);
+    let expected = desktop_health_response_proof(bootstrap_secret, &challenge);
     if !payload
         .desktop_challenge_response
         .as_deref()
-        .is_some_and(|actual| actual.eq_ignore_ascii_case(&expected))
+        .is_some_and(|actual| constant_time_hex_eq(actual, &expected))
     {
         return Ok(None);
     }
