@@ -553,6 +553,7 @@ class TransactionalTeamStore:
             role = dict(arguments["role"])
             role_id = str(role["id"])
             role = self._normalized_named(connection, "roles", team_id, role_id, role, now_ms)
+            self._put_entity(connection, "roles", team_id, role_id, role, arguments)
             member = self._normalized_member(
                 connection,
                 team_id,
@@ -560,7 +561,6 @@ class TransactionalTeamStore:
                 arguments["member"],
                 now_ms,
             )
-            self._put_entity(connection, "roles", team_id, role_id, role, arguments)
             self._put_entity(connection, "members", team_id, str(member["id"]), member, arguments)
             self._sync_default_channels(connection, team_id, now_ms)
             self._touch_team(connection, team_id, now_ms)
