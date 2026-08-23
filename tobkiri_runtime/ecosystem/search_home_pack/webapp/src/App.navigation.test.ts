@@ -60,7 +60,7 @@ test("AI answers are committed to explicit accessible memory-only result states"
   assert.match(appSource, /normalizeAnswerResponse\(payload\)/);
   assert.match(appSource, /aria-labelledby="search-answer-title"/);
   assert.match(appSource, /Answer text is kept in memory only/);
-  assert.match(appSource, /Open conversation \/ Continue in Rumi/);
+  assert.match(appSource, /Open conversation \/ Continue in Tobkiri/);
   assert.match(appSource, /Retry intentionally/);
   assert.doesNotMatch(appSource, /localStorage.*answer|sessionStorage.*answer/i);
   assert.equal(appSource.includes("dangerouslySet" + "InnerHTML"), false);
