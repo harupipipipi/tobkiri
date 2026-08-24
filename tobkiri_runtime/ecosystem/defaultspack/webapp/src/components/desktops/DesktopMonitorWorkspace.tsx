@@ -53,6 +53,17 @@ export function resolveVisibleSelectedSeatId(
   return resolveVisibleSelectedDesktop(visibleDesktops, selectedSeatId, options)?.seat_id ?? null;
 }
 
+export function filterVisibleDesktops(
+  desktops: DesktopInstance[],
+  filter: DesktopFilter,
+  selectedSeatId: string | null,
+): DesktopInstance[] {
+  if (filter === "all") return desktops;
+  return desktops.filter((desktop) => (
+    desktop.status === "running" || desktop.seat_id === selectedSeatId
+  ));
+}
+
 export function clearLegacyDesktopCredentialsFromUrl(): boolean {
   if (typeof window === "undefined") return false;
   const query = new URLSearchParams(window.location.search);
@@ -96,10 +107,8 @@ export function DesktopMonitorWorkspace() {
     [desktopInstances.desktops],
   );
   const visibleDesktops = useMemo(
-    () => filter === "running"
-      ? desktopInstances.desktops.filter((desktop) => desktop.status === "running")
-      : desktopInstances.desktops,
-    [desktopInstances.desktops, filter],
+    () => filterVisibleDesktops(desktopInstances.desktops, filter, selectedSeatId),
+    [desktopInstances.desktops, filter, selectedSeatId],
   );
   const preserveSelected = selectedSeatId !== null && explicitSelectedSeatIdRef.current === selectedSeatId;
   const selectedDesktop = resolveVisibleSelectedDesktop(visibleDesktops, selectedSeatId, { preserveSelected });
@@ -242,19 +251,29 @@ export function DesktopMonitorWorkspace() {
     void control.acquire();
   }, [control, visibleSelectedSeatId]);
 
-  const handleDesktopInput = useCallback((seatId: string, input: DesktopInputAction) => {
+  const handleDesktopInput = useCallback(async (seatId: string, input: DesktopInputAction): Promise<boolean> => {
     const token = control.lease?.lease_token;
-    if (!token || seatId !== visibleSelectedSeatId) return;
-    void sandboxesApi.sendDesktopInput(seatId, {
-      ...input,
-      lease_token: token,
-      desktop_session_credential: accessKeys[seatId] || undefined,
-    }).then(() => {
+    if (!token || seatId !== visibleSelectedSeatId) return false;
+    try {
+      const result = await sandboxesApi.sendDesktopInput(seatId, {
+        ...input,
+        lease_token: token,
+        desktop_session_credential: accessKeys[seatId] || undefined,
+      });
+      if (!result.accepted) {
+        throw new Error("Desktop input was rejected.");
+      }
       setActionError(null);
-    }).catch((error) => {
+      return true;
+    } catch (error) {
       setActionError(error instanceof Error ? error.message : "Desktop input failed.");
-      void desktopInstances.refresh();
-    });
+      try {
+        await desktopInstances.refresh();
+      } catch {
+        // Preserve the original input error while authoritative state is unavailable.
+      }
+      return false;
+    }
   }, [accessKeys, control.lease?.lease_token, desktopInstances, visibleSelectedSeatId]);
 
 

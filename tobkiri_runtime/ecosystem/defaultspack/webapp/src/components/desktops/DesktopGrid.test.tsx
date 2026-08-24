@@ -4,23 +4,32 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { DesktopInstance } from "../../features/sandboxes/types";
-import { resolveVisibleSelectedDesktop, resolveVisibleSelectedSeatId, shouldShowDesktopList } from "./DesktopMonitorWorkspace";
+import { filterVisibleDesktops, resolveVisibleSelectedDesktop, resolveVisibleSelectedSeatId, shouldShowDesktopList } from "./DesktopMonitorWorkspace";
 import { DesktopGrid } from "./DesktopGrid";
 import { keyboardCaptureDecision } from "./DesktopTile";
 
 const noop = () => undefined;
+const inputNoop = async () => true;
 const key = (value: string, overrides = {}) => ({ key: value, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, ...overrides });
 
 test("desktop keyboard capture reserves escape and preserves remote shortcuts", () => {
   assert.deepEqual(keyboardCaptureDecision(key("Escape")), { kind: "release" });
   assert.deepEqual(keyboardCaptureDecision(key("Escape", { ctrlKey: true, altKey: true, shiftKey: true })), { kind: "release" });
+  assert.deepEqual(keyboardCaptureDecision(key("Escape", { isComposing: true })), { kind: "release" });
   assert.deepEqual(keyboardCaptureDecision(key("Tab")), { kind: "key", key: "Tab" });
   assert.deepEqual(keyboardCaptureDecision(key("Tab", { shiftKey: true })), { kind: "key", key: "shift+Tab" });
   assert.deepEqual(keyboardCaptureDecision(key("l", { ctrlKey: true })), { kind: "key", key: "ctrl+l" });
+  assert.deepEqual(keyboardCaptureDecision(key("S", { ctrlKey: true, shiftKey: true })), { kind: "key", key: "ctrl+shift+s" });
+  assert.deepEqual(keyboardCaptureDecision(key("Control", { ctrlKey: true })), { kind: "modifier" });
+  assert.deepEqual(keyboardCaptureDecision(key("AltGraph", { ctrlKey: true, altKey: true, altGraphKey: true })), { kind: "ignore" });
+  assert.deepEqual(keyboardCaptureDecision(key("€", { ctrlKey: true, altKey: true, altGraphKey: true })), { kind: "type", text: "€" });
+  assert.deepEqual(keyboardCaptureDecision(key("F1")), { kind: "unsupported", key: "F1" });
+  assert.deepEqual(keyboardCaptureDecision(key("AudioVolumeUp")), { kind: "unsupported", key: "AudioVolumeUp" });
 });
 
 test("desktop keyboard capture avoids duplicate IME events", () => {
   assert.deepEqual(keyboardCaptureDecision(key("é")), { kind: "type", text: "é" });
+  assert.deepEqual(keyboardCaptureDecision(key("😀")), { kind: "type", text: "😀" });
   assert.deepEqual(keyboardCaptureDecision(key("Process", { isComposing: true })), { kind: "ignore" });
   assert.deepEqual(keyboardCaptureDecision(key("Dead")), { kind: "ignore" });
 });
@@ -45,7 +54,7 @@ function renderGrid(desktops: DesktopInstance[]) {
       onSelect: noop,
       onTakeOver: noop,
       onReturnToAI: noop,
-      onInput: noop,
+      onInput: inputNoop,
       onStart: noop,
       onRestart: noop,
       onStop: noop,
@@ -81,7 +90,7 @@ test("desktop grid distinguishes filter-empty from backend-empty", () => {
       onSelect: noop,
       onTakeOver: noop,
       onReturnToAI: noop,
-      onInput: noop,
+      onInput: inputNoop,
       onStart: noop,
       onRestart: noop,
       onStop: noop,
@@ -169,5 +178,21 @@ test("desktop workspace preserves an explicit non-running selection", () => {
   assert.equal(
     resolveVisibleSelectedSeatId(visibleDesktops, destroyedDesktop.seat_id, { preserveSelected: true }),
     destroyedDesktop.seat_id,
+  );
+});
+
+test("running filter retains the selected stopped seat for capture focus restoration", () => {
+  const stoppedDesktop = { ...desktop("seat-stopped"), status: "stopped" } satisfies DesktopInstance;
+  const runningDesktop = desktop("seat-running");
+
+  assert.deepEqual(
+    filterVisibleDesktops([stoppedDesktop, runningDesktop], "running", stoppedDesktop.seat_id)
+      .map((instance) => instance.seat_id),
+    [stoppedDesktop.seat_id, runningDesktop.seat_id],
+  );
+  assert.deepEqual(
+    filterVisibleDesktops([stoppedDesktop, runningDesktop], "running", runningDesktop.seat_id)
+      .map((instance) => instance.seat_id),
+    [runningDesktop.seat_id],
   );
 });

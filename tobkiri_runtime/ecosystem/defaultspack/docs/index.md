@@ -31,6 +31,7 @@ For the repo-wide glossary and migration guidance, see
 | Topic | Document |
 |---|---|
 | Frontend shell and routes | [frontend.md](frontend.md) |
+| Managed desktop keyboard control | [desktop_keyboard_control.md](desktop_keyboard_control.md) |
 | Frontend extension points | [frontend_extensions.md](frontend_extensions.md) |
 | RumiTemplate composition platform | [templates.md](templates.md) |
 | UI and layout | [ui_and_layout.md](ui_and_layout.md) |
