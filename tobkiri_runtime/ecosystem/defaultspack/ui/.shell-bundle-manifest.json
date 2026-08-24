@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "ae6043e8d0395085bee32c8567af0b945310c2287396fca2db364112bd3ee3f1",
+    "digest": "4d4da23d3aeeaff84d49d8160656ed970f257f85254dffb72e694ee4c2f9c481",
     "entries": [
       {
         "path": "index.html",
@@ -365,13 +365,13 @@
       },
       {
         "path": "src/components/BackendConnectionBanner.test.tsx",
-        "size": 1813,
-        "sha256": "9992610e19fd62bb0c8b1c62e25daee0b9b7deb1bfc63d324ebb7c91482b353b"
+        "size": 1801,
+        "sha256": "41a77193a8d2e0fb28aa95bd1b976b16099acec8e6bb730f3d422c438925ea39"
       },
       {
         "path": "src/components/BackendConnectionBanner.tsx",
-        "size": 2566,
-        "sha256": "c2cf5db1f8ce3ed91db357f33648e4354b920c5acb9cde6d15e42f093f43d4de"
+        "size": 2562,
+        "sha256": "5b1eb1443ec6ad081f99d38151ae73a846484cc98d9b12f8033e9ca2648bab14"
       },
       {
         "path": "src/components/ConversationSpotlight.tsx",
@@ -1831,7 +1831,7 @@
     ]
   },
   "bundle": {
-    "digest": "d5bb070f2b8ae59bab9803427cb4af566fa4ec40bfd46f4cf38a6f961cace33e",
+    "digest": "d9416c25d0706262685f1db67aa712f17058493988c21120440bb98407baa9dd",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1845,8 +1845,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2200974,
-        "sha256": "5aff4810e792cfd237a58c1fda3d6254fa7eb1f53dc121aa06ea9e4a8060e29e"
+        "size": 2200970,
+        "sha256": "fffaa2c83923890deff01d330a422681b222bc120b172d3de632708fbdfbd0ef"
       },
       {
         "path": "shell-rolldown-runtime.js",

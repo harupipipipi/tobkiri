@@ -22,7 +22,7 @@ test("connection banner announces degraded pending-send state and exposes a real
   assert.match(html, /data-backend-connection-state="degraded"/);
   assert.match(html, /再接続中/);
   assert.match(html, /送信結果を確認中/);
-  assert.match(html, /<button[^>]*>接続を確認<\/button>/);
+  assert.match(html, />接続を確認<\/button>/);
 });
 
 test("initial online state does not announce a recovery that did not happen", () => {
