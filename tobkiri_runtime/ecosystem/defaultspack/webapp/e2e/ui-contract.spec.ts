@@ -110,6 +110,7 @@ type ApiMockOptions = {
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
+  onTerminalExecution?: (payload: Record<string, unknown>) => void;
   codingApprovalAfterTerminal?: boolean;
   codingApprovalAfterRestore?: boolean;
   structuredComposer?: boolean;
@@ -1171,6 +1172,19 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === routeKey("api/coding/terminal/exec") && method === "POST" && options.codingApprovalAfterTerminal) {
       const payload = request.postDataJSON() as Record<string, unknown>;
+      options.onTerminalExecution?.(payload);
+      if (payload.approval_token) {
+        return fulfill(route, {
+          command: String(payload.command ?? ""),
+          classification: "low",
+          risk_reasons: [],
+          approval_required: false,
+          exit_code: 0,
+          stdout: "TEST_SECRET_STDOUT_999",
+          stderr: "TEST_SECRET_STDERR_999",
+          workspace_id: String(payload.workspace_id ?? "ws-main"),
+        });
+      }
       codingApprovalRequest = {
         request_id: "apr-terminal-write",
         operation: "terminal.exec",
@@ -2965,6 +2979,121 @@ test("coding approval queue refreshes immediately after terminal requests approv
   await expect(approvals).toContainText("terminal.exec");
   await expect(approvals.getByRole("button", { name: /許可|Approve/ })).toBeVisible();
   await expect(approvals.getByRole("button", { name: /拒否|Deny/ })).toBeVisible();
+});
+
+test("terminal history stays private across hostile storage, clear, approval, and reload", async ({ page }) => {
+  const terminalExecutions: Record<string, unknown>[] = [];
+  await page.addInitScript(() => {
+    const records = [{
+      id: "copied-log",
+      command: "echo COPIED_SECRET_999",
+      stdout: "COPIED_STDOUT_999",
+      stderr: "COPIED_STDERR_999",
+      workspace_id: "ws-other",
+      approval_required: true,
+      approval_request_id: "apr-copied-expired",
+      approval_token: "COPIED_APPROVAL_TOKEN_999",
+      expires_at: 1,
+    }];
+    localStorage.setItem("rumi-terminal-logs:copied-profile", JSON.stringify(records));
+    localStorage.setItem("rumi-terminal-logs:wrong-workspace", JSON.stringify(records));
+    localStorage.setItem("rumi-terminal-logs:corrupt", "{not-json");
+    sessionStorage.setItem("rumi-terminal-logs:copied-profile", JSON.stringify(records));
+  });
+
+  await openCodingWidget(page, {
+    codingApprovalAfterTerminal: true,
+    onTerminalExecution: (payload) => terminalExecutions.push(payload),
+  });
+
+  const terminal = page.getByRole("region", { name: "Terminal", exact: true });
+  await expect(terminal).toContainText("Memory only");
+  await expect(terminal).toContainText("Private session · not saved to browser storage");
+  await expect(terminal).toContainText("No terminal runs");
+  await expect(terminal).not.toContainText("COPIED_SECRET_999");
+  expect(terminalExecutions).toHaveLength(0);
+
+  const storageBefore = await page.evaluate(() => ({
+    local: Object.fromEntries(Object.entries(localStorage)),
+    session: Object.fromEntries(Object.entries(sessionStorage)),
+  }));
+
+  await terminal.getByRole("textbox", { name: "Terminal command" }).fill("echo TEST_SECRET_COMMAND_999");
+  await terminal.getByRole("textbox", { name: "Terminal command" }).press("Enter");
+  await expect(terminal).toContainText("Approval required");
+
+  const approvals = page.getByLabel("Approval queue");
+  await approvals.getByRole("button", { name: /許可|Approve/ }).click();
+  await expect(terminal).toContainText("TEST_SECRET_STDOUT_999");
+  expect(terminalExecutions).toHaveLength(2);
+  expect(terminalExecutions[0]).not.toHaveProperty("approval_token");
+  expect(terminalExecutions[1]).toMatchObject({
+    command: "echo TEST_SECRET_COMMAND_999",
+    workspace_id: "ws-main",
+    approval_token: "approved-mcp-token",
+  });
+
+  const storageAfter = await page.evaluate(() => ({
+    local: Object.fromEntries(Object.entries(localStorage)),
+    session: Object.fromEntries(Object.entries(sessionStorage)),
+  }));
+  expect(storageAfter).toEqual(storageBefore);
+  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SECRET_COMMAND_999");
+  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SECRET_STDOUT_999");
+  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SECRET_STDERR_999");
+  expect(JSON.stringify(storageAfter)).not.toContain("approved-mcp-token");
+
+  const clearHistory = terminal.getByRole("button", {
+    name: "Clear terminal history from this private session",
+  });
+  await clearHistory.focus();
+  await page.keyboard.press("Enter");
+  await expect(terminal).toContainText("No terminal runs");
+  await expect(clearHistory).toBeFocused();
+
+  await page.reload();
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+  await page.getByRole("button", { name: "Coding widget" }).click();
+  const reloadedCockpit = page.locator(".coding-cockpit:visible").first();
+  await expect(reloadedCockpit).toBeVisible();
+  await reloadedCockpit.getByRole("button", { name: "Workspace", exact: true }).click();
+  const reloadedTerminal = reloadedCockpit.getByRole("region", { name: "Terminal", exact: true });
+  await expect(reloadedTerminal).toContainText("No terminal runs");
+  await expect(reloadedTerminal).not.toContainText("COPIED_SECRET_999");
+  await expect(reloadedTerminal).not.toContainText("TEST_SECRET_STDOUT_999");
+  expect(terminalExecutions).toHaveLength(2);
+});
+
+test("terminal remains memory-only when legacy terminal storage is denied", async ({ page }) => {
+  await page.addInitScript(() => {
+    const originalGetItem = Storage.prototype.getItem;
+    const originalSetItem = Storage.prototype.setItem;
+    Object.defineProperty(window, "__terminalStorageAccesses", { value: 0, writable: true });
+    Storage.prototype.getItem = function getItem(key: string) {
+      if (key.startsWith("rumi-terminal-logs:")) {
+        (window as Window & { __terminalStorageAccesses: number }).__terminalStorageAccesses += 1;
+        throw new DOMException("Terminal storage denied", "SecurityError");
+      }
+      return originalGetItem.call(this, key);
+    };
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key.startsWith("rumi-terminal-logs:")) {
+        (window as Window & { __terminalStorageAccesses: number }).__terminalStorageAccesses += 1;
+        throw new DOMException("Terminal storage denied", "SecurityError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+  });
+
+  await openCodingWidget(page, { codingApprovalAfterTerminal: true });
+  const terminal = page.getByRole("region", { name: "Terminal", exact: true });
+  await terminal.getByRole("textbox", { name: "Terminal command" }).fill("echo denial-safe");
+  await terminal.getByTitle("Run command").click();
+  await expect(terminal).toContainText("Approval required");
+  await expect(terminal).toContainText("Memory only");
+  expect(await page.evaluate(
+    () => (window as Window & { __terminalStorageAccesses: number }).__terminalStorageAccesses,
+  )).toBe(0);
 });
 
 test("checkpoint create selects the new snapshot and approved restore settles successfully", async ({ page }) => {

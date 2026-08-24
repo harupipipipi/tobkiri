@@ -41,6 +41,28 @@ P2P or external input cannot execute terminal commands directly. It can only
 create a request that the local agent may plan, classify, and send through local
 approval.
 
+### Terminal history privacy
+
+The Coding Cockpit keeps its visible terminal-history records—including command,
+stdout, stderr, path, risk-reason, and approval fields—in memory only. The panel
+does not read or write those records through `localStorage`, `sessionStorage`,
+IndexedDB, conversation metadata, or another durable client store. Panel history
+is discarded when the user clears it, changes workspaces, closes the panel, or
+reloads the application.
+
+Copied, corrupt, expired, or wrong-workspace browser records are therefore not
+a terminal-history input and cannot authorize replay. An approved retry requires
+both a pending terminal action created in the currently mounted panel and the
+authoritative approval decision returned by the approval service. The UI labels
+this scope as **Memory only** and **Private session**.
+
+There is no durable-history opt-in today. If one is introduced, it must use an
+authenticated, versioned, workspace-scoped service with explicit consent,
+redaction, access controls, retention and expiry, untrusted-schema validation,
+visible saved/error state, and deletion. Raw browser storage is not an allowed
+terminal-history backend, and storage failures must never be presented as a
+successful save.
+
 ## Git Rules
 
 Git operations execute from the workspace root, and the discovered git
