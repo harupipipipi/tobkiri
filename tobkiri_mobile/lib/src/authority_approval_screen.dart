@@ -112,6 +112,7 @@ class _AuthorityApprovalScreenState extends State<AuthorityApprovalScreen> {
         content: TextField(
           onChanged: (value) => reasonValue = value,
           maxLines: 3,
+          keyboardAppearance: Theme.of(context).brightness,
           decoration: const InputDecoration(
             labelText: 'Reason (optional)',
           ),

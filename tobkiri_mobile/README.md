@@ -62,7 +62,7 @@ The PC side (defaultspack webapp **Settings → アプリ**) emits JSON QR codes
   "expiresAt": 1781830000000
 }
 
-Rumi Remote Mobile is the Flutter client for managing a PC-hosted Rumi
+Tobkiri Mobile is the Flutter client for managing a PC-hosted Tobkiri
 `defaultspack` from iOS and Android devices on a trusted network.
 
 The app targets the Kernel Pack API on port `8765`, not the standalone
@@ -71,7 +71,7 @@ token and is the safer surface for LAN access.
 
 ## PC Setup
 
-Start Rumi with the Kernel API bound to the trusted LAN:
+Start Tobkiri with the Kernel API bound to the trusted LAN:
 
 ```powershell
 $env:RUMI_API_BIND_ADDRESS="0.0.0.0"

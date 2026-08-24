@@ -3,20 +3,33 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'appearance_settings.dart';
+import 'app_theme.dart';
 import 'authority_approval_screen.dart';
 import 'models.dart';
 import 'rumi_api_client.dart';
 import 'secure_settings_store.dart';
 
 class RumiRemoteHome extends StatefulWidget {
-  const RumiRemoteHome({super.key});
+  const RumiRemoteHome({
+    super.key,
+    required this.appearanceMode,
+    required this.onAppearanceChanged,
+    this.settingsStore,
+    this.clientFactory,
+  });
+
+  final AppearanceMode appearanceMode;
+  final Future<void> Function(AppearanceMode mode) onAppearanceChanged;
+  final SecureSettingsStore? settingsStore;
+  final RumiApiClient Function(RumiRemoteSettings settings)? clientFactory;
 
   @override
   State<RumiRemoteHome> createState() => _RumiRemoteHomeState();
 }
 
 class _RumiRemoteHomeState extends State<RumiRemoteHome> {
-  final _settingsStore = SecureSettingsStore();
+  late final _settingsStore = widget.settingsStore ?? SecureSettingsStore();
   final _serverController = TextEditingController();
   final _tokenController = TextEditingController();
 
@@ -31,7 +44,9 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   bool _loading = true;
   bool _busy = false;
 
-  RumiApiClient get _client => RumiApiClient(
+  RumiApiClient get _client =>
+      widget.clientFactory?.call(_settings) ??
+      RumiApiClient(
         baseUrl: _settings.baseUrl,
         bearerToken: _settings.token,
       );
@@ -275,7 +290,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
     final modules = _catalog?.modules ?? const <RumiModule>[];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rumi Remote'),
+        title: const Text('Tobkiri'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -366,6 +381,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   Future<void> _showSettingsSheet() async {
     _syncControllers(_settings);
     var autoRefresh = _settings.autoRefresh;
+    var appearanceMode = widget.appearanceMode;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -374,14 +390,59 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
         final bottom = MediaQuery.viewInsetsOf(context).bottom;
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Padding(
+            return SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(16, 0, 16, bottom + 16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Appearance',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<AppearanceMode>(
+                      showSelectedIcon: false,
+                      segments: [
+                        for (final mode in AppearanceMode.values)
+                          ButtonSegment<AppearanceMode>(
+                            value: mode,
+                            label: Text(mode.label),
+                            icon: Icon(mode.icon),
+                          ),
+                      ],
+                      selected: {appearanceMode},
+                      onSelectionChanged: (selection) async {
+                        final selected = selection.single;
+                        final previous = appearanceMode;
+                        setSheetState(() => appearanceMode = selected);
+                        try {
+                          await widget.onAppearanceChanged(selected);
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          setSheetState(() => appearanceMode = previous);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Could not save appearance. Try again.',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   TextField(
                     controller: _serverController,
                     keyboardType: TextInputType.url,
+                    keyboardAppearance: Theme.of(context).brightness,
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'Kernel API URL',
@@ -392,6 +453,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
                   TextField(
                     controller: _tokenController,
                     obscureText: true,
+                    keyboardAppearance: Theme.of(context).brightness,
                     textInputAction: TextInputAction.done,
                     decoration: const InputDecoration(
                       labelText: 'Bearer token',
@@ -456,16 +518,17 @@ class _ConnectionStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).extension<RumiColors>()!;
     final healthy = health?.isHealthy == true;
     final color = error != null
         ? scheme.errorContainer
         : healthy
-            ? const Color(0xFFDFF3E8)
+            ? colors.successContainer
             : scheme.secondaryContainer;
     final foreground = error != null
         ? scheme.onErrorContainer
         : healthy
-            ? const Color(0xFF174E36)
+            ? colors.success
             : scheme.onSecondaryContainer;
     final label = error ??
         (tokenConfigured
@@ -904,21 +967,33 @@ class _JsonPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const encoder = JsonEncoder.withIndent('  ');
+    final colors = Theme.of(context).extension<RumiColors>()!;
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Raw', style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            SelectableText(
-              encoder.convert(data),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                  ),
-            ),
-          ],
+      clipBehavior: Clip.antiAlias,
+      child: ColoredBox(
+        color: colors.codeBackground,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Raw',
+                style: TextStyle(
+                  color: colors.codeForeground,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SelectableText(
+                encoder.convert(data),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.codeForeground,
+                      fontFamily: 'monospace',
+                    ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -933,10 +1008,11 @@ class _StateDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<RumiColors>()!;
     final color = switch (module.state) {
-      'enabled' => const Color(0xFF2E7D32),
-      'experimental' => const Color(0xFF7B5E00),
-      'degraded' => const Color(0xFFB26A00),
+      'enabled' => colors.success,
+      'experimental' => colors.info,
+      'degraded' => colors.warning,
       'error_disabled' => Theme.of(context).colorScheme.error,
       'disabled' => Theme.of(context).colorScheme.outline,
       _ => Theme.of(context).colorScheme.outline,
@@ -985,5 +1061,5 @@ String _friendlyError(Object error) {
   if (error is RumiApiException) {
     return error.message;
   }
-  return '$error';
+  return 'Could not reach the configured Tobkiri host.';
 }

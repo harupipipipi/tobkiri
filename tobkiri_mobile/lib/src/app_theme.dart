@@ -1,4 +1,6 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 ThemeData buildRumiTheme({bool dark = true}) {
   const seed = Color(0xFF8E8E93);
@@ -137,3 +139,17 @@ class RumiColors extends ThemeExtension<RumiColors> {
     );
   }
 }
+
+/// The standard light Tobkiri theme.
+ThemeData buildRumiLightTheme() => buildRumiTheme();
+
+/// The standard dark Tobkiri theme.
+ThemeData buildRumiDarkTheme() => buildRumiTheme(brightness: Brightness.dark);
+
+/// The accessible high-contrast light Tobkiri theme.
+ThemeData buildRumiHighContrastLightTheme() =>
+    buildRumiTheme(highContrast: true);
+
+/// The accessible high-contrast dark Tobkiri theme.
+ThemeData buildRumiHighContrastDarkTheme() =>
+    buildRumiTheme(brightness: Brightness.dark, highContrast: true);

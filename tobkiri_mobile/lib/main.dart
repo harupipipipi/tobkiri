@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'src/rumi_app.dart';
+import 'src/appearance_settings.dart';
+import 'src/rumi_remote_app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
