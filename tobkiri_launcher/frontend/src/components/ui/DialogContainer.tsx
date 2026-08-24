@@ -209,7 +209,7 @@ export function DialogContainer() {
           {isConflictRefresh ? (
             <>
               <Button variant="outline" onClick={handleClose}>Close</Button>
-              <Button loading>Refreshing status…</Button>
+              <Button loading disabled>Refreshing status…</Button>
             </>
           ) : failureSource === 'conflict_refresh' && failure?.retryAllowed ? (
             <>

@@ -32,7 +32,7 @@ function buttonWithText(container: ParentNode, text: string): HTMLButtonElement 
 async function renderDialog(config: DialogConfig): Promise<Surface> {
   previousState = useAppStore.getState();
   const dom = new JSDOM(
-    '<!doctype html><html><body><button id="trigger">Open</button><div id="root"></div></body></html>',
+    '<!doctype html><html><body><button id="trigger" type="button" onclick="this.focus()">Open</button><div id="root"></div></body></html>',
     {url: 'http://localhost/packs'},
   );
   const copied: string[] = [];
