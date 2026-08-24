@@ -57,6 +57,19 @@ npm test
 
 テストは Node.js の組み込みテストランナーと `tsx` で実行します。React の表示確認は SSR または JSDOM を使うため、Vitest 固有の実行環境は必要ありません。
 
+### クラッシュ復旧の確認
+
+トップレベルの `ErrorBoundary` は raw exception を表示せず、端末内の安全化された
+診断参照、画面単位の再試行、Home への復帰、表示状態の限定リセット、全体再読み込みを
+別々の操作として表示します。Flow / AI Input の schema-driven input と Launcher-local
+Profile の未保存変更だけを allowlist し、`sessionStorage` に有界な復旧下書きを保持します。
+credential、token、password などのフィールド、ProfileLock / ResolvedPlan / Pack authority、
+setup 状態は保存・リセット対象に含めません。
+
+開発サーバーでは `/panel/?qa-error-boundary=1` を開くと、production build には含まれない
+明示的な QA probe で復旧画面を確認できます。技術情報の開示、診断コピー、下書き export、
+keyboard focus、英語・日本語 copy を確認してください。
+
 ## ディレクトリ構成
 
 ```

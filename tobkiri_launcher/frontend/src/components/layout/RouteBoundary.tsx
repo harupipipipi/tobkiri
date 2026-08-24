@@ -21,26 +21,34 @@ function RouteSkeleton() {
 
 class RouteLoadErrorBoundary extends Component<
   {children: ReactNode; routeKey: string},
-  {error: Error | null}
+  {failed: boolean; diagnosticReference: string}
 > {
-  state = {error: null as Error | null};
+  state = {failed: false, diagnosticReference: ''};
 
-  static getDerivedStateFromError(error: Error) {
-    return {error};
+  static getDerivedStateFromError() {
+    return {failed: true};
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('Route render failed', {error, componentStack: info.componentStack});
+    const diagnostic = createSafeCrashDiagnostic(error, info.componentStack);
+    reportSafeCrashDiagnostic(diagnostic);
+    this.setState({diagnosticReference: diagnostic.reference});
   }
 
   componentDidUpdate(previous: {children: ReactNode; routeKey: string}) {
-    if (previous.routeKey !== this.props.routeKey && this.state.error) {
-      this.setState({error: null});
+    if (previous.routeKey !== this.props.routeKey && this.state.failed) {
+      this.setState({failed: false, diagnosticReference: ''});
     }
   }
 
+  private returnHome = () => {
+    window.history.replaceState({}, document.title, '/panel/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    this.setState({failed: false, diagnosticReference: ''});
+  };
+
   render() {
-    if (!this.state.error) return this.props.children;
+    if (!this.state.failed) return this.props.children;
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-xl rounded-xl border border-red-200 bg-red-50 p-5 dark:border-red-900/40 dark:bg-red-950/20" role="alert">

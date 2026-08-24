@@ -13,23 +13,116 @@ interface Props {
   fallback?: ReactNode;
 }
 
+type DiagnosticStatus = 'saving' | 'saved' | 'not_saved';
+type CopyStatus = 'idle' | 'copied' | 'failed';
+
 interface State {
   hasError: boolean;
-  error: Error | null;
+  diagnostic: SafeCrashDiagnostic | null;
+  diagnosticStatus: DiagnosticStatus;
+  copyStatus: CopyStatus;
+  draft: CrashDraftSnapshot | null;
+  crashCount: number;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  private headingRef = createRef<HTMLHeadingElement>();
+
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = {
+      hasError: false,
+      diagnostic: null,
+      diagnosticStatus: 'saving',
+      copyStatus: 'idle',
+      draft: null,
+      crashCount: 0,
+    };
   }
 
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    return {
+      hasError: true,
+      diagnostic: createSafeCrashDiagnostic(error),
+      diagnosticStatus: 'saving',
+      copyStatus: 'idle',
+      draft: null,
+      crashCount: 0,
+    };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+    const diagnostic = createSafeCrashDiagnostic(error, errorInfo.componentStack);
+    const saved = reportSafeCrashDiagnostic(diagnostic);
+    this.setState({
+      diagnostic,
+      diagnosticStatus: saved ? 'saved' : 'not_saved',
+      draft: recoverableDraftSnapshot(),
+      crashCount: recordCrash(),
+    });
+  }
+
+  componentDidMount(): void {
+    if (this.state.hasError) this.headingRef.current?.focus();
+  }
+
+  componentDidUpdate(_previousProps: Props, previousState: State): void {
+    if (!previousState.hasError && this.state.hasError) this.headingRef.current?.focus();
+  }
+
+  private retrySurface = (): void => {
+    this.setState({
+      hasError: false,
+      diagnosticStatus: 'saving',
+      copyStatus: 'idle',
+      draft: null,
+      crashCount: 0,
+    });
+  };
+
+  private returnHome = (): void => {
+    window.history.replaceState({}, document.title, '/panel/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    this.retrySurface();
+  };
+
+  private resetSurface = (): void => {
+    resetAffectedClientState();
+    window.history.replaceState({}, document.title, '/panel/?recovery=reset');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    this.retrySurface();
+  };
+
+  private exportDraft = (): void => {
+    if (!this.state.draft) return;
+    const blob = new Blob([crashDraftExport(this.state.draft)], {type: 'application/json'});
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = 'tobkiri-recoverable-drafts.json';
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(href), 0);
+  };
+
+  private copyDiagnostic = async (): Promise<void> => {
+    if (!this.state.diagnostic) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(this.state.diagnostic, null, 2));
+      this.setState({copyStatus: 'copied'});
+    } catch {
+      this.setState({copyStatus: 'failed'});
+    }
+  };
+
+  private diagnosticStatusCopy(): string {
+    const reference = this.state.diagnostic?.reference ?? 'unavailable';
+    if (this.state.diagnosticStatus === 'saved') {
+      return translate('recovery.diagnostic_saved', {reference});
+    }
+    if (this.state.diagnosticStatus === 'not_saved') {
+      return translate('recovery.diagnostic_not_saved', {reference});
+    }
+    return translate('recovery.diagnostic_saving', {reference});
   }
 
   render() {
@@ -63,10 +156,8 @@ export class ErrorBoundary extends Component<Props, State> {
               もう一度ひらく
             </button>
           </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
+        </section>
+      </main>
+    );
   }
 }

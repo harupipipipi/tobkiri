@@ -16,6 +16,13 @@ import {useT} from '@/src/lib/i18n';
 import type {RuntimeProfileCatalogProjection} from '@/src/lib/runtimeSurface';
 import {resolveSetupVerificationState} from '@/src/lib/setupVerification';
 import {AVATAR_OPTIONS, useAppStore} from '@/src/store';
+import {
+  clearRecoverableDraft,
+  readRecoverableDraft,
+  saveRecoverableDraft,
+} from '@/src/lib/crashRecovery';
+
+const PROFILE_DRAFT_ID = 'profile:launcher-local';
 
 export function Profile() {
   const t = useT();
@@ -68,6 +75,7 @@ export function Profile() {
     event.preventDefault();
     const nextUsername = username.trim().slice(0, 80) || t('profile.default_username');
     updateLocalProfile({username: nextUsername, job: job.slice(0, 120), avatar});
+    clearRecoverableDraft(PROFILE_DRAFT_ID);
     setUsername(nextUsername);
     addToast(t('profile.saved_personal_profile'), 'success');
   };
