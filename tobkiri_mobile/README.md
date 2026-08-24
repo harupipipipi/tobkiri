@@ -69,6 +69,12 @@ The app targets the Kernel Pack API on port `8765`, not the standalone
 defaultspack chat transport on port `8766`. The Kernel API requires a bearer
 token and is the safer surface for LAN access.
 
+Conversation history is never an authoritative phone-local store. Authenticated
+mobile conversation contracts use the PC's active profile and authoritative
+conversation-store Pack, so failed host writes cannot masquerade as saved
+local changes. See [Mobile conversation persistence](CONVERSATION_PERSISTENCE.md)
+for save, retry, migration, recovery, and export semantics.
+
 ## PC Setup
 
 Start Rumi with the Kernel API bound to the trusted LAN:
@@ -163,6 +169,11 @@ normal pairing tests.
 
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
+
+The Kernel also defines authenticated `/api/mobile/v1/conversations` routes
+for future chat UI work. A mobile chat surface must treat their durable success
+response as the save acknowledgement and must not restore the retired local
+`ChatStore` keys.
 
 ## Development
 
