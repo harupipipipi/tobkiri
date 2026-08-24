@@ -134,6 +134,7 @@ export function savedTurnTerminalNotice(
 
 export type PendingChatRequest = {
   conversationId: string;
+  kind?: "send" | "approval";
   operationId?: string;
   savedTurn?: boolean;
   requestFingerprint?: string;
@@ -158,6 +159,16 @@ export function updateSavedTurnNotice(
 
 export const PENDING_CHAT_REQUEST_TTL_MS = 6 * 60 * 60_000;
 export const PENDING_USER_ONLY_GRACE_MS = 8_000;
+
+export function activePendingChatOperation(
+  request: PendingChatRequest | null | undefined,
+  now = Date.now(),
+): "send" | "approval" | null {
+  if (!request || !Number.isFinite(request.startedAt)) return null;
+  const age = now - request.startedAt;
+  if (age < 0 || age >= PENDING_CHAT_REQUEST_TTL_MS) return null;
+  return request.kind === "approval" ? "approval" : "send";
+}
 
 export function shouldForgetPendingAfterPollError(errorValue: unknown): boolean {
   const message = errorValue instanceof Error ? errorValue.message : String(errorValue ?? "");

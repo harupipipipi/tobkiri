@@ -2,11 +2,12 @@ import { AlertCircle, CheckCircle2, CloudOff, Loader2, Wifi, WifiOff } from "luc
 
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { cn } from "../../lib/cn";
-import { normalizeLocale, type LocaleSetting } from "../../lib/i18n";
+import type { BackendConnectionState } from "../../lib/backendConnection";
+import { normalizeLocale, t, type LocaleSetting } from "../../lib/i18n";
 import type { SettingsLoadState, SettingsSaveState } from "../types";
 
 type SettingsStatusBarProps = {
-  backendState?: "online" | "degraded" | "offline";
+  backendState?: BackendConnectionState;
   backendNote?: string | null;
   saveState?: SettingsSaveState;
   loadState?: SettingsLoadState;
@@ -19,7 +20,7 @@ type SettingsStatusBarProps = {
 function formatSavedTime(value: number | null | undefined, locale: LocaleSetting): string {
   if (!value) return "";
   try {
-    return new Intl.DateTimeFormat(normalizeLocale(locale) === "ja" ? "ja-JP" : "en-US", {
+    return new Intl.DateTimeFormat(normalizeLocale(locale), {
       hour: "2-digit",
       minute: "2-digit",
     }).format(value);
@@ -43,10 +44,10 @@ export function SettingsStatusBar({
   const dirtyCount = saveState.dirtyKeys?.length ?? 0;
   const savedTime = formatSavedTime(saveState.lastSavedAt, locale);
   const connectionLabel = backendState === "online"
-    ? copy("Backend connected", "Backend接続済み")
+    ? t(locale, "connection.online.title")
     : backendState === "degraded"
-      ? copy("Connection unstable", "接続が不安定")
-      : copy("Offline protection", "オフライン保護中");
+      ? t(locale, "connection.degraded.title")
+      : t(locale, "connection.offline.title");
   const saveLabel = saveState.status === "saving"
     ? copy("Saving…", "保存中…")
     : saveState.status === "error"
@@ -135,6 +136,11 @@ export function SettingsStatusBar({
           ) : undefined}
         >
           <div className="min-w-0">
+            <p>
+              {saveState.message || (dirtyCount > 0
+                ? copy("Some changes remain local and have not been confirmed by the server.", "一部の変更は画面上に残っていますが、サーバーでは未確認です。")
+                : copy("The last change could not be saved and was not retained as a retryable edit.", "直前の変更を保存できず、再試行可能な編集内容としては保持されていません。"))}
+            </p>
             {dirtyCount > 0 && onOpenDirtyKey ? (
               <div className="mt-2 flex flex-wrap gap-1.5" aria-label={copy("Unconfirmed settings", "未確定の設定")}>
                 {(saveState.dirtyKeys ?? []).slice(0, 3).map((key) => (

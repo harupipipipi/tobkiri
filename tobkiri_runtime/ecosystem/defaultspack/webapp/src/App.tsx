@@ -15,6 +15,7 @@ import { AuthorityApprovalNotice } from "./components/AuthorityApprovalNotice";
 import { AuthorityApprovalWindow } from "./components/AuthorityApprovalWindow";
 import { ApprovalDecisionSurface } from "./components/ApprovalDecisionSurface";
 import { ErrorNotice } from "./components/ErrorNotice";
+import { BackendConnectionBanner } from "./components/BackendConnectionBanner";
 import { CodingCockpit } from "./components/coding/CodingCockpit";
 import { HostPermissionsPage } from "./hostPermissions/HostPermissionsPage";
 import { ConversationSpotlight } from "./components/ConversationSpotlight";
@@ -79,6 +80,10 @@ import {
 import { subscribeAuthorityApprovalSettlements } from "./lib/authorityApprovalEvents";
 import { pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, type BrowserApproval, type RuntimeApproval, type StaleRuntimeApproval } from "./lib/browserApproval";
 import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
+import {
+  backendConnectionStateAfterHealthCheck,
+  type BackendConnectionState,
+} from "./lib/backendConnection";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
 import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
@@ -119,6 +124,7 @@ import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSys
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, activePendingChatOperation, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -148,8 +154,6 @@ type ComposerCandidateMenuState = {
   query: string;
   candidates: ModelCommandCandidate[];
 } | null;
-
-type BackendConnectionState = "online" | "degraded" | "offline";
 
 type CatalogRefreshResult = {
   catalog: UICatalog | null;
@@ -317,41 +321,6 @@ type CalendarDragState = {
   startKey: string;
   startedAt: number;
 };
-
-function formatLastHealthyLabel(timestamp: number | null): string | null {
-  if (!timestamp) return null;
-  return new Intl.DateTimeFormat("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(timestamp);
-}
-
-function backendConnectionCopy(
-  state: BackendConnectionState,
-  lastHealthyAt: number | null,
-  note: string | null,
-): { title: string; detail: string } {
-  if (state === "offline") {
-    return {
-      title: "backend との接続が切れても、ここまでの表示は守ります。",
-      detail: note || "再接続を試しながら、いま見えている会話と操作面を保持しています。",
-    };
-  }
-  if (state === "degraded") {
-    const lastHealthy = formatLastHealthyLabel(lastHealthyAt);
-    return {
-      title: "接続は揺れていますが、画面は崩さず受け止めます。",
-      detail: lastHealthy
-        ? `最後に backend を確認できたのは ${lastHealthy} です。いまは再接続を試しながら静かに保護運転へ切り替えています。`
-        : "いまは再接続を試しながら静かに保護運転へ切り替えています。",
-    };
-  }
-  return {
-    title: "",
-    detail: "",
-  };
-}
 
 const calendarSettingsDefaults: CalendarSettings = {
   agentCurrentChat: false,
@@ -2573,7 +2542,7 @@ export function ChatApp() {
   const [isLoading, setIsLoading] = useState(true);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [startupSteps, setStartupSteps] = useState<TobkiriLoadingStep[]>([
-    { id: "backend", label: "バックエンドとの接続を確認しています…", status: "loading" },
+    { id: "backend", label: "サーバーとの接続を確認しています…", status: "loading" },
     { id: "capabilities", label: "ツール・スキル・@候補を読み込みます", status: "pending" },
     { id: "commands", label: "/コマンド・モデル・設定を準備します", status: "pending" },
     { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
@@ -2612,7 +2581,6 @@ export function ChatApp() {
   const [commandProgressEvents, setCommandProgressEvents] = useState<Array<Record<string, unknown>>>([]);
   const [health, setHealth] = useState<Awaited<ReturnType<typeof api.health>> | null>(null);
   const [backendConnectionState, setBackendConnectionState] = useState<BackendConnectionState>("online");
-  const [backendConnectionNote, setBackendConnectionNote] = useState<string | null>(null);
   const [operationsStatus, setOperationsStatus] = useState<OperationsCompanyStatus | null>(null);
   const [operationsBusy, setOperationsBusy] = useState(false);
   const [mimoCodingStatus, setMimoCodingStatus] = useState<MimoCodingCompanyStatus | null>(null);
@@ -2653,6 +2621,7 @@ export function ChatApp() {
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
+  const healthRequestGenerationRef = useRef(0);
   const authorityApprovalWindowRequestRef = useRef<string | null>(null);
   const dismissedComposerMentionToolsRef = useRef<Map<string, string[]>>(
     new Map(),
@@ -2768,11 +2737,6 @@ export function ChatApp() {
     ? `${latestActiveMessage.id}:${latestActiveMessage.role}:${latestActiveMessage.finish_reason ?? ""}:${String(latestActiveThinking.state ?? "")}`
     : "";
   const messages = orderedMessages.map((message) => toUiMessage(message, activeProfile));
-  const backendConnectionBanner = backendConnectionCopy(
-    backendConnectionState,
-    lastHealthyAtRef.current,
-    backendConnectionNote,
-  );
   const activeChatTitle = activeConversation?.title ?? "New Conversation";
   const activeWorkspaceTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId) ?? workspaceTabs[0] ?? null;
   const activeWorkspaceKind = activeWorkspaceTab?.kind ?? "chat";
@@ -2801,6 +2765,10 @@ export function ChatApp() {
   const activePromptProfileId = String(activeConversation?.metadata?.profile_id ?? activePromptUsage?.profile_id ?? "").trim() || undefined;
   const placeholder = String(settingsValues.general?.composer_placeholder ?? "メッセージを入力...");
   const locale = normalizeLocale(settingsValues.general?.language);
+  const activePendingRequest = activeConversationId
+    ? pendingRequests[activeConversationId]
+    : null;
+  const pendingConnectionOperation = activePendingChatOperation(activePendingRequest);
   const keyboardButtonNavigation = parseCommandBoolean(settingsValues.general?.keyboard_button_navigation, true);
   const spotlightShortcut = String(settingsValues.general?.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
   const spotlightShortcutEnabled = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_enabled, true);
@@ -3613,27 +3581,32 @@ export function ChatApp() {
   }, [isSettingsOpen]);
 
   const refreshHealth = useCallback(async (reason: "bootstrap" | "poll" | "focus" = "poll") => {
+    const requestGeneration = healthRequestGenerationRef.current + 1;
+    healthRequestGenerationRef.current = requestGeneration;
     try {
       const nextHealth = await api.health();
+      if (requestGeneration !== healthRequestGenerationRef.current) return;
       consecutiveHealthFailuresRef.current = 0;
       lastHealthyAtRef.current = Date.now();
       setHealth(nextHealth);
-      setBackendConnectionState("online");
-      setBackendConnectionNote(null);
+      setBackendConnectionState(
+        backendConnectionStateAfterHealthCheck(
+          true,
+          lastHealthyAtRef.current,
+          consecutiveHealthFailuresRef.current,
+        ),
+      );
     } catch (healthError) {
+      if (requestGeneration !== healthRequestGenerationRef.current) return;
       console.error(healthError);
       consecutiveHealthFailuresRef.current += 1;
-      const hadHealthyConnection = lastHealthyAtRef.current !== null;
-      const nextState: BackendConnectionState = hadHealthyConnection && consecutiveHealthFailuresRef.current < 3
-        ? "degraded"
-        : "offline";
+      const nextState = backendConnectionStateAfterHealthCheck(
+        false,
+        lastHealthyAtRef.current,
+        consecutiveHealthFailuresRef.current,
+      );
       const message = healthError instanceof Error ? healthError.message : "backend connection lost";
       setBackendConnectionState(nextState);
-      setBackendConnectionNote(
-        hadHealthyConnection
-          ? `最後に安定していた backend から切れました。再接続を試しています。${message}`
-          : `backend の応答をまだ確認できていません。${message}`,
-      );
       if (reason !== "poll" || nextState === "offline") {
         void reportClientDiagnostic({
           source: "webapp",
@@ -3901,7 +3874,7 @@ export function ChatApp() {
       setIsLoading(true);
       setStartupError(null);
       setStartupSteps([
-        { id: "backend", label: "バックエンドとの接続を確認しています…", status: "loading" },
+        { id: "backend", label: "サーバーとの接続を確認しています…", status: "loading" },
         { id: "capabilities", label: "ツール・スキル・@候補を読み込みます", status: "pending" },
         { id: "commands", label: "/コマンド・モデル・設定を準備します", status: "pending" },
         { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
@@ -3927,6 +3900,7 @@ export function ChatApp() {
         rememberPendingRequest({
           ...storedPending,
           conversationId: pendingConversationId,
+          kind: storedPending?.kind ?? "send",
           startedAt: storedPending?.startedAt ?? Date.now(),
           status: storedPending?.status ?? "Processing...",
           toolNames: storedPending?.toolNames ?? [],
@@ -3934,7 +3908,7 @@ export function ChatApp() {
         });
       }
       const backendBootstrap = refreshHealth("bootstrap").then(() => {
-        updateStartupStep("backend", "ready", "バックエンドの接続状態を確認しました");
+        updateStartupStep("backend", "ready", "サーバーの接続状態を確認しました");
       });
       updateStartupStep("capabilities", "loading", "ツール・スキル・@候補を読み込んでいます…");
       updateStartupStep("commands", "loading", "/コマンド・モデル・設定を読み込んでいます…");
@@ -3946,7 +3920,7 @@ export function ChatApp() {
             updateStartupStep("commands", "error", "/コマンド・モデル・設定を準備できませんでした");
             throw new Error(
               result?.errorMessage
-              ?? "インターフェース情報を取得できませんでした。バックエンド接続を確認してください。",
+              ?? "インターフェース情報を取得できませんでした。サーバー接続を確認してください。",
             );
           }
           updateStartupStep("capabilities", "ready", "ツール・スキル・@候補を準備しました");
@@ -5938,6 +5912,7 @@ export function ChatApp() {
     rememberPendingRequest({
       ...pendingRequests[activeConversationId],
       conversationId: activeConversationId,
+      kind: "approval",
       startedAt: Date.now(),
       status: "ユーザー承認をAIへ伝えています",
       toolNames: approvalToolIds,
@@ -6038,6 +6013,7 @@ export function ChatApp() {
     rememberPendingRequest({
       ...pendingRequests[activeConversationId],
       conversationId: activeConversationId,
+      kind: "approval",
       startedAt: Date.now(),
       status: "承認済みの操作を続行しています",
       toolNames: [runtimeApproval.toolName],
@@ -6728,6 +6704,7 @@ export function ChatApp() {
           : `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
       rememberPendingRequest({
         conversationId: conversation.id,
+        kind: "send",
         operationId,
         requestFingerprint,
         savedTurn: true,
@@ -6786,6 +6763,57 @@ export function ChatApp() {
           await refreshConversations(submittedConversationId).catch(console.error);
         }
         setError(null);
+        return;
+      }
+      if (submitError instanceof ChatStreamInterruptedError) {
+        const interruptedConversationId = submittedConversationId ?? submittedConversationRuntimeId;
+        markInterruptedAssistant?.(submitError);
+        if (interruptedConversationId) {
+          // A stream close is transport-ambiguous: the backend may already
+          // have committed the turn. Keep the persisted operation id and
+          // pending URL so a retry replays this logical send.
+          updatePendingRequests((current) => {
+            const existing = current[interruptedConversationId];
+            return existing
+              ? {
+                  ...current,
+                  [interruptedConversationId]: {
+                    ...existing,
+                    status: "応答ストリームが切れました。再試行すると結果を確認します",
+                  },
+                }
+              : current;
+          });
+        }
+        setBackendConnectionState("degraded");
+        void reportClientDiagnostic({
+          source: "webapp",
+          category: "stream_interrupted",
+          level: "warning",
+          message: "The frontend preserved a partial assistant response after the stream was interrupted.",
+          fingerprint: `stream-interrupted:${interruptedConversationId ?? "new"}:${submitError.message}`,
+          conversationId: interruptedConversationId,
+          detail: {
+            error: submitError.message,
+            partialTextLength: submitError.partialText.length,
+            thinkingTextLength: submitError.thinkingText.length,
+            sawActivity: submitError.sawActivity,
+          },
+        });
+        const interruptionMessage = submitError.partialText.trim()
+          ? "応答ストリームが途中で切れたため、ここまで届いた内容を保護して着地しました。"
+          : "応答ストリームが途中で切れました。画面は保護したまま、再接続の余地を残しています。";
+        setRetryableSubmission({
+          input: inputForSubmit,
+          attachments: submittedAttachments,
+          droppedWidgets: droppedWidgetsForSubmit,
+          toolSelectionRequest,
+          skipReview: true,
+          errorMessage: interruptionMessage,
+        });
+        setError(interruptionMessage);
+        dismissedComposerMentionToolsRef.current.clear();
+        setIsNewChatLaunching(false);
         return;
       }
       const preserveOperationForRetry = isLikelyTransportFailure(submitError);
@@ -7548,7 +7576,7 @@ export function ChatApp() {
           modelProfiles={settingsModelProfiles}
           activeModelProfileId={activeProfile?.profile_id ?? activeModelId}
           backendConnectionState={backendConnectionState}
-          backendConnectionNote={backendConnectionNote}
+          backendConnectionNote={null}
           saveState={settingsSaveState}
           loadState={settingsLoadState}
           modelProfilesLoadState={modelProfilesLoadState}

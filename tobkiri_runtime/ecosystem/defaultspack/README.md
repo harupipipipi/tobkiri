@@ -101,6 +101,8 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 
 `webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
 
+接続ステータスは `/api/health` の確認結果だけを示し、会話データの最新性を推測しません。再接続中またはオフラインでは、送信・承認の未確認状態、ローカル表示やキャッシュを含む可能性、自動再接続、実際に行える「接続を確認」操作を区別して表示します。オフライン中の新規送信はキューに保存されないため、接続回復後に送信してください。
+
 ## AI Agent Service Defaults
 
 defaultspack includes local-first building blocks inspired by Codex, Claude Code, ChatGPT Projects, Manus, Genspark, and OpenClaw. The core contract is:

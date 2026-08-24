@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import type { ChatMessage, SavedTurnResult } from "./api";
 import {
+  PENDING_CHAT_REQUEST_TTL_MS,
   PENDING_USER_ONLY_GRACE_MS,
   chatContinuationPacketMatchesTurn,
   savedTurnSnapshotState,
@@ -16,6 +17,21 @@ import {
   shouldForgetPendingAfterPollError,
   type PendingChatRequest,
 } from "./pendingChat";
+
+test("active pending operations exclude stale or invalid persisted requests", () => {
+  const now = Date.UTC(2026, 7, 24, 3, 4);
+  const request = pending(now - 1_000);
+
+  assert.equal(activePendingChatOperation(request, now), "send");
+  assert.equal(activePendingChatOperation({ ...request, kind: "approval" }, now), "approval");
+  assert.equal(activePendingChatOperation({
+    ...request,
+    startedAt: now - PENDING_CHAT_REQUEST_TTL_MS,
+  }, now), null);
+  assert.equal(activePendingChatOperation({ ...request, startedAt: Number.NaN }, now), null);
+  assert.equal(activePendingChatOperation({ ...request, startedAt: now + 1_000 }, now), null);
+  assert.equal(activePendingChatOperation(null, now), null);
+});
 
 function message(patch: Partial<ChatMessage>): ChatMessage {
   return {
