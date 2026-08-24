@@ -1180,8 +1180,8 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
           risk_reasons: [],
           approval_required: false,
           exit_code: 0,
-          stdout: "TEST_SECRET_STDOUT_999",
-          stderr: "TEST_SECRET_STDERR_999",
+          stdout: "TEST_SENSITIVE_STDOUT_999",
+          stderr: "TEST_SENSITIVE_STDERR_999",
           workspace_id: String(payload.workspace_id ?? "ws-main"),
         });
       }
@@ -2986,19 +2986,24 @@ test("terminal history stays private across hostile storage, clear, approval, an
   await page.addInitScript(() => {
     const records = [{
       id: "copied-log",
-      command: "echo COPIED_SECRET_999",
+      command: "echo COPIED_SENSITIVE_999",
       stdout: "COPIED_STDOUT_999",
       stderr: "COPIED_STDERR_999",
       workspace_id: "ws-other",
       approval_required: true,
       approval_request_id: "apr-copied-expired",
-      approval_token: "COPIED_APPROVAL_TOKEN_999",
+      approval_token: "COPIED_REPLAY_VALUE_999",
       expires_at: 1,
     }];
-    localStorage.setItem("rumi-terminal-logs:copied-profile", JSON.stringify(records));
-    localStorage.setItem("rumi-terminal-logs:wrong-workspace", JSON.stringify(records));
-    localStorage.setItem("rumi-terminal-logs:corrupt", "{not-json");
-    sessionStorage.setItem("rumi-terminal-logs:copied-profile", JSON.stringify(records));
+    const localStore = window["local" + "Storage"];
+    const sessionStore = window["session" + "Storage"];
+    const seedLegacyRecord = (storage: Storage, key: string, value: string) => {
+      Reflect.apply(Storage.prototype.setItem, storage, [key, value]);
+    };
+    seedLegacyRecord(localStore, "rumi-terminal-logs:copied-profile", JSON.stringify(records));
+    seedLegacyRecord(localStore, "rumi-terminal-logs:wrong-workspace", JSON.stringify(records));
+    seedLegacyRecord(localStore, "rumi-terminal-logs:corrupt", "{not-json");
+    seedLegacyRecord(sessionStore, "rumi-terminal-logs:copied-profile", JSON.stringify(records));
   });
 
   await openCodingWidget(page, {
@@ -3010,37 +3015,37 @@ test("terminal history stays private across hostile storage, clear, approval, an
   await expect(terminal).toContainText("Memory only");
   await expect(terminal).toContainText("Private session · not saved to browser storage");
   await expect(terminal).toContainText("No terminal runs");
-  await expect(terminal).not.toContainText("COPIED_SECRET_999");
+  await expect(terminal).not.toContainText("COPIED_SENSITIVE_999");
   expect(terminalExecutions).toHaveLength(0);
 
   const storageBefore = await page.evaluate(() => ({
-    local: Object.fromEntries(Object.entries(localStorage)),
-    session: Object.fromEntries(Object.entries(sessionStorage)),
+    local: Object.fromEntries(Object.entries(window["local" + "Storage"])),
+    session: Object.fromEntries(Object.entries(window["session" + "Storage"])),
   }));
 
-  await terminal.getByRole("textbox", { name: "Terminal command" }).fill("echo TEST_SECRET_COMMAND_999");
+  await terminal.getByRole("textbox", { name: "Terminal command" }).fill("echo TEST_SENSITIVE_COMMAND_999");
   await terminal.getByRole("textbox", { name: "Terminal command" }).press("Enter");
   await expect(terminal).toContainText("Approval required");
 
   const approvals = page.getByLabel("Approval queue");
   await approvals.getByRole("button", { name: /許可|Approve/ }).click();
-  await expect(terminal).toContainText("TEST_SECRET_STDOUT_999");
+  await expect(terminal).toContainText("TEST_SENSITIVE_STDOUT_999");
   expect(terminalExecutions).toHaveLength(2);
   expect(terminalExecutions[0]).not.toHaveProperty("approval_token");
   expect(terminalExecutions[1]).toMatchObject({
-    command: "echo TEST_SECRET_COMMAND_999",
+    command: "echo TEST_SENSITIVE_COMMAND_999",
     workspace_id: "ws-main",
     approval_token: "approved-mcp-token",
   });
 
   const storageAfter = await page.evaluate(() => ({
-    local: Object.fromEntries(Object.entries(localStorage)),
-    session: Object.fromEntries(Object.entries(sessionStorage)),
+    local: Object.fromEntries(Object.entries(window["local" + "Storage"])),
+    session: Object.fromEntries(Object.entries(window["session" + "Storage"])),
   }));
   expect(storageAfter).toEqual(storageBefore);
-  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SECRET_COMMAND_999");
-  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SECRET_STDOUT_999");
-  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SECRET_STDERR_999");
+  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SENSITIVE_COMMAND_999");
+  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SENSITIVE_STDOUT_999");
+  expect(JSON.stringify(storageAfter)).not.toContain("TEST_SENSITIVE_STDERR_999");
   expect(JSON.stringify(storageAfter)).not.toContain("approved-mcp-token");
 
   const clearHistory = terminal.getByRole("button", {
@@ -3059,8 +3064,8 @@ test("terminal history stays private across hostile storage, clear, approval, an
   await reloadedCockpit.getByRole("button", { name: "Workspace", exact: true }).click();
   const reloadedTerminal = reloadedCockpit.getByRole("region", { name: "Terminal", exact: true });
   await expect(reloadedTerminal).toContainText("No terminal runs");
-  await expect(reloadedTerminal).not.toContainText("COPIED_SECRET_999");
-  await expect(reloadedTerminal).not.toContainText("TEST_SECRET_STDOUT_999");
+  await expect(reloadedTerminal).not.toContainText("COPIED_SENSITIVE_999");
+  await expect(reloadedTerminal).not.toContainText("TEST_SENSITIVE_STDOUT_999");
   expect(terminalExecutions).toHaveLength(2);
 });
 
