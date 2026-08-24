@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 
 import 'authority_approval_screen.dart';
 import 'models.dart';
+import 'pc_control_models.dart';
+import 'pc_control_state.dart';
+import 'pc_runtime_controls.dart';
 import 'rumi_api_client.dart';
 import 'secure_settings_store.dart';
 
@@ -30,6 +33,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   String? _error;
   bool _loading = true;
   bool _busy = false;
+  late final PcControlCoordinator _pcControls;
 
   RumiApiClient get _client => RumiApiClient(
         baseUrl: _settings.baseUrl,
@@ -39,12 +43,17 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   @override
   void initState() {
     super.initState();
+    _pcControls = PcControlCoordinator(
+      invoke: _invokePcControl,
+      loadSnapshot: _loadPcControlSnapshot,
+    );
     _loadSettings();
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _pcControls.dispose();
     _serverController.dispose();
     _tokenController.dispose();
     super.dispose();
@@ -126,6 +135,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
         migration = await client.migrationStatus();
         packRequests = await client.listPackRequests();
         selected = _syncSelected(catalog.modules);
+        await _pcControls.refresh();
       }
       if (!mounted) {
         return;
@@ -147,6 +157,33 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
       if (mounted && !silent) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  Future<PcCommandResult> _invokePcControl(PcControlRequest request) async {
+    final client = _client;
+    try {
+      return await client.invokeCommand(
+        request.definition.commandRef,
+        args: request.definition.arguments(request.value),
+        invocationId: request.invocationId,
+        expectedRevision: request.expectedRevision,
+        idempotencyKey: request.idempotencyKey,
+        clientSequence: request.clientSequence,
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<PcRuntimeSnapshot> _loadPcControlSnapshot(
+    Set<String> stateRefs,
+  ) async {
+    final client = _client;
+    try {
+      return await client.commandStates(stateRefs);
+    } finally {
+      client.close();
     }
   }
 
@@ -275,7 +312,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
     final modules = _catalog?.modules ?? const <RumiModule>[];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rumi Remote'),
+        title: const Text('Tobkiri Remote'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -292,6 +329,11 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
                         builder: (_) => const AuthorityApprovalScreen(),
                       ),
                     ),
+          ),
+          IconButton(
+            tooltip: 'PC runtime controls',
+            icon: const Icon(Icons.tune_outlined),
+            onPressed: _settings.token.trim().isEmpty ? null : _showPcControls,
           ),
           IconButton(
             tooltip: 'Settings',
@@ -359,6 +401,18 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showPcControls() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.9,
+        child: PcRuntimeControlsPanel(coordinator: _pcControls),
       ),
     );
   }

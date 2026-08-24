@@ -21,6 +21,8 @@
 - Improved documentation structure for better developer experience
 
 ### Fixed
+- Reconciled mobile PC runtime controls against revisioned authoritative
+  snapshots, with explicit pending, failed, retry, approval, and offline states.
 - Fixed broken internal links in documentation
 - Improved documentation consistency across project
 

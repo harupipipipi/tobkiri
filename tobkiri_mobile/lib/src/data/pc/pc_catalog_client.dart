@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../pc_control_models.dart';
+import '../../pc_control_state.dart';
 import '../../settings/api_config_store.dart';
 import 'pc_catalog.dart';
 
@@ -26,10 +28,10 @@ class PcCatalogClient {
   }
 
   Map<String, String> _headers(PcConnection pc) => {
-        'Authorization': 'Bearer ${pc.token.trim()}',
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      };
+    'Authorization': 'Bearer ${pc.token.trim()}',
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  };
 
   Uri _uri(String baseUrl, String path) {
     var trimmed = baseUrl.trim();
@@ -86,6 +88,42 @@ class PcCatalogClient {
     });
     final data = _decodeData(resp.body);
     return PcCommandExecuteResult.fromJson(data);
+  }
+
+  Future<PcRuntimeSnapshot> fetchControlSnapshot(
+    PcConnection pc,
+    Set<String> stateRefs,
+  ) async {
+    final refs =
+        stateRefs
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList()
+          ..sort();
+    final resp = await _post(pc, '/api/mobile/v1/control-states/query', {
+      'state_refs': refs,
+    });
+    return PcRuntimeSnapshot.fromJson(_decodeData(resp.body));
+  }
+
+  Future<PcCommandResult> invokeControlCommand(
+    PcConnection pc,
+    PcControlRequest request, {
+    String? conversationId,
+    String mode = 'chat',
+  }) async {
+    final resp = await _post(pc, '/api/mobile/v1/control-commands/invoke', {
+      'command_ref': request.definition.commandRef,
+      'args': request.definition.arguments(request.value),
+      'mode': mode,
+      'invocation_id': request.invocationId,
+      'expected_revision': request.expectedRevision,
+      'idempotency_key': request.idempotencyKey,
+      'client_sequence': request.clientSequence,
+      if (conversationId != null && conversationId.trim().isNotEmpty)
+        'conversation_id': conversationId.trim(),
+    });
+    return PcCommandResult.fromJson(_decodeData(resp.body));
   }
 
   Future<Map<String, dynamic>> invokeTool(

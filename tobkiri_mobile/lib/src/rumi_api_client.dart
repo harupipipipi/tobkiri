@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'generated/command_protocol_models.dart' as protocol;
 import 'models.dart';
+import 'pc_control_models.dart';
 
 enum ModuleAction {
   enable('enable', 'Enable', destructive: false),
@@ -95,7 +96,7 @@ class RumiApiClient {
     return asMap(await _request('GET', '/api/command-protocol/v1/catalog'));
   }
 
-  Future<Map<String, dynamic>> invokeCommand(
+  Future<PcCommandResult> invokeCommand(
     String commandRef, {
     Map<String, Object?> args = const {},
     String? conversationId,
@@ -120,14 +121,14 @@ class RumiApiClient {
       idempotencyKey: idempotencyKey,
       clientSequence: clientSequence,
     );
-    return asMap(await _request(
+    return PcCommandResult.fromJson(asMap(await _request(
       'POST',
       '/api/command-protocol/v1/invoke',
       body: request.toJson(),
-    ));
+    )));
   }
 
-  Future<Map<String, dynamic>> resumeCommand(
+  Future<PcCommandResult> resumeCommand(
     String commandRef,
     String approvalToken, {
     Map<String, Object?> args = const {},
@@ -154,11 +155,22 @@ class RumiApiClient {
       clientSequence: clientSequence,
       approvalToken: approvalToken,
     );
-    return asMap(await _request(
+    return PcCommandResult.fromJson(asMap(await _request(
       'POST',
       '/api/command-protocol/v1/resume',
       body: request.toJson(),
+    )));
+  }
+
+  Future<PcRuntimeSnapshot> commandStates(Set<String> stateRefs) async {
+    final data = asMap(await _request(
+      'POST',
+      '/api/command-protocol/v1/states/query',
+      body: <String, Object?>{
+        'state_refs': stateRefs.toList(growable: false)..sort(),
+      },
     ));
+    return PcRuntimeSnapshot.fromJson(data);
   }
 
   Future<Map<String, dynamic>> commandInvocationEvents(

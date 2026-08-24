@@ -17,6 +17,8 @@ import '../domain/conversation_locator.dart';
 import '../domain/space.dart';
 import '../features/tools/approval_card.dart';
 import '../features/tools/tool_activity_card.dart';
+import '../pc_control_state.dart';
+import '../pc_runtime_controls.dart';
 import '../platform/platform_services.dart';
 import '../settings/api_config_store.dart';
 import '../settings/settings_screen.dart';
@@ -72,6 +74,8 @@ class _ChatScreenState extends State<ChatScreen>
   String _pcMode = 'chat';
   bool _pcYoloMode = false;
   bool _pcUltraYoloMode = false;
+  PcControlCoordinator? _pcControlCoordinator;
+  String _pcControlConnectionKey = '';
   final Map<String, String> _assistantMessageByRunId = {};
   final Map<String, List<ChatEvent>> _activityByAssistantMessageId = {};
   MobileNotificationSettings _notificationSettings =
@@ -99,6 +103,7 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollController.dispose();
     _router.local.dispose();
     _pcBackend?.close();
+    _disposePcControlCoordinator();
     super.dispose();
   }
 
@@ -184,53 +189,99 @@ class _ChatScreenState extends State<ChatScreen>
     final connection = space?.pcConnection;
     if (space == null || !space.isPc || connection == null) {
       _pcCatalog = null;
+      _disposePcControlCoordinator();
       return;
     }
-    if (!connection.isConfigured) return;
+    if (!connection.isConfigured) {
+      _disposePcControlCoordinator();
+      return;
+    }
     if (mounted) setState(() => _loadingPcCatalog = true);
     final client = PcCatalogClient();
     try {
       final catalog = await client.fetchCapabilities(connection);
-      final selected = _initialPcModelForCatalog(catalog);
       if (!mounted) return;
       setState(() {
         _pcCatalog = catalog;
-        _selectedPcModel = selected;
-        _pcThinkingLevel = catalog.runtime.thinkingLevel;
-        _pcDeepthinkEnabled = catalog.runtime.deepthinkEnabled;
         _loadingPcCatalog = false;
       });
+      await _pcControlsFor(connection).refresh();
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _pcCatalog = null;
         _loadingPcCatalog = false;
       });
+      await _pcControlsFor(connection).refresh();
     } finally {
       client.close();
     }
   }
 
-  String? _initialPcModelForCatalog(PcCatalog catalog) {
-    final preferred = catalog.runtime.preferredModel.trim();
-    final preferredProfile =
-        preferred.isEmpty ? null : catalog.profileById(preferred);
-    if (preferredProfile != null &&
-        preferredProfile.effectiveProfileId != 'stub/default' &&
-        (preferredProfile.configured || preferredProfile.local)) {
-      return preferredProfile.effectiveProfileId;
+  PcControlCoordinator _pcControlsFor(PcConnection connection) {
+    final connectionKey =
+        '${connection.baseUrl.trim()}\u0000${connection.token.trim()}';
+    if (_pcControlCoordinator != null &&
+        _pcControlConnectionKey == connectionKey) {
+      return _pcControlCoordinator!;
     }
-    final usable = catalog.selectableProfiles
-        .where((p) => p.configured || p.local)
-        .toList();
-    for (final profile in usable) {
-      if (profile.effectiveProfileId != 'stub/default' &&
-          profile.providerId != 'stub') {
-        return profile.effectiveProfileId;
+    _disposePcControlCoordinator();
+    _pcControlConnectionKey = connectionKey;
+    final coordinator = PcControlCoordinator(
+      invoke: (request) async {
+        final client = PcCatalogClient();
+        try {
+          return await client.invokeControlCommand(
+            connection,
+            request,
+            conversationId: _activePcSnapshot?.locator.conversationId,
+            mode: _pcMode,
+          );
+        } finally {
+          client.close();
+        }
+      },
+      loadSnapshot: (stateRefs) async {
+        final client = PcCatalogClient();
+        try {
+          return await client.fetchControlSnapshot(connection, stateRefs);
+        } finally {
+          client.close();
+        }
+      },
+    );
+    coordinator.addListener(_syncPcControlValues);
+    _pcControlCoordinator = coordinator;
+    return coordinator;
+  }
+
+  void _disposePcControlCoordinator() {
+    final coordinator = _pcControlCoordinator;
+    if (coordinator != null) {
+      coordinator.removeListener(_syncPcControlValues);
+      coordinator.dispose();
+    }
+    _pcControlCoordinator = null;
+    _pcControlConnectionKey = '';
+  }
+
+  void _syncPcControlValues() {
+    final coordinator = _pcControlCoordinator;
+    if (!mounted || coordinator == null) return;
+    final model = coordinator.state('model').confirmedValue;
+    final thinking = coordinator.state('thinking').confirmedValue;
+    final deepthink = coordinator.state('deepthink').confirmedValue;
+    setState(() {
+      _selectedPcModel = model is String && model.trim().isNotEmpty
+          ? model.trim()
+          : null;
+      if (thinking is String && thinking.trim().isNotEmpty) {
+        _pcThinkingLevel = thinking.trim();
       }
-    }
-    if (preferredProfile != null) return preferredProfile.effectiveProfileId;
-    return usable.isNotEmpty ? usable.first.effectiveProfileId : null;
+      if (deepthink is bool) {
+        _pcDeepthinkEnabled = deepthink;
+      }
+    });
   }
 
   void _updateSpaceOffline(String spaceId, bool offline) {
@@ -241,11 +292,15 @@ class _ChatScreenState extends State<ChatScreen>
 
   Future<void> _selectSpace(String spaceId) async {
     if (spaceId == _activeSpaceId) return;
+    _disposePcControlCoordinator();
     setState(() {
       _activeSpaceId = spaceId;
       _pcConversations = [];
       _activePcSnapshot = null;
       _pcCatalog = null;
+      _selectedPcModel = null;
+      _pcThinkingLevel = 'medium';
+      _pcDeepthinkEnabled = false;
     });
     if (spaceId != Space.local.id) {
       await _loadPcConversations();
@@ -1078,42 +1133,20 @@ class _ChatScreenState extends State<ChatScreen>
               },
             ),
             if (_activeSpaceIsPc) ...[
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('DeepThink'),
-                subtitle: const Text('PCのDeepThink設定'),
-                value: _pcDeepthinkEnabled,
-                onChanged: (value) {
-                  Navigator.of(context).pop();
-                  unawaited(_setPcDeepthink(value));
-                },
-              ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.psychology_alt_outlined),
-                title: const Text('Thinking level'),
-                subtitle: Text(_pcThinkingLevel),
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final level in const [
-                    'none',
-                    'low',
-                    'medium',
-                    'high',
-                    'xhigh',
-                  ])
-                    ChoiceChip(
-                      label: Text(level),
-                      selected: _pcThinkingLevel == level,
-                      onSelected: (_) {
-                        Navigator.of(context).pop();
-                        unawaited(_setPcThinkingLevel(level));
-                      },
-                    ),
-                ],
+                leading: const Icon(Icons.tune),
+                title: const Text('PC runtime controls'),
+                subtitle: Text(
+                  'Current: ${_activeModelLabel()} · '
+                  '$_pcThinkingLevel · '
+                  'DeepThink ${_pcDeepthinkEnabled ? "On" : "Off"}',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  unawaited(_showPcRuntimeControls());
+                },
               ),
               const SizedBox(height: 12),
               Text('/ commands', style: theme.textTheme.titleSmall),
@@ -1268,94 +1301,52 @@ class _ChatScreenState extends State<ChatScreen>
       _promptPcConfigure();
       return;
     }
-    setState(() => _selectedPcModel = profileId);
-    final client = PcCatalogClient();
-    try {
-      final result = await client.executeCommand(
-        connection,
-        command: 'model',
-        args: {'query': profileId},
-        conversationId: _activePcSnapshot?.locator.conversationId,
-        mode: _pcMode,
-      );
-      await _handlePcCommandResult(
-        PcCommandItem.fromJson(<String, dynamic>{
-          'id': 'model',
-          'name': 'model',
-          'label': 'Model',
-          'category': 'model',
-          'visibility': 'default',
-          'risk': 'low',
-          'execution': {
-            'type': 'model_command',
-            'action': 'select_or_suggest_model',
-          },
-        }),
-        result,
-      );
-    } catch (e) {
-      _showSnack('PCモデル設定に失敗しました: $e');
-    } finally {
-      client.close();
-    }
+    await _requestPcControl(connection, 'model', profileId);
   }
 
   Future<void> _setPcThinkingLevel(String level) async {
-    setState(() => _pcThinkingLevel = level);
-    final command = _pcCatalog?.commands.firstWhere(
-      (c) => c.id == 'think' || c.name == 'think',
-      orElse: () => PcCommandItem.fromJson(<String, dynamic>{
-        'id': 'think',
-        'name': 'think',
-        'label': 'Thinking Level',
-        'category': 'model',
-        'visibility': 'default',
-        'risk': 'low',
-        'args': [
-          {'name': 'level', 'type': 'enum'},
-        ],
-        'execution': {
-          'type': 'rumi_function',
-          'qualified_name': 'defaultspack:ai_set_thinking_level',
-        },
-      }),
-    );
-    if (command != null) {
-      await _executePcCommand(
-        command,
-        args: {
-          'level': level,
-          'scope': 'profile',
-          'profile_id': _activeModelId(),
-        },
-      );
-      if (mounted) setState(() => _pcThinkingLevel = level);
+    final connection = _activeSpace()?.pcConnection;
+    if (connection == null || !connection.isConfigured) {
+      _promptPcConfigure();
+      return;
+    }
+    await _requestPcControl(connection, 'thinking', level);
+  }
+
+  Future<void> _requestPcControl(
+    PcConnection connection,
+    String controlId,
+    Object? value,
+  ) async {
+    final coordinator = _pcControlsFor(connection);
+    await coordinator.request(controlId, value);
+    if (!mounted) return;
+    final state = coordinator.state(controlId);
+    if (state.phase != PcControlPhase.current) {
+      await _showPcRuntimeControls(refresh: false);
     }
   }
 
-  Future<void> _setPcDeepthink(bool enabled) async {
-    setState(() => _pcDeepthinkEnabled = enabled);
-    final command = _pcCatalog?.commands.firstWhere(
-      (c) => c.id == 'deepthink' || c.name == 'deepthink',
-      orElse: () => PcCommandItem.fromJson(<String, dynamic>{
-        'id': 'deepthink',
-        'name': 'deepthink',
-        'label': 'DeepThink',
-        'category': 'model',
-        'visibility': 'default',
-        'risk': 'medium',
-        'args': [
-          {'name': 'enabled', 'type': 'boolean'},
-        ],
-        'execution': {
-          'type': 'rumi_function',
-          'qualified_name': 'defaultspack:ai_set_deepthink_enabled',
-        },
-      }),
-    );
-    if (command != null) {
-      await _executePcCommand(command, args: {'enabled': enabled});
+  Future<void> _showPcRuntimeControls({bool refresh = true}) async {
+    final connection = _activeSpace()?.pcConnection;
+    if (connection == null || !connection.isConfigured) {
+      _promptPcConfigure();
+      return;
     }
+    final coordinator = _pcControlsFor(connection);
+    if (refresh) {
+      await coordinator.refresh();
+    }
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.9,
+        child: PcRuntimeControlsPanel(coordinator: coordinator),
+      ),
+    );
   }
 
   Future<void> _runPcCommandFromMenu(PcCommandItem command) async {

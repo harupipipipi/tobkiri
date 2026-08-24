@@ -152,11 +152,23 @@ class CommandProtocolRegistry(CommandCatalogProjection):
             "commands": commands,
             "states": [
                 {
+                    "state_ref": "defaultspack:models.preferred_model",
+                    "schema_version": "1.0.0",
+                    "value_type": "string",
+                    "authority": "backend_runtime",
+                },
+                {
+                    "state_ref": "defaultspack:models.thinking_level",
+                    "schema_version": "1.0.0",
+                    "value_type": "string",
+                    "authority": "backend_runtime",
+                },
+                {
                     "state_ref": "defaultspack:models.deepthink_enabled",
                     "schema_version": "1.0.0",
                     "value_type": "boolean",
                     "authority": "backend_runtime",
-                }
+                },
             ],
             "datasources": [
                 {
@@ -172,9 +184,7 @@ class CommandProtocolRegistry(CommandCatalogProjection):
                     "capabilities": ["search", "cursor_paging", "selected_item_retention"],
                 },
             ],
-            "state_snapshots": self.query_states(
-                ["defaultspack:models.deepthink_enabled"]
-            )["states"],
+            "state_snapshots": self.query_states()["states"],
             "diagnostics": diagnostics,
         }
         validate_protocol_document(catalog)
@@ -504,6 +514,8 @@ class CommandProtocolRegistry(CommandCatalogProjection):
             "conversation_id": payload.get("conversation_id"),
             "mode": payload.get("mode") or "chat",
             "expected_revision": payload.get("expected_revision"),
+            "idempotency_key": payload.get("idempotency_key"),
+            "client_sequence": payload.get("client_sequence"),
             "catalog_revision": payload.get("catalog_revision"),
             "profile_id": payload.get("profile_id"),
         }
@@ -1342,6 +1354,79 @@ class CommandProtocolRegistry(CommandCatalogProjection):
 
 
 
+    @staticmethod
+    def _execution(command: dict[str, Any]) -> dict[str, Any]:
+        execution = command.get("execution") if isinstance(command.get("execution"), dict) else {}
+        execution_type = str(execution.get("type") or "frontend")
+        if execution_type == "frontend":
+            action = str(execution.get("action") or command.get("id") or "")
+            state_ref = LEGACY_HOST_STATE_REFS.get(action)
+            if state_ref:
+                return {
+                    "kind": "state_mutation",
+                    "state_ref": state_ref,
+                    "mutation": {"argument": "enabled", "when_present": "set"},
+                }
+            return {
+                "kind": "host_operation",
+                "operation_ref": f"host:{action}",
+            }
+        if execution_type == "model_command":
+            return {
+                "kind": "state_mutation",
+                "state_ref": "defaultspack:models.preferred_model",
+                "mutation": {"argument": "query", "when_present": "set"},
+                "offline": {
+                    "queueable": True,
+                    "semantics": "set",
+                    "backend_authoritative": True,
+                },
+            }
+        if execution_type == "settings_patch":
+            return {
+                "kind": "state_mutation",
+                "state_ref": (
+                    f"defaultspack:{execution.get('section')}.{execution.get('field')}"
+                ),
+                "mutation": {"argument": "enabled", "when_present": "set"},
+                "offline": {
+                    "queueable": True,
+                    "semantics": "set",
+                    "backend_authoritative": True,
+                },
+            }
+        qualified = str(
+            execution.get("qualified_name")
+            or execution.get("action")
+            or command.get("id")
+            or ""
+        )
+        if command.get("id") == "deepthink":
+            return {
+                "kind": "state_mutation",
+                "state_ref": "defaultspack:models.deepthink_enabled",
+                "mutation": {"argument": "enabled", "when_present": "set"},
+                "offline": {
+                    "queueable": True,
+                    "semantics": "set",
+                    "backend_authoritative": True,
+                },
+            }
+        if qualified == "defaultspack:ai_set_thinking_level":
+            return {
+                "kind": "state_mutation",
+                "state_ref": "defaultspack:models.thinking_level",
+                "mutation": {"argument": "level", "when_present": "set"},
+                "offline": {
+                    "queueable": True,
+                    "semantics": "set",
+                    "backend_authoritative": True,
+                },
+            }
+        return {
+            "kind": "pack_operation",
+            "operation_ref": qualified,
+        }
 
 
     @staticmethod

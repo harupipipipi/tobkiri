@@ -129,7 +129,7 @@ class SlashCommandRegistry:
             )
 
         if execution_type == "model_command":
-            return self._execute_model_command(command, execution, args)
+            return self._execute_model_command(command, execution, args, payload)
 
         if execution_type == "rumi_function":
             if command.get("_manifest_origin") != MANIFEST_ORIGIN_DEFAULT:
@@ -200,6 +200,7 @@ class SlashCommandRegistry:
         command: dict[str, Any],
         execution: dict[str, Any],
         args: dict[str, Any],
+        invocation: dict[str, Any],
     ) -> dict[str, Any]:
         action = str(execution.get("action") or "")
         if action != "select_or_suggest_model":
@@ -229,15 +230,33 @@ class SlashCommandRegistry:
             exact = resolution.get("exact") if isinstance(resolution, dict) else None
             candidates = resolution.get("candidates", []) if isinstance(resolution, dict) else []
             if isinstance(exact, dict) and exact.get("profile_id"):
-                result = service.set_preferred_model(str(exact["profile_id"]))
+                result = service.set_preferred_model(
+                    str(exact["profile_id"]),
+                    **self._state_mutation_kwargs(invocation),
+                )
+                response_payload: dict[str, Any] = {
+                    "command": self._public_command(command),
+                    "executed": True,
+                    "result": result,
+                    "selected_model": exact,
+                    "args": args,
+                    "operation_id": str(
+                        invocation.get("invocation_id")
+                        or invocation.get("operation_id")
+                        or uuid.uuid4()
+                    ),
+                    "operation_status": "succeeded",
+                }
+                client_sequence = invocation.get("client_sequence")
+                if isinstance(client_sequence, int) and not isinstance(
+                    client_sequence, bool
+                ):
+                    response_payload["client_sequence"] = client_sequence
+                state_snapshot = result.get("state_snapshot")
+                if isinstance(state_snapshot, dict):
+                    response_payload["state_changes"] = [state_snapshot]
                 return ok(
-                    {
-                        "command": self._public_command(command),
-                        "executed": True,
-                        "result": result,
-                        "selected_model": exact,
-                        "args": args,
-                    }
+                    response_payload
                 )
             message = "No matching models found." if not candidates else "Choose a model candidate."
             return ok(
@@ -439,7 +458,8 @@ class SlashCommandRegistry:
                 return {"profile_id": service.get_preferred_model()}
             if function_id == "ai_set_preferred_model":
                 return service.set_preferred_model(
-                    str(args.get("profile_id") or args.get("model") or "")
+                    str(args.get("profile_id") or args.get("model") or ""),
+                    **self._state_mutation_kwargs(invocation),
                 )
             if function_id == "ai_get_thinking_level":
                 return service.get_thinking_level(
@@ -451,6 +471,7 @@ class SlashCommandRegistry:
                     args.get("scope", "global"),
                     args.get("profile_id"),
                     args.get("conversation_id"),
+                    **self._state_mutation_kwargs(invocation),
                 )
             if function_id == "ai_get_effective_thinking_level":
                 return service.get_effective_thinking_level(
@@ -466,19 +487,9 @@ class SlashCommandRegistry:
                 return service.get_deepthink_enabled()
             if function_id == "ai_set_deepthink_enabled":
                 enabled = args.get("enabled")
-                invocation = invocation or {}
-                expected_revision = invocation.get("expected_revision")
-                if not isinstance(expected_revision, int) or isinstance(expected_revision, bool):
-                    expected_revision = None
-                idempotency_key = str(invocation.get("idempotency_key") or "").strip() or None
-                kwargs: dict[str, Any] = {}
-                if expected_revision is not None:
-                    kwargs["expected_revision"] = expected_revision
-                if idempotency_key is not None:
-                    kwargs["idempotency_key"] = idempotency_key
                 return service.set_deepthink_enabled(
                     enabled if isinstance(enabled, bool) else None,
-                    **kwargs,
+                    **self._state_mutation_kwargs(invocation),
                 )
         except Exception as exc:
             from domain.frontend_settings_store import (
@@ -500,6 +511,28 @@ class SlashCommandRegistry:
                 return error(str(exc), "IDEMPOTENCY_CONFLICT")
             return error(str(exc), "EXECUTION_FAILED")
         return None
+
+    @staticmethod
+    def _state_mutation_kwargs(
+        invocation: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Extract trusted command transport concurrency fields for a mutation."""
+        payload = invocation if isinstance(invocation, dict) else {}
+        expected_revision = payload.get("expected_revision")
+        if (
+            not isinstance(expected_revision, int)
+            or isinstance(expected_revision, bool)
+        ):
+            expected_revision = None
+        idempotency_key = (
+            str(payload.get("idempotency_key") or "").strip() or None
+        )
+        kwargs: dict[str, Any] = {}
+        if expected_revision is not None:
+            kwargs["expected_revision"] = expected_revision
+        if idempotency_key is not None:
+            kwargs["idempotency_key"] = idempotency_key
+        return kwargs
 
     def _commands_with_errors(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         manifest_errors: list[dict[str, Any]] = []
