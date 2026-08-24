@@ -367,12 +367,19 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
 }
 
 export async function fetchDefaultsSetupState(
-  options: {waitForRestart?: boolean; includeSourceAdditions?: boolean} = {},
+  options: {
+    waitForRestart?: boolean;
+    includeSourceAdditions?: boolean;
+    /** Bounded single-check deadline used by the setup verification pass. */
+    timeoutMs?: number;
+  } = {},
 ): Promise<DefaultsSetupState> {
   // Restart may close the connection before a response arrives. Retry only
   // transport failures of this read; integrity/auth errors and POSTs are final.
-  const deadline = Date.now() + 60_000;
-  const needsExtendedRead = options.waitForRestart || options.includeSourceAdditions;
+  const deadline = Date.now() + (options.timeoutMs ?? 60_000);
+  const needsExtendedRead = options.waitForRestart
+    || options.includeSourceAdditions
+    || options.timeoutMs !== undefined;
   while (true) {
     try {
       return parseDefaultsSetupState(await apiFetch<unknown>(

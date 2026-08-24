@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -18,15 +19,30 @@ import { Dashboard } from '@/src/pages/Dashboard';
 import { ToastContainer } from '@/src/components/ui/ToastContainer';
 import { DialogContainer } from '@/src/components/ui/DialogContainer';
 import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
-import {bootstrapPanelSession, hasPendingPanelBootstrapCode} from '@/src/lib/apiTransport';
+import {
+  bootstrapPanelSession,
+  hasPendingPanelBootstrapCode,
+  reauthorizePanelSession,
+} from '@/src/lib/apiTransport';
 import { applyAppearanceToRoot } from '@/src/lib/appearance';
 import { runtimeMonitorDelay } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';
 import {
   resolveSetupVerificationState,
-  type SetupVerificationState,
+  type SetupVerificationRouteState,
 } from '@/src/lib/setupVerification';
 import { RouteAnnouncer } from '@/src/components/layout/RouteAnnouncer';
+import {fetchDefaultsSetupState} from '@/src/lib/defaultsSetup';
+import {
+  failedSetupState,
+  initialSetupVerificationState,
+  loadingSetupState,
+  SETUP_VERIFICATION_TIMEOUT_MS,
+  SetupVerificationSequence,
+  type SetupVerificationState,
+  verifiedSetupState,
+  writeSetupVerificationRecord,
+} from '@/src/lib/setupVerification';
 import {
   LazyAiInput,
   LazyApiMap,
@@ -49,8 +65,58 @@ export default function App() {
   const runtimeStatus = useAppStore(state => state.runtimeStatus);
   const runtimeDisconnected = useAppStore(state => state.runtimeDisconnected);
   const defaultsBootstrapRequired = useAppStore(state => state.defaultsBootstrapRequired);
+  const setSetupDone = useAppStore(state => state.setSetupDone);
   const addToast = useAppStore(state => state.addToast);
   const refreshRuntimeHealth = useAppStore(state => state.refreshRuntimeHealth);
+  const [setupVerification, setSetupVerification] = useState(
+    () => initialSetupVerificationState(isSetupDone),
+  );
+  const verificationStateRef = useRef<SetupVerificationState>(setupVerification);
+  const verificationSequenceRef = useRef(new SetupVerificationSequence());
+
+  const updateSetupVerification = useCallback((next: SetupVerificationState) => {
+    verificationStateRef.current = next;
+    setSetupVerification(next);
+  }, []);
+
+  const verifyDefaultsProfile = useCallback(async () => {
+    const sequence = verificationSequenceRef.current;
+    const token = sequence.begin();
+    const previous = verificationStateRef.current;
+    updateSetupVerification(loadingSetupState(previous));
+    try {
+      const response = await fetchDefaultsSetupState({
+        timeoutMs: SETUP_VERIFICATION_TIMEOUT_MS,
+      });
+      if (!sequence.isCurrent(token)) return;
+      const next = verifiedSetupState(response, Date.now(), previous);
+      if (next.kind === 'selected' || next.kind === 'missing') {
+        writeSetupVerificationRecord(next);
+      }
+      updateSetupVerification(next);
+      if (next.kind === 'missing') {
+        setSetupDone(false);
+      }
+    } catch (error) {
+      if (!sequence.isCurrent(token)) return;
+      updateSetupVerification(failedSetupState(error, previous));
+    }
+  }, [setSetupDone, updateSetupVerification]);
+
+  const reauthorizeSetupVerification = useCallback(async () => {
+    const sequence = verificationSequenceRef.current;
+    const token = sequence.begin();
+    const previous = verificationStateRef.current;
+    updateSetupVerification(loadingSetupState(previous));
+    try {
+      await reauthorizePanelSession();
+      if (!sequence.isCurrent(token)) return;
+      await verifyDefaultsProfile();
+    } catch (error) {
+      if (!sequence.isCurrent(token)) return;
+      updateSetupVerification(failedSetupState(error, previous));
+    }
+  }, [updateSetupVerification, verifyDefaultsProfile]);
 
   useLayoutEffect(() => {
     applyAppearanceToRoot(document.documentElement, { theme, colorMode });
@@ -70,6 +136,32 @@ export default function App() {
       addToast(message, 'error');
     });
   }, [addToast]);
+
+  useEffect(() => {
+    if (!isSetupDone) return;
+    type IdleWindow = Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    const target = window as IdleWindow;
+    const scheduleVerification = () => {
+      void verifyDefaultsProfile();
+    };
+
+    let cancelScheduled: () => void;
+    if (typeof target.requestIdleCallback === 'function') {
+      const handle = target.requestIdleCallback(scheduleVerification, { timeout: 1_000 });
+      cancelScheduled = () => target.cancelIdleCallback?.(handle);
+    } else {
+      const handle = window.setTimeout(scheduleVerification, 300);
+      cancelScheduled = () => window.clearTimeout(handle);
+    }
+
+    return () => {
+      verificationSequenceRef.current.cancel();
+      cancelScheduled();
+    };
+  }, [isSetupDone, verifyDefaultsProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +217,9 @@ export default function App() {
         runtimeDisconnected={runtimeDisconnected}
         defaultsBootstrapRequired={defaultsBootstrapRequired}
         onRetryRuntimeHealth={refreshRuntimeHealth}
+        setupVerification={setupVerification}
+        onRetrySetupVerification={() => void verifyDefaultsProfile()}
+        onReauthorizeSetupVerification={() => void reauthorizeSetupVerification()}
       />
       <ToastContainer />
       <DialogContainer />
@@ -155,6 +250,9 @@ export interface SetupVerificationBannerProps {
 
 export interface HomeRouteProps {
   verificationBanner: ReactNode;
+  setupVerification?: SetupVerificationState;
+  onRetrySetupVerification?: () => void;
+  onReauthorizeSetupVerification?: () => void;
 }
 
 export interface DevtoolsRouteGateProps {
@@ -169,7 +267,7 @@ type SetupVerificationCopy = {
   detail: string;
 };
 
-const setupVerificationCopy: Record<SetupVerificationState, SetupVerificationCopy> = {
+const setupVerificationCopy: Record<SetupVerificationRouteState, SetupVerificationCopy> = {
   checking: {
     role: 'status',
     title: 'Verifying Tobkiri setup',
@@ -244,7 +342,7 @@ function VerificationMessage({
   testId,
   titleId,
 }: {
-  state: SetupVerificationState;
+  state: SetupVerificationRouteState;
   onRetry?: () => void | Promise<void>;
   retrying: boolean;
   compact?: boolean;
@@ -365,8 +463,20 @@ export function SetupVerificationBanner({
  * while runtime verification is unresolved; runtime-only child routes use the
  * gate below instead.
  */
-export function HomeRoute({verificationBanner}: HomeRouteProps) {
-  return <Layout verificationBanner={verificationBanner} />;
+export function HomeRoute({
+  verificationBanner,
+  setupVerification,
+  onRetrySetupVerification,
+  onReauthorizeSetupVerification,
+}: HomeRouteProps) {
+  return (
+    <Layout
+      verificationBanner={verificationBanner}
+      setupVerification={setupVerification}
+      onRetrySetupVerification={onRetrySetupVerification}
+      onReauthorizeSetupVerification={onReauthorizeSetupVerification}
+    />
+  );
 }
 
 /**
@@ -477,6 +587,9 @@ export function RouteTree({
   runtimeDisconnected,
   defaultsBootstrapRequired,
   onRetryRuntimeHealth,
+  setupVerification,
+  onRetrySetupVerification,
+  onReauthorizeSetupVerification,
 }: {
   isSetupDone: boolean;
   runtimeReady: boolean;
@@ -484,6 +597,9 @@ export function RouteTree({
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
   onRetryRuntimeHealth: () => Promise<void>;
+  setupVerification?: SetupVerificationState;
+  onRetrySetupVerification?: () => void;
+  onReauthorizeSetupVerification?: () => void;
 }) {
   const location = useLocation();
 
@@ -522,7 +638,14 @@ export function RouteTree({
 
         <Route
           path={panelRoutes.home}
-          element={<HomeRoute verificationBanner={verificationBanner} />}
+          element={
+            <HomeRoute
+              verificationBanner={verificationBanner}
+              setupVerification={setupVerification}
+              onRetrySetupVerification={onRetrySetupVerification}
+              onReauthorizeSetupVerification={onReauthorizeSetupVerification}
+            />
+          }
         >
           <Route index element={<Dashboard />} />
           <Route path={panelRoutes.packs.slice(1)} element={gateRuntimeRoute(<LazyPacks />)} />

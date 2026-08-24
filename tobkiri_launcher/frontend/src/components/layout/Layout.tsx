@@ -9,6 +9,8 @@ import { describeRuntimeBanner } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';
 import { RouteBoundary } from './RouteBoundary';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
+import {SetupVerificationNotice} from './SetupVerificationNotice';
+import type {SetupVerificationState} from '@/src/lib/setupVerification';
 
 export function shouldShowRuntimeErrorCopy(
   banner: Pick<ReturnType<typeof describeRuntimeBanner>, 'tone' | 'detail'>,
@@ -30,7 +32,20 @@ export interface LayoutOutletContext {
   verificationBanner?: ReactNode;
 }
 
-export function Layout({verificationBanner}: {verificationBanner?: ReactNode}) {
+export interface LayoutProps {
+  verificationBanner?: ReactNode;
+  /** Persistent Defaults Profile verification outcome; never authority. */
+  setupVerification?: SetupVerificationState;
+  onRetrySetupVerification?: () => void;
+  onReauthorizeSetupVerification?: () => void;
+}
+
+export function Layout({
+  verificationBanner,
+  setupVerification,
+  onRetrySetupVerification = () => undefined,
+  onReauthorizeSetupVerification = () => undefined,
+}: LayoutProps = {}) {
   const location = useLocation();
   const isHome = location.pathname.replace(/\/$/, '') === panelRoutes.home.replace(/\/$/, '');
   // Runtime-only routes render their own blocking recovery gate.
@@ -57,6 +72,13 @@ export function Layout({verificationBanner}: {verificationBanner?: ReactNode}) {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main id="panel-main" tabIndex={-1} className="flex-1 flex flex-col relative overflow-hidden">
+          {setupVerification && (
+            <SetupVerificationNotice
+              state={setupVerification}
+              onRetry={onRetrySetupVerification}
+              onReauthorize={onReauthorizeSetupVerification}
+            />
+          )}
           {showLayoutVerification && verificationBanner}
           {!runtimeReady && !verificationBanner && (
             <div
