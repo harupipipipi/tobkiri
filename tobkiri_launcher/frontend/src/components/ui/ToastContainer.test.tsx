@@ -27,7 +27,7 @@ function createSurface(): {
   previouslyFocused: HTMLButtonElement;
 } {
   const dom = new JSDOM(
-    '<!doctype html><html><body><button id="before">Before</button><div id="root"></div></body></html>',
+    '<!doctype html><html><body><button id="before" onclick="return false">Before</button><div id="root"></div></body></html>',
     {url: 'http://localhost/panel/'},
   );
   Object.defineProperties(globalThis, {
