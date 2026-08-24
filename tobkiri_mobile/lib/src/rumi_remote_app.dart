@@ -9,7 +9,7 @@ class RumiRemoteApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Rumi Remote',
+      title: 'Tobkiri Remote',
       debugShowCheckedModeBanner: false,
       theme: buildRumiTheme(),
       home: const RumiRemoteHome(),

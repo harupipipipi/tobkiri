@@ -8,20 +8,30 @@ import 'models.dart';
 import 'rumi_api_client.dart';
 import 'secure_settings_store.dart';
 
+part 'settings_recovery_widgets.dart';
+
 class RumiRemoteHome extends StatefulWidget {
-  const RumiRemoteHome({super.key});
+  const RumiRemoteHome({
+    super.key,
+    this.settingsRepository,
+    this.refreshOnLoad = true,
+  });
+
+  final SettingsRepository? settingsRepository;
+  final bool refreshOnLoad;
 
   @override
   State<RumiRemoteHome> createState() => _RumiRemoteHomeState();
 }
 
 class _RumiRemoteHomeState extends State<RumiRemoteHome> {
-  final _settingsStore = SecureSettingsStore();
+  late final SettingsRepository _settingsStore;
   final _serverController = TextEditingController();
   final _tokenController = TextEditingController();
 
   Timer? _refreshTimer;
   RumiRemoteSettings _settings = RumiRemoteSettings.defaults;
+  SettingsLoadResult? _settingsLoad;
   RumiHealth? _health;
   ModuleCatalog? _catalog;
   RumiModule? _selectedModule;
@@ -30,15 +40,16 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   String? _error;
   bool _loading = true;
   bool _busy = false;
+  bool _settingsRecoveryAcknowledged = false;
+  int _settingsLoadGeneration = 0;
 
-  RumiApiClient get _client => RumiApiClient(
-        baseUrl: _settings.baseUrl,
-        bearerToken: _settings.token,
-      );
+  RumiApiClient get _client =>
+      RumiApiClient(baseUrl: _settings.baseUrl, bearerToken: _settings.token);
 
   @override
   void initState() {
     super.initState();
+    _settingsStore = widget.settingsRepository ?? SecureSettingsStore();
     _loadSettings();
   }
 
@@ -51,17 +62,48 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   }
 
   Future<void> _loadSettings() async {
-    final settings = await _settingsStore.load();
-    if (!mounted) {
+    final generation = ++_settingsLoadGeneration;
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _settingsRecoveryAcknowledged = false;
+      });
+    }
+    SettingsLoadResult result;
+    try {
+      result = await _settingsStore.loadAll();
+    } catch (_) {
+      result = const SettingsLoadResult(
+        apiSettings: null,
+        pairedDevice: null,
+        notifications: null,
+        deviceIdentity: null,
+        failures: [
+          SettingsLoadFailure(
+            source: SettingsDataSource.apiConfiguration,
+            code: 'read-unavailable',
+          ),
+        ],
+      );
+    }
+    if (!mounted || generation != _settingsLoadGeneration) {
       return;
     }
+    final settings = result.apiSettings;
     setState(() {
-      _settings = settings;
-      _syncControllers(settings);
+      _settingsLoad = result;
+      if (settings != null) {
+        _settings = settings;
+        _syncControllers(settings);
+      }
       _loading = false;
     });
+    if (settings == null) {
+      _refreshTimer?.cancel();
+      return;
+    }
     _configureTimer(settings);
-    await _refresh();
+    if (widget.refreshOnLoad) await _refresh();
   }
 
   void _syncControllers(RumiRemoteSettings settings) {
@@ -80,13 +122,33 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
     );
   }
 
-  Future<void> _saveSettings(bool autoRefresh) async {
+  Future<void> _saveSettings(
+    bool autoRefresh,
+    bool notificationsEnabled,
+  ) async {
+    final load = _settingsLoad;
+    if (load == null || load.apiSettings == null) return;
+    if (load.hasFailures && !_settingsRecoveryAcknowledged) {
+      _showSnack('Retry loading or choose safe recovery before saving.');
+      return;
+    }
     final settings = RumiRemoteSettings(
       baseUrl: _serverController.text.trim(),
       token: _tokenController.text.trim(),
       autoRefresh: autoRefresh,
     );
-    await _settingsStore.save(settings);
+    try {
+      await _settingsStore.saveApi(settings);
+      if (!load.failed(SettingsDataSource.notifications) &&
+          load.notifications != null) {
+        await _settingsStore.saveNotifications(
+          MobileNotificationSettings(enabled: notificationsEnabled),
+        );
+      }
+    } catch (_) {
+      _showSnack('Settings could not be saved. Retry after storage recovers.');
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -98,10 +160,19 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
       _packRequests = const [];
       _selectedModule = null;
       _error = null;
+      _settingsLoad = SettingsLoadResult(
+        apiSettings: settings,
+        pairedDevice: load.pairedDevice,
+        notifications: load.failed(SettingsDataSource.notifications)
+            ? null
+            : MobileNotificationSettings(enabled: notificationsEnabled),
+        deviceIdentity: load.deviceIdentity,
+        failures: load.failures,
+      );
     });
     _configureTimer(settings);
     Navigator.of(context).maybePop();
-    await _refresh();
+    if (widget.refreshOnLoad) await _refresh();
   }
 
   Future<void> _refresh({bool silent = false}) async {
@@ -257,11 +328,7 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
+        content: Text(message, maxLines: 2, overflow: TextOverflow.ellipsis),
       ),
     );
   }
@@ -272,10 +339,37 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final settingsLoad = _settingsLoad;
+    if (settingsLoad == null || settingsLoad.apiSettings == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Tobkiri Remote')),
+        body: SafeArea(
+          child: _SettingsLoadErrorView(
+            failures: settingsLoad?.failures ??
+                const [
+                  SettingsLoadFailure(
+                    source: SettingsDataSource.apiConfiguration,
+                    code: 'read-unavailable',
+                  ),
+                ],
+            pairedDevice: settingsLoad?.pairedDevice,
+            deviceIdentity: settingsLoad?.deviceIdentity,
+            onRetry: _loadSettings,
+            onReset: _confirmResetSettings,
+            onOpenAuthority: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const AuthorityApprovalScreen(),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final modules = _catalog?.modules ?? const <RumiModule>[];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rumi Remote'),
+        title: const Text('Tobkiri Remote'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -364,8 +458,12 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
   }
 
   Future<void> _showSettingsSheet() async {
+    final load = _settingsLoad;
+    if (load == null || load.apiSettings == null) return;
     _syncControllers(_settings);
     var autoRefresh = _settings.autoRefresh;
+    var notificationsEnabled = load.notifications?.enabled ??
+        MobileNotificationSettings.defaults.enabled;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -376,63 +474,202 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
           builder: (context, setSheetState) {
             return Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, bottom + 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _serverController,
-                    keyboardType: TextInputType.url,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: 'Kernel API URL',
-                      prefixIcon: Icon(Icons.dns_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _tokenController,
-                    obscureText: true,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      labelText: 'Bearer token',
-                      prefixIcon: Icon(Icons.key_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Auto refresh'),
-                    value: autoRefresh,
-                    onChanged: (value) =>
-                        setSheetState(() => autoRefresh = value),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.close),
-                          label: const Text('Cancel'),
-                          onPressed: () => Navigator.of(context).maybePop(),
+                      Semantics(
+                        header: true,
+                        child: Text(
+                          'Settings',
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Save'),
-                          onPressed: () => _saveSettings(autoRefresh),
+                      if (load.hasFailures) ...[
+                        const SizedBox(height: 12),
+                        _SettingsFailureCard(
+                          failures: load.failures,
+                          onRetry: () {
+                            Navigator.of(context).pop();
+                            _loadSettings();
+                          },
+                          onRecover: _settingsRecoveryAcknowledged
+                              ? null
+                              : () async {
+                                  final recovered =
+                                      await _confirmUseLoadedSettings();
+                                  if (recovered && mounted) {
+                                    setState(() {
+                                      _settingsRecoveryAcknowledged = true;
+                                    });
+                                    setSheetState(() {});
+                                  }
+                                },
                         ),
+                      ],
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const Key('server-settings-field'),
+                        controller: _serverController,
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Kernel API URL',
+                          prefixIcon: Icon(Icons.dns_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const Key('token-settings-field'),
+                        controller: _tokenController,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        decoration: const InputDecoration(
+                          labelText: 'Bearer token',
+                          prefixIcon: Icon(Icons.key_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Auto refresh'),
+                        value: autoRefresh,
+                        onChanged: (value) =>
+                            setSheetState(() => autoRefresh = value),
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Notifications'),
+                        subtitle: load.failed(SettingsDataSource.notifications)
+                            ? const Text('Unavailable until loading succeeds')
+                            : null,
+                        value: notificationsEnabled,
+                        onChanged: load.failed(SettingsDataSource.notifications)
+                            ? null
+                            : (value) => setSheetState(
+                                  () => notificationsEnabled = value,
+                                ),
+                      ),
+                      _SettingsReadOnlySummary(
+                        pairedDevice: load.pairedDevice,
+                        deviceIdentity: load.deviceIdentity,
+                        pairedDeviceFailed: load.failed(
+                          SettingsDataSource.pairedDevice,
+                        ),
+                        deviceIdentityFailed: load.failed(
+                          SettingsDataSource.deviceIdentity,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.close),
+                              label: const Text('Close'),
+                              onPressed: () => Navigator.of(context).maybePop(),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.icon(
+                              key: const Key('save-settings-button'),
+                              icon: const Icon(Icons.save_outlined),
+                              label: const Text('Save'),
+                              onPressed: load.hasFailures &&
+                                      !_settingsRecoveryAcknowledged
+                                  ? null
+                                  : () => _saveSettings(
+                                        autoRefresh,
+                                        notificationsEnabled,
+                                      ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        key: const Key('reset-settings-button'),
+                        icon: const Icon(Icons.restart_alt),
+                        label: const Text('Reset editable settings'),
+                        onPressed: () async {
+                          final reset = await _confirmResetSettings();
+                          if (reset && context.mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        },
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             );
           },
         );
       },
     );
+  }
+
+  Future<bool> _confirmUseLoadedSettings() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Use recovered sections?'),
+        content: const Text(
+          'Only sections that loaded successfully can be saved. Unreadable '
+          'pairing, notification, or identity data will not be overwritten.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('confirm-safe-recovery-button'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Use loaded sections'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<bool> _confirmResetSettings() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset editable settings?'),
+        content: const Text(
+          'This clears the Kernel API URL, bearer token, refresh, and '
+          'notification preferences. Pairing and device identity are kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('confirm-reset-settings-button'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return false;
+    try {
+      await _settingsStore.resetEditableSettings();
+    } catch (_) {
+      _showSnack(
+        'Reset did not complete. Retry after secure storage is available.',
+      );
+      return false;
+    }
+    if (mounted) await _loadSettings();
+    return true;
   }
 }
 
@@ -914,9 +1151,9 @@ class _JsonPanel extends StatelessWidget {
             const SizedBox(height: 8),
             SelectableText(
               encoder.convert(data),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
             ),
           ],
         ),
