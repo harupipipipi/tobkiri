@@ -4,7 +4,11 @@ on:
   push:
     branches: [master, soon]
   pull_request:
-    branches: [master, soon, codex/pack-architecture-program-soon]
+    branches:
+      - master
+      - soon
+      - codex/pack-architecture-program-soon
+      - agent/add-pack-architecture-implementation-plan
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
 concurrency:
