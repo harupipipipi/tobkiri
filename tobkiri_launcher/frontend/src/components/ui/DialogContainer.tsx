@@ -138,7 +138,11 @@ export function DialogContainer() {
           <Button variant="outline" onClick={handleClose} disabled={isConfirming}>
             {dialog.cancelText || t('dialog.cancel')}
           </Button>
-          <Button onClick={handleConfirm} loading={isConfirming}>
+          <Button
+            onClick={handleConfirm}
+            loading={isConfirming}
+            loadingLabel={dialog.confirmPendingText || t('dialog.pending')}
+          >
             {isConfirming
               ? (dialog.confirmPendingText || t('dialog.pending'))
               : (dialog.confirmText || t('dialog.confirm'))}

@@ -270,6 +270,7 @@ export function PackDetail() {
                   className="min-h-11"
                   onClick={handleRevoke}
                   loading={Boolean(packApprovalPending[pack.id])}
+                  loadingLabel="Revoking approval…"
                   aria-busy={Boolean(packApprovalPending[pack.id])}
                   disabled={!packScopeAuthoritative || pack.type === 'core' || Boolean(packApprovalPending[pack.id]) || mutationResultUnknown}
                   aria-label={`Revoke approval for ${pack.name}`}
@@ -289,7 +290,7 @@ export function PackDetail() {
                     || mutationResultUnknown
                   }
                   onCheckedChange={() => { void handleToggle(); }}
-                  aria-label={`Toggle ${pack.name}`}
+                  aria-label={t('packs.toggle', {name: pack.name})}
                   aria-busy={Boolean(packTogglePending[pack.id])}
                   title={pack.type === 'core' ? 'Core Packs cannot be disabled.' : undefined}
                 />

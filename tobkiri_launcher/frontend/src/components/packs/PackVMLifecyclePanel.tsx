@@ -766,6 +766,7 @@ export function PackVMLifecyclePanel() {
                 This deletes only the authenticated PackVM instance. Type the exact phrase to continue.
               </p>
               <Input
+                id="input-cleanup-confirmation"
                 className="mt-3 font-mono"
                 label="Cleanup confirmation"
                 value={cleanupText}

@@ -3,13 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#101012" />
+    <meta name="theme-color" content="#0a0a0a" />
     <title>Tobkiri Launcher</title>
     <style>
       html {
-        /* Default theme: Rounded / dark. Keep in sync with :root.dark.theme-rounded. */
-        background: #101012;
-        color: #e8e8ea;
+        background: #0a0a0a;
+        color: #f5f5f5;
         color-scheme: dark;
       }
 
@@ -70,17 +69,13 @@
           root.classList.add('dark');
         }
         root.style.colorScheme = mode;
-        var prePaint = {
-          'theme-rounded': {light: ['#f7f7f8', '#1f1f1f'], dark: ['#101012', '#e8e8ea']},
-          'theme-minimal': {light: ['#ffffff', '#1a1a1a'], dark: ['#111111', '#ececec']},
-        }[themes[theme]][mode];
-        root.style.backgroundColor = prePaint[0];
-        root.style.color = prePaint[1];
+        root.style.backgroundColor = mode === 'light' ? '#ffffff' : '#212121';
+        root.style.color = mode === 'light' ? '#111827' : '#f5f5f5';
       })();
     </script>
-    <script type="module" crossorigin src="/panel/assets/index-D6aUoLbk.js"></script>
-    <link rel="modulepreload" crossorigin href="/panel/assets/Card-Cx4FPFVS.js">
-    <link rel="stylesheet" crossorigin href="/panel/assets/index-CLS6aro7.css">
+    <script type="module" crossorigin src="/panel/assets/index-DeTr_5ZT.js"></script>
+    <link rel="modulepreload" crossorigin href="/panel/assets/Card-CApbea5B.js">
+    <link rel="stylesheet" crossorigin href="/panel/assets/index-DH9GsUVq.css">
   </head>
   <body>
     <div id="root"></div>

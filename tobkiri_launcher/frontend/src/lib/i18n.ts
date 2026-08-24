@@ -196,6 +196,7 @@ const en: Dict = {
   'packs.disabled': 'Disabled',
   'packs.toggle_on': '{name} enabled',
   'packs.toggle_off': '{name} disabled',
+  'packs.toggle': 'Toggle {name}',
   'packs.loading': 'Loading packs...',
   'pack.basic_info': 'Basic Info',
   'pack.capabilities': 'Capabilities',
@@ -295,6 +296,7 @@ const en: Dict = {
   'dialog.cancel': 'Cancel',
   'dialog.confirm': 'Confirm',
   'dialog.pending': 'Working...',
+  'button.pending': 'Working...',
 };
 
 const ja: Dict = {
@@ -483,6 +485,7 @@ const ja: Dict = {
   'packs.disabled': '\u7121\u52b9',
   'packs.toggle_on': '{name}\u3092\u6709\u52b9\u306b\u3057\u307e\u3057\u305f',
   'packs.toggle_off': '{name}\u3092\u7121\u52b9\u306b\u3057\u307e\u3057\u305f',
+  'packs.toggle': '{name}\u306e\u6709\u52b9\u30fb\u7121\u52b9\u3092\u5207\u308a\u66ff\u3048',
   'packs.loading': '\u30d1\u30c3\u30af\u3092\u8aad\u307f\u8fbc\u307f\u4e2d...',
   'pack.basic_info': '\u57fa\u672c\u60c5\u5831',
   'pack.capabilities': '\u6a5f\u80fd',
@@ -582,6 +585,7 @@ const ja: Dict = {
   'dialog.cancel': '\u30ad\u30e3\u30f3\u30bb\u30eb',
   'dialog.confirm': '\u78ba\u8a8d',
   'dialog.pending': '\u51e6\u7406\u4e2d...',
+  'button.pending': '\u51e6\u7406\u4e2d...',
 };
 
 const zh: Dict = {
@@ -599,10 +603,12 @@ const zh: Dict = {
   'settings.connecting': '\u8fde\u63a5\u4e2d...', 'settings.connect_success': 'Rumi \u8d26\u6237\u5df2\u8fde\u63a5',
   'setup.subtitle': '\u8bbe\u7f6e\u60a8\u7684\u4e2a\u4ebaAI\u52a9\u624b', 'setup.connect_rumi': '\u4f7f\u7528Rumi\u8d26\u6237\u8fde\u63a5', 'setup.skip': '\u8df3\u8fc7',
   'packs.title': '\u5305', 'packs.search': '\u641c\u7d22\u5305...', 'packs.not_found': '\u672a\u627e\u5230\u5305', 'packs.loading': '\u52a0\u8f7d\u5305\u4e2d...',
+  'packs.toggle': '\u5207\u6362{name}',
   'pack.basic_info': '\u57fa\u672c\u4fe1\u606f', 'pack.capabilities': '\u529f\u80fd', 'pack.flows': '\u6d41\u7a0b', 'pack.dependencies': '\u4f9d\u8d56\u9879',
   'pack.none': '\u65e0', 'pack.run': '\u8fd0\u884c', 'pack.loading': '\u52a0\u8f7d\u5305\u4e2d...',
   'flows.new': '\u65b0\u5efa', 'flows.execute': '\u6267\u884c', 'flows.save': '\u4fdd\u5b58', 'flows.delete': '\u5220\u9664',
   'flows.loading': '\u52a0\u8f7d\u6d41\u7a0b\u4e2d...', 'dialog.cancel': '\u53d6\u6d88', 'dialog.confirm': '\u786e\u8ba4',
+  'button.pending': '\u5904\u7406\u4e2d...',
 };
 
 const ko: Dict = {
@@ -621,9 +627,11 @@ const ko: Dict = {
   'settings.connecting': '\uc5f0\uacb0 \uc911...', 'settings.connect_success': 'Rumi \uacc4\uc815 \uc5f0\uacb0\ub428',
   'setup.subtitle': '\uac1c\uc778 AI \ube44\uc11c\ub97c \uc124\uc815\ud558\uc138\uc694', 'setup.connect_rumi': 'Rumi \uacc4\uc815\uc73c\ub85c \uc5f0\uacb0', 'setup.skip': '\uac74\ub108\ub6f0\uae30',
   'packs.title': '\ud329', 'packs.search': '\ud329 \uac80\uc0c9...', 'packs.not_found': '\ud329\uc744 \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4', 'packs.loading': '\ud329 \ub85c\ub529 \uc911...',
+  'packs.toggle': '{name} \uc804\ud658',
   'pack.basic_info': '\uae30\ubcf8 \uc815\ubcf4', 'pack.none': '\uc5c6\uc74c', 'pack.run': '\uc2e4\ud589', 'pack.loading': '\ud329 \ub85c\ub529 \uc911...',
   'flows.new': '\uc0c8 \ud50c\ub85c\uc6b0', 'flows.execute': '\uc2e4\ud589', 'flows.save': '\uc800\uc7a5', 'flows.delete': '\uc0ad\uc81c',
   'flows.loading': '\ud50c\ub85c\uc6b0 \ub85c\ub529 \uc911...', 'dialog.cancel': '\ucde8\uc18c', 'dialog.confirm': '\ud655\uc778',
+  'button.pending': '\ucc98\ub9ac \uc911...',
 };
 
 const es: Dict = {
@@ -639,9 +647,11 @@ const es: Dict = {
   'settings.change_icon': 'Cambiar icono', 'settings.connecting': 'Conectando...',
   'setup.subtitle': 'Configura tu asistente de IA personal', 'setup.connect_rumi': 'Conectar con cuenta Rumi', 'setup.skip': 'Omitir',
   'packs.title': 'Paquetes', 'packs.search': 'Buscar paquetes...', 'packs.loading': 'Cargando paquetes...',
+  'packs.toggle': 'Alternar {name}',
   'pack.none': 'Ninguno', 'pack.run': 'Ejecutar', 'pack.loading': 'Cargando paquete...',
   'flows.new': 'Nuevo', 'flows.execute': 'Ejecutar', 'flows.save': 'Guardar', 'flows.delete': 'Eliminar',
   'flows.loading': 'Cargando flujos...', 'dialog.cancel': 'Cancelar', 'dialog.confirm': 'Confirmar',
+  'button.pending': 'Procesando...',
 };
 
 const fr: Dict = {
@@ -655,9 +665,11 @@ const fr: Dict = {
   'settings.login_required': 'Connectez votre compte Rumi pour modifier votre profil.',
   'setup.subtitle': 'Configurez votre assistant IA personnel', 'setup.connect_rumi': 'Connecter le compte Rumi', 'setup.skip': 'Passer',
   'packs.title': 'Packs', 'packs.search': 'Rechercher...', 'packs.loading': 'Chargement...',
+  'packs.toggle': 'Activer ou d\u00e9sactiver {name}',
   'pack.none': 'Aucun', 'pack.run': 'Ex\u00e9cuter', 'pack.loading': 'Chargement...',
   'flows.new': 'Nouveau', 'flows.execute': 'Ex\u00e9cuter', 'flows.save': 'Enregistrer', 'flows.delete': 'Supprimer',
   'flows.loading': 'Chargement...', 'dialog.cancel': 'Annuler', 'dialog.confirm': 'Confirmer',
+  'button.pending': 'Traitement...',
 };
 
 const de: Dict = {
@@ -671,9 +683,11 @@ const de: Dict = {
   'settings.login_required': 'Verbinden Sie Ihr Rumi-Konto, um Ihr Profil zu bearbeiten.',
   'setup.subtitle': 'Richten Sie Ihren pers\u00f6nlichen KI-Assistenten ein', 'setup.connect_rumi': 'Rumi-Konto verbinden', 'setup.skip': '\u00dcberspringen',
   'packs.title': 'Pakete', 'packs.search': 'Pakete suchen...', 'packs.loading': 'Laden...',
+  'packs.toggle': '{name} umschalten',
   'pack.none': 'Keine', 'pack.run': 'Ausf\u00fchren', 'pack.loading': 'Laden...',
   'flows.new': 'Neu', 'flows.execute': 'Ausf\u00fchren', 'flows.save': 'Speichern', 'flows.delete': 'L\u00f6schen',
   'flows.loading': 'Laden...', 'dialog.cancel': 'Abbrechen', 'dialog.confirm': 'Best\u00e4tigen',
+  'button.pending': 'Wird verarbeitet...',
 };
 
 const pt: Dict = {
@@ -687,9 +701,11 @@ const pt: Dict = {
   'settings.login_required': 'Conecte sua conta Rumi para editar seu perfil.',
   'setup.subtitle': 'Configure seu assistente de IA pessoal', 'setup.connect_rumi': 'Conectar conta Rumi', 'setup.skip': 'Pular',
   'packs.title': 'Pacotes', 'packs.search': 'Pesquisar pacotes...', 'packs.loading': 'Carregando...',
+  'packs.toggle': 'Alternar {name}',
   'pack.none': 'Nenhum', 'pack.run': 'Executar', 'pack.loading': 'Carregando...',
   'flows.new': 'Novo', 'flows.execute': 'Executar', 'flows.save': 'Salvar', 'flows.delete': 'Excluir',
   'flows.loading': 'Carregando...', 'dialog.cancel': 'Cancelar', 'dialog.confirm': 'Confirmar',
+  'button.pending': 'Processando...',
 };
 
 const ru: Dict = {
@@ -703,9 +719,11 @@ const ru: Dict = {
   'settings.login_required': '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u0430\u043a\u043a\u0430\u0443\u043d\u0442 Rumi \u0434\u043b\u044f \u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u043f\u0440\u043e\u0444\u0438\u043b\u044f.',
   'setup.subtitle': '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u0442\u0435 \u0441\u0432\u043e\u0435\u0433\u043e \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u0418\u0418-\u043f\u043e\u043c\u043e\u0449\u043d\u0438\u043a\u0430', 'setup.connect_rumi': '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0430\u043a\u043a\u0430\u0443\u043d\u0442 Rumi', 'setup.skip': '\u041f\u0440\u043e\u043f\u0443\u0441\u0442\u0438\u0442\u044c',
   'packs.title': '\u041f\u0430\u043a\u0435\u0442\u044b', 'packs.search': '\u041f\u043e\u0438\u0441\u043a \u043f\u0430\u043a\u0435\u0442\u043e\u0432...', 'packs.loading': '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...',
+  'packs.toggle': '\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c {name}',
   'pack.none': '\u041d\u0435\u0442', 'pack.run': '\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c', 'pack.loading': '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...',
   'flows.new': '\u041d\u043e\u0432\u044b\u0439', 'flows.execute': '\u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c', 'flows.save': '\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c', 'flows.delete': '\u0423\u0434\u0430\u043b\u0438\u0442\u044c',
   'flows.loading': '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...', 'dialog.cancel': '\u041e\u0442\u043c\u0435\u043d\u0430', 'dialog.confirm': '\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c',
+  'button.pending': '\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430...',
 };
 
 const ar: Dict = {
@@ -719,9 +737,11 @@ const ar: Dict = {
   'settings.login_required': '\u064a\u0631\u062c\u0649 \u062a\u0648\u0635\u064a\u0644 \u062d\u0633\u0627\u0628 Rumi \u0644\u062a\u0639\u062f\u064a\u0644 \u0645\u0644\u0641\u0643 \u0627\u0644\u0634\u062e\u0635\u064a.',
   'setup.subtitle': '\u0625\u0639\u062f\u0627\u062f \u0645\u0633\u0627\u0639\u062f\u0643 \u0627\u0644\u0634\u062e\u0635\u064a \u0628\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a', 'setup.connect_rumi': '\u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u0628\u062d\u0633\u0627\u0628 Rumi', 'setup.skip': '\u062a\u062e\u0637\u064a',
   'packs.title': '\u0627\u0644\u062d\u0632\u0645', 'packs.search': '\u0627\u0644\u0628\u062d\u062b \u0641\u064a \u0627\u0644\u062d\u0632\u0645...', 'packs.loading': '\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u062d\u0632\u0645...',
+  'packs.toggle': '\u062a\u0628\u062f\u064a\u0644 {name}',
   'pack.none': '\u0644\u0627 \u064a\u0648\u062c\u062f', 'pack.run': '\u062a\u0634\u063a\u064a\u0644', 'pack.loading': '\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u062d\u0632\u0645\u0629...',
   'flows.new': '\u062c\u062f\u064a\u062f', 'flows.execute': '\u062a\u0646\u0641\u064a\u0630', 'flows.save': '\u062d\u0641\u0638', 'flows.delete': '\u062d\u0630\u0641',
   'flows.loading': '\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u062a\u062f\u0641\u0642\u0627\u062a...', 'dialog.cancel': '\u0625\u0644\u063a\u0627\u0621', 'dialog.confirm': '\u062a\u0623\u0643\u064a\u062f',
+  'button.pending': '\u062c\u0627\u0631\u064a \u0627\u0644\u0645\u0639\u0627\u0644\u062c\u0629...',
 };
 
 const dict: Record<Locale, Dict> = { en, ja, zh, ko, es, fr, de, pt, ru, ar };

@@ -10,22 +10,38 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, label, helperText, error, id, ...props }, ref) => {
-    const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
+  ({
+    className,
+    type,
+    label,
+    helperText,
+    error,
+    id,
+    'aria-describedby': ariaDescribedBy,
+    'aria-invalid': ariaInvalid,
+    ...props
+  }, ref) => {
+    const generatedId = React.useId();
+    const inputId = id ?? `input-${generatedId}`;
+    const helperId = helperText ? `${inputId}-helper` : undefined;
+    const errorId = error ? `${inputId}-error` : undefined;
+    const describedBy = [ariaDescribedBy, helperId, errorId]
+      .filter(Boolean)
+      .join(' ') || undefined;
 
     const input = (
       <input
         id={inputId}
         type={type}
+        {...props}
         className={cn(
           "flex h-10 w-full rounded-lg border border-border bg-bg-main px-3 py-2 text-sm text-text-main placeholder:text-text-muted transition-colors duration-[var(--transition-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-main)] disabled:cursor-not-allowed disabled:opacity-50",
           error && "border-destructive focus-visible:ring-destructive/40",
           className
         )}
         ref={ref}
-        aria-invalid={error ? "true" : undefined}
-        aria-describedby={error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined}
-        {...props}
+        aria-invalid={error ? "true" : ariaInvalid}
+        aria-describedby={describedBy}
       />
     );
 
@@ -36,7 +52,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label htmlFor={inputId} className="text-sm font-medium text-text-main">
             {label}
-            {props.required && <span className="ml-1 text-destructive">*</span>}
+            {props.required && <span aria-hidden="true" className="ml-1 text-destructive">*</span>}
           </label>
         )}
         {input}
@@ -47,8 +63,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             <CopyErrorButton label={`Copy ${label ?? 'input'} error`} text={error} />
           </div>
         )}
-        {!error && helperText && (
-          <p id={`${inputId}-helper`} className="text-xs text-text-muted">{helperText}</p>
+        {error && (
+          <p id={errorId} role="alert" className="text-xs text-destructive">{error}</p>
         )}
       </div>
     );

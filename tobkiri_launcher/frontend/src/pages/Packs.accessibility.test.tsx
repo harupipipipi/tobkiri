@@ -98,7 +98,9 @@ test('Packs provides independent semantic detail and switch actions', async () =
     assert.equal(detailLink.getAttribute('aria-label'), 'Open Research Pack details');
     assert.match(detailLink.className, /focus-visible:ring-2/);
     assert.match(detailLink.className, /min-h-11/);
-    assert.match(packSwitch.className, /after:-inset-2\.5/);
+    assert.match(packSwitch.className, /min-h-11/);
+    assert.match(packSwitch.className, /min-w-11/);
+    assert.equal(packSwitch.getAttribute('aria-label'), 'Toggle Research Pack');
 
     detailLink.focus();
     assert.equal(document.activeElement, detailLink);

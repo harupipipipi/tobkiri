@@ -1,20 +1,51 @@
 import * as React from "react"
 import { cn } from "@/src/lib/utils"
+import { useT } from "@/src/lib/i18n"
+import {
+  hasExplicitAccessibleName,
+  shouldValidateAccessibleContracts,
+} from './controlAccessibility';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
   size?: 'default' | 'sm' | 'lg' | 'icon'
   loading?: boolean
+  loadingLabel?: string
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'default', size = 'default', loading, disabled, children, ...props }, ref) => {
+  ({
+    className,
+    variant = 'default',
+    size = 'default',
+    loading = false,
+    loadingLabel,
+    disabled,
+    children,
+    'aria-busy': ariaBusy,
+    'aria-label': ariaLabel,
+    'aria-labelledby': ariaLabelledBy,
+    ...props
+  }, ref) => {
+    const t = useT();
+    const pendingLabel = loadingLabel ?? t('button.pending');
+    if (
+      shouldValidateAccessibleContracts()
+      && size === 'icon'
+      && !hasExplicitAccessibleName(ariaLabel, ariaLabelledBy)
+    ) {
+      throw new Error('Icon-only Button requires aria-label or aria-labelledby.');
+    }
+
     return (
       <button
         ref={ref}
         {...props}
         aria-busy={loading ? true : props['aria-busy']}
         disabled={disabled || loading}
+        aria-busy={loading || ariaBusy || undefined}
+        aria-label={loading ? pendingLabel : ariaLabel}
+        aria-labelledby={loading ? undefined : ariaLabelledBy}
         className={cn(
           "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-[var(--transition-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-main)] disabled:pointer-events-none disabled:opacity-50",
           {
@@ -27,7 +58,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             'h-10 px-4 py-2': size === 'default',
             'h-8 rounded-md px-3 text-xs': size === 'sm',
             'h-11 rounded-lg px-6': size === 'lg',
-            'h-9 w-9 p-0': size === 'icon',
+            'h-11 min-h-11 w-11 min-w-11 p-0': size === 'icon',
           },
           className
         )}
