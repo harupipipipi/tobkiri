@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import type { Conversation } from "./api";
-import { conversationMatchesSpotlightFilter, conversationToSearchResult } from "./conversationSpotlight";
+import {
+  conversationMatchesSpotlightFilter,
+  conversationToSearchResult,
+  nextSpotlightIndex,
+} from "./conversationSpotlight";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./keyboardShortcuts";
 
 function conversation(patch: Partial<Conversation>): Conversation {
@@ -32,6 +36,17 @@ test("spotlight converts recent conversation to search result fallback", () => {
 
   assert.equal(result.title, "New Conversation");
   assert.equal(result.match_count, 0);
+});
+
+test("spotlight navigation clamps arrow, home, end, and page movement", () => {
+  assert.equal(nextSpotlightIndex(0, "ArrowUp", 12), 0);
+  assert.equal(nextSpotlightIndex(0, "ArrowDown", 12), 1);
+  assert.equal(nextSpotlightIndex(3, "PageDown", 12), 8);
+  assert.equal(nextSpotlightIndex(8, "PageUp", 12), 3);
+  assert.equal(nextSpotlightIndex(3, "Home", 12), 0);
+  assert.equal(nextSpotlightIndex(3, "End", 12), 11);
+  assert.equal(nextSpotlightIndex(11, "PageDown", 12), 11);
+  assert.equal(nextSpotlightIndex(4, "End", 0), 0);
 });
 
 test("spotlight shortcut supports win and three-key combinations", () => {

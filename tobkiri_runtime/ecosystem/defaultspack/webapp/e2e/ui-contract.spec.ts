@@ -963,6 +963,16 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { conversations: [{ ...conversation, messages: [] }], total: 1 });
     }
 
+    if (path === routeKey("api/chat/search") && method === "POST") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      const response = await options.conversationSearch?.(payload) ?? {
+        results: [],
+        total: 0,
+        query: String(payload.query ?? ""),
+      };
+      return fulfill(route, response);
+    }
+
     if (path === routeKey("api/chat/conversations") && method === "POST") {
       options.onConversationCreate?.(request.postDataJSON() as Record<string, unknown>);
       return fulfill(route, conversation);
@@ -1742,7 +1752,7 @@ test("settings modal contains focus, dismisses nested layers in order, and resto
   expect(backgroundState.every((state) => state.inert && state.ariaHidden === "true")).toBe(true);
 
   const focusWrapResult = await dialog.evaluate((element) => {
-    const selector = "button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex='-1'])";
+    const selector = "button:not([disabled]):not([tabindex='-1']),[href]:not([tabindex='-1']),input:not([disabled]):not([tabindex='-1']),select:not([disabled]):not([tabindex='-1']),textarea:not([disabled]):not([tabindex='-1']),[tabindex]:not([tabindex='-1'])";
     const focusable = Array.from(element.querySelectorAll<HTMLElement>(selector)).filter((item) => item.offsetParent !== null);
     focusable.at(-1)?.focus();
     return focusable.length;
@@ -1780,6 +1790,181 @@ test("settings modal contains focus, dismisses nested layers in order, and resto
   expect(narrowBounds!.y + narrowBounds!.height).toBeLessThanOrEqual(640);
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(dialog).toBeHidden();
+});
+
+test("conversation spotlight provides one contained combobox and listbox keyboard model", async ({ page }) => {
+  const longTitle = `Long conversation ${"title ".repeat(40)}`;
+  const searchResults = Array.from({ length: 8 }, (_, index) => (
+    spotlightResult(
+      index === 7 ? "c-smoke" : `spotlight-${index}`,
+      index === 0 ? longTitle : index === 7 ? "Preview Calendar Chat" : `Conversation ${index}`,
+      index,
+    )
+  ));
+  await installDefaultspackApiMocks(page, {
+    conversationSearch: (payload) => ({
+      results: payload.is_starred ? [...searchResults].reverse() : searchResults,
+      total: searchResults.length,
+      query: String(payload.query ?? ""),
+    }),
+  });
+  await page.goto("/static/");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+
+  const opener = page.locator("textarea.rumi-composer-textarea");
+  await opener.focus();
+  await page.keyboard.press("Control+k");
+
+  const dialog = page.getByRole("dialog", { name: "Conversation search" });
+  const query = page.getByRole("combobox", { name: "Conversation search query" });
+  const listbox = page.getByRole("listbox", { name: "Conversation search results" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(query).toBeFocused();
+  await expect(query).toHaveAttribute("aria-expanded", "true");
+  await expect(query).toHaveAttribute("aria-controls", await listbox.getAttribute("id") ?? "");
+
+  const backgroundState = await dialog.evaluate((panel) => {
+    const layer = panel.parentElement;
+    return Array.from(layer?.parentElement?.children ?? [])
+      .filter((element) => element !== layer)
+      .map((element) => ({
+        inert: (element as HTMLElement).inert,
+        ariaHidden: element.getAttribute("aria-hidden"),
+      }));
+  });
+  expect(backgroundState.length).toBeGreaterThan(0);
+  expect(backgroundState.every((state) => state.inert && state.ariaHidden === "true")).toBe(true);
+
+  await query.fill("release");
+  await expect(page.getByRole("option")).toHaveCount(8);
+  await expect(page.getByRole("status").filter({ hasText: "8 conversations found." })).toHaveCount(1);
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-spotlight-0");
+
+  await page.keyboard.press("ArrowDown");
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-spotlight-1");
+  await page.keyboard.press("End");
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-c-smoke");
+  await page.keyboard.press("Home");
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-spotlight-0");
+  await page.keyboard.press("PageDown");
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-spotlight-5");
+  await page.keyboard.press("PageUp");
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-spotlight-0");
+
+  const starred = page.getByRole("button", { name: "Starred" });
+  await starred.click();
+  await expect(starred).toHaveAttribute("aria-pressed", "true");
+  await expect(query).toBeFocused();
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-spotlight-0");
+
+  const focusableCount = await dialog.evaluate((element) => {
+    const selector = "button:not([disabled]):not([tabindex='-1']),[href]:not([tabindex='-1']),input:not([disabled]):not([tabindex='-1']),select:not([disabled]):not([tabindex='-1']),textarea:not([disabled]):not([tabindex='-1']),[tabindex]:not([tabindex='-1'])";
+    const focusable = Array.from(element.querySelectorAll<HTMLElement>(selector))
+      .filter((item) => item.offsetParent !== null);
+    focusable.at(-1)?.focus();
+    return focusable.length;
+  });
+  expect(focusableCount).toBeGreaterThan(1);
+  await page.keyboard.press("Tab");
+  await expect(query).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await page.keyboard.press("Control+k");
+  await expect(query).toHaveValue("release");
+  await expect(starred).toHaveAttribute("aria-pressed", "true");
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-spotlight-0");
+  await dialog.locator("..").click({ position: { x: 2, y: 2 } });
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test("conversation spotlight announces async, empty, opened, and narrow states once", async ({ page }) => {
+  let markOlderStarted: (() => void) | undefined;
+  const olderStarted = new Promise<void>((resolve) => {
+    markOlderStarted = resolve;
+  });
+  let releaseOlderSearch: (() => void) | undefined;
+  const olderSearchGate = new Promise<void>((resolve) => {
+    releaseOlderSearch = resolve;
+  });
+  const updated = [
+    spotlightResult("spotlight-stable", `Updated ${"conversation ".repeat(50)}`, 0),
+    spotlightResult("c-smoke", "Preview Calendar Chat", 1),
+  ];
+  await installDefaultspackApiMocks(page, {
+    conversationSearch: async (payload) => {
+      const query = String(payload.query ?? "");
+      if (query === "older") {
+        markOlderStarted?.();
+        await olderSearchGate;
+        const results = [spotlightResult("stale-result", "Stale result", 2)];
+        return { results, total: results.length, query };
+      }
+      const results = query === "none"
+        ? []
+        : query === "replacement"
+          ? [...updated].reverse()
+          : updated;
+      return { results, total: results.length, query };
+    },
+  });
+  await page.goto("/static/");
+  const opener = page.locator("textarea.rumi-composer-textarea");
+  await opener.focus();
+  await page.keyboard.press("Control+k");
+
+  const dialog = page.getByRole("dialog", { name: "Conversation search" });
+  const query = page.getByRole("combobox", { name: "Conversation search query" });
+  await query.fill("older");
+  await expect(page.getByRole("status").filter({ hasText: "searching..." })).toHaveCount(1);
+  await olderStarted;
+  await query.fill("newer");
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await expect(page.getByRole("status").filter({ hasText: "2 conversations found." })).toHaveCount(1);
+  const olderResponse = page.waitForResponse((response) => {
+    try {
+      return response.request().postDataJSON()?.query === "older";
+    } catch {
+      return false;
+    }
+  });
+  releaseOlderSearch?.();
+  await olderResponse;
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await expect(page.getByRole("option", { name: "Stale result" })).toHaveCount(0);
+
+  await page.keyboard.press("ArrowDown");
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-c-smoke");
+  await query.fill("replacement");
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await expect(query).toHaveAttribute("aria-activedescendant", "conversation-spotlight-option-c-smoke");
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(568);
+  await expect(page.getByRole("option").first().locator("p").first()).toHaveCSS("text-overflow", "ellipsis");
+
+  await query.fill("none");
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(query).not.toHaveAttribute("aria-activedescendant");
+  await expect(page.getByRole("status").filter({ hasText: "No matching conversations." })).toHaveCount(1);
+
+  await query.fill("opened");
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Opened Preview Calendar Chat.", { exact: true })).toHaveCount(1);
+  await expect(opener).toBeFocused();
 });
 
 test("tool hub service selections can be scoped to the conversation and survive reload", async ({ page }) => {

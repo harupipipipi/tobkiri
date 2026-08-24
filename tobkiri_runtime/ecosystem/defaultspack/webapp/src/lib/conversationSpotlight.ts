@@ -12,6 +12,29 @@ export const SPOTLIGHT_FILTERS: Array<{ id: SpotlightFilter; labelKey: `spotligh
   { id: "starred", labelKey: "spotlight.filter.starred", hint: "スター" },
 ];
 
+export type SpotlightNavigationKey =
+  | "ArrowDown"
+  | "ArrowUp"
+  | "Home"
+  | "End"
+  | "PageDown"
+  | "PageUp";
+
+export function nextSpotlightIndex(
+  currentIndex: number,
+  key: SpotlightNavigationKey,
+  resultCount: number,
+  pageSize = 5,
+): number {
+  const lastIndex = Math.max(resultCount - 1, 0);
+  const current = Math.min(Math.max(currentIndex, 0), lastIndex);
+  if (key === "Home") return 0;
+  if (key === "End") return lastIndex;
+  const step = key === "PageDown" || key === "PageUp" ? pageSize : 1;
+  const direction = key === "ArrowDown" || key === "PageDown" ? 1 : -1;
+  return Math.min(Math.max(current + direction * step, 0), lastIndex);
+}
+
 export function conversationToSearchResult(conversation: Conversation): ConversationSearchResult {
   const latestText = messageToText(orderConversationMessages(conversation.messages).at(-1) ?? {
     id: "",

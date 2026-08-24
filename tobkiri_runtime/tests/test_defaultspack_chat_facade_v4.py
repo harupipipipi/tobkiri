@@ -195,6 +195,94 @@ def test_chat_facade_search_excludes_message_text_until_requested(
     assert missing_total == 0
 
 
+def test_chat_facade_conversation_search_applies_spotlight_filters(
+    defaultspack_conversation_owner,
+):
+    """Spotlight filters are enforced by the pack-owned search projection."""
+    from domain.chat.store import ChatStore
+
+    store = ChatStore()
+    starred = store.create_conversation(model="stub/default")
+    store.update_conversation(starred["id"], {"is_starred": True})
+    store.add_message(
+        starred["id"],
+        {"role": "user", "content": "filtered needle"},
+    )
+
+    unstarred = store.create_conversation(model="stub/default")
+    store.add_message(
+        unstarred["id"],
+        {"role": "assistant", "content": "filtered needle"},
+    )
+
+    wrong_role = store.create_conversation(model="stub/default")
+    store.update_conversation(wrong_role["id"], {"is_starred": True})
+    store.add_message(
+        wrong_role["id"],
+        {"role": "assistant", "content": "filtered needle"},
+    )
+
+    archived = store.create_conversation(model="stub/default")
+    store.update_conversation(
+        archived["id"],
+        {"is_starred": True, "is_archived": True},
+    )
+    store.add_message(
+        archived["id"],
+        {"role": "user", "content": "filtered needle"},
+    )
+
+    results, total = store.search_conversations(
+        "filtered needle",
+        is_starred=True,
+        is_archived=False,
+        role="user",
+        date_filter="today",
+    )
+    scoped, scoped_total = store.search_conversations(
+        "filtered needle",
+        conversation_id=starred["id"],
+        role="all",
+    )
+
+    assert total == 1
+    assert [item["conversation_id"] for item in results] == [starred["id"]]
+    assert scoped_total == 1
+    assert [item["conversation_id"] for item in scoped] == [starred["id"]]
+
+
+def test_chat_facade_conversation_search_applies_spotlight_date_window(
+    defaultspack_conversation_owner,
+    monkeypatch,
+):
+    """Spotlight date filters exclude conversations outside the requested window."""
+    from domain.chat import store as store_module
+    from domain.chat.store import ChatStore
+
+    store = ChatStore()
+    conversation = store.create_conversation(model="stub/default")
+    store.add_message(
+        conversation["id"],
+        {"role": "user", "content": "dated needle"},
+    )
+    current_time = store_module.time.time()
+
+    current, current_total = store.search_conversations(
+        "dated needle",
+        date_filter="today",
+    )
+    monkeypatch.setattr(store_module.time, "time", lambda: current_time + 2 * 86_400)
+    expired, expired_total = store.search_conversations(
+        "dated needle",
+        date_filter="today",
+    )
+
+    assert current_total == 1
+    assert current[0]["conversation_id"] == conversation["id"]
+    assert expired == []
+    assert expired_total == 0
+
+
 def test_chat_facade_retries_stale_order_without_duplicate_sequences(
     defaultspack_conversation_owner,
 ):

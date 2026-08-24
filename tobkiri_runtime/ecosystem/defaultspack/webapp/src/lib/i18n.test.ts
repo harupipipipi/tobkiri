@@ -17,8 +17,11 @@ test("i18n normalizes explicit and auto locales", () => {
 
 test("i18n translates frontend and tool namespaces", () => {
   assert.equal(t("ja", "spotlight.placeholder"), "会話履歴を検索");
+  assert.equal(t("ja", "spotlight.title"), "会話検索");
+  assert.match(t("ja", "spotlight.description"), /Page Down/);
   assert.equal(t("en", "tools.assist.vector"), "Vector: recommend relevant tools");
   assert.equal(t("en", "spotlight.matches", { count: 3 }), "3 matches");
+  assert.equal(t("en", "spotlight.resultCount", { count: 12 }), "12 conversations found.");
   assert.equal(t("ja", "promptStudio.tab.selected"), "選択中");
   assert.equal(t("en", "promptStudio.modelBoundary"), "Model selection is used only for this Studio Test context. Prompt text cannot switch models, grant permissions, or execute tools.");
   assert.equal(t("ja", "promptStudio.verdict.toolSchemaNoSelectedTool"), "この Studio テストには選択ツールが指定されていません。");

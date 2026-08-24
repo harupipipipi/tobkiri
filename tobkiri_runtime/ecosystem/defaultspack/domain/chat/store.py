@@ -422,13 +422,38 @@ class ChatStore:
     def search_conversations(self, query: str, **options: Any) -> tuple[list[dict[str, Any]], int]:
         """Return finite exact-text legacy search results."""
         conversations, _ = self.list_conversations(
-            limit=1_000_000, include_messages=True
+            limit=1_000_000,
+            include_messages=True,
+            is_starred=options.get("is_starred"),
+            is_archived=options.get("is_archived"),
         )
         needle = str(query or "").casefold()
+        requested_conversation_id = str(options.get("conversation_id") or "")
+        requested_role = str(options.get("role") or "all").strip().casefold()
+        date_filter = str(options.get("date_filter") or "all").strip().casefold()
+        date_window_days = {"today": 1, "7d": 7, "30d": 30}.get(date_filter)
+        cutoff = (
+            int(time.time() * 1000) - date_window_days * 86_400_000
+            if date_window_days is not None
+            else None
+        )
         results = []
         for item in conversations:
+            if (
+                requested_conversation_id
+                and str(item.get("id") or "") != requested_conversation_id
+            ):
+                continue
+            if cutoff is not None and int(item.get("updated_at") or 0) < cutoff:
+                continue
             matches = []
             for message in item.get("messages") or []:
+                if (
+                    requested_role != "all"
+                    and str(message.get("role") or "").strip().casefold()
+                    != requested_role
+                ):
+                    continue
                 if needle not in _message_text(message).casefold():
                     continue
                 match = copy.deepcopy(message)

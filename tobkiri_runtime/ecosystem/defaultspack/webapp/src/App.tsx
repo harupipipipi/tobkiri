@@ -112,11 +112,17 @@ import {
 import { fileToAttachment } from "./lib/attachments";
 import { toolGroupFor } from "./lib/toolUi";
 import type { ComposerEntityReference } from "./lib/composerReferences";
-import { conversationMatchesSpotlightFilter, conversationToSearchResult, type SpotlightFilter } from "./lib/conversationSpotlight";
+import {
+  conversationMatchesSpotlightFilter,
+  conversationToSearchResult,
+  nextSpotlightIndex,
+  type SpotlightFilter,
+  type SpotlightNavigationKey,
+} from "./lib/conversationSpotlight";
 import { boundedDurationLabel } from "./lib/duration";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
-import { normalizeLocale } from "./lib/i18n";
+import { normalizeLocale, t } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
@@ -2564,8 +2570,10 @@ export function ChatApp() {
   const [spotlightQuery, setSpotlightQuery] = useState("");
   const [spotlightFilter, setSpotlightFilter] = useState<SpotlightFilter>("all");
   const [spotlightResults, setSpotlightResults] = useState<ConversationSearchResult[]>([]);
-  const [spotlightSelectedIndex, setSpotlightSelectedIndex] = useState(0);
+  const [spotlightResultTotal, setSpotlightResultTotal] = useState(0);
+  const [spotlightSelectedConversationId, setSpotlightSelectedConversationId] = useState<string | null>(null);
   const [spotlightLoading, setSpotlightLoading] = useState(false);
+  const [spotlightAnnouncement, setSpotlightAnnouncement] = useState({ sequence: 0, text: "" });
   const [modelPickerRequestId, setModelPickerRequestId] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [requestedSettingsSectionId, setRequestedSettingsSectionId] = useState<string | null>(null);
@@ -2728,6 +2736,15 @@ export function ChatApp() {
     [conversations, spotlightFilter],
   );
   const visibleSpotlightResults = spotlightQuery.trim() ? spotlightResults : recentSpotlightResults;
+  const visibleSpotlightResultTotal = spotlightQuery.trim()
+    ? spotlightResultTotal
+    : recentSpotlightResults.length;
+  const spotlightSelectedIndex = Math.max(
+    visibleSpotlightResults.findIndex(
+      (result) => result.conversation_id === spotlightSelectedConversationId,
+    ),
+    0,
+  );
   const activeModelId = activeConversation?.model ?? String(settingsValues.models?.preferred_model ?? "stub/default").trim();
   const activeProfile = findProfile(modelProfiles, activeModelId);
   const orderedMessages = useMemo(
@@ -4057,7 +4074,6 @@ export function ChatApp() {
       if (!shortcutSpecMatchesEvent(spotlightShortcut, event, { allowTextInput: spotlightShortcutTextInput })) return;
       event.preventDefault();
       setIsSpotlightOpen(true);
-      setSpotlightSelectedIndex(0);
     };
     document.addEventListener("keydown", handleGlobalKeyDown);
     return () => document.removeEventListener("keydown", handleGlobalKeyDown);
@@ -4068,6 +4084,7 @@ export function ChatApp() {
     const query = spotlightQuery.trim();
     if (!query) {
       setSpotlightResults([]);
+      setSpotlightResultTotal(0);
       setSpotlightLoading(false);
       return;
     }
@@ -4082,10 +4099,12 @@ export function ChatApp() {
       }).then((result) => {
         if (cancelled) return;
         setSpotlightResults(result.results);
+        setSpotlightResultTotal(result.total);
       }).catch((searchError) => {
         if (cancelled) return;
         console.error(searchError);
         setSpotlightResults([]);
+        setSpotlightResultTotal(0);
       }).finally(() => {
         if (!cancelled) setSpotlightLoading(false);
       });
@@ -4097,8 +4116,18 @@ export function ChatApp() {
   }, [isSpotlightOpen, spotlightFilter, spotlightQuery]);
 
   useEffect(() => {
-    setSpotlightSelectedIndex(0);
-  }, [spotlightFilter, spotlightQuery, spotlightResults.length]);
+    setSpotlightSelectedConversationId((currentId) => {
+      if (
+        currentId
+        && visibleSpotlightResults.some(
+          (result) => result.conversation_id === currentId,
+        )
+      ) {
+        return currentId;
+      }
+      return visibleSpotlightResults[0]?.conversation_id ?? null;
+    });
+  }, [visibleSpotlightResults]);
 
   useEffect(() => {
     if (!activeConversationId || !isConversationPending) return;
@@ -4376,13 +4405,14 @@ export function ChatApp() {
 
   const closeSpotlight = () => {
     setIsSpotlightOpen(false);
-    setSpotlightQuery("");
-    setSpotlightResults([]);
-    setSpotlightSelectedIndex(0);
   };
 
   const openSpotlightResult = (result: ConversationSearchResult | undefined) => {
     if (!result?.conversation_id) return;
+    setSpotlightAnnouncement((current) => ({
+      sequence: current.sequence + 1,
+      text: t(locale, "spotlight.openedResult", { title: result.title }),
+    }));
     closeSpotlight();
     setError(null);
     void loadConversation(result.conversation_id);
@@ -4394,14 +4424,24 @@ export function ChatApp() {
       closeSpotlight();
       return;
     }
-    if (event.key === "ArrowDown") {
+    const navigationKeys: SpotlightNavigationKey[] = [
+      "ArrowDown",
+      "ArrowUp",
+      "Home",
+      "End",
+      "PageDown",
+      "PageUp",
+    ];
+    if (navigationKeys.includes(event.key as SpotlightNavigationKey)) {
       event.preventDefault();
-      setSpotlightSelectedIndex((index) => Math.min(index + 1, Math.max(visibleSpotlightResults.length - 1, 0)));
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setSpotlightSelectedIndex((index) => Math.max(index - 1, 0));
+      const nextIndex = nextSpotlightIndex(
+        spotlightSelectedIndex,
+        event.key as SpotlightNavigationKey,
+        visibleSpotlightResults.length,
+      );
+      setSpotlightSelectedConversationId(
+        visibleSpotlightResults[nextIndex]?.conversation_id ?? null,
+      );
       return;
     }
     if (event.key === "Enter") {
@@ -7524,6 +7564,7 @@ export function ChatApp() {
         query={spotlightQuery}
         filter={spotlightFilter}
         results={visibleSpotlightResults}
+        resultTotal={visibleSpotlightResultTotal}
         selectedIndex={spotlightSelectedIndex}
         loading={spotlightLoading}
         locale={locale}
@@ -7534,6 +7575,15 @@ export function ChatApp() {
         onClose={closeSpotlight}
         onOpenResult={openSpotlightResult}
       />
+      <span
+        key={spotlightAnnouncement.sequence}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {spotlightAnnouncement.text}
+      </span>
 
       {showRegion("settings_modal") && (
         <Renderers.settingsModal
