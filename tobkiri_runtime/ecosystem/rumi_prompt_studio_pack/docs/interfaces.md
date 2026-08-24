@@ -33,3 +33,8 @@ Typed prompt resources and actions through:
 
 Model benchmarking/routing, provider credentials, persistent memory,
 conversation storage, tool/API creation, code edits, or authority approval.
+
+The isolated UI therefore describes tokenizer/model information as unavailable
+when it is not present in the Pack resource. It must not recover that data with
+a host lookup, implicit provider fallback, direct network request, or restored
+legacy Prompt Studio route.

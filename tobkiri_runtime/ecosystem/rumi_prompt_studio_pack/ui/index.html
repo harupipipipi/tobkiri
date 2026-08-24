@@ -7,24 +7,144 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main aria-label="Prompt Studio">
-      <header><div><p id="profile"></p><h1>Prompt Studio</h1></div><button id="reload">Reload</button></header>
+    <main aria-labelledby="studio-title">
+      <header class="studio-header">
+        <div>
+          <p id="profile" class="eyebrow"></p>
+          <h1 id="studio-title">Prompt Studio</h1>
+        </div>
+        <div class="header-actions">
+          <label class="compact-field" for="locale">
+            <span id="locale-label">Language</span>
+            <select id="locale" autocomplete="off">
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+            </select>
+          </label>
+          <button id="reload" type="button">Reload Prompt Studio</button>
+        </div>
+      </header>
+
+      <p id="studio-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+      <section id="error-region" class="error-region" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1" hidden>
+        <div>
+          <h2 id="error-title">Prompt Studio could not complete the action</h2>
+          <p id="error"></p>
+        </div>
+        <button id="dismiss-error" type="button">Dismiss error</button>
+      </section>
+
       <div class="layout">
-        <nav id="prompts" aria-label="Prompts"></nav>
-        <section aria-label="Prompt editor">
-          <label>Prompt ID<input id="prompt-id" autocomplete="off" spellcheck="false" /></label>
-          <label>Prompt body<textarea id="body" rows="22" spellcheck="false"></textarea></label>
-          <div class="actions" role="toolbar" aria-label="Prompt actions">
-            <button data-action="save">Save</button><button data-action="diff">Diff</button>
-            <button data-action="lint">Lint</button><button data-action="compact">Compact</button>
-            <button data-action="test">Test</button><button data-action="toggle">Toggle</button>
-            <button data-action="versions">Versions</button>
+        <aside class="prompt-browser" aria-labelledby="prompt-list-heading">
+          <h2 id="prompt-list-heading">Prompts</h2>
+          <label for="prompt-search">
+            <span id="prompt-search-label">Search prompts</span>
+            <input id="prompt-search" type="search" autocomplete="off" aria-describedby="prompt-search-help prompt-list-status" />
+          </label>
+          <p id="prompt-search-help" class="helper">Searches prompt IDs and descriptions. The selected prompt remains open when filtered out.</p>
+
+          <fieldset>
+            <legend id="prompt-filter-label">Filter prompts</legend>
+            <div id="prompt-filters" class="filters" role="group" aria-labelledby="prompt-filter-label">
+              <button type="button" data-filter="all" aria-pressed="true">All</button>
+              <button type="button" data-filter="active" aria-pressed="false">Active</button>
+              <button type="button" data-filter="editable" aria-pressed="false">Editable</button>
+              <button type="button" data-filter="readonly" aria-pressed="false">Read-only</button>
+              <button type="button" data-filter="overrides" aria-pressed="false">Overrides</button>
+            </div>
+          </fieldset>
+
+          <p id="prompt-list-help" class="helper">Use Up, Down, Home, and End to move through prompts. Press Enter or Space to select.</p>
+          <div
+            id="prompts"
+            class="prompt-list"
+            role="listbox"
+            aria-labelledby="prompt-list-heading"
+            aria-describedby="prompt-list-help prompt-list-status"
+          ></div>
+          <p id="prompt-list-status" class="list-status" role="status" aria-live="polite" aria-atomic="true"></p>
+          <button id="new-prompt" type="button">Create a new prompt</button>
+        </aside>
+
+        <section id="editor" class="editor" aria-labelledby="editor-heading" aria-busy="false">
+          <div class="editor-heading-row">
+            <div>
+              <h2 id="editor-heading">Prompt editor</h2>
+              <p id="selection-summary" class="selection-summary">No prompt selected.</p>
+            </div>
+            <span id="dirty-badge" class="state-badge">Saved</span>
           </div>
-          <p id="error" role="alert"></p><pre id="output" aria-label="Operation result"></pre>
-          <section id="versions" aria-label="Prompt versions"></section>
+
+          <label for="prompt-id">
+            <span id="prompt-id-label">Prompt ID</span>
+            <input id="prompt-id" autocomplete="off" spellcheck="false" aria-describedby="prompt-id-help field-error" />
+          </label>
+          <p id="prompt-id-help" class="helper">Existing prompt IDs are immutable. Create a new prompt to choose a new ID.</p>
+
+          <label for="body">
+            <span id="prompt-body-label">Prompt body</span>
+            <textarea id="body" rows="18" spellcheck="false" aria-describedby="prompt-body-help field-error"></textarea>
+          </label>
+          <p id="prompt-body-help" class="helper">Prompt text is passive and cannot grant permissions, attach tools, or change models.</p>
+          <p id="field-error" class="field-error" aria-live="polite"></p>
+
+          <div class="actions" role="toolbar" aria-label="Actions for the selected prompt">
+            <button data-action="save" type="button">Save prompt</button>
+            <button data-action="diff" type="button">Compare draft</button>
+            <button data-action="lint" type="button">Lint prompt</button>
+            <button data-action="compact" type="button">Compact prompt</button>
+            <button data-action="test" type="button">Test prompt locally</button>
+            <button data-action="toggle" type="button">Disable prompt</button>
+            <button data-action="versions" type="button">Load prompt versions</button>
+          </div>
+
+          <section class="inspector" aria-labelledby="inspector-heading">
+            <h2 id="inspector-heading">Inspector</h2>
+            <div id="inspector-tabs" class="tabs" role="tablist" aria-label="Prompt inspector">
+              <button id="tab-status" type="button" role="tab" aria-selected="true" aria-controls="panel-status" tabindex="0" data-tab="status">Status</button>
+              <button id="tab-result" type="button" role="tab" aria-selected="false" aria-controls="panel-result" tabindex="-1" data-tab="result">Operation result</button>
+              <button id="tab-versions" type="button" role="tab" aria-selected="false" aria-controls="panel-versions" tabindex="-1" data-tab="versions">Versions</button>
+            </div>
+
+            <section id="panel-status" role="tabpanel" aria-labelledby="tab-status" tabindex="0" data-panel="status">
+              <h3 id="state-summary-heading">Prompt state summary</h3>
+              <dl class="state-summary" aria-labelledby="state-summary-heading">
+                <div><dt>Selection</dt><dd id="state-selection">None</dd></div>
+                <div><dt>Activation</dt><dd id="state-activation">Unavailable</dd></div>
+                <div><dt>Editing</dt><dd id="state-editing">Unavailable</dd></div>
+                <div><dt>Draft</dt><dd id="state-dirty">Saved</dd></div>
+                <div><dt>Tokenizer</dt><dd id="state-tokenizer">Not reported by this local pack</dd></div>
+                <div><dt>Safety</dt><dd id="state-safety">Brokered local execution; no network or credential access</dd></div>
+              </dl>
+            </section>
+
+            <section id="panel-result" role="tabpanel" aria-labelledby="tab-result" tabindex="0" data-panel="result" hidden>
+              <h3 id="result-heading">Latest operation result</h3>
+              <pre id="output" aria-labelledby="result-heading">No operation has run.</pre>
+            </section>
+
+            <section id="panel-versions" role="tabpanel" aria-labelledby="tab-versions" tabindex="0" data-panel="versions" hidden>
+              <h3 id="versions-heading">Prompt versions</h3>
+              <p id="versions-help" class="helper">Rollback always asks for confirmation and identifies the affected prompt and version.</p>
+              <div id="versions" aria-labelledby="versions-heading" aria-describedby="versions-help"></div>
+            </section>
+          </section>
         </section>
       </div>
     </main>
+
+    <dialog id="rollback-dialog" aria-labelledby="rollback-title" aria-describedby="rollback-description">
+      <form method="dialog">
+        <h2 id="rollback-title">Confirm prompt rollback</h2>
+        <p id="rollback-description"></p>
+        <p id="rollback-status" role="status" aria-live="polite" aria-atomic="true"></p>
+        <div class="dialog-actions">
+          <button id="cancel-rollback" type="button" value="cancel">Cancel</button>
+          <button id="confirm-rollback" type="button" value="confirm">Confirm rollback</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="./app.js"></script>
   </body>
 </html>

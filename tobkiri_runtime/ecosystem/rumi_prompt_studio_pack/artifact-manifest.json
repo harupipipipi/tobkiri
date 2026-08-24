@@ -18,15 +18,15 @@
     },
     {
       "path": "ui/index.html",
-      "sha256": "sha256:edb498e8458041b47be2583e2c3be04d35978f0d16f6ebba55c05807b612b0c9"
+      "sha256": "sha256:efee6b39ed973b7c00f42c05aaaa3767d9a93203aff894cb8c2ae55fef949707"
     },
     {
       "path": "ui/app.js",
-      "sha256": "sha256:713c015f4cf70a1afc7e3a2916a5038ad1719c74da038d9b959564f03d23f075"
+      "sha256": "sha256:fd7940669f169a73e4efabd699b518038342adbf8151372aaa107438dc5952dc"
     },
     {
       "path": "ui/style.css",
-      "sha256": "sha256:0374bea6fead5abfd4f82f14203761fa63cd3a3616fa9dea3799c48160c623dd"
+      "sha256": "sha256:2162c3725e0c938c5382e8da86bca92c2318ce4bbd76c257a14f74dc4bb8dd71"
     },
     {
       "path": "frontend/contributions/prompt-studio.json",

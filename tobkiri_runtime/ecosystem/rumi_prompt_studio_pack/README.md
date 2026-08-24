@@ -1,8 +1,14 @@
-# Rumi Prompt Studio Pack
+# Tobkiri Prompt Studio Pack
 
 Optional local-first prompt authoring, composition preferences, linting,
 testbench, migration, versioning, rollback, and isolated UI pack.
 Published revisions are tracked in the pack's version ledger.
+
+The isolated UI includes labeled fields, semantic prompt filters and
+selection, keyboard-operable inspector tabs, concise live status, non-color
+state summaries, and version-aware rollback confirmation. Its English and
+Japanese labels are shipped inside the Pack so these semantics do not depend
+on a host UI fallback.
 
 ## Provides
 
