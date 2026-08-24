@@ -62,6 +62,7 @@ def test_pack_required_assets_and_metadata() -> None:
         "frontend/contributions/prompt-studio.json",
         "ui/index.html",
         "ui/app.js",
+        "ui/draft-state.js",
         "ui/style.css",
     ]
     assert [path for path in required if not (PACK_DIR / path).is_file()] == []
@@ -116,6 +117,7 @@ def test_pack_required_assets_and_metadata() -> None:
         "frontend/contributions/prompt-studio.json",
         "ui/index.html",
         "ui/app.js",
+        "ui/draft-state.js",
         "ui/style.css",
     }
     assert set(required) - {"ecosystem.json"} - runtime_assets <= indexed

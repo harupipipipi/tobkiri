@@ -12,10 +12,18 @@ Run `python -m pytest -q tobkiri_runtime/tests/test_rumi_prompt_studio_pack_cont
 Independent QA must run the focused runtime, contract, frontend, migration,
 rollback, startup, shutdown, and pack-removal checks in the Wave 4 QA draft.
 
+For the isolated editor, exercise keyboard-only prompt switching, Save failure,
+Discard and Cancel, crash recovery, browser reload/close confirmation, conflict
+Compare/Reload/Overwrite, and rollback review. Confirm focus, cursor selection,
+editor scroll, output inspector state, and the current prompt remain stable
+after a rejected or failed operation.
+
 ## Failure Modes
 
 Missing permission, stale plan, stale body hash, replay, artifact mismatch,
 process failure, changed migration source, or initialized target fails closed.
+Stale body hashes are presented as an explicit conflict review; they never
+trigger an implicit overwrite or host fallback.
 
 ## Rollback And Revocation
 

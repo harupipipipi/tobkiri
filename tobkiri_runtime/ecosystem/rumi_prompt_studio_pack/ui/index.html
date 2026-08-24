@@ -8,7 +8,11 @@
   </head>
   <body>
     <main aria-label="Prompt Studio">
-      <header><div><p id="profile"></p><h1>Prompt Studio</h1></div><button id="reload">Reload</button></header>
+      <header>
+        <button id="back" aria-label="Back to Chat">← Back</button>
+        <div><p id="context"></p><h1>Prompt Studio</h1></div>
+        <button id="reload">Refresh</button>
+      </header>
       <div class="layout">
         <nav id="prompts" aria-label="Prompts"></nav>
         <section aria-label="Prompt editor">
@@ -25,6 +29,57 @@
         </section>
       </div>
     </main>
+    <dialog id="unsaved-dialog" aria-labelledby="unsaved-title">
+      <form>
+        <h2 id="unsaved-title">Unsaved prompt changes</h2>
+        <p id="unsaved-identity"></p>
+        <p>Choose what to do before leaving this prompt context.</p>
+        <p id="unsaved-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" data-dialog-value="cancel">Cancel</button>
+          <button type="button" data-dialog-value="discard">Discard</button>
+          <button type="button" id="save-override" data-dialog-value="override">Save as override</button>
+          <button type="button" data-dialog-value="save" class="primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="recovery-dialog" aria-labelledby="recovery-title">
+      <form>
+        <h2 id="recovery-title">Recover unsaved draft?</h2>
+        <p id="recovery-identity"></p>
+        <p>A local draft from this exact prompt, profile, model, and base revision is available.</p>
+        <div class="dialog-actions">
+          <button type="button" data-dialog-value="discard">Discard draft</button>
+          <button type="button" data-dialog-value="restore" class="primary">Restore draft</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="rollback-dialog" aria-labelledby="rollback-title">
+      <form>
+        <h2 id="rollback-title">Review rollback</h2>
+        <pre id="rollback-consequence"></pre>
+        <p>This creates an audit version and replaces the current persisted prompt.</p>
+        <p id="rollback-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" data-dialog-value="cancel">Cancel</button>
+          <button type="button" data-dialog-value="rollback" class="danger">Roll back</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="conflict-dialog" aria-labelledby="conflict-title">
+      <form>
+        <h2 id="conflict-title">Prompt changed elsewhere</h2>
+        <p>Your draft is preserved. Compare it with the latest body, reload the external change, or explicitly overwrite it.</p>
+        <p id="conflict-identity"></p>
+        <div class="dialog-actions">
+          <button type="button" data-dialog-value="cancel">Cancel</button>
+          <button type="button" data-dialog-value="compare">Compare</button>
+          <button type="button" data-dialog-value="reload">Reload latest</button>
+          <button type="button" data-dialog-value="overwrite" class="danger">Overwrite latest</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="./draft-state.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

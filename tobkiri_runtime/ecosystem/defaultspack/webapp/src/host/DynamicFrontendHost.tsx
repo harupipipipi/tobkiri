@@ -277,6 +277,9 @@ type IsolatedCapabilityRequest = {
   };
 };
 
+type IsolatedNavigationRequest = { nonce: string; href: string };
+type IsolatedDirtyState = { nonce: string; dirty: boolean };
+
 function IsolatedView({
   item,
   profileId,
@@ -291,6 +294,7 @@ function IsolatedView({
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [frameError, setFrameError] = useState<string | null>(null);
   const [frameLoadError, setFrameLoadError] = useState(false);
+  const [frameDirty, setFrameDirty] = useState(false);
   const nonce = useMemo(
     () => isolatedFrontendNonce(),
     [frontendContributionRevisionKey(item)],
@@ -307,6 +311,19 @@ function IsolatedView({
       const frame = frameRef.current?.contentWindow;
       if (!frame || event.source !== frame) return;
       if (event.origin !== "null" && event.origin !== window.location.origin) {
+        return;
+      }
+      const dirtyState = parseIsolatedDirtyState(event.data);
+      if (dirtyState?.nonce === nonce) {
+        setFrameDirty(dirtyState.dirty);
+        return;
+      }
+      const navigation = parseIsolatedNavigationRequest(
+        event.data,
+        window.location.origin,
+      );
+      if (navigation?.nonce === nonce) {
+        window.location.assign(navigation.href);
         return;
       }
       const request = parseIsolatedCapabilityRequest(event.data);
@@ -335,15 +352,19 @@ function IsolatedView({
         planHash: item.resolved_plan_hash,
         catalogHash,
       }).then(
-        (value) => respond({
-          type: "rumi.capability.response",
-          requestId: request.requestId,
-          nonce,
-          ok: true,
-          value,
-        }),
+        (value) => {
+          setFrameError(null);
+          respond({
+            type: "rumi.capability.response",
+            requestId: request.requestId,
+            nonce,
+            ok: true,
+            value,
+          });
+        },
         (error) => {
           const message = frontendActionErrorMessage(error);
+          const errorCode = frontendActionErrorCode(error);
           setFrameError(message);
           respond({
             type: "rumi.capability.response",
@@ -351,6 +372,7 @@ function IsolatedView({
             nonce,
             ok: false,
             error: message,
+            ...(errorCode ? { errorCode } : {}),
           });
         },
       );
@@ -358,6 +380,16 @@ function IsolatedView({
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [capabilities, catalogHash, item, nonce, src]);
+
+  useEffect(() => {
+    if (!frameDirty) return undefined;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [frameDirty]);
 
   if (!src) {
     return <HostFallback title={`${item.label} requires a dedicated isolated origin`} />;
@@ -439,6 +471,40 @@ export function parseIsolatedCapabilityRequest(
     contractId,
     payload: { operation, input },
   };
+}
+
+export function parseIsolatedNavigationRequest(
+  value: unknown,
+  appOrigin: string,
+): IsolatedNavigationRequest | null {
+  if (!isRecord(value) || value.type !== "rumi.navigation.request") return null;
+  const nonce = boundedString(value.nonce, 256);
+  const href = boundedString(value.href, 2048);
+  if (!nonce || !href) return null;
+  try {
+    const origin = new URL(appOrigin).origin;
+    const destination = new URL(href, origin);
+    if (destination.origin !== origin) return null;
+    const firstPathSegment = destination.pathname.split("/").find(Boolean);
+    if (firstPathSegment === "api" || firstPathSegment === "isolated") return null;
+    return { nonce, href: `${destination.pathname}${destination.search}${destination.hash}` };
+  } catch {
+    return null;
+  }
+}
+
+export function parseIsolatedDirtyState(value: unknown): IsolatedDirtyState | null {
+  if (!isRecord(value) || value.type !== "rumi.editor.dirty-state") return null;
+  const nonce = boundedString(value.nonce, 256);
+  if (!nonce || typeof value.dirty !== "boolean") return null;
+  return { nonce, dirty: value.dirty };
+}
+
+export function frontendActionErrorCode(error: unknown): string | null {
+  const code = isRecord(error) ? error.code : undefined;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)
+    ? code
+    : null;
 }
 
 function isolatedFrontendNonce(): string {
