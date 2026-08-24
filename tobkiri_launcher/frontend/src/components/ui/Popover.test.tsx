@@ -85,8 +85,8 @@ test('generic popover uses disclosure semantics and only closes intentionally', 
         <Popover mode="popover">
           <PopoverTrigger>Details</PopoverTrigger>
           <PopoverContent>
-            <button type="button">Async action</button>
-            <button type="button" data-popover-close>Done</button>
+            <button type="button" onClick={() => undefined}>Async action</button>
+            <button type="button" data-popover-close onClick={() => undefined}>Done</button>
           </PopoverContent>
         </Popover>,
       );
@@ -133,10 +133,10 @@ test('dialog mode enters focus and Tab may leave without returning to the trigge
           <Popover mode="dialog">
             <PopoverTrigger>Open panel</PopoverTrigger>
             <PopoverContent aria-label="Tools">
-              <button type="button">First tool</button>
+              <button type="button" onClick={() => undefined}>First tool</button>
             </PopoverContent>
           </Popover>
-          <button type="button">After panel</button>
+          <button type="button" onClick={() => undefined}>After panel</button>
         </>,
       );
     });
@@ -269,7 +269,7 @@ test('Escape closes only the topmost nested layer', async () => {
             <Popover mode="dialog">
               <PopoverTrigger>Inner</PopoverTrigger>
               <PopoverContent aria-label="Inner layer">
-                <button type="button">Inner action</button>
+                <button type="button" onClick={() => undefined}>Inner action</button>
               </PopoverContent>
             </Popover>
           </PopoverContent>
@@ -313,14 +313,14 @@ test('trigger removal closes the layer and restores the nearest surviving focus 
   const surface = createSurface();
   const renderFixture = (showTrigger: boolean) => (
     <>
-      <button type="button">Before</button>
+      <button type="button" onClick={() => undefined}>Before</button>
       <Popover mode="dialog">
         {showTrigger ? <PopoverTrigger>Removable trigger</PopoverTrigger> : null}
         <PopoverContent aria-label="Temporary panel">
-          <button type="button">Panel action</button>
+          <button type="button" onClick={() => undefined}>Panel action</button>
         </PopoverContent>
       </Popover>
-      <button type="button">After</button>
+      <button type="button" onClick={() => undefined}>After</button>
     </>
   );
   try {
