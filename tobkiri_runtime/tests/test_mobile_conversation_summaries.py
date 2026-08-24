@@ -175,4 +175,3 @@ def test_mobile_list_returns_stable_error_without_legacy_fallback(monkeypatch):
             "message": "conversation list unavailable",
         },
     }
-
