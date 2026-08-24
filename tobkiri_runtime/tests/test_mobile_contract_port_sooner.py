@@ -218,6 +218,86 @@ def test_mobile_pairing_approve_delivers_tokens_only_inside_encrypted_pickup(tmp
     assert DeviceStore(tmp_path).verify_token(delivery["device_token"]) is not None
 
 
+def test_mobile_pairing_approve_validates_profile_before_state_transition(tmp_path):
+    from blocks.mobile.pairing import run
+    from core_runtime.resolved_profile_scope import (
+        activate_resolved_profile,
+        restore_resolved_profile,
+    )
+    from domain.p2p.pairing import PairingManager
+
+    manager = PairingManager(tmp_path)
+    pairing = manager.start_pairing(capabilities=["chat.read"])
+    claimed = manager.claim_pairing(
+        pairing.pairing_id,
+        code=pairing.code,
+        device_id="mobile-profile-guard",
+        device_encryption_public_key="not-used-before-profile-validation",
+        requested_capabilities=["chat.read"],
+    )
+    assert claimed["ok"] is True
+    review = manager.get_pairing(pairing.pairing_id)
+    assert review is not None
+
+    token = activate_resolved_profile(None)
+    try:
+        rejected = run(
+            {
+                "action": "approve",
+                "store_path": str(tmp_path),
+                "pairing_id": pairing.pairing_id,
+                "claim_hash": review.claim_hash(),
+                "scopes": ["chat.read"],
+            },
+            None,
+        )
+    finally:
+        restore_resolved_profile(token)
+
+    assert rejected["status"] == "error"
+    assert rejected["error"]["code"] == "PROFILE_CONTEXT_INVALID"
+    authoritative = PairingManager(tmp_path).get_pairing(pairing.pairing_id)
+    assert authoritative is not None
+    assert authoritative.status == "claimed"
+
+
+def test_mobile_pairing_status_durably_normalizes_expired_claim(
+    tmp_path,
+    monkeypatch,
+):
+    from blocks.mobile.pairing import run
+    from domain.p2p import pairing as pairing_domain
+
+    current_time = 1_000_000
+    monkeypatch.setattr(pairing_domain, "_now_ms", lambda: current_time)
+    manager = pairing_domain.PairingManager(tmp_path)
+    pairing = manager.start_pairing(ttl_seconds=1)
+    claimed = manager.claim_pairing(
+        pairing.pairing_id,
+        code=pairing.code,
+        device_id="mobile-expiry",
+        device_encryption_public_key="not-used-by-status",
+        now_ms=current_time,
+    )
+    assert claimed["ok"] is True
+
+    current_time = pairing.expires_at + 1
+    status = run(
+        {
+            "action": "status",
+            "store_path": str(tmp_path),
+            "pairing_id": pairing.pairing_id,
+        },
+        None,
+    )
+
+    assert status["status"] == "ok"
+    assert status["data"]["status"] == "expired"
+    persisted = pairing_domain.PairingManager(tmp_path).get_pairing(pairing.pairing_id)
+    assert persisted is not None
+    assert persisted.status == "expired"
+
+
 def test_device_token_auth_is_limited_by_mobile_route_scope(tmp_path, monkeypatch):
     from core_runtime.api.auth_gate import AuthGateMixin
     from tests.v4_batch_support import assert_route_cutover

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .json_store import file_lock, load_json_object, save_json_object
-from .peer_store import PeerRecord, PeerStore, generate_shared_secret
+from .peer_store import PeerStore, generate_shared_secret
 from .settings import P2PSettings, default_store_path
 
 
@@ -468,6 +468,9 @@ class PairingManager:
             return {"ok": True, "pairing": session.public_dict()}
 
     def get_pairing(self, pairing_id: str) -> PairingSession | None:
+        """Return one pairing after durably normalizing authoritative expiry."""
+
+        self.cleanup_expired()
         self._data = self._load()
         return self._sessions().get(str(pairing_id or "").strip())
 

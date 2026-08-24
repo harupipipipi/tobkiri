@@ -146,6 +146,10 @@ def approve(input_data, context=None):
     claim_hash = str(args.get("claim_hash") or args.get("claimHash") or "").strip()
     if not claim_hash:
         return error("claim_hash is required", "CLAIM_HASH_REQUIRED")
+    try:
+        profile_id = _profile_id(input_data, context)
+    except ValueError as exc:
+        return error(str(exc), "PROFILE_CONTEXT_INVALID")
     s = _settings(input_data, context)
     manager = PairingManager(s.store_path)
     result = manager.approve_pairing_v2(
@@ -156,7 +160,6 @@ def approve(input_data, context=None):
     if not result.get("ok"):
         return error(str(result.get("reason") or "approve failed"), str(result.get("code") or "APPROVE_FAILED"))
 
-    profile_id = _profile_id(input_data, context)
     issued_device_id = ""
     ds = DeviceStore(s.store_path)
     try:

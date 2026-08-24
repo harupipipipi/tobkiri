@@ -534,6 +534,20 @@ const settingsSections = [
     fields: [],
   },
   {
+    id: "mobile",
+    label: "Mobile",
+    description: "Secure mobile pairing review.",
+    fields: [{
+      id: "pairing_review_id",
+      label: "Mobile Pairing Review",
+      type: "mobile_pairing_review",
+      renderer: "MobilePairingApproval",
+      default: "",
+      advanced: true,
+      control_center_section: "advanced",
+    }],
+  },
+  {
     id: "calendar",
     label: "カレンダー",
     description: "Calendar behavior.",
@@ -766,6 +780,63 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         created_at: now,
         args_hash: approvalDigest,
       };
+    }
+
+    const pairingMatch = path.match(/^\/api\/mobile\/v1\/pairings\/([^/]+)\/(status|review|approve|reject)$/);
+    if (pairingMatch && options.mobilePairing) {
+      const pairingId = decodeURIComponent(pairingMatch[1]);
+      const action = pairingMatch[2];
+      const fixture = options.mobilePairing;
+      if (pairingId !== fixture.pairingId) {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ status: "error", message: "pairing not found" }),
+        });
+      }
+      if (action === "status") {
+        if (fixture.statusOffline || (fixture.failStatusRequests ?? 0) > 0) {
+          fixture.failStatusRequests = (fixture.failStatusRequests ?? 0) - 1;
+          return route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ status: "error", message: "pairing status offline" }),
+          });
+        }
+        return fulfill(route, {
+          pairing_id: pairingId,
+          status: fixture.status,
+          expires_at: now + 60_000,
+        });
+      }
+      if (action === "review") {
+        return fulfill(route, {
+          pairing: {
+            pairing_id: pairingId,
+            status: fixture.status,
+            expires_at: now + 60_000,
+          },
+          claim: {
+            device_label: "QA Phone",
+            verification_code: "SAFE-CODE",
+            requested_scopes: ["chat.read"],
+            allowed_scopes: ["chat.read"],
+          },
+          claim_hash: "sha256:pairing-review-fixture",
+        });
+      }
+      const body = (request.postDataJSON() ?? {}) as Record<string, unknown>;
+      const decisionAction = action as "approve" | "reject";
+      fixture.decisionRequests.push({ action: decisionAction, body });
+      await fixture.beforeDecision?.(decisionAction);
+      fixture.status = action === "approve" ? "approved" : "rejected";
+      return fulfill(route, {
+        pairing: {
+          pairing_id: pairingId,
+          status: fixture.status,
+          expires_at: now + 60_000,
+        },
+      });
     }
 
     if (path === routeKey("api/health")) {
@@ -1342,6 +1413,157 @@ async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOpti
   const compatibilityPath = path === "/chat" ? "/static/chat" : path;
   await page.goto(compatibilityPath);
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+}
+
+async function openMobilePairingReview(page: Page, fixture: MobilePairingMock) {
+  await openDefaultspack(page, "/chat", {
+    initialSettingsValues: {
+      mobile: { pairing_review_id: fixture.pairingId },
+    },
+    mobilePairing: fixture,
+  });
+  await page.getByTitle("Settings").last().click();
+  await page.getByRole("button", { name: "Advanced Settings" }).click();
+  await page.getByRole("button", { name: /Advanced settings are hidden/ }).click();
+  await page.locator("main#settings-content details summary").click();
+  const input = page.getByRole("textbox", { name: "Mobile Pairing Review" });
+  await expect(input).toBeVisible();
+  return {
+    input,
+    review: page.getByTestId("mobile-pairing-review"),
+  };
+}
+
+test("mobile pairing close is explicit, keeps authority pending, reopens, and restores focus", async ({ page }) => {
+  const fixture: MobilePairingMock = {
+    pairingId: "pair-close",
+    status: "claimed",
+    decisionRequests: [],
+  };
+  const { input, review } = await openMobilePairingReview(page, fixture);
+  await expect(review).toContainText("QA Phone");
+
+  await review.getByRole("button", { name: "閉じ方を確認" }).focus();
+  await page.keyboard.press("Escape");
+  const closeReview = page.getByRole("alertdialog", { name: "接続要求をどうしますか？" });
+  await expect(closeReview).toBeVisible();
+  await expect(closeReview.getByRole("button", { name: "保留したまま閉じる" })).toBeFocused();
+  await closeReview.getByRole("button", { name: "確認に戻る" }).click();
+  await expect(review.getByRole("button", { name: "閉じ方を確認" })).toBeFocused();
+
+  await review.getByRole("button", { name: "閉じ方を確認" }).click();
+  await closeReview.getByRole("button", { name: "保留したまま閉じる" }).click();
+  await expect(review).toBeHidden();
+  await expect(input).toBeFocused();
+  expect(fixture.decisionRequests).toEqual([]);
+
+  await page.getByRole("button", { name: "接続要求をもう一度開く" }).click();
+  await expect(review).toContainText("QA Phone");
+  expect(fixture.decisionRequests).toEqual([]);
+});
+
+test("mobile pairing offline state blocks decisions until authoritative retry succeeds", async ({ page }) => {
+  const fixture: MobilePairingMock = {
+    pairingId: "pair-offline",
+    status: "claimed",
+    statusOffline: true,
+    decisionRequests: [],
+  };
+  const { review } = await openMobilePairingReview(page, fixture);
+  await expect(review.getByRole("alert")).toContainText("要求は変更されていません");
+  await expect(review.getByRole("button", { name: "承認" })).toBeDisabled();
+  await expect(review.getByRole("button", { name: "要求を拒否" })).toBeDisabled();
+
+  await review.getByRole("button", { name: "閉じ方を確認" }).click();
+  const closeReview = page.getByRole("alertdialog", { name: "接続要求をどうしますか？" });
+  await expect(closeReview.getByRole("button", { name: "要求を拒否" })).toBeDisabled();
+  await expect(closeReview.getByRole("button", { name: "ペアリングをキャンセル" })).toBeDisabled();
+  await closeReview.getByRole("button", { name: "確認に戻る" }).click();
+
+  fixture.statusOffline = false;
+  await review.getByRole("button", { name: "再試行" }).click();
+  await expect(review).toContainText("QA Phone");
+  await expect(review.getByRole("button", { name: "承認" })).toBeEnabled();
+  await expect(review.getByRole("button", { name: "要求を拒否" })).toBeEnabled();
+  expect(fixture.decisionRequests).toEqual([]);
+});
+
+for (const decision of ["approve", "reject"] as const) {
+  test(`mobile pairing ${decision} is single-flight and cannot be dismissed before durable settlement`, async ({ page }) => {
+    let releaseDecision: (() => void) | undefined;
+    const decisionGate = new Promise<void>((resolve) => {
+      releaseDecision = resolve;
+    });
+    const fixture: MobilePairingMock = {
+      pairingId: `pair-${decision}`,
+      status: "claimed",
+      decisionRequests: [],
+      beforeDecision: () => decisionGate,
+    };
+    const { review } = await openMobilePairingReview(page, fixture);
+    await expect(review).toContainText("QA Phone");
+    const button = review.getByRole("button", {
+      name: decision === "approve" ? "承認" : "要求を拒否",
+    });
+    await button.dblclick();
+    await expect.poll(() => fixture.decisionRequests.length).toBe(1);
+    await expect(review.getByRole("button", { name: "処理中は閉じられません" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("alertdialog", { name: "接続要求をどうしますか？" })).toHaveCount(0);
+    await expect(review).toContainText("この画面は閉じられません");
+
+    releaseDecision?.();
+    const settlement = page.getByTestId("pairing-settlement");
+    await expect(settlement).toBeVisible();
+    await expect(settlement).toContainText(decision === "approve" ? "接続を承認しました" : "接続要求を拒否しました");
+    expect(fixture.decisionRequests).toHaveLength(1);
+    if (decision === "approve") {
+      expect(fixture.decisionRequests[0].body).toEqual({
+        claim_hash: "sha256:pairing-review-fixture",
+        scopes: ["chat.read"],
+      });
+    } else {
+      expect(fixture.decisionRequests[0].body).toEqual({
+        reason: "rejected by desktop reviewer",
+      });
+    }
+  });
+}
+
+test("mobile pairing cancel is distinct from rejection and settles authoritatively", async ({ page }) => {
+  const fixture: MobilePairingMock = {
+    pairingId: "pair-cancel",
+    status: "claimed",
+    decisionRequests: [],
+  };
+  const { review } = await openMobilePairingReview(page, fixture);
+  await expect(review).toContainText("QA Phone");
+  await review.getByRole("button", { name: "閉じ方を確認" }).click();
+  await page.getByRole("alertdialog", { name: "接続要求をどうしますか？" })
+    .getByRole("button", { name: "ペアリングをキャンセル" })
+    .click();
+  await expect(page.getByTestId("pairing-settlement")).toContainText("接続要求を拒否しました");
+  expect(fixture.decisionRequests).toEqual([{
+    action: "reject",
+    body: { reason: "pairing cancelled by desktop reviewer" },
+  }]);
+});
+
+for (const terminalStatus of ["expired", "revoked"] as const) {
+  test(`mobile pairing reopens into durable ${terminalStatus} authoritative settlement`, async ({ page }) => {
+    const fixture: MobilePairingMock = {
+      pairingId: `pair-${terminalStatus}`,
+      status: terminalStatus,
+      decisionRequests: [],
+    };
+    await openMobilePairingReview(page, fixture);
+    const settlement = page.getByTestId("pairing-settlement");
+    await expect(settlement).toBeVisible();
+    await expect(settlement).toContainText(
+      terminalStatus === "expired" ? "接続要求の期限が切れました" : "接続要求は取り消されました",
+    );
+    expect(fixture.decisionRequests).toEqual([]);
+  });
 }
 
 async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {

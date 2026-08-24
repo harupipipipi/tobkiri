@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { mobileApiResources, type MobilePairingApi, type MobilePairingReview, type MobilePairingStatus } from "../features/mobile/resources/mobileApiResources";
 import { PairingRequestGate, pairingDecisionReason, pairingErrorCode, pairingSettlement, type PairingDecision, type PairingSettlement } from "../features/mobile/mobilePairingReview";
@@ -71,7 +71,9 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
     setStatus(null);
     setReview(null);
     setSettlement(null);
+    setDecision("");
     setDecisionError("");
+    setCloseReview(false);
     void refresh();
     const timer = window.setInterval(() => { if (!gate.current.busy) void refresh(); }, 2000);
     return () => {
@@ -88,9 +90,15 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
     setDecision(nextDecision);
     setDecisionError("");
     try {
+      const currentReview = review?.pairing.pairing_id === pairingId ? review : null;
+      if (!currentReview || pollError || loading) {
+        throw new Error("接続要求の詳細を再取得してください");
+      }
       if (nextDecision === "approve") {
-        if (!review) throw new Error("接続要求の詳細を再取得してください");
-        await api.approvePairing(pairingId, { claim_hash: review.claim_hash, scopes: review.claim.requested_scopes });
+        await api.approvePairing(pairingId, {
+          claim_hash: currentReview.claim_hash,
+          scopes: currentReview.claim.requested_scopes,
+        });
       } else {
         await api.rejectPairing(pairingId, pairingDecisionReason(nextDecision));
       }
@@ -129,6 +137,19 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
     queueMicrotask(() => originRef?.current?.focus());
   };
 
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (gate.current.busy) return;
+    if (closeReview) {
+      setCloseReview(false);
+      queueMicrotask(() => closeButton.current?.focus());
+      return;
+    }
+    setCloseReview(true);
+  };
+
   if (settlement) {
     return (
       <section role="status" aria-live="polite" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4" data-testid="pairing-settlement">
@@ -140,8 +161,20 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
   }
 
   const busy = decision !== "";
+  const currentReview = review?.pairing.pairing_id === pairingId ? review : null;
+  const currentStatus = status?.pairing_id === pairingId ? status : null;
+  const canDecide = Boolean(currentReview) && !pollError && !loading;
+  const decisionLabel = decision === "approve" ? "承認" : decision === "cancel" ? "キャンセル" : "拒否";
   return (
-    <section role="dialog" aria-modal="true" aria-labelledby="pairing-review-title" className="relative rounded-xl border border-zinc-700 bg-zinc-950 p-5" data-pairing-status={status?.status ?? "loading"}>
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pairing-review-title"
+      className="relative rounded-xl border border-zinc-700 bg-zinc-950 p-5"
+      data-pairing-status={currentStatus?.status ?? "loading"}
+      data-testid="mobile-pairing-review"
+      onKeyDown={handleKeyDown}
+    >
       <button ref={closeButton} type="button" disabled={busy} aria-label={busy ? "処理中は閉じられません" : "閉じ方を確認"} onClick={() => setCloseReview(true)} className="absolute right-3 top-3 rounded p-2 disabled:opacity-40">×</button>
       <h2 id="pairing-review-title" className="pr-10 text-lg font-semibold">スマホの接続要求を確認</h2>
       <p className="mt-2 text-sm text-zinc-400">閉じるだけでは拒否されません。要求を保留したまま閉じるか、明示的に拒否・キャンセルできます。</p>
@@ -157,11 +190,11 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
           <button type="button" disabled={busy || loading} onClick={() => void refresh()} className="mt-2 underline">再試行</button>
         </ErrorNotice>
       ) : null}
-      {review ? (
+      {currentReview ? (
         <dl className="mt-4 grid gap-2 text-sm">
-          <div><dt className="text-zinc-500">端末</dt><dd>{review.claim.device_label}</dd></div>
-          <div><dt className="text-zinc-500">確認コード</dt><dd>{review.claim.verification_code ?? "未提供"}</dd></div>
-          <div><dt className="text-zinc-500">要求権限</dt><dd>{review.claim.requested_scopes.join("、") || "なし"}</dd></div>
+          <div><dt className="text-zinc-500">端末</dt><dd>{currentReview.claim.device_label}</dd></div>
+          <div><dt className="text-zinc-500">確認コード</dt><dd>{currentReview.claim.verification_code ?? "未提供"}</dd></div>
+          <div><dt className="text-zinc-500">要求権限</dt><dd>{currentReview.claim.requested_scopes.join("、") || "なし"}</dd></div>
         </dl>
       ) : null}
       {busy ? <p role="status" aria-live="assertive" className="mt-4">{decision === "approve" ? "承認" : "拒否"}を処理中です。この画面は閉じられません。</p> : null}
@@ -173,8 +206,8 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
         />
       ) : null}
       <div className="mt-5 flex flex-wrap gap-2">
-        <button type="button" disabled={busy || !review || Boolean(pollError)} onClick={() => void settle("approve")} className="rounded bg-emerald-300 px-3 py-2 text-zinc-950 disabled:opacity-40">承認</button>
-        <button type="button" disabled={busy} onClick={() => void settle("reject")} className="rounded border border-red-400/40 px-3 py-2 text-red-200 disabled:opacity-40">要求を拒否</button>
+        <button type="button" disabled={busy || !canDecide} onClick={() => void settle("approve")} className="rounded bg-emerald-300 px-3 py-2 text-zinc-950 disabled:opacity-40">承認</button>
+        <button type="button" disabled={busy || !canDecide} onClick={() => void settle("reject")} className="rounded border border-red-400/40 px-3 py-2 text-red-200 disabled:opacity-40">要求を拒否</button>
       </div>
 
       {closeReview ? (
@@ -182,8 +215,8 @@ export function MobilePairingApproval({ pairingId, api = mobileApiResources, onC
           <h3 id="pairing-close-title" className="font-semibold">接続要求をどうしますか？</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             <button autoFocus type="button" onClick={() => close("keep-pending")} className="rounded border px-3 py-2">保留したまま閉じる</button>
-            <button type="button" onClick={() => void settle("reject")} className="rounded border px-3 py-2">要求を拒否</button>
-            <button type="button" onClick={() => void settle("cancel")} className="rounded border px-3 py-2">ペアリングをキャンセル</button>
+            <button type="button" disabled={busy || !canDecide} onClick={() => void settle("reject")} className="rounded border px-3 py-2 disabled:opacity-40">要求を拒否</button>
+            <button type="button" disabled={busy || !canDecide} onClick={() => void settle("cancel")} className="rounded border px-3 py-2 disabled:opacity-40">ペアリングをキャンセル</button>
             <button type="button" onClick={() => { setCloseReview(false); closeButton.current?.focus(); }} className="rounded px-3 py-2">確認に戻る</button>
           </div>
         </div>
