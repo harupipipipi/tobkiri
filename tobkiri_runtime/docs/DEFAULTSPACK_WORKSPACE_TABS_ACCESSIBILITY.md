@@ -23,7 +23,7 @@ Practices tabs pattern with **automatic activation**.
   selectable actions.
 - Keyboard focus uses the shell's global visible focus indicator. Close
   controls become visible for hover, focus, and focus-within and use a minimum
-  32-by-32 CSS-pixel target.
+  36-by-36 CSS-pixel target.
 
 Component and deterministic keyboard/screen-reader regression coverage lives
 in `src/components/WorkspaceTabs.test.tsx`.

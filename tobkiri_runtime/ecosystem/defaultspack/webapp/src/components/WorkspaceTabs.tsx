@@ -386,6 +386,11 @@ export function WorkspaceTabBar({
     closeMenu();
   };
 
+  const registerTabRef = (tabId: string) => (element: HTMLButtonElement | null) => {
+    if (element) tabRefs.current.set(tabId, element);
+    else tabRefs.current.delete(tabId);
+  };
+
   const focusAndActivateTab = (index: number) => {
     const tab = tabs[index];
     if (!tab) return;
@@ -450,10 +455,7 @@ export function WorkspaceTabBar({
               title={title}
             >
               <button
-                ref={(element) => {
-                  if (element) tabRefs.current.set(tab.id, element);
-                  else tabRefs.current.delete(tab.id);
-                }}
+                ref={registerTabRef(tab.id)}
                 type="button"
                 role="tab"
                 id={workspaceTabDomId(tab.id, "tab")}
@@ -475,7 +477,7 @@ export function WorkspaceTabBar({
                     handleClose(tab.id);
                   }}
                   className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-600 transition-[opacity,color,background-color] hover:bg-zinc-800 hover:text-zinc-200 focus:opacity-100 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-600 transition-[opacity,color,background-color] hover:bg-zinc-800 hover:text-zinc-200 focus:opacity-100 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
                     isActive ? "opacity-60" : "opacity-0",
                   )}
                   tabIndex={isActive ? 0 : -1}
@@ -610,7 +612,7 @@ export function WorkspaceTabRailPanel({
                     event.stopPropagation();
                     onClose(tab.id);
                   }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-zinc-600 opacity-0 hover:bg-zinc-800 hover:text-zinc-200 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-zinc-600 opacity-0 hover:bg-zinc-800 hover:text-zinc-200 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                   title="タブを閉じる"
                   aria-label={`${title}を閉じる`}
                 >
