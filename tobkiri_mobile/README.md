@@ -164,6 +164,23 @@ normal pairing tests.
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
 
+## PC conversation drawer
+
+The Tobkiri mobile drawer presents PC-owned conversations as a read-only
+navigation list. It uses only the scoped mobile conversation route above; it
+does not retry through the legacy chat or UI routes. Rename, pin, and delete
+remain PC actions and the drawer explains that limitation instead of showing
+controls that cannot be completed safely.
+
+Latest-message previews are a bounded display projection, not full message
+content. The PC facade selects ordinary user or assistant text only, excludes
+system, tool, hidden, private, and sensitive records, redacts common credential
+forms, normalizes non-printing characters and whitespace, and caps the result
+at 160 characters. The Flutter client renders the result as inert plain text.
+Cached rows are kept only in memory during a transient outage, are visibly
+marked stale/offline, and are cleared whenever the server URL or bearer-token
+authority changes.
+
 ## Development
 
 ```powershell
