@@ -180,6 +180,11 @@ def test_shell_runtime_is_presentation_only_and_cannot_inherit_launcher_authorit
     assert shell_config["bundle"]["resources"] is None
     assert shell_config["build"]["beforeBuildCommand"] is None
     assert shell_config["build"]["beforeDevCommand"] is None
+    shell_window = shell_config["app"]["windows"][0]
+    assert shell_window["title"] == "Tobkiri"
+    assert shell_window["decorations"] is True
+    assert "hiddenTitle" not in shell_window
+    assert "titleBarStyle" not in shell_window
 
     shell_runtime = SHELL_RUNTIME.read_text(encoding="utf-8")
     for forbidden in (

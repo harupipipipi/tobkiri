@@ -56,6 +56,14 @@ The standalone webapp in `webapp/` talks to `/api/...` endpoints exposed by
 defaultspack. The UI renders a shell with history, chat messages, composer,
 activity preview, right sidebar, settings, and optional coding cockpit regions.
 
+The Tauri shell uses the operating system's decorated window, localized as
+`Tobkiri`. Native chrome owns dragging, double-click maximize/restore, window
+state synchronization, keyboard focus, and the platform-standard minimize,
+maximize, restore, and close controls. The web title bar is rendered only in a
+standalone browser and must not add window-control handlers or interactive
+descendants. This keeps presentation code from acquiring window authority and
+prevents web pointer events from conflicting with native window behavior.
+
 ```mermaid
 sequenceDiagram
   participant User
