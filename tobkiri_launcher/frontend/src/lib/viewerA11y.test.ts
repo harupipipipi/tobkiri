@@ -9,18 +9,25 @@ function source(path: string): string {
   return readFileSync(resolve(srcRoot, path), 'utf8');
 }
 
-test('viewer popover trigger exposes keyboard and menu semantics', () => {
+test('viewer popover exposes explicit disclosure, menu, and dialog contracts', () => {
   const popover = source('components/ui/Popover.tsx');
 
-  assert.match(popover, /aria-haspopup=\{props\['aria-haspopup'\] \?\? 'menu'\}/);
-  assert.match(popover, /event\.key === "Escape"/);
+  assert.match(popover, /type PopoverMode = "popover" \| "menu" \| "dialog"/);
+  assert.match(popover, /context\.mode === "menu"/);
+  assert.match(popover, /context\.mode === "dialog"/);
+  assert.match(popover, /aria-controls=\{context\.contentId\}/);
+  assert.match(popover, /aria-expanded=\{context\.isOpen\}/);
+  assert.match(popover, /event\.key [!=]== "Escape"/);
+  assert.match(popover, /event\.key === "ArrowDown"/);
+  assert.match(popover, /event\.key === "Home"/);
   assert.match(popover, /pointerdown/);
-  assert.match(popover, /firstFocusable\?\.focus\(\)/);
-  assert.match(popover, /triggerRef\.current\?\.focus\(\)/);
+  assert.match(popover, /ResizeObserver/);
+  assert.match(popover, /visualViewport/);
+  assert.match(popover, /data-popover-close/);
   assert.match(popover, /createPortal/);
   assert.match(popover, /document\.body/);
   assert.match(popover, /position: "fixed"/);
-  assert.match(popover, /onClose\?\.\(\)/);
+  assert.match(popover, /PopoverMenuItem/);
 });
 
 test('viewer shell has a mobile navigation fallback and persistent desktop sidebar state', () => {
@@ -30,7 +37,7 @@ test('viewer shell has a mobile navigation fallback and persistent desktop sideb
 
   assert.match(sidebar, /hidden[\s\S]*md:flex/);
   assert.match(header, /aria-label=\{t\('nav.open_menu'\)\}/);
-  assert.match(header, /aria-haspopup="dialog"/);
+  assert.match(header, /<Popover mode="dialog">/);
   assert.match(header, /role="dialog"/);
   assert.doesNotMatch(header, /aria-haspopup="menu"/);
   assert.doesNotMatch(header, /role="menu(item)?"/);

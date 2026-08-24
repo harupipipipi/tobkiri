@@ -139,7 +139,9 @@ test('Header avatar is an actionable Profile/Settings entry with focus, Escape, 
     assert.equal(dialog.querySelector('[role="menuitem"]'), null);
 
     await act(async () => {
-      dom.window.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'Escape'}));
+      dom.window.document.activeElement?.dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', {bubbles: true, key: 'Escape'}),
+      );
       await nextTick();
     });
     assert.equal(dom.window.document.querySelector('[role="dialog"][aria-label="Profile menu"]'), null);
@@ -201,7 +203,9 @@ test('mobile navigation exposes ordinary named links, moves focus, and closes on
     await waitForFocus(dom, firstLink);
 
     await act(async () => {
-      dom.window.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'Escape'}));
+      dom.window.document.activeElement?.dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', {bubbles: true, key: 'Escape'}),
+      );
       await nextTick();
     });
     assert.equal(dom.window.document.querySelector('[role="dialog"][aria-label="Mobile navigation"]'), null);
@@ -211,7 +215,7 @@ test('mobile navigation exposes ordinary named links, moves focus, and closes on
     const packsLink = dom.window.document.querySelector<HTMLAnchorElement>('[role="dialog"][aria-label="Mobile navigation"] a[href="/packs"]');
     assert.ok(packsLink);
     packsLink.focus();
-    assert.equal(dom.window.document.activeElement, packsLink);
+    assert.ok(dom.window.document.activeElement === packsLink);
     await act(async () => { packsLink.click(); await nextTick(); });
     assert.equal(dom.window.document.querySelector('[role="dialog"][aria-label="Mobile navigation"]'), null);
   } finally {

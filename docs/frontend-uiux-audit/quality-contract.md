@@ -105,6 +105,14 @@ Use one complete, documented pattern rather than a visual imitation:
 
 Do not mix roles from different patterns. Stable IDs and `aria-controls`, `aria-labelledby`, `aria-describedby`, selected/current/expanded/busy/invalid state are required where the chosen pattern calls for them.
 
+The Launcher Viewer shared `Popover` requires an explicit pattern at each call site:
+
+- `mode="popover"` is a generic non-modal disclosure. It keeps focus on the trigger unless the caller requests the first control or popup container, has no `aria-haspopup` or popup role by default, and never closes merely because a nested button or link was activated.
+- `mode="menu"` is an APG menu button. Its content and `PopoverMenuItem` children supply menu/menuitem roles and Arrow Up/Down, Home/End, character, Escape, and Tab behavior.
+- `mode="dialog"` is an anchored non-modal dialog or navigation panel. Focus enters the first control, ordinary Tab navigation may leave and close the panel, and only elements marked `data-popover-close` close it on activation.
+
+All modes keep stable trigger/content IDs, restore focus to the surviving opener (or its nearest captured focus neighbor), close only the topmost layer on Escape, and measure/flip/shift on content resize, viewport resize, zoom, and scroll.
+
 ## 8. Target size and readable content
 
 Repeated touch/click targets SHOULD be at least 44×44 logical/CSS pixels. Smaller targets require spacing, an equivalent larger target, and tested justification.
