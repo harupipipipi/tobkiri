@@ -204,20 +204,23 @@ test('Input hides the visual required marker from the accessible label', () => {
 });
 
 test('icon-only Button fails development and test renders without an accessible name', () => {
+  const handleClick = () => undefined;
   assert.throws(
-    () => renderToStaticMarkup(<Button size="icon"><svg /></Button>),
+    () => renderToStaticMarkup(<Button size="icon" onClick={handleClick}><svg /></Button>),
     /requires aria-label or aria-labelledby/,
   );
   assert.doesNotThrow(() => renderToStaticMarkup(
-    <Button size="icon" aria-label="Refresh"><svg /></Button>,
+    <Button size="icon" aria-label="Refresh" onClick={handleClick}><svg /></Button>,
   ));
   const namedMarkup = renderToStaticMarkup(
-    <Button size="icon" aria-label="Refresh"><svg /></Button>,
+    <Button size="icon" aria-label="Refresh" onClick={handleClick}><svg /></Button>,
   );
   assert.match(namedMarkup, /min-h-11/);
   assert.match(namedMarkup, /min-w-11/);
   assert.throws(
-    () => renderToStaticMarkup(<Button size="icon" aria-label=" "><svg /></Button>),
+    () => renderToStaticMarkup(
+      <Button size="icon" aria-label=" " onClick={handleClick}><svg /></Button>,
+    ),
     /requires aria-label or aria-labelledby/,
   );
 });
@@ -250,10 +253,12 @@ test('loading Button is busy, localized, disabled, and cannot submit twice', asy
 });
 
 test('Button preserves caller busy state and supports a specific pending label', () => {
-  const idleMarkup = renderToStaticMarkup(<Button aria-busy="true">Refresh</Button>);
+  const idleMarkup = renderToStaticMarkup(
+    <Button aria-busy="true" onClick={() => undefined}>Refresh</Button>,
+  );
   assert.match(idleMarkup, /aria-busy="true"/);
   const pendingMarkup = renderToStaticMarkup(
-    <Button loading loadingLabel="Saving profile">Save</Button>,
+    <Button loading loadingLabel="Saving profile" onClick={() => undefined}>Save</Button>,
   );
   assert.match(pendingMarkup, /aria-label="Saving profile"/);
   assert.match(pendingMarkup, />Saving profile<\/span>/);
