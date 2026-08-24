@@ -98,6 +98,33 @@ Function, Contract, scope, and Authority bindings. Missing, unknown, duplicate,
 wrong-type, stale, or digest-unbound fields are rejected; they are never made
 optional and never fall back to a legacy setup or Registry representation.
 
+The standalone pre-authentication `/setup` page has its own complete Japanese
+and English catalog because the compiled control-panel locale runtime is not
+available at this bootstrap boundary. It selects the catalog from the explicit
+`locale` query parameter, the `tobkiri-locale` product preference, or the
+browser language, in that order. Only locales that have completed layout and
+interaction QA are enabled; the current catalogs are both LTR, so the document
+does not advertise RTL support prematurely.
+
+Setup status follows one semantic state machine: loading, ready, validation
+error, request error, migration, installing, success, and redirecting. A single
+atomic live region announces each transition; errors become assertive and move
+focus to the actionable summary, while the persistent reload action becomes a
+localized Retry control. The selectable Profile and its informational
+included-Pack list are separate named groups with a localized selected count.
+Individual Packs are not editable at this boundary because the canonical
+Defaults Profile is one exact activation unit. These presentation changes do
+not change setup authority: the browser submits only the four-key v4 request
+and passes the server-issued confirmation object through opaquely to the
+Authority-owned activation transaction.
+
+Raw backend errors and payloads are never rendered. The optional technical
+disclosure is produced from a small allowlist (bounded setup Pack IDs, HTTP
+status, stable error code, migration count, and finite state), and only that
+redacted projection can be copied. Secrets, headers, tokens, tracebacks,
+provider messages, and arbitrary response fields are excluded before they can
+reach the DOM or clipboard.
+
 Production callers launch the generator through the shared isolated launcher:
 the child environment is rebuilt from a small neutral allowlist, Python is
 started with `-I -B -c`, and only the canonical `tobkiri_runtime` root is

@@ -2,185 +2,241 @@ import re
 from pathlib import Path
 
 
-SETUP_UI = (
+SETUP_WEB = (
     Path(__file__).resolve().parent.parent
     / "core_runtime"
     / "core_pack"
     / "core_setup"
     / "web"
-    / "index.html"
 )
+SETUP_UI = SETUP_WEB / "index.html"
+SETUP_LOCALES = SETUP_WEB / "locales.js"
 
 
 def setup_ui_source() -> str:
-    """Return the setup-pack landing page source."""
+    """Return the standalone setup page source."""
+
     return SETUP_UI.read_text(encoding="utf-8")
 
 
-def test_setup_pack_landing_avoids_centered_clipping_layout() -> None:
-    """Initial desktop view should top-align and allow natural vertical scroll."""
-    source = setup_ui_source()
-    body_rules = re.search(r"body \{(?P<body>.*?)\n    \}", source, re.S)
+def setup_locale_source() -> str:
+    """Return the dedicated setup locale catalog source."""
 
-    assert body_rules is not None
-    assert "place-items: center" not in body_rules.group("body")
-    assert "overflow: hidden;" not in body_rules.group("body")
-    assert "margin: 0 auto;" in source
+    return SETUP_LOCALES.read_text(encoding="utf-8")
+
+
+def test_setup_uses_only_the_canonical_defaults_v4_transaction() -> None:
+    """The page must not restore legacy selection or a second authority path."""
+
+    source = setup_ui_source()
+    request = re.search(
+        r'body: JSON\.stringify\(\{(?P<body>.*?)\n\s*\}\),',
+        source,
+        re.S,
+    )
+
+    assert request is not None
+    request_body = request.group("body")
+    assert "setup_api_version: SETUP_API_VERSION" in request_body
+    assert "operation_id: SETUP_OPERATION_ID" in request_body
+    assert "confirmed: true" in request_body
+    assert (
+        "confirmation: currentPayload.recommended_default_profile.confirmation"
+        in request_body
+    )
+    assert "setup_pack_ids" not in source
+    assert "reviewed_pack_ids" not in source
+    assert "confirmed_privileged_pack_ids" not in source
+    assert "install_defaults_profile" not in source
+    assert "review_revision" not in source
+    assert 'getJson("/api/setup/migration/status")' not in source
+    assert source.count('getJson("/api/setup/packs"') == 1
+    assert source.count('getJson("/api/setup/packs/install"') == 1
+    assert (
+        'result?.setup_api_version !== SETUP_API_VERSION || result.state !== "active"'
+        in source
+    )
+
+
+def test_server_confirmation_is_opaque_and_never_rendered_or_redigested() -> None:
+    """ProfileLock, ResolvedPlan, Authority, and PackVM evidence stays opaque."""
+
+    source = setup_ui_source()
+
+    assert source.count("recommended_default_profile.confirmation") == 1
+    assert ".confirmation." not in source
+    assert "confirmation_digest" not in source
+    assert "plan_digest" not in source
+    assert "authority_snapshot_digest" not in source
+    assert "JSON.stringify(currentPayload" not in source
+    assert "crypto.subtle" not in source
+
+
+def test_setup_locale_catalog_is_complete_and_sets_document_metadata() -> None:
+    """Every referenced string exists in both QA-enabled LTR catalogs."""
+
+    source = setup_ui_source()
+    locales = setup_locale_source()
+    catalog = re.search(
+        r"const messages = \{\s*ja: \{(?P<ja>.*?)\n\s*\},\s*en: \{(?P<en>.*?)\n\s*\},\s*\};",
+        locales,
+        re.S,
+    )
+
+    assert catalog is not None
+    key_pattern = re.compile(r"^\s{6}([A-Za-z][A-Za-z0-9]+):", re.M)
+    japanese_keys = set(key_pattern.findall(catalog.group("ja")))
+    english_keys = set(key_pattern.findall(catalog.group("en")))
+    referenced = set(re.findall(r'tr\("([A-Za-z][A-Za-z0-9]+)"', source))
+    referenced.update(
+        re.findall(
+            r'data-i18n(?:-aria-label|-alt)?="([A-Za-z][A-Za-z0-9]+)"',
+            source,
+        )
+    )
+
+    assert japanese_keys == english_keys
+    assert referenced <= japanese_keys
+    assert '<html lang="ja" dir="ltr">' in source
+    assert 'document.documentElement.lang = currentLocale;' in source
+    assert 'document.documentElement.dir = "ltr";' in source
+    assert 'id="locale"' in source
+    assert set(re.findall(r"^\s{4}(ja|en): \{", locales, re.M)) == {"ja", "en"}
+
+
+def test_setup_models_all_states_with_one_atomic_live_region() -> None:
+    """State announcements are atomic, urgent only on error, and busy-aware."""
+
+    source = setup_ui_source()
+
+    assert 'id="status-live"' in source
+    assert 'role="status" aria-live="polite" aria-atomic="true" tabindex="-1"' in source
+    assert (
+        'statusLiveEl.setAttribute("role", tone === "error" ? "alert" : "status")'
+        in source
+    )
+    assert "statusLiveEl.replaceChildren(fragment)" in source
+    assert "statusLiveEl.innerHTML" not in source
+    assert 'setStatus(tr("selectionChangedTitle")' in source
+    assert "announceSelection();" in source
+    assert 'document.body.setAttribute("aria-busy", "true")' in source
+    assert 'document.body.setAttribute("aria-busy", "false")' in source
+    assert 'installButton.setAttribute("aria-busy", String(installInProgress))' in source
+    for state in (
+        "loading",
+        "review_required",
+        "active",
+        "activation_denied",
+        "installing",
+        "redirecting",
+    ):
+        assert f'"{state}"' in source
+
+
+def test_profile_and_included_packs_are_separate_concise_groups() -> None:
+    """Only the exact Profile is selectable; included Packs are informational."""
+
+    source = setup_ui_source()
+
+    assert 'card.setAttribute("role", "group")' in source
+    assert 'card.setAttribute("aria-label", tr("profileGroupLabel"))' in source
+    assert 'details.setAttribute("role", "group")' in source
+    assert 'details.setAttribute("aria-label", tr("individualGroupLabel"))' in source
+    assert 'choice.setAttribute("aria-pressed", String(profileSelected))' in source
+    assert 'tr("selectionProfileSummary", { count })' in source
+    assert 'selectionSummaryEl.setAttribute("aria-label", selectionSummaryEl.textContent)' in source
+    assert 'document.createElement("input")' not in source
+    assert 'input.type = "checkbox"' not in source
+    assert "pack.pack_id" in source
+    assert 'technical.className = "technical-id"' in source
+
+
+def test_setup_redacts_backend_errors_and_copies_only_allowlisted_details() -> None:
+    """Backend payloads and diagnostics cannot flow directly into copy or status."""
+
+    source = setup_ui_source()
+
+    assert "class SetupRequestError extends Error" in source
+    assert "setupErrorCode(payload)" in source
+    assert "sanitizeDebugPayload(payload)" in source
+    assert 'navigator.clipboard.writeText(safeText)' in source
+    assert "payload.denial_diagnostic" not in source
+    assert re.search(r"payload\.error(?!_)", source) is None
+    assert "envelope.error" not in source
+    assert "safe.state = payload.state" in source
+    assert "safe.status = payload.status" in source
+    assert "safe.code = payload.code" in source
+    assert "safe.pack_count = payload.pack_count" in source
+    assert "safe.confirmation" not in source
+    for forbidden in (
+        "token",
+        "secret",
+        "password",
+        "credential",
+        "api[_-]?key",
+        "cookie",
+        "bearer",
+    ):
+        assert forbidden in source
+
+
+def test_errors_map_to_actions_and_focus_the_summary() -> None:
+    """Validation, request, denial, and stale-review failures are actionable."""
+
+    source = setup_ui_source()
+
+    assert "function mapSetupError(error)" in source
+    for status in ("401", "403", "409", "410", "400", "422", "500"):
+        assert status in source
+    assert "if (options.focus) window.requestAnimationFrame(() => statusLiveEl.focus())" in source
+    assert source.count("{ focus: true }") >= 3
+    assert 'refreshButton.textContent = tr("retry")' in source
+    assert 'currentPayload?.state !== "review_required"' in source
+
+
+def test_pending_success_and_redirect_labels_are_accurate() -> None:
+    """The activation button and redirect expose their current state."""
+
+    source = setup_ui_source()
+
+    assert 'state === "pending" ? "installPending"' in source
+    assert 'state === "success" ? "installSuccess"' in source
+    assert 'setStatus(tr("installingTitle")' in source
+    assert 'setStatus(tr("redirectingTitle")' in source
+    assert "window.location.assign(returnTo)" in source
+    assert "safeReturnTo(" in source
+    assert 'url.origin === window.location.origin && panelPath' in source
+
+
+def test_setup_layout_covers_motion_zoom_and_small_viewports() -> None:
+    """The page keeps natural scroll and reflow under accessibility sizing."""
+
+    source = setup_ui_source()
+    body = re.search(r"body \{(?P<body>.*?)\n    \}", source, re.S)
+
+    assert body is not None
+    assert "overflow: hidden" not in body.group("body")
+    assert "min-height: 100dvh" in body.group("body")
+    assert "overflow-x: clip" in body.group("body")
     assert "grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr)" in source
-    assert "min-width: 0;" in source
-    assert "overflow-x: clip;" in source
     assert "@media (max-width: 820px)" in source
+    assert "@media (max-width: 520px)" in source
+    assert "@media (max-height: 560px)" in source
+    assert "@media (prefers-reduced-motion: reduce)" in source
+    assert "animation-duration: 0.01ms !important" in source
+    assert ".selection-footer { align-items: stretch; flex-direction: column; }" in source
 
 
-def test_setup_state_hides_raw_json_behind_debug_disclosure() -> None:
-    """The default status panel should render compact copy, not a raw JSON dump."""
-    source = setup_ui_source()
-    set_status = re.search(
-        r"function setStatus\(label, payload, rows, tone = \"neutral\"\) \{(?P<body>.*?)\n    \}",
-        source,
-        re.S,
-    )
+def test_setup_avoids_unsafe_dom_replacement_and_raw_technical_primary_copy() -> None:
+    """Dynamic UI uses DOM APIs and keeps raw identifiers secondary."""
 
-    assert set_status is not None
-    assert "JSON.stringify(payload, null, 2)" not in set_status.group("body")
-    assert "renderInstallSummary(packs, migration)" in source
-    assert "詳細なデバッグ状態" in source
-    assert 'document.createElement("details")' in source
-
-
-def test_setup_offers_an_explicit_standard_choice_without_auto_selection() -> None:
-    """The standard setup remains an explicit user choice, not an auto-selection."""
-    source = setup_ui_source()
-    assert 'const BASIC_PACK_IDS = ["defaultspack"];' in source
-    assert "choice.dataset.basicPackIds" in source
-    assert 'choice.setAttribute("aria-pressed", "false")' in source
-    assert 'selectionState.textContent = "選択する"' in source
-    basic_selection = re.search(
-        r"function renderBasicSelection\(packs, recommendedProfile\) \{(?P<body>.*?)\n    \}",
-        source,
-        re.S,
-    )
-    assert basic_selection is not None
-    assert 'document.createElement("input")' not in basic_selection.group("body")
-    assert "selectedPackIds.clear();" in source
-    assert "selectedPackIds.add(packs[0])" not in source
-    assert 'summary.textContent = "詳細を表示して、packを個別に選ぶ"' in source
-    assert "details.open = false;" in source
-    assert "Defaults Profile" in source
-    assert "recommended_default_profile" in source
-    assert "PROFILE_CARDS" not in source
-    assert "matchingPacks" not in source
-    assert "matches.push(packs[0])" not in source
-    assert "pack.recommended" not in source
-
-
-def test_setup_cards_are_full_clickable_labels() -> None:
-    """Recommended selection uses a clear card button; advanced packs use labels."""
     source = setup_ui_source()
 
-    assert 'document.createElement("label")' in source
-    assert 'choice.className = "profile-choice-main"' in source
-    assert 'listEl.addEventListener("click", handleBasicSelection)' in source
-    assert 'card.addEventListener("click", (event) =>' in source
-    assert 'target.closest("[data-basic-pack-ids]") || target.closest("summary")' in source
-    assert "choice.click();" in source
-    assert 'label.className = "pack selectable-pack"' in source
-    assert "cursor: pointer;" in source
-    assert "min-height: 44px;" in source
-    assert "dataset.selectPack" in source
-    assert 'input.setAttribute("aria-label", setupPackName(pack) + " を追加")' in source
-    assert '.pack:has(input:focus-visible)' in source
-
-
-def test_recommended_pack_list_is_collapsed_by_default() -> None:
-    """The 29-pack recommendation should not flood selection or review screens."""
-    source = setup_ui_source()
-
-    assert 'document.createElement("details")' in source
-    assert 'preview.textContent = "含まれる pack: " + previewNames' in source
-    assert 'const collapsedLabel = "すべて表示（" + names.length + "）"' in source
-    assert 'summary.textContent = disclosure.open ? "一覧を閉じる" : collapsedLabel' in source
-    assert 'list.className = "pack-name-list"' in source
-    assert "profilePlan.appendChild(createPackDisclosure(" in source
-    assert 'includedPacks.textContent = "含まれる pack: "' not in source
-    assert '.pack.selectable-pack:hover' in source
-    assert '.review-profile-plan {' in source
-    assert 'if (pack && pack.pack_id === "defaultspack") return "Tobkiri"' in source
-    assert "Tobkiriの標準機能とデータ移行を提供する" in source
-
-
-def test_standard_and_advanced_choices_share_one_selection_model() -> None:
-    """Standard and individual controls must not submit stale duplicate state."""
-    source = setup_ui_source()
-
-    assert "const selectedPackIds = new Set();" in source
-    assert "function parseBasicPackIds(input)" in source
-    assert "function handleSelectionChange(event)" in source
-    assert "selectedPackIds.add(packId)" in source
-    assert "selectedPackIds.delete(packId)" in source
-    assert 'listEl.addEventListener("change", handleSelectionChange)' in source
-    assert "return Array.from(selectedPackIds);" in source
-
-
-def test_setup_page_has_a_back_action_and_uses_the_tobkiri_icon() -> None:
-    source = setup_ui_source()
-
-    assert 'id="back"' in source
-    assert 'window.location.assign("/panel/setup")' in source
-    assert 'src="/setup/assets/tobkiri-launcher-icon.png"' in source
-    assert 'alt="Tobkiri"' in source
-    assert 'get("color_mode")' in source
-    assert '|| "dark"' in source
-    assert "theme-standard" not in source
-    assert "Standard setup" not in source
-
-
-def test_install_action_sends_selected_ids_and_reports_feedback() -> None:
-    """Install should post selected setup pack ids and expose pending/result feedback."""
-    source = setup_ui_source()
-
-    assert "const selected = selectedSetupPackIds();" in source
-    assert "reviewed_pack_ids: selected" in source
-    assert "review_revision: currentReviewRevision" in source
-    assert "confirmed_privileged_pack_ids" in source
-    assert "install_defaults_profile: installingDefaultsProfile" in source
-    assert "confirmed_defaults_profile: installingDefaultsProfile" in source
-    assert "reviewed_default_profile_pack_ids" in source
-    assert 'getJson("/api/setup/packs/install"' in source
-    assert 'setInstallProgress("pending")' in source
-    assert 'setInstallProgress("success")' in source
-    assert 'setInstallProgress("error")' in source
-    assert 'id="install-progress"' in source
-    assert 'id="install-selected" disabled' in source
-    assert "do not immediately issue an unauthenticated refresh request here" in source
-    assert "const refreshed = await load({ preserveStatus: true, redirect: false });" not in source
-    assert 'aria-live="polite"' in source
-    assert 'setStatus("setup pack をインストール中…"' in source
-    assert 'setStatus("setup pack をインストールしました"' in source
-
-
-def test_install_review_discloses_pack_risk_and_requires_privileged_confirmation() -> None:
-    source = setup_ui_source()
-
-    for field in ("source_path", "description", "risk_level", "required_permissions", "supports_all_ok", "depends_on", "conflicts_with", "version"):
-        assert field in source
-    review = re.search(
-        r"function renderReview\(packs, recommendedProfile\) \{(?P<body>.*?)\n    \}",
-        source,
-        re.S,
-    )
-
-    assert review is not None
-    assert "checkbox.type" not in review.group("body")
-    assert "requiresPrivilegedConfirmation(pack)" in source
-    assert 'item.addEventListener("click", toggleConfirmation)' in source
-    assert 'item.setAttribute("role", "button")' in source
-    assert "この項目のどこかをクリックして、権限の強い pack を明示的に確認してください。" not in source
-    assert "確認済みです。もう一度クリックすると確認を取り消します。" not in source
-    assert 'confirmation.textContent = confirmed' in source
-    assert '"承認済み"' in source
-    assert "インストール前の確認が必要です" in source
-    assert "インストール内容の確認" in source
-    assert 'profileTitle.textContent = "作成される " + recommendedProfile.name;' in source
-    assert ":root.dark .pack:hover" not in source
-    assert ".review-profile-plan:hover" in source
+    assert ".innerHTML" not in source
+    assert "insertAdjacentHTML" not in source
+    assert "document.write" not in source
+    assert "rootEl.replaceChildren()" in source
+    assert "statusLiveEl.replaceChildren(fragment)" in source
+    assert "displayPackName(pack)" in source
+    assert "String(pack?.display_name" in source
+    assert "pack?.display_name || pack?.pack_id" not in source
