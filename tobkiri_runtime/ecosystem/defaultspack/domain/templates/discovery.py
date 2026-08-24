@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -8,7 +9,10 @@ from pathlib import Path
 
 from core_runtime.paths import resolve_pack_locations
 
-from ..extensions.activation import selected_extension_pack_ids
+from ..extensions.activation import (
+    selected_extension_pack_artifacts,
+    selected_extension_pack_ids,
+)
 from .models import RumiTemplate, TemplateDiagnostic, TemplateTrustLevel
 from .validation import parse_template
 
@@ -24,6 +28,7 @@ class TemplateRoot:
     trust_level: TemplateTrustLevel | str
     source_pack_id: str | None = None
     source_kind: str = ""
+    source_pack_artifact_digest: str = ""
 
 
 @dataclass
@@ -74,6 +79,7 @@ def discover_templates(
                     forced_trust,
                     source_pack_id=root.source_pack_id,
                     source_kind=root.source_kind,
+                    source_pack_artifact_digest=root.source_pack_artifact_digest,
                 )
                 for root in search_roots
             ]
@@ -90,6 +96,7 @@ def discover_templates(
                 source_pack_id=template_root.source_pack_id,
                 source_root=template_root.path,
                 source_kind=template_root.source_kind,
+                source_pack_artifact_digest=template_root.source_pack_artifact_digest,
             )
             result.diagnostics.extend(loaded.diagnostics)
             result.templates.extend(loaded.templates)
@@ -103,6 +110,7 @@ def load_template_file(
     source_pack_id: str | None = None,
     source_root: str | Path | None = None,
     source_kind: str = "",
+    source_pack_artifact_digest: str = "",
 ) -> TemplateDiscoveryResult:
     path = Path(template_path)
     try:
@@ -144,12 +152,21 @@ def load_template_file(
     if parsed.template is not None:
         # These fields are loader-owned provenance. Template JSON cannot spoof
         # or promote them because they are overwritten after parsing.
+        for key in (
+            "source_pack_id",
+            "source_root",
+            "source_kind",
+            "source_pack_artifact_digest",
+        ):
+            parsed.template.metadata.pop(key, None)
         if source_pack_id:
             parsed.template.metadata["source_pack_id"] = source_pack_id
         if source_root is not None:
             parsed.template.metadata["source_root"] = str(Path(source_root).resolve())
         if source_kind:
             parsed.template.metadata["source_kind"] = source_kind
+        if source_pack_artifact_digest:
+            parsed.template.metadata["source_pack_artifact_digest"] = source_pack_artifact_digest
     return TemplateDiscoveryResult(
         templates=[parsed.template] if parsed.template is not None else [],
         diagnostics=parsed.diagnostics,
@@ -198,6 +215,7 @@ def _normalize_roots(
             forced_trust,
             source_pack_id=root.source_pack_id,
             source_kind=root.source_kind,
+            source_pack_artifact_digest=root.source_pack_artifact_digest,
         )
         for root in configured_roots
     ]
@@ -233,6 +251,7 @@ def _selected_sibling_template_roots(
     defaultspack_root: Path,
 ) -> tuple[list[TemplateRoot], list[TemplateDiagnostic]]:
     selected_pack_ids = selected_extension_pack_ids(defaultspack_root)
+    selected_artifacts = selected_extension_pack_artifacts(defaultspack_root)
     roots: list[TemplateRoot] = []
     diagnostics: list[TemplateDiagnostic] = []
     for pack_id in sorted(selected_pack_ids):
@@ -245,7 +264,23 @@ def _selected_sibling_template_roots(
                 )
             )
             continue
-        located, mismatch = _locate_selected_pack(defaultspack_root, pack_id)
+        expected_artifact_digest = selected_artifacts.get(pack_id, "")
+        if not expected_artifact_digest:
+            diagnostics.append(
+                TemplateDiagnostic(
+                    code="template.discovery.selected_pack_artifact_unbound",
+                    message=(
+                        f"selected sibling Pack is not bound to a verified v4 artifact: {pack_id}"
+                    ),
+                    details={"source_pack_id": pack_id},
+                )
+            )
+            continue
+        located, mismatch = _locate_selected_pack(
+            defaultspack_root,
+            pack_id,
+            expected_artifact_digest,
+        )
         if located is None:
             if mismatch:
                 diagnostics.append(
@@ -267,12 +302,20 @@ def _selected_sibling_template_roots(
                 )
             )
             continue
+        artifact_diagnostics = _validate_template_artifacts(
+            located,
+            pack_id=pack_id,
+        )
+        diagnostics.extend(artifact_diagnostics)
+        if any(item.is_error for item in artifact_diagnostics):
+            continue
         roots.append(
             TemplateRoot(
                 template_root,
                 TemplateTrustLevel.LOCAL,
                 source_pack_id=pack_id,
                 source_kind="selected_sibling_pack",
+                source_pack_artifact_digest=expected_artifact_digest,
             )
         )
     return roots, diagnostics
@@ -281,6 +324,7 @@ def _selected_sibling_template_roots(
 def _locate_selected_pack(
     defaultspack_root: Path,
     pack_id: str,
+    expected_artifact_digest: str,
 ) -> tuple[Path | None, bool]:
     mismatch = False
     for ecosystem_root in _candidate_ecosystem_roots(defaultspack_root):
@@ -293,8 +337,8 @@ def _locate_selected_pack(
                 or candidate == defaultspack_root.resolve()
             ):
                 continue
-            manifest_pack_id = _manifest_pack_id(candidate)
-            if manifest_pack_id != pack_id:
+            manifest_pack_id, artifact_digest = _manifest_identity(candidate)
+            if manifest_pack_id != pack_id or artifact_digest != expected_artifact_digest:
                 mismatch = True
                 continue
             return candidate, mismatch
@@ -318,17 +362,80 @@ def _candidate_ecosystem_roots(defaultspack_root: Path) -> list[Path]:
     return roots
 
 
-def _manifest_pack_id(pack_root: Path) -> str:
+def _manifest_identity(pack_root: Path) -> tuple[str, str]:
     manifest_path = pack_root / "pack.v4.json"
     if not manifest_path.is_file():
-        return ""
+        return "", ""
     try:
         raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return ""
+        return "", ""
     if not isinstance(raw, dict) or not isinstance(raw.get("pack"), dict):
-        return ""
-    return str(raw["pack"].get("id") or "").strip()
+        return "", ""
+    if raw.get("pack_api_version") != "io.tobkiri.pack.v4":
+        return "", ""
+    return (
+        str(raw["pack"].get("id") or "").strip(),
+        str(raw["pack"].get("artifact_digest") or "").strip(),
+    )
+
+
+def _validate_template_artifacts(
+    pack_root: Path,
+    *,
+    pack_id: str,
+) -> list[TemplateDiagnostic]:
+    """Require every sibling template to be an exact declared Pack v4 artifact."""
+
+    manifest_path = pack_root / "pack.v4.json"
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    artifacts = raw.get("artifacts")
+    declared = {
+        str(item.get("path") or ""): str(item.get("digest") or "")
+        for item in (artifacts if isinstance(artifacts, list) else [])
+        if isinstance(item, dict)
+    }
+    diagnostics: list[TemplateDiagnostic] = []
+    template_root = pack_root / "templates"
+    actual = {
+        path.relative_to(pack_root).as_posix(): path for path in _iter_template_files(template_root)
+    }
+    declared_templates = {
+        relative_path: digest
+        for relative_path, digest in declared.items()
+        if relative_path.startswith("templates/") and relative_path.endswith("/template.json")
+    }
+    for relative_path in sorted(set(actual) | set(declared_templates)):
+        path = actual.get(relative_path, pack_root / relative_path)
+        expected_digest = declared_templates.get(relative_path, "")
+        try:
+            actual_digest = (
+                "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+                if path.is_file() and not path.is_symlink() and _is_relative_to(path, pack_root)
+                else ""
+            )
+        except OSError:
+            actual_digest = ""
+        if expected_digest == actual_digest:
+            continue
+        diagnostics.append(
+            TemplateDiagnostic(
+                code="template.discovery.selected_pack_template_artifact_mismatch",
+                message=(
+                    "selected sibling template is not an exact declared Pack v4 "
+                    f"artifact: {pack_id}:{relative_path}"
+                ),
+                source_path=str(path),
+                details={
+                    "source_pack_id": pack_id,
+                    "artifact_path": relative_path,
+                },
+            )
+        )
+    return diagnostics
 
 
 def _configured_extra_template_roots() -> list[TemplateRoot]:

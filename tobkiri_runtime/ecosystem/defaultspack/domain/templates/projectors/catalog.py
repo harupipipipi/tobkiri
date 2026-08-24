@@ -401,6 +401,7 @@ def _settings_section(template: RumiTemplate, piece: TemplatePiece) -> dict[str,
     item["origin"] = _origin(template, piece)
     item["trust_level"] = _value(template.trust_level)
     item["_source"] = _source(template)
+    _apply_source_provenance(item, template)
     return item
 
 
@@ -422,7 +423,8 @@ def _settings_section_for_field(template: RumiTemplate, piece: TemplatePiece) ->
     item["origin"] = _origin(template, piece)
     item["trust_level"] = _value(template.trust_level)
     item["_source"] = _source(template)
-    return {
+    _apply_source_provenance(item, template)
+    section = {
         "id": section_id,
         "label": _titleize(section_id),
         "fields": [item],
@@ -432,6 +434,8 @@ def _settings_section_for_field(template: RumiTemplate, piece: TemplatePiece) ->
         "_synthetic_field_section": True,
         "_source": _source(template),
     }
+    _apply_source_provenance(section, template)
+    return section
 
 
 def _apply_selector_schema(catalog: dict[str, Any]) -> None:
@@ -515,7 +519,21 @@ def _metadata_item_from_data(
     item["origin"] = _origin(template, piece)
     item["trust_level"] = _value(template.trust_level)
     item["_source"] = _source(template)
+    _apply_source_provenance(item, template)
     return item
+
+
+def _apply_source_provenance(item: dict[str, Any], template: RumiTemplate) -> None:
+    """Overwrite projected provenance with loader-owned template metadata."""
+
+    item.pop("source_pack_id", None)
+    item.pop("source_kind", None)
+    source_pack_id = str(template.metadata.get("source_pack_id") or "").strip()
+    source_kind = str(template.metadata.get("source_kind") or "").strip()
+    if source_pack_id:
+        item["source_pack_id"] = source_pack_id
+    if source_kind:
+        item["source_kind"] = source_kind
 
 
 def _template_summary(
@@ -708,6 +726,20 @@ def _merge_settings_fields(
                 "field_id": field_id,
                 "projected_id": projected_id,
                 "conflicting_projected_id": previous_projected_id,
+                "details": {
+                    "source_pack_ids": sorted(
+                        {
+                            str(previous.get("source_pack_id") or "defaultspack"),
+                            str(item.get("source_pack_id") or "defaultspack"),
+                        }
+                    ),
+                    "source_paths": sorted(
+                        {
+                            str(previous.get("_source") or ""),
+                            str(item.get("_source") or ""),
+                        }
+                    ),
+                },
             }
         )
     return [

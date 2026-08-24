@@ -129,6 +129,7 @@ def _catalog_generation(
                 "trust_level": _trust_value(descriptor.trust_level),
                 "source_pack_id": descriptor.source_pack_id or "",
                 "source_kind": descriptor.source_kind,
+                "source_pack_artifact_digest": (descriptor.source_pack_artifact_digest),
                 "pack_manifest_sha256": _pack_manifest_sha256(descriptor),
             }
             for descriptor in descriptors
@@ -164,13 +165,15 @@ def _template_root_descriptors(
     else:
         descriptors = default_template_roots(defaultspack_root)
     result: list[TemplateRoot] = []
-    seen: set[tuple[Path, str, str]] = set()
+    seen: set[tuple[Path, str, str, str, str]] = set()
     for descriptor in descriptors:
         resolved = descriptor.path.resolve()
         key = (
             resolved,
             _trust_value(descriptor.trust_level),
             descriptor.source_pack_id or "",
+            descriptor.source_kind,
+            descriptor.source_pack_artifact_digest,
         )
         if key in seen:
             continue
@@ -181,6 +184,7 @@ def _template_root_descriptors(
                 descriptor.trust_level,
                 source_pack_id=descriptor.source_pack_id,
                 source_kind=descriptor.source_kind,
+                source_pack_artifact_digest=(descriptor.source_pack_artifact_digest),
             )
         )
     return result
@@ -258,6 +262,7 @@ def _root_cache_value(root: str | Path | TemplateRoot) -> str:
                 _trust_value(root.trust_level),
                 root.source_pack_id or "",
                 root.source_kind,
+                root.source_pack_artifact_digest,
             )
         )
     return str(Path(root).resolve())
