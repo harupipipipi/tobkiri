@@ -90,8 +90,14 @@ def test_browser_companion_destination_policy_rejects_tampered_state_and_require
           ["https://example.com/%0d%0aheader", "block"],
           ["http://localhost:3000/", "block"],
           ["http://2130706433/", "block"],
+          ["http://100.64.0.1/", "block"],
+          ["http://service.lan/", "block"],
+          ["http://service.home/", "block"],
+          ["http://local/", "block"],
           ["http://169.254.169.254/latest/meta-data/", "block"],
           ["http://[::1]/", "block"],
+          ["http://[ff02::1]/", "block"],
+          ["http://[fec0::1]/", "block"],
         ];
         for (const [url, verdict] of cases) {
           const actual = policy.evaluate(url).verdict;
@@ -102,6 +108,15 @@ def test_browser_companion_destination_policy_rejects_tampered_state_and_require
         }
         if (policy.evaluateRedirect("https://example.com/a", "http://127.0.0.1/b", true).verdict !== "block") {
           throw new Error("unsafe redirect target was not blocked");
+        }
+        if (policy.evaluateRedirect("http://example.com/a", "http://127.0.0.1/b", true).verdict !== "block") {
+          throw new Error("unsafe redirect target after a confirmation-only hop was not blocked");
+        }
+        if (policy.evaluateRedirect("javascript:alert(1)", "https://example.com/b", true).verdict !== "block") {
+          throw new Error("unsafe redirect start was not blocked");
+        }
+        if (policy.safeForPersistence("https://example.com/?access_token") !== "") {
+          throw new Error("key-only credential query was retained");
         }
         const trusted = ["http://127.0.0.1:8777"];
         if (!policy.isTrustedSearchHomeOrigin("http://127.0.0.1:8777", trusted)) {
@@ -132,6 +147,115 @@ def test_browser_companion_background_search_home_action_contract():
     assert 'value === "previous" || value === "prev" || value === "left"' in background
     assert 'value === "open" || value === "enter"' in background
     assert 'normalizedAction === "open"' in background
+
+
+def test_browser_companion_never_navigates_tampered_or_confirmation_only_state():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is required to exercise browser companion state actions")
+
+    extension_root = (
+        DEFAULTSPACK_ROOT
+        / "browser_extensions"
+        / "rumi_browser_companion"
+    )
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const policy = fs.readFileSync(process.argv[1], "utf8");
+        const background = fs.readFileSync(process.argv[2], "utf8")
+          .replace('import "./search_home_destination_policy.js";', "");
+        const stored = {};
+        const navigations = [];
+        const listener = { addListener() {} };
+        const chrome = {
+          runtime: {
+            id: "test-extension",
+            getManifest: () => ({ x_rumi_search_home_origins: ["http://127.0.0.1:8777"] }),
+            onInstalled: listener,
+            onStartup: listener,
+            onMessage: listener,
+            openOptionsPage: async () => undefined,
+          },
+          alarms: { create() {}, onAlarm: listener },
+          storage: {
+            onChanged: listener,
+            local: {
+              async get(key) { return { [key]: stored[key] }; },
+              async set(value) { Object.assign(stored, value); },
+            },
+            sync: { async get() { return {}; }, async remove() {} },
+          },
+          tabs: {
+            onRemoved: listener,
+            async update(tabId, update) { navigations.push({ tabId, ...update }); },
+            async query() { return []; },
+            async get() { return {}; },
+            async sendMessage() { return {}; },
+            async captureVisibleTab() { return ""; },
+          },
+          windows: { async update() {} },
+        };
+        const context = { chrome, console, URL, Date, setTimeout, clearTimeout };
+        vm.createContext(context);
+        vm.runInContext(policy, context, { filename: "search_home_destination_policy.js" });
+        vm.runInContext(background, context, { filename: "background.js" });
+
+        const fresh = (url) => {
+          const now = Date.now();
+          return {
+            query: "test",
+            target_url: url,
+            fallback_url: url,
+            selected_index: -1,
+            target_candidates: [],
+            source_origin: "http://127.0.0.1:8777",
+            state_id: "0123456789abcdef0123456789abcdef",
+            issued_at: new Date(now).toISOString(),
+            expires_at: new Date(now + 60_000).toISOString(),
+          };
+        };
+
+        (async () => {
+          for (const url of ["http://127.0.0.1/private", "http://example.com/review"]) {
+            stored.rumiSearchHomeRouteStateByTab = { "7": fresh(url) };
+            const result = await vm.runInContext(
+              'advanceSearchHomeRouteState(7, "open")',
+              context,
+            );
+            if (result.ok) throw new Error(`unsafe state advanced: ${url}`);
+          }
+          if (navigations.length !== 0) {
+            throw new Error(`unexpected navigation: ${JSON.stringify(navigations)}`);
+          }
+
+          stored.rumiSearchHomeRouteStateByTab = { "7": fresh("https://example.com/safe") };
+          const allowed = await vm.runInContext(
+            'advanceSearchHomeRouteState(7, "open")',
+            context,
+          );
+          if (!allowed.ok || navigations.length !== 1 || navigations[0].url !== "https://example.com/safe") {
+            throw new Error(`safe action failed: ${JSON.stringify({ allowed, navigations })}`);
+          }
+        })().catch((error) => {
+          console.error(error);
+          process.exitCode = 1;
+        });
+        """
+    )
+    subprocess.run(
+        [
+            node,
+            "-e",
+            script,
+            str(extension_root / "search_home_destination_policy.js"),
+            str(extension_root / "background.js"),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+    )
 
 
 def test_browser_companion_content_script_restores_search_home_state_after_navigation():

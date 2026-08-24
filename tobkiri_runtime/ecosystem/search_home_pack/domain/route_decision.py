@@ -4,7 +4,12 @@ from dataclasses import dataclass, field
 import re
 from typing import Any
 
-from .safe_url import build_google_fallback_url, classify_direct_url, unsafe_scheme_reason
+from .safe_url import (
+    build_google_fallback_url,
+    classify_direct_url,
+    unsafe_scheme_reason,
+    validate_candidate_url,
+)
 
 
 # Legacy route name kept for compatibility. The behavior is now:
@@ -93,10 +98,20 @@ def decide_route(raw: str, *, bridge: Any = None) -> RouteDecision:
     if (direct and direct.get("blocked")) or unsafe_scheme_reason(text):
         return _legacy_decision(BLOCKED, text, reason="unsafe URL scheme is blocked")
     if direct and direct.get("url"):
+        validation = validate_candidate_url(
+            str(direct.get("url") or ""), allow_localhost=False
+        )
+        if not validation.ok:
+            return _legacy_decision(
+                BLOCKED,
+                text,
+                fallback_url=fallback_url,
+                reason=f"destination policy blocked: {validation.reason}",
+            )
         return _legacy_decision(
             URL_NAVIGATE,
             text,
-            target_url=str(direct.get("url") or ""),
+            target_url=validation.normalized_url,
             fallback_url=fallback_url,
             reason=str(direct.get("reason") or "recognized direct URL"),
         )

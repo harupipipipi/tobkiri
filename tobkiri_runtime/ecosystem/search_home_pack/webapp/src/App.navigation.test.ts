@@ -13,7 +13,8 @@ test("Search Home never schedules automatic destination navigation", () => {
 });
 
 test("Search Home validates every destination immediately before navigation", () => {
-  assert.match(appSource, /reviewRouteDestination\(rawDestination\)/);
+  assert.match(appSource, /selectedDestinationReview\(nextDecision, nextIndex\)/);
+  assert.match(appSource, /destination\.confirmationRequired && !confirmed/);
   assert.match(appSource, /window\.location\.assign\(destination\.url\)/);
   assert.doesNotMatch(appSource, /window\.location\.assign\(rawDestination\)/);
 });
@@ -21,7 +22,7 @@ test("Search Home validates every destination immediately before navigation", ()
 test("explicit unsafe URL input is blocked before resolver, answer, or Google search", () => {
   assert.match(appSource, /evaluateExplicitDestinationInput\(query\)/);
   assert.match(appSource, /explicitDestination\?\.verdict === "block"/);
-  assert.match(appSource, /setInput\(""\)/);
+  assert.match(appSource, /query,\s*target_url: query/);
   assert.match(appSource, /input_policy_blocked: true/);
 });
 
@@ -54,6 +55,12 @@ test("blocked destinations retain a safe copy-details action", () => {
   assert.match(reviewSource, /ブロック詳細をコピー/);
   assert.match(appSource, /Search Home blocked destination:/);
   assert.doesNotMatch(appSource, /blocked destination:.*destination\.input/);
+});
+
+test("HTTP, IDN, and redirect warnings require an explicit confirmation action", () => {
+  assert.match(reviewSource, /destination\.confirmationRequired/);
+  assert.match(reviewSource, /警告を確認して開く/);
+  assert.match(reviewSource, /正規化されたホスト/);
 });
 
 test("AI answers are committed to explicit accessible memory-only result states", () => {

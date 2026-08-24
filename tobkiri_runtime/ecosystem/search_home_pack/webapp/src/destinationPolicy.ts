@@ -10,6 +10,7 @@ export type DestinationPolicyResult = {
 
 const CONTROL_CHARACTER_RE = /[\u0000-\u001f\u007f]/;
 const ENCODED_CONTROL_RE = /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i;
+const MAX_DESTINATION_LENGTH = 4096;
 const WEB_PROTOCOLS = new Set(["http:", "https:"]);
 const SECRET_QUERY_KEY_RE = /(?:^|[_-])(token|secret|password|passwd|key|signature|credential|auth|code)(?:$|[_-])/i;
 const EXPLICIT_URL_INPUT_RE = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\\\\)/i;
@@ -25,6 +26,8 @@ function hostIsUnsafeLocalTarget(hostname: string): boolean {
     host === "localhost" ||
     host.endsWith(".localhost") ||
     host.endsWith(".local") ||
+    host.endsWith(".lan") ||
+    host.endsWith(".home") ||
     host.endsWith(".internal") ||
     host === "local" ||
     host === "home.arpa" ||
@@ -46,6 +49,8 @@ function hostIsUnsafeLocalTarget(hostname: string): boolean {
       (a === 192 && b === 0) ||
       (a === 192 && b === 168) ||
       (a === 198 && (b === 18 || b === 19)) ||
+      (a === 198 && b === 51) ||
+      (a === 203 && b === 0) ||
       a >= 224
     );
   }
@@ -60,9 +65,10 @@ function hostIsUnsafeLocalTarget(hostname: string): boolean {
     compact.startsWith("fc") ||
     compact.startsWith("fd") ||
     /^fe[89ab]/i.test(compact) ||
-    compact.toLowerCase().startsWith("::ffff:127.") ||
-    compact.toLowerCase().startsWith("::ffff:10.") ||
-    compact.toLowerCase().startsWith("::ffff:192.168.")
+    /^fe[c-f]/i.test(compact) ||
+    compact.toLowerCase().startsWith("ff") ||
+    compact.toLowerCase().startsWith("::ffff:") ||
+    compact.toLowerCase().startsWith("2001:db8:")
   );
 }
 
@@ -74,6 +80,9 @@ function rawAuthorityHasIdn(raw: string): boolean {
 export function evaluateDestination(value: unknown): DestinationPolicyResult {
   if (typeof value !== "string" || !value) {
     return blocked("missing_destination", "No destination URL was provided.");
+  }
+  if (value.length > MAX_DESTINATION_LENGTH) {
+    return blocked("destination_too_long", "The destination URL is too long to review safely.");
   }
   if (value !== value.trim() || CONTROL_CHARACTER_RE.test(value) || ENCODED_CONTROL_RE.test(value)) {
     return blocked("control_characters", "The destination contains hidden or encoded control characters.");

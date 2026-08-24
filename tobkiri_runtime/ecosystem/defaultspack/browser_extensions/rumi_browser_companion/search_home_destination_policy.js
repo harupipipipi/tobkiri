@@ -4,6 +4,7 @@
   const CONTROL_RE = /[\u0000-\u001f\u007f]/;
   const ENCODED_CONTROL_RE = /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i;
   const SECRET_QUERY_KEY_RE = /(?:^|[_-])(token|secret|password|passwd|key|signature|credential|auth|code)(?:$|[_-])/i;
+  const MAX_DESTINATION_LENGTH = 4096;
 
   function result(verdict, reason, url = "", host = "") {
     return { verdict, reason, url, host };
@@ -11,6 +12,7 @@
 
   function evaluate(value) {
     if (typeof value !== "string" || !value) return result("block", "missing_destination");
+    if (value.length > MAX_DESTINATION_LENGTH) return result("block", "destination_too_long");
     if (value !== value.trim() || CONTROL_RE.test(value) || ENCODED_CONTROL_RE.test(value) || value.includes("\\")) {
       return result("block", "ambiguous_or_control_characters");
     }
@@ -32,31 +34,34 @@
 
   function evaluateRedirect(initialValue, finalValue, redirected) {
     const initial = evaluate(initialValue);
-    if (initial.verdict !== "allow") return initial;
+    if (initial.verdict === "block") return initial;
     const final = evaluate(finalValue || initialValue);
-    if (final.verdict !== "allow") return final;
+    if (final.verdict === "block") return final;
     const changedOrigin =
       (redirected || initial.url !== final.url) && new URL(initial.url).origin !== new URL(final.url).origin;
-    return changedOrigin ? result("confirm", "cross_origin_redirect", final.url, final.host) : final;
+    if (changedOrigin) return result("confirm", "cross_origin_redirect", final.url, final.host);
+    return initial.verdict === "confirm" ? result("confirm", initial.reason, final.url, final.host) : final;
   }
 
   function isUnsafeLocalHost(hostname) {
     const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
     if (
-      !host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") ||
-      host.endsWith(".internal") || host === "home.arpa" || host.endsWith(".home.arpa")
+      !host || host === "localhost" || host === "local" || host.endsWith(".localhost") || host.endsWith(".local") ||
+      host.endsWith(".lan") || host.endsWith(".home") || host.endsWith(".internal") ||
+      host === "home.arpa" || host.endsWith(".home.arpa")
     ) return true;
     const octets = host.split(".").map(Number);
     if (octets.length === 4 && octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
       const [a, b] = octets;
       return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) ||
         (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-        (a === 192 && (b === 0 || b === 168)) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+        (a === 192 && (b === 0 || b === 168)) || (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+        (a === 203 && b === 0) || a >= 224;
     }
     if (!host.includes(":")) return false;
     return host === "::" || host === "::1" || host.startsWith("fc") || host.startsWith("fd") ||
-      /^fe[89ab]/i.test(host) || host.startsWith("::ffff:127.") || host.startsWith("::ffff:10.") ||
-      host.startsWith("::ffff:192.168.");
+      /^fe[89ab]/i.test(host) || /^fe[c-f]/i.test(host) || host.startsWith("ff") ||
+      host.startsWith("::ffff:") || host.startsWith("2001:db8:");
   }
 
   function safeForPersistence(value) {

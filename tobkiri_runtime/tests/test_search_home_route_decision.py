@@ -18,7 +18,8 @@ from ecosystem.search_home_pack.domain.route_decision import RouteDecision, deci
     [
         ("https://github.com", "URL_NAVIGATE"),
         ("github.com/harupipipipi/rumiai", "URL_NAVIGATE"),
-        ("localhost:3000", "URL_NAVIGATE"),
+        ("localhost:3000", "BLOCKED"),
+        ("https://user:password@example.com/", "BLOCKED"),
         ("!g rumiai profile", "GOOGLE_REDIRECT"),
         ("google: rumiai", "GOOGLE_REDIRECT"),
         ("!ai rumiai profile設計", "ASK_AI"),

@@ -1,7 +1,7 @@
 import {
   persistRouteSessionState,
+  reviewRouteCandidate,
   ROUTE_SESSION_STORAGE_KEY,
-  sanitizeRouteDecisionForStorage,
   type RouteCandidate,
   type RouteDecision,
   type RouteSessionState,
@@ -26,12 +26,12 @@ export function coerceCandidate(value: unknown): RouteCandidate | null {
   if (!url && !finalUrl) {
     return null;
   }
-  return {
+  const candidate: RouteCandidate = {
     url: url || finalUrl,
     final_url: finalUrl || url,
     title: asBoundedString(value.title, 512),
     snippet: asBoundedString(value.snippet, 2048),
-    domain: asBoundedString(value.domain, 512),
+    domain: "",
     source: asBoundedString(value.source, 128) || "session",
     status: typeof value.status === "number" ? value.status : null,
     canonical_url: asBoundedString(value.canonical_url, 4096),
@@ -44,6 +44,11 @@ export function coerceCandidate(value: unknown): RouteCandidate | null {
     is_search_results: Boolean(value.is_search_results),
     heuristic_score: typeof value.heuristic_score === "number" ? value.heuristic_score : null,
     screenshot_path: "",
+  };
+  const review = reviewRouteCandidate(candidate);
+  return {
+    ...candidate,
+    domain: review.ok ? review.host : "",
   };
 }
 
@@ -78,7 +83,7 @@ export function coerceRouteDecision(value: unknown): RouteDecision | null {
 }
 
 export function decisionFromSessionState(value: unknown): RouteDecision | null {
-  if (!isObjectLike(value)) {
+  if (!isFreshRouteSessionState(value)) {
     return null;
   }
   const decision = coerceRouteDecision({ ...value, route_type: "GOOGLE_REDIRECT", metadata: {} });
@@ -94,29 +99,49 @@ export function decisionFromSessionState(value: unknown): RouteDecision | null {
   };
 }
 
+export function isFreshRouteSessionState(
+  value: unknown,
+  now = Date.now(),
+): value is RouteSessionState {
+  if (!isObjectLike(value)) {
+    return false;
+  }
+  const issuedAt = Date.parse(String(value.issued_at || ""));
+  const expiresAt = Date.parse(String(value.expires_at || ""));
+  return (
+    /^[A-Za-z0-9_-]{16,128}$/.test(String(value.state_id || "")) &&
+    Number.isFinite(issuedAt) &&
+    Number.isFinite(expiresAt) &&
+    issuedAt <= now + 30_000 &&
+    expiresAt > now &&
+    expiresAt - issuedAt <= 6 * 60 * 60 * 1000
+  );
+}
+
 export function loadDecisionFromSessionStorage(storage: Storage | null): RouteDecision | null {
   if (!storage) {
     return null;
   }
-  for (const [key, parser] of [
-    [ROUTE_DECISION_STORAGE_KEY, coerceRouteDecision],
-    [ROUTE_SESSION_STORAGE_KEY, decisionFromSessionState],
-  ] as const) {
-    try {
-      const raw = storage.getItem(key);
-      if (!raw) {
-        continue;
-      }
-      const decision = parser(JSON.parse(raw));
-      if (decision) {
-        return decision;
-      }
-      storage.removeItem(key);
-    } catch {
-      storage.removeItem(key);
+  storage.removeItem(ROUTE_DECISION_STORAGE_KEY);
+  try {
+    const raw = storage.getItem(ROUTE_SESSION_STORAGE_KEY);
+    if (!raw) {
+      return null;
     }
+    const parsed = JSON.parse(raw) as Partial<RouteSessionState>;
+    if (!isFreshRouteSessionState(parsed)) {
+      storage.removeItem(ROUTE_SESSION_STORAGE_KEY);
+      return null;
+    }
+    const decision = decisionFromSessionState(parsed);
+    if (!decision) {
+      storage.removeItem(ROUTE_SESSION_STORAGE_KEY);
+    }
+    return decision;
+  } catch {
+    storage.removeItem(ROUTE_SESSION_STORAGE_KEY);
+    return null;
   }
-  return null;
 }
 
 export function saveDecisionToSessionStorage(
@@ -128,10 +153,7 @@ export function saveDecisionToSessionStorage(
     return null;
   }
   const session = persistRouteSessionState(storage, decision, selectedIndex);
-  storage.setItem(
-    ROUTE_DECISION_STORAGE_KEY,
-    JSON.stringify(sanitizeRouteDecisionForStorage(decision, selectedIndex)),
-  );
+  storage.removeItem(ROUTE_DECISION_STORAGE_KEY);
   return session;
 }
 

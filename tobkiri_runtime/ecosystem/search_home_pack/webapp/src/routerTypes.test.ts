@@ -7,6 +7,7 @@ import {
   cycleCandidateIndex,
   normalizeSelectedIndex,
   reviewRouteDestination,
+  reviewRouteCandidate,
   sanitizeRouteDecisionForStorage,
   selectedCandidateUrl,
   type RouteDecision,
@@ -60,6 +61,7 @@ test("normalizes safe HTTPS destinations and derives the host from the URL", () 
   if (!review.ok) return;
   assert.equal(review.url, "https://example.com/b?q=1");
   assert.equal(review.host, "example.com");
+  assert.equal(review.confirmationRequired, false);
   assert.deepEqual(review.warnings, []);
 });
 
@@ -67,7 +69,8 @@ test("allows public HTTP only with an explicit warning", () => {
   const review = reviewRouteDestination("http://example.com/path");
   assert.equal(review.ok, true);
   if (!review.ok) return;
-  assert.deepEqual(review.warnings, ["暗号化されていないHTTP接続です"]);
+  assert.equal(review.confirmationRequired, true);
+  assert.match(review.warnings.join(" "), /HTTP/);
 });
 
 test("blocks non-web, relative, credentialed, and malformed destinations", () => {
@@ -101,7 +104,7 @@ test("blocks loopback, private IPv4, local names, and private IPv6", () => {
   ]) {
     const review = reviewRouteDestination(value);
     assert.equal(review.ok, false, value);
-    if (!review.ok) assert.equal(review.code, "private_network", value);
+    if (!review.ok) assert.equal(review.code, "unsafe_local_target", value);
   }
 });
 
@@ -110,8 +113,28 @@ test("flags punycode and non-standard ports for explicit review", () => {
   assert.equal(review.ok, true);
   if (!review.ok) return;
   assert.equal(review.warnings.length, 2);
+  assert.equal(review.confirmationRequired, true);
   assert.match(review.warnings.join(" "), /Punycode/);
   assert.match(review.warnings.join(" "), /8443/);
+});
+
+test("candidate review validates both redirect endpoints and requires cross-origin confirmation", () => {
+  const crossOrigin = reviewRouteCandidate({
+    url: "https://example.com/start",
+    final_url: "https://example.net/end",
+    redirected: true,
+  });
+  assert.equal(crossOrigin.ok, true);
+  if (crossOrigin.ok) {
+    assert.equal(crossOrigin.confirmationRequired, true);
+    assert.equal(crossOrigin.host, "example.net");
+  }
+  const unsafeStart = reviewRouteCandidate({
+    url: "javascript:alert(1)",
+    final_url: "https://example.com/end",
+    redirected: true,
+  });
+  assert.equal(unsafeStart.ok, false);
 });
 
 test("session state excludes blocked candidates and ignores backend domain labels", () => {

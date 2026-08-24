@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   clearDecisionSessionStorage,
   coerceRouteDecision,
+  decisionFromSessionState,
   loadDecisionFromSessionStorage,
   ROUTE_DECISION_STORAGE_KEY,
   saveDecisionToSessionStorage,
@@ -67,7 +68,7 @@ test("saving persists only policy-approved URLs and no metadata secrets", () => 
   assert.ok(storage.getItem(ROUTE_SESSION_STORAGE_KEY));
 });
 
-test("loading removes corrupt storage and falls back to the compact session record", () => {
+test("loading removes legacy state and restores only fresh policy-reviewed session state", () => {
   const storage = new MemoryStorage();
   storage.setItem(ROUTE_DECISION_STORAGE_KEY, "{broken");
   storage.setItem(
@@ -79,12 +80,56 @@ test("loading removes corrupt storage and falls back to the compact session reco
       selected_index: 0,
       target_candidates: [{ url: "https://example.com/", final_url: "https://example.com/", title: "A", domain: "example.com" }],
       updated_at: new Date().toISOString(),
+      state_id: "0123456789abcdef0123456789abcdef",
+      issued_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     }),
   );
   const restored = loadDecisionFromSessionStorage(storage);
   assert.ok(restored);
   assert.equal(restored.query, "restored");
   assert.equal(storage.getItem(ROUTE_DECISION_STORAGE_KEY), null);
+});
+
+test("loading rejects expired and tampered session records without trusting backend domains", () => {
+  const storage = new MemoryStorage();
+  storage.setItem(
+    ROUTE_SESSION_STORAGE_KEY,
+    JSON.stringify({
+      query: "restored",
+      target_url: "https://example.com/",
+      fallback_url: "https://google.com/",
+      selected_index: 0,
+      target_candidates: [
+        { url: "https://example.com/", final_url: "https://example.com/", domain: "forged.invalid" },
+      ],
+      state_id: "0123456789abcdef0123456789abcdef",
+      issued_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    }),
+  );
+  assert.equal(loadDecisionFromSessionStorage(storage), null);
+  assert.equal(storage.getItem(ROUTE_SESSION_STORAGE_KEY), null);
+});
+
+test("backend restore accepts only fresh session envelopes and rederives candidate domains", () => {
+  const fresh = {
+    ...decision,
+    state_id: "0123456789abcdef0123456789abcdef",
+    issued_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  };
+  const restored = decisionFromSessionState(fresh);
+  assert.ok(restored);
+  assert.equal(restored.target_candidates[0]?.domain, "example.com");
+  assert.equal(decisionFromSessionState({ ...fresh, state_id: "tampered value" }), null);
+  assert.equal(
+    decisionFromSessionState({
+      ...fresh,
+      expires_at: new Date(Date.now() - 1).toISOString(),
+    }),
+    null,
+  );
 });
 
 test("clear removes every retained route record", () => {

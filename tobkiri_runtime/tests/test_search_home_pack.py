@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import copy
+import json
 import sys
+import urllib.parse
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -33,6 +36,16 @@ class FakeBridge:
             }
         )
         return dict(self.judge_result)
+
+
+def _fresh_route_state(**values: object) -> dict[str, object]:
+    issued_at = datetime.now(timezone.utc)
+    return {
+        "state_id": "0123456789abcdef0123456789abcdef",
+        "issued_at": issued_at.isoformat(),
+        "expires_at": (issued_at + timedelta(minutes=5)).isoformat(),
+        **values,
+    }
 
 
 def _probe(candidate):
@@ -298,6 +311,21 @@ def test_unsafe_candidate_urls_are_filtered_out():
     assert decision.target_candidates[0]["final_url"] == "https://safe.example.com/article"
 
 
+def test_explicit_local_url_never_becomes_a_routed_destination():
+    from ecosystem.search_home_pack.domain.search_target_resolver import SearchTargetResolver
+
+    resolver = SearchTargetResolver(
+        bridge=FakeBridge(search_results=[]),
+        probe_fn=_probe,
+    )
+
+    decision = resolver.resolve("localhost:3000/admin")
+
+    assert urllib.parse.urlparse(decision.target_url).hostname == "www.google.com"
+    assert decision.target_candidates == []
+    assert decision.target_url.startswith("https://www.google.com/search?")
+
+
 @pytest.mark.parametrize(
     ("url", "reason"),
     [
@@ -317,7 +345,12 @@ def test_unsafe_candidate_urls_are_filtered_out():
         ("http://127.1/private", "private_or_local_host"),
         ("http://0x7f000001/private", "private_or_local_host"),
         ("http://169.254.169.254/latest/meta-data/", "private_or_local_host"),
+        ("http://100.64.0.1/", "private_or_local_host"),
+        ("http://service.lan/", "private_or_local_host"),
+        ("http://service.home/", "private_or_local_host"),
         ("http://[::1]/private", "private_or_local_host"),
+        ("http://[ff02::1]/private", "private_or_local_host"),
+        ("http://[fec0::1]/private", "private_or_local_host"),
         ("http://service.local/private", "private_or_local_host"),
     ],
 )
@@ -339,6 +372,12 @@ def test_candidate_url_policy_normalizes_idn_host_to_punycode():
     assert result.normalized_url == "https://xn--r8jz45g.xn--zckzah/path"
 
 
+def test_persistence_rejects_key_only_credential_query():
+    from ecosystem.search_home_pack.domain.safe_url import url_safe_for_persistence
+
+    assert url_safe_for_persistence("https://example.com/?access_token") == ""
+
+
 def test_dns_resolution_rejects_any_private_answer(monkeypatch):
     from ecosystem.search_home_pack.domain import safe_url
 
@@ -353,6 +392,27 @@ def test_dns_resolution_rejects_any_private_answer(monkeypatch):
 
     with pytest.raises(ValueError, match="dns_resolved_private_or_local_host"):
         safe_url.resolve_public_addresses("fake-public.example", 443)
+
+
+def test_dns_resolution_rejects_cgnat_answer(monkeypatch):
+    from ecosystem.search_home_pack.domain import safe_url
+
+    monkeypatch.setattr(
+        safe_url.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (
+                safe_url.socket.AF_INET,
+                safe_url.socket.SOCK_STREAM,
+                6,
+                "",
+                ("100.64.0.1", 443),
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="dns_resolved_private_or_local_host"):
+        safe_url.resolve_public_addresses("fake-cgnat.example", 443)
 
 
 def test_unsafe_redirect_target_removes_entire_candidate():
@@ -378,7 +438,10 @@ def test_unsafe_redirect_target_removes_entire_candidate():
 def test_desktop_route_state_round_trip(tmp_path):
     from ecosystem.search_home_pack import desktop_app
 
-    payload = {"query": "openai pricing latest", "target_url": "https://platform.openai.com/docs/overview"}
+    payload = _fresh_route_state(
+        query="openai pricing latest",
+        target_url="https://platform.openai.com/docs/overview",
+    )
     desktop_app.persist_route_state(payload, root=tmp_path)
 
     assert desktop_app.load_route_state(root=tmp_path) == payload
@@ -392,16 +455,68 @@ def test_desktop_route_state_does_not_persist_secret_bearing_urls(tmp_path):
 
     fake_secret = "fake-secret-do-not-store"
     desktop_app.persist_route_state(
-        {
-            "query": f"https://example.com/callback?access_token={fake_secret}",
-            "target_url": f"https://example.com/callback?access_token={fake_secret}",
-            "target_candidates": [
+        _fresh_route_state(
+            query=f"https://example.com/callback?access_token={fake_secret}",
+            target_url=f"https://example.com/callback?access_token={fake_secret}",
+            target_candidates=[
                 {"url": f"https://example.com/path#{fake_secret}"}
             ],
-        },
+        ),
         root=tmp_path,
     )
 
     serialized = desktop_app.route_state_path(root=tmp_path).read_text(encoding="utf-8")
     assert fake_secret not in serialized
     assert desktop_app.load_route_state(root=tmp_path)["target_url"] == ""
+
+
+def test_desktop_route_state_does_not_persist_local_destinations(tmp_path):
+    from ecosystem.search_home_pack import desktop_app
+
+    desktop_app.persist_route_state(
+        _fresh_route_state(
+            query="http://127.0.0.1/admin",
+            target_url="http://100.64.0.1/admin",
+            fallback_url="https://www.google.com/search?q=safe",
+            target_candidates=[
+                {
+                    "url": "https://example.com/path",
+                    "domain": "forged.invalid",
+                }
+            ],
+        ),
+        root=tmp_path,
+    )
+
+    restored = desktop_app.load_route_state(root=tmp_path)
+    assert restored["query"] == ""
+    assert restored["target_url"] == ""
+    assert restored["fallback_url"].startswith("https://www.google.com/")
+    assert restored["target_candidates"][0]["domain"] == "example.com"
+
+
+def test_desktop_route_state_rejects_stale_or_tampered_restore(tmp_path):
+    from ecosystem.search_home_pack import desktop_app
+
+    stale = _fresh_route_state(
+        query="stale",
+        target_url="https://example.com/",
+        expires_at=(datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(),
+    )
+    desktop_app.route_state_path(root=tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    desktop_app.route_state_path(root=tmp_path).write_text(
+        json.dumps(stale),
+        encoding="utf-8",
+    )
+    assert desktop_app.load_route_state(root=tmp_path) == {}
+
+    tampered = _fresh_route_state(
+        query="tampered",
+        target_url="https://example.com/",
+        state_id="invalid state id",
+    )
+    desktop_app.route_state_path(root=tmp_path).write_text(
+        json.dumps(tampered),
+        encoding="utf-8",
+    )
+    assert desktop_app.load_route_state(root=tmp_path) == {}

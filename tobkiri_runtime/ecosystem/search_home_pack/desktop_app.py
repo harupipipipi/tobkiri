@@ -11,6 +11,7 @@ import types
 import urllib.error
 import urllib.request
 import webbrowser
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
@@ -165,10 +166,22 @@ def _sanitize_route_state_for_persistence(value: Any, key: str = "") -> Any:
     from ecosystem.search_home_pack.domain.safe_url import url_safe_for_persistence
 
     if isinstance(value, dict):
-        return {
+        sanitized = {
             str(child_key): _sanitize_route_state_for_persistence(child, str(child_key))
             for child_key, child in value.items()
         }
+        if "domain" in sanitized:
+            destination = str(
+                sanitized.get("final_url")
+                or sanitized.get("url")
+                or sanitized.get("target_url")
+                or ""
+            )
+            safe_destination = url_safe_for_persistence(destination)
+            sanitized["domain"] = (
+                urlparse(safe_destination).hostname or "" if safe_destination else ""
+            )
+        return sanitized
     if isinstance(value, list):
         return [_sanitize_route_state_for_persistence(child, key) for child in value]
     if isinstance(value, str) and (key.endswith("_url") or key == "url"):
@@ -186,7 +199,38 @@ def load_route_state(*, root: Path | None = None) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    return dict(data) if isinstance(data, dict) else {}
+    if not isinstance(data, dict) or not _is_fresh_route_state(data):
+        return {}
+    sanitized = _sanitize_route_state_for_persistence(data)
+    return dict(sanitized) if isinstance(sanitized, dict) else {}
+
+
+def _is_fresh_route_state(value: dict[str, Any]) -> bool:
+    """Return whether an untrusted stored route record is fresh and well formed."""
+    state_id = str(value.get("state_id") or "")
+    if not (
+        16 <= len(state_id) <= 128
+        and all(
+            character.isascii() and (character.isalnum() or character in "_-")
+            for character in state_id
+        )
+    ):
+        return False
+    try:
+        issued = datetime.fromisoformat(
+            str(value.get("issued_at") or "").replace("Z", "+00:00")
+        )
+        expires = datetime.fromisoformat(
+            str(value.get("expires_at") or "").replace("Z", "+00:00")
+        )
+        if issued.tzinfo is None or expires.tzinfo is None:
+            return False
+        issued_at = issued.timestamp()
+        expires_at = expires.timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return False
+    now = time.time()
+    return issued_at <= now + 30 and expires_at > now and expires_at - issued_at <= 6 * 60 * 60
 
 
 def clear_route_state(*, root: Path | None = None) -> None:

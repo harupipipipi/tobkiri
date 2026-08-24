@@ -1,0 +1,58 @@
+name: Search Home safe navigation
+
+on:
+  pull_request:
+    paths:
+      - "tobkiri_runtime/ecosystem/search_home_pack/**"
+      - "tobkiri_runtime/ecosystem/defaultspack/browser_extensions/rumi_browser_companion/**"
+      - "tobkiri_runtime/tests/test_search_home*.py"
+      - ".github/workflows/search-home-safe-navigation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  destination-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tobkiri_runtime/ecosystem/search_home_pack/webapp/package-lock.json
+
+      - name: Test and build Search Home UI
+        working-directory: tobkiri_runtime/ecosystem/search_home_pack/webapp
+        run: |
+          npm ci
+          npm test
+          npm run lint
+          npm run build
+
+      - name: Verify checked-in Search Home UI bundle
+        run: git diff --exit-code -- tobkiri_runtime/ecosystem/search_home_pack/ui
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            tobkiri_runtime/requirements.txt
+            tobkiri_runtime/requirements-dev.txt
+
+      - name: Install Tobkiri test dependencies
+        working-directory: tobkiri_runtime
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Run Search Home destination regressions
+        working-directory: tobkiri_runtime
+        run: pytest tests/test_search_home*.py -q

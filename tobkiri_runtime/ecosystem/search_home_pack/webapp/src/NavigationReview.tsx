@@ -2,9 +2,10 @@ import type { CSSProperties } from "react";
 
 import {
   normalizeSelectedIndex,
+  reviewRouteCandidate,
   reviewRouteDestination,
   selectedCandidate,
-  selectedCandidateUrl,
+  selectedDestinationReview,
   type RouteCandidate,
   type RouteDecision,
 } from "./routerTypes";
@@ -224,8 +225,7 @@ export function NavigationReview({
 }) {
   const normalizedIndex = normalizeSelectedIndex(decision, selectedIndex);
   const candidate = selectedCandidate(decision, normalizedIndex);
-  const rawDestination = selectedCandidateUrl(decision, normalizedIndex);
-  const destination = reviewRouteDestination(rawDestination);
+  const destination = selectedDestinationReview(decision, normalizedIndex);
   const fallback = reviewRouteDestination(decision.fallback_url);
   const riskLabels = candidateRiskLabels(candidate);
   const selectedTitle = candidate?.title || (destination.ok ? "選択した移動先" : "ブロックされた移動先");
@@ -250,6 +250,11 @@ export function NavigationReview({
           <>
             <strong>{destination.protocol === "https:" ? "HTTPS" : "HTTP"} の移動先</strong>
             <p style={styles.url}>{destination.url}</p>
+            {destination.confirmationRequired ? (
+              <p role="status" style={styles.blocked}>
+                この移動先には確認が必要です。警告と正規化されたホストを確認してから、下の確認ボタンを選んでください。
+              </p>
+            ) : null}
             {destination.warnings.length || riskLabels.length ? (
               <ul aria-label="移動先の注意" style={styles.warningList}>
                 {[...destination.warnings, ...riskLabels].map((warning) => (
@@ -271,7 +276,7 @@ export function NavigationReview({
       {decision.target_candidates.length > 1 ? (
         <div aria-label="移動先候補" style={styles.candidateList}>
           {decision.target_candidates.map((item, index) => {
-            const itemReview = reviewRouteDestination(item.final_url || item.url);
+            const itemReview = reviewRouteCandidate(item);
             const active = index === normalizedIndex;
             return (
               <button
@@ -305,7 +310,9 @@ export function NavigationReview({
           }}
           type="button"
         >
-          この移動先を開く
+          {destination.ok && destination.confirmationRequired
+            ? "警告を確認して開く"
+            : "この移動先を開く"}
         </button>
         <button
           onClick={onCopy}

@@ -175,7 +175,9 @@ def validate_candidate_url(url: str, *, user_query: str = "", allow_localhost: b
         port = parsed.port
     except ValueError:
         return SafeUrlResult(False, reason="invalid_port")
-    allow_local = query_explicitly_targets_localhost(user_query) if allow_localhost is None else bool(allow_localhost)
+    # Routed destinations are untrusted even when the query text names a local
+    # target. Only an explicit internal caller opt-in may relax this policy.
+    allow_local = bool(allow_localhost) if allow_localhost is not None else False
     if not allow_local and host_is_private_or_local(parsed.hostname):
         return SafeUrlResult(False, reason="private_or_local_host")
     try:
@@ -199,13 +201,16 @@ def validate_candidate_url(url: str, *, user_query: str = "", allow_localhost: b
 
 def url_safe_for_persistence(url: str) -> str:
     """Return a normalized URL only when it has no credential-like component."""
-    validation = validate_candidate_url(url, allow_localhost=True)
+    validation = validate_candidate_url(url, allow_localhost=False)
     if not validation.ok:
         return ""
     parsed = urlparse(validation.normalized_url)
     if parsed.fragment:
         return ""
-    if any(_SECRET_QUERY_KEY_RE.search(key) for key, _value in parse_qsl(parsed.query)):
+    if any(
+        _SECRET_QUERY_KEY_RE.search(key)
+        for key, _value in parse_qsl(parsed.query, keep_blank_values=True)
+    ):
         return ""
     return validation.normalized_url
 
@@ -218,6 +223,8 @@ def host_is_private_or_local(host: str) -> bool:
         normalized in LOCAL_HOSTS
         or normalized.endswith(".localhost")
         or normalized.endswith(".local")
+        or normalized.endswith(".lan")
+        or normalized.endswith(".home")
         or normalized.endswith(".internal")
         or normalized == "home.arpa"
         or normalized.endswith(".home.arpa")
@@ -236,14 +243,8 @@ def host_is_private_or_local(host: str) -> bool:
             ip = ipaddress.ip_address(packed)
         except OSError:
             return True
-    return (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
-    )
+        return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
+    return not ip.is_global or ip.is_multicast or getattr(ip, "is_site_local", False)
 
 
 def resolve_public_addresses(host: str, port: int) -> tuple[str, ...]:
