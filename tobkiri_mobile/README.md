@@ -170,6 +170,14 @@ Chat uses only the canonical scoped mobile routes under
 `chat.read`/`chat.write` device connection has been securely provisioned. It
 does not run tools on the phone or fall back to legacy host execution routes.
 
+Composer text is retained until the canonical stream confirms that the user
+message was committed. Configuration, validation, connection, and request
+failures leave the draft available for retry. Ambiguous deliveries reuse the
+same idempotency key so a retry cannot create a second user message. Drafts are
+stored per connection scope in platform-protected storage and restored after
+navigation or app lifecycle changes; they are removed only after explicit
+server acceptance.
+
 ## Accessibility
 
 - Message announcements identify the author, processing/error state, and

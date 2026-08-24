@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rumi_remote_app/src/chat/canonical_conversation_client.dart';
+import 'package:rumi_remote_app/src/chat/chat_draft_store.dart';
 import 'package:rumi_remote_app/src/chat/chat_models.dart';
 import 'package:rumi_remote_app/src/chat/chat_screen.dart';
 import 'package:rumi_remote_app/src/chat/composer_bar.dart';
@@ -142,7 +143,10 @@ void main() {
         ComposerBar(
           busy: false,
           onAdd: () => added = true,
-          onSend: sent.add,
+          onSend: (text) async {
+            sent.add(text);
+            return const ComposerSendResult.accepted();
+          },
           onStop: () {},
         ),
       ),
@@ -159,9 +163,10 @@ void main() {
     expect(tester.getSemantics(field).label, 'メッセージ入力欄');
     expect(tester.getSemantics(send).label, 'メッセージを送信');
     expect(
-      tester.getSemantics(send).getSemanticsData().hasAction(
-            SemanticsAction.tap,
-          ),
+      tester
+          .getSemantics(send)
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
       isFalse,
     );
 
@@ -170,19 +175,21 @@ void main() {
     await tester.enterText(find.byType(TextField), '送信テスト');
     await tester.pump();
     expect(
-      tester.getSemantics(send).getSemanticsData().hasAction(
-            SemanticsAction.tap,
-          ),
+      tester
+          .getSemantics(send)
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
       isTrue,
     );
     await tester.tap(send);
+    await tester.pump();
     expect(sent, ['送信テスト']);
 
     await tester.pumpWidget(
       _app(
         ComposerBar(
           busy: true,
-          onSend: sent.add,
+          onSend: (_) async => const ComposerSendResult.accepted(),
           onStop: () => stopped = true,
         ),
       ),
@@ -195,65 +202,64 @@ void main() {
     expect(stopped, isTrue);
   });
 
-  testWidgets('copy stays hidden until long press and links have safe actions',
-      (
-    tester,
-  ) async {
-    Uri? opened;
-    String? clipboardText;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          clipboardText = (call.arguments as Map)['text'] as String?;
-        }
-        if (call.method == 'Clipboard.getData') {
-          return {'text': clipboardText};
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+  testWidgets(
+    'copy stays hidden until long press and links have safe actions',
+    (tester) async {
+      Uri? opened;
+      String? clipboardText;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
-        null,
-      ),
-    );
-    const message = ChatMessage(
-      id: 'actions',
-      role: ChatRole.assistant,
-      content: '詳しくは https://example.com/docs を確認してください。',
-    );
-    await tester.pumpWidget(
-      _app(
-        MessageView(
-          message: message,
-          openLink: (uri) async => opened = uri,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboardText = (call.arguments as Map)['text'] as String?;
+          }
+          if (call.method == 'Clipboard.getData') {
+            return {'text': clipboardText};
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
         ),
-      ),
-    );
+      );
+      const message = ChatMessage(
+        id: 'actions',
+        role: ChatRole.assistant,
+        content: '詳しくは https://example.com/docs を確認してください。',
+      );
+      await tester.pumpWidget(
+        _app(
+          MessageView(message: message, openLink: (uri) async => opened = uri),
+        ),
+      );
 
-    expect(find.byKey(const ValueKey('message-copy')), findsNothing);
-    final link = find.byKey(
-      const ValueKey('message-link:https://example.com/docs'),
-    );
-    expect(tester.getSize(link), const Size(48, 48));
-    expect(
-        tester.getSemantics(link).label, contains('https://example.com/docs'));
-    await tester.tap(link);
-    expect(opened, Uri.parse('https://example.com/docs'));
+      expect(find.byKey(const ValueKey('message-copy')), findsNothing);
+      final link = find.byKey(
+        const ValueKey('message-link:https://example.com/docs'),
+      );
+      expect(tester.getSize(link), const Size(48, 48));
+      expect(
+        tester.getSemantics(link).label,
+        contains('https://example.com/docs'),
+      );
+      await tester.tap(link);
+      expect(opened, Uri.parse('https://example.com/docs'));
 
-    await tester.longPress(
-      find.byKey(const ValueKey('message-semantics:actions')),
-    );
-    await tester.pump();
-    final copy = find.byKey(const ValueKey('message-copy'));
-    expect(copy, findsOneWidget);
-    expect(tester.getSize(copy), const Size(48, 48));
-    await tester.tap(copy);
-    await tester.pump();
-    expect(clipboardText, message.content);
-  });
+      await tester.longPress(
+        find.byKey(const ValueKey('message-semantics:actions')),
+      );
+      await tester.pump();
+      final copy = find.byKey(const ValueKey('message-copy'));
+      expect(copy, findsOneWidget);
+      expect(tester.getSize(copy), const Size(48, 48));
+      await tester.tap(copy);
+      await tester.pump();
+      expect(clipboardText, message.content);
+    },
+  );
 
   testWidgets('English accessibility labels are stable', (tester) async {
     await tester.pumpWidget(
@@ -271,9 +277,7 @@ void main() {
     );
     expect(
       tester
-          .getSemantics(
-            find.byKey(const ValueKey('message-semantics:english')),
-          )
+          .getSemantics(find.byKey(const ValueKey('message-semantics:english')))
           .label,
       'Tobkiri response, Message failed, No content',
     );
@@ -283,13 +287,13 @@ void main() {
     tester,
   ) async {
     final transport = _FakeTransport([
-      const CanonicalChatUpdate(
-        CanonicalChatUpdateKind.delta,
-        content: '成功',
-      ),
+      const CanonicalChatUpdate(CanonicalChatUpdateKind.accepted),
+      const CanonicalChatUpdate(CanonicalChatUpdateKind.delta, content: '成功'),
       const CanonicalChatUpdate(CanonicalChatUpdateKind.done),
     ]);
-    await tester.pumpWidget(_app(ChatScreen(transport: transport)));
+    await tester.pumpWidget(
+      _app(ChatScreen(transport: transport, draftStore: _MemoryDraftStore())),
+    );
     await tester.pump();
     await tester.enterText(find.byType(TextField), '質問');
     await tester.pump();
@@ -306,12 +310,15 @@ void main() {
 
   testWidgets('canonical chat exposes a non-color error state', (tester) async {
     final transport = _FakeTransport([
+      const CanonicalChatUpdate(CanonicalChatUpdateKind.accepted),
       const CanonicalChatUpdate(
         CanonicalChatUpdateKind.error,
         content: '拒否されました',
       ),
     ]);
-    await tester.pumpWidget(_app(ChatScreen(transport: transport)));
+    await tester.pumpWidget(
+      _app(ChatScreen(transport: transport, draftStore: _MemoryDraftStore())),
+    );
     await tester.pump();
     await tester.enterText(find.byType(TextField), '失敗');
     await tester.pump();
@@ -324,15 +331,21 @@ void main() {
     expect(find.text('拒否されました'), findsOneWidget);
   });
 
-  testWidgets('chat fails closed when no exact connection exists', (
+  testWidgets(
+      'chat keeps drafting available but fails closed without connection', (
     tester,
   ) async {
     await tester.pumpWidget(
-      _app(ChatScreen(connectionStore: _EmptyConnectionStore())),
+      _app(
+        ChatScreen(
+          connectionStore: _EmptyConnectionStore(),
+          draftStore: _MemoryDraftStore(),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.text('ペアリング済みのチャット接続がありません。'), findsOneWidget);
-    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
+    expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
   });
 
   testWidgets('connection setup reports errors and supports keyboard save', (
@@ -343,6 +356,7 @@ void main() {
       _app(
         ChatScreen(
           connectionStore: store,
+          draftStore: _MemoryDraftStore(),
           clientFactory: (_) => _FakeTransport(const []),
         ),
       ),
@@ -387,6 +401,22 @@ class _WritableConnectionStore implements ChatConnectionStore {
   @override
   Future<void> saveVerified(MobileChatConnection connection) async {
     saved = connection;
+  }
+}
+
+class _MemoryDraftStore implements ChatDraftStore {
+  final Map<String, String> _drafts = {};
+
+  @override
+  Future<String> load(String scope) async => _drafts[scope] ?? '';
+
+  @override
+  Future<void> save(String scope, String text) async {
+    if (text.isEmpty) {
+      _drafts.remove(scope);
+    } else {
+      _drafts[scope] = text;
+    }
   }
 }
 

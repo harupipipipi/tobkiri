@@ -99,7 +99,7 @@ class MobileChatConnectionStore implements ChatConnectionStore {
   Future<void> clear() => _storage.delete(storageKey);
 }
 
-enum CanonicalChatUpdateKind { delta, done, error, attention }
+enum CanonicalChatUpdateKind { accepted, delta, done, error, attention }
 
 class CanonicalChatUpdate {
   const CanonicalChatUpdate(
@@ -130,11 +130,19 @@ abstract class ConversationTransport {
   void close();
 }
 
+class ConversationSendException implements Exception {
+  const ConversationSendException(this.message, {required this.ambiguous});
+
+  final String message;
+  final bool ambiguous;
+
+  @override
+  String toString() => message;
+}
+
 class CanonicalConversationClient implements ConversationTransport {
-  CanonicalConversationClient({
-    required this.connection,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  CanonicalConversationClient({required this.connection, http.Client? client})
+      : _client = client ?? http.Client();
 
   final MobileChatConnection connection;
   final http.Client _client;
@@ -215,33 +223,52 @@ class CanonicalConversationClient implements ConversationTransport {
         'client_message_id': clientMessageId,
       },
       'client_message_id': clientMessageId,
+      'idempotency_key': clientMessageId,
       'expected_revision': expectedRevision,
     });
-    final response =
-        await _client.send(request).timeout(const Duration(seconds: 30));
+    http.StreamedResponse response;
+    try {
+      response =
+          await _client.send(request).timeout(const Duration(seconds: 30));
+    } catch (_) {
+      throw const ConversationSendException(
+        '送信結果を確認できませんでした。',
+        ambiguous: true,
+      );
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       await response.stream.drain<void>();
-      throw StateError('chat request failed (${response.statusCode})');
+      throw ConversationSendException(
+        'チャット要求が拒否されました (${response.statusCode})。',
+        ambiguous: response.statusCode == 409,
+      );
     }
 
     var buffer = '';
-    await for (final chunk in response.stream.transform(utf8.decoder)) {
-      if (_closed) return;
-      buffer += chunk;
-      while (buffer.contains('\n')) {
-        final end = buffer.indexOf('\n');
-        final line = buffer.substring(0, end).trim();
-        buffer = buffer.substring(end + 1);
-        if (!line.startsWith('data:')) continue;
-        final data = line.substring(5).trim();
-        if (data == '[DONE]') {
-          yield const CanonicalChatUpdate(CanonicalChatUpdateKind.done);
-          return;
+    try {
+      await for (final chunk in response.stream.transform(utf8.decoder)) {
+        if (_closed) return;
+        buffer += chunk;
+        while (buffer.contains('\n')) {
+          final end = buffer.indexOf('\n');
+          final line = buffer.substring(0, end).trim();
+          buffer = buffer.substring(end + 1);
+          if (!line.startsWith('data:')) continue;
+          final data = line.substring(5).trim();
+          if (data == '[DONE]') {
+            yield const CanonicalChatUpdate(CanonicalChatUpdateKind.done);
+            return;
+          }
+          final update = _parseEvent(data);
+          if (update != null) yield update;
+          if (update?.kind == CanonicalChatUpdateKind.done) return;
         }
-        final update = _parseEvent(data);
-        if (update != null) yield update;
-        if (update?.kind == CanonicalChatUpdateKind.done) return;
       }
+    } catch (_) {
+      throw const ConversationSendException(
+        '応答ストリームの状態を確認できませんでした。',
+        ambiguous: true,
+      );
     }
     yield const CanonicalChatUpdate(CanonicalChatUpdateKind.done);
   }
@@ -269,6 +296,9 @@ class CanonicalConversationClient implements ConversationTransport {
       final data = json['data'] is Map
           ? Map<String, dynamic>.from(json['data'] as Map)
           : const <String, dynamic>{};
+      if (type == 'user_message') {
+        return const CanonicalChatUpdate(CanonicalChatUpdateKind.accepted);
+      }
       if (type == 'delta' || type == 'content_delta') {
         final accumulated =
             json['content'] as String? ?? data['content'] as String? ?? '';
@@ -306,9 +336,7 @@ class CanonicalConversationClient implements ConversationTransport {
 
   Map<String, dynamic> _decodeResponse(http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-        'mobile API request failed (${response.statusCode})',
-      );
+      throw StateError('mobile API request failed (${response.statusCode})');
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! Map) throw StateError('mobile API response is invalid');
