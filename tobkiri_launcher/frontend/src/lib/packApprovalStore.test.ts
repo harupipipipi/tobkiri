@@ -236,6 +236,35 @@ test('store revoke action fails closed without optimistic state or refresh on ty
   assert.deepEqual(errors, ['HTTP 409 approval_revocation_denied']);
 });
 
+test('dialog-owned Pack refresh rejects without storing or toasting raw Host errors', async () => {
+  const rawError = 'host-secret catalog failure';
+  const routes = installFetch(async (route) => {
+    assert.equal(route, 'GET /api/pack-control/catalog');
+    return new Response(JSON.stringify({
+      success: false,
+      data: null,
+      error: rawError,
+    }), {status: 503, headers: {'Content-Type': 'application/json'}});
+  });
+  const errors: string[] = [];
+  useAppStore.setState({
+    packs: [samplePack],
+    packsError: null,
+    addToast: (message, type) => {
+      if (type === 'error') errors.push(message);
+    },
+  });
+
+  await assert.rejects(
+    useAppStore.getState().loadPacks(true, {errorSurface: 'dialog'}),
+    new RegExp(rawError),
+  );
+
+  assert.deepEqual(routes, ['GET /api/pack-control/catalog']);
+  assert.equal(useAppStore.getState().packsError, null);
+  assert.deepEqual(errors, []);
+});
+
 test('store revoke action clears pending and surfaces a timeout without changing approval state', async () => {
   const routes = installFetch(async (route) => {
     if (route === 'POST /api/pack-control/approval-revoke') {
