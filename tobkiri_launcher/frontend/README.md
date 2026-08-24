@@ -57,6 +57,9 @@ npm test
 
 テストは Node.js の組み込みテストランナーと `tsx` で実行します。React の表示確認は SSR または JSDOM を使うため、Vitest 固有の実行環境は必要ありません。
 
+通知のアクセシビリティ、表示時間、キュー、アクションの契約は
+[`docs/toast-notifications.md`](docs/toast-notifications.md) を参照してください。
+
 ## ディレクトリ構成
 
 ```

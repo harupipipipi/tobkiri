@@ -1,7 +1,12 @@
-import { useAppStore } from '@/src/store';
-import { cn } from '@/src/lib/utils';
-import { viewerLayers } from '@/src/lib/layers';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import {useEffect, useRef, useState, type FocusEvent} from 'react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleAlert,
+  Info,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 
 import {CopyErrorButton} from './CopyErrorButton';
 
@@ -9,11 +14,20 @@ export function ToastContainer() {
   const toasts = useAppStore(state => state.toasts);
 
   return (
-    <div
-      className={cn("fixed bottom-4 right-4 flex flex-col gap-2", viewerLayers.toast)}
-      aria-live="polite"
-      aria-atomic="false"
-      role="status"
+    <article
+      className={cn(
+        'pointer-events-auto flex max-w-md items-center gap-3 rounded-md border px-4 py-3 text-sm text-white shadow-lg transition-all animate-in slide-in-from-bottom-5 motion-reduce:animate-none motion-reduce:transition-none',
+        presentation.className,
+      )}
+      data-toast-id={toast.id}
+      data-toast-paused={paused ? 'true' : 'false'}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => {
+        captureRemainingTime();
+        setFocusWithin(true);
+      }}
+      onBlurCapture={handleBlur}
     >
       {toasts.map(toast => (
         <div
