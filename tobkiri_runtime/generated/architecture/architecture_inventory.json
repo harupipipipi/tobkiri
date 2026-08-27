@@ -15042,31 +15042,31 @@
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:1e3baa5152d0c9d93fa6a53a7e3e0fcba6a74619e9aeaa6b055964ffbe34ae4b",
+        "evidence_digest": "sha256:a7ae5c6015dfd42e0000112cf86bfc474bd3cc005fcbae3a612546b13bb7fc6d",
         "line": 149,
         "path": "tobkiri_runtime/ecosystem/defaultspack/transport/http.py",
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:1e3baa5152d0c9d93fa6a53a7e3e0fcba6a74619e9aeaa6b055964ffbe34ae4b",
+        "evidence_digest": "sha256:a7ae5c6015dfd42e0000112cf86bfc474bd3cc005fcbae3a612546b13bb7fc6d",
         "line": 173,
         "path": "tobkiri_runtime/ecosystem/defaultspack/transport/http.py",
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:1e3baa5152d0c9d93fa6a53a7e3e0fcba6a74619e9aeaa6b055964ffbe34ae4b",
+        "evidence_digest": "sha256:a7ae5c6015dfd42e0000112cf86bfc474bd3cc005fcbae3a612546b13bb7fc6d",
         "line": 186,
         "path": "tobkiri_runtime/ecosystem/defaultspack/transport/http.py",
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:1e3baa5152d0c9d93fa6a53a7e3e0fcba6a74619e9aeaa6b055964ffbe34ae4b",
+        "evidence_digest": "sha256:a7ae5c6015dfd42e0000112cf86bfc474bd3cc005fcbae3a612546b13bb7fc6d",
         "line": 363,
         "path": "tobkiri_runtime/ecosystem/defaultspack/transport/http.py",
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:1e3baa5152d0c9d93fa6a53a7e3e0fcba6a74619e9aeaa6b055964ffbe34ae4b",
+        "evidence_digest": "sha256:a7ae5c6015dfd42e0000112cf86bfc474bd3cc005fcbae3a612546b13bb7fc6d",
         "line": 371,
         "path": "tobkiri_runtime/ecosystem/defaultspack/transport/http.py",
         "rule_id": "legacy_interface_registry"
@@ -18410,7 +18410,7 @@
     ]
   },
   "repository": {
-    "commit": "a55a730270b3534584922b24365d901bc564456d",
+    "commit": "c0867d98773929a68d310a561f2abab8d1ae88ea",
     "tree_digest": "d4525e61c9825f921138e751051a0b5d41b442ad3e2d025f4ffe0a38f4900d0d"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
