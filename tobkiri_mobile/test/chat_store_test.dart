@@ -44,28 +44,30 @@ Map<String, dynamic> _conversation({
   String id = 'conversation-1',
   String title = 'Saved',
   List<Map<String, dynamic>> messages = const [],
-}) => {
-  'id': id,
-  'title': title,
-  'messages': messages,
-  'createdAt': DateTime(2026, 1, 1).toIso8601String(),
-  'updatedAt': DateTime(2026, 1, 1).toIso8601String(),
-  'pinned': false,
-  'revision': 1,
-  'authority': 'local',
-};
+}) =>
+    {
+      'id': id,
+      'title': title,
+      'messages': messages,
+      'createdAt': DateTime(2026, 1, 1).toIso8601String(),
+      'updatedAt': DateTime(2026, 1, 1).toIso8601String(),
+      'pinned': false,
+      'revision': 1,
+      'authority': 'local',
+    };
 
 String _snapshot({
   int revision = 1,
   String? activeId = 'conversation-1',
   List<Map<String, dynamic>>? conversations,
   String schema = 'io.tobkiri.mobile-chat.snapshot.v2',
-}) => jsonEncode({
-  'schema': schema,
-  'revision': revision,
-  'active_id': activeId,
-  'conversations': conversations ?? [_conversation()],
-});
+}) =>
+    jsonEncode({
+      'schema': schema,
+      'revision': revision,
+      'active_id': activeId,
+      'conversations': conversations ?? [_conversation()],
+    });
 
 void main() {
   test(

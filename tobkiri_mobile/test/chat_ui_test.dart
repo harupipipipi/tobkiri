@@ -68,7 +68,7 @@ class _FakeChatStorage implements ChatKeyValueStorage {
 
 class _FakeActivityBackend extends LocalConversationBackend {
   _FakeActivityBackend({required super.store, required super.configStore})
-    : _store = store;
+      : _store = store;
 
   final ChatStore _store;
   final started = Completer<void>();
@@ -440,16 +440,16 @@ void main() {
     String? clipboardText;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          switch (call.method) {
-            case 'Clipboard.setData':
-              final data = call.arguments as Map;
-              clipboardText = data['text'] as String?;
-              return null;
-            case 'Clipboard.getData':
-              return {'text': clipboardText};
-          }
+      switch (call.method) {
+        case 'Clipboard.setData':
+          final data = call.arguments as Map;
+          clipboardText = data['text'] as String?;
           return null;
-        });
+        case 'Clipboard.getData':
+          return {'text': clipboardText};
+      }
+      return null;
+    });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, null);

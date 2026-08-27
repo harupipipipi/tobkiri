@@ -83,8 +83,7 @@ class _ChatScreenState extends State<ChatScreen>
   void initState() {
     super.initState();
     _router = ConversationRouter(
-      local:
-          widget.localBackend ??
+      local: widget.localBackend ??
           LocalConversationBackend(
             store: widget.store,
             configStore: widget.configStore,
@@ -121,8 +120,8 @@ class _ChatScreenState extends State<ChatScreen>
     try {
       _apiConfig = await widget.configStore.loadApi();
       _modelFavorites = await widget.configStore.loadModelFavorites();
-      _notificationSettings = await widget.configStore
-          .loadNotificationSettings();
+      _notificationSettings =
+          await widget.configStore.loadNotificationSettings();
       await _loadPcConnection();
       await _loadSpaces();
     } catch (error, stack) {
@@ -256,9 +255,8 @@ class _ChatScreenState extends State<ChatScreen>
 
   String? _initialPcModelForCatalog(PcCatalog catalog) {
     final preferred = catalog.runtime.preferredModel.trim();
-    final preferredProfile = preferred.isEmpty
-        ? null
-        : catalog.profileById(preferred);
+    final preferredProfile =
+        preferred.isEmpty ? null : catalog.profileById(preferred);
     if (preferredProfile != null &&
         preferredProfile.effectiveProfileId != 'stub/default' &&
         (preferredProfile.configured || preferredProfile.local)) {
@@ -514,9 +512,8 @@ class _ChatScreenState extends State<ChatScreen>
           },
           onDevicePaired: (device) async {
             await _loadPcConnection();
-            _activeSpaceId = device == null
-                ? Space.local.id
-                : 'pc:${device.connectionId}';
+            _activeSpaceId =
+                device == null ? Space.local.id : 'pc:${device.connectionId}';
             await _loadSpaces();
             if (mounted) setState(() {});
           },
@@ -525,8 +522,8 @@ class _ChatScreenState extends State<ChatScreen>
     );
     final refreshed = await widget.configStore.loadApi();
     final modelFavorites = await widget.configStore.loadModelFavorites();
-    final notificationSettings = await widget.configStore
-        .loadNotificationSettings();
+    final notificationSettings =
+        await widget.configStore.loadNotificationSettings();
     await _loadPcConnection();
     await _loadSpaces();
     if (mounted) {
@@ -1108,8 +1105,8 @@ class _ChatScreenState extends State<ChatScreen>
     final catalog = _pcCatalog;
     final commands = _activeSpaceIsPc
         ? (catalog?.commands ?? const <PcCommandItem>[])
-              .where((c) => c.enabled && c.visibility != 'hidden')
-              .toList()
+            .where((c) => c.enabled && c.visibility != 'hidden')
+            .toList()
         : const <PcCommandItem>[];
     await showModalBottomSheet<void>(
       context: context,
@@ -1521,9 +1518,8 @@ class _ChatScreenState extends State<ChatScreen>
                     controller: controllers[arg.name],
                     decoration: InputDecoration(
                       labelText: arg.required ? '${arg.name} *' : arg.name,
-                      helperText: arg.values.isEmpty
-                          ? null
-                          : arg.values.join(', '),
+                      helperText:
+                          arg.values.isEmpty ? null : arg.values.join(', '),
                     ),
                   ),
                 ),
@@ -1689,9 +1685,8 @@ class _ChatScreenState extends State<ChatScreen>
         }
         return;
       case 'set_price_mode':
-        final tier = '${args['tier'] ?? 'low'}'.toLowerCase() == 'high'
-            ? 'high'
-            : 'low';
+        final tier =
+            '${args['tier'] ?? 'low'}'.toLowerCase() == 'high' ? 'high' : 'low';
         final candidate = _pricePcProfile(tier);
         if (candidate == null) {
           _showSnack('price=$tier の候補が見つかりません');
@@ -2177,10 +2172,10 @@ class _RunActivityList extends StatelessWidget {
                 ChatStatusEvent() => _StatusActivityCard(event: event),
                 ToolCallEvent() => ToolActivityCard(event: event),
                 ApprovalEvent() => ApprovalCard(
-                  event: event,
-                  onApprove: onApprovalAction,
-                  onDeny: onApprovalAction,
-                ),
+                    event: event,
+                    onApprove: onApprovalAction,
+                    onDeny: onApprovalAction,
+                  ),
                 _ => const SizedBox.shrink(),
               },
           ],

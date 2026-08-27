@@ -17,12 +17,12 @@ class LocalConversationBackend implements ConversationBackend {
     OpenAiClient? client,
     OpenAiClient Function()? createClient,
     MobileToolApprovalDelegate? mobileToolApprovalDelegate,
-  }) : _store = store,
-       _configStore = configStore,
-       _uuid = const Uuid(),
-       _client = client,
-       _createClient = createClient,
-       _mobileToolApprovalDelegate = mobileToolApprovalDelegate;
+  })  : _store = store,
+        _configStore = configStore,
+        _uuid = const Uuid(),
+        _client = client,
+        _createClient = createClient,
+        _mobileToolApprovalDelegate = mobileToolApprovalDelegate;
 
   final ChatStore _store;
   final ApiConfigStore _configStore;

@@ -69,7 +69,7 @@ abstract class ChatKeyValueStorage {
 
 class PlatformChatStorage implements ChatKeyValueStorage {
   PlatformChatStorage({PlatformPreferences? preferences})
-    : _preferences = preferences ?? PlatformPreferences();
+      : _preferences = preferences ?? PlatformPreferences();
 
   final PlatformPreferences _preferences;
 
@@ -86,7 +86,7 @@ class PlatformChatStorage implements ChatKeyValueStorage {
 
 class ChatStore {
   ChatStore({ChatKeyValueStorage? storage})
-    : _storage = storage ?? PlatformChatStorage();
+      : _storage = storage ?? PlatformChatStorage();
 
   final _uuid = const Uuid();
   final ChatKeyValueStorage _storage;
@@ -116,12 +116,12 @@ class ChatStore {
 
   /// Return redacted persistence metadata without conversation content.
   Map<String, Object?> diagnostics() => {
-    'status': _status.kind.name,
-    'code': _status.code,
-    'revision': _snapshotRevision,
-    'conversation_count': _conversations.length,
-    'recovery_available': recoveryAvailable,
-  };
+        'status': _status.kind.name,
+        'code': _status.code,
+        'revision': _snapshotRevision,
+        'conversation_count': _conversations.length,
+        'recovery_available': recoveryAvailable,
+      };
 
   /// Load the canonical snapshot or a recoverable backup without overwriting it.
   Future<ChatStoreStatus> load() async {
@@ -298,9 +298,8 @@ class ChatStore {
 
   Future<ChatSaveResult> delete(String id) async {
     _ensureWritable('delete_conversation');
-    _conversations = _conversations
-        .where((conversation) => conversation.id != id)
-        .toList();
+    _conversations =
+        _conversations.where((conversation) => conversation.id != id).toList();
     if (_activeId == id) {
       _activeId = _conversations.isEmpty ? null : _conversations.first.id;
     }
@@ -530,13 +529,12 @@ class ChatStore {
       conversations.add(conversation);
     }
     final rawActiveId = map['active_id'];
-    final activeId =
-        rawActiveId is String &&
+    final activeId = rawActiveId is String &&
             conversations.any((conversation) => conversation.id == rawActiveId)
         ? rawActiveId
         : conversations.isEmpty
-        ? null
-        : conversations.first.id;
+            ? null
+            : conversations.first.id;
     return _DecodedSnapshot(
       revision: revision,
       activeId: activeId,
@@ -580,13 +578,12 @@ class ChatStore {
         conversations.add(conversation);
       }
     }
-    final resolvedActiveId =
-        activeId != null &&
+    final resolvedActiveId = activeId != null &&
             conversations.any((conversation) => conversation.id == activeId)
         ? activeId
         : conversations.isEmpty
-        ? null
-        : conversations.first.id;
+            ? null
+            : conversations.first.id;
     return _LegacyDecode(
       snapshot: _DecodedSnapshot(
         revision: 0,
@@ -598,13 +595,13 @@ class ChatStore {
   }
 
   String _encodeSnapshot({required int revision}) => jsonEncode({
-    'schema': _snapshotSchema,
-    'revision': revision,
-    'active_id': _activeId,
-    'conversations': _conversations
-        .map((conversation) => conversation.toJson())
-        .toList(),
-  });
+        'schema': _snapshotSchema,
+        'revision': revision,
+        'active_id': _activeId,
+        'conversations': _conversations
+            .map((conversation) => conversation.toJson())
+            .toList(),
+      });
 
   void _adopt(_DecodedSnapshot snapshot) {
     _snapshotRevision = snapshot.revision;
