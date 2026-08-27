@@ -1,10 +1,11 @@
 import { AlertTriangle, CheckCircle2, Clock3, ListFilter, RotateCw, ShieldAlert } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { AdaptiveActivityItem, AdaptiveActivityState } from "../lib/adaptiveApi";
 import { fetchAdaptiveActivity } from "../lib/adaptiveApi";
 import {
   AdaptiveEmptyState,
+  AdaptiveStatusMessage,
   MetricTile,
   ResourceBanner,
   SurfaceHeader,
@@ -16,6 +17,7 @@ import {
   readableCapability,
   toneForRisk,
 } from "./AdaptivePrimitives";
+import { useAdaptiveTabs } from "./AdaptiveTabs";
 import { demoActivityState } from "./demoData";
 import { useAdaptiveResource } from "./useAdaptiveResource";
 
@@ -28,6 +30,7 @@ const filters: Array<{ id: ActivityFilter; label: string }> = [
   { id: "blocked", label: "Blocked" },
   { id: "done", label: "Done" },
 ];
+const filterIds = filters.map((item) => item.id);
 
 function statusLabel(status: string): string {
   return status.replace(/_/g, " ");
@@ -65,6 +68,13 @@ export function ActivityCenter({ initialState }: { initialState?: AdaptiveActivi
     load: fetchAdaptiveActivity,
   });
   const [filter, setFilter] = useState<ActivityFilter>("all");
+  const selectFilter = useCallback((nextFilter: ActivityFilter) => setFilter(nextFilter), []);
+  const filterTabs = useAdaptiveTabs({
+    ids: filterIds,
+    selectedId: filter,
+    onSelect: selectFilter,
+    idPrefix: "adaptive-activity-filter",
+  });
   const filteredItems = useMemo(() => {
     const items = data?.items ?? [];
     if (filter === "all") return items;
@@ -78,7 +88,14 @@ export function ActivityCenter({ initialState }: { initialState?: AdaptiveActivi
         title="Activity Center"
         description="Track running work, review requests, blockers, evidence counts, and completed activity without exposing internal tool identifiers."
         action={
-          <button type="button" className={adaptiveControlClass} onClick={refresh} aria-label="Refresh activity center">
+          <button
+            type="button"
+            className={adaptiveControlClass}
+            onClick={refresh}
+            aria-label="Refresh activity center"
+            aria-busy={status === "loading"}
+            disabled={status === "loading"}
+          >
             <RotateCw size={14} aria-hidden="true" />
             Refresh
           </button>
@@ -106,22 +123,34 @@ export function ActivityCenter({ initialState }: { initialState?: AdaptiveActivi
               <ListFilter size={15} className="text-cyan-200" aria-hidden="true" />
               <h2 className="text-sm font-semibold text-zinc-50">Runtime work</h2>
             </div>
-            <div className="flex flex-wrap gap-1" role="tablist" aria-label="Activity filters">
+            <div
+              className="flex flex-wrap gap-1"
+              role="tablist"
+              aria-label="Activity filters"
+              aria-orientation="horizontal"
+            >
               {filters.map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  role="tab"
-                  aria-selected={filter === item.id}
+                  {...filterTabs.tabProps(item.id)}
                   className={`${adaptiveControlClass} ${filter === item.id ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : ""}`}
-                  onClick={() => setFilter(item.id)}
                 >
                   {item.label}
                 </button>
               ))}
             </div>
           </div>
-          <div className="space-y-2">
+          <div
+            id={filterTabs.panelId(filter)}
+            role="tabpanel"
+            aria-labelledby={filterTabs.tabId(filter)}
+            tabIndex={0}
+            className="space-y-2"
+          >
+            <AdaptiveStatusMessage className="sr-only">
+              {filteredItems.length} activity {filteredItems.length === 1 ? "item" : "items"} shown for {filters.find((item) => item.id === filter)?.label ?? filter}.
+            </AdaptiveStatusMessage>
             {filteredItems.map((item) => (
               <ActivityRow key={item.id} item={item} />
             ))}
@@ -136,6 +165,9 @@ export function ActivityCenter({ initialState }: { initialState?: AdaptiveActivi
             <ShieldAlert size={15} className="text-amber-200" aria-hidden="true" />
             <h2 className="text-sm font-semibold text-zinc-50">Review queue</h2>
           </div>
+          <AdaptiveStatusMessage className="sr-only">
+            {data.reviewQueue.length} review {data.reviewQueue.length === 1 ? "request" : "requests"} available.
+          </AdaptiveStatusMessage>
           <div className="space-y-2">
             {data.reviewQueue.map((item) => (
               <article key={item.id} className="rounded-md border border-zinc-800 bg-zinc-950/45 p-3">

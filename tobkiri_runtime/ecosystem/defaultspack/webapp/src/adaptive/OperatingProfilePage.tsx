@@ -6,6 +6,7 @@ import { fetchAdaptiveOperatingProfile, saveAdaptiveOperatingProfile } from "../
 import { ErrorNotice } from "../components/ErrorNotice";
 import {
   AdaptiveEmptyState,
+  AdaptiveStatusMessage,
   ResourceBanner,
   SurfaceHeader,
   ToneBadge,
@@ -45,6 +46,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
   }, [data]);
 
   const handleSave = async () => {
+    if (saving) return;
     if (!data) {
       setSaveError("Cannot save until the adaptive API returns a profile.");
       setSaveStatus(null);
@@ -120,11 +122,18 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" className={adaptivePrimaryControlClass} onClick={handleSave} aria-label="Save operating profile draft">
+            <button
+              type="button"
+              className={adaptivePrimaryControlClass}
+              onClick={handleSave}
+              aria-label="Save operating profile draft"
+              aria-busy={saving}
+              disabled={saving}
+            >
               <Save size={14} aria-hidden="true" />
               Save draft
             </button>
-            <button type="button" className={adaptiveControlClass} onClick={refresh} aria-label="Reload operating profile">
+            <button type="button" className={adaptiveControlClass} onClick={refresh} aria-label="Reload operating profile" aria-busy={status === "loading"} disabled={status === "loading"}>
               Reload
             </button>
           </div>

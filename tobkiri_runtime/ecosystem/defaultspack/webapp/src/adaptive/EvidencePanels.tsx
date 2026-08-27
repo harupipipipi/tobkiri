@@ -1,5 +1,5 @@
 import { Database, FileSearch, Gauge, GitBranch, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { AdaptiveContextBudget, AdaptiveEvidenceBundle, AdaptiveRepositoryMap } from "../lib/adaptiveApi";
 import { fetchAdaptiveContextBudget, fetchAdaptiveEvidence, fetchAdaptiveRepositoryMap } from "../lib/adaptiveApi";
@@ -15,6 +15,7 @@ import {
   adaptiveSectionClass,
   toneForRisk,
 } from "./AdaptivePrimitives";
+import { useAdaptiveTabs } from "./AdaptiveTabs";
 import { demoContextBudget, demoEvidenceBundle, demoRepositoryMap } from "./demoData";
 import { useAdaptiveResource } from "./useAdaptiveResource";
 
@@ -29,6 +30,15 @@ export function EvidenceViewer({ initialBundle }: { initialBundle?: AdaptiveEvid
     () => data?.items.find((item) => item.id === selectedId) ?? data?.items[0] ?? null,
     [data, selectedId],
   );
+  const evidenceIds = useMemo(() => data?.items.map((item) => item.id) ?? [], [data]);
+  const selectEvidence = useCallback((id: string) => setSelectedId(id), []);
+  const evidenceTabs = useAdaptiveTabs({
+    ids: evidenceIds,
+    selectedId,
+    onSelect: selectEvidence,
+    idPrefix: "adaptive-evidence",
+    orientation: "vertical",
+  });
 
   return (
     <section className={`${adaptivePageClass} ${adaptivePanelClass}`} aria-label="Adaptive evidence viewer">
@@ -38,18 +48,16 @@ export function EvidenceViewer({ initialBundle }: { initialBundle?: AdaptiveEvid
         <AdaptiveEmptyState>Adaptive evidence is unavailable until the API returns live state.</AdaptiveEmptyState>
       ) : (
       <div className="grid border-t border-zinc-800/70 lg:grid-cols-[290px_1fr]">
-        <div className={adaptiveSectionClass} role="tablist" aria-label="Evidence items">
+        <div className={adaptiveSectionClass} role="tablist" aria-label="Evidence items" aria-orientation="vertical">
           <div className="space-y-2">
             {data.items.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                role="tab"
-                aria-selected={selected?.id === item.id}
+                {...evidenceTabs.tabProps(item.id)}
                 className={`w-full rounded-md border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
                   selected?.id === item.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-zinc-800 bg-zinc-950/45 hover:bg-zinc-900"
                 }`}
-                onClick={() => setSelectedId(item.id)}
               >
                 <span className="block text-sm font-semibold text-zinc-100">{item.title}</span>
                 <span className="mt-1 block text-[11px] text-zinc-500">{item.sourceLabel}</span>
@@ -57,7 +65,13 @@ export function EvidenceViewer({ initialBundle }: { initialBundle?: AdaptiveEvid
             ))}
           </div>
         </div>
-        <div className={adaptiveSectionClass}>
+        <div
+          id={selected ? evidenceTabs.panelId(selected.id) : undefined}
+          role="tabpanel"
+          aria-labelledby={selected ? evidenceTabs.tabId(selected.id) : undefined}
+          tabIndex={0}
+          className={adaptiveSectionClass}
+        >
           {selected ? (
             <article>
               <div className="flex flex-wrap items-center gap-2">

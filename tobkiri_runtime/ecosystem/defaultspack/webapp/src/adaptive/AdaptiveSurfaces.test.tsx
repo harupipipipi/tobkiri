@@ -4,8 +4,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ActivityCenter } from "./ActivityCenter";
+import { AdaptiveRuntimePage } from "./AdaptiveRuntimePage";
 import { AutomationStudio } from "./AutomationStudio";
 import { ResourceBanner } from "./AdaptivePrimitives";
+import { nextAdaptiveTabIndex } from "./AdaptiveTabs";
 import { ContextBudgetPanel, EvidenceViewer, RepositoryMapPanel } from "./EvidencePanels";
 import {
   OnboardingShell,
@@ -29,6 +31,7 @@ import {
   demoActivityState,
   demoAutomationState,
   demoBackendFixture,
+  demoEvidenceBundle,
   demoOnboardingState,
   demoOperatingProfile,
 } from "./demoData";
@@ -231,6 +234,38 @@ test("ActivityCenter renders activity counters and review queue", () => {
   assert.match(html, /Running/);
   assert.match(html, /Needs review/);
   assert.match(html, /Review queue/);
+  assert.match(html, /role="tablist" aria-label="Activity filters" aria-orientation="horizontal"/);
+  assert.match(html, /id="adaptive-activity-filter-tab-all" role="tab" aria-selected="true" aria-controls="adaptive-activity-filter-panel-all" tabindex="0"/);
+  assert.match(html, /role="tabpanel" aria-labelledby="adaptive-activity-filter-tab-all" tabindex="0"/);
+  assert.match(html, /role="status" aria-live="polite" aria-atomic="true"/);
+});
+
+test("AdaptiveRuntimePage exposes stable APG tab and panel relationships", () => {
+  const html = renderToStaticMarkup(createElement(AdaptiveRuntimePage));
+
+  assert.match(html, /role="tablist" aria-label="Adaptive runtime views" aria-orientation="horizontal"/);
+  assert.match(html, /id="adaptive-runtime-view-tab-onboarding" role="tab" aria-selected="true" aria-controls="adaptive-runtime-view-panel-onboarding" tabindex="0"/);
+  assert.match(html, /id="adaptive-runtime-view-tab-profile" role="tab" aria-selected="false" aria-controls="adaptive-runtime-view-panel-profile" tabindex="-1"/);
+  assert.match(html, /id="adaptive-runtime-view-panel-onboarding" role="tabpanel" aria-labelledby="adaptive-runtime-view-tab-onboarding" tabindex="0"/);
+});
+
+test("adaptive tab keyboard navigation wraps and respects orientation", () => {
+  assert.equal(nextAdaptiveTabIndex("ArrowRight", 4, 5, "horizontal"), 0);
+  assert.equal(nextAdaptiveTabIndex("ArrowLeft", 0, 5, "horizontal"), 4);
+  assert.equal(nextAdaptiveTabIndex("Home", 3, 5, "horizontal"), 0);
+  assert.equal(nextAdaptiveTabIndex("End", 1, 5, "horizontal"), 4);
+  assert.equal(nextAdaptiveTabIndex("ArrowDown", 1, 3, "vertical"), 2);
+  assert.equal(nextAdaptiveTabIndex("ArrowUp", 0, 3, "vertical"), 2);
+  assert.equal(nextAdaptiveTabIndex("ArrowRight", 1, 3, "vertical"), null);
+});
+
+test("EvidenceViewer exposes a vertical tab set with one focusable evidence item", () => {
+  const html = renderToStaticMarkup(createElement(EvidenceViewer, { initialBundle: demoEvidenceBundle }));
+
+  assert.match(html, /role="tablist" aria-label="Evidence items" aria-orientation="vertical"/);
+  assert.match(html, /role="tab" aria-selected="true" aria-controls="adaptive-evidence-panel-/);
+  assert.match(html, /role="tab" aria-selected="false" aria-controls="adaptive-evidence-panel-/);
+  assert.match(html, /role="tabpanel" aria-labelledby="adaptive-evidence-tab-/);
 });
 
 test("AutomationStudio renders automations, templates, and simulation", () => {
@@ -240,6 +275,7 @@ test("AutomationStudio renders automations, templates, and simulation", () => {
   assert.match(html, /Daily context refresh/);
   assert.match(html, /Simulation/);
   assert.match(html, /Templates/);
+  assert.match(html, /aria-pressed="true" aria-busy="false" aria-label="Pause Daily context refresh"/);
 });
 
 test("adaptive surfaces do not render demo payloads unless initial state is explicit", () => {
