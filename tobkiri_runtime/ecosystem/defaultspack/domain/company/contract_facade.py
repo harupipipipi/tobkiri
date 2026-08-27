@@ -44,7 +44,7 @@ class CompanyContractFacade:
         self.context = dict(context)
         self.profile_id = _profile_id()
 
-    def run(self, operation: str) -> dict[str, Any]:
+    def run(self, operation: str) -> Any:
         """Execute one compatibility operation through the selected owner."""
 
         if operation == "list":
