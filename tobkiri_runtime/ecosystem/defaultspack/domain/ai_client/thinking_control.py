@@ -47,7 +47,7 @@ def normalize_thinking_control(profile: dict[str, Any] | None) -> dict[str, Any]
     explicit = source.get("thinking_control")
     if not isinstance(explicit, dict):
         explicit = thinking.get("control")
-    if isinstance(explicit, dict):
+    if isinstance(explicit, dict) and explicit.get("source") != "legacy":
         contract = deepcopy(explicit)
         contract["supported"] = contract.get("supported", True) is not False
         schema = contract.get("input_schema")

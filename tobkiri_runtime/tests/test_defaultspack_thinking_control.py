@@ -15,6 +15,7 @@ from domain.ai_client.model_runtime_settings import (  # noqa: E402
     ModelRuntimeSettingsService,
 )
 from domain.ai_client.thinking_control import (  # noqa: E402
+    normalize_thinking_control,
     parse_numeric_shorthand,
     serialize_thinking_control,
     validate_thinking_control,
@@ -168,3 +169,18 @@ def test_legacy_profiles_remain_enum_compatible(tmp_path: Path) -> None:
 
     assert service.validate_thinking_level("xhigh")["valid"] is True
     assert service.validate_thinking_level("32k")["valid"] is False
+
+
+def test_projected_legacy_contract_does_not_become_profile_authority() -> None:
+    projected = {
+        "supports_thinking": True,
+        "thinking_levels": ["low", "high"],
+        "thinking_control": {
+            "supported": True,
+            "input_schema": {"type": "enum", "values": ["low", "high"]},
+            "request_binding": {},
+            "source": "legacy",
+        },
+    }
+
+    assert normalize_thinking_control(projected)["source"] == "legacy"
