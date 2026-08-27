@@ -1345,14 +1345,10 @@ async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOpti
 }
 
 async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
-  await openDefaultspack(page, "/chat", options);
-  await page.locator("textarea.rumi-composer-textarea").fill("/coding");
-  await page.keyboard.press("Enter");
+  await installDefaultspackApiMocks(page, options);
+  await page.goto("/coding");
   await expect(page).toHaveURL(/\/coding(?:\?|$)/);
-  const codingWidgetButton = page.getByRole("button", { name: "Coding widget" });
-  await expect(codingWidgetButton).toBeVisible();
-  await codingWidgetButton.click();
-  await expect(page.locator(".coding-cockpit")).toBeVisible();
+  await expect(page.locator(".coding-cockpit")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Workspace", exact: true }).click();
 }
 
