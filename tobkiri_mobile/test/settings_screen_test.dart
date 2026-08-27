@@ -200,7 +200,13 @@ void main() {
     expect(find.text('未保存の設定'), findsOneWidget);
     expect(find.text('編集に戻る'), findsOneWidget);
     expect(find.text('破棄'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '保存'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(FilledButton, '保存'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('編集に戻る'));
     await tester.pumpAndSettle();
