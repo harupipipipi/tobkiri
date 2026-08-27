@@ -1,6 +1,6 @@
 {
   "function_id": "conversation_steer",
-  "description": "Queue, list, cancel, or process a follow-up steer after a conversation task completes.",
+  "description": "Manage live conversation steering or register, inspect, edit, apply, defer, dismiss, and complete a durable deferred steer. Deferred registration requires title, instruction, reason, scope_type, scope_id, checkpoint, source, and idempotency_key and never auto-executes.",
   "tags": [
     "conversation",
     "steer"

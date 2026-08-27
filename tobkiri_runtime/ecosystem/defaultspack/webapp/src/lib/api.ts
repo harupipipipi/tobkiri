@@ -1603,6 +1603,15 @@ export type ModelSearchResponse = {
 export type ConversationSteerItem = {
   id: string;
   prompt: string;
+  deferred?: boolean;
+  title?: string;
+  instruction?: string;
+  reason?: string;
+  revision?: number;
+  checkpoint?: "after_subtask" | "after_turn" | "after_execution" | "manual_only";
+  source?: "ai" | "user" | "pack" | "system";
+  scope?: { type?: string; id?: string };
+  application_reference?: Record<string, string> | null;
   target_type?: string;
   target_id?: string;
   conversation_id?: string;
@@ -1623,6 +1632,7 @@ export type ConversationSteerResponse =
     processed?: ConversationSteerItem[];
     cancelled?: boolean;
     item?: ConversationSteerItem | null;
+    ready_count?: number;
   };
 
 export type Conversation = {

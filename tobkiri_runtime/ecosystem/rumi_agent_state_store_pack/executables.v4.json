@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:89fed9ddfcb1fd4183590b63b601649ebabb0b0dd98a78ec760a95987ea3f310",
+  "catalog_digest": "sha256:2eb39c7efc9e36504e29df6bd49e6caf1e52a6cfdaa0dc4949e2374b7f60944d",
   "pack_id": "rumi_agent_state_store_pack",
-  "source_identity": "sha256:05e7ea0ceb4af650c08735e8d8103eedac3d5d46e2cf3c40915ffe466f9c4182",
+  "source_identity": "sha256:0f5f4a2adcb59309951a05fb7724793b1d873af38d687b34f484e99485d38474",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_agent_state_store_pack.agent-state.action",
-      "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+      "implementation_digest": "sha256:45f31ccfe8b191649b2941cf4381b415187fde2d35ff6910c824235ad4b3f0b0",
       "implementation_path": "runtime/store.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_agent_state_store_pack.agent-state.resource",
-      "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+      "implementation_digest": "sha256:45f31ccfe8b191649b2941cf4381b415187fde2d35ff6910c824235ad4b3f0b0",
       "implementation_path": "runtime/store.py",
       "materialization_mode": "on_demand",
       "operations": [

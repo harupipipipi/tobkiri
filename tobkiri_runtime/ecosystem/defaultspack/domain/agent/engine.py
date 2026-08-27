@@ -500,6 +500,34 @@ class AgentEngine:
                 conversation_id=conversation_id,
                 context=context,
             )
+            try:
+                from domain.chat.deferred_steer import DeferredSteerFacade
+
+                deferred = DeferredSteerFacade(context)
+                for checkpoint in ("after_subtask", "after_execution"):
+                    processed.extend(
+                        deferred.checkpoint(
+                            {
+                                "checkpoint": checkpoint,
+                                "scope_type": "execution",
+                                "scope_id": execution.execution_id,
+                            }
+                        )
+                    )
+                    if conversation_id:
+                        processed.extend(
+                            deferred.checkpoint(
+                                {
+                                    "checkpoint": checkpoint,
+                                    "scope_type": "conversation",
+                                    "scope_id": conversation_id,
+                                }
+                            )
+                        )
+            except Exception as exc:
+                execution.add_step(
+                    "deferred_steer_checkpoint_error", {"error": str(exc)}
+                )
             if processed:
                 execution.add_step("conversation_steer", {
                     "processed": len(processed),

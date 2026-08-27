@@ -969,6 +969,16 @@ function steerStatusLabel(status: string | undefined): string {
       return "送信中";
     case "sent":
       return "送信済み";
+    case "ready":
+      return "適用可能";
+    case "applied":
+      return "適用済み";
+    case "completed":
+      return "完了";
+    case "dismissed":
+      return "破棄済み";
+    case "failed":
+      return "適用失敗";
     default:
       return "入力";
   }
@@ -2645,6 +2655,7 @@ export function ComposerRenderer({
   steerBusy = false,
   steerQueuedCount = 0,
   steerPreviewItems = [],
+  steerHistoryItems = [],
   suppressPopovers = false,
   onOpenModelManager,
   onOpenToolSettings,
@@ -2667,6 +2678,7 @@ export function ComposerRenderer({
   onSubmit,
   onStopGenerating,
   onSteerSubmit,
+  onSteerAction,
   onModeChange,
   onFileAttach,
   onAtFileAttach,
@@ -2688,6 +2700,10 @@ export function ComposerRenderer({
   onProjectStoragePrepare,
 }: ComposerRendererProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [steerQueueExpanded, setSteerQueueExpanded] = useState(true);
+  const [steerHistoryExpanded, setSteerHistoryExpanded] = useState(false);
+  const [editingDeferredSteerId, setEditingDeferredSteerId] = useState<string | null>(null);
+  const [deferredSteerDraft, setDeferredSteerDraft] = useState("");
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [openFolder, setOpenFolder] = useState<"tools" | "models" | "commands">("tools");
   const [openToolGroup, setOpenToolGroup] = useState<string | null>(null);
@@ -4533,15 +4549,30 @@ export function ComposerRenderer({
             </div>
           )}
 
-          {!isNewConversation && visibleSteerPreviewItems.length > 0 && (
+          {!isNewConversation && (visibleSteerPreviewItems.length > 0 || visibleSteerHistoryItems.length > 0) && (
             <div className="mx-2 mt-1 overflow-hidden rounded-xl bg-zinc-900/45 px-2 py-1.5 max-[640px]:mx-1.5 max-[640px]:px-1.5">
               <div className="flex items-center justify-between gap-2 pb-1 text-[10px] leading-none text-zinc-500">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <CornerDownRight size={12} className="flex-shrink-0" />
-                  {visibleSteerPreviewItems.length > 1 && (
-                    <span className="rounded-full bg-zinc-800/80 px-1.5 py-0.5 text-[9px] leading-none">
-                      {visibleSteerPreviewItems.length}
-                    </span>
+                  {visibleSteerPreviewItems.length > 0 && (
+                    <button
+                      type="button"
+                      aria-expanded={steerQueueExpanded}
+                      onClick={() => setSteerQueueExpanded((value) => !value)}
+                      className="rounded-full bg-zinc-800/80 px-1.5 py-0.5 text-[9px] leading-none hover:text-zinc-300"
+                    >
+                      保留 {visibleSteerPreviewItems.length}
+                    </button>
+                  )}
+                  {visibleSteerHistoryItems.length > 0 && (
+                    <button
+                      type="button"
+                      aria-expanded={steerHistoryExpanded}
+                      onClick={() => setSteerHistoryExpanded((value) => !value)}
+                      className="rounded-full px-1.5 py-0.5 text-[9px] leading-none hover:bg-zinc-800/80 hover:text-zinc-300"
+                    >
+                      履歴 {visibleSteerHistoryItems.length}
+                    </button>
                   )}
                 </div>
                 <div className="flex min-w-0 flex-shrink items-center justify-end gap-1.5">
@@ -4549,6 +4580,7 @@ export function ComposerRenderer({
                   {steerSuccessStatus && <span className="truncate">{steerSuccessStatus}</span>}
                 </div>
               </div>
+              {steerQueueExpanded && (
               <div className="grid gap-1">
                 {visibleSteerPreviewItems.map((item) => (
                   <div key={item.id} className="grid gap-1 rounded-lg bg-zinc-950/30 px-2 py-1.5">
@@ -4556,13 +4588,84 @@ export function ComposerRenderer({
                       <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[9px] leading-none text-zinc-500">
                         {steerStatusLabel(item.status)}
                       </span>
+                      {item.deferred && (
+                        <span className="rounded border border-amber-500/20 px-1.5 py-0.5 text-[9px] leading-none text-amber-300">
+                          後で対応
+                        </span>
+                      )}
+                      {item.title && (
+                        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-zinc-300">
+                          {item.title}
+                        </span>
+                      )}
                     </div>
-                    <div className="max-h-16 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-4 text-zinc-300">
-                      {String(item.prompt ?? "").trim()}
-                    </div>
+                    {editingDeferredSteerId === item.id ? (
+                      <div className="grid gap-1.5">
+                        <textarea
+                          aria-label={`${item.title || "Deferred steer"} の指示を編集`}
+                          value={deferredSteerDraft}
+                          onChange={(event) => setDeferredSteerDraft(event.currentTarget.value)}
+                          className="min-h-16 resize-y rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-[12px] leading-4 text-zinc-200 outline-none focus:border-amber-500/50"
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditingDeferredSteerId(null)}
+                            className="rounded px-2 py-1 text-[10px] text-zinc-500 hover:bg-zinc-800"
+                          >
+                            キャンセル
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!deferredSteerDraft.trim() || steerBusy}
+                            onClick={() => {
+                              onSteerAction?.("edit", item, deferredSteerDraft.trim());
+                              setEditingDeferredSteerId(null);
+                            }}
+                            className="rounded bg-amber-500/15 px-2 py-1 text-[10px] text-amber-200 disabled:opacity-40"
+                          >
+                            保存
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="max-h-16 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-4 text-zinc-300">
+                        {String(item.prompt ?? "").trim()}
+                      </div>
+                    )}
+                    {item.deferred && item.reason && (
+                      <div className="line-clamp-2 text-[10px] leading-4 text-zinc-500">
+                        理由: {item.reason}
+                      </div>
+                    )}
+                    {item.deferred && editingDeferredSteerId !== item.id && (
+                      <div className="flex flex-wrap gap-1 pt-0.5" aria-label="Deferred steer actions">
+                        <button type="button" onClick={() => onSteerAction?.("apply", item)} className="rounded bg-emerald-500/15 px-2 py-1 text-[10px] text-emerald-300">今すぐ適用</button>
+                        <button type="button" onClick={() => {
+                          setDeferredSteerDraft(String(item.instruction || item.prompt || ""));
+                          setEditingDeferredSteerId(item.id);
+                        }} className="rounded bg-zinc-800 px-2 py-1 text-[10px] text-zinc-300">編集</button>
+                        <button type="button" onClick={() => onSteerAction?.("defer", item)} className="rounded bg-zinc-800 px-2 py-1 text-[10px] text-zinc-300">保留</button>
+                        <button type="button" onClick={() => onSteerAction?.("new_task", item)} className="rounded bg-zinc-800 px-2 py-1 text-[10px] text-zinc-300">新しい会話へ</button>
+                        <button type="button" onClick={() => onSteerAction?.("dismiss", item)} className="rounded bg-zinc-800 px-2 py-1 text-[10px] text-zinc-400">破棄</button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
+              )}
+              {steerHistoryExpanded && visibleSteerHistoryItems.length > 0 && (
+                <div className="grid gap-1 border-t border-zinc-800/70 pt-1" aria-label="Deferred steer history">
+                  {visibleSteerHistoryItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-[10px] text-zinc-500">
+                      <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[9px] leading-none">
+                        {steerStatusLabel(item.status)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{item.title || item.prompt}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

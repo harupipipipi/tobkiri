@@ -2367,7 +2367,7 @@ class ChatRunEngine:
         try:
             from domain.chat.steer import ConversationSteerStore
 
-            return ConversationSteerStore().process_for_conversation(
+            processed = ConversationSteerStore().process_for_conversation(
                 conversation_id,
                 context=context,
             )
@@ -2379,6 +2379,26 @@ class ChatRunEngine:
                 phase="conversation_steer_failed",
             )
             return []
+        try:
+            from domain.chat.deferred_steer import DeferredSteerFacade
+
+            processed.extend(
+                DeferredSteerFacade(context).checkpoint(
+                    {
+                        "checkpoint": "after_turn",
+                        "scope_type": "conversation",
+                        "scope_id": conversation_id,
+                    }
+                )
+            )
+        except Exception as exc:
+            self._emit(
+                "status",
+                data={"error": str(exc)},
+                message="deferred steer checkpoint の処理に失敗しました",
+                phase="deferred_steer_checkpoint_failed",
+            )
+        return processed
 
     @staticmethod
     def _is_assistant_progress_tool_use(block: dict[str, Any]) -> bool:

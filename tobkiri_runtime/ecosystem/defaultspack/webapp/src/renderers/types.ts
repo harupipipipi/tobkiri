@@ -224,6 +224,7 @@ export type ComposerRendererProps = {
   steerBusy?: boolean;
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
+  steerHistoryItems?: ConversationSteerItem[];
   suppressPopovers?: boolean;
   onOpenModelManager?: () => void;
   onOpenToolSettings?: () => void;
@@ -246,6 +247,11 @@ export type ComposerRendererProps = {
   onSubmit: (event: FormEvent) => void;
   onStopGenerating?: () => void;
   onSteerSubmit?: (prompt: string) => void;
+  onSteerAction?: (
+    action: "apply" | "edit" | "defer" | "dismiss" | "new_task",
+    item: ConversationSteerItem,
+    instruction?: string,
+  ) => void;
   onModeChange?: (mode: AppMode) => void;
   onFileAttach?: (files: AttachedFile[]) => void;
   onAtFileAttach?: (path: string) => void;

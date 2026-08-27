@@ -1690,7 +1690,7 @@
             {
               "entrypoint_id": "agent-state-action",
               "id": "rumi_agent_state_store_pack.agent-state-action",
-              "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8"
+              "implementation_digest": "sha256:45f31ccfe8b191649b2941cf4381b415187fde2d35ff6910c824235ad4b3f0b0"
             }
           ],
           "owner": "rumi_agent_state_store_pack",
@@ -1723,7 +1723,7 @@
             {
               "entrypoint_id": "agent-state-resource",
               "id": "rumi_agent_state_store_pack.agent-state-resource",
-              "implementation_digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8"
+              "implementation_digest": "sha256:45f31ccfe8b191649b2941cf4381b415187fde2d35ff6910c824235ad4b3f0b0"
             }
           ],
           "owner": "rumi_agent_state_store_pack",
@@ -1753,7 +1753,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+          "digest": "sha256:45f31ccfe8b191649b2941cf4381b415187fde2d35ff6910c824235ad4b3f0b0",
           "kind": "executable",
           "path": "runtime/store.py"
         }

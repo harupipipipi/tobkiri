@@ -1943,6 +1943,9 @@ function activeComposerSteerItems(items: ConversationSteerItem[], isRunning: boo
     .filter((item) => item.visible !== false && String(item.prompt ?? "").trim())
     .filter((item) => {
       const status = String(item.status || "").toLowerCase();
+      if (item.deferred) {
+        return ["queued", "ready", "failed"].includes(status);
+      }
       return status === "queued" || status === "sending" || (isRunning && status === "injected");
     })
     .slice(-3)
@@ -4839,6 +4842,7 @@ export function ChatApp() {
       const result = await api.conversationSteer({
         action: "list",
         conversation_id: conversationId,
+        include_history: true,
       });
       const items = "items" in result && Array.isArray(result.items) ? result.items : [];
       setSteerItems(items);
@@ -4890,6 +4894,118 @@ export function ChatApp() {
       setModelSteerBusy(false);
     }
   }, [activeConversationId, input, isConversationPending, isGenerating, refreshSteerQueue, setInput]);
+
+  const handleDeferredSteerAction = useCallback(async (
+    action: "apply" | "edit" | "defer" | "dismiss" | "new_task",
+    item: ConversationSteerItem,
+    instructionOverride?: string,
+  ) => {
+    if (!item.deferred) return;
+    if (action === "apply" && (isGenerating || isConversationPending)) {
+      setModelSteerStatus("現在の実行が完了してから適用してください");
+      return;
+    }
+    setModelSteerBusy(true);
+    try {
+      if (action === "edit") {
+        await api.conversationSteer({
+          action: "update_deferred",
+          deferred_steer_id: item.id,
+          expected_steer_revision: item.revision,
+          updates: { instruction: instructionOverride },
+        });
+        setModelSteerStatus("保留中の指示を更新しました");
+      } else if (action === "defer") {
+        await api.conversationSteer({
+          action: "defer_deferred",
+          deferred_steer_id: item.id,
+          expected_steer_revision: item.revision,
+          checkpoint: "manual_only",
+        });
+        setModelSteerStatus("手動適用まで保留します");
+      } else if (action === "dismiss") {
+        await api.conversationSteer({
+          action: "dismiss_deferred",
+          deferred_steer_id: item.id,
+          expected_steer_revision: item.revision,
+          reason: "dismissed_from_composer",
+        });
+        setModelSteerStatus("保留中の指示を破棄しました");
+      } else {
+        setIsGenerating(true);
+        const targetConversation = action === "new_task"
+          ? await api.createConversation({
+            model: preferredModel || "stub/default",
+            parent_conversation_id: activeConversationId,
+            metadata: {
+              deferred_steer_id: item.id,
+              deferred_steer_origin_conversation_id: activeConversationId,
+            },
+          })
+          : activeConversation;
+        if (!targetConversation) throw new Error("適用先の会話がありません");
+        const message = await api.streamMessage(
+          targetConversation.id,
+          String(item.instruction || item.prompt || "").trim(),
+          {
+            idempotency_key: `deferred-steer:${item.id}:${item.revision}`,
+            metadata: {
+              source: "deferred_steer",
+              deferred_steer_id: item.id,
+              deferred_steer_source: item.source,
+              deferred_steer_scope: item.scope,
+            },
+          },
+        );
+        if (!message) throw new Error("適用先の会話が応答を返しませんでした");
+        const applied = await api.conversationSteer({
+          action: "apply_deferred",
+          deferred_steer_id: item.id,
+          expected_steer_revision: item.revision,
+          application_reference: {
+            kind: action === "new_task" ? "new_conversation" : "conversation_instruction",
+            conversation_id: targetConversation.id,
+            message_id: message.id,
+          },
+        });
+        if ("revision" in applied && typeof applied.revision === "number") {
+          await api.conversationSteer({
+            action: "complete_deferred",
+            deferred_steer_id: item.id,
+            expected_steer_revision: applied.revision,
+          });
+        }
+        if (action === "new_task") {
+          setActiveConversationId(targetConversation.id);
+          setActiveConversation(targetConversation);
+        }
+        setModelSteerStatus(action === "new_task" ? "新しい会話へ移しました" : "保留中の指示を適用しました");
+        await loadConversation(targetConversation.id, false);
+        await refreshConversations(targetConversation.id);
+      }
+      await refreshSteerQueue(action === "new_task" ? undefined : activeConversationId ?? undefined);
+    } catch (steerError) {
+      const message = steerError instanceof Error ? steerError.message : "Deferred steer action failed";
+      if (action === "apply" || action === "new_task") {
+        try {
+          await api.conversationSteer({
+            action: "fail_deferred",
+            deferred_steer_id: item.id,
+            expected_steer_revision: item.revision,
+            error: message,
+          });
+          await refreshSteerQueue(activeConversationId ?? undefined);
+        } catch {
+          // Preserve the original visible application failure. A stale owner
+          // revision is expected when another user action won the race.
+        }
+      }
+      setModelSteerStatus(message);
+    } finally {
+      if (action === "apply" || action === "new_task") setIsGenerating(false);
+      setModelSteerBusy(false);
+    }
+  }, [activeConversation, activeConversationId, isConversationPending, isGenerating, loadConversation, preferredModel, refreshConversations, refreshSteerQueue]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -7024,8 +7140,13 @@ export function ChatApp() {
       keyboardButtonNavigation={keyboardButtonNavigation}
       steerStatus={modelSteerStatus}
       steerBusy={modelSteerBusy}
-      steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
+      steerQueuedCount={steerItems.filter((item) => (
+        item.status === "queued" || (item.deferred && ["ready", "failed"].includes(item.status))
+      )).length}
       steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
+      steerHistoryItems={steerItems.filter((item) => (
+        item.deferred && ["applied", "completed", "dismissed", "expired"].includes(item.status)
+      ))}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
@@ -7048,6 +7169,7 @@ export function ChatApp() {
       onSubmit={handleSubmit}
       onStopGenerating={handleStopGenerating}
       onSteerSubmit={(prompt) => void queueConversationSteer(prompt)}
+      onSteerAction={(action, item, instruction) => void handleDeferredSteerAction(action, item, instruction)}
       onModeChange={handleModeChange}
       onFileAttach={handleFileAttach}
       onAtFileAttach={handleAtFileAttach}
