@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import logging
 import threading
 import time
@@ -59,6 +61,8 @@ MAX_PENDING_AI_SEND_APPROVALS = 64
 MAX_PENDING_AUDIO_BLOBS = 64
 MAX_PENDING_AUDIO_BLOB_BYTES = 10 * 1024 * 1024
 MAX_PENDING_AUDIO_TOTAL_BYTES = 40 * 1024 * 1024
+AMBIENT_EVENT_SETTLEMENT_TTL_SECONDS = 10 * 60
+MAX_AMBIENT_EVENT_SETTLEMENTS = 128
 logger = logging.getLogger(__name__)
 
 ALLOWED_ACTIONS = {
@@ -73,6 +77,7 @@ ALLOWED_ACTIONS = {
 _SESSION_CONVERSATION_IDS: dict[str, str] = {}
 _PENDING_AI_SEND_APPROVALS: dict[str, dict[str, Any]] = {}
 _PENDING_AI_SEND_AUDIO_BLOBS: dict[str, dict[str, Any]] = {}
+_AMBIENT_EVENT_SETTLEMENTS: dict[str, dict[str, Any]] = {}
 _AMBIENT_PENDING_LOCK = threading.RLock()
 
 
@@ -212,6 +217,71 @@ class AmbientTriggerRouter:
         *,
         settings_owner: SettingsOwnerPort | None = None,
     ) -> dict[str, Any]:
+        event = AmbientTriggerEvent.from_payload(payload)
+        if event.mode != "dispatch_audio":
+            return self._submit_event_once(payload, context)
+
+        fingerprint = _ambient_event_fingerprint(payload)
+        with _AMBIENT_PENDING_LOCK:
+            _trim_ambient_event_settlements_locked()
+            existing = _AMBIENT_EVENT_SETTLEMENTS.get(event.event_id)
+            if existing is not None:
+                if existing.get("fingerprint") != fingerprint:
+                    raise ValueError("ambient event_id was already used for different content")
+                if existing.get("state") == "complete":
+                    result = copy.deepcopy(existing.get("result") or {})
+                    if isinstance(result, dict):
+                        result["idempotent_replay"] = True
+                    return result
+                return {
+                    "status": "processing",
+                    "reason": "ambient.event_processing",
+                    "event_id": event.event_id,
+                }
+            if len(_AMBIENT_EVENT_SETTLEMENTS) >= MAX_AMBIENT_EVENT_SETTLEMENTS:
+                raise ValueError("ambient event settlement capacity exceeded")
+            _AMBIENT_EVENT_SETTLEMENTS[event.event_id] = {
+                "state": "processing",
+                "fingerprint": fingerprint,
+                "updated_at_epoch": time.time(),
+            }
+
+        try:
+            result = self._submit_event_once(payload, context)
+        except Exception:
+            with _AMBIENT_PENDING_LOCK:
+                current = _AMBIENT_EVENT_SETTLEMENTS.get(event.event_id)
+                if current is not None and current.get("fingerprint") == fingerprint:
+                    _AMBIENT_EVENT_SETTLEMENTS.pop(event.event_id, None)
+            raise
+        with _AMBIENT_PENDING_LOCK:
+            _AMBIENT_EVENT_SETTLEMENTS[event.event_id] = {
+                "state": "complete",
+                "fingerprint": fingerprint,
+                "result": copy.deepcopy(result),
+                "updated_at_epoch": time.time(),
+            }
+            _trim_ambient_event_settlements_locked()
+        return result
+
+    def event_status(self, event_id: str) -> dict[str, Any]:
+        event_id = str(event_id or "").strip()
+        if not event_id:
+            raise ValueError("event_id is required")
+        with _AMBIENT_PENDING_LOCK:
+            _trim_ambient_event_settlements_locked()
+            settlement = copy.deepcopy(_AMBIENT_EVENT_SETTLEMENTS.get(event_id))
+        if settlement is None:
+            return {"status": "not_found", "event_id": event_id}
+        if settlement.get("state") != "complete":
+            return {"status": "processing", "event_id": event_id}
+        return {
+            "status": "complete",
+            "event_id": event_id,
+            "result": settlement.get("result") if isinstance(settlement.get("result"), dict) else {},
+        }
+
+    def _submit_event_once(self, payload: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
         event = AmbientTriggerEvent.from_payload(payload)
         state = self.store.read()
         if not bool(state.get("ambient_monitor", {}).get("enabled")) and not self._event_can_run_without_monitor(event):
@@ -1246,6 +1316,35 @@ def _raw_audio_media_from_attachment(attachment: dict[str, Any]) -> dict[str, di
     if metadata_media:
         media["metadata"] = metadata_media
     return media
+
+
+def _ambient_event_fingerprint(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _trim_ambient_event_settlements_locked() -> None:
+    cutoff = time.time() - AMBIENT_EVENT_SETTLEMENT_TTL_SECONDS
+    for event_id, settlement in list(_AMBIENT_EVENT_SETTLEMENTS.items()):
+        if float(settlement.get("updated_at_epoch") or 0) <= cutoff:
+            _AMBIENT_EVENT_SETTLEMENTS.pop(event_id, None)
+    while len(_AMBIENT_EVENT_SETTLEMENTS) > MAX_AMBIENT_EVENT_SETTLEMENTS:
+        completed_event_id = next(
+            (
+                event_id
+                for event_id, settlement in _AMBIENT_EVENT_SETTLEMENTS.items()
+                if settlement.get("state") == "complete"
+            ),
+            None,
+        )
+        if completed_event_id is None:
+            break
+        _AMBIENT_EVENT_SETTLEMENTS.pop(completed_event_id, None)
 
 
 def _tools_for_event(event: AmbientTriggerEvent, params: dict[str, Any]) -> list[Any]:

@@ -17,6 +17,6 @@ while monitoring is off.
 
 Camera pinch is a hold-to-record gesture: thumb/index contact emits
 `record_audio_start`, records microphone audio in memory only, and the release
-emits `dispatch_audio` with an ephemeral audio attachment. The recording is sent
-to the active AI input path and is not persisted to workspace attachments or
-ambient audit logs.
+stops capture and opens a local review. Only an explicit Send from that review
+emits `dispatch_audio` with ephemeral audio or the reviewed transcript alone.
+Raw audio is not persisted to workspace attachments or ambient audit logs.

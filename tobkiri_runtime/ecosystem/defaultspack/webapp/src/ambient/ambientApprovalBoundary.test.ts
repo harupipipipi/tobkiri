@@ -220,24 +220,31 @@ test("ambient guidance and failures retain warning and error severity", () => {
   assert.match(panelSource, /copyLabel="アンビエント操作の警告をコピー"/);
 });
 
-test("real OK-mark recording routes audio through transcription before dispatch", () => {
+test("real OK-mark recording requires local review before dispatch", () => {
   const panelSource = readSource("ambient", "AmbientTriggerPanel.tsx");
+  const reviewSource = readSource("ambient", "ambientAudioReview.ts");
+  const reviewCardSource = readSource("ambient", "AmbientAudioReviewCard.tsx");
 
   assert.match(panelSource, /setPinchDetectorStatus\("transcribing"\)/);
   assert.match(panelSource, /ambientOperationLabels\.transcribing/);
-  const pinchSubmitStart = panelSource.indexOf('source: "camera",\n        trigger: "pinch",\n        mode: "dispatch_audio"');
-  assert.notEqual(pinchSubmitStart, -1);
-  const pinchSubmitEnd = panelSource.indexOf("      });", pinchSubmitStart);
-  assert.notEqual(pinchSubmitEnd, -1);
-  const pinchSubmitSource = panelSource.slice(pinchSubmitStart, pinchSubmitEnd);
-  assert.doesNotMatch(pinchSubmitSource, /audio_data_url: recording\.dataUrl/);
-  assert.match(panelSource, /audio_mime_type: recording\.mimeType/);
-  assert.match(panelSource, /audio_name: `ok-mark-recording\.\$\{recording\.extension\}`/);
-  assert.match(panelSource, /dataUrl: recording\.dataUrl/);
-  assert.match(panelSource, /\.\.\.\(transcript \? \{ input_text: transcript \} : \{\}\)/);
-  assert.match(panelSource, /setLatestSubmittedInput\(transcript \|\| null\)/);
-  assert.doesNotMatch(panelSource, /録音音声を送信しました。文字起こしはまだありません。/);
-  assert.doesNotMatch(panelSource, /音声を確認して返答してください。/);
+  const finishStart = panelSource.indexOf("const finishPinchRecording");
+  const finishEnd = panelSource.indexOf("const discardAudioReview", finishStart);
+  const finishSource = panelSource.slice(finishStart, finishEnd);
+  assert.match(finishSource, /createAmbientAudioReview/);
+  assert.match(finishSource, /setPendingAudioReview\(review\)/);
+  assert.doesNotMatch(finishSource, /ambientTriggerClient\.submitEvent/);
+  assert.match(panelSource, /<AmbientAudioReviewCard/);
+  assert.match(reviewCardSource, /data-testid="ambient-audio-review"/);
+  assert.match(reviewCardSource, /data-testid="ambient-audio-review-transcript"/);
+  assert.match(reviewCardSource, /data-testid="ambient-audio-review-send"/);
+  assert.match(reviewCardSource, /data-testid="ambient-audio-review-discard"/);
+  assert.match(panelSource, /URL\.revokeObjectURL\(objectUrl\)/);
+  assert.match(panelSource, /setPendingAudioReview\(null\)/);
+  assert.match(reviewCardSource, /オフラインのまま終了/);
+  assert.match(reviewSource, /mode: "dispatch_audio"/);
+  assert.match(reviewSource, /event_id: review\.requestId/);
+  assert.match(reviewSource, /attachments: options\.transcriptOnly/);
+  assert.match(reviewSource, /dataUrl: recording\.dataUrl/);
 });
 
 test("ambient readout toggle uses stable on off copy", () => {

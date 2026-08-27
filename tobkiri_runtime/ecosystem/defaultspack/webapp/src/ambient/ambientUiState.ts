@@ -79,7 +79,7 @@ export const ambientPermissionLabels: Record<string, string> = {
 export const ambientCopyJa = {
   title: "合図待ち",
   subtitle: "指で録音",
-  gestureShort: "OKマークで録音開始、指を開くと送信します。",
+  gestureShort: "OKマークで録音開始、指を開くと送信前確認が開きます。",
   privacyShort: "音声・映像は保存しません",
   auditShort: "履歴には使った時刻と結果だけ残します",
   states: {
@@ -107,14 +107,14 @@ export const ambientCopyJa = {
     readyOff: {
       badge: "停止中",
       headline: "合図待ちは停止中です",
-      body: "OKマークで録音開始、指を開くと送信します",
+      body: "OKマークで録音開始、指を開くと送信前確認が開きます",
       primary: "合図待ちを開始",
       tone: "zinc",
     },
     monitoring: {
       badge: "使用中",
       headline: "合図を待っています",
-      body: "OKマークで録音開始、指を開くと送信します",
+      body: "OKマークで録音開始、指を開くと送信前確認が開きます",
       primary: "停止する",
       tone: "emerald",
     },

@@ -20,6 +20,6 @@ Input actions:
 Gesture events:
 
 - `pinch` + `record_audio_start` starts hold-to-record
-- `pinch` + `dispatch_audio` sends ephemeral audio on release
+- `pinch` + `dispatch_audio` sends reviewed ephemeral audio after explicit confirmation
 - `gesture_choice` + `choice_response` sends `2`, `3`, or `4` as text
 - `approval_gesture` records approve/reject intent for approval windows

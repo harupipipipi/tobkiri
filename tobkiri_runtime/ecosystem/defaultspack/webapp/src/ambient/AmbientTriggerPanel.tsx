@@ -20,7 +20,14 @@ import { ambientConversationCompletionFromSnapshot, waitForAmbientAssistantRespo
 import { safeLocalStorageGet, safeLocalStorageSet } from "./ambientStorage";
 import type { AmbientFinalAnswerPayload } from "./finalAnswerBridge";
 import { AmbientMiniChat } from "./AmbientMiniChat";
+import { AmbientAudioReviewCard } from "./AmbientAudioReviewCard";
 import { buildAmbientDispatchTemplateContext, mergeAmbientDispatchMetadata } from "./ambientDispatchContext";
+import {
+  ambientAudioReviewBlob,
+  buildAmbientAudioReviewPayload,
+  createAmbientAudioReview,
+  type AmbientAudioReview,
+} from "./ambientAudioReview";
 import {
   ambientConversationIdFromResult,
   ambientLatestAssistantFinal,
@@ -172,6 +179,12 @@ export function AmbientTriggerPanel({
   const [micListening, setMicListening] = useState(false);
   const [pinchRecording, setPinchRecording] = useState(false);
   const [pinchTranscriptPreview, setPinchTranscriptPreview] = useState("");
+  const [pendingAudioReview, setPendingAudioReview] = useState<AmbientAudioReview | null>(null);
+  const [audioReviewTranscript, setAudioReviewTranscript] = useState("");
+  const [audioReviewTranscriptOnly, setAudioReviewTranscriptOnly] = useState(false);
+  const [audioReviewSending, setAudioReviewSending] = useState(false);
+  const [audioReviewAttempted, setAudioReviewAttempted] = useState(false);
+  const [audioReviewUrl, setAudioReviewUrl] = useState<string | null>(null);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [pinchDetectorStatus, setPinchDetectorStatus] = useState("idle");
@@ -215,7 +228,10 @@ export function AmbientTriggerPanel({
     setVideoElement(node);
   }, []);
 
-  const readoutBlocked = useCallback(() => pinchRecording || Boolean(pinchRecorderRef.current), [pinchRecording]);
+  const readoutBlocked = useCallback(
+    () => pinchRecording || audioReviewSending || Boolean(pinchRecorderRef.current),
+    [audioReviewSending, pinchRecording],
+  );
   const miniFinalAnswer = useMemo(
     () => standalone ? ambientLatestAssistantFinal(miniConversation) : null,
     [miniConversation, standalone],
@@ -724,6 +740,24 @@ export function AmbientTriggerPanel({
     audioStopRef.current = null;
   }, []);
 
+  useEffect(() => {
+    if (!pendingAudioReview) {
+      setAudioReviewUrl(null);
+      return undefined;
+    }
+    let objectUrl: string | null = null;
+    try {
+      objectUrl = URL.createObjectURL(ambientAudioReviewBlob(pendingAudioReview.recording.dataUrl));
+      setAudioReviewUrl(objectUrl);
+    } catch (error) {
+      setAudioReviewUrl(null);
+      setMessage(error instanceof Error ? error.message : "録音を再生できませんでした。");
+    }
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [pendingAudioReview]);
+
   function stopPinchSpeechRecognition(abort = false): string {
     const recognition = pinchSpeechRecognitionRef.current;
     pinchSpeechRecognitionRef.current = null;
@@ -753,8 +787,7 @@ export function AmbientTriggerPanel({
     const transcript = await settlePinchSpeechRecognition();
     setPinchTranscriptPreview("");
     setPinchDetectorStatus("transcribing");
-    setMessage(`${ambientOperationLabels.transcribing}: 録音音声を文字にしています。`);
-    setLatestSubmittedInput(transcript || null);
+    setMessage(`${ambientOperationLabels.transcribing}: 送信前の確認画面を準備しています。`);
     try {
       const recording = await recorder.stop();
       if (recording.size <= 0) {
@@ -763,60 +796,107 @@ export function AmbientTriggerPanel({
         setPinchDetectorStatus("tracking");
         return;
       }
-      if (transcript) {
-        setPinchDetectorStatus("sending");
-        setMessage(`${ambientOperationLabels.sending}: 文字起こしをAIへ送っています。`);
-      }
-      const submittedAt = Date.now();
       const requestedConversationId = miniConversationId || conversationIdRef.current || null;
       const previousAssistantMessageId = miniConversation?.id === requestedConversationId
         ? ambientLatestAssistantFinal(miniConversation)?.messageId ?? null
         : null;
-      const result = await ambientTriggerClient.submitEvent({
-        source: "camera",
-        trigger: "pinch",
-        mode: "dispatch_audio",
-        action_id: "chat.message",
-        ...dispatchTemplateContext.eventPayload,
-        params: ambientParamsWithTranscriptionLanguage(dispatchTemplateContext.eventPayload.params),
-        ...(transcript ? { input_text: transcript } : {}),
-        conversation_id: requestedConversationId || undefined,
+      const review = createAmbientAudioReview({
+        recording,
+        transcript,
+        requestedConversationId,
+        previousAssistantMessageId,
+        destinationSummary: routingSummary,
+        approvalRequired: aiSendApprovalRequired,
         confidence: state.confidence,
-        duration_ms: recording.durationMs,
-        audio_mime_type: recording.mimeType,
-        audio_size: recording.size,
-        audio_name: `ok-mark-recording.${recording.extension}`,
-        metadata: mergeAmbientDispatchMetadata({
-          panel: "ambient_mini_window",
-          hand: state.hand,
-          normalized_distance: state.normalizedDistance,
-          hold_to_record: true,
-          transcript_available: Boolean(transcript),
-          ...(transcript ? { transcript_source: "web_speech_api" } : {}),
-        }, dispatchTemplateContext),
-        attachments: [
-          {
-            id: `ambient-audio-${Date.now()}`,
-            name: `ok-mark-recording.${recording.extension}`,
-            type: recording.mimeType,
-            size: recording.size,
-            duration_ms: recording.durationMs,
-            dataUrl: recording.dataUrl,
-            source: "ambient.camera_pinch_hold",
-            ephemeral: true,
-            do_not_persist: true,
-            ...(transcript ? { transcript, transcription: transcript, transcript_source: "web_speech_api" } : {}),
-          },
-        ],
+        hand: state.hand,
+        normalizedDistance: state.normalizedDistance,
+        releaseReason: state.reason || "released",
+        dispatchContext: dispatchTemplateContext,
+        capturedAt: Date.now(),
       });
-      const resultConversationId = activateMiniConversationFromSubmitResult(result, requestedConversationId);
+      setPendingAudioReview(review);
+      setAudioReviewTranscript(review.transcript);
+      setAudioReviewTranscriptOnly(false);
+      setAudioReviewAttempted(false);
+      setPinchDetectorStatus("reviewing");
+      setMessage("録音はまだ送信されていません。内容と送信先を確認してください。");
+    } catch (error) {
+      const errorText = error instanceof Error ? error.message : "録音の確認画面を準備できませんでした。";
+      setMessage(`${ambientOperationLabels.failed}: ${errorText}`);
+      setMiniChatError(errorText);
+    }
+  }, [aiSendApprovalRequired, dispatchTemplateContext, miniConversation, miniConversationId, routingSummary]);
+
+  const discardAudioReview = useCallback((messageText = "録音と文字起こしを端末上から破棄しました。") => {
+    setPendingAudioReview(null);
+    setAudioReviewTranscript("");
+    setAudioReviewTranscriptOnly(false);
+    setAudioReviewSending(false);
+    setAudioReviewAttempted(false);
+    setLatestSubmittedInput(null);
+    setPinchDetectorStatus("tracking");
+    setMessage(messageText);
+  }, []);
+
+  const saveAudioReviewLocally = useCallback(() => {
+    if (!pendingAudioReview || !audioReviewUrl) return;
+    const link = document.createElement("a");
+    link.href = audioReviewUrl;
+    link.download = `tobkiri-ambient-recording.${pendingAudioReview.recording.extension}`;
+    link.rel = "noopener";
+    link.click();
+    setMessage("録音をこの端末へ保存しました。レビュー中の内容はまだ送信されていません。");
+  }, [audioReviewUrl, pendingAudioReview]);
+
+  const sendAudioReview = useCallback(async () => {
+    const review = pendingAudioReview;
+    if (!review || audioReviewSending) return;
+    const transcript = audioReviewTranscript.trim();
+    if (audioReviewTranscriptOnly && !transcript) {
+      setMessage("文字だけ送る場合は、送信する文字起こしを入力してください。");
+      return;
+    }
+    setAudioReviewSending(true);
+    setAudioReviewAttempted(true);
+    setPinchDetectorStatus("sending");
+    setMessage(`${ambientOperationLabels.sending}: 確認済みの内容をAIへ送っています。`);
+    setLatestSubmittedInput(transcript || null);
+    const submittedAt = Date.now();
+    try {
+      const payload = buildAmbientAudioReviewPayload(review, {
+        transcript,
+        transcriptOnly: audioReviewTranscriptOnly,
+      });
+      payload.params = ambientParamsWithTranscriptionLanguage(payload.params);
+      let result: Record<string, unknown>;
+      try {
+        const submitted = await ambientTriggerClient.submitEvent(payload);
+        result = await resolveAmbientEventResult(submitted, review.requestId);
+      } catch (submitError) {
+        const settlement = await ambientTriggerClient.eventStatus(review.requestId).catch(() => null);
+        if (settlement?.status === "complete" && settlement.result) {
+          result = settlement.result;
+        } else if (settlement?.status === "processing") {
+          result = await resolveAmbientEventResult({ status: "processing" }, review.requestId);
+        } else {
+          throw submitError;
+        }
+      }
+      const resultConversationId = activateMiniConversationFromSubmitResult(
+        result,
+        review.requestedConversationId,
+      );
+      setPendingAudioReview(null);
+      setAudioReviewTranscript("");
+      setAudioReviewTranscriptOnly(false);
+      setAudioReviewAttempted(false);
       onOpenInputRef.current?.("");
       focusComposer();
       await refresh();
       await settleAmbientSubmission({
         result,
-        targetConversationId: resultConversationId || requestedConversationId,
-        previousAssistantMessageId,
+        targetConversationId: resultConversationId || review.requestedConversationId,
+        previousAssistantMessageId: review.previousAssistantMessageId,
         submittedAt,
       });
     } catch (error) {
@@ -824,7 +904,14 @@ export function AmbientTriggerPanel({
       setErrorMessage(`${ambientOperationLabels.failed}: ${errorText}`);
       setMiniChatError(errorText);
     }
-  }, [activateMiniConversationFromSubmitResult, dispatchTemplateContext, miniConversation, miniConversationId, settleAmbientSubmission]);
+  }, [
+    activateMiniConversationFromSubmitResult,
+    audioReviewSending,
+    audioReviewTranscript,
+    audioReviewTranscriptOnly,
+    pendingAudioReview,
+    settleAmbientSubmission,
+  ]);
 
   useEffect(() => {
     if (!pinchRecording || !recordingStartedAt) return;
@@ -849,6 +936,10 @@ export function AmbientTriggerPanel({
 
   const beginPinchRecording = useCallback(async (state: PinchState) => {
     if (pinchRecorderRef.current) return;
+    if (pendingAudioReview) {
+      setMessage("確認中の録音を送信・保存・破棄してから、次の録音を開始してください。");
+      return;
+    }
     if (!allRumiPermissionsGranted || !allOsPermissionsGranted || rumiApprovalPending) {
       setWarningMessage("Tobkiriの許可と端末のマイク・カメラ許可がそろってから録音できます。");
       return;
@@ -858,7 +949,7 @@ export function AmbientTriggerPanel({
     pinchTranscriptRef.current = "";
     setPinchTranscriptPreview("");
     setPinchDetectorStatus("recording");
-    setMessage(`${ambientOperationLabels.recording}: OKマークを作ったまま話してください。指を開くと送信します。`);
+    setMessage(`${ambientOperationLabels.recording}: OKマークを作ったまま話してください。指を開くと確認画面が開きます。`);
     try {
       const recorder = await startPinchAudioRecorder(selectedMicId || undefined);
       pinchRecorderRef.current = recorder;
@@ -892,7 +983,7 @@ export function AmbientTriggerPanel({
       setPinchDetectorStatus("tracking");
       setErrorMessage(`${ambientOperationLabels.failed}: ${error instanceof Error ? error.message : "録音を開始できませんでした。"}`);
     }
-  }, [allOsPermissionsGranted, allRumiPermissionsGranted, rumiApprovalPending, selectedMicId]);
+  }, [allOsPermissionsGranted, allRumiPermissionsGranted, pendingAudioReview, rumiApprovalPending, selectedMicId]);
 
   const submitFingerChoice = useCallback(async (state: PinchState) => {
     const choice = state.fingerChoice;
@@ -1269,7 +1360,7 @@ export function AmbientTriggerPanel({
       }
       if (!cameraStream) await acquireCameraForMonitoring();
       return ambientTriggerClient.startMonitor({ voice_wake: true, gesture_pinch: true });
-    }, "待機中です。OKマークで録音開始、指を開くと送信します。");
+    }, "待機中です。OKマークで録音開始、指を開くと確認画面が開きます。");
   }
 
   async function stopMonitoring() {
@@ -2045,6 +2136,22 @@ export function AmbientTriggerPanel({
               </span>
             </div>
           )}
+          {pendingAudioReview && (
+            <AmbientAudioReviewCard
+              review={pendingAudioReview}
+              audioUrl={audioReviewUrl}
+              transcript={audioReviewTranscript}
+              transcriptOnly={audioReviewTranscriptOnly}
+              sending={audioReviewSending}
+              attempted={audioReviewAttempted}
+              onTranscriptChange={setAudioReviewTranscript}
+              onTranscriptOnlyChange={setAudioReviewTranscriptOnly}
+              onSend={() => void sendAudioReview()}
+              onRerecord={() => discardAudioReview("録音を破棄しました。OKマークでもう一度録音できます。")}
+              onSave={saveAudioReviewLocally}
+              onDiscard={() => discardAudioReview()}
+            />
+          )}
           <div
             className={cn(
               "border-l pl-2 text-[11px] leading-5",
@@ -2054,7 +2161,7 @@ export function AmbientTriggerPanel({
             <div className="flex items-start justify-between gap-2">
               <p className={cn("min-w-0 flex-1 font-semibold", allRumiPermissionsGranted && allOsPermissionsGranted ? "text-[13px] text-zinc-50" : "text-[12px] text-zinc-100")}>
                 {allRumiPermissionsGranted && allOsPermissionsGranted
-                  ? "OKマークで録音開始、指を開くと送信します"
+                  ? "OKマークで録音開始、指を開くと送信前確認"
                   : !allRumiPermissionsGranted
                     ? "Tobkiriの利用許可を完了してください"
                     : "Macのマイク・カメラ許可を完了してください"}
@@ -2506,6 +2613,22 @@ function isMediaDeviceNotFound(error: unknown): boolean {
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function resolveAmbientEventResult(
+  initial: Record<string, unknown>,
+  eventId: string,
+): Promise<Record<string, unknown>> {
+  if (String(initial.status ?? "") !== "processing") return initial;
+  for (const delayMs of [250, 600, 1200, 2400]) {
+    await sleep(delayMs);
+    const settlement = await ambientTriggerClient.eventStatus(eventId);
+    if (settlement.status === "complete" && settlement.result) return settlement.result;
+    if (settlement.status === "not_found") {
+      throw new Error("送信要求は受理されていません。同じ確認画面から再送できます。");
+    }
+  }
+  throw new Error("送信処理が継続中です。しばらく待ってから同じ確認画面で状態を確認してください。");
 }
 
 function focusComposer() {

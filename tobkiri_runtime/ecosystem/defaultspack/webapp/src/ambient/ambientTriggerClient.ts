@@ -146,6 +146,12 @@ export type AmbientAudioTranscriptionResult = {
   transcription?: Record<string, unknown>;
 };
 
+export type AmbientEventSettlement = {
+  status: "not_found" | "processing" | "complete" | string;
+  event_id: string;
+  result?: Record<string, unknown>;
+};
+
 export function explainAmbientNetworkFailure(error: unknown): Error {
   if (
     typeof DOMException !== "undefined"
@@ -241,6 +247,13 @@ export const ambientTriggerClient = {
     return requestJson<Record<string, unknown>>(defaultspackContractRoute("api/ambient/events"), {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+
+  eventStatus(eventId: string) {
+    return requestJson<AmbientEventSettlement>(defaultspackContractRoute("api/ambient/events/status"), {
+      method: "POST",
+      body: JSON.stringify({ event_id: eventId }),
     });
   },
 

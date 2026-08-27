@@ -7,6 +7,8 @@ import types
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 MIC_PERMISSION = "host.microphone.capture"
@@ -197,6 +199,62 @@ def test_pinch_and_agent_dispatch_share_ambient_router(monkeypatch, tmp_path):
     assert envelope.delivery["action_id"] == "agent.delegate"
     assert envelope.source["provider"] == "ambient"
     assert envelope.target["conversation_id"] == "conv-1"
+
+
+def test_dispatch_audio_event_id_is_idempotent_and_queryable(monkeypatch, tmp_path):
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AMBIENT_STORE_PATH", str(tmp_path / "ambient-state.json"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_AMBIENT_AUDIT_PATH", str(tmp_path / "ambient-audit.jsonl"))
+
+    from domain.ambient.router import AmbientTriggerRouter, _AMBIENT_EVENT_SETTLEMENTS
+
+    _AMBIENT_EVENT_SETTLEMENTS.clear()
+    router = AmbientTriggerRouter()
+    router.start_monitor()
+    router.grant_permission(MIC_PERMISSION, os_status="granted")
+    router.grant_permission(CAMERA_PERMISSION, os_status="granted")
+    router.grant_permission("ambient.trigger.dispatch")
+    payload = {
+        "event_id": "ambient_audio_review_test_idempotency",
+        "source": "camera",
+        "trigger": "pinch",
+        "confidence": 0.95,
+        "duration_ms": 800,
+        "mode": "dispatch_audio",
+        "conversation_id": "conv-idempotent",
+        "input_text": "確認済みの文字起こし",
+        "attachments": [],
+        "metadata": {"review_confirmed": True, "transcript_only": True},
+    }
+
+    try:
+        with patch(
+            "domain.ambient.router.submit_input",
+            return_value={"status": "ok", "conversation_id": "conv-idempotent"},
+        ) as submit:
+            first = router.submit_event(payload, {"conversation_id": "conv-idempotent"})
+            replay = router.submit_event(payload, {"conversation_id": "conv-idempotent"})
+
+        assert first["status"] == "ok"
+        assert replay["status"] == "ok"
+        assert replay["idempotent_replay"] is True
+        submit.assert_called_once()
+
+        settlement = router.event_status(payload["event_id"])
+        assert settlement == {
+            "status": "complete",
+            "event_id": payload["event_id"],
+            "result": first,
+        }
+        assert router.event_status("unknown-event") == {
+            "status": "not_found",
+            "event_id": "unknown-event",
+        }
+
+        conflicting = {**payload, "input_text": "別の内容"}
+        with pytest.raises(ValueError, match="already used for different content"):
+            router.submit_event(conflicting, {"conversation_id": "conv-idempotent"})
+    finally:
+        _AMBIENT_EVENT_SETTLEMENTS.clear()
 
 
 def test_ambient_audio_payload_aliases_materialize_ephemeral_attachment_metadata():

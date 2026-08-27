@@ -112,7 +112,7 @@ test("ambient copy uses concrete recording and send state labels", () => {
     "失敗",
   ]);
   assert.match(ambientCopyJa.gestureShort, /OKマーク/);
-  assert.match(ambientCopyJa.states.monitoring.body, /指を開くと送信/);
+  assert.match(ambientCopyJa.states.monitoring.body, /指を開くと送信前確認/);
   assert.match(ambientCopyJa.states.transcribing.headline, /録音音声を文字/);
   assert.doesNotMatch(JSON.stringify(ambientCopyJa), /指をくっつけ/);
 });
@@ -139,7 +139,7 @@ test("ambient renderable message keeps actionable problems and hides routine sta
   assert.equal(ambientRenderableMessage("文字起こし中: 録音音声を文字にしています。"), null);
   assert.equal(ambientRenderableMessage("返答待ち: 録音音声をAIに送信しました。返答を待っています。"), null);
   assert.equal(ambientRenderableMessage("完了: AIの回答が届きました。"), null);
-  assert.equal(ambientRenderableMessage("待機中です。OKマークで録音開始、指を開くと送信します。"), null);
+  assert.equal(ambientRenderableMessage("待機中です。OKマークで録音開始、指を開くと送信前確認が開きます。"), null);
   assert.equal(ambientRenderableMessage("文字起こし: hello"), null);
 
   assert.equal(
