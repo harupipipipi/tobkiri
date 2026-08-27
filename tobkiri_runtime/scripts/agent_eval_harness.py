@@ -260,7 +260,7 @@ def _validate_suite(suite: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
-    evidence = {
+    evidence: dict[str, Any] = {
         "transcript": [],
         "tool_calls": [],
         "approvals": [],

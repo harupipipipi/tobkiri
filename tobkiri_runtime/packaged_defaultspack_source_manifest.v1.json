@@ -1055,8 +1055,8 @@
     {
       "path": "scripts/agent_eval_harness.py",
       "type": "regular-file",
-      "size": 13045,
-      "sha256": "7fc903c815fa6964eb8e6c6e009479e7a9394b6d37e75ef7d6c292e2b8cc0c7c",
+      "size": 13061,
+      "sha256": "356e872318c28fd50e5cd968bec284d05505a21f18de414283504b5239dcdb7c",
       "executable": false
     },
     {
