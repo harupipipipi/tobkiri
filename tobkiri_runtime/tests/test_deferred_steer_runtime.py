@@ -297,7 +297,10 @@ def test_failed_application_remains_visible_and_can_retry(tmp_path: Path) -> Non
     assert failed["error"] == "normal conversation message creation failed"
     assert recovered["status"] == "applied"
     assert visible[0]["id"] == "steer-1"
-    assert visible[0]["provenance"]["source_id"] == "run-1"
+    assert visible[0]["source_id"] == "run-1"
+    assert visible[0]["related_references"] == [
+        {"kind": "run", "id": "run-1", "label": ""}
+    ]
 
 
 def test_conversation_route_registers_visible_non_auto_executing_deferred_steer(
