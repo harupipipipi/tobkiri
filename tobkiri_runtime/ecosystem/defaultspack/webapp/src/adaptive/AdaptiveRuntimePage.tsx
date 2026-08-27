@@ -74,6 +74,7 @@ export function AdaptiveRuntimePage() {
                   key={item.id}
                   type="button"
                   {...tabs.tabProps(item.id)}
+                  aria-label={item.label}
                   className={`${adaptiveControlClass} ${active ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : ""}`}
                 >
                   <Icon size={14} aria-hidden="true" />
