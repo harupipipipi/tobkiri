@@ -184,3 +184,56 @@ test('keyboard-reachable actions run and dismissal remains explicit', async () =
     });
   }
 });
+
+test('failed actions remain paused, announced, and retryable', async () => {
+  const previousState = useAppStore.getState();
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const surface = createSurface();
+  let actionCalls = 0;
+  useAppStore.setState({
+    toasts: [
+      toast('retry', 'warning', {
+        persistent: false,
+        durationMs: 80,
+        action: {
+          label: 'Upload',
+          onAction: () => {
+            actionCalls += 1;
+            if (actionCalls === 1) throw new Error('sensitive backend detail');
+          },
+        },
+      }),
+    ],
+  });
+  try {
+    await act(async () => surface.root.render(<ToastContainer />));
+    const upload = [...surface.container.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Upload');
+    assert.ok(upload);
+    await act(async () => upload.click());
+    const card = surface.container.querySelector<HTMLElement>('[data-toast-id="retry"]');
+    assert.ok(card);
+    assert.equal(card.dataset.toastPaused, 'true');
+    assert.match(card.textContent ?? '', /Action failed\. Try again or dismiss\./);
+    assert.doesNotMatch(card.textContent ?? '', /sensitive backend detail/);
+    const retry = [...card.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Retry Upload');
+    assert.ok(retry);
+    await wait(120);
+    assert.ok(surface.container.querySelector('[data-toast-id="retry"]'));
+    await act(async () => retry.click());
+    assert.equal(actionCalls, 2);
+    assert.equal(surface.container.querySelector('[data-toast-id="retry"]'), null);
+  } finally {
+    act(() => surface.root.unmount());
+    useAppStore.setState(previousState, true);
+    surface.dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
+});
