@@ -301,14 +301,21 @@ _CURATED_PROVIDER_METADATA: Dict[str, Dict[str, Any]] = {
     "ollama": {
         "display_name": "Ollama",
         "kind": "local",
-        "description": "Local models served by Ollama.",
-        "env_vars": [],
+        "description": "Local Ollama runtime with native installed-model discovery.",
+        "env_vars": ["OLLAMA_API_KEY"],
         "base_url_envs": ["OLLAMA_BASE_URL", "OLLAMA_HOST"],
-        "catalog_only": True,
-        "supports_invoke": False,
-        "default_model": "llama3.1:8b",
-        "default_base_url": "http://127.0.0.1:11434/v1",
-        "capabilities": ["chat", "embedding", "local", "openai_compatible"],
+        "catalog_only": False,
+        "supports_invoke": True,
+        # The local server is authoritative. Never publish a guessed default.
+        "default_model": "",
+        "default_base_url": "local://ollama",
+        "capabilities": [
+            "chat",
+            "embedding",
+            "local",
+            "openai_compatible",
+            "runtime_model_discovery",
+        ],
     },
     "lmstudio": {
         "display_name": "LM Studio",
@@ -582,11 +589,8 @@ _CURATED_PROVIDER_MODELS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "glm": [{"model_id": "glm-4.5", "name": "GLM 4.5", "type": "chat"}],
     "longcat": [{"model_id": "LongCat-Flash-Chat", "name": "LongCat Flash Chat", "type": "chat"}],
-    "ollama": [
-        {"model_id": "llama3.1:8b", "name": "Llama 3.1 8B", "type": "chat"},
-        {"model_id": "qwen2.5-coder:7b", "name": "Qwen 2.5 Coder 7B", "type": "chat"},
-        {"model_id": "deepseek-r1", "name": "DeepSeek R1", "type": "reasoning"},
-    ],
+    # Ollama inventory is supplied only by the configured native server.
+    "ollama": [],
     "lmstudio": [
         {"model_id": "deepseek-r1", "name": "DeepSeek R1", "type": "reasoning"},
         {"model_id": "llama3.1:8b", "name": "Llama 3.1 8B", "type": "chat"},
@@ -625,7 +629,6 @@ _BEST_MODEL_BY_PROVIDER = {
     "fireworks": "accounts/fireworks/models/llama-v3p1-70b-instruct",
     "glm": "glm-4.5",
     "longcat": "LongCat-Flash-Chat",
-    "ollama": "llama3.1:8b",
     "lmstudio": "deepseek-r1",
     "vllm": "deepseek-r1",
     "llamacpp": "local-gguf",

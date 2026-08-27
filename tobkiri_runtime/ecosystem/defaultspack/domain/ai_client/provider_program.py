@@ -181,7 +181,6 @@ PROVIDER_PROGRAM_RECORDS = (
 # deliberately no model list here: the server is authoritative for its loaded
 # inventory.  A user can override every endpoint through the listed env var.
 LOCAL_OPENAI_RUNTIME_CONNECTIONS = {
-    "ollama": ("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
     "vllm": ("VLLM_BASE_URL", "http://127.0.0.1:8000/v1"),
     "llamacpp": ("LLAMACPP_BASE_URL", "http://127.0.0.1:8080/v1"),
     "localai": ("LOCALAI_BASE_URL", "http://127.0.0.1:8080/v1"),
