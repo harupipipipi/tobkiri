@@ -5,6 +5,7 @@ import {
   type ComposerWidgetKind,
 } from "./api";
 import type { ComposerExtensionItem, ComposerSkillItem, DroppedWidget } from "../renderers/types";
+import { resolveCatalogDisplay } from "./catalogDisplay";
 import { extractMentionTokens, hasUnescapedMentionSyntax } from "./mentionContract";
 import { supportedComposerDropKind, supportsComposerToggleDrop } from "./toolUi";
 
@@ -36,6 +37,7 @@ function composerWidgetTypeForKind(kind: ComposerWidgetKind): DroppedWidget["typ
 function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: ComposerWidgetKind, enabled = true): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const display = resolveCatalogDisplay(item, "composer");
   return {
     id: item.id,
     type: composerWidgetTypeForKind(kind),
@@ -45,7 +47,8 @@ function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: Compos
     action: item.ui?.composer_action,
     sourceItemId: item.id,
     description,
-    icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    icon: display.icon,
+    ...(display.image ? { image: display.image } : {}),
     metadata: {
       source: "composer_catalog_drop",
       tool: {
@@ -119,6 +122,7 @@ export function composerToolMentionDisplay(item: ComposerExtensionItem): { label
 export function composerToolMentionWidget(item: ComposerExtensionItem, syntaxOverride?: string): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const display = resolveCatalogDisplay(item, "composer");
   return {
     id: item.id,
     type: "tool",
@@ -128,7 +132,8 @@ export function composerToolMentionWidget(item: ComposerExtensionItem, syntaxOve
     action: item.ui?.composer_action,
     sourceItemId: item.id,
     description,
-    icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    icon: display.icon,
+    ...(display.image ? { image: display.image } : {}),
     metadata: {
       source: "composer_at_mention",
       mention: {
@@ -177,6 +182,7 @@ export function composerSkillMentionDisplay(item: ComposerSkillItem): { label: s
 
 export function composerSkillMentionWidget(item: ComposerSkillItem, syntaxOverride?: string): DroppedWidget {
   const label = item.label || item.id;
+  const display = resolveCatalogDisplay(item, "composer");
   return {
     id: item.id,
     type: "skill",
@@ -185,6 +191,7 @@ export function composerSkillMentionWidget(item: ComposerSkillItem, syntaxOverri
     widgetKind: "skill_prompt",
     sourceItemId: item.id,
     description: item.description,
+    ...display,
     metadata: {
       source: "composer_at_mention",
       mention: {
@@ -261,7 +268,8 @@ export function composerServiceMentionWidget(service: {
 
 function normalizedMentionAliases(item: ComposerExtensionItem | ComposerSkillItem): string[] {
   const label = String(item.label ?? "").trim();
-  const composerLabel = "ui" in item ? String(item.ui?.composer_label ?? "").trim() : "";
+  const itemUi = item.ui as { composer_label?: unknown } | undefined;
+  const composerLabel = String(itemUi?.composer_label ?? "").trim();
   const aliases = "aliases" in item && Array.isArray(item.aliases) ? item.aliases : [];
   return [
     item.id,

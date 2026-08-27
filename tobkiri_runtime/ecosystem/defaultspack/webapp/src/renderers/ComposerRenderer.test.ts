@@ -319,6 +319,45 @@ test("JSON list panel renders trigger-neutral payload data", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(payload)), payload);
 });
 
+test("mention palette renders shared tool and skill images through one contract", () => {
+  const toolImage = "/static/assets/catalog/tool.png";
+  const skillImage = "/static/assets/catalog/skill.webp";
+  const payload = atMentionPalettePayload([
+    {
+      kind: "tool",
+      id: "tool:review",
+      label: "Review Tool",
+      item: {
+        id: "review",
+        label: "Review Tool",
+        ui: { icon: "wrench", image: toolImage },
+      },
+    },
+    {
+      kind: "skill",
+      id: "skill:review",
+      label: "Review Skill",
+      skill: {
+        id: "review",
+        label: "Review Skill",
+        ui: { icon: "shield-check", image: skillImage },
+      },
+    },
+  ] as Parameters<typeof atMentionPalettePayload>[0]);
+  const html = renderToStaticMarkup(createElement(JsonListPanel, {
+    payload,
+    activeIndex: 0,
+    onActiveIndexChange: () => undefined,
+    onSelect: () => undefined,
+  }));
+
+  assert.equal(payload.items[0]?.image, toolImage);
+  assert.equal(payload.items[1]?.image, skillImage);
+  assert.match(html, /src="\/static\/assets\/catalog\/tool\.png"/);
+  assert.match(html, /src="\/static\/assets\/catalog\/skill\.webp"/);
+  assert.doesNotMatch(html, /https:\/\//);
+});
+
 test("slash commands use the same JSON palette contract as mentions", () => {
   const command: ComposerCommandItem = {
     id: "deepthink",
@@ -504,13 +543,20 @@ test("selected mentions render inline while explicit tool toggles own their sele
     ...baseProps,
     input: "Use @Web Search then review",
     entityReferences: [{ kind: "tool", id: "web_search", syntax: "@Web Search" }],
-    droppedWidgets: [composerToolMentionWidget({ id: "web_search", label: "Web Search", category: "tool" })],
+    droppedWidgets: [composerToolMentionWidget({
+      id: "web_search",
+      label: "Web Search",
+      category: "tool",
+      ui: { image: "/static/assets/catalog/web-search.png" },
+    })],
     selectedToolIds: ["web_search"],
     toolSelectionTargets: [{ kind: "tool", id: "web_search", scope: "turn", intent: "include" }],
   }));
 
   assert.match(referenceHtml, /data-composer-inline-mentions="true"/);
-  assert.match(referenceHtml, /rumi-composer-inline-mention[^>]*>@Web Search<\/span>/);
+  assert.match(referenceHtml, /data-composer-inline-reference="true"/);
+  assert.match(referenceHtml, /src="\/static\/assets\/catalog\/web-search\.png"/);
+  assert.match(referenceHtml, /rumi-composer-inline-mention[\s\S]*@Web Search/);
   assert.match(referenceHtml, />Use @Web Search then review<\/textarea>/);
   assert.match(referenceHtml, /rumi-composer-textarea-highlighted text-transparent/);
   assert.doesNotMatch(referenceHtml, /rumi-composer-context-strip[\s\S]*Web Search/);

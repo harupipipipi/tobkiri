@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from jsonschema import Draft202012Validator
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
@@ -77,6 +79,106 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 catalog = registry.build_catalog(lightweight=True, include_skills=True)
 
         self.assertEqual(catalog["skills"], expected)
+
+    def test_skill_display_metadata_survives_catalog_projection(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        class Skills:
+            @staticmethod
+            def list(*, enabled_only):
+                self.assertTrue(enabled_only)
+                return [
+                    {
+                        "id": "release_review",
+                        "display_name": "Release Review",
+                        "description": "Review release evidence.",
+                        "ui": {
+                            "icon": "shield-check",
+                            "image": "/static/assets/skills/release-review.png",
+                        },
+                    }
+                ]
+
+        class Extensions:
+            @staticmethod
+            def skills():
+                return Skills()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = FrontendRegistry(pack_root=Path(tmpdir))
+            with patch(
+                "domain.frontend.registry.get_extension_registry",
+                return_value=Extensions(),
+            ):
+                items = registry._skill_items()
+
+        self.assertEqual(
+            items[0]["ui"],
+            {
+                "icon": "shield-check",
+                "image": "/static/assets/skills/release-review.png",
+            },
+        )
+
+    def test_skill_v2_schema_accepts_shared_icon_and_image_metadata(self):
+        schema = json.loads(
+            (
+                DEFAULTSPACK_ROOT / "schemas" / "skill.v2.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        manifest = json.loads(
+            (
+                DEFAULTSPACK_ROOT
+                / "extensions"
+                / "skills"
+                / "computer_safety"
+                / "manifest.json"
+            ).read_text(encoding="utf-8")
+        )
+        manifest["ui"] = {
+            **manifest["ui"],
+            "icon": "shield-check",
+            "image": "/static/assets/skills/computer-safety.png",
+        }
+
+        errors = list(Draft202012Validator(schema).iter_errors(manifest))
+
+        self.assertEqual(errors, [])
+
+    def test_tool_and_skill_schemas_reject_unsafe_catalog_images(self):
+        schemas = [
+            json.loads(
+                (DEFAULTSPACK_ROOT / "schemas" / schema_name).read_text(
+                    encoding="utf-8"
+                )
+            )
+            for schema_name in ("tool.v3.schema.json", "skill.v2.schema.json")
+        ]
+        unsafe_images = (
+            "https://tracker.example/catalog.png",
+            "data:image/png;base64,AAAA",
+            "/static/assets/catalog/review.svg",
+            "/static/../secret.png",
+        )
+
+        for schema in schemas:
+            ui_validator = Draft202012Validator(schema["properties"]["ui"])
+            self.assertEqual(
+                list(
+                    ui_validator.iter_errors(
+                        {
+                            "icon": "shield-check",
+                            "image": "/static/assets/catalog/review.webp",
+                        }
+                    )
+                ),
+                [],
+            )
+            for unsafe_image in unsafe_images:
+                with self.subTest(schema=schema["$id"], image=unsafe_image):
+                    self.assertTrue(
+                        list(ui_validator.iter_errors({"image": unsafe_image}))
+                    )
 
     def test_catalog_merges_tool_registry_and_extension_manifest(self):
         from domain.frontend.registry import FrontendRegistry

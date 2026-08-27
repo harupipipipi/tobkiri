@@ -73,6 +73,7 @@ import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStat
 import { toolFilterBlockedSummary } from "../lib/toolStatus";
 import { buildBuiltinPlacementManifests, filterPlacementCandidates, normalizePinnedPlacements, togglePinnedPlacement } from "../lib/placement";
 import { compareToolUiItems, sortedToolGroups, sortedToolUiItems, supportedComposerDropKind, supportsComposerDrop, toolGroupFor } from "../lib/toolUi";
+import { resolveCatalogDisplay } from "../lib/catalogDisplay";
 import { PlacementHtmlRenderer } from "./PlacementHtmlRenderer";
 import { ToolFilterLogWidget, ToolManagerWidget } from "./ToolStatusWidgets";
 import { WorkspaceTabRailPanel, type WorkspaceTab, type WorkspaceTabKind } from "./WorkspaceTabs";
@@ -488,7 +489,20 @@ export function sidebarActionDisabledReason(action: SidebarAction, activeConvers
 }
 
 function iconForItem(item: SidebarItem) {
-  const declaredIcon = item.ui?.item_icon || item.ui?.group_icon;
+  const display = resolveCatalogDisplay(item, "sidebar");
+  if (display.image) {
+    return (
+      <img
+        src={display.image}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        className="h-[18px] w-[18px] rounded object-cover"
+      />
+    );
+  }
+  const declaredIcon = display.icon;
   if (declaredIcon && ITEM_ICONS[declaredIcon]) return ITEM_ICONS[declaredIcon];
 
   // Legacy fallback for pre-ui metadata tools.
@@ -1544,6 +1558,7 @@ export function RightSidebar({
     const kind = supportedComposerDropKind(item);
     if (!kind) return;
     const type = kind === "tool_toggle" ? "tool" : kind;
+    const display = resolveCatalogDisplay(item, "composer");
     event.dataTransfer.setData(
       "application/rumi-widget",
       JSON.stringify({
@@ -1551,7 +1566,7 @@ export function RightSidebar({
         type,
         label: item.ui?.composer_label ?? item.label,
         description: item.ui?.composer_description ?? item.description,
-        icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+        ...display,
         widgetKind: kind,
         action: item.ui?.composer_action,
         sourceItemId: item.id,

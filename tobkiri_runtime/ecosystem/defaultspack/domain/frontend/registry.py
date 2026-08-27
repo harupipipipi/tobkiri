@@ -654,20 +654,27 @@ class FrontendRegistry:
             applies_to = skill.get("applies_to_tools") if isinstance(skill.get("applies_to_tools"), list) else []
             metadata = skill.get("metadata") if isinstance(skill.get("metadata"), dict) else {}
             aliases = skill.get("aliases") if isinstance(skill.get("aliases"), list) else metadata.get("aliases", [])
-            items.append(
-                {
-                    "id": skill_id,
-                    "label": display_name,
-                    "description": str(skill.get("description") or metadata.get("feedback") or ""),
-                    "triggers": [str(item) for item in triggers if str(item).strip()],
-                    "applies_to_tools": [str(item) for item in applies_to if str(item).strip()],
-                    "aliases": [str(item) for item in aliases if str(item).strip()] if isinstance(aliases, list) else [],
-                    "metadata": {
-                        "source": metadata.get("source", "skill"),
-                        "source_path": skill.get("source_path", ""),
-                    },
-                }
-            )
+            raw_ui = skill.get("ui") if isinstance(skill.get("ui"), dict) else {}
+            display_ui = {
+                key: value
+                for key in ("icon", "image")
+                if (value := str(raw_ui.get(key) or "").strip())
+            }
+            item = {
+                "id": skill_id,
+                "label": display_name,
+                "description": str(skill.get("description") or metadata.get("feedback") or ""),
+                "triggers": [str(item) for item in triggers if str(item).strip()],
+                "applies_to_tools": [str(item) for item in applies_to if str(item).strip()],
+                "aliases": [str(item) for item in aliases if str(item).strip()] if isinstance(aliases, list) else [],
+                "metadata": {
+                    "source": metadata.get("source", "skill"),
+                    "source_path": skill.get("source_path", ""),
+                },
+            }
+            if display_ui:
+                item["ui"] = display_ui
+            items.append(item)
         return sorted(items, key=lambda item: (item["label"].casefold(), item["id"].casefold()))
 
     @staticmethod
