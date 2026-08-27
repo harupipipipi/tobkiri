@@ -523,7 +523,7 @@ class ApiConfigStore {
       if (record != null && record.trim().isNotEmpty) {
         return _decodeSettingsRevision(record);
       }
-      return _loadLegacySettingsRevision();
+      return await _loadLegacySettingsRevision();
     } on SettingsStorageException {
       rethrow;
     } catch (_) {
@@ -625,7 +625,7 @@ class ApiConfigStore {
   Future<SettingsCommitResult> saveApi(ApiConfig config) async {
     try {
       final current = await loadSettingsRevision();
-      return commitSettings(
+      return await commitSettings(
         api: config,
         pc: current.pc,
         expectedRevision: current.revision,
@@ -895,7 +895,7 @@ class ApiConfigStore {
   Future<SettingsCommitResult> savePc(PcConnection? pc) async {
     try {
       final current = await loadSettingsRevision();
-      return commitSettings(
+      return await commitSettings(
         api: current.api,
         pc: pc,
         expectedRevision: current.revision,
