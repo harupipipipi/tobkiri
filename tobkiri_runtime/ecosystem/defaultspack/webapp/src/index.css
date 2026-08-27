@@ -972,6 +972,17 @@ body {
   }
 }
 
+@media (forced-colors: active) {
+  .host-permissions-page :is(table, th, td, button, details, [role="status"], [role="alert"]) {
+    border-color: CanvasText;
+  }
+
+  .host-permissions-page :is(button, summary):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
 @media (max-width: 1180px) {
   .rumi-workspace-main {
     --rumi-activity-preview-width: clamp(180px, 32%, 300px);

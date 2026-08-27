@@ -1,4 +1,5 @@
 import type { AuthorityRequest } from "../lib/api";
+import { redactDiagnosticText } from "../lib/clientDiagnostics";
 import type { DesktopHostPermissionStatus, DesktopPermissionStatus, DesktopSystemInfo, HostPermissionId } from "../lib/desktopSystemInfo";
 import hostPermissionRegistry from "./hostPermissionRegistry.json";
 
@@ -166,6 +167,11 @@ export function hostPermissionStatusLabel(status: HostPermissionBucket): string 
     default:
       return "Unknown";
   }
+}
+
+export function safeHostPermissionDiagnostic(error: unknown): string {
+  const raw = error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? "");
+  return redactDiagnosticText(raw, 480) || "No additional technical details are available.";
 }
 
 function hostPermissionEntryMap(info: DesktopSystemInfo | null): Map<string, DesktopHostPermissionStatus> {

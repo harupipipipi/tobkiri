@@ -2,10 +2,21 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import type { AuthorityRequest } from "../lib/api";
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
-import { buildHostPermissionRows, hostPermissionDefinitions, hostPermissionSummary } from "./hostPermissions";
+import {
+  buildHostPermissionRows,
+  hostPermissionDefinitions,
+  hostPermissionSummary,
+  safeHostPermissionDiagnostic,
+} from "./hostPermissions";
+import {
+  HostPermissionsTable,
+  StatusStrip,
+} from "./HostPermissionsPage";
 
 type CanonicalHostPermissionDefinition = {
   risk_level?: string;
@@ -127,5 +138,71 @@ describe("host permissions", () => {
     assert.equal(summary.total, hostPermissionDefinitions().length);
     assert.equal(summary.approved, 1);
     assert.equal(summary.osReady, 2);
+  });
+
+  it("renders permission relationships as a named table with explicit row actions", () => {
+    const rows = buildHostPermissionRows(desktopInfo({
+      host_permissions: [
+        {
+          id: "host.screen.capture",
+          label: "Screen Capture",
+          detail: "Read visible screen content without hiding a long description.",
+          rumi_status: "approved",
+          os_status: "missing",
+          required_by_functions: ["computer_screenshot_with_a_long_function_identifier"],
+        },
+      ],
+    }));
+    const screen = rows.find((row) => row.id === "host.screen.capture");
+    assert.ok(screen);
+
+    const html = renderToStaticMarkup(createElement(HostPermissionsTable, {
+      rows: [screen],
+      loading: false,
+      failed: false,
+      tauriAvailable: true,
+      openingPermissionId: null,
+      settingsDestination: "macOS System Settings",
+      onOpenSettings: () => undefined,
+    }));
+
+    assert.match(html, /<table/);
+    assert.match(html, /<caption/);
+    assert.match(html, /scope="col"/);
+    assert.match(html, /scope="row"/);
+    assert.match(html, /Overall status: Missing/);
+    assert.match(html, /Rumi approval/);
+    assert.match(html, /OS permission/);
+    assert.match(html, /Source: Tobkiri Launcher/);
+    assert.match(html, /aria-label="Open macOS System Settings for Screen Capture"/);
+    assert.match(html, /min-h-11/);
+    assert.doesNotMatch(html, /(?:line-clamp|\btruncate\b)/);
+
+    const css = readFileSync(fileURLToPath(new URL("../index.css", import.meta.url)), "utf-8");
+    assert.match(css, /forced-colors: active[\s\S]*host-permissions-page/);
+    assert.match(css, /host-permissions-page[\s\S]*outline: 2px solid Highlight/);
+  });
+
+  it("marks loading summaries busy while retaining explicit text", () => {
+    const html = renderToStaticMarkup(createElement(StatusStrip, {
+      snapshot: null,
+      loading: true,
+    }));
+
+    assert.match(html, /aria-busy="true"/);
+    assert.match(html, /<dl/);
+    assert.match(html, /Rumi approvals/);
+    assert.match(html, />Loading</);
+  });
+
+  it("redacts credentials, URLs, and local paths from disclosed diagnostics", () => {
+    const diagnostic = safeHostPermissionDiagnostic(new Error(
+      "https://host.test/path?token=secret /Users/alice/private/file\nAuthorization: Bearer abcdefghijklmnop",
+    ));
+
+    assert.match(diagnostic, /\[auth-header\]/);
+    assert.match(diagnostic, /\[url\]/);
+    assert.match(diagnostic, /\[path\]/);
+    assert.doesNotMatch(diagnostic, /abcdefghijklmnop|alice|host\.test/);
   });
 });

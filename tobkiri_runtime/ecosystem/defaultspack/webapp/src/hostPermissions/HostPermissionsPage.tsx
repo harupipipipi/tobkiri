@@ -1,14 +1,31 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, ShieldCheck, ShieldQuestion } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  ShieldCheck,
+  ShieldQuestion,
+} from "lucide-react";
 
 import { ErrorNotice } from "../components/ErrorNotice";
 import { cn } from "../lib/cn";
 import { openHostPermissionSettings } from "../lib/desktopApproval";
 import { isDesktopSystemInfoAvailable } from "../lib/desktopSystemInfo";
-import { fetchHostPermissionsSnapshot, type HostPermissionsSnapshot } from "./hostPermissionsClient";
-import { hostPermissionStatusLabel, type HostPermissionBucket, type HostPermissionRow } from "./hostPermissions";
+import {
+  fetchHostPermissionsSnapshot,
+  type HostPermissionsSnapshot,
+} from "./hostPermissionsClient";
+import {
+  hostPermissionStatusLabel,
+  safeHostPermissionDiagnostic,
+  type HostPermissionBucket,
+  type HostPermissionRow,
+} from "./hostPermissions";
 
 type LoadState = "loading" | "ready" | "error";
+type Notice = { tone: "status" | "error"; text: string };
 
 type PageNotice = {
   message: string;
@@ -23,10 +40,13 @@ export function HostPermissionsPage() {
   const tauriAvailable = useMemo(() => isDesktopSystemInfoAvailable(), []);
 
   const refresh = async () => {
+    const previousSignature = snapshot ? hostPermissionStatusSignature(snapshot.rows) : "";
     setLoadState("loading");
     setNotice(null);
+    setDiagnostic("");
     try {
       const nextSnapshot = await fetchHostPermissionsSnapshot();
+      const nextSignature = hostPermissionStatusSignature(nextSnapshot.rows);
       setSnapshot(nextSnapshot);
       setLoadState("ready");
       if (nextSnapshot.authorityError) {
@@ -52,30 +72,42 @@ export function HostPermissionsPage() {
   const sourceLabel = snapshot?.info
     ? `${snapshot.info.app_name || "Tobkiri Launcher"} · ${snapshot.info.source}`
     : "Desktop system info unavailable";
+  const settingsDestination = hostSettingsDestination(snapshot?.info?.platform);
 
   return (
-    <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-[#09090b] text-zinc-200">
+    <main
+      aria-labelledby="host-permissions-title"
+      className="host-permissions-page flex h-screen min-h-0 flex-col overflow-hidden bg-[#09090b] text-zinc-200"
+    >
       <header className="shrink-0 border-b border-zinc-800/70 px-4 py-3">
         <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sky-500/25 bg-sky-500/10 text-sky-200">
-                <ShieldCheck size={17} />
-              </span>
-              <div className="min-w-0">
-                <h1 className="truncate text-base font-semibold text-zinc-50">Host Permissions</h1>
-                <p className="truncate text-xs text-zinc-500">{sourceLabel}</p>
-              </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-sky-500/25 bg-sky-500/10 text-sky-200"
+            >
+              <ShieldCheck size={17} />
+            </span>
+            <div className="min-w-0">
+              <h1 id="host-permissions-title" className="text-base font-semibold text-zinc-50">
+                Host Permissions
+              </h1>
+              <p className="break-words text-xs text-zinc-500">{sourceLabel}</p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => void refresh()}
-            disabled={loadState === "loading"}
-            className="inline-flex h-8 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => {
+              if (loadState !== "loading") void refresh();
+            }}
+            aria-disabled={loadState === "loading"}
+            aria-label={loadState === "loading" ? "Refreshing host permissions" : "Refresh host permissions"}
+            className="inline-flex min-h-11 min-w-11 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 motion-reduce:transition-none"
           >
-            {loadState === "loading" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Refresh
+            {loadState === "loading"
+              ? <Loader2 aria-hidden="true" size={14} className="animate-spin motion-reduce:animate-none" />
+              : <RefreshCw aria-hidden="true" size={14} />}
+            {loadState === "loading" ? "Refreshing" : "Refresh"}
           </button>
         </div>
       </header>
@@ -173,13 +205,57 @@ export function HostPermissionsPage() {
               </div>
             </section>
           )}
+
+          <HostPermissionsTable
+            rows={rows}
+            loading={loadState === "loading"}
+            failed={loadState === "error"}
+            tauriAvailable={tauriAvailable}
+            openingPermissionId={openingPermissionId}
+            settingsDestination={settingsDestination}
+            onOpenSettings={async (row) => {
+              if (!tauriAvailable) {
+                setNotice({
+                  tone: "error",
+                  text: `${settingsDestination} for ${row.label} is available only in Tobkiri Launcher.`,
+                });
+                return;
+              }
+              setOpeningPermissionId(row.id);
+              setNotice({ tone: "status", text: `Opening ${settingsDestination} for ${row.label}.` });
+              setDiagnostic("");
+              try {
+                const opened = await openHostPermissionSettings(row.id);
+                setNotice({
+                  tone: opened ? "status" : "error",
+                  text: opened
+                    ? `${settingsDestination} opened for ${row.label}. Return here and refresh after changing the permission.`
+                    : `${settingsDestination} could not be opened. Use Tobkiri Launcher and try again.`,
+                });
+              } catch (error) {
+                setNotice({
+                  tone: "error",
+                  text: `${settingsDestination} could not be opened for ${row.label}. Try again from Tobkiri Launcher.`,
+                });
+                setDiagnostic(safeHostPermissionDiagnostic(error));
+              } finally {
+                setOpeningPermissionId(null);
+              }
+            }}
+          />
         </div>
       </div>
     </main>
   );
 }
 
-function StatusStrip({ snapshot, loading }: { snapshot: HostPermissionsSnapshot | null; loading: boolean }) {
+export function StatusStrip({
+  snapshot,
+  loading,
+}: {
+  snapshot: HostPermissionsSnapshot | null;
+  loading: boolean;
+}) {
   const summary = snapshot?.summary;
   const items = [
     { label: "Tobkiri approvals", value: summary ? `${summary.approved}/${summary.total}` : "..." },
@@ -188,38 +264,129 @@ function StatusStrip({ snapshot, loading }: { snapshot: HostPermissionsSnapshot 
     { label: "Reliability", value: snapshot?.info ? (snapshot.info.reliable ? "Verified" : "Unverified") : "Unavailable" },
   ];
   return (
-    <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-      {items.map((item) => (
-        <div key={item.label} className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-          <p className="text-[11px] text-zinc-500">{item.label}</p>
-          <p className="mt-1 truncate text-sm font-semibold text-zinc-100">
-            {loading && item.value === "..." ? <Loader2 size={14} className="animate-spin" /> : item.value}
-          </p>
-        </div>
-      ))}
+    <section aria-labelledby="host-permission-summary-title" aria-busy={loading}>
+      <h2 id="host-permission-summary-title" className="sr-only">Host permission summary</h2>
+      <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.label} className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+            <dt className="text-[11px] text-zinc-500">{item.label}</dt>
+            <dd className="mt-1 break-words text-sm font-semibold text-zinc-100">
+              {loading && !snapshot ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 aria-hidden="true" size={14} className="animate-spin motion-reduce:animate-none" />
+                  Loading
+                </span>
+              ) : item.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }
 
-function HostPermissionListRow({
+export function HostPermissionsTable({
+  rows,
+  loading,
+  failed,
+  tauriAvailable,
+  openingPermissionId,
+  settingsDestination,
+  onOpenSettings,
+}: {
+  rows: HostPermissionRow[];
+  loading: boolean;
+  failed: boolean;
+  tauriAvailable: boolean;
+  openingPermissionId: string | null;
+  settingsDestination: string;
+  onOpenSettings: (row: HostPermissionRow) => void;
+}) {
+  const emptyText = loading
+    ? "Loading host permissions..."
+    : failed
+      ? "Host permission status is unavailable. Use Refresh to try again."
+      : "No host permissions were found.";
+
+  return (
+    <section
+      aria-labelledby="host-permission-table-title"
+      aria-busy={loading}
+      className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70"
+    >
+      <h2 id="host-permission-table-title" className="sr-only">Permission status and settings</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-left text-sm">
+          <caption className="sr-only">
+            Rumi approval, operating-system permission, risk, stream allowance, required functions, and settings action for each host permission.
+          </caption>
+          <thead className="bg-zinc-900/50 text-[11px] font-semibold text-zinc-500 max-lg:sr-only">
+            <tr>
+              <th scope="col" className="px-3 py-2">Permission</th>
+              <th scope="col" className="px-3 py-2">Rumi approval</th>
+              <th scope="col" className="px-3 py-2">OS permission</th>
+              <th scope="col" className="px-3 py-2">Risk</th>
+              <th scope="col" className="px-3 py-2">Stream</th>
+              <th scope="col" className="px-3 py-2">Required by functions</th>
+              <th scope="col" className="px-3 py-2 text-right">Settings</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/80">
+            {rows.length > 0 ? rows.map((row) => (
+              <HostPermissionTableRow
+                key={row.id}
+                row={row}
+                tauriAvailable={tauriAvailable}
+                opening={openingPermissionId === row.id}
+                settingsDestination={settingsDestination}
+                onOpenSettings={() => onOpenSettings(row)}
+              />
+            )) : (
+              <tr>
+                <td colSpan={7} className="px-3 py-10 text-center text-sm text-zinc-500">
+                  {emptyText}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function HostPermissionTableRow({
   row,
   tauriAvailable,
   opening,
+  settingsDestination,
   onOpenSettings,
 }: {
   row: HostPermissionRow;
   tauriAvailable: boolean;
   opening: boolean;
+  settingsDestination: string;
   onOpenSettings: () => void;
 }) {
+  const overallStatus = row.rumiStatus !== "approved"
+    ? row.rumiStatus
+    : row.osStatus === "approved" || row.osStatus === "unsupported"
+      ? "approved"
+      : row.osStatus;
+  const descriptionId = `host-permission-${cssSafeId(row.id)}-description`;
+
   return (
-    <div className="grid gap-3 px-3 py-3 text-sm lg:grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(116px,0.55fr)] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <StatusDot status={row.rumiStatus === "approved" && (row.osStatus === "approved" || row.osStatus === "unsupported") ? "approved" : row.rumiStatus} />
+    <tr className="block px-3 py-3 lg:table-row lg:px-0 lg:py-0">
+      <th
+        scope="row"
+        aria-describedby={descriptionId}
+        className="block min-w-48 py-2 align-top font-normal lg:table-cell lg:px-3 lg:py-3"
+      >
+        <div className="flex items-start gap-2">
+          <StatusDot status={overallStatus} />
           <div className="min-w-0">
-            <p className="truncate font-medium text-zinc-100">{row.label}</p>
-            <p className="truncate font-mono text-[11px] text-zinc-600">{row.id}</p>
+            <p className="font-medium text-zinc-100">{row.label}</p>
+            <p className="break-all font-mono text-[11px] text-zinc-500">{row.id}</p>
           </div>
         </div>
         <p className="mt-1 text-xs leading-5 text-zinc-500 lg:hidden">{row.description}</p>
@@ -234,50 +401,111 @@ function HostPermissionListRow({
         <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize", riskClassName(row.riskLevel))}>
           {row.riskLevel || "unknown"}
         </span>
-      </LabeledCell>
-      <LabeledCell label="Stream">
-        <span className="text-xs font-medium text-zinc-300">{row.streamAllowed === null ? "Unknown" : row.streamAllowed ? "Allowed" : "No"}</span>
-      </LabeledCell>
-      <LabeledCell label="Required by functions">
-        <span className="line-clamp-2 text-xs leading-5 text-zinc-400">{row.requiredByFunctions.join(", ") || "None"}</span>
-      </LabeledCell>
-      <div className="flex justify-start lg:justify-end">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          disabled={!tauriAvailable || opening}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-          title={tauriAvailable ? `Open OS settings for ${row.label}` : "Requires Tobkiri Launcher desktop bridge"}
-        >
-          {opening ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
-          {tauriAvailable ? "Open" : "Desktop only"}
-        </button>
-      </div>
-    </div>
+      </TableCell>
+      <TableCell label="Stream">
+        <span className="text-xs font-medium text-zinc-300">
+          {row.streamAllowed === null ? "Unknown" : row.streamAllowed ? "Allowed" : "Not allowed"}
+        </span>
+      </TableCell>
+      <TableCell label="Required by functions">
+        <span className="break-all text-xs leading-5 text-zinc-300">
+          {row.requiredByFunctions.join(", ") || "None"}
+        </span>
+      </TableCell>
+      <td className="block py-2 align-top lg:table-cell lg:px-3 lg:py-3">
+        <span aria-hidden="true" className="mb-1 block text-[11px] font-semibold text-zinc-500 lg:hidden">
+          Settings
+        </span>
+        <div className="flex justify-start lg:justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              if (!opening) onOpenSettings();
+            }}
+            disabled={!tauriAvailable}
+            aria-disabled={!tauriAvailable || opening}
+            aria-label={tauriAvailable
+              ? `${opening ? "Opening" : "Open"} ${settingsDestination} for ${row.label}`
+              : `${settingsDestination} for ${row.label} is unavailable; requires Tobkiri Launcher`}
+            className="inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 motion-reduce:transition-none"
+          >
+            {opening
+              ? <Loader2 aria-hidden="true" size={13} className="animate-spin motion-reduce:animate-none" />
+              : <ExternalLink aria-hidden="true" size={13} />}
+            {opening ? "Opening" : tauriAvailable ? "Open settings" : "Desktop only"}
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
-function LabeledCell({ label, children }: { label: string; children: ReactNode }) {
+function TableCell({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 lg:block">
-      <span className="text-[11px] font-semibold text-zinc-600 lg:hidden">{label}</span>
+    <td className="block py-2 align-top lg:table-cell lg:px-3 lg:py-3">
+      <span aria-hidden="true" className="mb-1 block text-[11px] font-semibold text-zinc-500 lg:hidden">
+        {label}
+      </span>
       <div className="min-w-0">{children}</div>
-    </div>
+    </td>
   );
 }
 
 function StatusBadge({ status }: { status: HostPermissionBucket }) {
   return (
-    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold", statusClassName(status))}>
+    <span
+      className={cn(
+        "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+        statusClassName(status),
+      )}
+    >
       {hostPermissionStatusLabel(status)}
     </span>
   );
 }
 
 function StatusDot({ status }: { status: HostPermissionBucket }) {
-  if (status === "approved") return <CheckCircle2 size={15} className="shrink-0 text-emerald-300" />;
-  if (status === "unknown" || status === "unsupported") return <ShieldQuestion size={15} className="shrink-0 text-zinc-500" />;
-  return <AlertTriangle size={15} className="shrink-0 text-amber-300" />;
+  const label = `Overall status: ${hostPermissionStatusLabel(status)}`;
+  if (status === "approved") {
+    return (
+      <span className="shrink-0 text-emerald-300">
+        <CheckCircle2 aria-hidden="true" size={15} />
+        <span className="sr-only">{label}</span>
+      </span>
+    );
+  }
+  if (status === "unknown" || status === "unsupported") {
+    return (
+      <span className="shrink-0 text-zinc-500">
+        <ShieldQuestion aria-hidden="true" size={15} />
+        <span className="sr-only">{label}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 text-amber-300">
+      <AlertTriangle aria-hidden="true" size={15} />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+function hostPermissionStatusSignature(rows: HostPermissionRow[]): string {
+  return rows
+    .map((row) => `${row.id}:${row.rumiStatus}:${row.osStatus}`)
+    .join("|");
+}
+
+function hostSettingsDestination(platform: string | undefined): string {
+  const value = String(platform ?? "").toLowerCase();
+  if (value === "darwin" || value === "macos") return "macOS System Settings";
+  if (value.startsWith("win")) return "Windows Settings";
+  if (value === "linux") return "Linux permission settings";
+  return "OS permission settings";
+}
+
+function cssSafeId(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]+/g, "-");
 }
 
 function statusClassName(status: HostPermissionBucket): string {
