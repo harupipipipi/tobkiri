@@ -4418,7 +4418,11 @@ def _verified_approval_followup_tool_ids(
         return []
 
     operation = str(request.get("operation") or "").strip()
-    if operation != f"tool.{tool_id}":
+    operation_matches_tool = operation == f"tool.{tool_id}"
+    operation_matches_tool = operation_matches_tool or (
+        tool_id == "browser_companion" and operation.startswith("page.")
+    )
+    if not operation_matches_tool:
         return []
     details = (
         request.get("details")

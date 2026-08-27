@@ -358,6 +358,135 @@ def test_approval_followup_replays_browser_computer_action_operation(monkeypatch
     assert "approval_token" not in repr(working_messages)
 
 
+@pytest.mark.parametrize(
+    ("operation", "stored_args", "inline_payload"),
+    [
+        ("tool.browser_companion", {"action": "session"}, {}),
+        (
+            "page.click",
+            {
+                "action": "page.click",
+                "client_id": "client-1",
+                "element_id": "el-7",
+            },
+            {"element_id": "tampered-inline-value"},
+        ),
+    ],
+)
+def test_browser_companion_followup_replays_authoritative_stored_arguments(
+    monkeypatch,
+    operation,
+    stored_args,
+    inline_payload,
+):
+    """Resume Browser Companion only from its signed server-stored request."""
+    from domain.chat.run_request import PreparedChatRun
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.safety import approval
+
+    approval.reset_approval_state_for_tests()
+    request = approval.create_approval_request(
+        operation,
+        "high",
+        stored_args,
+        details={
+            "tool_name": "browser_companion",
+            "action": operation,
+            "function_id": operation,
+            "arguments": stored_args,
+            "pack_id": "defaultspack",
+            "conversation_id": "conv-browser-companion",
+        },
+    )
+    decision = approval.approve(request["request_id"])
+    assert decision["approved"] is True
+
+    prepared = PreparedChatRun(
+        conversation_id="conv-browser-companion",
+        conversation={},
+        input_data={},
+        request_id="run-browser-companion-followup",
+        content=[],
+        metadata={
+            "approval_followup": {
+                "approval_token": decision["token"],
+                "tool_name": "browser_companion",
+                "request_id": request["request_id"],
+                "operation": operation,
+                "action": operation,
+                "payload": inline_payload,
+            }
+        },
+        user_message={},
+        model="stub/default",
+        params={},
+        request_context={},
+        tool_context={},
+        standard_messages=[],
+        user_text="",
+        system_prompt="",
+        enrich_info={},
+        raw_tools=[],
+        provider_tools=[{"name": "browser_companion"}],
+        tools_called=[],
+        connected_tool_names={"browser_companion"},
+        call_handler=None,
+        model_routing={},
+    )
+    engine = ChatRunEngine()
+    invoked = []
+
+    def fake_execute_tool(prepared_arg, tool_name, tool_call_id, arguments):
+        invoked.append(
+            {
+                "prepared": prepared_arg,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "arguments": dict(arguments),
+            }
+        )
+        return {
+            "result": "Browser Companion completed the approved operation.",
+            "is_error": False,
+            "widget": {"action": stored_args["action"]},
+        }
+
+    monkeypatch.setattr(engine, "_execute_tool", fake_execute_tool)
+    working_messages: list[dict] = []
+    replay = engine._replay_approval_followup_if_present(
+        prepared,
+        working_messages,
+        prepared.chat_ir,
+        None,
+    )
+
+    events = []
+    try:
+        while True:
+            events.append(next(replay))
+    except StopIteration as stop:
+        replay_result = stop.value
+
+    assert replay_result is None
+    assert [event["phase"] for event in events] == [
+        "tool_call_started",
+        "tool_call_completed",
+    ]
+    assert invoked == [
+        {
+            "prepared": prepared,
+            "tool_name": "browser_companion",
+            "tool_call_id": request["request_id"],
+            "arguments": {**stored_args, "approval_token": decision["token"]},
+        }
+    ]
+    assert prepared.provider_tools == []
+    assert prepared.tool_context["approval_replayed"]["request_id"] == request["request_id"]
+    assert approval.get_approval_request(request["request_id"])["status"] == "consumed"
+    assert inline_payload != stored_args
+    assert "approval_token" not in repr(working_messages)
+
+
 def test_approval_followup_replays_browser_computer_nested_payload_token(monkeypatch):
     from domain.chat.run_request import PreparedChatRun
     from domain.chat.stream_engine import ChatRunEngine
