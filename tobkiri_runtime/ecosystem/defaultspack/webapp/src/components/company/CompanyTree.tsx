@@ -78,13 +78,13 @@ export function CompanyTree({
           return (
             <button
               key={company.id}
+              onClick={() => onSelect?.(company.id)}
               ref={(element) => { companyRefs.current[index] = element; }}
               type="button"
               role="treeitem"
               aria-selected={active}
               aria-current={active ? "true" : undefined}
               tabIndex={active || (!activeCompanyId && index === 0) ? 0 : -1}
-              onClick={() => onSelect?.(company.id)}
               onKeyDown={(event) => moveCompanyFocus(event, index)}
               className={`min-h-11 w-full rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 ${
                 active

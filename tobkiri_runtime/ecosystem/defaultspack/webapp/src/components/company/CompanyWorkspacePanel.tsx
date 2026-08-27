@@ -802,6 +802,7 @@ export function CompanyWorkspacePanel({
           return (
             <button
               key={tab.id}
+              onClick={() => selectTab(tab.id)}
               ref={(element) => { primaryTabRefs.current[index] = element; }}
               id={`company-workspace-tab-${tab.id}`}
               type="button"
@@ -809,7 +810,6 @@ export function CompanyWorkspacePanel({
               aria-selected={activeTab === tab.id}
               aria-controls={`company-workspace-panel-${tab.id}`}
               tabIndex={activeTab === tab.id || (isOverflowTabActive && index === 0) ? 0 : -1}
-              onClick={() => selectTab(tab.id)}
               onKeyDown={(event) => movePrimaryTabFocus(event, index)}
               className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 ${
                 activeTab === tab.id ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
@@ -849,12 +849,12 @@ export function CompanyWorkspacePanel({
               return (
                 <button
                   key={tab.id}
+                  onClick={() => selectOverflowTab(tab.id)}
                   ref={(element) => { moreMenuItemRefs.current[index] = element; }}
                   type="button"
                   role="menuitemradio"
                   aria-checked={selected}
                   aria-controls={`company-workspace-panel-${tab.id}`}
-                  onClick={() => selectOverflowTab(tab.id)}
                   onKeyDown={(event) => moveMoreMenuFocus(event, index)}
                   className={`flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 ${
                     selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
