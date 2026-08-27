@@ -84,6 +84,11 @@ import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegri
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { loadConversationForRefresh, resolveSupersededConversationRedirect } from "./lib/chatRouteLoading";
 import { cn } from "./lib/cn";
+import {
+  addCalendarMonthsClamped,
+  calendarDateAccessibleLabel,
+  calendarGridNavigationDate,
+} from "./lib/calendarGridA11y";
 import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
 import {
   canExecuteComposerEndpointAction,
@@ -721,7 +726,15 @@ function CalendarComposerPanel({
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isTimeMenuOpen, setIsTimeMenuOpen] = useState(false);
   const [lastAgentResult, setLastAgentResult] = useState<string | null>(null);
+  const [focusedDateKey, setFocusedDateKey] = useState(() => calendarDateKey(today));
+  const [keyboardRange, setKeyboardRange] = useState<{ anchorKey: string; endKey: string } | null>(null);
+  const [expandedDateKeys, setExpandedDateKeys] = useState<Set<string>>(() => new Set());
+  const [calendarAnnouncement, setCalendarAnnouncement] = useState("");
   const calendarRef = useRef<HTMLElement | null>(null);
+  const dayCellRefs = useRef(new Map<string, HTMLDivElement>());
+  const editorOriginKeyRef = useRef<string | null>(null);
+  const pendingFocusKeyRef = useRef<string | null>(null);
+  const wasEditorOpenRef = useRef(false);
   const suppressNextCellOpenRef = useRef(false);
 
   useEffect(() => {
@@ -731,6 +744,12 @@ function CalendarComposerPanel({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (activeEditor) {
+          setCalendarAnnouncement("カレンダー編集を閉じました。");
+        } else if (keyboardRange) {
+          setKeyboardRange(null);
+          setCalendarAnnouncement("日付範囲の選択をキャンセルしました。");
+        }
         setActiveEditor(null);
         setDragState(null);
         setIsTimeMenuOpen(false);
@@ -738,7 +757,21 @@ function CalendarComposerPanel({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [activeEditor, keyboardRange]);
+
+  useEffect(() => {
+    if (activeEditor) {
+      wasEditorOpenRef.current = true;
+      return;
+    }
+    if (!wasEditorOpenRef.current) return;
+    wasEditorOpenRef.current = false;
+    const targetKey = editorOriginKeyRef.current;
+    if (!targetKey) return;
+    pendingFocusKeyRef.current = targetKey;
+    setFocusedDateKey(targetKey);
+    window.requestAnimationFrame(() => dayCellRefs.current.get(targetKey)?.focus());
+  }, [activeEditor]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -786,6 +819,15 @@ function CalendarComposerPanel({
   }, {});
   const activeRangeKeys = activeEditor ? new Set(calendarKeysBetween(activeEditor.startKey, activeEditor.endKey)) : new Set<string>();
   const dragRangeKeys = dragState ? new Set(calendarKeysBetween(dragState.startKey, dragState.currentKey)) : new Set<string>();
+  const keyboardRangeKeys = keyboardRange
+    ? new Set(calendarKeysBetween(keyboardRange.anchorKey, keyboardRange.endKey))
+    : new Set<string>();
+  const keyboardRangeStart = keyboardRange
+    ? orderedCalendarRange(keyboardRange.anchorKey, keyboardRange.endKey)[0]
+    : null;
+  const keyboardRangeEnd = keyboardRange
+    ? orderedCalendarRange(keyboardRange.anchorKey, keyboardRange.endKey)[1]
+    : null;
   const activeItem = activeEditor?.itemId ? items.find((item) => item.id === activeEditor.itemId) ?? null : null;
   const timeOptions = buildCalendarTimeOptions(settings.timeSlotMinutes);
   const popoverStyle = activeEditor ? {
@@ -793,6 +835,13 @@ function CalendarComposerPanel({
     top: `${(activeEditor.cell.row / 6) * 100}%`,
     transform: `${activeEditor.cell.col >= 5 ? "translateX(calc(-100% - 10px))" : "translateX(10px)"} ${activeEditor.cell.row >= 4 ? "translateY(calc(-100% - 10px))" : "translateY(36px)"}`,
   } : undefined;
+
+  useEffect(() => {
+    const targetKey = pendingFocusKeyRef.current;
+    if (!targetKey) return;
+    pendingFocusKeyRef.current = null;
+    window.requestAnimationFrame(() => dayCellRefs.current.get(targetKey)?.focus());
+  }, [focusedDateKey, month, year]);
 
   const dismissActiveEditorForSelection = (suppressCellMouseUp = false) => {
     if (!activeEditor) return false;
@@ -805,18 +854,31 @@ function CalendarComposerPanel({
 
   const moveVisibleMonth = (offset: number) => {
     suppressNextCellOpenRef.current = false;
+    const target = addCalendarMonthsClamped(calendarDateFromKey(focusedDateKey), offset);
+    const targetKey = calendarDateKey(target);
+    editorOriginKeyRef.current = targetKey;
+    pendingFocusKeyRef.current = targetKey;
+    setFocusedDateKey(targetKey);
     setActiveEditor(null);
     setDragState(null);
+    setKeyboardRange(null);
     setIsTimeMenuOpen(false);
-    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+    setVisibleMonth(new Date(target.getFullYear(), target.getMonth(), 1));
+    setCalendarAnnouncement(`${target.getFullYear()}年${target.getMonth() + 1}月を表示しました。`);
   };
 
   const returnToToday = () => {
+    const targetKey = calendarDateKey(today);
     suppressNextCellOpenRef.current = false;
+    editorOriginKeyRef.current = targetKey;
+    pendingFocusKeyRef.current = targetKey;
+    setFocusedDateKey(targetKey);
     setActiveEditor(null);
     setDragState(null);
+    setKeyboardRange(null);
     setIsTimeMenuOpen(false);
     setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    setCalendarAnnouncement(`${calendarDateLabel(today)}、今日に移動しました。`);
   };
 
   const resetDraftForCreate = (kind = settings.defaultItemType) => {
@@ -832,11 +894,14 @@ function CalendarComposerPanel({
 
   const openCreateEditor = (cell: CalendarCell, startKey = cell.key, endKey = cell.key) => {
     if (!settings.quickAddEnabled) return;
+    editorOriginKeyRef.current = cell.key;
     resetDraftForCreate(settings.defaultItemType);
     setActiveEditor({ mode: "create", cell, startKey, endKey });
+    setCalendarAnnouncement(`${calendarRangeLabel(startKey, endKey)}を編集します。`);
   };
 
   const openEditEditor = (item: CalendarItem, cell: CalendarCell) => {
+    editorOriginKeyRef.current = cell.key;
     setActiveEditor({
       mode: "edit",
       itemId: item.id,
@@ -852,6 +917,7 @@ function CalendarComposerPanel({
     setDraftError(null);
     setLastAgentResult(item.lastRunStatus ? `Agent last run: ${item.lastRunStatus}` : null);
     setIsTimeMenuOpen(false);
+    setCalendarAnnouncement(`${item.title}を編集します。`);
   };
 
   const schedulePayloadForItem = (itemId: string, title: string, startKey: string, endKey: string, time: string, agentPrompt: string) => ({
@@ -909,6 +975,7 @@ function CalendarComposerPanel({
     setIsSavingDraft(true);
     setDraftError(null);
     setLastAgentResult(null);
+    setCalendarAnnouncement("カレンダー項目を保存しています。");
     const [startKey, endKey] = orderedCalendarRange(activeEditor.startKey, activeEditor.endKey);
     const title = draftTitle.trim() || (draftKind === "task" ? "New task" : draftKind === "event" ? "New event" : "Reminder");
     const normalizedTime = normalizeCalendarTimeInput(draftTime, settings.defaultTime);
@@ -942,11 +1009,13 @@ function CalendarComposerPanel({
       setItems((current) => activeEditor.mode === "edit"
         ? current.map((item) => item.id === itemId ? nextItem : item)
         : [...current, nextItem]);
+      setCalendarAnnouncement(`${title}を${activeEditor.mode === "edit" ? "保存" : "追加"}しました。`);
       setActiveEditor(null);
       setDraftTitle("");
       setIsTimeMenuOpen(false);
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "Agent task schedule failed.");
+      const message = error instanceof Error ? error.message : "Agent task schedule failed.";
+      setDraftError(message);
     } finally {
       setIsSavingDraft(false);
     }
@@ -956,12 +1025,15 @@ function CalendarComposerPanel({
     if (!activeItem) return;
     setIsSavingDraft(true);
     setDraftError(null);
+    setCalendarAnnouncement(`${activeItem.title}を削除しています。`);
     try {
       await deleteCalendarScheduleBeforeLocalChange(activeItem.scheduleId, api.deleteSchedule);
       setItems((current) => current.filter((item) => item.id !== activeItem.id));
+      setCalendarAnnouncement(`${activeItem.title}を削除しました。`);
       setActiveEditor(null);
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "Delete failed.");
+      const message = error instanceof Error ? error.message : "Delete failed.";
+      setDraftError(message);
     } finally {
       setIsSavingDraft(false);
     }
@@ -971,13 +1043,16 @@ function CalendarComposerPanel({
     if (!activeItem?.scheduleId) return;
     setIsSavingDraft(true);
     setDraftError(null);
+    setCalendarAnnouncement(`${activeItem.title}のAgentを実行しています。`);
     try {
       const response = extractScheduleRecord(await api.triggerSchedule(activeItem.scheduleId));
       const status = String(response.status ?? "triggered");
       setItems((current) => current.map((item) => item.id === activeItem.id ? { ...item, lastRunStatus: status } : item));
       setLastAgentResult(`Agent run: ${status}`);
+      setCalendarAnnouncement(`${activeItem.title}のAgent実行状態: ${status}`);
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "Agent trigger failed.");
+      const message = error instanceof Error ? error.message : "Agent trigger failed.";
+      setDraftError(message);
     } finally {
       setIsSavingDraft(false);
     }
@@ -1015,12 +1090,111 @@ function CalendarComposerPanel({
     }
   };
 
+  const focusCalendarDate = (date: Date, currentCell: CalendarCell, extendRange: boolean) => {
+    const targetKey = calendarDateKey(date);
+    if (date.getFullYear() !== year || date.getMonth() !== month) {
+      setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+    }
+    if (extendRange) {
+      const anchorKey = keyboardRange?.anchorKey ?? currentCell.key;
+      setKeyboardRange({ anchorKey, endKey: targetKey });
+      setCalendarAnnouncement(`${calendarRangeLabel(anchorKey, targetKey)}を選択中です。Enterで確認、Escapeでキャンセルできます。`);
+    }
+    pendingFocusKeyRef.current = targetKey;
+    setFocusedDateKey(targetKey);
+  };
+
+  const focusCalendarEventControl = (dateKey: string, index: number) => {
+    const cell = dayCellRefs.current.get(dateKey);
+    const controls = Array.from(cell?.querySelectorAll<HTMLButtonElement>("[data-calendar-event-control]") ?? []);
+    if (!controls.length) {
+      setCalendarAnnouncement(`${calendarDateLabel(calendarDateFromKey(dateKey))}に予定はありません。`);
+      return;
+    }
+    controls[Math.max(0, Math.min(controls.length - 1, index))]?.focus();
+  };
+
+  const handleCalendarEventKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    dateKey: string,
+    index: number,
+  ) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      dayCellRefs.current.get(dateKey)?.focus();
+      return;
+    }
+    if (!["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const cell = dayCellRefs.current.get(dateKey);
+    const controls = Array.from(cell?.querySelectorAll<HTMLButtonElement>("[data-calendar-event-control]") ?? []);
+    if (!controls.length) return;
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? controls.length - 1
+        : event.key === "ArrowDown" || event.key === "ArrowRight"
+          ? Math.min(controls.length - 1, index + 1)
+          : Math.max(0, index - 1);
+    controls[nextIndex]?.focus();
+  };
+
+  const handleCalendarCellKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    cell: CalendarCell,
+  ) => {
+    if ((event.key === "e" || event.key === "E") && (itemsByDate[cell.key]?.length ?? 0) > 0) {
+      event.preventDefault();
+      focusCalendarEventControl(cell.key, 0);
+      return;
+    }
+    if (event.key === " " && event.shiftKey) {
+      event.preventDefault();
+      if (!keyboardRange) {
+        setKeyboardRange({ anchorKey: cell.key, endKey: cell.key });
+        setCalendarAnnouncement(`${calendarDateLabel(cell.date)}から日付範囲の選択を開始しました。Shift+矢印で延長、Enterで確認、Escapeでキャンセルできます。`);
+      } else {
+        openCreateEditor(cell, keyboardRange.anchorKey, cell.key);
+        setKeyboardRange(null);
+      }
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (dismissActiveEditorForSelection()) return;
+      openCreateEditor(
+        cell,
+        keyboardRange?.anchorKey ?? cell.key,
+        keyboardRange?.endKey ?? cell.key,
+      );
+      setKeyboardRange(null);
+      return;
+    }
+    const target = calendarGridNavigationDate(
+      cell.date,
+      event.key,
+      settings.weekStart,
+      event.altKey,
+    );
+    if (!target) return;
+    event.preventDefault();
+    focusCalendarDate(target, cell, event.shiftKey);
+  };
+
   return (
     <section
       ref={calendarRef}
-      aria-label="Calendar month"
+      aria-labelledby="calendar-month-title"
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-zinc-800 bg-[#101112] shadow-[0_20px_60px_rgba(0,0,0,0.32)]"
     >
+      <h2 id="calendar-month-title" className="sr-only">{year}年{month + 1}月のカレンダー</h2>
+      <p id="calendar-grid-instructions" className="sr-only">
+        矢印キーで日または週を移動します。HomeとEndで週の端、Page UpとPage Downで月、Altを押しながらPage UpまたはPage Downで年を移動します。Shift+Spaceで範囲選択を開始し、Shift+矢印で延長、Enterで確認、Escapeでキャンセルします。予定がある日はEキーで予定へ移動します。
+      </p>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {calendarAnnouncement}
+      </div>
       <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-zinc-800/80 bg-[#121314] px-4">
         <div className="flex items-center gap-2">
         <button
@@ -1053,91 +1227,180 @@ function CalendarComposerPanel({
         </div>
         <div className="h-8 w-[112px]" aria-hidden="true" />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 overflow-hidden">
-        {calendarCells.map((cell, index) => {
-          const visibleItems = (itemsByDate[cell.key] ?? []).slice(0, settings.maxItemsPerDay);
-          const hiddenCount = Math.max(0, (itemsByDate[cell.key] ?? []).length - visibleItems.length);
-          const isOutsideHidden = !cell.isCurrentMonth && !settings.showOutsideDays;
-          const isWeekend = (cell.date.getDay() === 0 || cell.date.getDay() === 6) && settings.dimWeekends;
-          const isSelected = activeRangeKeys.has(cell.key);
-          const isDragSelected = dragRangeKeys.has(cell.key);
-          return (
+      <div
+        role="grid"
+        aria-labelledby="calendar-month-title"
+        aria-describedby="calendar-grid-instructions"
+        aria-colcount={7}
+        aria-rowcount={7}
+        aria-multiselectable="true"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        <div role="row" className="grid h-7 flex-shrink-0 grid-cols-7 border-b border-zinc-800/90 bg-zinc-950/40">
+          {visibleWeekLabels.map((label, index) => (
             <div
-              key={`${cell.date.toISOString()}-${index}`}
-              role="button"
-              tabIndex={isOutsideHidden ? -1 : 0}
-              data-testid={`calendar-day-${cell.key}`}
-              aria-label={`${calendarDateLabel(cell.date)} の予定を追加`}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  if (dismissActiveEditorForSelection()) return;
-                  openCreateEditor(cell);
-                }
-              }}
-              onMouseDown={(event) => handleCellMouseDown(event, cell)}
-              onMouseEnter={() => handleCellMouseEnter(cell)}
-              onMouseUp={(event) => handleCellMouseUp(event, cell)}
-              className={cn(
-                "relative flex min-h-0 flex-col items-stretch border-b border-r border-zinc-800/90 px-2 py-2 text-left transition-colors hover:bg-zinc-900/70 focus:outline-none focus-visible:bg-zinc-900 focus-visible:ring-2 focus-visible:ring-blue-400/70",
-                !cell.isCurrentMonth && "text-zinc-600",
-                isOutsideHidden && "cursor-default text-transparent hover:bg-transparent",
-                isWeekend && cell.isCurrentMonth && "bg-black/10",
-                isSelected && "bg-blue-950/20 ring-2 ring-inset ring-blue-400/70",
-                isDragSelected && "bg-blue-950/35",
-              )}
+              key={`${label}-${index}`}
+              role="columnheader"
+              aria-colindex={index + 1}
+              className="flex items-center justify-center border-r border-zinc-800/90 text-[11px] font-semibold text-zinc-500"
             >
-              {cell.row === 0 && (
-                <div className="mb-1.5 text-center text-[12px] font-semibold text-zinc-500">
-                  {visibleWeekLabels[cell.col]}
-                </div>
-              )}
-              <div className="flex justify-center">
-                <span
-                  className={cn(
-                    "inline-flex min-h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[13px] font-semibold leading-none text-zinc-300",
-                    !cell.isCurrentMonth && "text-zinc-500",
-                    cell.isToday && "bg-zinc-100 text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.18)]",
-                  )}
-                >
-                  {isOutsideHidden ? "" : cell.label}
-                </span>
-              </div>
-              <div className="mt-2 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden">
-                {visibleItems.map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    data-testid={`calendar-item-${item.id}`}
-                    className={cn("truncate rounded-[7px] px-2 py-0.5 text-left text-[10.5px] font-medium leading-5 shadow-sm transition-opacity hover:opacity-90", calendarItemClassName(item, settings))}
-                    title={item.title}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onPointerUp={(event) => event.stopPropagation()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onMouseUp={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (dismissActiveEditorForSelection()) return;
-                      openEditEditor(item, cell);
-                    }}
-                  >
-                    {item.time && <span className="mr-1 opacity-75">{formatCalendarTime(item.time)}</span>}
-                    {item.title}
-                  </button>
-                ))}
-                {hiddenCount > 0 && (
-                  <div className="text-[10px] font-medium text-zinc-500">ほか{hiddenCount}件</div>
-                )}
-              </div>
+              {label}曜日
             </div>
-          );
-        })}
+          ))}
+        </div>
+        <div role="rowgroup" className="grid min-h-0 flex-1 grid-rows-6 overflow-hidden">
+          {Array.from({ length: 6 }, (_, rowIndex) => (
+            <div key={`calendar-row-${rowIndex}`} role="row" aria-rowindex={rowIndex + 2} className="grid min-h-0 grid-cols-7">
+              {calendarCells.slice(rowIndex * 7, rowIndex * 7 + 7).map((cell, index) => {
+                const dayItems = itemsByDate[cell.key] ?? [];
+                const isExpanded = expandedDateKeys.has(cell.key);
+                const visibleItems = isExpanded ? dayItems : dayItems.slice(0, settings.maxItemsPerDay);
+                const hiddenCount = Math.max(0, dayItems.length - visibleItems.length);
+                const isOutsideHidden = !cell.isCurrentMonth && !settings.showOutsideDays;
+                const isWeekend = (cell.date.getDay() === 0 || cell.date.getDay() === 6) && settings.dimWeekends;
+                const isSelected = activeRangeKeys.has(cell.key) || keyboardRangeKeys.has(cell.key);
+                const isDragSelected = dragRangeKeys.has(cell.key);
+                const dateLabel = calendarDateAccessibleLabel(cell.date, {
+                  eventCount: dayItems.length,
+                  isCurrentMonth: cell.isCurrentMonth,
+                  isRangeEnd: keyboardRangeEnd === cell.key,
+                  isRangeStart: keyboardRangeStart === cell.key,
+                  isSelected,
+                  isToday: cell.isToday,
+                });
+                return (
+                  <div
+                    key={`${cell.date.toISOString()}-${index}`}
+                    ref={(node) => {
+                      if (node) dayCellRefs.current.set(cell.key, node);
+                      else dayCellRefs.current.delete(cell.key);
+                    }}
+                    role="gridcell"
+                    aria-colindex={cell.col + 1}
+                    aria-current={cell.isToday ? "date" : undefined}
+                    aria-disabled={isOutsideHidden || undefined}
+                    aria-label={dateLabel}
+                    aria-selected={isSelected || isDragSelected}
+                    tabIndex={!isOutsideHidden && focusedDateKey === cell.key ? 0 : -1}
+                    data-testid={`calendar-day-${cell.key}`}
+                    onFocus={() => setFocusedDateKey(cell.key)}
+                    onKeyDown={(event) => handleCalendarCellKeyDown(event, cell)}
+                    onMouseDown={(event) => handleCellMouseDown(event, cell)}
+                    onMouseEnter={() => handleCellMouseEnter(cell)}
+                    onMouseUp={(event) => handleCellMouseUp(event, cell)}
+                    className={cn(
+                      "relative flex min-h-0 flex-col items-stretch border-b border-r border-zinc-800/90 px-2 py-2 text-left transition-colors hover:bg-zinc-900/70 focus:outline-none focus-visible:bg-zinc-900 focus-visible:ring-2 focus-visible:ring-blue-400/70",
+                      !cell.isCurrentMonth && "text-zinc-600",
+                      isOutsideHidden && "cursor-default text-transparent hover:bg-transparent",
+                      isWeekend && cell.isCurrentMonth && "bg-black/10",
+                      isSelected && "bg-blue-950/20 ring-2 ring-inset ring-blue-400/70",
+                      isDragSelected && "bg-blue-950/35",
+                    )}
+                  >
+                    <div className="flex justify-center">
+                      <span
+                        className={cn(
+                          "inline-flex min-h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[13px] font-semibold leading-none text-zinc-300",
+                          !cell.isCurrentMonth && "text-zinc-500",
+                          cell.isToday && "bg-zinc-100 text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.18)]",
+                        )}
+                      >
+                        {isOutsideHidden ? "" : cell.label}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+                      {visibleItems.map((item, itemIndex) => {
+                        const kindLabel = item.kind === "task" ? "タスク" : item.kind === "event" ? "予定" : "通知";
+                        const scheduleLabel = item.scheduleId ? `、Agent ${item.scheduleStatus ?? "有効"}` : "";
+                        return (
+                          <button
+                            type="button"
+                            key={item.id}
+                            tabIndex={-1}
+                            data-calendar-event-control="true"
+                            data-testid={`calendar-item-${item.id}`}
+                            aria-label={`${kindLabel}、${item.time ? `${formatCalendarTime(item.time)}、` : ""}${item.title}${scheduleLabel}`}
+                            className={cn("truncate rounded-[7px] px-2 py-0.5 text-left text-[10.5px] font-medium leading-5 shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-100", calendarItemClassName(item, settings))}
+                            title={item.title}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerUp={(event) => event.stopPropagation()}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onMouseUp={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              handleCalendarEventKeyDown(event, cell.key, itemIndex);
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.preventDefault();
+                              if (dismissActiveEditorForSelection()) return;
+                              openEditEditor(item, cell);
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (dismissActiveEditorForSelection()) return;
+                              openEditEditor(item, cell);
+                            }}
+                          >
+                            <span className="mr-1 opacity-75">{kindLabel}</span>
+                            {item.scheduleId && <span className="mr-1 opacity-75">Agent</span>}
+                            {item.time && <span className="mr-1 opacity-75">{formatCalendarTime(item.time)}</span>}
+                            {item.title}
+                          </button>
+                        );
+                      })}
+                      {(hiddenCount > 0 || (isExpanded && dayItems.length > settings.maxItemsPerDay)) && (
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          data-calendar-event-control="true"
+                          className="rounded px-1 text-left text-[10px] font-medium text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                          aria-label={isExpanded
+                            ? `${calendarDateLabel(cell.date)}の予定を折りたたむ`
+                            : `${calendarDateLabel(cell.date)}の残り${hiddenCount}件をすべて表示`}
+                          onKeyDown={(event) => {
+                            handleCalendarEventKeyDown(event, cell.key, visibleItems.length);
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            setExpandedDateKeys((current) => {
+                              const next = new Set(current);
+                              if (isExpanded) next.delete(cell.key);
+                              else next.add(cell.key);
+                              return next;
+                            });
+                            setCalendarAnnouncement(isExpanded
+                              ? `${calendarDateLabel(cell.date)}の予定を折りたたみました。`
+                              : `${calendarDateLabel(cell.date)}の予定${dayItems.length}件を表示しました。`);
+                          }}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onMouseUp={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpandedDateKeys((current) => {
+                              const next = new Set(current);
+                              if (isExpanded) next.delete(cell.key);
+                              else next.add(cell.key);
+                              return next;
+                            });
+                            setCalendarAnnouncement(isExpanded
+                              ? `${calendarDateLabel(cell.date)}の予定を折りたたみました。`
+                              : `${calendarDateLabel(cell.date)}の予定${dayItems.length}件を表示しました。`);
+                          }}
+                        >
+                          {isExpanded ? "折りたたむ" : `ほか${hiddenCount}件を表示`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
       {activeEditor && settings.quickAddEnabled && (
         <form
           key={`${activeEditor.mode}-${activeEditor.itemId ?? "new"}-${activeEditor.startKey}-${activeEditor.endKey}`}
           role="dialog"
           aria-label={`${calendarRangeLabel(activeEditor.startKey, activeEditor.endKey)}に追加`}
+          aria-busy={isSavingDraft}
           className="rumi-calendar-popover absolute rumi-layer-global-overlay w-[min(320px,calc(100%-24px))] rounded-2xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-[0_24px_70px_rgba(0,0,0,0.65)] backdrop-blur"
           style={popoverStyle}
           onPointerDown={(event) => {
@@ -1158,7 +1421,10 @@ function CalendarComposerPanel({
             </div>
             <button
               type="button"
-              onClick={() => setActiveEditor(null)}
+              onClick={() => {
+                setCalendarAnnouncement("カレンダー編集を閉じました。");
+                setActiveEditor(null);
+              }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
               aria-label="カレンダーのクイック追加を閉じる"
             >
