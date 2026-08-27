@@ -62,6 +62,12 @@ class VerifiedFrontendContribution:
     route: str | None
     region: str | None
     renderer: str | None
+    component_id: str | None
+    api_version: str | None
+    supported_slots: tuple[str, ...]
+    props_schema: Mapping[str, Any] | None
+    data_contract: str | None
+    fallback_component_id: str | None
     action_contract: str | None
     data_source_contract: str | None
     schema: Mapping[str, Any] | None
@@ -385,6 +391,16 @@ class FrontendHostRegistry:
                 route=_optional_string(payload.get("route")),
                 region=_optional_string(payload.get("region")),
                 renderer=_optional_string(payload.get("renderer")),
+                component_id=_optional_string(payload.get("component_id")),
+                api_version=_optional_string(payload.get("api_version")),
+                supported_slots=tuple(
+                    str(slot) for slot in payload.get("supported_slots", [])
+                ),
+                props_schema=_optional_mapping(payload.get("props_schema")),
+                data_contract=_optional_string(payload.get("data_contract")),
+                fallback_component_id=_optional_string(
+                    payload.get("fallback_component_id")
+                ),
                 action_contract=_optional_string(payload.get("action_contract")),
                 data_source_contract=_optional_string(
                     payload.get("data_source_contract")
@@ -453,6 +469,8 @@ def _reject_collisions(
         identities = [(contribution.kind, contribution.contribution_id)]
         if contribution.kind == "route" and contribution.route:
             identities.append(("route-path", contribution.route))
+        if contribution.kind == "component" and contribution.component_id:
+            identities.append(("component-id", contribution.component_id))
         for identity in identities:
             by_identity.setdefault(identity, []).append(contribution)
     rejected: set[tuple[str, str]] = set()

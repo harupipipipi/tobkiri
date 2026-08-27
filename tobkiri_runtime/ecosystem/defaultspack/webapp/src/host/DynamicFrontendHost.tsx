@@ -132,6 +132,10 @@ export function DynamicFrontendHost({
     () => contributionsForRoute(catalog, route, activePlanHash),
     [activePlanHash, catalog, route],
   );
+  const componentRegistry = useMemo(
+    () => buildFrontendComponentRegistry(catalog),
+    [catalog],
+  );
   if (catalog.plan_hash !== activePlanHash) {
     return <HostFallback title="UI revision changed" />;
   }
@@ -150,6 +154,7 @@ export function DynamicFrontendHost({
             item={item}
             catalog={catalog}
             capabilities={capabilities}
+            componentRegistry={componentRegistry}
           />
         </ContributionBoundary>
       ))}
@@ -161,6 +166,7 @@ function ContributionView({
   item,
   catalog,
   capabilities,
+  componentRegistry,
 }: {
   item: VerifiedFrontendContribution;
   catalog: FrontendCatalog;
@@ -205,6 +211,33 @@ function ContributionView({
 }
 
 function DeclarativeView({
+  item,
+  catalogHash,
+  capabilities,
+  componentRegistry,
+}: {
+  item: VerifiedFrontendContribution;
+  catalogHash: string;
+  capabilities: FrontendCapabilityClient;
+  componentRegistry: FrontendComponentRegistry;
+}) {
+  const view = item.view ?? {};
+  if (view.type === "component") {
+    const binding = parseFrontendComponentBinding(view);
+    return binding
+      ? <FrontendComponentView registry={componentRegistry} binding={binding} />
+      : <HostFallback title={`${item.label} has an invalid component binding`} />;
+  }
+  return (
+    <LegacyDeclarativeView
+      item={item}
+      catalogHash={catalogHash}
+      capabilities={capabilities}
+    />
+  );
+}
+
+function LegacyDeclarativeView({
   item,
   catalogHash,
   capabilities,
@@ -461,22 +494,24 @@ function BuiltinModuleView({ item }: { item: VerifiedFrontendContribution }) {
   if (!module || !isBackendVerifiedBuiltinModule(item)) {
     return <HostFallback title={`${item.label} is unavailable`} />;
   }
-  return <VerifiedBuiltinModule item={item} module={module} />;
+  return <VerifiedBuiltinModule item={item} module={module} props={{}} />;
 }
 
 function VerifiedBuiltinModule({
   item,
   module,
+  props,
 }: {
   item: VerifiedFrontendContribution;
   module: NonNullable<VerifiedFrontendContribution["module"]>;
+  props: FrontendComponentProps;
 }) {
   const Loaded = useMemo(() => lazy(async () => {
     try {
       const loaded = await import(/* @vite-ignore */ module.path) as Record<string, unknown>;
       const exported = loaded[module.export];
       if (typeof exported !== "function") throw new Error("declared export is missing");
-      return { default: exported as ComponentType };
+      return { default: exported as ComponentType<FrontendComponentProps> };
     } catch (error) {
       quarantineFrontendContribution(item);
       throw error;
@@ -486,6 +521,122 @@ function VerifiedBuiltinModule({
     <Suspense fallback={<HostStatus title={`Loading ${item.label}`} />}>
       <Loaded />
     </Suspense>
+  );
+}
+
+export function buildFrontendComponentRegistry(
+  catalog: FrontendCatalog,
+): FrontendComponentRegistry {
+  const registry = new FrontendComponentRegistry();
+  registry.register({
+    componentId: UNSUPPORTED_COMPONENT_ID,
+    apiVersion: FRONTEND_COMPONENT_API_VERSION,
+    supportedSlots: ["above_composer", "sidebar", "workspace", "route"],
+    propsSchema: {
+      type: "object",
+      required: ["componentId", "message"],
+      additionalProperties: false,
+      properties: {
+        componentId: { type: "string", minLength: 1, maxLength: 160 },
+        message: { type: "string", minLength: 1, maxLength: 500 },
+      },
+    },
+    fallbackComponentId: UNSUPPORTED_COMPONENT_ID,
+    ownerPackId: "tobkiri.frontend.host",
+    trust: "builtin",
+    renderer: UnsupportedComponent,
+  });
+  registry.register({
+    componentId: "rumi.ui.status_surface",
+    apiVersion: FRONTEND_COMPONENT_API_VERSION,
+    supportedSlots: ["above_composer", "sidebar", "workspace", "route"],
+    propsSchema: {
+      type: "object",
+      required: ["title"],
+      additionalProperties: false,
+      properties: {
+        title: { type: "string", minLength: 1, maxLength: 160 },
+        body: { type: "string", maxLength: 2000 },
+        tone: { type: "string", enum: ["neutral", "success", "warning", "error"] },
+      },
+    },
+    fallbackComponentId: UNSUPPORTED_COMPONENT_ID,
+    ownerPackId: "tobkiri.frontend.host",
+    trust: "builtin",
+    renderer: StatusSurface,
+  });
+  registerVerifiedPackComponents(registry, catalog);
+  return registry;
+}
+
+function FrontendComponentView({
+  registry,
+  binding,
+}: {
+  registry: FrontendComponentRegistry;
+  binding: FrontendComponentBinding;
+}) {
+  const resolution = registry.resolve(binding);
+  const Renderer = resolution.registration.renderer;
+  const contribution = resolution.registration.contribution;
+  const fallback = (
+    <HostFallback title={resolution.diagnostic?.message ?? `${binding.componentId} is unavailable`} />
+  );
+  let content: ReactNode = fallback;
+  if (Renderer) {
+    content = <Renderer {...resolution.props} />;
+  } else if (
+    contribution?.mode === "same_origin_builtin"
+    && contribution.module
+    && isBackendVerifiedBuiltinModule(contribution)
+  ) {
+    content = (
+      <VerifiedBuiltinModule
+        item={contribution}
+        module={contribution.module}
+        props={resolution.props}
+      />
+    );
+  }
+  return (
+    <ContributionBoundary
+      fallback={fallback}
+      onError={() => {
+        if (contribution) quarantineFrontendContribution(contribution);
+      }}
+    >
+      <div
+        data-frontend-component-id={resolution.registration.componentId}
+        data-frontend-component-owner={resolution.registration.ownerPackId}
+        data-frontend-component-fallback={resolution.usedFallback ? "true" : "false"}
+      >
+        {resolution.diagnostic && (
+          <p role="status" data-component-diagnostic={resolution.diagnostic.code}>
+            {resolution.diagnostic.message}
+          </p>
+        )}
+        {content}
+      </div>
+    </ContributionBoundary>
+  );
+}
+
+function StatusSurface(props: FrontendComponentProps) {
+  const tone = typeof props.tone === "string" ? props.tone : "neutral";
+  return (
+    <section role="status" aria-label={String(props.title)} data-status-tone={tone}>
+      <h2>{String(props.title)}</h2>
+      {typeof props.body === "string" && props.body && <p>{props.body}</p>}
+    </section>
+  );
+}
+
+function UnsupportedComponent(props: FrontendComponentProps) {
+  return (
+    <section role="status" aria-live="polite">
+      <h2>Unsupported component</h2>
+      <p>{String(props.message ?? "This component is not available.")}</p>
+    </section>
   );
 }
 

@@ -16,6 +16,10 @@ import {
   resetFrontendHostQuarantineForTests,
   synchronizeFrontendHostQuarantine,
 } from "./DynamicFrontendHost";
+import {
+  FRONTEND_COMPONENT_API_VERSION,
+  UNSUPPORTED_COMPONENT_ID,
+} from "./frontendComponentRegistry";
 import type {
   CapturedCapabilityInvocation,
   FrontendCapabilityInvoker,
