@@ -690,9 +690,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _toast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   MobileProviderConfig? _providerConfigById(
@@ -2156,9 +2155,8 @@ class _MobileApiSettingsPageState extends State<_MobileApiSettingsPage> {
                 ],
                 const SizedBox(height: 12),
                 Theme(
-                  data: Theme.of(
-                    context,
-                  ).copyWith(dividerColor: Colors.transparent),
+                  data: Theme.of(context)
+                      .copyWith(dividerColor: Colors.transparent),
                   child: ExpansionTile(
                     tilePadding: EdgeInsets.zero,
                     childrenPadding: EdgeInsets.zero,
@@ -2869,9 +2867,8 @@ class _ProviderEditSheetState extends State<_ProviderEditSheet> {
               ),
               const SizedBox(height: 12),
               Theme(
-                data: Theme.of(
-                  context,
-                ).copyWith(dividerColor: Colors.transparent),
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
                   tilePadding: EdgeInsets.zero,
                   childrenPadding: EdgeInsets.zero,
