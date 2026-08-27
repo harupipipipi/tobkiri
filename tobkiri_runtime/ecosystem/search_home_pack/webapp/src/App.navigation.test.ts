@@ -4,12 +4,13 @@ import test from "node:test";
 
 const appSource = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
 const reviewSource = readFileSync(new URL("./NavigationReview.tsx", import.meta.url), "utf8");
+const localeSource = readFileSync(new URL("./searchHomeLocale.ts", import.meta.url), "utf8");
 
 test("Search Home never schedules automatic destination navigation", () => {
   assert.doesNotMatch(appSource, /AUTO_NAV_DELAY_MS/);
   assert.doesNotMatch(appSource, /scheduleNavigation/);
   assert.match(appSource, /<NavigationReview/);
-  assert.match(reviewSource, /Search Homeは自動では移動しません/);
+  assert.match(reviewSource, /searchHomeCopy\.review\.guidance/);
 });
 
 test("Search Home validates every destination immediately before navigation", () => {
@@ -51,17 +52,31 @@ test("390px layout wraps the heading, input actions, and action descriptions", (
 });
 
 test("blocked destinations retain a safe copy-details action", () => {
-  assert.match(reviewSource, /ブロック詳細をコピー/);
-  assert.match(appSource, /Search Home blocked destination:/);
+  assert.match(reviewSource, /searchHomeCopy\.review\.copyBlocked/);
+  assert.match(appSource, /searchHomeCopy\.review\.blockedClipboard/);
   assert.doesNotMatch(appSource, /blocked destination:.*destination\.input/);
 });
 
 test("AI answers are committed to explicit accessible memory-only result states", () => {
   assert.match(appSource, /normalizeAnswerResponse\(payload\)/);
   assert.match(appSource, /aria-labelledby="search-answer-title"/);
-  assert.match(appSource, /Answer text is kept in memory only/);
-  assert.match(appSource, /Open conversation \/ Continue in Rumi/);
-  assert.match(appSource, /Retry intentionally/);
+  assert.match(appSource, /searchHomeCopy\.answer\.privacyNote/);
+  assert.match(appSource, /searchHomeCopy\.answer\.openConversation/);
+  assert.match(appSource, /searchHomeCopy\.answer\.retry/);
   assert.doesNotMatch(appSource, /localStorage.*answer|sessionStorage.*answer/i);
   assert.equal(appSource.includes("dangerouslySet" + "InnerHTML"), false);
+});
+
+test("visible Search Home copy comes from the Japanese locale catalog", () => {
+  for (const source of [appSource, reviewSource]) {
+    assert.doesNotMatch(
+      source,
+      /Smart Resolve|AI Answer|Open Best URL|Default model|default routing|Working|Filter models|No matching models|defaultspack node/,
+    );
+  }
+  assert.match(appSource, /searchHomeCopy\.productName/);
+  assert.match(appSource, /SEARCH_HOME_ACTIONS/);
+  assert.match(appSource, /model-technical-details/);
+  assert.match(localeSource, /Tobkiri Search Home/);
+  assert.match(localeSource, /技術情報/);
 });

@@ -25,36 +25,21 @@ import {
 import { NavigationReview } from "./NavigationReview";
 import { conversationHref, normalizeAnswerResponse, type AnswerResult } from "./answerState";
 import { evaluateExplicitDestinationInput } from "./destinationPolicy";
+import {
+  SEARCH_HOME_ACTIONS,
+  searchHomeCopy,
+  searchHomeModelId,
+  searchHomeModelLabel,
+  searchHomeModelLabelForReference,
+  searchHomeModelStatus,
+  searchHomeProviderLabel,
+  type SearchAction,
+} from "./searchHomeLocale";
 
 const ROUTE_DECISION_STORAGE_KEY = "rumi-search-home-route-decision";
 const ANSWER_ROUTE_TYPES = new Set(["ASK_AI", "ASK_AI_WITH_SEARCH"]);
 
 type HydratedRouteState = RouteDecision | null;
-type SearchAction = "smart" | "answer" | "google" | "open";
-
-const ACTIONS: Array<{ id: SearchAction; title: string; subtitle: (query: string) => string }> = [
-  {
-    id: "smart",
-    title: "Smart Resolve",
-    subtitle: (query) => `質問ならAI回答、サイトなら直接開く: "${query}"`,
-  },
-  {
-    id: "answer",
-    title: "AI Answer",
-    subtitle: (query) => `defaultspack nodeで調べて答える: "${query}"`,
-  },
-  {
-    id: "google",
-    title: "Google Search",
-    subtitle: (query) => `Google検索へ移動: "${query}"`,
-  },
-  {
-    id: "open",
-    title: "Open Best URL",
-    subtitle: (query) => `候補を解決して最適URLへ移動: "${query}"`,
-  },
-];
-
 function isObjectLike(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
@@ -192,62 +177,6 @@ function isAnswerRoute(decision: RouteDecision): boolean {
   return ANSWER_ROUTE_TYPES.has(decision.route_type || "");
 }
 
-function modelLabel(model: SearchHomeModel): string {
-  return model.label || model.display_name || model.profile_id || model.qualified_model_id || "Model";
-}
-
-function modelId(model: SearchHomeModel): string {
-  return model.profile_id || model.qualified_model_id || "";
-}
-
-function modelProviderLabel(model: SearchHomeModel): string {
-  return model.provider_display_name || model.provider_id || "model";
-}
-
-function hasModelMetadataFlag(model: SearchHomeModel, key: string): boolean {
-  return Boolean(model.metadata && model.metadata[key]);
-}
-
-function modelStatusLabel(model: SearchHomeModel): string {
-  const availability = model.availability ?? {};
-  const status = typeof availability.status === "string" ? availability.status : "";
-  if (model.configured || availability.configured || availability.active || availability.available) {
-    return "Ready";
-  }
-  if (hasModelMetadataFlag(model, "settings_only")) {
-    return "Settings";
-  }
-  if (model.requires_api_key) {
-    return "Needs key";
-  }
-  return status ? status.replace(/_/g, " ") : "Catalog";
-}
-
-function modelBadges(model: SearchHomeModel): string[] {
-  const badges: string[] = [];
-  if (model.configured || model.availability?.configured || model.availability?.active || model.availability?.available) {
-    badges.push("ready");
-  } else if (hasModelMetadataFlag(model, "settings_only")) {
-    badges.push("settings");
-  }
-  if (model.supports_image_input || model.supports_vision) {
-    badges.push("vision");
-  }
-  if (model.supports_tool_calling) {
-    badges.push("tools");
-  }
-  if (model.supports_thinking) {
-    badges.push("thinking");
-  }
-  if (model.local) {
-    badges.push("local");
-  }
-  if (model.requires_api_key && !model.configured) {
-    badges.push("key");
-  }
-  return badges.slice(0, 4);
-}
-
 function syntheticAnswerDecision(query: string): RouteDecision {
   return {
     route_type: "ASK_AI_WITH_SEARCH",
@@ -298,21 +227,23 @@ export default function App() {
     };
   }, [decision, selectedIndex]);
 
-  const activeAction = ACTIONS[selectedActionIndex]?.id ?? "smart";
+  const activeAction = SEARCH_HOME_ACTIONS[selectedActionIndex]?.id ?? "smart";
   const selectedModelItem = useMemo(
-    () => models.find((model) => modelId(model) === selectedModel) ?? null,
+    () => models.find((model) => searchHomeModelId(model) === selectedModel) ?? null,
     [models, selectedModel],
   );
   const selectedModelLabel = selectedModel
     ? selectedModelItem
-      ? modelLabel(selectedModelItem)
-      : selectedModel
-    : "Default model";
-  const selectedModelStatus = selectedModelItem ? modelStatusLabel(selectedModelItem) : "default routing";
+      ? searchHomeModelLabel(selectedModelItem)
+      : searchHomeCopy.model.selectedFallback
+    : searchHomeCopy.model.defaultLabel;
+  const selectedModelStatus = selectedModelItem
+    ? searchHomeModelStatus(selectedModelItem)
+    : searchHomeCopy.model.defaultStatus;
   const filteredModels = useMemo(() => {
     const needle = modelFilter.trim().toLowerCase();
     return models.filter((model) => {
-      const id = modelId(model);
+      const id = searchHomeModelId(model);
       if (!id) {
         return false;
       }
@@ -321,12 +252,12 @@ export default function App() {
       }
       const text = [
         id,
-        modelLabel(model),
-        modelProviderLabel(model),
+        searchHomeModelLabel(model),
+        searchHomeProviderLabel(model),
         model.provider_id,
         model.provider_display_name,
         model.model_id,
-        modelStatusLabel(model),
+        searchHomeModelStatus(model),
       ]
         .filter(Boolean)
         .join(" ")
@@ -440,7 +371,7 @@ export default function App() {
         setAnswerResult({ ...normalizeAnswerResponse(payload), query, requestedModel: selectedModel });
       } catch {
         if (requestRevision !== answerRequestRef.current) return;
-        setAnswerTransportError("The answer request could not be completed. Check the connection and retry intentionally.");
+        setAnswerTransportError(searchHomeCopy.answer.transportError);
       } finally {
         if (requestRevision === answerRequestRef.current) setAnswerLoading(false);
       }
@@ -552,8 +483,8 @@ export default function App() {
       <section className="hero-search">
         <div className="hero-header">
           <div>
-            <span className="product-mark">Rumi Search Home</span>
-            <h1>何を探しましょう？</h1>
+            <span className="product-mark">{searchHomeCopy.productName}</span>
+            <h1>{searchHomeCopy.heading}</h1>
           </div>
           <div className="model-control" ref={modelPickerRef}>
             <button
@@ -572,21 +503,44 @@ export default function App() {
               </span>
             </button>
             {modelPickerOpen ? (
-              <div className="model-popover">
+              <div className={`model-popover${selectedModelItem ? " model-popover-with-details" : ""}`}>
                 <div className="model-popover-head">
-                  <strong>Model</strong>
-                  <span>{models.length} available</span>
+                  <strong>{searchHomeCopy.model.pickerTitle}</strong>
+                  <span>{searchHomeCopy.model.availableCount(models.length)}</span>
                 </div>
                 <input
-                  aria-label="Filter models"
+                  aria-label={searchHomeCopy.model.filterLabel}
                   autoComplete="off"
                   className="model-filter"
                   onChange={(event) => setModelFilter(event.target.value)}
-                  placeholder="Filter models..."
+                  placeholder={searchHomeCopy.model.filterPlaceholder}
                   ref={modelFilterRef}
                   value={modelFilter}
                 />
-                <div aria-label="Models" className="model-list" role="listbox">
+                {selectedModelItem ? (
+                  <details className="model-technical-details">
+                    <summary>{searchHomeCopy.model.technicalDetails}</summary>
+                    <dl>
+                      <div>
+                        <dt>{searchHomeCopy.model.profileId}</dt>
+                        <dd>{selectedModelItem.profile_id}</dd>
+                      </div>
+                      {selectedModelItem.qualified_model_id ? (
+                        <div>
+                          <dt>{searchHomeCopy.model.qualifiedModelId}</dt>
+                          <dd>{selectedModelItem.qualified_model_id}</dd>
+                        </div>
+                      ) : null}
+                      {selectedModelItem.model_id ? (
+                        <div>
+                          <dt>{searchHomeCopy.model.modelId}</dt>
+                          <dd>{selectedModelItem.model_id}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  </details>
+                ) : null}
+                <div aria-label={searchHomeCopy.model.listLabel} className="model-list" role="listbox">
                   <button
                     aria-selected={!selectedModel}
                     className={`model-option${!selectedModel ? " model-option-active" : ""}`}
@@ -595,26 +549,22 @@ export default function App() {
                     type="button"
                   >
                     <span className="model-option-main">
-                      <strong>Default model</strong>
-                      <small>Use defaultspack preferred routing</small>
+                      <strong>{searchHomeCopy.model.defaultLabel}</strong>
+                      <small>{searchHomeCopy.model.defaultDescription}</small>
                     </span>
                     <span className="model-option-side">
-                      <span>default</span>
+                      <span>{searchHomeCopy.model.automaticProvider}</span>
                       <span className="model-badges">
-                        <span className="model-badge">auto</span>
+                        <span className="model-badge">{searchHomeCopy.model.defaultStatus}</span>
                       </span>
                     </span>
                   </button>
                   {filteredModels.map((model) => {
-                    const value = modelId(model);
+                    const value = searchHomeModelId(model);
                     if (!value) {
                       return null;
                     }
                     const active = value === selectedModel;
-                    const badges = modelBadges(model);
-                    if (badges.length === 0) {
-                      badges.push(modelStatusLabel(model));
-                    }
                     return (
                       <button
                         aria-selected={active}
@@ -625,23 +575,18 @@ export default function App() {
                         type="button"
                       >
                         <span className="model-option-main">
-                          <strong>{modelLabel(model)}</strong>
-                          <small>{value}</small>
+                          <strong>{searchHomeModelLabel(model)}</strong>
+                          <small>{searchHomeProviderLabel(model)}</small>
                         </span>
                         <span className="model-option-side">
-                          <span>{modelProviderLabel(model)}</span>
                           <span className="model-badges">
-                            {badges.map((badge) => (
-                              <span className="model-badge" key={badge}>
-                                {badge}
-                              </span>
-                            ))}
+                            <span className="model-badge">{searchHomeModelStatus(model)}</span>
                           </span>
                         </span>
                       </button>
                     );
                   })}
-                  {filteredModels.length === 0 ? <div className="model-empty">No matching models</div> : null}
+                  {filteredModels.length === 0 ? <div className="model-empty">{searchHomeCopy.model.noMatches}</div> : null}
                 </div>
               </div>
             ) : null}
@@ -653,16 +598,16 @@ export default function App() {
             <div className="search-row">
               <input ref={fileInputRef} className="file-input" type="file" onChange={handleFileChange} />
               <button
-                aria-label="Attach file"
+                aria-label={searchHomeCopy.search.attachLabel}
                 className="icon-button"
-                title="ファイルを添付"
+                title={searchHomeCopy.search.attachLabel}
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
               >
                 +
               </button>
               <input
-                aria-label="Search or enter URL"
+                aria-label={searchHomeCopy.search.inputLabel}
                 className="search-input"
                 value={input}
                 onBlur={() => setIsFocused(false)}
@@ -674,20 +619,22 @@ export default function App() {
                   }
                   if (event.key === "ArrowDown") {
                     event.preventDefault();
-                    setSelectedActionIndex((current) => (current + 1) % ACTIONS.length);
+                    setSelectedActionIndex((current) => (current + 1) % SEARCH_HOME_ACTIONS.length);
                   }
                   if (event.key === "ArrowUp") {
                     event.preventDefault();
-                    setSelectedActionIndex((current) => (current - 1 + ACTIONS.length) % ACTIONS.length);
+                    setSelectedActionIndex((current) => (
+                      current - 1 + SEARCH_HOME_ACTIONS.length
+                    ) % SEARCH_HOME_ACTIONS.length);
                   }
                 }}
-                placeholder="検索ワードを入力..."
+                placeholder={searchHomeCopy.search.placeholder}
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
               />
               <button className="submit-button" type="submit" disabled={!input.trim() || loading || answerLoading}>
-                <span>{loading || answerLoading ? "Working" : "検索"}</span>
+                <span>{loading || answerLoading ? searchHomeCopy.search.working : searchHomeCopy.search.submit}</span>
                 <span aria-hidden="true">→</span>
               </button>
             </div>
@@ -702,7 +649,7 @@ export default function App() {
                     <strong>{attachedFile.name}</strong>
                     <span>{(attachedFile.size / 1024 / 1024).toFixed(2)} MB</span>
                   </span>
-                  <button aria-label="Remove file" className="remove-file" type="button" onClick={() => setAttachedFile(null)}>
+                  <button aria-label={searchHomeCopy.search.removeFile} className="remove-file" type="button" onClick={() => setAttachedFile(null)}>
                     ×
                   </button>
                 </div>
@@ -710,8 +657,8 @@ export default function App() {
             ) : null}
 
             {input.trim() ? (
-              <div className="action-list" role="listbox" aria-label="Search actions">
-                {ACTIONS.map((action, index) => (
+              <div className="action-list" role="listbox" aria-label={searchHomeCopy.search.actionsLabel}>
+                {SEARCH_HOME_ACTIONS.map((action, index) => (
                   <button
                     aria-selected={selectedActionIndex === index}
                     className={`action-row${selectedActionIndex === index ? " action-row-active" : ""}`}
@@ -737,16 +684,16 @@ export default function App() {
 
         {answerLoading ? (
           <section className="answer-card" aria-busy="true" aria-live="polite">
-            <strong>Answer in progress</strong>
-            <p>The request is committed. Duplicate submission is disabled until it settles.</p>
+            <strong>{searchHomeCopy.answer.inProgressTitle}</strong>
+            <p>{searchHomeCopy.answer.inProgressDetail}</p>
           </section>
         ) : null}
 
         {answerTransportError ? (
           <section className="answer-card answer-card-error" role="alert">
-            <strong>Answer request failed</strong>
+            <strong>{searchHomeCopy.answer.requestFailedTitle}</strong>
             <p>{answerTransportError}</p>
-            <button type="button" onClick={() => void runAnswer(input.trim())}>Retry intentionally</button>
+            <button type="button" onClick={() => void runAnswer(input.trim())}>{searchHomeCopy.answer.retry}</button>
           </section>
         ) : null}
 
@@ -754,25 +701,25 @@ export default function App() {
           <section className={`answer-card answer-card-${answerResult.kind}`} aria-live="polite" aria-labelledby="search-answer-title">
             <header>
               <div>
-                <span>{answerResult.kind === "success" ? "AI Answer" : "Answer status"}</span>
+                <span>{answerResult.kind === "success" ? searchHomeCopy.answer.successLabel : searchHomeCopy.answer.statusLabel}</span>
                 <h2 id="search-answer-title">{answerResult.message}</h2>
               </div>
-              <span>{answerResult.model || answerResult.requestedModel || "Default model"}</span>
+              <span>{searchHomeModelLabelForReference(models, answerResult.model || answerResult.requestedModel)}</span>
             </header>
             {answerResult.answer ? <p className="answer-text">{answerResult.answer}</p> : null}
-            {answerResult.degradedReason ? <p className="answer-warning">Tool use unavailable: {answerResult.degradedReason}</p> : null}
+            {answerResult.degradedReason ? <p className="answer-warning">{searchHomeCopy.answer.toolsUnavailable}</p> : null}
             <dl>
-              <div><dt>Original query</dt><dd>{answerResult.query}</dd></div>
-              <div><dt>Tools used</dt><dd>{answerResult.usedToolsCount ? `${answerResult.usedToolsCount} tool action(s)` : "None reported"}</dd></div>
+              <div><dt>{searchHomeCopy.answer.originalQuery}</dt><dd>{answerResult.query}</dd></div>
+              <div><dt>{searchHomeCopy.answer.toolsUsed}</dt><dd>{answerResult.usedToolsCount ? searchHomeCopy.answer.toolCount(answerResult.usedToolsCount) : searchHomeCopy.answer.noTools}</dd></div>
             </dl>
             <div className="answer-actions">
               {answerResult.conversationId ? (
-                <a href={conversationHref(answerResult.conversationId)}>Open conversation / Continue in Rumi</a>
+                <a href={conversationHref(answerResult.conversationId)}>{searchHomeCopy.answer.openConversation}</a>
               ) : null}
-              <button type="button" onClick={() => void runAnswer(answerResult.query)}>Retry intentionally</button>
-              <button type="button" onClick={() => { setAnswerResult(null); setAnswerTransportError(""); }}>Dismiss</button>
+              <button type="button" onClick={() => void runAnswer(answerResult.query)}>{searchHomeCopy.answer.retry}</button>
+              <button type="button" onClick={() => { setAnswerResult(null); setAnswerTransportError(""); }}>{searchHomeCopy.answer.dismiss}</button>
             </div>
-            <p className="answer-privacy-note">Answer text is kept in memory only. Reload recovery uses the durable Rumi conversation link when available.</p>
+            <p className="answer-privacy-note">{searchHomeCopy.answer.privacyNote}</p>
           </section>
         ) : null}
       </section>
@@ -793,7 +740,7 @@ export default function App() {
             const destination = reviewRouteDestination(selectedCandidateUrl(currentDecision, selectedIndex));
             const details = destination.ok
               ? destination.url
-              : `Search Home blocked destination: ${destination.code}. ${destination.message}`;
+              : searchHomeCopy.review.blockedClipboard(destination.code, destination.message);
             void navigator.clipboard.writeText(details);
           }}
           onCancel={() => {
