@@ -6,9 +6,7 @@ import urllib.error
 
 import pytest
 
-from ecosystem.defaultspack.domain.ai_client.providers.llamacpp_provider import (
-    LlamaCppProvider,
-)
+from domain.ai_client.providers.llamacpp_provider import LlamaCppProvider
 
 
 class _Response:
