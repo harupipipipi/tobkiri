@@ -79,7 +79,6 @@ export function ConversationSpotlight({
             ref={queryRef}
             id={queryId}
             value={query}
-            autoFocus
             role="combobox"
             aria-label={t(locale, "spotlight.queryLabel")}
             aria-autocomplete="list"

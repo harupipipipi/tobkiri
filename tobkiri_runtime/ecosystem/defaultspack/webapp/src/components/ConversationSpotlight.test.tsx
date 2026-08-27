@@ -83,3 +83,10 @@ test("conversation spotlight reports no results without a dangling active option
   assert.match(html, /aria-busy="false"/);
   assert.match(html, /No matching conversations\.<\/span>/);
 });
+
+test("conversation spotlight lets the modal preserve its exact opener", () => {
+  const html = renderSpotlight();
+
+  assert.doesNotMatch(html, /autofocus/);
+  assert.match(html, /role="combobox"/);
+});
