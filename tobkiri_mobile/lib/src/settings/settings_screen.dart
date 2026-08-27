@@ -30,6 +30,18 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+class _SettingsFeedback {
+  const _SettingsFeedback({
+    required this.message,
+    required this.isError,
+    this.onRetry,
+  });
+
+  final String message;
+  final bool isError;
+  final Future<void> Function()? onRetry;
+}
+
 class _SettingsScreenState extends State<SettingsScreen> {
   late ApiConfig _config;
   List<MobileProviderConfig> _providerConfigs = [];
@@ -41,6 +53,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   DeviceIdentity? _deviceIdentity;
   bool _loading = true;
   bool _saving = false;
+  bool _notificationSaving = false;
+  bool _providerSaving = false;
+  bool _favoriteSaving = false;
+  _SettingsFeedback? _apiFeedback;
+  _SettingsFeedback? _notificationFeedback;
+  _SettingsFeedback? _modelFeedback;
 
   PcBootstrap? _pcBootstrap;
   PcCatalog? _pcCatalog;
@@ -84,14 +102,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     try {
       final api = await widget.configStore.loadApi();
-      final savedProviderConfigs =
-          await widget.configStore.loadProviderConfigs();
-      final providerConfigs =
-          _mergeDefaultProviderConfigs(savedProviderConfigs);
+      final savedProviderConfigs = await widget.configStore
+          .loadProviderConfigs();
+      final providerConfigs = _mergeDefaultProviderConfigs(
+        savedProviderConfigs,
+      );
       final modelFavorites = await widget.configStore.loadModelFavorites();
       final pc = await widget.configStore.loadPc();
-      final notificationSettings =
-          await widget.configStore.loadNotificationSettings();
+      final notificationSettings = await widget.configStore
+          .loadNotificationSettings();
       final paired = await widget.deviceStore.loadPairedDevice();
       final pairedDevices = await widget.deviceStore.loadPairedDevices();
       final identity = await widget.deviceStore.loadOrCreateIdentity();
@@ -114,8 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() {
         _config = ApiConfig.defaults;
-        _providerConfigs =
-            _mergeDefaultProviderConfigs(const <MobileProviderConfig>[]);
+        _providerConfigs = _mergeDefaultProviderConfigs(
+          const <MobileProviderConfig>[],
+        );
         _modelFavorites = const [];
         _pc = null;
         _notificationSettings = MobileNotificationSettings.defaults;
@@ -138,61 +158,139 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   ApiConfig _buildConfig() => ApiConfig(
-        providerId: 'openai-compatible',
-        baseUrl: _baseUrl.text.trim(),
-        apiKey: _apiKey.text.trim(),
-        model: _model.text.trim().isEmpty
-            ? ApiConfig.defaults.model
-            : _model.text.trim(),
-        label: _label.text.trim(),
-        systemPrompt: _systemPrompt.text.trim(),
-        temperature: _config.temperature,
-        apiCompatibility: 'openai',
-      );
+    providerId: 'openai-compatible',
+    baseUrl: _baseUrl.text.trim(),
+    apiKey: _apiKey.text.trim(),
+    model: _model.text.trim().isEmpty
+        ? ApiConfig.defaults.model
+        : _model.text.trim(),
+    label: _label.text.trim(),
+    systemPrompt: _systemPrompt.text.trim(),
+    temperature: _config.temperature,
+    apiCompatibility: 'openai',
+  );
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
+  Future<bool> _save() async {
+    if (_saving) return false;
     final config = _buildConfig();
-    await widget.configStore.saveApi(config);
     final pcUrl = _pcUrl.text.trim();
-    if (pcUrl.isNotEmpty && !pcConnectionUrlAllowed(pcUrl)) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      _toast('release版ではPC接続にHTTPS URLが必要です');
-      return;
-    }
-    final pc = pcUrl.isEmpty || _pcToken.text.trim().isEmpty
-        ? null
-        : PcConnection(
-            baseUrl: pcUrl,
-            token: _pcToken.text.trim(),
+    final pcToken = _pcToken.text.trim();
+    final validationError = _validateSettingsDraft(
+      config: config,
+      pcUrl: pcUrl,
+      pcToken: pcToken,
+    );
+    if (validationError != null) {
+      if (mounted) {
+        setState(() {
+          _apiFeedback = _SettingsFeedback(
+            message: validationError,
+            isError: true,
+            onRetry: () async {
+              await _save();
+            },
           );
-    await widget.configStore.savePc(pc);
-    if (!mounted) return;
+        });
+      }
+      return false;
+    }
+    final pc = pcUrl.isEmpty
+        ? null
+        : PcConnection(baseUrl: pcUrl, token: pcToken);
+
     setState(() {
-      _config = config;
-      _pc = pc;
-      _saving = false;
+      _saving = true;
+      _apiFeedback = null;
     });
-    widget.onApiChanged(config);
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('設定を保存しました')));
+    try {
+      await widget.configStore.saveApiAndPcOrRollback(config, pc);
+      if (!mounted) return false;
+      setState(() {
+        _config = config;
+        _pc = pc;
+        _apiFeedback = const _SettingsFeedback(
+          message: 'API設定とPC接続を保存しました',
+          isError: false,
+        );
+      });
+      widget.onApiChanged(config);
+      return true;
+    } on SettingsPersistenceException catch (error) {
+      await _reconcileApiAndPcAfterFailure();
+      if (!mounted) return false;
+      setState(() {
+        _apiFeedback = _SettingsFeedback(
+          message: error.reconciled
+              ? '保存できませんでした。以前の設定へ戻しました。再試行してください。'
+              : '一部の保存状態を確認できません。保存済み設定を再読込したため、内容を確認して再試行してください。',
+          isError: true,
+          onRetry: () async {
+            await _save();
+          },
+        );
+      });
+      return false;
+    } catch (_) {
+      await _reconcileApiAndPcAfterFailure();
+      if (!mounted) return false;
+      setState(() {
+        _apiFeedback = _SettingsFeedback(
+          message: '保存できませんでした。保存済み設定を再読込しました。再試行してください。',
+          isError: true,
+          onRetry: () async {
+            await _save();
+          },
+        );
+      });
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
+  String? _validateSettingsDraft({
+    required ApiConfig config,
+    required String pcUrl,
+    required String pcToken,
+  }) {
+    final apiUri = Uri.tryParse(config.baseUrl);
+    if (apiUri == null ||
+        !apiUri.hasScheme ||
+        !apiUri.hasAuthority ||
+        (apiUri.scheme != 'https' && apiUri.scheme != 'http')) {
+      return 'API Base URLを有効なHTTP(S) URLで入力してください。保存は行われていません。';
+    }
+    if ((pcUrl.isEmpty && pcToken.isNotEmpty) ||
+        (pcUrl.isNotEmpty && pcToken.isEmpty)) {
+      return 'PC接続はURLとBearer tokenを両方入力してください。保存は行われていません。';
+    }
+    if (pcUrl.isNotEmpty && !pcConnectionUrlAllowed(pcUrl)) {
+      return 'release版ではPC接続にHTTPS URLが必要です。保存は行われていません。';
+    }
+    return null;
+  }
+
+  Future<void> _reconcileApiAndPcAfterFailure() async {
+    final api = await widget.configStore.loadApi();
+    final pc = await widget.configStore.loadPc();
+    if (!mounted) return;
+    setState(() {
+      _config = api;
+      _pc = pc;
+      _syncControllers();
+    });
+  }
+
   Future<void> _scanApi({BuildContext? navigationContext}) async {
-    final result = await Navigator.of(
-      navigationContext ?? context,
-    ).push<(QrPayload, bool)>(
-      MaterialPageRoute(
-        builder: (_) => const QrScannerScreen(
-          purpose: QrScanPurpose.apiImport,
-          hint: 'PCの「アプリ」欄に表示されたAPI/モデルQRをスキャン',
-        ),
-      ),
-    );
+    final result = await Navigator.of(navigationContext ?? context)
+        .push<(QrPayload, bool)>(
+          MaterialPageRoute(
+            builder: (_) => const QrScannerScreen(
+              purpose: QrScanPurpose.apiImport,
+              hint: 'PCの「アプリ」欄に表示されたAPI/モデルQRをスキャン',
+            ),
+          ),
+        );
     if (result == null) return;
     final (payload, mismatch) = result;
     if (mismatch) {
@@ -222,8 +320,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _importProviderApi(QrApiImport payload) async {
     final providerId = payload.providerId!.trim();
     final existing = _providerConfigById(_providerConfigs, providerId);
-    final fallback =
-        _providerConfigById(defaultspackMobileProviderConfigs, providerId);
+    final fallback = _providerConfigById(
+      defaultspackMobileProviderConfigs,
+      providerId,
+    );
     final source = existing ?? fallback;
     if (source == null) {
       setState(() {
@@ -255,14 +355,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (provider.providerId != providerId) provider,
       next,
     ]..sort((a, b) => a.effectiveLabel.compareTo(b.effectiveLabel));
-    await widget.configStore.saveProviderConfigs(nextProviders);
-    if (!mounted) return;
-    setState(() => _providerConfigs = nextProviders);
-    if (next.isConfigured && _providerRunsOnMobile(next)) {
-      await _activateMobileProvider(next);
-    } else {
-      _toast('${next.effectiveLabel} のAPI Keyを取り込みました');
-    }
+    await _persistProviderEdit(next, nextProviders);
   }
 
   Future<void> _scanPc() async {
@@ -304,11 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    const requestedScopes = [
-      'chat.read',
-      'chat.write',
-      'tools.observe',
-    ];
+    const requestedScopes = ['chat.read', 'chat.write', 'tools.observe'];
     final verificationCode = await claimVerificationCode(
       pairingId: payload.pairingId,
       device: identity,
@@ -355,14 +444,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _pairingVerificationCode = '';
       });
       _toast('ペアリングエラー: ${e.message}');
-    } catch (e) {
+    } on SettingsPersistenceException {
       if (!mounted) return;
       setState(() {
-        _pairingError = '$e';
+        _pairingError = 'ペアリング情報を安全に保存できませんでした';
         _pairingInProgress = false;
         _pairingVerificationCode = '';
       });
-      _toast('ペアリングエラー: $e');
+      _toast('ペアリング情報を保存できませんでした。もう一度ペアリングしてください。');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _pairingError = '予期しないペアリングエラーが発生しました';
+        _pairingInProgress = false;
+        _pairingVerificationCode = '';
+      });
+      _toast('ペアリングを完了できませんでした');
     } finally {
       client.close();
     }
@@ -383,10 +480,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await Future<void>.delayed(interval);
 
       try {
-        final statusResp = await client.pollStatus(
-          pc,
-          pairingId: pairingId,
-        );
+        final statusResp = await client.pollStatus(pc, pairingId: pairingId);
         if (!statusResp.isAccepted) continue;
 
         final tokenResp = await client.pickupTokenDelivery(
@@ -413,11 +507,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   deviceId: _deviceIdentity!.deviceId,
                 )
               : <String, dynamic>{};
-          final token = (deliveryPayload['client_access_token'] as String? ??
-                  deliveryPayload['device_token'] as String? ??
-                  tokenResp.deviceToken ??
-                  '')
-              .trim();
+          final token =
+              (deliveryPayload['client_access_token'] as String? ??
+                      deliveryPayload['device_token'] as String? ??
+                      tokenResp.deviceToken ??
+                      '')
+                  .trim();
           final approvalToken =
               (deliveryPayload['approver_access_token'] as String? ??
                       deliveryPayload['approval_token'] as String? ??
@@ -462,7 +557,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             token: token,
             approvalToken: approvalToken,
           );
-          await widget.configStore.savePc(newPc);
+          await widget.configStore.savePcOrThrow(newPc);
           if (tokenResp.hasTokenDeliveryEnvelope) {
             try {
               await client.ackTokenDelivery(
@@ -506,47 +601,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _selectPairedDevice(PairedDevice device) async {
-    await widget.deviceStore.savePairedDevice(device);
+    if (_saving) return;
     final pc = device.toPcConnection();
-    await widget.configStore.savePc(pc);
-    if (!mounted) return;
     setState(() {
-      _pc = pc;
-      _pcUrl.text = pc.baseUrl;
-      _pcToken.text = pc.token;
+      _saving = true;
+      _apiFeedback = null;
     });
-    widget.onDevicePaired?.call(device);
-    _toast('${device.displayPcLabel} に切り替えました');
+    try {
+      await widget.deviceStore.savePairedDevice(device);
+      await widget.configStore.savePcOrThrow(pc);
+      if (!mounted) return;
+      setState(() {
+        _pc = pc;
+        _pcUrl.text = pc.baseUrl;
+        _pcToken.text = pc.token;
+        _apiFeedback = _SettingsFeedback(
+          message: '${device.displayPcLabel} へ接続を切り替えました',
+          isError: false,
+        );
+      });
+      widget.onDevicePaired?.call(device);
+    } catch (_) {
+      await _reconcileApiAndPcAfterFailure();
+      if (!mounted) return;
+      setState(() {
+        _apiFeedback = _SettingsFeedback(
+          message: 'PC接続を切り替えられませんでした。保存済み接続を再読込しました。',
+          isError: true,
+          onRetry: () => _selectPairedDevice(device),
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _unpair(PairedDevice device) async {
-    await widget.deviceStore.removePairedDevice(device.connectionId);
-    final devices = await widget.deviceStore.loadPairedDevices();
-    final removingActive =
-        _pc?.baseUrl == device.pcBaseUrl && _pc?.token == device.deviceToken;
-    PcConnection? nextPc = _pc;
-    PairedDevice? nextDevice;
-    if (removingActive) {
-      nextDevice = devices.isNotEmpty ? devices.first : null;
-      nextPc = nextDevice?.toPcConnection();
-      await widget.configStore.savePc(nextPc);
-      if (nextDevice != null) {
-        await widget.deviceStore.savePairedDevice(nextDevice);
-      }
-    }
-    if (!mounted) return;
+    if (_saving) return;
     setState(() {
-      _pairedDevices = devices;
-      _pc = nextPc;
-      _pcUrl.text = nextPc?.baseUrl ?? '';
-      _pcToken.text = nextPc?.token ?? '';
-      _pcBootstrap = null;
-      _pcCatalog = null;
+      _saving = true;
+      _apiFeedback = null;
     });
-    if (removingActive) {
-      widget.onDevicePaired?.call(nextDevice);
+    try {
+      await widget.deviceStore.removePairedDevice(device.connectionId);
+      final devices = await widget.deviceStore.loadPairedDevices();
+      final removingActive =
+          _pc?.baseUrl == device.pcBaseUrl && _pc?.token == device.deviceToken;
+      PcConnection? nextPc = _pc;
+      PairedDevice? nextDevice;
+      if (removingActive) {
+        nextDevice = devices.isNotEmpty ? devices.first : null;
+        nextPc = nextDevice?.toPcConnection();
+        await widget.configStore.savePcOrThrow(nextPc);
+        if (nextDevice != null) {
+          await widget.deviceStore.savePairedDevice(nextDevice);
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _pairedDevices = devices;
+        _pc = nextPc;
+        _pcUrl.text = nextPc?.baseUrl ?? '';
+        _pcToken.text = nextPc?.token ?? '';
+        _pcBootstrap = null;
+        _pcCatalog = null;
+        _apiFeedback = _SettingsFeedback(
+          message: '${device.displayPcLabel} との接続を解除しました',
+          isError: false,
+        );
+      });
+      if (removingActive) widget.onDevicePaired?.call(nextDevice);
+    } catch (_) {
+      final devices = await widget.deviceStore.loadPairedDevices();
+      await _reconcileApiAndPcAfterFailure();
+      if (!mounted) return;
+      setState(() {
+        _pairedDevices = devices;
+        _apiFeedback = _SettingsFeedback(
+          message: 'PC接続の解除を完了できませんでした。保存済み状態を再読込しました。',
+          isError: true,
+          onRetry: () => _unpair(device),
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-    _toast('${device.displayPcLabel} との接続を解除しました');
   }
 
   void _toast(String message) {
@@ -583,8 +722,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               baseUrl: saved.baseUrl.trim().isNotEmpty
                   ? saved.baseUrl
                   : fallback.baseUrl,
-              model:
-                  saved.model.trim().isNotEmpty ? saved.model : fallback.model,
+              model: saved.model.trim().isNotEmpty
+                  ? saved.model
+                  : fallback.model,
               openaiCompatible: saved.openaiCompatible,
               local: saved.local,
               catalogOnly: saved.catalogOnly,
@@ -627,8 +767,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         catalog,
         pcLabel: bootstrap.label,
       );
-      await widget.configStore.saveProviderConfigs(providerConfigs);
-      await widget.configStore.saveModelFavorites(modelFavorites);
+      await widget.configStore.saveProviderConfigsOrThrow(providerConfigs);
+      await widget.configStore.saveModelFavoritesOrThrow(modelFavorites);
       if (!mounted) return;
       setState(() {
         _pcBootstrap = bootstrap;
@@ -640,10 +780,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _toast(
         '${catalog.providers.length}プロバイダー / ${catalog.models.length}モデルを取得しました',
       );
-    } catch (e) {
+    } catch (_) {
+      final persistedProviders = await widget.configStore.loadProviderConfigs();
+      final persistedFavorites = await widget.configStore.loadModelFavorites();
       if (!mounted) return;
       setState(() {
-        _catalogError = e.toString();
+        _providerConfigs = _mergeDefaultProviderConfigs(persistedProviders);
+        _modelFavorites = persistedFavorites;
+        _catalogError = 'PCカタログの設定を保存できませんでした。保存済み状態を再読込しました。再試行してください。';
         _fetchingCatalog = false;
       });
     } finally {
@@ -665,11 +809,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final baseUrl = existing?.baseUrl.trim().isNotEmpty == true
           ? existing!.baseUrl
           : _defaultBaseUrlForProvider(provider);
-      final openaiCompatible = provider.openaiCompatible ||
+      final openaiCompatible =
+          provider.openaiCompatible ||
           _usesOpenAiCompatibleFallback(provider) ||
           _baseUrlLooksOpenAiCompatible(baseUrl);
-      final apiCompatibility =
-          _apiCompatibilityForProvider(provider, baseUrl: baseUrl);
+      final apiCompatibility = _apiCompatibilityForProvider(
+        provider,
+        baseUrl: baseUrl,
+      );
       merged.add(
         MobileProviderConfig(
           providerId: provider.providerId,
@@ -773,7 +920,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _providerRunsOnMobile(MobileProviderConfig provider) {
     final compatibility = provider.apiCompatibility.trim();
-    return provider.baseUrl.trim().isNotEmpty &&
+    final uri = Uri.tryParse(provider.baseUrl.trim());
+    return uri != null &&
+        uri.hasAuthority &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
         provider.model.trim().isNotEmpty &&
         (compatibility == 'openai' ||
             compatibility == 'anthropic_messages' ||
@@ -787,10 +937,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final byKey = {
       for (final favorite in _modelFavorites) favorite.key: favorite,
     };
-    final favoriteProfiles =
-        catalog.runtime.favoriteProfiles.map((id) => id.trim()).toSet();
+    final favoriteProfiles = catalog.runtime.favoriteProfiles
+        .map((id) => id.trim())
+        .toSet();
     for (final profile in catalog.selectableProfiles) {
-      final isFavorite = profile.favorite ||
+      final isFavorite =
+          profile.favorite ||
           favoriteProfiles.any((id) => _pcProfileMatchesId(profile, id));
       if (!isFavorite) continue;
       final favorite = _favoriteFromPcProfile(profile, pcLabel: pcLabel);
@@ -825,6 +977,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ModelFavoriteConfig favorite,
     bool enabled,
   ) async {
+    if (_favoriteSaving) return;
+    final previous = _modelFavorites;
     final next = enabled
         ? _sortModelFavorites([
             for (final existing in _modelFavorites)
@@ -832,11 +986,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
             favorite,
           ])
         : _modelFavorites
-            .where((existing) => existing.key != favorite.key)
-            .toList();
-    await widget.configStore.saveModelFavorites(next);
-    if (!mounted) return;
-    setState(() => _modelFavorites = next);
+              .where((existing) => existing.key != favorite.key)
+              .toList();
+    setState(() {
+      _favoriteSaving = true;
+      _modelFavorites = next;
+      _modelFeedback = null;
+    });
+    try {
+      await widget.configStore.saveModelFavoritesOrThrow(next);
+      if (!mounted) return;
+      setState(() {
+        _modelFeedback = _SettingsFeedback(
+          message: enabled
+              ? '${favorite.effectiveLabel} をStar付きモデルへ保存しました'
+              : '${favorite.effectiveLabel} をStar付きモデルから外しました',
+          isError: false,
+        );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _modelFavorites = previous;
+        _modelFeedback = _SettingsFeedback(
+          message: 'モデルのStarを保存できなかったため、表示を元に戻しました。',
+          isError: true,
+          onRetry: () => _setModelFavorite(favorite, enabled),
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _favoriteSaving = false);
+    }
   }
 
   bool _isModelFavorite(ModelFavoriteConfig favorite) {
@@ -850,6 +1030,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _activateMobileProvider(MobileProviderConfig provider) async {
+    if (_providerSaving) return;
     if (!provider.isConfigured || !_providerRunsOnMobile(provider)) {
       await _editMobileProvider(provider);
       return;
@@ -858,158 +1039,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
       systemPrompt: _systemPrompt.text.trim(),
       temperature: _config.temperature,
     );
-    await widget.configStore.saveApi(next);
-    if (!mounted) return;
     setState(() {
-      _config = next;
-      _syncControllers();
+      _providerSaving = true;
+      _apiFeedback = null;
     });
-    widget.onApiChanged(next);
-    _toast('${provider.effectiveLabel} をこのスマホのAPIにしました');
+    try {
+      await widget.configStore.saveApiOrThrow(next);
+      if (!mounted) return;
+      setState(() {
+        _config = next;
+        _syncControllers();
+        _apiFeedback = _SettingsFeedback(
+          message: '${provider.effectiveLabel} をこのスマホのAPIとして保存しました',
+          isError: false,
+        );
+      });
+      widget.onApiChanged(next);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _apiFeedback = _SettingsFeedback(
+          message: '${provider.effectiveLabel} を有効化できませんでした。現在のAPI設定は変更していません。',
+          isError: true,
+          onRetry: () => _activateMobileProvider(provider),
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _providerSaving = false);
+    }
   }
 
   Future<void> _editMobileProvider(
     MobileProviderConfig provider, {
     BuildContext? sheetContext,
   }) async {
-    final label = TextEditingController(text: provider.label);
-    final apiKey = TextEditingController(text: provider.apiKey);
-    final baseUrl = TextEditingController(text: provider.baseUrl);
-    final model = TextEditingController(text: provider.model);
     final saved = await showModalBottomSheet<MobileProviderConfig>(
       context: sheetContext ?? context,
       isScrollControlled: true,
       showDragHandle: true,
       useSafeArea: true,
-      builder: (context) {
-        return _UnfocusOnTapOutside(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 4,
-              bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  provider.displayName.isNotEmpty
-                      ? provider.displayName
-                      : provider.providerId,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: label,
-                  decoration: const InputDecoration(
-                    labelText: 'ラベル',
-                    prefixIcon: Icon(Icons.label_outline),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: apiKey,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'API Key',
-                    prefixIcon: Icon(Icons.key_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Theme(
-                  data: Theme.of(context).copyWith(
-                    dividerColor: Colors.transparent,
-                  ),
-                  child: ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    childrenPadding: EdgeInsets.zero,
-                    title: const Text('高度な設定'),
-                    subtitle:
-                        const Text('通常は変更不要です。provider側のURL/モデルが必要な時だけ使います。'),
-                    children: [
-                      TextField(
-                        controller: baseUrl,
-                        keyboardType: TextInputType.url,
-                        decoration: const InputDecoration(
-                          labelText: 'API Base URL',
-                          prefixIcon: Icon(Icons.cloud_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: model,
-                        decoration: const InputDecoration(
-                          labelText: 'モデル',
-                          prefixIcon: Icon(Icons.model_training_outlined),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('キャンセル'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        icon: const Icon(Icons.save_outlined),
-                        label: const Text('保存'),
-                        onPressed: () {
-                          Navigator.pop(
-                            context,
-                            provider.copyWith(
-                              label: label.text.trim(),
-                              apiKey: apiKey.text.trim(),
-                              baseUrl: baseUrl.text.trim(),
-                              model: model.text.trim(),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (_) => _ProviderEditSheet(provider: provider),
     );
-    label.dispose();
-    apiKey.dispose();
-    baseUrl.dispose();
-    model.dispose();
     if (saved == null) return;
     final nextProviders = [
       for (final existing in _providerConfigs)
         if (existing.providerId != saved.providerId) existing,
       saved,
     ]..sort((a, b) => a.effectiveLabel.compareTo(b.effectiveLabel));
-    await widget.configStore.saveProviderConfigs(nextProviders);
-    if (!mounted) return;
-    setState(() => _providerConfigs = nextProviders);
-    if (saved.isConfigured) {
-      await _activateMobileProvider(saved);
-    } else {
-      _toast('API Keyを保存しました');
+    await _persistProviderEdit(saved, nextProviders);
+  }
+
+  Future<void> _persistProviderEdit(
+    MobileProviderConfig provider,
+    List<MobileProviderConfig> nextProviders,
+  ) async {
+    if (_providerSaving) return;
+    final validationError = _validateProviderDraft(provider);
+    if (validationError != null) {
+      setState(() {
+        _apiFeedback = _SettingsFeedback(
+          message: validationError,
+          isError: true,
+        );
+      });
+      return;
+    }
+    var providerSaved = false;
+    setState(() {
+      _providerSaving = true;
+      _apiFeedback = null;
+    });
+    try {
+      await widget.configStore.saveProviderConfigsOrThrow(nextProviders);
+      providerSaved = true;
+      ApiConfig? nextApi;
+      if (provider.isConfigured && _providerRunsOnMobile(provider)) {
+        nextApi = provider.toApiConfig(
+          systemPrompt: _systemPrompt.text.trim(),
+          temperature: _config.temperature,
+        );
+        await widget.configStore.saveApiOrThrow(nextApi);
+      }
+      if (!mounted) return;
+      setState(() {
+        _providerConfigs = nextProviders;
+        if (nextApi != null) {
+          _config = nextApi;
+          _syncControllers();
+        }
+        _apiFeedback = _SettingsFeedback(
+          message: nextApi == null
+              ? '${provider.effectiveLabel} のprovider設定を保存しました'
+              : '${provider.effectiveLabel} のprovider設定を保存し、このスマホで有効化しました',
+          isError: false,
+        );
+      });
+      if (nextApi != null) widget.onApiChanged(nextApi);
+    } catch (_) {
+      final persistedProviders = await widget.configStore.loadProviderConfigs();
+      final persistedApi = await widget.configStore.loadApi();
+      if (!mounted) return;
+      setState(() {
+        _providerConfigs = _mergeDefaultProviderConfigs(persistedProviders);
+        _config = persistedApi;
+        _syncControllers();
+        _apiFeedback = _SettingsFeedback(
+          message: providerSaved
+              ? 'provider設定は保存されましたが、APIとして有効化できませんでした。保存済み状態を再読込しました。'
+              : 'provider設定を保存できませんでした。以前の表示へ戻しました。',
+          isError: true,
+          onRetry: () => _persistProviderEdit(provider, nextProviders),
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _providerSaving = false);
     }
   }
 
+  String? _validateProviderDraft(MobileProviderConfig provider) {
+    if (provider.providerId.trim().isEmpty) {
+      return 'provider IDがないため保存できません。保存は行われていません。';
+    }
+    final uri = Uri.tryParse(provider.baseUrl.trim());
+    if (uri == null ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'https' && uri.scheme != 'http')) {
+      return 'providerのAPI Base URLを有効なHTTP(S) URLで入力してください。保存は行われていません。';
+    }
+    if (provider.model.trim().isEmpty) {
+      return 'providerのモデルを入力してください。保存は行われていません。';
+    }
+    return null;
+  }
+
   Future<void> _setPcTaskFinishedNotifications(bool enabled) async {
-    final next = _notificationSettings.copyWith(
-      pcTaskFinishedEnabled: enabled,
+    final next = _notificationSettings.copyWith(pcTaskFinishedEnabled: enabled);
+    final saved = await _persistNotificationSettings(
+      next,
+      successMessage: enabled ? 'PCタスク完了通知をONで保存しました' : 'PCタスク完了通知をOFFで保存しました',
+      retry: () => _setPcTaskFinishedNotifications(enabled),
     );
-    setState(() => _notificationSettings = next);
-    await widget.configStore.saveNotificationSettings(next);
-    if (enabled) {
+    if (saved && enabled) {
       unawaited(const PlatformNotifications().requestAuthorization());
     }
   }
@@ -1018,8 +1188,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final next = _notificationSettings.copyWith(
       delegatePhoneToolsToPcWhenAvailable: enabled,
     );
-    setState(() => _notificationSettings = next);
-    await widget.configStore.saveNotificationSettings(next);
+    await _persistNotificationSettings(
+      next,
+      successMessage: enabled
+          ? 'PC環境のtool委譲をONで保存しました'
+          : 'PC環境のtool委譲をOFFで保存しました',
+      retry: () => _setPcToolDelegation(enabled),
+    );
+  }
+
+  Future<bool> _persistNotificationSettings(
+    MobileNotificationSettings next, {
+    required String successMessage,
+    required Future<void> Function() retry,
+  }) async {
+    if (_notificationSaving) return false;
+    final previous = _notificationSettings;
+    setState(() {
+      _notificationSaving = true;
+      _notificationSettings = next;
+      _notificationFeedback = null;
+    });
+    try {
+      await widget.configStore.saveNotificationSettingsOrThrow(next);
+      if (!mounted) return false;
+      setState(() {
+        _notificationFeedback = _SettingsFeedback(
+          message: successMessage,
+          isError: false,
+        );
+      });
+      return true;
+    } catch (_) {
+      if (!mounted) return false;
+      setState(() {
+        _notificationSettings = previous;
+        _notificationFeedback = _SettingsFeedback(
+          message: '通知とtool委譲の設定を保存できなかったため、表示を元に戻しました。',
+          isError: true,
+          onRetry: retry,
+        );
+      });
+      return false;
+    } finally {
+      if (mounted) setState(() => _notificationSaving = false);
+    }
   }
 
   Future<void> _pickModelFromCatalog() async {
@@ -1060,12 +1273,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             }
 
+            final feedback = _apiFeedback;
+            final routedFeedback = feedback == null
+                ? null
+                : _SettingsFeedback(
+                    message: feedback.message,
+                    isError: feedback.isError,
+                    onRetry: feedback.onRetry == null
+                        ? null
+                        : () => refresh(feedback.onRetry!),
+                  );
+
             return _MobileApiSettingsPage(
               providerConfigs: _providerConfigs,
               config: _config,
               fetchingCatalog: _fetchingCatalog,
               catalogError: _catalogError,
-              saving: _saving,
+              saving: _saving || _providerSaving,
+              feedback: routedFeedback,
               baseUrl: _baseUrl,
               apiKey: _apiKey,
               model: _model,
@@ -1073,14 +1298,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               systemPrompt: _systemPrompt,
               isActiveProvider: _isActiveMobileProvider,
               providerRunsOnMobile: _providerRunsOnMobile,
-              onScanApi: () => refresh(
-                () => _scanApi(navigationContext: context),
-              ),
+              onScanApi: () =>
+                  refresh(() => _scanApi(navigationContext: context)),
               onFetchPcCatalog: () => refresh(_fetchPcCatalog),
-              onSaveDirectConfig: () => refresh(_save),
-              onUseProvider: (provider) => refresh(
-                () => _activateMobileProvider(provider),
-              ),
+              onSaveDirectConfig: () async {
+                final saved = await _save();
+                if (routeContext.mounted) setRouteState(() {});
+                return saved;
+              },
+              onUseProvider: (provider) =>
+                  refresh(() => _activateMobileProvider(provider)),
               onEditProvider: (provider) => refresh(
                 () => _editMobileProvider(provider, sheetContext: context),
               ),
@@ -1106,6 +1333,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             }
 
+            final feedback = _modelFeedback;
+            final routedFeedback = feedback == null
+                ? null
+                : _SettingsFeedback(
+                    message: feedback.message,
+                    isError: feedback.isError,
+                    onRetry: feedback.onRetry == null
+                        ? null
+                        : () => refresh(feedback.onRetry!),
+                  );
+
             return _ModelSettingsPage(
               providerConfigs: _providerConfigs,
               config: _config,
@@ -1113,15 +1351,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               pcCatalog: _pcCatalog,
               fetchingCatalog: _fetchingCatalog,
               catalogError: _catalogError,
+              saving: _favoriteSaving,
+              feedback: routedFeedback,
               isFavorite: _isModelFavorite,
               providerRunsOnMobile: _providerRunsOnMobile,
               onFetchPcCatalog: () => refresh(_fetchPcCatalog),
-              onToggleFavorite: (favorite, enabled) => refresh(
-                () => _setModelFavorite(favorite, enabled),
-              ),
-              onUseProvider: (provider) => refresh(
-                () => _activateMobileProvider(provider),
-              ),
+              onToggleFavorite: (favorite, enabled) =>
+                  refresh(() => _setModelFavorite(favorite, enabled)),
+              onUseProvider: (provider) =>
+                  refresh(() => _activateMobileProvider(provider)),
               favoriteFromPcProfile: _favoriteFromPcProfile,
             );
           },
@@ -1171,15 +1409,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'PCのdefaultspack Kernel APIへ接続する情報。',
               ),
               const SizedBox(height: 12),
+              _MutationStatusBanner(
+                feedback: _notificationFeedback,
+                pending: _notificationSaving,
+                pendingMessage: '通知とtool委譲の設定を保存しています…',
+              ),
+              if (_notificationFeedback != null || _notificationSaving)
+                const SizedBox(height: 12),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 secondary: const Icon(Icons.notifications_active_outlined),
                 title: const Text('PCタスク完了通知'),
                 subtitle: const Text('PCで実行したチャット/タスクが終わったら通知します。'),
                 value: _notificationSettings.pcTaskFinishedEnabled,
-                onChanged: (value) {
-                  unawaited(_setPcTaskFinishedNotifications(value));
-                },
+                onChanged: _notificationSaving
+                    ? null
+                    : (value) {
+                        unawaited(_setPcTaskFinishedNotifications(value));
+                      },
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1188,9 +1435,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: const Text('このスマホでチャット中でも、接続中のPCで実行できるtoolへ委譲します。'),
                 value:
                     _notificationSettings.delegatePhoneToolsToPcWhenAvailable,
-                onChanged: (value) {
-                  unawaited(_setPcToolDelegation(value));
-                },
+                onChanged: _notificationSaving
+                    ? null
+                    : (value) {
+                        unawaited(_setPcToolDelegation(value));
+                      },
               ),
               const SizedBox(height: 12),
               if (_pairedDevices.isNotEmpty) ...[
@@ -1211,7 +1460,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     color: Theme.of(context).cardTheme.color,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: Theme.of(context).dividerTheme.color ??
+                      color:
+                          Theme.of(context).dividerTheme.color ??
                           Colors.transparent,
                     ),
                   ),
@@ -1229,12 +1479,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _pairingVerificationCode,
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontFeatures: const [
-                              FontFeature.tabularFigures(),
-                            ],
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
                         ),
                         const SizedBox(height: 4),
                         const Text(
@@ -1293,6 +1543,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                _MutationStatusBanner(
+                  feedback: _apiFeedback,
+                  pending: _saving,
+                  pendingMessage: 'API設定とPC接続を保存しています…',
+                ),
+                if (_apiFeedback != null || _saving) const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -1305,9 +1561,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton.icon(
-                        icon: const Icon(Icons.save_outlined),
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.save_outlined),
                         label: const Text('保存'),
-                        onPressed: _save,
+                        onPressed: _saving ? null : () => unawaited(_save()),
                       ),
                     ),
                   ],
@@ -1401,9 +1665,9 @@ List<ModelFavoriteConfig> _sortModelFavorites(
   list.sort((a, b) {
     final source = a.source.compareTo(b.source);
     if (source != 0) return source;
-    return a.effectiveLabel
-        .toLowerCase()
-        .compareTo(b.effectiveLabel.toLowerCase());
+    return a.effectiveLabel.toLowerCase().compareTo(
+      b.effectiveLabel.toLowerCase(),
+    );
   });
   return list;
 }
@@ -1451,6 +1715,89 @@ String _mobileApiLabel(
   final model = config.model.trim();
   if (model.isNotEmpty) return model;
   return '未設定';
+}
+
+class _MutationStatusBanner extends StatelessWidget {
+  const _MutationStatusBanner({
+    required this.feedback,
+    required this.pending,
+    required this.pendingMessage,
+  });
+
+  final _SettingsFeedback? feedback;
+  final bool pending;
+  final String pendingMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = feedback;
+    if (!pending && current == null) return const SizedBox.shrink();
+    final isError = current?.isError ?? false;
+    final message = pending ? pendingMessage : current!.message;
+    final scheme = Theme.of(context).colorScheme;
+    final color = isError ? scheme.error : scheme.primary;
+    return Semantics(
+      liveRegion: true,
+      label: message,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            if (pending)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Icon(
+                isError ? Icons.error_outline : Icons.check_circle_outline,
+                size: 20,
+                color: color,
+              ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            if (!pending && isError && current?.onRetry != null)
+              TextButton(
+                onPressed: () => unawaited(current!.onRetry!()),
+                child: const Text('再試行'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UnsavedDraftBanner extends StatelessWidget {
+  const _UnsavedDraftBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: scheme.tertiaryContainer.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text('未保存の変更があります。戻る前に保存・破棄・キャンセルを選べます。'),
+      ),
+    );
+  }
 }
 
 class _SettingsNavCard extends StatelessWidget {
@@ -1516,6 +1863,7 @@ class _MobileApiSettingsPage extends StatefulWidget {
     required this.fetchingCatalog,
     required this.catalogError,
     required this.saving,
+    required this.feedback,
     required this.baseUrl,
     required this.apiKey,
     required this.model,
@@ -1535,6 +1883,7 @@ class _MobileApiSettingsPage extends StatefulWidget {
   final bool fetchingCatalog;
   final String? catalogError;
   final bool saving;
+  final _SettingsFeedback? feedback;
   final TextEditingController baseUrl;
   final TextEditingController apiKey;
   final TextEditingController model;
@@ -1544,7 +1893,7 @@ class _MobileApiSettingsPage extends StatefulWidget {
   final bool Function(MobileProviderConfig provider) providerRunsOnMobile;
   final Future<void> Function() onScanApi;
   final Future<void> Function() onFetchPcCatalog;
-  final Future<void> Function() onSaveDirectConfig;
+  final Future<bool> Function() onSaveDirectConfig;
   final Future<void> Function(MobileProviderConfig provider) onUseProvider;
   final Future<void> Function(MobileProviderConfig provider) onEditProvider;
 
@@ -1554,209 +1903,343 @@ class _MobileApiSettingsPage extends StatefulWidget {
 
 class _MobileApiSettingsPageState extends State<_MobileApiSettingsPage> {
   String _query = '';
+  late String _savedDraft;
+  bool _dirty = false;
+  bool _submitting = false;
+
+  List<TextEditingController> get _draftControllers => [
+    widget.baseUrl,
+    widget.apiKey,
+    widget.model,
+    widget.label,
+    widget.systemPrompt,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _savedDraft = _draftFingerprint();
+    for (final controller in _draftControllers) {
+      controller.addListener(_onDraftChanged);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _MobileApiSettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.config, widget.config)) {
+      _savedDraft = _draftFingerprint();
+      _dirty = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _draftControllers) {
+      controller.removeListener(_onDraftChanged);
+    }
+    super.dispose();
+  }
+
+  String _draftFingerprint() => [
+    widget.baseUrl.text,
+    widget.apiKey.text,
+    widget.model.text,
+    widget.label.text,
+    widget.systemPrompt.text,
+  ].join('\u0000');
+
+  void _onDraftChanged() {
+    final dirty = _draftFingerprint() != _savedDraft;
+    if (dirty != _dirty && mounted) setState(() => _dirty = dirty);
+  }
+
+  Future<bool> _saveDirectConfig() async {
+    if (_submitting || widget.saving) return false;
+    setState(() => _submitting = true);
+    try {
+      final saved = await widget.onSaveDirectConfig();
+      if (saved && mounted) {
+        setState(() {
+          _savedDraft = _draftFingerprint();
+          _dirty = false;
+        });
+      }
+      return saved;
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _handleBlockedPop() async {
+    if (_submitting || widget.saving) return;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('未保存の変更があります'),
+        content: const Text('API設定を保存、破棄、または編集を続ける操作を選んでください。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'cancel'),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'discard'),
+            child: const Text('破棄'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'save'),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'save') {
+      final saved = await _saveDirectConfig();
+      if (saved && mounted) Navigator.of(context).pop();
+      return;
+    }
+    if (action == 'discard') {
+      _restoreSavedDraft();
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  void _restoreSavedDraft() {
+    final parts = _savedDraft.split('\u0000');
+    for (var index = 0; index < _draftControllers.length; index += 1) {
+      _draftControllers[index].text = parts[index];
+    }
+    if (mounted) setState(() => _dirty = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final providers = widget.providerConfigs.toList()
       ..sort(
-        (a, b) => a.effectiveLabel
-            .toLowerCase()
-            .compareTo(b.effectiveLabel.toLowerCase()),
+        (a, b) => a.effectiveLabel.toLowerCase().compareTo(
+          b.effectiveLabel.toLowerCase(),
+        ),
       );
     final filtered = providers.where(_matchesQuery).toList();
     final configuredCount = _configuredProviderCount(widget.providerConfigs);
 
-    return _UnfocusOnTapOutside(
-      child: Scaffold(
-        appBar: AppBar(title: const Text('API設定')),
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardTheme.color,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Theme.of(context).dividerTheme.color ??
-                        Colors.transparent,
+    final saving = widget.saving || _submitting;
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_handleBlockedPop());
+      },
+      child: _UnfocusOnTapOutside(
+        child: Scaffold(
+          appBar: AppBar(title: const Text('API設定')),
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardTheme.color,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color:
+                          Theme.of(context).dividerTheme.color ??
+                          Colors.transparent,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.psychology_outlined),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _mobileApiLabel(
+                                widget.config,
+                                widget.providerConfigs,
+                              ),
+                              style: Theme.of(context).textTheme.titleSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '$configuredCount / ${widget.providerConfigs.length} 件のKey保存済み',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
+                if (widget.feedback != null || saving) ...[
+                  const SizedBox(height: 12),
+                  _MutationStatusBanner(
+                    feedback: widget.feedback,
+                    pending: saving,
+                    pendingMessage: 'API / provider設定を保存しています…',
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    const Icon(Icons.psychology_outlined),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.qr_code_scanner),
+                        label: const Text('QRで取り込む'),
+                        onPressed: () => unawaited(widget.onScanApi()),
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _mobileApiLabel(
-                              widget.config,
-                              widget.providerConfigs,
-                            ),
-                            style: Theme.of(context).textTheme.titleSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            '$configuredCount / ${widget.providerConfigs.length} 件のKey保存済み',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('QRで取り込む'),
-                      onPressed: () => unawaited(widget.onScanApi()),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      icon: widget.fetchingCatalog
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.cloud_download_outlined),
-                      label: const Text('PCから取得'),
-                      onPressed: widget.fetchingCatalog
-                          ? null
-                          : () => unawaited(widget.onFetchPcCatalog()),
-                    ),
-                  ),
-                ],
-              ),
-              if (widget.catalogError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  widget.catalogError!,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'プロバイダーを検索',
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onChanged: (value) => setState(() => _query = value),
-              ),
-              const SizedBox(height: 12),
-              if (widget.providerConfigs.isEmpty) ...[
-                const _ProviderHintCard(),
-              ] else if (filtered.isEmpty) ...[
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Text('一致するプロバイダーがありません'),
-                  ),
-                ),
-              ] else ...[
-                for (final provider in filtered) ...[
-                  _MobileProviderCard(
-                    provider: provider,
-                    active: widget.isActiveProvider(provider),
-                    supported: widget.providerRunsOnMobile(provider),
-                    onUse: () => unawaited(widget.onUseProvider(provider)),
-                    onEdit: () => unawaited(widget.onEditProvider(provider)),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-              ],
-              const SizedBox(height: 12),
-              Theme(
-                data: Theme.of(context)
-                    .copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.tune_outlined),
-                  title: const Text('高度な設定'),
-                  subtitle: const Text('OpenAI互換APIをURLから直接設定します。'),
-                  children: [
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: widget.baseUrl,
-                      keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'API Base URL',
-                        hintText: 'https://api.openai.com/v1',
-                        prefixIcon: Icon(Icons.cloud_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: widget.apiKey,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'API Key',
-                        prefixIcon: Icon(Icons.key_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: widget.model,
-                      decoration: const InputDecoration(
-                        labelText: 'モデル',
-                        hintText: 'gpt-4o-mini',
-                        prefixIcon: Icon(Icons.model_training_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: widget.label,
-                      decoration: const InputDecoration(
-                        labelText: 'ラベル (任意)',
-                        prefixIcon: Icon(Icons.label_outline),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: widget.systemPrompt,
-                      minLines: 2,
-                      maxLines: 5,
-                      decoration: const InputDecoration(
-                        labelText: 'システムプロンプト (任意)',
-                        prefixIcon: Icon(Icons.terminal_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton.icon(
-                        icon: widget.saving
+                      child: FilledButton.tonalIcon(
+                        icon: widget.fetchingCatalog
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
-                            : const Icon(Icons.save_outlined),
-                        label: const Text('直接設定を保存'),
-                        onPressed: widget.saving
+                            : const Icon(Icons.cloud_download_outlined),
+                        label: const Text('PCから取得'),
+                        onPressed: widget.fetchingCatalog
                             ? null
-                            : () => unawaited(widget.onSaveDirectConfig()),
+                            : () => unawaited(widget.onFetchPcCatalog()),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                if (widget.catalogError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.catalogError!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: 'プロバイダーを検索',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (value) => setState(() => _query = value),
+                ),
+                const SizedBox(height: 12),
+                if (widget.providerConfigs.isEmpty) ...[
+                  const _ProviderHintCard(),
+                ] else if (filtered.isEmpty) ...[
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Text('一致するプロバイダーがありません'),
+                    ),
+                  ),
+                ] else ...[
+                  for (final provider in filtered) ...[
+                    _MobileProviderCard(
+                      provider: provider,
+                      active: widget.isActiveProvider(provider),
+                      supported: widget.providerRunsOnMobile(provider),
+                      onUse: () => unawaited(widget.onUseProvider(provider)),
+                      onEdit: () => unawaited(widget.onEditProvider(provider)),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+                const SizedBox(height: 12),
+                Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.tune_outlined),
+                    title: const Text('高度な設定'),
+                    subtitle: const Text('OpenAI互換APIをURLから直接設定します。'),
+                    children: [
+                      const SizedBox(height: 8),
+                      if (_dirty) ...[
+                        const _UnsavedDraftBanner(),
+                        const SizedBox(height: 12),
+                      ],
+                      TextField(
+                        controller: widget.baseUrl,
+                        keyboardType: TextInputType.url,
+                        decoration: const InputDecoration(
+                          labelText: 'API Base URL',
+                          hintText: 'https://api.openai.com/v1',
+                          prefixIcon: Icon(Icons.cloud_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: widget.apiKey,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'API Key',
+                          prefixIcon: Icon(Icons.key_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: widget.model,
+                        decoration: const InputDecoration(
+                          labelText: 'モデル',
+                          hintText: 'gpt-4o-mini',
+                          prefixIcon: Icon(Icons.model_training_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: widget.label,
+                        decoration: const InputDecoration(
+                          labelText: 'ラベル (任意)',
+                          prefixIcon: Icon(Icons.label_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: widget.systemPrompt,
+                        minLines: 2,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'システムプロンプト (任意)',
+                          prefixIcon: Icon(Icons.terminal_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          icon: saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.save_outlined),
+                          label: const Text('直接設定を保存'),
+                          onPressed: saving
+                              ? null
+                              : () => unawaited(_saveDirectConfig()),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1781,6 +2264,8 @@ class _ModelSettingsPage extends StatefulWidget {
     required this.pcCatalog,
     required this.fetchingCatalog,
     required this.catalogError,
+    required this.saving,
+    required this.feedback,
     required this.isFavorite,
     required this.providerRunsOnMobile,
     required this.onFetchPcCatalog,
@@ -1795,14 +2280,16 @@ class _ModelSettingsPage extends StatefulWidget {
   final PcCatalog? pcCatalog;
   final bool fetchingCatalog;
   final String? catalogError;
+  final bool saving;
+  final _SettingsFeedback? feedback;
   final bool Function(ModelFavoriteConfig favorite) isFavorite;
   final bool Function(MobileProviderConfig provider) providerRunsOnMobile;
   final Future<void> Function() onFetchPcCatalog;
   final Future<void> Function(ModelFavoriteConfig favorite, bool enabled)
-      onToggleFavorite;
+  onToggleFavorite;
   final Future<void> Function(MobileProviderConfig provider) onUseProvider;
   final ModelFavoriteConfig Function(ProfileEntry profile, {String pcLabel})
-      favoriteFromPcProfile;
+  favoriteFromPcProfile;
 
   @override
   State<_ModelSettingsPage> createState() => _ModelSettingsPageState();
@@ -1813,17 +2300,19 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final mobileProviders = widget.providerConfigs
-        .where((provider) => provider.model.trim().isNotEmpty)
-        .toList()
-      ..sort(
-        (a, b) => a.effectiveLabel
-            .toLowerCase()
-            .compareTo(b.effectiveLabel.toLowerCase()),
-      );
+    final mobileProviders =
+        widget.providerConfigs
+            .where((provider) => provider.model.trim().isNotEmpty)
+            .toList()
+          ..sort(
+            (a, b) => a.effectiveLabel.toLowerCase().compareTo(
+              b.effectiveLabel.toLowerCase(),
+            ),
+          );
     final pcProfiles = widget.pcCatalog?.selectableProfiles ?? [];
-    final filteredMobile =
-        mobileProviders.where(_matchesMobileProvider).toList();
+    final filteredMobile = mobileProviders
+        .where(_matchesMobileProvider)
+        .toList();
     final filteredPc = pcProfiles.where(_matchesPcProfile).toList();
 
     return _UnfocusOnTapOutside(
@@ -1840,6 +2329,14 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
                 ),
                 favoriteCount: widget.modelFavorites.length,
               ),
+              if (widget.feedback != null || widget.saving) ...[
+                const SizedBox(height: 12),
+                _MutationStatusBanner(
+                  feedback: widget.feedback,
+                  pending: widget.saving,
+                  pendingMessage: 'Star付きモデルを保存しています…',
+                ),
+              ],
               const SizedBox(height: 12),
               FilledButton.tonalIcon(
                 icon: widget.fetchingCatalog
@@ -1894,9 +2391,8 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
                             }
                           }
                         : null,
-                    onRemove: () => unawaited(
-                      widget.onToggleFavorite(favorite, false),
-                    ),
+                    onRemove: () =>
+                        unawaited(widget.onToggleFavorite(favorite, false)),
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -1918,9 +2414,11 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
                       provider.model,
                     ].where((part) => part.trim().isNotEmpty).join(' · '),
                     sourceLabel: provider.isConfigured ? 'このスマホ' : 'Key未設定',
-                    active: widget.config.providerId == provider.providerId &&
+                    active:
+                        widget.config.providerId == provider.providerId &&
                         widget.config.model == provider.model,
-                    supported: provider.isConfigured &&
+                    supported:
+                        provider.isConfigured &&
                         widget.providerRunsOnMobile(provider),
                     starred: widget.isFavorite(
                       ModelFavoriteConfig.fromMobileProvider(provider),
@@ -1931,7 +2429,8 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
                         starred,
                       ),
                     ),
-                    onUse: provider.isConfigured &&
+                    onUse:
+                        provider.isConfigured &&
                             widget.providerRunsOnMobile(provider)
                         ? () => unawaited(widget.onUseProvider(provider))
                         : null,
@@ -2171,10 +2670,7 @@ class _ModelCandidateCard extends StatelessWidget {
                   children: [
                     _StatusPill(label: sourceLabel, active: supported),
                     const Spacer(),
-                    TextButton(
-                      onPressed: onUse,
-                      child: const Text('使用'),
-                    ),
+                    TextButton(onPressed: onUse, child: const Text('使用')),
                   ],
                 ),
               ],
@@ -2294,6 +2790,147 @@ class _PairedDeviceCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProviderEditSheet extends StatefulWidget {
+  const _ProviderEditSheet({required this.provider});
+
+  final MobileProviderConfig provider;
+
+  @override
+  State<_ProviderEditSheet> createState() => _ProviderEditSheetState();
+}
+
+class _ProviderEditSheetState extends State<_ProviderEditSheet> {
+  late final TextEditingController _label;
+  late final TextEditingController _apiKey;
+  late final TextEditingController _baseUrl;
+  late final TextEditingController _model;
+
+  @override
+  void initState() {
+    super.initState();
+    _label = TextEditingController(text: widget.provider.label);
+    _apiKey = TextEditingController(text: widget.provider.apiKey);
+    _baseUrl = TextEditingController(text: widget.provider.baseUrl);
+    _model = TextEditingController(text: widget.provider.model);
+  }
+
+  @override
+  void dispose() {
+    _label.dispose();
+    _apiKey.dispose();
+    _baseUrl.dispose();
+    _model.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = widget.provider;
+    return _UnfocusOnTapOutside(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 4,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                provider.displayName.isNotEmpty
+                    ? provider.displayName
+                    : provider.providerId,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _label,
+                decoration: const InputDecoration(
+                  labelText: 'ラベル',
+                  prefixIcon: Icon(Icons.label_outline),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _apiKey,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'API Key',
+                  prefixIcon: Icon(Icons.key_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  title: const Text('高度な設定'),
+                  subtitle: const Text(
+                    '通常は変更不要です。provider側のURL/モデルが必要な時だけ使います。',
+                  ),
+                  children: [
+                    TextField(
+                      controller: _baseUrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'API Base URL',
+                        prefixIcon: Icon(Icons.cloud_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _model,
+                      decoration: const InputDecoration(
+                        labelText: 'モデル',
+                        prefixIcon: Icon(Icons.model_training_outlined),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('キャンセル'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('保存'),
+                      onPressed: () {
+                        Navigator.pop(
+                          context,
+                          provider.copyWith(
+                            label: _label.text.trim(),
+                            apiKey: _apiKey.text.trim(),
+                            baseUrl: _baseUrl.text.trim(),
+                            model: _model.text.trim(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2437,10 +3074,7 @@ class _StatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 11, color: color),
-      ),
+      child: Text(label, style: TextStyle(fontSize: 11, color: color)),
     );
   }
 }
@@ -2586,28 +3220,29 @@ class _PcInfoCard extends StatelessWidget {
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: configured
-                    .take(4)
-                    .map(
-                      (p) => Chip(
-                        label: Text(p.displayName),
-                        avatar: const Icon(Icons.cloud_done, size: 16),
-                        visualDensity: VisualDensity.compact,
+                children:
+                    configured
+                        .take(4)
+                        .map(
+                          (p) => Chip(
+                            label: Text(p.displayName),
+                            avatar: const Icon(Icons.cloud_done, size: 16),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        )
+                        .toList()
+                      ..addAll(
+                        configured.length > visibleConfigured.length
+                            ? [
+                                Chip(
+                                  label: Text(
+                                    '+${configured.length - visibleConfigured.length}',
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ]
+                            : const [],
                       ),
-                    )
-                    .toList()
-                  ..addAll(
-                    configured.length > visibleConfigured.length
-                        ? [
-                            Chip(
-                              label: Text(
-                                '+${configured.length - visibleConfigured.length}',
-                              ),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          ]
-                        : const [],
-                  ),
               ),
             ],
           ],
@@ -2672,8 +3307,9 @@ class _PcModelPickerState extends State<_PcModelPicker> {
   void initState() {
     super.initState();
     final configured = widget.catalog.configuredProviders;
-    _selectedProvider =
-        configured.isNotEmpty ? configured.first.providerId : null;
+    _selectedProvider = configured.isNotEmpty
+        ? configured.first.providerId
+        : null;
   }
 
   @override
@@ -2703,8 +3339,10 @@ class _PcModelPickerState extends State<_PcModelPicker> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
-                  Text('モデルを選択',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'モデルを選択',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
@@ -2727,8 +3365,9 @@ class _PcModelPickerState extends State<_PcModelPicker> {
                   ...providers.map(
                     (p) => DropdownMenuItem(
                       value: p.providerId,
-                      child:
-                          Text('${p.displayName}${p.configured ? " ✓" : ""}'),
+                      child: Text(
+                        '${p.displayName}${p.configured ? " ✓" : ""}',
+                      ),
                     ),
                   ),
                 ],
@@ -2759,8 +3398,8 @@ class _PcModelPickerState extends State<_PcModelPicker> {
                       m.supportsVision
                           ? Icons.visibility_outlined
                           : m.supportsThinking
-                              ? Icons.psychology_outlined
-                              : Icons.chat_outlined,
+                          ? Icons.psychology_outlined
+                          : Icons.chat_outlined,
                       size: 20,
                     ),
                     title: Text(

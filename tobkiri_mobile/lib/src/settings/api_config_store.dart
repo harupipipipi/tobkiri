@@ -395,6 +395,19 @@ abstract class SecureKeyValueStorage {
   Future<void> delete(String key);
 }
 
+class SettingsPersistenceException implements Exception {
+  const SettingsPersistenceException({
+    required this.area,
+    required this.reconciled,
+  });
+
+  final String area;
+  final bool reconciled;
+
+  @override
+  String toString() => 'SettingsPersistenceException($area)';
+}
+
 class PlatformSecureStorage implements SecureKeyValueStorage {
   PlatformSecureStorage({MethodChannel? channel})
       : _channel =
@@ -480,9 +493,46 @@ class ApiConfigStore {
 
   Future<void> saveApi(ApiConfig config) async {
     try {
-      await _storage.write(_apiKey, jsonEncode(config.toJson()));
+      await saveApiOrThrow(config);
     } catch (_) {
       // ignore secure storage failures (e.g. simulator keychain unavailable)
+    }
+  }
+
+  Future<void> saveApiOrThrow(ApiConfig config) async {
+    await _writeOrThrow(
+      _apiKey,
+      jsonEncode(config.toJson()),
+      area: 'API settings',
+    );
+  }
+
+  Future<void> saveApiAndPcOrRollback(
+    ApiConfig config,
+    PcConnection? pc,
+  ) async {
+    late final String? previousApi;
+    late final String? previousPc;
+    try {
+      previousApi = await _storage.read(_apiKey);
+      previousPc = await _storage.read(_pcKey);
+    } catch (_) {
+      throw const SettingsPersistenceException(
+        area: 'API and PC settings',
+        reconciled: true,
+      );
+    }
+
+    try {
+      await _storage.write(_apiKey, jsonEncode(config.toJson()));
+      await _writePcValue(pc);
+    } catch (_) {
+      final apiReconciled = await _tryRestoreRawValue(_apiKey, previousApi);
+      final pcReconciled = await _tryRestoreRawValue(_pcKey, previousPc);
+      throw SettingsPersistenceException(
+        area: 'API and PC settings',
+        reconciled: apiReconciled && pcReconciled,
+      );
     }
   }
 
@@ -505,19 +555,26 @@ class ApiConfigStore {
 
   Future<void> saveProviderConfigs(List<MobileProviderConfig> configs) async {
     try {
-      final byProvider = <String, MobileProviderConfig>{};
-      for (final config in configs) {
-        final providerId = config.providerId.trim();
-        if (providerId.isEmpty) continue;
-        byProvider[providerId] = config;
-      }
-      await _storage.write(
-        _providerConfigsKey,
-        jsonEncode(byProvider.values.map((c) => c.toJson()).toList()),
-      );
+      await saveProviderConfigsOrThrow(configs);
     } catch (_) {
       // ignore secure storage failures
     }
+  }
+
+  Future<void> saveProviderConfigsOrThrow(
+    List<MobileProviderConfig> configs,
+  ) async {
+    final byProvider = <String, MobileProviderConfig>{};
+    for (final config in configs) {
+      final providerId = config.providerId.trim();
+      if (providerId.isEmpty) continue;
+      byProvider[providerId] = config;
+    }
+    await _writeOrThrow(
+      _providerConfigsKey,
+      jsonEncode(byProvider.values.map((config) => config.toJson()).toList()),
+      area: 'provider settings',
+    );
   }
 
   Future<void> upsertProviderConfig(MobileProviderConfig config) async {
@@ -562,14 +619,21 @@ class ApiConfigStore {
 
   Future<void> saveModelFavorites(List<ModelFavoriteConfig> favorites) async {
     try {
-      final deduped = _dedupeModelFavorites(favorites);
-      await _storage.write(
-        _modelFavoritesKey,
-        jsonEncode(deduped.map((favorite) => favorite.toJson()).toList()),
-      );
+      await saveModelFavoritesOrThrow(favorites);
     } catch (_) {
       // ignore secure storage failures
     }
+  }
+
+  Future<void> saveModelFavoritesOrThrow(
+    List<ModelFavoriteConfig> favorites,
+  ) async {
+    final deduped = _dedupeModelFavorites(favorites);
+    await _writeOrThrow(
+      _modelFavoritesKey,
+      jsonEncode(deduped.map((favorite) => favorite.toJson()).toList()),
+      area: 'model favorites',
+    );
   }
 
   Future<void> upsertModelFavorite(ModelFavoriteConfig favorite) async {
@@ -745,13 +809,20 @@ class ApiConfigStore {
 
   Future<void> savePc(PcConnection? pc) async {
     try {
-      if (pc == null || !pc.isConfigured) {
-        await _storage.delete(_pcKey);
-        return;
-      }
-      await _storage.write(_pcKey, jsonEncode(pc.toJson()));
+      await savePcOrThrow(pc);
     } catch (_) {
       // ignore secure storage failures
+    }
+  }
+
+  Future<void> savePcOrThrow(PcConnection? pc) async {
+    try {
+      await _writePcValue(pc);
+    } catch (_) {
+      throw const SettingsPersistenceException(
+        area: 'PC connection',
+        reconciled: false,
+      );
     }
   }
 
@@ -773,9 +844,56 @@ class ApiConfigStore {
     MobileNotificationSettings settings,
   ) async {
     try {
-      await _storage.write(_notificationKey, jsonEncode(settings.toJson()));
+      await saveNotificationSettingsOrThrow(settings);
     } catch (_) {
       // ignore secure storage failures
+    }
+  }
+
+  Future<void> saveNotificationSettingsOrThrow(
+    MobileNotificationSettings settings,
+  ) async {
+    await _writeOrThrow(
+      _notificationKey,
+      jsonEncode(settings.toJson()),
+      area: 'notification settings',
+    );
+  }
+
+  Future<void> _writePcValue(PcConnection? pc) async {
+    if (pc == null || !pc.isConfigured) {
+      await _storage.delete(_pcKey);
+      return;
+    }
+    await _storage.write(_pcKey, jsonEncode(pc.toJson()));
+  }
+
+  Future<void> _restoreRawValue(String key, String? value) async {
+    if (value == null) {
+      await _storage.delete(key);
+      return;
+    }
+    await _storage.write(key, value);
+  }
+
+  Future<bool> _tryRestoreRawValue(String key, String? value) async {
+    try {
+      await _restoreRawValue(key, value);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _writeOrThrow(
+    String key,
+    String value, {
+    required String area,
+  }) async {
+    try {
+      await _storage.write(key, value);
+    } catch (_) {
+      throw SettingsPersistenceException(area: area, reconciled: false);
     }
   }
 
