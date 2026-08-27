@@ -79,7 +79,12 @@ from domain.coding.frontend_precision import (
     precision_metadata,
 )
 from domain.prompt.manager import get_manager
-from domain.temporal_context import add_temporal_context_message, current_datetime_context
+from domain.temporal_context import (
+    add_task_gap_context_message,
+    add_temporal_context_message,
+    current_datetime_context,
+    task_gap_context,
+)
 from domain.tool.loading import split_tools_by_loading
 from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.tool.eligibility import filter_tool_definitions_by_eligibility
@@ -1488,11 +1493,22 @@ def prepare_chat_run(
     request_context.setdefault("current_datetime", temporal_context["iso"])
     request_context.setdefault("current_date", temporal_context["date"])
     request_context.setdefault("current_time_zone", temporal_context["timezone"])
+    task_gap = task_gap_context(
+        conversation.get("messages") or [],
+        request_context,
+        temporal_context=temporal_context,
+    )
+    if task_gap is not None:
+        request_context["last_task_completed_at"] = task_gap[
+            "previous_task_completed_at"
+        ]
+        request_context["task_gap_context"] = task_gap
     add_temporal_context_message(
         standard_messages,
         request_context,
         temporal_context=temporal_context,
     )
+    add_task_gap_context_message(standard_messages, task_gap)
     _append_system_context_message(standard_messages, chat_reference_prompt)
 
     _apply_authority_context(

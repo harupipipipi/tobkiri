@@ -245,6 +245,68 @@ def test_prepare_chat_run_creates_message_chain_ir_and_context(tmp_path, monkeyp
     ChatStore._instance = None
 
 
+def test_prepare_chat_run_injects_long_task_gap_as_system_context(
+    tmp_path,
+    monkeypatch,
+):
+    from domain.chat import run_request
+    from domain.chat.run_request import prepare_chat_run
+
+    store = _setup_store(tmp_path, monkeypatch)
+    conversation = store.create_conversation(model="stub/default")
+    store.add_message(
+        conversation["id"],
+        {
+            "role": "user",
+            "content": "What is the price?",
+            "created_at": 1_787_792_340_000,
+        },
+    )
+    store.add_message(
+        conversation["id"],
+        {
+            "role": "assistant",
+            "content": "The current price is ...",
+            "finish_reason": "stop",
+            "created_at": 1_787_792_400_000,
+        },
+    )
+    monkeypatch.setattr(
+        run_request,
+        "current_datetime_context",
+        lambda _context: {
+            "iso": "2026-08-27T16:01:00+09:00",
+            "date": "2026-08-27",
+            "time": "16:01:00",
+            "timezone": "Asia/Tokyo",
+            "utc_offset": "+09:00",
+        },
+    )
+
+    prepared = prepare_chat_run(
+        {
+            "conversation_id": conversation["id"],
+            "message": {"content": "How about now?"},
+        },
+        {"timezone": "Asia/Tokyo"},
+    )
+
+    gap = prepared.request_context["task_gap_context"]
+    assert prepared.request_context["last_task_completed_at"] == (
+        "2026-08-27T10:00:00+09:00"
+    )
+    assert gap["elapsed_seconds"] == 21_660
+    assert any(
+        message.get("role") == "system"
+        and str(message.get("content") or "").startswith("[Temporal context]\n")
+        for message in prepared.standard_messages
+    )
+    assert prepared.standard_messages[-1] == {
+        "role": "user",
+        "content": "How about now?",
+    }
+
+
 def test_prepare_chat_run_persists_semantic_mention_metadata(tmp_path, monkeypatch):
     from domain.chat.store import ChatStore
 
