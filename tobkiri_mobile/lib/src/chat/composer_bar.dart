@@ -152,9 +152,8 @@ class _SendButton extends StatelessWidget {
           : TobkiriChatAccessibility.sendDisabledHint,
       onPressed: enabled ? onSend : null,
       icon: Icons.arrow_upward_rounded,
-      backgroundColor: enabled
-          ? theme.colorScheme.primary
-          : theme.disabledColor,
+      backgroundColor:
+          enabled ? theme.colorScheme.primary : theme.disabledColor,
       foregroundColor: enabled
           ? theme.colorScheme.onPrimary
           : theme.colorScheme.onSurface.withValues(alpha: 0.4),
