@@ -14,6 +14,8 @@ canonical control panel at `rumi_ai_1_10/ecosystem/defaultspack/`.
 - Smartphone-local: conversations and API config are stored on-device
   (`shared_preferences` for history, `flutter_secure_storage` for keys).
   No server is required to chat.
+  See [Mobile conversation persistence](CONVERSATION_PERSISTENCE.md) for the
+  versioned snapshot, rollback, recovery, and diagnostics contract.
 - OpenAI-compatible streaming client (`/chat/completions` SSE).
 - QR import:
   - **スマホをペアリング**: scan a `rumi_mobile_pair_v1` QR to claim a PC
@@ -68,12 +70,6 @@ Rumi Remote Mobile is the Flutter client for managing a PC-hosted Rumi
 The app targets the Kernel Pack API on port `8765`, not the standalone
 defaultspack chat transport on port `8766`. The Kernel API requires a bearer
 token and is the safer surface for LAN access.
-
-Conversation history is never an authoritative phone-local store. Authenticated
-mobile conversation contracts use the PC's active profile and authoritative
-conversation-store Pack, so failed host writes cannot masquerade as saved
-local changes. See [Mobile conversation persistence](CONVERSATION_PERSISTENCE.md)
-for save, retry, migration, recovery, and export semantics.
 
 ## PC Setup
 

@@ -17,12 +17,12 @@ class LocalConversationBackend implements ConversationBackend {
     OpenAiClient? client,
     OpenAiClient Function()? createClient,
     MobileToolApprovalDelegate? mobileToolApprovalDelegate,
-  })  : _store = store,
-        _configStore = configStore,
-        _uuid = const Uuid(),
-        _client = client,
-        _createClient = createClient,
-        _mobileToolApprovalDelegate = mobileToolApprovalDelegate;
+  }) : _store = store,
+       _configStore = configStore,
+       _uuid = const Uuid(),
+       _client = client,
+       _createClient = createClient,
+       _mobileToolApprovalDelegate = mobileToolApprovalDelegate;
 
   final ChatStore _store;
   final ApiConfigStore _configStore;
@@ -62,7 +62,8 @@ class LocalConversationBackend implements ConversationBackend {
 
   @override
   Future<ConversationSnapshot> getConversation(
-      ConversationLocator locator) async {
+    ConversationLocator locator,
+  ) async {
     final convo = _find(locator.conversationId);
     if (convo == null) {
       throw StateError('Conversation not found: ${locator.conversationId}');
@@ -76,7 +77,8 @@ class LocalConversationBackend implements ConversationBackend {
 
   @override
   Future<ConversationLocator> createConversation(
-      CreateConversationRequest request) async {
+    CreateConversationRequest request,
+  ) async {
     final convo = await _store.createAndPersist();
     if (request.title != null && request.title!.trim().isNotEmpty) {
       await _store.rename(convo.id, request.title!);
@@ -190,8 +192,9 @@ class LocalConversationBackend implements ConversationBackend {
               event.call.name,
             )) {
               if (event.status == 'completed' && event.result != null) {
-                final payload =
-                    MobileToolRuntime.assistantProgressPayload(event.result!);
+                final payload = MobileToolRuntime.assistantProgressPayload(
+                  event.result!,
+                );
                 yield ChatStatusEvent(
                   locator: locator,
                   runId: runId,
@@ -231,6 +234,9 @@ class LocalConversationBackend implements ConversationBackend {
       );
       yield ChatRunCompleted(locator: locator, runId: runId);
     } catch (error) {
+      if (error is ChatStoreException) {
+        rethrow;
+      }
       final partial = buffer.toString();
       final message = partial.isEmpty
           ? 'エラー: ${_friendlyError(error)}'
@@ -263,15 +269,11 @@ class LocalConversationBackend implements ConversationBackend {
   Future<MobileToolRuntime> _buildToolRuntime() async {
     final settings = await _configStore.loadNotificationSettings();
     if (!settings.delegatePhoneToolsToPcWhenAvailable) {
-      return MobileToolRuntime(
-        approvalDelegate: _mobileToolApprovalDelegate,
-      );
+      return MobileToolRuntime(approvalDelegate: _mobileToolApprovalDelegate);
     }
     final pc = await _configStore.loadPc();
     if (pc == null || !pc.isConfigured) {
-      return MobileToolRuntime(
-        approvalDelegate: _mobileToolApprovalDelegate,
-      );
+      return MobileToolRuntime(approvalDelegate: _mobileToolApprovalDelegate);
     }
     return MobileToolRuntime(
       pcDelegate: PcToolExecutionDelegate(connection: pc),

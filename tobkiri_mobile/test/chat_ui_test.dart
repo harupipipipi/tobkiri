@@ -43,12 +43,20 @@ class _FakeSecureStorage implements SecureKeyValueStorage {
 
 class _FakeChatStorage implements ChatKeyValueStorage {
   final Map<String, String> _values = {};
+  bool failReads = false;
+  bool failWrites = false;
+  int writes = 0;
 
   @override
-  Future<String?> read(String key) async => _values[key];
+  Future<String?> read(String key) async {
+    if (failReads) throw StateError('private read failure');
+    return _values[key];
+  }
 
   @override
   Future<void> write(String key, String value) async {
+    writes += 1;
+    if (failWrites) throw StateError('private write failure');
     _values[key] = value;
   }
 
@@ -59,10 +67,8 @@ class _FakeChatStorage implements ChatKeyValueStorage {
 }
 
 class _FakeActivityBackend extends LocalConversationBackend {
-  _FakeActivityBackend({
-    required super.store,
-    required super.configStore,
-  }) : _store = store;
+  _FakeActivityBackend({required super.store, required super.configStore})
+    : _store = store;
 
   final ChatStore _store;
   final started = Completer<void>();
@@ -144,25 +150,29 @@ class _FakeActivityBackend extends LocalConversationBackend {
 }
 
 void main() {
-  Widget wrap(Widget child) => MaterialApp(
-        theme: buildRumiTheme(dark: true),
-        home: child,
-      );
+  Widget wrap(Widget child) =>
+      MaterialApp(theme: buildRumiTheme(dark: true), home: child);
 
-  testWidgets('chat screen renders simple empty state with composer',
-      (tester) async {
+  testWidgets('chat screen renders simple empty state with composer', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
     final store = ChatStore(storage: _FakeChatStorage());
     final fakeStorage = _FakeSecureStorage();
     final configStore = ApiConfigStore(storage: fakeStorage);
     final deviceStore = MobileDeviceStore(storage: fakeStorage);
-    await tester.pumpWidget(wrap(ChatScreen(
-      store: store,
-      configStore: configStore,
-      deviceStore: deviceStore,
-    )));
-    await tester
-        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pumpWidget(
+      wrap(
+        ChatScreen(
+          store: store,
+          configStore: configStore,
+          deviceStore: deviceStore,
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 30)),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 30));
 
@@ -172,6 +182,45 @@ void main() {
     expect(find.byType(ComposerBar), findsOneWidget);
     expect(find.byTooltip('新規チャット'), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed local save rolls back and presents a live error banner', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    final storage = _FakeChatStorage();
+    final store = ChatStore(storage: storage);
+    final secureStorage = _FakeSecureStorage();
+    final configStore = ApiConfigStore(storage: secureStorage);
+    final deviceStore = MobileDeviceStore(storage: secureStorage);
+    await tester.pumpWidget(
+      wrap(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+          child: ChatScreen(
+            store: store,
+            configStore: configStore,
+            deviceStore: deviceStore,
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 30)),
+    );
+    await tester.pumpAndSettle();
+    final durableConversationId = store.active!.id;
+    storage.failWrites = true;
+
+    await tester.tap(find.byTooltip('新規チャット'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('変更を元に戻しました'), findsOneWidget);
+    expect(find.text('再読み込み'), findsOneWidget);
+    expect(store.conversations, hasLength(1));
+    expect(store.active?.id, durableConversationId);
+    expect(find.bySemanticsLabel(RegExp('チャット保存エラー')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -190,23 +239,27 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(wrap(Scaffold(
-      body: ChatDrawer(
-        spaces: const [Space.local],
-        activeSpaceId: Space.local.id,
-        conversations: store.conversations,
-        activeId: store.active?.id,
-        onNewChat: () {},
-        onSelectSpace: (_) {},
-        onSelect: (_) {},
-        onDelete: (_) {},
-        onRename: (_) {},
-        onPin: (_) {},
-        onReconnectSpace: () {},
-        onContinueOffline: () {},
-        onOpenSettings: () {},
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: ChatDrawer(
+            spaces: const [Space.local],
+            activeSpaceId: Space.local.id,
+            conversations: store.conversations,
+            activeId: store.active?.id,
+            onNewChat: () {},
+            onSelectSpace: (_) {},
+            onSelect: (_) {},
+            onDelete: (_) {},
+            onRename: (_) {},
+            onPin: (_) {},
+            onReconnectSpace: () {},
+            onContinueOffline: () {},
+            onOpenSettings: () {},
+          ),
+        ),
       ),
-    )));
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Rumi'), findsOneWidget);
@@ -228,49 +281,58 @@ void main() {
       pairingId: 'pair-1',
     );
 
-    await tester.pumpWidget(wrap(const Scaffold(
-      body: Center(
-        child: ConnectionChip(
-          connectionView: DeviceConnectionView(
-            pairingState: PairingState.paired,
-            pcConnectionState: PcConnectionState.online,
+    await tester.pumpWidget(
+      wrap(
+        const Scaffold(
+          body: Center(
+            child: ConnectionChip(
+              connectionView: DeviceConnectionView(
+                pairingState: PairingState.paired,
+                pcConnectionState: PcConnectionState.online,
+              ),
+              pairedDevice: pairedDevice,
+            ),
           ),
-          pairedDevice: pairedDevice,
         ),
       ),
-    )));
+    );
 
     expect(find.text('PC'), findsOneWidget);
     expect(find.textContaining('http://'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('user and assistant messages render without overflow',
-      (tester) async {
+  testWidgets('user and assistant messages render without overflow', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
     final longText = List<String>.generate(60, (i) => 'メッセージ$i').join(' ');
-    await tester.pumpWidget(wrap(Scaffold(
-      body: ListView(
-        children: [
-          MessageView(
-            message: ChatMessage(
-              id: 'u',
-              role: ChatRole.user,
-              content: longText,
-              createdAt: DateTime.now(),
-            ),
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: ListView(
+            children: [
+              MessageView(
+                message: ChatMessage(
+                  id: 'u',
+                  role: ChatRole.user,
+                  content: longText,
+                  createdAt: DateTime.now(),
+                ),
+              ),
+              MessageView(
+                message: ChatMessage(
+                  id: 'a',
+                  role: ChatRole.assistant,
+                  content: '# 見出し\n\n本文です。\n\n```dart\nvoid main() {}\n```',
+                  createdAt: DateTime.now(),
+                ),
+              ),
+            ],
           ),
-          MessageView(
-            message: ChatMessage(
-              id: 'a',
-              role: ChatRole.assistant,
-              content: '# 見出し\n\n本文です。\n\n```dart\nvoid main() {}\n```',
-              createdAt: DateTime.now(),
-            ),
-          ),
-        ],
+        ),
       ),
-    )));
+    );
     await tester.pumpAndSettle();
 
     expect(find.textContaining('メッセージ0'), findsOneWidget);
@@ -279,126 +341,145 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('pending assistant message shows typing indicator',
-      (tester) async {
+  testWidgets('pending assistant message shows typing indicator', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
-    await tester.pumpWidget(wrap(Scaffold(
-      body: MessageView(
-        message: ChatMessage(
-          id: 'p',
-          role: ChatRole.assistant,
-          content: '',
-          createdAt: DateTime.now(),
-          pending: true,
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: MessageView(
+            message: ChatMessage(
+              id: 'p',
+              role: ChatRole.assistant,
+              content: '',
+              createdAt: DateTime.now(),
+              pending: true,
+            ),
+          ),
         ),
       ),
-    )));
+    );
     await tester.pump();
     expect(find.text('処理中...'), findsOneWidget);
     expect(find.byIcon(Icons.auto_awesome), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('chat screen renders thinking and tool activity while streaming',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(393, 852));
-    final store = ChatStore(storage: _FakeChatStorage());
-    final fakeStorage = _FakeSecureStorage();
-    final configStore = ApiConfigStore(storage: fakeStorage);
-    await configStore.saveApi(const ApiConfig(
-      baseUrl: 'http://127.0.0.1:8765/v1',
-      apiKey: 'sk-test',
-      model: 'gpt-test',
-    ));
-    final backend = _FakeActivityBackend(
-      store: store,
-      configStore: configStore,
-    );
-    final deviceStore = MobileDeviceStore(storage: fakeStorage);
-    await tester.pumpWidget(wrap(ChatScreen(
-      store: store,
-      configStore: configStore,
-      deviceStore: deviceStore,
-      localBackend: backend,
-    )));
-    await tester
-        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'chat screen renders thinking and tool activity while streaming',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(393, 852));
+      final store = ChatStore(storage: _FakeChatStorage());
+      final fakeStorage = _FakeSecureStorage();
+      final configStore = ApiConfigStore(storage: fakeStorage);
+      await configStore.saveApi(
+        const ApiConfig(
+          baseUrl: 'http://127.0.0.1:8765/v1',
+          apiKey: 'sk-test',
+          model: 'gpt-test',
+        ),
+      );
+      final backend = _FakeActivityBackend(
+        store: store,
+        configStore: configStore,
+      );
+      final deviceStore = MobileDeviceStore(storage: fakeStorage);
+      await tester.pumpWidget(
+        wrap(
+          ChatScreen(
+            store: store,
+            configStore: configStore,
+            deviceStore: deviceStore,
+            localBackend: backend,
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'todoを作って');
-    await tester.pump();
-    final sendBtn = find.ancestor(
-      of: find.byIcon(Icons.arrow_upward_rounded),
-      matching: find.bySubtype<IconButton>(),
-    );
-    await tester.tap(sendBtn);
-    await tester.runAsync(
-      () => backend.started.future.timeout(const Duration(seconds: 2)),
-    );
-    await tester.pump();
+      await tester.enterText(find.byType(TextField), 'todoを作って');
+      await tester.pump();
+      final sendBtn = find.ancestor(
+        of: find.byIcon(Icons.arrow_upward_rounded),
+        matching: find.bySubtype<IconButton>(),
+      );
+      await tester.tap(sendBtn);
+      await tester.runAsync(
+        () => backend.started.future.timeout(const Duration(seconds: 2)),
+      );
+      await tester.pump();
 
-    expect(find.text('考えています'), findsOneWidget);
+      expect(find.text('考えています'), findsOneWidget);
 
-    backend.releaseTool.complete();
-    await tester.pump();
-    await tester
-        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
-    await tester.pump();
+      backend.releaseTool.complete();
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
+      await tester.pump();
 
-    expect(find.text('todo'), findsOneWidget);
-    expect(find.textContaining('Write UI activity test'), findsOneWidget);
+      expect(find.text('todo'), findsOneWidget);
+      expect(find.textContaining('Write UI activity test'), findsOneWidget);
 
-    backend.releaseFinal.complete();
-    await tester.pumpAndSettle();
+      backend.releaseFinal.complete();
+      await tester.pumpAndSettle();
 
-    expect(find.textContaining('できました'), findsOneWidget);
-    expect(find.text('todo'), findsNothing);
-    expect(find.textContaining('Write UI activity test'), findsNothing);
-    expect(find.text('考えています'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.textContaining('できました'), findsOneWidget);
+      expect(find.text('todo'), findsNothing);
+      expect(find.textContaining('Write UI activity test'), findsNothing);
+      expect(find.text('考えています'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('user and assistant messages can be copied', (tester) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
     String? clipboardText;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      switch (call.method) {
-        case 'Clipboard.setData':
-          final data = call.arguments as Map;
-          clipboardText = data['text'] as String?;
+          switch (call.method) {
+            case 'Clipboard.setData':
+              final data = call.arguments as Map;
+              clipboardText = data['text'] as String?;
+              return null;
+            case 'Clipboard.getData':
+              return {'text': clipboardText};
+          }
           return null;
-        case 'Clipboard.getData':
-          return {'text': clipboardText};
-      }
-      return null;
-    });
+        });
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, null);
     });
-    await tester.pumpWidget(wrap(Scaffold(
-      body: ListView(
-        children: [
-          MessageView(
-            message: ChatMessage(
-              id: 'u-copy',
-              role: ChatRole.user,
-              content: 'ユーザーの本文',
-              createdAt: DateTime.now(),
-            ),
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: ListView(
+            children: [
+              MessageView(
+                message: ChatMessage(
+                  id: 'u-copy',
+                  role: ChatRole.user,
+                  content: 'ユーザーの本文',
+                  createdAt: DateTime.now(),
+                ),
+              ),
+              MessageView(
+                message: ChatMessage(
+                  id: 'a-copy',
+                  role: ChatRole.assistant,
+                  content: 'AIの本文',
+                  createdAt: DateTime.now(),
+                ),
+              ),
+            ],
           ),
-          MessageView(
-            message: ChatMessage(
-              id: 'a-copy',
-              role: ChatRole.assistant,
-              content: 'AIの本文',
-              createdAt: DateTime.now(),
-            ),
-          ),
-        ],
+        ),
       ),
-    )));
+    );
     await tester.pumpAndSettle();
 
     final copyButtons = find.byTooltip('コピー');
@@ -419,18 +500,24 @@ void main() {
   testWidgets('composer bar enables send only with text', (tester) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
     var sent = '';
-    await tester.pumpWidget(wrap(Scaffold(
-      body: ComposerBar(
-        onSend: (t) => sent = t,
-        onStop: () {},
-        busy: false,
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: ComposerBar(
+            onSend: (t) => sent = t,
+            onStop: () {},
+            busy: false,
+          ),
+        ),
       ),
-    )));
+    );
     await tester.pumpAndSettle();
 
     final sendIcon = find.byIcon(Icons.arrow_upward_rounded);
-    final sendBtn =
-        find.ancestor(of: sendIcon, matching: find.bySubtype<IconButton>());
+    final sendBtn = find.ancestor(
+      of: sendIcon,
+      matching: find.bySubtype<IconButton>(),
+    );
     final textField = find.byType(TextField);
 
     expect(tester.widget<IconButton>(sendBtn).onPressed, isNull);
@@ -448,13 +535,17 @@ void main() {
   testWidgets('composer shows stop button when busy', (tester) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
     var stopped = false;
-    await tester.pumpWidget(wrap(Scaffold(
-      body: ComposerBar(
-        onSend: (_) {},
-        onStop: () => stopped = true,
-        busy: true,
+    await tester.pumpWidget(
+      wrap(
+        Scaffold(
+          body: ComposerBar(
+            onSend: (_) {},
+            onStop: () => stopped = true,
+            busy: true,
+          ),
+        ),
       ),
-    )));
+    );
     await tester.pumpAndSettle();
 
     final stop = find.byIcon(Icons.stop_rounded);

@@ -1,52 +1,43 @@
 # Mobile conversation persistence
 
-Tobkiri Mobile does not keep an authoritative local conversation database.
-Conversation and message reads and mutations use the authenticated
-`/api/mobile/v1/conversations` contract and are owned by the active
-`rumi_conversation_store_pack` in the PC's captured Profile/ResolvedPlan.
+Tobkiri Mobile keeps on-device conversations for local-first chat. PC spaces
+remain owned by the authenticated PC conversation service and are not copied
+into local storage unless the user explicitly chooses to continue locally.
 
-This boundary intentionally replaces the retired mobile `ChatStore` and its
-`rumi_chat.conversations.v1` / `rumi_chat.active_id.v1` keys. Those keys must
-not be read, reset, or silently migrated by the current client. Reintroducing
-them would create a second authority and could make a failed remote write look
-saved locally.
+## Durable local snapshot
 
-## Save and load semantics
+Local conversations and the active conversation ID are published together in
+one versioned `tobkiri_chat.snapshot.v2` value. A successful mutation returns a
+durable snapshot revision only after the platform write is read back and
+verified. The previous verified snapshot is retained as a backup before the
+next revision is published.
 
-- A mutation is saved only after the authenticated host contract returns a
-  success response. Transport errors, authorization errors, revision
-  conflicts, and host persistence errors are failures; a client must retain a
-  retryable/unsaved presentation or revert its optimistic state.
-- Conversation selection is navigation state, not a separately persisted
-  conversation transaction on the phone.
-- Empty, unreadable, corrupt, and incompatible host stores are distinct: a
-  missing store produces an empty revision-zero snapshot, while read,
-  decoding, or schema/version failures propagate as errors. A failed load is
-  never converted into an empty snapshot and therefore cannot be overwritten
-  by a later mutation.
-- Host writes are revision-checked and atomically published from an fsynced
-  temporary file. A failed publish leaves the prior revision authoritative.
-  Conversation and active-message identity are committed in the same owner
-  snapshot; there is no second active-ID write.
-- Legacy import is an explicit, source-hash-bound migration with a private
-  backup and explicit rollback. It is never an implicit startup fallback.
+The legacy `rumi_chat.conversations.v1` and `rumi_chat.active_id.v1` values are
+read only for migration. A fully valid legacy history is converted to the v2
+snapshot before mutations continue. A partially valid legacy history is shown
+as a recovery candidate and is never published until the user accepts it.
 
-The owner currently serializes a single revisioned profile snapshot. This is a
-deliberate compatibility choice for atomic conversation/message links; the
-mobile client never rewrites that snapshot itself. Per-conversation or journal
-storage may replace the owner's physical format later, but only behind the
-same v4 contracts and ProfileLock/ResolvedPlan authority.
+## Failure and recovery semantics
 
-## Recovery and export
+- Missing, unreadable, corrupt, incompatible, and partially recoverable data
+  are distinct load outcomes. Read or decode failure never becomes an empty
+  history and never authorizes an overwrite.
+- Create, select, rename, pin, delete, message append, streamed delta, and
+  explicit persistence operations report storage failure. When publication
+  fails, in-memory state is restored from the last verified snapshot, so the
+  UI cannot present the failed change as saved.
+- A valid backup may be inspected in read-only recovery mode. The user must
+  explicitly choose **復元** before a new revision can replace the damaged
+  primary snapshot.
+- An ambiguous platform write is treated as successful only when read-back
+  exactly matches the proposed snapshot. Otherwise it is a failure and the
+  in-memory mutation is rolled back.
+- Recovery and save errors expose stable error codes and operation names, not
+  raw conversation content, credentials, approval material, or platform error
+  strings.
 
-On a conversation error, keep the PC store untouched and retry after fixing
-the reported storage or authorization problem. Do not reset phone settings or
-create a fresh local history as recovery. Explicit legacy migration backups
-live under the profile-bound conversation-store Pack data directory and can be
-rolled back only with the matching migration identifier.
-
-Conversation export is an authenticated, audited host operation at
-`POST /api/mobile/v1/conversations/{id}/export`. Diagnostics and support
-records should include only error class/code, profile identity, revision, and
-correlation data. Never include bearer tokens, approval material, raw secret
-values, or unreviewed tool output.
+The current physical format is a bounded compatibility step: one snapshot
+keeps conversation/message links and active ID atomic at the preference
+boundary. A future per-conversation store or journal may reduce whole-history
+writes, but it must preserve the same revision, rollback, backup, and
+fail-closed recovery contract.
