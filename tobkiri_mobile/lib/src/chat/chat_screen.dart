@@ -34,6 +34,7 @@ typedef PcConversationBackendFactory = PcConversationBackend Function(
   PcConnection connection,
   String? deviceId,
 );
+
 /// Creates the PC catalog boundary used by [ChatScreen].
 typedef PcCatalogClientFactory = PcCatalogClient Function();
 
