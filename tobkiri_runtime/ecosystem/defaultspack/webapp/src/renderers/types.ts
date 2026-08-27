@@ -123,6 +123,7 @@ export type TitleBarRendererProps = {
 export type HistoryBoardRendererProps = {
   activeChatId: string | null;
   chatItems: ChatItem[];
+  locale?: LocaleSetting;
   account?: NonNullable<UICatalog["app"]>["account"];
   onChatSelect: (conversationId: string) => void;
   onNewTask: (options?: HistoryBoardNewTaskOptions) => void;
@@ -135,7 +136,12 @@ export type HistoryBoardRendererProps = {
   onDesktopsOpen?: () => void;
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
-  onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
+  onChatMetadataChange?: (chatId: string, updates: {
+    is_pinned?: boolean;
+    is_starred?: boolean;
+    tags?: string[];
+    conversation_kind?: string;
+  }) => void;
   onMinimize?: () => void;
   onRestore?: () => void;
   isCompact?: boolean;

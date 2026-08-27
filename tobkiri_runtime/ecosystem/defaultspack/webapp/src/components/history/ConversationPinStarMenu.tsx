@@ -1,16 +1,25 @@
-import { MoreHorizontal, Pin, PinOff, Star } from "lucide-react";
+import { Check, MoreHorizontal, Pin, PinOff, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { t, type LocaleSetting } from "../../lib/i18n";
+
+type ConversationCategory = "chat" | "coding" | "research";
 
 export function ConversationPinStarMenu({
   isPinned = false,
   isStarred = false,
   onTogglePinned,
   onToggleStarred,
+  category = "chat",
+  locale = "en",
+  onCategoryChange,
 }: {
   isPinned?: boolean;
   isStarred?: boolean;
   onTogglePinned?: () => void;
   onToggleStarred?: () => void;
+  category?: ConversationCategory;
+  locale?: LocaleSetting;
+  onCategoryChange?: (category: ConversationCategory) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -30,7 +39,7 @@ export function ConversationPinStarMenu({
     <div ref={ref} className="relative flex flex-shrink-0 items-center gap-0.5">
       {isPinned && <Pin size={10} className="text-sky-300" />}
       {isStarred && <Star size={10} className="fill-current text-amber-300" />}
-      {(onTogglePinned || onToggleStarred) && (
+      {(onTogglePinned || onToggleStarred || onCategoryChange) && (
         <button
           type="button"
           onClick={(event) => {
@@ -45,7 +54,7 @@ export function ConversationPinStarMenu({
       )}
       {open && (
         <div
-          className="absolute right-0 top-full rumi-layer-global-overlay mt-1 w-36 overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 shadow-xl"
+          className="absolute right-0 top-full rumi-layer-global-overlay mt-1 w-40 overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 shadow-xl"
           onClick={(event) => event.stopPropagation()}
         >
           {onTogglePinned && (
@@ -73,6 +82,28 @@ export function ConversationPinStarMenu({
               <Star size={12} className={isStarred ? "fill-current text-amber-300" : undefined} />
               {isStarred ? "Unstar" : "Star"}
             </button>
+          )}
+          {onCategoryChange && (
+            <div className="border-t border-zinc-800 px-1.5 py-1.5">
+              <p className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wide text-zinc-600">
+                {t(locale, "history.category.label")}
+              </p>
+              {(["chat", "coding", "research"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    onCategoryChange(option);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between rounded px-1 py-1 text-left text-[11px] text-zinc-300 hover:bg-zinc-800"
+                  aria-pressed={category === option}
+                >
+                  {t(locale, `history.category.${option}`)}
+                  {category === option && <Check size={11} className="text-emerald-300" />}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}

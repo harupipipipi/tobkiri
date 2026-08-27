@@ -38,6 +38,13 @@ import { twMerge } from 'tailwind-merge';
 
 import { HISTORY_CHAT_DROP_MIME, HISTORY_CHAT_KANBAN_DROP_EVENT, historyChatDragPayload } from '../lib/historyComposer';
 import type { CodingWorkspaceRecord } from '../lib/api';
+import {
+  historyConversationType,
+  historyDateBucket,
+  historyGroupTitle,
+  type HistoryClockOptions,
+} from '../lib/historyMetadata';
+import { t, type LocaleSetting } from '../lib/i18n';
 import { ConversationPinStarMenu } from './history/ConversationPinStarMenu';
 import { ConversationSearchBar } from './history/ConversationSearchBar';
 import { ConversationTagFilter } from './history/ConversationTagFilter';
@@ -63,6 +70,8 @@ export type ChatItem = {
   title: string;
   date: string;
   type: 'research' | 'code' | 'chat';
+  createdAt?: number | string | null;
+  updatedAt?: number | string | null;
   parentId?: string | null;
   conversationKind?: string;
   sectionId?: string | null;
@@ -180,41 +189,6 @@ export type AccountInfo = {
 // ============================================================
 // External data adapters
 // ============================================================
-
-function classifyChatType(chat: ChatItem): ChatItem['type'] {
-  const title = chat.title.toLowerCase();
-  if (
-    title.includes('code') ||
-    title.includes('build') ||
-    title.includes('debug') ||
-    title.includes('fix') ||
-    title.includes('react') ||
-    title.includes('rust') ||
-    title.includes('api')
-  ) {
-    return 'code';
-  }
-  if (
-    title.includes('research') ||
-    title.includes('調査') ||
-    title.includes('分析') ||
-    title.includes('market') ||
-    title.includes('trend')
-  ) {
-    return 'research';
-  }
-  return 'chat';
-}
-
-function groupDateLabel(dateText: string): 'today' | 'recent' | 'older' {
-  if (dateText === 'Today') {
-    return 'today';
-  }
-  if (dateText === 'Yesterday' || dateText === 'Previous 7 Days') {
-    return 'recent';
-  }
-  return 'older';
-}
 
 function cleanTag(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 40);
@@ -344,7 +318,15 @@ function uniquifyGroupTreeIds(groups: ChatGroup[], usedIds: Set<string>, prefix:
   });
 }
 
-export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: CustomGroupInfo[] = []): ChatGroup[] {
+export type HistoryGroupingOptions = HistoryClockOptions & {
+  locale?: LocaleSetting;
+};
+
+export function buildGroupsFromChats(
+  chatItems: ChatItem[],
+  customGroups: CustomGroupInfo[] = [],
+  options: HistoryGroupingOptions = {},
+): ChatGroup[] {
   const dateBuckets: Record<'today' | 'recent' | 'older', ChatItem[]> = {
     today: [],
     recent: [],
@@ -361,11 +343,12 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
   const metadataGroupsById = new Map(customGroups.map((group) => [group.id, group]));
   const customChatBuckets = new Map(customGroups.map((group) => [group.id, [] as ChatItem[]]));
   const useMetadataGrouping = chatItems.some(hasWorkspaceGroupingMetadata);
+  const locale = options.locale ?? "en";
 
   chatItems.forEach((chat) => {
     const normalized = {
       ...chat,
-      type: classifyChatType(chat),
+      type: historyConversationType(chat),
     };
     const customGroupId = stringOrNull(normalized.metadata?.group_id ?? normalized.metadata?.groupId);
     if (customGroupId) {
@@ -397,7 +380,7 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
       return;
     }
     if (!useMetadataGrouping) {
-      dateBuckets[groupDateLabel(chat.date)].push(normalized);
+      dateBuckets[historyDateBucket(chat, options)].push(normalized);
       return;
     }
     if (normalized.isPinned) {
@@ -427,28 +410,28 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
     ? [
         {
           id: 'group-pinned',
-          title: 'Pinned',
+          title: t(locale, 'history.group.pinned'),
           isCollapsed: false,
           chats: metadataBuckets.pinned,
           subGroups: [],
         },
         {
           id: 'group-company',
-          title: 'Team',
+          title: t(locale, 'history.group.team'),
           isCollapsed: false,
           chats: metadataBuckets.company,
           subGroups: [],
         },
         {
           id: 'group-coding',
-          title: 'Coding',
+          title: t(locale, 'history.group.coding'),
           isCollapsed: false,
           chats: metadataBuckets.coding,
           subGroups: [],
         },
         {
           id: 'group-tags',
-          title: 'Tags',
+          title: t(locale, 'history.group.tags'),
           isCollapsed: false,
           chats: [],
           subGroups: [...tagBuckets.entries()]
@@ -463,7 +446,7 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
         },
         {
           id: 'group-recent',
-          title: 'Recent',
+          title: historyGroupTitle(locale, 'recent'),
           isCollapsed: false,
           chats: metadataBuckets.recent,
           subGroups: [],
@@ -472,21 +455,21 @@ export function buildGroupsFromChats(chatItems: ChatItem[], customGroups: Custom
     : [
         {
           id: 'group-today',
-          title: 'Today',
+          title: historyGroupTitle(locale, 'today'),
           isCollapsed: false,
           chats: dateBuckets.today,
           subGroups: [],
         },
         {
           id: 'group-recent',
-          title: 'Recent',
+          title: historyGroupTitle(locale, 'recent'),
           isCollapsed: false,
           chats: dateBuckets.recent,
           subGroups: [],
         },
         {
           id: 'group-older',
-          title: 'Older',
+          title: historyGroupTitle(locale, 'older'),
           isCollapsed: false,
           chats: dateBuckets.older,
           subGroups: [],
@@ -682,12 +665,14 @@ interface SortableChatItemProps {
   onRename: (id: string, newTitle: string) => void;
   onTogglePinned?: (chat: ChatItem) => void;
   onToggleStarred?: (chat: ChatItem) => void;
+  onCategoryChange?: (chat: ChatItem, category: "chat" | "coding" | "research") => void;
+  locale: LocaleSetting;
   onToggleChildren: (chatId: string) => void;
   isChildrenExpanded: (chatId: string) => boolean;
   depth?: number;
 }
 
-function SortableChatItem({ chat, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onRename, onTogglePinned, onToggleStarred, onToggleChildren, isChildrenExpanded, depth = 0 }: SortableChatItemProps) {
+function SortableChatItem({ chat, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onRename, onTogglePinned, onToggleStarred, onCategoryChange, locale, onToggleChildren, isChildrenExpanded, depth = 0 }: SortableChatItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(chat.title);
   const children = chat.children ?? [];
@@ -798,8 +783,11 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
         <ConversationPinStarMenu
           isPinned={chat.isPinned}
           isStarred={chat.isStarred}
+          category={chat.type === "code" ? "coding" : chat.type}
+          locale={locale}
           onTogglePinned={onTogglePinned ? () => onTogglePinned(chat) : undefined}
           onToggleStarred={onToggleStarred ? () => onToggleStarred(chat) : undefined}
+          onCategoryChange={onCategoryChange ? (category) => onCategoryChange(chat, category) : undefined}
         />
       </div>
       {expanded && (
@@ -816,6 +804,8 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
               onRename={onRename}
               onTogglePinned={onTogglePinned}
               onToggleStarred={onToggleStarred}
+              onCategoryChange={onCategoryChange}
+              locale={locale}
               onToggleChildren={onToggleChildren}
               isChildrenExpanded={isChildrenExpanded}
               depth={depth + 1}
@@ -844,13 +834,15 @@ interface SubGroupProps {
   onUngroup: (groupId: string) => void;
   onTogglePinned?: (chat: ChatItem) => void;
   onToggleStarred?: (chat: ChatItem) => void;
+  onCategoryChange?: (chat: ChatItem, category: "chat" | "coding" | "research") => void;
+  locale: LocaleSetting;
   onToggleChatChildren: (chatId: string) => void;
   isChatChildrenExpanded: (chatId: string) => boolean;
   onGroupHeaderClick: (group: ChatGroup) => void;
   depth: number;
 }
 
-function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onChatRename, onToggleCollapse, onRenameGroup, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, depth }: SubGroupProps) {
+function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onChatRename, onToggleCollapse, onRenameGroup, onUngroup, onTogglePinned, onToggleStarred, onCategoryChange, locale, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, depth }: SubGroupProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(group.title);
 
@@ -965,6 +957,8 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
                 onRename={onChatRename}
                 onTogglePinned={onTogglePinned}
                 onToggleStarred={onToggleStarred}
+                onCategoryChange={onCategoryChange}
+                locale={locale}
                 onToggleChildren={onToggleChatChildren}
                 isChildrenExpanded={isChatChildrenExpanded}
                 depth={depth + 1}
@@ -986,6 +980,8 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
               onUngroup={onUngroup}
               onTogglePinned={onTogglePinned}
               onToggleStarred={onToggleStarred}
+              onCategoryChange={onCategoryChange}
+              locale={locale}
               onToggleChatChildren={onToggleChatChildren}
               isChatChildrenExpanded={isChatChildrenExpanded}
               onGroupHeaderClick={onGroupHeaderClick}
@@ -1017,6 +1013,8 @@ interface DroppableColumnProps {
   onUngroup: (groupId: string) => void;
   onTogglePinned?: (chat: ChatItem) => void;
   onToggleStarred?: (chat: ChatItem) => void;
+  onCategoryChange?: (chat: ChatItem, category: "chat" | "coding" | "research") => void;
+  locale: LocaleSetting;
   onToggleChatChildren: (chatId: string) => void;
   isChatChildrenExpanded: (chatId: string) => boolean;
   onGroupHeaderClick: (group: ChatGroup) => void;
@@ -1025,7 +1023,7 @@ interface DroppableColumnProps {
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 }
 
-function DroppableColumn({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onNewTask, onSettingsClick, onRename, onToggleCollapse, onChatRename, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, isDraggedOver, isDragging, dragHandleProps }: DroppableColumnProps) {
+function DroppableColumn({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onNewTask, onSettingsClick, onRename, onToggleCollapse, onChatRename, onUngroup, onTogglePinned, onToggleStarred, onCategoryChange, locale, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, isDraggedOver, isDragging, dragHandleProps }: DroppableColumnProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(group.title);
 
@@ -1134,6 +1132,8 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
                 onRename={onChatRename}
                 onTogglePinned={onTogglePinned}
                 onToggleStarred={onToggleStarred}
+                onCategoryChange={onCategoryChange}
+                locale={locale}
                 onToggleChildren={onToggleChatChildren}
                 isChildrenExpanded={isChatChildrenExpanded}
                 depth={0}
@@ -1155,6 +1155,8 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
               onUngroup={onUngroup}
               onTogglePinned={onTogglePinned}
               onToggleStarred={onToggleStarred}
+              onCategoryChange={onCategoryChange}
+              locale={locale}
               onToggleChatChildren={onToggleChatChildren}
               isChatChildrenExpanded={isChatChildrenExpanded}
               onGroupHeaderClick={onGroupHeaderClick}
@@ -1225,6 +1227,7 @@ function ExtractDropZone() {
 interface HistoryBoardProps {
   activeChatId: string | null;
   chatItems: ChatItem[];
+  locale?: LocaleSetting;
   account?: AccountInfo;
   onChatSelect: (chatId: string) => void;
   onNewTask: (options?: HistoryBoardNewTaskOptions) => void;
@@ -1237,7 +1240,12 @@ interface HistoryBoardProps {
   onDesktopsOpen?: () => void;
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
-  onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
+  onChatMetadataChange?: (chatId: string, updates: {
+    is_pinned?: boolean;
+    is_starred?: boolean;
+    tags?: string[];
+    conversation_kind?: string;
+  }) => void;
   onMinimize?: () => void;
   onRestore?: () => void;
   isCompact?: boolean;
@@ -1292,7 +1300,10 @@ export type CalendarMonthCell = {
   isToday: boolean;
 } | null;
 
-export function buildHistoryCalendarSummary(chatItems: ChatItem[]): HistoryCalendarSummary {
+export function buildHistoryCalendarSummary(
+  chatItems: ChatItem[],
+  options: HistoryClockOptions = {},
+): HistoryCalendarSummary {
   const summary: HistoryCalendarSummary = {
     total: 0,
     today: 0,
@@ -1304,9 +1315,8 @@ export function buildHistoryCalendarSummary(chatItems: ChatItem[]): HistoryCalen
 
   visitChats(chatItems, (chat) => {
     summary.total += 1;
-    if (chat.date === "Today") summary.today += 1;
-    else if (chat.date === "Yesterday" || chat.date === "Previous 7 Days") summary.recent += 1;
-    else summary.older += 1;
+    const bucket = historyDateBucket(chat, options);
+    summary[bucket] += 1;
     if (chat.isPinned) summary.pinned += 1;
     if (chat.isStarred) summary.starred += 1;
   });
@@ -1333,18 +1343,20 @@ export function buildCalendarMonthDays(reference = new Date()): CalendarMonthCel
 
 function HistoryCalendarPanel({
   chatItems,
+  locale,
   onClose,
 }: {
   chatItems: ChatItem[];
+  locale: LocaleSetting;
   onClose: () => void;
 }) {
   const summary = useMemo(() => buildHistoryCalendarSummary(chatItems), [chatItems]);
   const monthCells = useMemo(() => buildCalendarMonthDays(), []);
   const monthLabel = useMemo(() => new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date()), []);
   const buckets = [
-    { label: "Today", value: summary.today, tone: "text-zinc-100 border-zinc-600/50 bg-zinc-800/70" },
-    { label: "Recent", value: summary.recent, tone: "text-zinc-200 border-zinc-700 bg-zinc-900/75" },
-    { label: "Older", value: summary.older, tone: "text-zinc-400 border-zinc-800 bg-zinc-950/70" },
+    { label: historyGroupTitle(locale, "today"), value: summary.today, tone: "text-zinc-100 border-zinc-600/50 bg-zinc-800/70" },
+    { label: historyGroupTitle(locale, "recent"), value: summary.recent, tone: "text-zinc-200 border-zinc-700 bg-zinc-900/75" },
+    { label: historyGroupTitle(locale, "older"), value: summary.older, tone: "text-zinc-400 border-zinc-800 bg-zinc-950/70" },
   ];
 
   return (
@@ -1437,6 +1449,7 @@ function filterChatTree(chats: ChatItem[], query: string, activeTag: string | nu
 export function HistoryBoard({
   activeChatId,
   chatItems,
+  locale = "en",
   account,
   onChatSelect,
   onNewTask,
@@ -1465,9 +1478,14 @@ export function HistoryBoard({
 }: HistoryBoardProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [historyNow, setHistoryNow] = useState(() => Date.now());
   const visibleChatItems = useMemo(() => filterChatTree(chatItems, searchQuery, activeTag), [activeTag, chatItems, searchQuery]);
   const [customGroups, setCustomGroups] = useState<CustomGroupInfo[]>(() => loadCustomGroups());
-  const [groups, setGroups] = useState<ChatGroup[]>(() => buildGroupsFromChats(visibleChatItems, customGroups));
+  const [groups, setGroups] = useState<ChatGroup[]>(() => buildGroupsFromChats(
+    visibleChatItems,
+    customGroups,
+    { locale, now: historyNow },
+  ));
   const [expandedChatIds, setExpandedChatIds] = useState<Set<string>>(() => new Set());
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [newGroupStep, setNewGroupStep] = useState<GroupCreationStep>("details");
@@ -1484,6 +1502,21 @@ export function HistoryBoard({
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
   }, []);
 
+  useEffect(() => {
+    const refreshClock = () => setHistoryNow(Date.now());
+    const refreshVisibleClock = () => {
+      if (document.visibilityState === "visible") refreshClock();
+    };
+    const timer = window.setInterval(refreshClock, 60_000);
+    window.addEventListener("focus", refreshClock);
+    document.addEventListener("visibilitychange", refreshVisibleClock);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshClock);
+      document.removeEventListener("visibilitychange", refreshVisibleClock);
+    };
+  }, []);
+
   const selectedCodingWorkspace = useMemo(
     () => codingWorkspaces.find((workspace) => workspace.workspace_id === selectedCodingWorkspaceId) ?? null,
     [codingWorkspaces, selectedCodingWorkspaceId],
@@ -1492,12 +1525,15 @@ export function HistoryBoard({
   useEffect(() => {
     setGroups((previousGroups) => {
       const collapsedById = new Map(previousGroups.map((group) => [group.id, group.isCollapsed]));
-      return buildGroupsFromChats(visibleChatItems, customGroups).map((group) => ({
+      return buildGroupsFromChats(visibleChatItems, customGroups, {
+        locale,
+        now: historyNow,
+      }).map((group) => ({
         ...group,
         isCollapsed: collapsedById.get(group.id) ?? group.isCollapsed,
       }));
     });
-  }, [visibleChatItems, customGroups]);
+  }, [visibleChatItems, customGroups, historyNow, locale]);
 
   const [activeColumnDrag, setActiveColumnDrag] = useState<ChatGroup | null>(null);
   const [activeChat, setActiveChat] = useState<ChatItem | null>(null);
@@ -1891,6 +1927,13 @@ export function HistoryBoard({
 
   const handleToggleStarred = (chat: ChatItem) => {
     onChatMetadataChange?.(chat.id, { is_starred: !chat.isStarred });
+  };
+
+  const handleCategoryChange = (
+    chat: ChatItem,
+    category: "chat" | "coding" | "research",
+  ) => {
+    onChatMetadataChange?.(chat.id, { conversation_kind: category });
   };
 
   const allSortableIds = [
@@ -2387,6 +2430,8 @@ export function HistoryBoard({
                     onUngroup={handleUngroup}
                     onTogglePinned={onChatMetadataChange ? handleTogglePinned : undefined}
                     onToggleStarred={onChatMetadataChange ? handleToggleStarred : undefined}
+                    onCategoryChange={onChatMetadataChange ? handleCategoryChange : undefined}
+                    locale={locale}
                     onToggleChatChildren={handleToggleChatChildren}
                     isChatChildrenExpanded={isChatChildrenExpanded}
                     onGroupHeaderClick={handleGroupHeaderClick}

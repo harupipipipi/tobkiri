@@ -117,6 +117,7 @@ import { boundedDurationLabel } from "./lib/duration";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
+import { formatHistoryTimestamp } from "./lib/historyMetadata";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
@@ -1390,14 +1391,6 @@ function workspaceContextFromHistoryOptions(options?: HistoryBoardNewTaskOptions
   return context.groupId || context.workspaceId || context.workspaceRoot || context.rumiDataPath ? context : null;
 }
 
-function formatBoardDate(updatedAt: number): string {
-  const diffHours = (Date.now() - updatedAt) / 3_600_000;
-  if (diffHours < 24) return "今日";
-  if (diffHours < 48) return "昨日";
-  if (diffHours < 24 * 7) return "過去7日";
-  return formatRelativeTime(updatedAt);
-}
-
 function externalConversationSection(conversation: Conversation): { id: string; title: string } | null {
   const metadata = conversation.metadata ?? {};
   const provider = typeof metadata.external_provider === "string" ? metadata.external_provider.trim().toLowerCase() : "";
@@ -1411,7 +1404,7 @@ function externalConversationSection(conversation: Conversation): { id: string; 
   };
 }
 
-function toChatItem(conversation: Conversation): ChatItem {
+function toChatItem(conversation: Conversation, locale: ReturnType<typeof normalizeLocale>): ChatItem {
   const section = externalConversationSection(conversation);
   const metadata = conversation.metadata ?? {};
   const groupId = cleanOptionalString(conversation.group_id) ?? cleanOptionalString(metadata.group_id ?? metadata.groupId);
@@ -1422,8 +1415,10 @@ function toChatItem(conversation: Conversation): ChatItem {
   return {
     id: conversation.id,
     title: conversation.title,
-    date: formatBoardDate(conversation.updated_at),
+    date: formatHistoryTimestamp({ updatedAt: conversation.updated_at }, locale),
     type: "chat",
+    createdAt: conversation.created_at,
+    updatedAt: conversation.updated_at,
     parentId: conversation.parent_conversation_id ?? null,
     conversationKind: conversation.conversation_kind ?? "chat",
     sectionId: section?.id ?? null,
@@ -1437,7 +1432,10 @@ function toChatItem(conversation: Conversation): ChatItem {
   };
 }
 
-function buildChatItems(conversations: Conversation[]): ChatItem[] {
+function buildChatItems(
+  conversations: Conversation[],
+  locale: ReturnType<typeof normalizeLocale>,
+): ChatItem[] {
   const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
   const childIds = new Set<string>();
 
@@ -1463,7 +1461,7 @@ function buildChatItems(conversations: Conversation[]): ChatItem[] {
       .filter((child): child is Conversation => Boolean(child))
       .sort((a, b) => b.updated_at - a.updated_at)
       .map(build);
-    return { ...toChatItem(conversation), children: linkedChildren };
+    return { ...toChatItem(conversation, locale), children: linkedChildren };
   };
 
   return conversations
@@ -2718,8 +2716,9 @@ export function ChatApp() {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [shareDialogOpen]);
 
+  const locale = normalizeLocale(settingsValues.general?.language);
   const rawSidebarItems: SidebarItem[] = catalog?.sidebar.items ?? [];
-  const chatItems = buildChatItems(conversations);
+  const chatItems = buildChatItems(conversations, locale);
   const recentSpotlightResults = useMemo(
     () => conversations
       .filter((conversation) => conversationMatchesSpotlightFilter(conversation, spotlightFilter))
@@ -2800,7 +2799,6 @@ export function ChatApp() {
     : null;
   const activePromptProfileId = String(activeConversation?.metadata?.profile_id ?? activePromptUsage?.profile_id ?? "").trim() || undefined;
   const placeholder = String(settingsValues.general?.composer_placeholder ?? "メッセージを入力...");
-  const locale = normalizeLocale(settingsValues.general?.language);
   const keyboardButtonNavigation = parseCommandBoolean(settingsValues.general?.keyboard_button_navigation, true);
   const spotlightShortcut = String(settingsValues.general?.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
   const spotlightShortcutEnabled = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_enabled, true);
@@ -4325,7 +4323,12 @@ export function ChatApp() {
     void loadConversation(conversationId);
   };
 
-  const handleHistoryMetadataChange = (conversationId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => {
+  const handleHistoryMetadataChange = (conversationId: string, updates: {
+    is_pinned?: boolean;
+    is_starred?: boolean;
+    tags?: string[];
+    conversation_kind?: string;
+  }) => {
     setError(null);
     void api.updateConversation(conversationId, updates as Partial<Conversation>, conversations.find((item) => item.id === conversationId)?.conversation_revision)
       .then((conversation) => {
@@ -7091,6 +7094,7 @@ export function ChatApp() {
             <Renderers.historyBoard
               activeChatId={activeConversationId}
               chatItems={chatItems}
+              locale={locale}
               account={catalog?.app?.account}
               onChatSelect={handleHistoryClick}
               onNewTask={handleNewTask}
@@ -7122,6 +7126,7 @@ export function ChatApp() {
             <Renderers.historyBoard
               activeChatId={activeConversationId}
               chatItems={chatItems}
+              locale={locale}
               account={catalog?.app?.account}
               onChatSelect={handleHistoryClick}
               onNewTask={handleNewTask}

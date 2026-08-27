@@ -15,8 +15,80 @@ import {
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
 import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
+import { historyConversationType, historyDateBucket, historyGroupTitle } from "../lib/historyMetadata";
+import { filterProjects, newProjectId, projectTaskContext } from "../features/projects/projectStorage";
+
+const hour = 60 * 60 * 1000;
+
+test("history type uses explicit metadata and ignores multilingual title keywords", () => {
+  assert.equal(historyConversationType({ title: "Fix dinner plans", type: "chat" }), "chat");
+  assert.equal(historyConversationType({ title: "API pricing research", type: "chat" }), "chat");
+  assert.equal(historyConversationType({ title: "市場分析", type: "chat" }), "chat");
+  assert.equal(historyConversationType({ conversationKind: "coding", type: "chat" }), "code");
+  assert.equal(historyConversationType({ metadata: { category: "research" }, type: "chat" }), "research");
+  assert.equal(historyConversationType({ metadata: { workspace_id: "workspace-1" }, type: "chat" }), "code");
+  assert.equal(historyConversationType({ conversationKind: "chat", metadata: { workspace_id: "workspace-1" }, type: "code" }), "chat");
+});
+
+test("history date buckets use canonical timestamps instead of localized labels", () => {
+  const now = Date.parse("2026-07-10T15:30:00Z");
+  assert.equal(historyDateBucket({ updatedAt: now - 30 * 60 * 1000, date: "昨日" }, { now, timeZone: "Asia/Tokyo" }), "today");
+  assert.equal(historyDateBucket({ updatedAt: now - 2 * hour, date: "Today" }, { now, timeZone: "America/Los_Angeles" }), "today");
+  assert.equal(historyDateBucket({ date: "Today" }, { now, timeZone: "UTC" }), "older");
+});
+
+test("history date buckets follow midnight and DST calendar boundaries", () => {
+  const tokyoRecord = { updatedAt: Date.parse("2026-07-10T14:30:00Z") };
+  assert.equal(
+    historyDateBucket(
+      tokyoRecord,
+      { now: Date.parse("2026-07-10T14:45:00Z"), timeZone: "Asia/Tokyo" },
+    ),
+    "today",
+  );
+  assert.equal(
+    historyDateBucket(
+      tokyoRecord,
+      { now: Date.parse("2026-07-10T15:30:00Z"), timeZone: "Asia/Tokyo" },
+    ),
+    "recent",
+  );
+  assert.equal(
+    historyDateBucket(
+      { updatedAt: Date.parse("2026-03-09T03:30:00Z") },
+      { now: Date.parse("2026-03-09T04:30:00Z"), timeZone: "America/New_York" },
+    ),
+    "recent",
+  );
+  assert.equal(
+    historyDateBucket(
+      { updatedAt: Date.parse("2026-11-01T03:30:00Z") },
+      { now: Date.parse("2026-11-01T06:30:00Z"), timeZone: "America/New_York" },
+    ),
+    "recent",
+  );
+});
+
+test("buildGroupsFromChats localizes labels without using display date text", () => {
+  const now = Date.parse("2026-07-10T12:00:00Z");
+  const chats: ChatItem[] = [
+    { id: "today", title: "API pricing research", date: "Aujourd'hui", updatedAt: now, type: "chat" },
+    { id: "recent", title: "Fix dinner plans", date: "Heute", updatedAt: now - 24 * hour, type: "chat" },
+    { id: "older", title: "市場分析", date: "今日", updatedAt: now - 10 * 24 * hour, type: "chat" },
+  ];
+
+  const groups = buildGroupsFromChats(chats, [], { now, timeZone: "UTC", locale: "ja" });
+
+  assert.deepEqual(groups.map((group) => group.title), ["今日", "最近", "以前"]);
+  assert.deepEqual(groups.map((group) => group.chats[0]?.type), ["chat", "chat", "chat"]);
+  assert.deepEqual(
+    (["en", "zh", "ko", "es", "fr", "de"] as const).map((locale) => historyGroupTitle(locale, "today")),
+    ["Today", "今天", "오늘", "Hoy", "Aujourd’hui", "Heute"],
+  );
+});
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
+  const now = Date.parse("2026-07-10T12:00:00Z");
   const chats: ChatItem[] = [
     {
       id: "line-1",
@@ -25,16 +97,18 @@ test("buildGroupsFromChats places LINE conversations into a dedicated group", ()
       type: "chat",
       sectionId: "integration-line",
       sectionTitle: "LINE",
+      updatedAt: now,
     },
     {
       id: "chat-1",
       title: "hello",
       date: "Today",
       type: "chat",
+      updatedAt: now,
     },
   ];
 
-  const groups = buildGroupsFromChats(chats);
+  const groups = buildGroupsFromChats(chats, [], { now, timeZone: "UTC" });
 
   assert.equal(groups[0]?.title, "LINE");
   assert.deepEqual(groups[0]?.chats.map((chat) => chat.id), ["line-1"]);
@@ -232,13 +306,14 @@ test("Project helpers preserve group ids while exposing project context", () => 
 });
 
 test("history calendar summary counts visible chat buckets and highlights", () => {
+  const now = Date.parse("2026-07-10T12:00:00Z");
   const chats: ChatItem[] = [
-    { id: "today", title: "Today", date: "Today", type: "chat", isPinned: true },
-    { id: "recent", title: "Recent", date: "Previous 7 Days", type: "chat", isStarred: true },
-    { id: "old", title: "Older", date: "2026-04-01", type: "chat" },
+    { id: "today", title: "Today", date: "Today", updatedAt: now, type: "chat", isPinned: true },
+    { id: "recent", title: "Recent", date: "Previous 7 Days", updatedAt: now - 2 * 24 * hour, type: "chat", isStarred: true },
+    { id: "old", title: "Older", date: "2026-04-01", updatedAt: now - 30 * 24 * hour, type: "chat" },
   ];
 
-  assert.deepEqual(buildHistoryCalendarSummary(chats), {
+  assert.deepEqual(buildHistoryCalendarSummary(chats, { now, timeZone: "UTC" }), {
     total: 3,
     today: 1,
     recent: 1,
