@@ -34,9 +34,50 @@
       "type": "string",
       "description": "Path to a Codex App Server shared-secret file. Raw secrets must not appear in config or CLI arguments."
     },
+    "executable": {
+      "type": "string",
+      "default": "codex",
+      "description": "Codex executable used only as the first argv element for shell-free stdio launch."
+    },
     "workspace_root": {
       "type": "string",
       "description": "Trusted workspace root. All file and terminal operations must remain inside this root."
+    },
+    "model": {
+      "type": "string",
+      "description": "Model ID dynamically returned by model/list; this schema does not maintain a static model catalog."
+    },
+    "reasoning_effort": {
+      "type": "string",
+      "description": "Reasoning effort selected from the active model's supportedReasoningEfforts."
+    },
+    "personality": {
+      "type": "string",
+      "description": "Optional personality, only when the selected model reports supportsPersonality."
+    },
+    "include_hidden_models": {
+      "type": "boolean",
+      "default": false
+    },
+    "permission_profile": {
+      "type": "string",
+      "description": "Experimental named permission profile. Mutually exclusive with legacy_sandbox."
+    },
+    "legacy_sandbox": {
+      "type": "string",
+      "enum": ["read-only", "workspace-write", "danger-full-access"],
+      "default": "read-only"
+    },
+    "required_mcp_servers": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "default": []
+    },
+    "experimental_api": {
+      "type": "boolean",
+      "default": false,
+      "description": "Explicit opt-in for experimental App Server methods such as permission profiles and externally managed ChatGPT tokens."
     },
     "approval_mode": {
       "type": "string",
@@ -44,5 +85,12 @@
       "default": "server_side_required"
     }
   },
-  "required": ["workspace_root"]
+  "required": ["workspace_root"],
+  "allOf": [
+    {
+      "not": {
+        "required": ["permission_profile", "legacy_sandbox"]
+      }
+    }
+  ]
 }

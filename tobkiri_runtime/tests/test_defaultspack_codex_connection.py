@@ -102,7 +102,11 @@ def test_codex_connection_status_uses_secret_existence_without_decrypting():
         }
         with patch.dict(os.environ, env, clear=False):
             saved = connection_store.save_codex_access_token(token, pack_root=pack_root)
-            with patch.object(connection_store, "_read_secret_value", side_effect=AssertionError("status must not decrypt token")):
+            with patch.object(
+                connection_store,
+                "_read_secret_value",
+                side_effect=AssertionError("status must not decrypt token"),
+            ):
                 status = connection_store.codex_connection_status(pack_root=pack_root)
 
     assert saved["success"] is True
@@ -346,7 +350,11 @@ def test_codex_app_server_probe_never_uses_codex_access_token_for_app_server_aut
 
 
 def test_codex_app_server_transport_command_uses_file_paths_not_raw_tokens(tmp_path):
-    from domain.codex.app_server import build_codex_app_server_command, codex_app_server_status, save_codex_app_server_config
+    from domain.codex.app_server import (
+        build_codex_app_server_command,
+        codex_app_server_status,
+        save_codex_app_server_config,
+    )
 
     app_secret = _fresh_token()
     token_file = tmp_path / "codex-app-server.token"
@@ -392,7 +400,13 @@ def test_codex_app_server_transport_command_uses_file_paths_not_raw_tokens(tmp_p
     assert saved["success"] is True
     assert status["transport"] == "stdio"
     assert status["connection_status"] == "configured"
-    assert status["command"] == ["codex", "app-server", *SAFE_APP_SERVER_ARGS, "--listen", "stdio://"]
+    assert status["command"] == [
+        "codex",
+        "app-server",
+        *SAFE_APP_SERVER_ARGS,
+        "--listen",
+        "stdio://",
+    ]
 
 
 def test_codex_app_server_stdio_smoke_runs_thread_turn_and_streams_events(monkeypatch):
@@ -482,19 +496,38 @@ def test_codex_app_server_stdio_smoke_runs_thread_turn_and_streams_events(monkey
 
     process = created["process"]
     assert result["success"] is True
-    assert result["command"] == ["codex", "app-server", *SAFE_APP_SERVER_ARGS, "--listen", "stdio://"]
+    assert result["command"] == [
+        "codex",
+        "app-server",
+        *SAFE_APP_SERVER_ARGS,
+        "--listen",
+        "stdio://",
+    ]
     assert result["thread_id"] == "thr_smoke"
     assert result["turn_id"] == "turn_smoke"
     assert "rumi-codex-smoke-ok" in result["final_output"]
     assert token not in _text(result)
     assert result["sent_methods"] == ["initialize", "initialized", "thread/start", "turn/start"]
     sent_messages = process.stdin.messages
-    assert sent_messages[0]["params"]["clientInfo"]["name"] == "rumi_defaultspack"
-    assert sent_messages[2]["params"] == {"model": "gpt-5.4", "cwd": str(ROOT)}
+    assert sent_messages[0]["params"]["clientInfo"]["name"] == "tobkiri_defaultspack"
+    assert sent_messages[0]["params"]["capabilities"] == {
+        "experimentalApi": False,
+        "requestAttestation": False,
+    }
+    assert sent_messages[2]["params"] == {
+        "model": "gpt-5.4",
+        "cwd": str(ROOT),
+        "approvalPolicy": "untrusted",
+        "sandbox": "read-only",
+    }
     assert sent_messages[3]["params"]["threadId"] == "thr_smoke"
     assert sent_messages[3]["params"]["input"] == [
         {"type": "text", "text": "Hello. Return exactly: rumi-codex-smoke-ok"}
     ]
+    assert sent_messages[3]["params"]["sandboxPolicy"] == {
+        "type": "readOnly",
+        "networkAccess": False,
+    }
     assert created["terminated"] is True
 
 
@@ -517,6 +550,8 @@ def test_codex_app_server_stdio_smoke_accepts_final_delta_idle(monkeypatch):
 
         def write(self, text: str) -> int:
             payload = json.loads(text)
+            if payload.get("method") == "initialize":
+                self.stdout.push({"id": 0, "result": {"platformFamily": "macos"}})
             if payload.get("method") == "thread/start":
                 self.stdout.push({"id": 1, "result": {"thread": {"id": "thr_smoke"}}})
             if payload.get("method") == "turn/start":
@@ -553,7 +588,11 @@ def test_codex_app_server_stdio_smoke_accepts_final_delta_idle(monkeypatch):
             return None
 
     monkeypatch.setattr(app_server.subprocess, "Popen", FakeProcess)
-    result = app_server.codex_app_server_stdio_smoke(prompt="hello", timeout=2)
+    result = app_server.codex_app_server_stdio_smoke(
+        prompt="hello",
+        cwd=str(ROOT),
+        timeout=2,
+    )
 
     assert result["success"] is True
     assert result["thread_id"] == "thr_smoke"
@@ -581,6 +620,8 @@ def test_codex_app_server_stdio_smoke_surfaces_approval_requests(monkeypatch):
 
         def write(self, text: str) -> int:
             payload = json.loads(text)
+            if payload.get("method") == "initialize":
+                self.stdout.push({"id": 0, "result": {"platformFamily": "macos"}})
             if payload.get("method") == "thread/start":
                 self.stdout.push({"id": 1, "result": {"thread": {"id": "thr_smoke"}}})
             if payload.get("method") == "turn/start":
@@ -614,7 +655,11 @@ def test_codex_app_server_stdio_smoke_surfaces_approval_requests(monkeypatch):
 
     monkeypatch.setattr(app_server.subprocess, "Popen", FakeProcess)
 
-    result = app_server.codex_app_server_stdio_smoke(prompt="write a file", timeout=0.2)
+    result = app_server.codex_app_server_stdio_smoke(
+        prompt="write a file",
+        cwd=str(ROOT),
+        timeout=0.2,
+    )
 
     assert result["success"] is False
     assert result["approval_required"] is True
@@ -708,12 +753,46 @@ def test_codex_app_server_probe_reads_and_caches_chatgpt_account(monkeypatch):
     assert status["account"] == result["account"]
     assert status["provider_kind"] == "codex"
     assert status["auth_type"] == "codex"
-    assert [method["id"] for method in status["auth_methods"]] == ["chatgpt_account", "app_server_secret"]
-    assert created["command"] == ["codex", "app-server", *SAFE_APP_SERVER_ARGS, "--listen", "stdio://"]
+    assert [method["id"] for method in status["auth_methods"]] == [
+        "chatgpt_account",
+        "app_server_secret",
+    ]
+    assert created["command"] == [
+        "codex",
+        "app-server",
+        *SAFE_APP_SERVER_ARGS,
+        "--listen",
+        "stdio://",
+    ]
     assert result["sent_methods"] == ["initialize", "initialized", "account/read"]
     sent_messages = process.stdin.messages
-    assert sent_messages[0]["params"]["capabilities"] == {"experimentalApi": True}
+    assert sent_messages[0]["params"]["capabilities"] == {
+        "experimentalApi": True,
+        "requestAttestation": False,
+    }
     assert sent_messages[2]["params"] == {"refreshToken": False}
+
+
+def test_codex_app_server_protocol_errors_do_not_reflect_server_details():
+    from domain.codex import app_server
+
+    raw_secret = _fresh_token()
+    safe = app_server._safe_codex_message(
+        {
+            "id": 7,
+            "error": {
+                "code": -32000,
+                "message": f"upstream rejected bearer {raw_secret}",
+                "data": {"token": raw_secret},
+            },
+        }
+    )
+
+    assert safe == {
+        "id": 7,
+        "error": {"code": -32000, "message": "protocol_error"},
+    }
+    assert raw_secret not in _text(safe)
 
 
 def test_frontend_registry_drops_client_supplied_codex_secret_payloads():
@@ -749,5 +828,6 @@ def test_frontend_registry_drops_client_supplied_codex_secret_payloads():
             )
 
     assert values["accounts_connections"]["providers"]["codex"]["configured"] is False
-    assert values["tools_mcp"]["codex_app_server"]["connection_status"] == "not_configured"
+    assert values["coding_backends"]["codex_app_server"]["connection_status"] == ("not_configured")
+    assert "codex_app_server" not in values.get("tools_mcp", {})
     assert token not in _text(values)

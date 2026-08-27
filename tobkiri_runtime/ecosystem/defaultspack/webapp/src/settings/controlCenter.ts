@@ -6,6 +6,7 @@ export type ControlCenterSectionId =
   | "quick_setup"
   | "models_api"
   | "accounts_connections"
+  | "coding_backends"
   | "features"
   | "tools_mcp"
   | "computer_automation"
@@ -171,6 +172,13 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
     order: 40,
   },
   {
+    id: "coding_backends",
+    label: "Coding Backends",
+    description: "Agent runtimes, coding sessions, workspace policy, and live diagnostics.",
+    help: "Coding backends are separate from ordinary model API providers and remain Authority-controlled.",
+    order: 45,
+  },
+  {
     id: "tools_mcp",
     label: "Tools",
     description: "Chat tools, tool selection, MCP sources, transparency, and tool permissions.",
@@ -226,6 +234,7 @@ const JA_SECTION_COPY: Record<ControlCenterSectionId, Pick<ControlCenterSection,
   models_api: { label: "モデル", description: "会話で使うモデル、用途別の割り当て、自動選択とフォールバックを設定します。", help: "接続や認証情報は「接続」で管理します。" },
   workspace_ui: { label: "表示と入力", description: "表示言語、入力方法、ショートカット、回答とプレビューの見え方を設定します。", help: "日常的に変更する表示・入力項目だけをまとめています。" },
   accounts_connections: { label: "接続", description: "AIプロバイダー、アカウント、外部サービス、Webhook、デバイスの接続を管理します。", help: "認証情報は専用の安全な保存経路を使用します。" },
+  coding_backends: { label: "コーディングバックエンド", description: "エージェントruntime、コーディングsession、workspace policy、稼働状態を管理します。", help: "通常のモデルAPI providerとは分離し、Authorityによる承認を維持します。" },
   features: { label: "機能", description: "カレンダー、コマンド、指で録音など、追加機能ごとの動作を設定します。", help: "各機能に固有の項目を、その所有機能ごとにまとめています。" },
   tools_mcp: { label: "ツール", description: "チャットで使えるツール、MCP、ツール候補、透明性を管理します。", help: "ログインは「接続」、実行承認は「自動化と権限」で管理します。" },
   computer_automation: { label: "自動化と権限", description: "承認ルール、コンピュータ操作、OS権限、トリガー、継続実行を管理します。", help: "影響の大きい操作は、必要な機能・リスク・適用範囲と一緒に表示します。" },
@@ -401,6 +410,7 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   models_api: "models_api",
   workspace_ui: "workspace_ui",
   accounts_connections: "accounts_connections",
+  coding_backends: "coding_backends",
   tools_mcp: "tools_mcp",
   computer_automation: "computer_automation",
   privacy_security: "privacy_security",
@@ -425,6 +435,8 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   apps: "accounts_connections",
   connections: "accounts_connections",
   integrations: "accounts_connections",
+  coding_backend: "coding_backends",
+  codex_app_server: "coding_backends",
   mobile: "accounts_connections",
   pairing: "accounts_connections",
   oauth: "accounts_connections",
@@ -491,6 +503,7 @@ const SOURCE_SECTION_ROUTES: Record<string, ControlCenterSectionId> = {
   models: "models_api",
   apis: "accounts_connections",
   accounts_connections: "accounts_connections",
+  coding_backends: "coding_backends",
   external_input: "accounts_connections",
   external_output: "accounts_connections",
   line: "accounts_connections",
@@ -604,6 +617,7 @@ export function controlCenterSectionForField(section: SettingsSection, field: Se
   if (
     sectionMatch === "computer_automation"
     || sectionMatch === "accounts_connections"
+    || sectionMatch === "coding_backends"
     || sectionMatch === "features"
     || sectionMatch === "privacy_security"
     || sectionMatch === "workspace_ui"
@@ -1037,15 +1051,18 @@ export function buildAccountConnectionPrelude(
 }
 
 export function buildCodexAppServerPrelude(settingsValues: SettingsValues = {}): CodexAppServerPrelude {
+  const codingBackends = recordValue(settingsValues.coding_backends);
   const toolsMcp = recordValue(settingsValues.tools_mcp);
-  const appServer = recordValue(toolsMcp.codex_app_server);
-  const toolSource = recordValue(appServer.tool_source);
-  const automationEndpoint = recordValue(appServer.automation_endpoint);
-  const account = recordValue(appServer.account);
-  const configured = Boolean(appServer.configured);
-  const enabled = Boolean(appServer.enabled);
-  const status = String(appServer.connection_status || (configured ? "configured" : "not_configured"));
-  const transport = String(appServer.transport || "off");
+  const appServer = recordValue(codingBackends.codex_app_server);
+  const legacyAppServer = recordValue(toolsMcp.codex_app_server);
+  const resolvedAppServer = Object.keys(appServer).length ? appServer : legacyAppServer;
+  const toolSource = recordValue(resolvedAppServer.tool_source);
+  const automationEndpoint = recordValue(resolvedAppServer.automation_endpoint);
+  const account = recordValue(resolvedAppServer.account);
+  const configured = Boolean(resolvedAppServer.configured);
+  const enabled = Boolean(resolvedAppServer.enabled);
+  const status = String(resolvedAppServer.connection_status || (configured ? "configured" : "not_configured"));
+  const transport = String(resolvedAppServer.transport || "off");
   const normalizedTransport: CodexAppServerPrelude["transport"] = (
     transport === "stdio"
     || transport === "unix"
@@ -1053,31 +1070,31 @@ export function buildCodexAppServerPrelude(settingsValues: SettingsValues = {}):
     || transport === "websocket_remote"
   ) ? transport : "off";
   return {
-    providerId: String(appServer.provider_id || account.provider_id || "codex"),
-    providerKind: String(appServer.provider_kind || account.provider_kind || "codex"),
-    authType: String(appServer.auth_type || "codex"),
-    authMethods: Array.isArray(appServer.auth_methods) ? appServer.auth_methods.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [],
+    providerId: String(resolvedAppServer.provider_id || account.provider_id || "codex"),
+    providerKind: String(resolvedAppServer.provider_kind || account.provider_kind || "codex"),
+    authType: String(resolvedAppServer.auth_type || "codex"),
+    authMethods: Array.isArray(resolvedAppServer.auth_methods) ? resolvedAppServer.auth_methods.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [],
     configured,
     enabled,
     transport: normalizedTransport,
-    statusLabel: String(appServer.status_label || (configured ? "Configured" : "Not configured")),
+    statusLabel: String(resolvedAppServer.status_label || (configured ? "Configured" : "Not configured")),
     status,
-    blockedReason: String(appServer.blocked_reason || ""),
-    baseUrl: String(appServer.base_url || ""),
-    websocketUrl: String(appServer.websocket_url || ""),
-    unixSocketPath: String(appServer.unix_socket_path || ""),
-    loopback: appServer.loopback !== false,
-    authRequired: Boolean(appServer.auth_required),
-    authConfigured: Boolean(appServer.auth_configured),
-    authSource: String(appServer.auth_source || "missing"),
-    authKind: String(appServer.auth_kind || ""),
-    wsTokenFile: String(appServer.ws_token_file || ""),
-    sharedSecretFile: String(appServer.shared_secret_file || ""),
+    blockedReason: String(resolvedAppServer.blocked_reason || ""),
+    baseUrl: String(resolvedAppServer.base_url || ""),
+    websocketUrl: String(resolvedAppServer.websocket_url || ""),
+    unixSocketPath: String(resolvedAppServer.unix_socket_path || ""),
+    loopback: resolvedAppServer.loopback !== false,
+    authRequired: Boolean(resolvedAppServer.auth_required),
+    authConfigured: Boolean(resolvedAppServer.auth_configured),
+    authSource: String(resolvedAppServer.auth_source || "missing"),
+    authKind: String(resolvedAppServer.auth_kind || ""),
+    wsTokenFile: String(resolvedAppServer.ws_token_file || ""),
+    sharedSecretFile: String(resolvedAppServer.shared_secret_file || ""),
     toolSourceStatus: String(toolSource.status || "disabled"),
     automationEndpointStatus: String(automationEndpoint.status || "disabled"),
     accountLabel: String(account.account_label || account.email || ""),
     accountType: String(account.type || ""),
-    accountProviderId: String(account.provider_id || appServer.provider_id || "codex"),
+    accountProviderId: String(account.provider_id || resolvedAppServer.provider_id || "codex"),
     accountAuthMethod: String(account.auth_method || ""),
     accountAuthMethodLabel: String(account.auth_method_label || ""),
     accountEmail: String(account.email || ""),

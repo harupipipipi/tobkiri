@@ -22,6 +22,7 @@ test("settings control center keeps the required section order", () => {
     "Display & Input",
     "Connections",
     "Features",
+    "Coding Backends",
     "Tools",
     "Automation & Permissions",
     "Safety & Data",
@@ -462,9 +463,9 @@ test("Japanese account connection copy covers every provider and OAuth variant",
   assert.doesNotMatch(`${gmail?.label} ${gmail?.description} ${gmail?.warning}`, /Restricted|metadata\/search|scope/i);
 });
 
-test("Codex App Server prelude maps safe Tools & MCP status", () => {
+test("Codex App Server prelude maps safe Coding Backends status", () => {
   const prelude = buildCodexAppServerPrelude({
-    tools_mcp: {
+    coding_backends: {
       codex_app_server: {
         configured: true,
         enabled: true,

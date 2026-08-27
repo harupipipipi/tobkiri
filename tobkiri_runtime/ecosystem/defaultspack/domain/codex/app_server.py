@@ -93,7 +93,9 @@ def _read_config(pack_root: Path | None = None) -> dict[str, Any]:
 def _write_config(payload: dict[str, Any], pack_root: Path | None = None) -> None:
     path = _config_path(pack_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _bool(value: Any) -> bool:
@@ -198,7 +200,9 @@ def _codex_auth_method_label(auth_method: str) -> str:
     }.get(auth_method, auth_method or "account")
 
 
-def _codex_app_server_auth_methods(*, account_configured: bool = False, app_server_auth_configured: bool = False) -> list[dict[str, Any]]:
+def _codex_app_server_auth_methods(
+    *, account_configured: bool = False, app_server_auth_configured: bool = False
+) -> list[dict[str, Any]]:
     return [
         {
             "id": "chatgpt_account",
@@ -227,7 +231,9 @@ def _safe_account_metadata(value: Any) -> dict[str, Any]:
     requires_openai_auth = account.get("requiresOpenaiAuth")
     if requires_openai_auth is None:
         requires_openai_auth = account.get("requires_openai_auth")
-    auth_method = str(account.get("auth_method") or _codex_auth_method_for_account_type(account_type)).strip()
+    auth_method = str(
+        account.get("auth_method") or _codex_auth_method_for_account_type(account_type)
+    ).strip()
     label = str(account.get("account_label") or "").strip()
     if not label:
         if auth_method == "chatgpt_account":
@@ -255,7 +261,9 @@ def _safe_account_metadata(value: Any) -> dict[str, Any]:
     return result
 
 
-def _infer_transport(payload: dict[str, Any], *, base_url: str, websocket_url: str, unix_socket_path: str) -> str:
+def _infer_transport(
+    payload: dict[str, Any], *, base_url: str, websocket_url: str, unix_socket_path: str
+) -> str:
     explicit = str(payload.get("transport") or payload.get("mode") or "").strip().lower()
     if explicit in TRANSPORTS:
         return explicit
@@ -274,13 +282,27 @@ def _infer_transport(payload: dict[str, Any], *, base_url: str, websocket_url: s
 def _normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
     raw_base_url = payload.get("base_url") or payload.get("server_url")
     raw_websocket_url = payload.get("websocket_url")
-    url_secret_rejected = _bool(payload.get("url_secret_rejected")) or _url_has_query(raw_base_url) or _url_has_query(raw_websocket_url)
-    base_url = _normalize_url(
-        raw_base_url,
-        allowed_schemes={"http", "https"},
-    ) if not url_secret_rejected else ""
-    websocket_url = _normalize_url(raw_websocket_url, allowed_schemes={"ws", "wss"}) if not url_secret_rejected else ""
-    unix_socket_path = _normalize_path(payload.get("unix_socket_path") or payload.get("socket_path"))
+    url_secret_rejected = (
+        _bool(payload.get("url_secret_rejected"))
+        or _url_has_query(raw_base_url)
+        or _url_has_query(raw_websocket_url)
+    )
+    base_url = (
+        _normalize_url(
+            raw_base_url,
+            allowed_schemes={"http", "https"},
+        )
+        if not url_secret_rejected
+        else ""
+    )
+    websocket_url = (
+        _normalize_url(raw_websocket_url, allowed_schemes={"ws", "wss"})
+        if not url_secret_rejected
+        else ""
+    )
+    unix_socket_path = _normalize_path(
+        payload.get("unix_socket_path") or payload.get("socket_path")
+    )
     transport = _infer_transport(
         payload,
         base_url=base_url,
@@ -294,7 +316,9 @@ def _normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         "base_url": base_url,
         "websocket_url": websocket_url,
         "unix_socket_path": unix_socket_path,
-        "ws_token_file": _normalize_path(payload.get("ws_token_file") or payload.get("auth_token_file")),
+        "ws_token_file": _normalize_path(
+            payload.get("ws_token_file") or payload.get("auth_token_file")
+        ),
         "shared_secret_file": _normalize_path(payload.get("shared_secret_file")),
         "tool_source_enabled": _bool(payload.get("tool_source_enabled")),
         "automation_endpoint_enabled": _bool(payload.get("automation_endpoint_enabled")),
@@ -381,7 +405,9 @@ def _app_server_credential_ref(*, pack_root: Path | None = None) -> dict[str, st
     )
 
 
-def _codex_app_server_auth(config: dict[str, Any], *, pack_root: Path | None = None) -> dict[str, str]:
+def _codex_app_server_auth(
+    config: dict[str, Any], *, pack_root: Path | None = None
+) -> dict[str, str]:
     from core_runtime.host_contract import host_contract_value
 
     imported = _read_connection_app_server_auth(pack_root=pack_root)
@@ -400,7 +426,13 @@ def _codex_app_server_auth(config: dict[str, Any], *, pack_root: Path | None = N
     for kind, _env_key, _file_env_key, _config_file_key, secret_key in _APP_SERVER_AUTH_ENV:
         value, key = _read_stored_secret((secret_key,), pack_root=pack_root)
         if value:
-            return {"kind": kind, "source": "secret_store", "file_path": "", "secret_key": key, "value": value}
+            return {
+                "kind": kind,
+                "source": "secret_store",
+                "file_path": "",
+                "secret_key": key,
+                "value": value,
+            }
     return {"kind": "", "source": "missing", "file_path": "", "value": ""}
 
 
@@ -419,7 +451,10 @@ def _endpoint_requires_auth(config: dict[str, Any]) -> bool:
 def _config_is_loopback(config: dict[str, Any]) -> bool:
     base_url = str(config.get("base_url") or "")
     websocket_url = str(config.get("websocket_url") or "")
-    return bool((not base_url or _url_is_loopback(base_url)) and (not websocket_url or _url_is_loopback(websocket_url)))
+    return bool(
+        (not base_url or _url_is_loopback(base_url))
+        and (not websocket_url or _url_is_loopback(websocket_url))
+    )
 
 
 def _config_is_configured(config: dict[str, Any]) -> bool:
@@ -482,7 +517,9 @@ def build_codex_app_server_command(config: dict[str, Any]) -> list[str]:
     else:
         return []
     if normalized.get("ws_token_file"):
-        command.extend(["--ws-auth", "capability-token", "--ws-token-file", str(normalized["ws_token_file"])])
+        command.extend(
+            ["--ws-auth", "capability-token", "--ws-token-file", str(normalized["ws_token_file"])]
+        )
     elif normalized.get("shared_secret_file"):
         command.extend(
             [
@@ -495,7 +532,9 @@ def build_codex_app_server_command(config: dict[str, Any]) -> list[str]:
     return command
 
 
-def save_codex_app_server_config(payload: dict[str, Any], *, pack_root: Path | None = None) -> dict[str, Any]:
+def save_codex_app_server_config(
+    payload: dict[str, Any], *, pack_root: Path | None = None
+) -> dict[str, Any]:
     config = _normalize_config(payload if isinstance(payload, dict) else {})
     _write_config(config, pack_root)
     return {
@@ -517,7 +556,9 @@ def clear_codex_app_server_config(*, pack_root: Path | None = None) -> dict[str,
     }
 
 
-def _cache_codex_app_server_account(account: dict[str, Any], *, pack_root: Path | None = None) -> None:
+def _cache_codex_app_server_account(
+    account: dict[str, Any], *, pack_root: Path | None = None
+) -> None:
     safe_account = _safe_account_metadata(account)
     if not safe_account:
         return
@@ -547,7 +588,9 @@ def codex_app_server_status(*, pack_root: Path | None = None) -> dict[str, Any]:
         if url_secret_rejected
         else ""
     )
-    blocked_reason = url_secret_blocked_reason or transport_url_mismatch_reason or auth_blocked_reason
+    blocked_reason = (
+        url_secret_blocked_reason or transport_url_mismatch_reason or auth_blocked_reason
+    )
     if url_secret_rejected:
         connection_status = "url_secret_rejected"
         status_label = "URL secret rejected"
@@ -588,7 +631,9 @@ def codex_app_server_status(*, pack_root: Path | None = None) -> dict[str, Any]:
         "auth_configured": auth_configured,
         "auth_source": str(auth.get("source") or "missing") if auth_configured else "missing",
         "auth_kind": str(auth.get("kind") or ""),
-        "credential_ref": _app_server_credential_ref(pack_root=pack_root) if auth_configured else {},
+        "credential_ref": _app_server_credential_ref(pack_root=pack_root)
+        if auth_configured
+        else {},
         "scopes": [],
         "capabilities": ["codex.app_server.connect"] if auth_configured else [],
         "expires_at": "",
@@ -600,7 +645,8 @@ def codex_app_server_status(*, pack_root: Path | None = None) -> dict[str, Any]:
         "tool_source": {
             "enabled": bool(config.get("tool_source_enabled")),
             "status": connection_status
-            if connection_status in {"blocked_auth_required", "transport_url_mismatch", "url_secret_rejected"}
+            if connection_status
+            in {"blocked_auth_required", "transport_url_mismatch", "url_secret_rejected"}
             else "configured"
             if config.get("tool_source_enabled") and configured
             else "disabled",
@@ -608,7 +654,8 @@ def codex_app_server_status(*, pack_root: Path | None = None) -> dict[str, Any]:
         "automation_endpoint": {
             "enabled": bool(config.get("automation_endpoint_enabled")),
             "status": connection_status
-            if connection_status in {"blocked_auth_required", "transport_url_mismatch", "url_secret_rejected"}
+            if connection_status
+            in {"blocked_auth_required", "transport_url_mismatch", "url_secret_rejected"}
             else "configured"
             if config.get("automation_endpoint_enabled") and configured
             else "disabled",
@@ -617,18 +664,34 @@ def codex_app_server_status(*, pack_root: Path | None = None) -> dict[str, Any]:
     }
 
 
-def codex_app_server_probe(*, pack_root: Path | None = None, timeout: float = 2.0) -> dict[str, Any]:
+def codex_app_server_probe(
+    *, pack_root: Path | None = None, timeout: float = 2.0
+) -> dict[str, Any]:
     status = codex_app_server_status(pack_root=pack_root)
     if status.get("connection_status") == "url_secret_rejected":
-        return {"success": False, "provider_id": "codex", "probe": {"status": "url_secret_rejected"}}
+        return {
+            "success": False,
+            "provider_id": "codex",
+            "probe": {"status": "url_secret_rejected"},
+        }
     if status.get("connection_status") == "transport_url_mismatch":
-        return {"success": False, "provider_id": "codex", "probe": {"status": "transport_url_mismatch"}}
+        return {
+            "success": False,
+            "provider_id": "codex",
+            "probe": {"status": "transport_url_mismatch"},
+        }
     if status.get("connection_status") == "blocked_auth_required":
-        return {"success": False, "provider_id": "codex", "probe": {"status": "blocked_auth_required"}}
+        return {
+            "success": False,
+            "provider_id": "codex",
+            "probe": {"status": "blocked_auth_required"},
+        }
     base_url = str(status.get("base_url") or "").rstrip("/")
     if not base_url:
         account_result = codex_app_server_account_status(
-            command=status.get("command") if isinstance(status.get("command"), list) and status.get("command") else None,
+            command=status.get("command")
+            if isinstance(status.get("command"), list) and status.get("command")
+            else None,
             timeout=max(float(timeout), 3.0),
         )
         account = _safe_account_metadata(account_result.get("account"))
@@ -675,7 +738,12 @@ def codex_app_server_account_status(
 ) -> dict[str, Any]:
     command = command or build_codex_app_server_command({"enabled": True, "transport": "stdio"})
     if not command:
-        return {"success": False, "provider_id": "codex", "probe": {"status": "stdio_not_configured"}, "account": {}}
+        return {
+            "success": False,
+            "provider_id": "codex",
+            "probe": {"status": "stdio_not_configured"},
+            "account": {},
+        }
     proc = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
@@ -702,11 +770,14 @@ def codex_app_server_account_status(
                 "id": 0,
                 "params": {
                     "clientInfo": {
-                        "name": "rumi_defaultspack",
+                        "name": "tobkiri_defaultspack",
                         "title": "Tobkiri",
                         "version": "0.1.0",
                     },
-                    "capabilities": {"experimentalApi": True},
+                    "capabilities": {
+                        "experimentalApi": True,
+                        "requestAttestation": False,
+                    },
                 },
             }
         )
@@ -726,7 +797,7 @@ def codex_app_server_account_status(
                     command=command,
                     sent=sent,
                     messages=messages,
-                    error=message.get("error"),
+                    error="initialize_failed",
                     probe_status="initialize_failed",
                 )
             break
@@ -758,7 +829,7 @@ def codex_app_server_account_status(
                     command=command,
                     sent=sent,
                     messages=messages,
-                    error=message.get("error"),
+                    error="account_read_failed",
                     probe_status="account_read_failed",
                 )
             result = message.get("result") if isinstance(message.get("result"), dict) else {}
@@ -773,7 +844,11 @@ def codex_app_server_account_status(
                 messages=messages,
                 account=account,
                 requires_openai_auth=requires_openai_auth,
-                probe_status="ok" if account else "auth_required" if requires_openai_auth else "not_connected",
+                probe_status="ok"
+                if account
+                else "auth_required"
+                if requires_openai_auth
+                else "not_connected",
             )
         return _account_status_result(
             success=False,
@@ -820,6 +895,13 @@ def codex_app_server_stdio_smoke(
     timeout: float = 60.0,
     command: list[str] | None = None,
 ) -> dict[str, Any]:
+    if not cwd:
+        return {
+            "success": False,
+            "provider_id": "codex",
+            "error": "workspace_root_required",
+        }
+    workspace_root = str(Path(cwd).expanduser().resolve())
     command = command or build_codex_app_server_command({"enabled": True, "transport": "stdio"})
     if not command:
         return {"success": False, "provider_id": "codex", "error": "stdio_not_configured"}
@@ -854,15 +936,56 @@ def codex_app_server_stdio_smoke(
                 "id": 0,
                 "params": {
                     "clientInfo": {
-                        "name": "rumi_defaultspack",
+                        "name": "tobkiri_defaultspack",
                         "title": "Tobkiri",
                         "version": "0.1.0",
-                    }
+                    },
+                    "capabilities": {
+                        "experimentalApi": False,
+                        "requestAttestation": False,
+                    },
                 },
             }
         )
+        while time.monotonic() < deadline:
+            line = _readline_before_deadline(
+                proc.stdout,
+                min(deadline, time.monotonic() + 2.0),
+            )
+            if not line:
+                continue
+            message = _parse_json_line(line)
+            if not message:
+                continue
+            messages.append(_safe_codex_message(message))
+            if message.get("id") != 0:
+                continue
+            if message.get("error"):
+                return _stdio_smoke_result(
+                    success=False,
+                    command=command,
+                    sent=sent,
+                    messages=messages,
+                    error="initialize_failed",
+                )
+            break
+        else:
+            return _stdio_smoke_result(
+                success=False,
+                command=command,
+                sent=sent,
+                messages=messages,
+                error="initialize_timeout",
+            )
         send({"method": "initialized", "params": {}})
-        thread_params = _compact_dict({"model": model, "cwd": cwd})
+        thread_params = _compact_dict(
+            {
+                "model": model,
+                "cwd": workspace_root,
+                "approvalPolicy": "untrusted",
+                "sandbox": "read-only",
+            }
+        )
         send({"method": "thread/start", "id": 1, "params": thread_params})
 
         while time.monotonic() < deadline:
@@ -883,16 +1006,21 @@ def codex_app_server_stdio_smoke(
                         command=command,
                         sent=sent,
                         messages=messages,
-                        error=message.get("error"),
+                        error="thread_start_failed",
                     )
                 thread_id = str(_nested(message, "result", "thread", "id") or "")
                 if thread_id:
                     turn_params = _compact_dict(
                         {
                             "threadId": thread_id,
-                            "cwd": cwd,
+                            "cwd": workspace_root,
                             "model": model,
                             "input": [{"type": "text", "text": prompt}],
+                            "approvalPolicy": "untrusted",
+                            "sandboxPolicy": {
+                                "type": "readOnly",
+                                "networkAccess": False,
+                            },
                         }
                     )
                     send({"method": "turn/start", "id": 2, "params": turn_params})
@@ -904,7 +1032,7 @@ def codex_app_server_stdio_smoke(
                         sent=sent,
                         messages=messages,
                         thread_id=thread_id,
-                        error=message.get("error"),
+                        error="turn_start_failed",
                     )
                 turn_id = str(_nested(message, "result", "turn", "id") or "")
             else:
@@ -924,6 +1052,12 @@ def codex_app_server_stdio_smoke(
                     break
                 elif "approval" in method.lower():
                     approval_requests.append(_safe_codex_message(message))
+                    if "id" in message:
+                        if method == "item/permissions/requestApproval":
+                            result = {"permissions": {}, "scope": "turn"}
+                        else:
+                            result = {"decision": "decline"}
+                        send({"id": message["id"], "result": result})
         return _stdio_smoke_result(
             success=bool(thread_id and turn_id and completed),
             command=command,
@@ -1009,7 +1143,17 @@ def _safe_codex_message(message: dict[str, Any]) -> dict[str, Any]:
         payload = json.loads(text)
     except json.JSONDecodeError:
         return {"message": "[unserializable]"}
-    return payload if isinstance(payload, dict) else {"message": payload}
+    if not isinstance(payload, dict):
+        return {"message": payload}
+    if payload.get("error"):
+        error = payload["error"]
+        code = error.get("code") if isinstance(error, dict) else None
+        payload["error"] = (
+            {"code": code, "message": "protocol_error"}
+            if isinstance(code, int)
+            else {"message": "protocol_error"}
+        )
+    return payload
 
 
 def _redact_known_secrets(text: str) -> str:

@@ -3718,7 +3718,7 @@ export function SettingsModalRenderer({
     {
       id: "connections_features",
       label: localizedCopy("Connections & features", "接続と機能"),
-      sectionIds: ["accounts_connections", "features", "tools_mcp", "computer_automation"],
+      sectionIds: ["accounts_connections", "features", "coding_backends", "tools_mcp", "computer_automation"],
     },
     {
       id: "management",
@@ -4706,7 +4706,7 @@ export function SettingsModalRenderer({
         </div>
       );
     }
-    if (section.id === "tools_mcp") {
+    if (section.id === "coding_backends") {
       const appServerMessage = connectionMessages.codex_app_server;
       const appServerTransportOptions: Array<{ value: NonNullable<CodexAppServerConfig["transport"]>; label: string; detail: string }> = [
         { value: "off", label: "Off", detail: "Disable Codex App Server integration." },
@@ -4716,7 +4716,7 @@ export function SettingsModalRenderer({
         { value: "websocket_remote", label: "WebSocket remote", detail: "Requires separate App Server auth before use." },
       ];
       const appServerToggleFields: Array<["enabled" | "toolSourceEnabled" | "automationEndpointEnabled", string, string]> = [
-        ["enabled", "Enabled", "Allow Rumi to use this App Server configuration."],
+        ["enabled", "Enabled", "Allow Tobkiri to use this App Server configuration."],
         ["toolSourceEnabled", "Tool source", "Expose threads, turns, approvals, and events as tool capabilities."],
         ["automationEndpointEnabled", "Automation endpoint", "Show readiness in Computer & Automation."],
       ];
@@ -4726,13 +4726,13 @@ export function SettingsModalRenderer({
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
             <div className="space-y-4">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 p-4">
-                <div className="text-[11px] font-medium text-zinc-500">Tools & MCP</div>
-                <h3 className="mt-1 text-sm font-semibold text-zinc-50">ツールとログインは別に管理されます</h3>
-                <p className="mt-2 text-xs leading-5 text-zinc-500">MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.</p>
+                <div className="text-[11px] font-medium text-zinc-500">Coding Backends</div>
+                <h3 className="mt-1 text-sm font-semibold text-zinc-50">モデルAPIとは独立したコーディングruntimeです</h3>
+                <p className="mt-2 text-xs leading-5 text-zinc-500">Codex App Server owns coding threads and turns. Account secrets remain in Connections, while MCP tools remain in Tools.</p>
                 <div className="mt-4 grid gap-2 text-[11px]">
                   <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Credential</span> → Accounts & Connections</div>
-                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Tool source</span> → Tools & MCP</div>
-                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Readiness</span> → Computer & Automation</div>
+                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Coding session</span> → Coding Backends</div>
+                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">MCP tools</span> → Tools</div>
                 </div>
               </div>
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 p-4">
