@@ -1,10 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { CompanyMessage } from "../lib/api";
-import { ChannelButton } from "./SubagentTeamWorkspace";
+import {
+  ChannelButton,
+  rovingIndexForKey,
+  SubagentTeamWorkspace,
+  TreePreview,
+} from "./SubagentTeamWorkspace";
 import {
   agentShortId,
   buildAgentActivity,
@@ -167,17 +174,85 @@ test("channel button separates member count from unread badge", () => {
   const html = renderToStaticMarkup(
     createElement(ChannelButton, {
       channel,
-      active: false,
+      active: true,
       memberCount: channelMemberCount(channel),
       unreadCount: channelUnreadCount(channel, []),
+      expanded: true,
       onClick: () => undefined,
+      onToggleExpand: () => undefined,
     }),
   );
 
   assert.match(html, /curseforge_mod_code/);
   assert.match(html, /\(6\)/);
   assert.match(html, /data-testid="subagent-channel-unread-curseforge_mod_code"/);
-  assert.match(html, />2<\/span>/);
+  assert.match(html, />2<span class="sr-only"> unread messages<\/span>/);
+  assert.match(html, /aria-current="page"/);
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, /aria-controls="subagent-channel-members-curseforge_mod_code"/);
+  assert.match(html, /min-h-11/);
+});
+
+test("team workspace exposes named navigation, composer help, and stable live status", () => {
+  const html = renderToStaticMarkup(createElement(SubagentTeamWorkspace));
+
+  assert.match(html, /aria-labelledby="subagent-team-workspace-title"/);
+  assert.match(html, /<nav aria-label="Team channels and direct messages"/);
+  assert.match(html, /role="list" aria-label="Channels"/);
+  assert.match(html, /role="list" aria-label="Direct messages"/);
+  assert.match(html, /aria-current="page"/);
+  assert.match(html, /<label for="subagent-message-composer" class="sr-only">/);
+  assert.match(html, /Enter sends\. Shift\+Enter adds a new line/);
+  assert.match(html, /id="subagent-composer-status" role="status"/);
+  assert.match(html, /aria-label="Send message to ship-room"/);
+  assert.doesNotMatch(html, /(?:line-clamp|\btruncate\b)/);
+
+  const css = readFileSync(fileURLToPath(new URL("../index.css", import.meta.url)), "utf-8");
+  assert.match(css, /forced-colors: active[\s\S]*subagent-team-workspace/);
+  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*subagent-team-workspace/);
+});
+
+test("tree preview has roving tree semantics and explicit keyboard relationships", () => {
+  const treeState = normalizeSubagentTreeResponse({
+    files: [
+      { node_id: "folder", path: "folder", name: "folder", is_dir: true },
+      { node_id: "child", path: "folder/very-long-child-name.txt", name: "very-long-child-name.txt", is_dir: false },
+    ],
+  });
+  const selected = subagentTreeItemsForMode(treeState, "files")[0];
+  const html = renderToStaticMarkup(createElement(TreePreview, {
+    mode: "files",
+    treeState,
+    activePreview: {
+      nodeId: selected.nodeId,
+      mode: "files",
+      title: selected.label,
+      kind: selected.kind,
+      path: selected.path,
+      source: "api",
+    },
+    openingNodeId: null,
+    treeError: null,
+    onOpenNode: () => undefined,
+    onClearPreview: () => undefined,
+    onClose: () => undefined,
+  }));
+
+  assert.match(html, /role="tree"/);
+  assert.match(html, /role="treeitem"/);
+  assert.match(html, /aria-level="1"/);
+  assert.match(html, /aria-selected="true"/);
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, /aria-controls="subagent-files-preview"/);
+  assert.match(html, /tabindex="0"/);
+  assert.match(html, /min-h-11/);
+  assert.doesNotMatch(html, /(?:line-clamp|\btruncate\b)/);
+
+  assert.equal(rovingIndexForKey("ArrowDown", 0, 3), 1);
+  assert.equal(rovingIndexForKey("ArrowUp", 0, 3), 2);
+  assert.equal(rovingIndexForKey("Home", 2, 3), 0);
+  assert.equal(rovingIndexForKey("End", 0, 3), 2);
+  assert.equal(rovingIndexForKey("Escape", 0, 3), null);
 });
 
 test("API file tree success uses API nodes instead of static fallback nodes", () => {

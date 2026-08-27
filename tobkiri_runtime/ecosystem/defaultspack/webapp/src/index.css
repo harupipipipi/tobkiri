@@ -978,6 +978,28 @@ body {
   }
 }
 
+@media (forced-colors: active) {
+  .subagent-team-workspace :is(button, textarea, [role="treeitem"], [role="alert"], article) {
+    border-color: CanvasText;
+  }
+
+  .subagent-team-workspace :is(button, textarea, [role="treeitem"]):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subagent-team-workspace *,
+  .subagent-team-workspace *::before,
+  .subagent-team-workspace *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @media (max-width: 900px) {
   .rumi-workspace-main.has-activity-preview {
     display: flex;

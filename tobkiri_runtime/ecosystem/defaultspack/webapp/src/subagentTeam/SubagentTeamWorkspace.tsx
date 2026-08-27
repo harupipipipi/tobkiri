@@ -22,7 +22,16 @@ import {
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import {
   api,
@@ -40,6 +49,7 @@ import {
 } from "../lib/api";
 import { cn } from "../lib/cn";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { redactDiagnosticText } from "../lib/clientDiagnostics";
 import {
   agentName,
   agentRoleKey,
@@ -84,6 +94,24 @@ type SubagentTeamWorkspaceProps = {
 };
 
 const DEFAULT_CHANNEL_ID = "ship-room";
+
+function safeSubagentDiagnostic(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? "");
+  return redactDiagnosticText(raw, 480) || fallback;
+}
+
+function domId(prefix: string, value: string): string {
+  return `${prefix}-${value.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
+}
+
+export function rovingIndexForKey(key: string, current: number, count: number): number | null {
+  if (count <= 0) return null;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  if (key === "ArrowDown" || key === "ArrowRight") return (current + 1 + count) % count;
+  if (key === "ArrowUp" || key === "ArrowLeft") return (current - 1 + count) % count;
+  return null;
+}
 
 function effectiveThreadId(thread: SubagentThread): string {
   return thread.type === "dm" ? `dm-${thread.id}` : thread.id;
@@ -177,13 +205,14 @@ function compactCount(value: number): string {
   return String(Math.max(0, value));
 }
 
-function TreePreview({
+export function TreePreview({
   mode,
   treeState,
   activePreview,
   openingNodeId,
   treeError,
   onOpenNode,
+  onClearPreview,
   onClose,
 }: {
   mode: Exclude<TreeMode, null>;
@@ -192,16 +221,56 @@ function TreePreview({
   openingNodeId: string | null;
   treeError: string | null;
   onOpenNode: (item: SubagentTreeItem) => void;
+  onClearPreview: () => void;
   onClose: () => void;
 }) {
   const items = subagentTreeItemsForMode(treeState, mode);
   const preview = activePreview?.mode === mode ? activePreview : null;
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedIndex = Math.max(0, items.findIndex((item) => item.nodeId === preview?.nodeId));
+  const treeLabelId = `subagent-${mode}-tree-title`;
+  const previewId = `subagent-${mode}-preview`;
+
+  const handleTreeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const nextIndex = rovingIndexForKey(event.key, index, items.length);
+    if (nextIndex !== null && !["ArrowLeft", "ArrowRight"].includes(event.key)) {
+      event.preventDefault();
+      itemRefs.current[nextIndex]?.focus();
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      onOpenNode(items[index]);
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (preview?.nodeId === items[index]?.nodeId) {
+        onClearPreview();
+        itemRefs.current[index]?.focus();
+        return;
+      }
+      let parentIndex = -1;
+      for (let candidate = index - 1; candidate >= 0; candidate -= 1) {
+        if (items[candidate].depth < items[index].depth) {
+          parentIndex = candidate;
+          break;
+        }
+      }
+      if (parentIndex >= 0) itemRefs.current[parentIndex]?.focus();
+    }
+  };
+
   return (
-    <div className="mx-2 mb-2 rounded-lg border border-zinc-800/80 bg-zinc-950/65 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <section
+      id={`subagent-${mode}-tree-panel`}
+      aria-labelledby={treeLabelId}
+      className="mx-2 mb-2 rounded-lg border border-zinc-800/80 bg-zinc-950/65 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+    >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-zinc-200">
-          {mode === "files" ? <FolderTree size={13} className="text-sky-300" /> : <History size={13} className="text-amber-300" />}
-          <span className="truncate">{mode === "files" ? "File tree" : "History tree"}</span>
+          {mode === "files" ? <FolderTree aria-hidden="true" size={13} className="text-sky-300" /> : <History aria-hidden="true" size={13} className="text-amber-300" />}
+          <h3 id={treeLabelId}>{mode === "files" ? "File tree" : "History tree"}</h3>
           <span className={cn("rounded px-1 py-0.5 text-[9px]", treeState.source === "api" ? "bg-emerald-500/10 text-emerald-200" : "bg-zinc-900 text-zinc-500")}>
             {treeState.source}
           </span>
@@ -209,7 +278,8 @@ function TreePreview({
         <button
           type="button"
           onClick={onClose}
-          className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500 hover:border-zinc-700 hover:text-zinc-200"
+          className="min-h-11 rounded border border-zinc-800 px-3 text-[10px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          aria-label={`Close ${mode === "files" ? "file" : "history"} tree and return focus`}
         >
           Close
         </button>
@@ -222,19 +292,27 @@ function TreePreview({
           severity="warning"
         />
       )}
-      <div className="space-y-0.5" data-testid={`subagent-${mode}-tree`}>
-        {items.map((item) => (
+      <div role="tree" aria-label={`${mode === "files" ? "File" : "History"} nodes`} className="space-y-0.5" data-testid={`subagent-${mode}-tree`}>
+        {items.map((item, index) => (
           <button
             key={item.id}
             type="button"
+            role="treeitem"
+            aria-level={item.depth + 1}
+            aria-selected={preview?.nodeId === item.nodeId}
+            aria-expanded={item.kind === "folder" ? preview?.nodeId === item.nodeId : undefined}
+            aria-controls={preview?.nodeId === item.nodeId ? previewId : undefined}
+            tabIndex={index === selectedIndex ? 0 : -1}
+            ref={(node) => { itemRefs.current[index] = node; }}
             onClick={() => onOpenNode(item)}
+            onKeyDown={(event) => handleTreeKeyDown(event, index)}
             data-testid={`subagent-tree-node-${item.nodeId}`}
-            className="flex h-6 w-full items-center gap-1.5 rounded px-1 text-left text-[11px] text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-100"
+            className="flex min-h-11 w-full items-center gap-1.5 rounded px-2 text-left text-[11px] text-zinc-300 hover:bg-zinc-900/80 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
             style={{ paddingLeft: `${4 + item.depth * 12}px` }}
           >
-            {item.kind === "folder" ? <FolderTree size={11} className="shrink-0 text-sky-400/80" /> : <FileText size={11} className="shrink-0 text-zinc-500" />}
-            <span className="truncate">{item.label}</span>
-            {openingNodeId === item.nodeId && <RefreshCw size={10} className="ml-auto shrink-0 animate-spin text-zinc-600" />}
+            {item.kind === "folder" ? <FolderTree aria-hidden="true" size={11} className="shrink-0 text-sky-400/80" /> : <FileText aria-hidden="true" size={11} className="shrink-0 text-zinc-500" />}
+            <span className="break-all">{item.label}</span>
+            {openingNodeId === item.nodeId && <RefreshCw aria-hidden="true" size={10} className="ml-auto shrink-0 animate-spin motion-reduce:animate-none text-zinc-500" />}
           </button>
         ))}
         {items.length === 0 && (
@@ -242,14 +320,14 @@ function TreePreview({
         )}
       </div>
       {preview && (
-        <div className="mt-2 border-t border-zinc-800/70 pt-2" data-testid="subagent-tree-preview">
+        <div id={previewId} role="region" aria-label={`${preview.title} preview`} className="mt-2 border-t border-zinc-800/70 pt-2" data-testid="subagent-tree-preview">
           <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
-            <p className="min-w-0 truncate text-[11px] font-semibold text-zinc-200">{preview.title}</p>
+            <p className="min-w-0 break-words text-[11px] font-semibold text-zinc-200">{preview.title}</p>
             {preview.source === "fallback" && (
               <span className="shrink-0 rounded bg-zinc-900 px-1 py-0.5 text-[9px] text-zinc-500">fallback preview</span>
             )}
           </div>
-          {preview.path && <p className="mb-1 truncate font-mono text-[10px] text-zinc-600">{preview.path}</p>}
+          {preview.path && <p className="mb-1 break-all font-mono text-[10px] text-zinc-500">{preview.path}</p>}
           {preview.messages?.length ? (
             <div className="space-y-1">
               {preview.messages.slice(0, 4).map((message) => (
@@ -258,7 +336,7 @@ function TreePreview({
                     <span className="font-semibold text-zinc-400">{message.sender_id}</span>
                     <span>#{shortId(message.id)}</span>
                   </div>
-                  <p className="line-clamp-2 text-[11px] leading-relaxed text-zinc-300">{message.content}</p>
+                  <p className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-300">{message.content}</p>
                 </div>
               ))}
             </div>
@@ -281,7 +359,7 @@ function TreePreview({
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -300,7 +378,7 @@ function SignalBanner({
         <span className="shrink-0">{icon}</span>
         <span>{label}</span>
       </div>
-      <p className="line-clamp-2 text-[11px] leading-relaxed text-zinc-300">{text}</p>
+      <p className="break-words text-[11px] leading-relaxed text-zinc-300">{text}</p>
     </div>
   );
 }
@@ -322,7 +400,7 @@ function CreatorDecisionPreview({
             <ClipboardCheck size={12} className="text-emerald-300" />
             <span>Creator decision preview</span>
           </div>
-          <p className="mt-1 line-clamp-2 text-[12px] font-medium leading-snug text-zinc-100">{title}</p>
+          <p className="mt-1 break-words text-[12px] font-medium leading-snug text-zinc-100">{title}</p>
         </div>
         <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-[9px]", statusClassName(status))}>
           {status}
@@ -357,15 +435,24 @@ function MessageRow({
 }) {
   const name = message.sender_id === "user" || message.sender_id === "you" ? "You" : agentName(sender, message.sender_id);
   const senderShortId = message.sender_id === "user" || message.sender_id === "you" ? "main" : agentShortId(sender, message.sender_id);
+  const deliveryState = String(
+    message.metadata?.delivery_status
+      ?? message.metadata?.status
+      ?? (message.id.startsWith("local-") ? "sending" : "sent"),
+  );
   return (
-    <article className="group flex gap-2 rounded-lg px-2 py-2 hover:bg-zinc-900/45">
+    <article
+      aria-label={`${name}, ${messageTime(message.created_at)}, message ${shortId(message.id)}, ${deliveryState}`}
+      className="group flex gap-2 rounded-lg px-2 py-2 hover:bg-zinc-900/45"
+    >
       <AgentAvatar agent={sender} fallbackId={message.sender_id} />
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          <span className="truncate text-[12px] font-semibold text-zinc-100">{name}</span>
+          <span className="break-words text-[12px] font-semibold text-zinc-100">{name}</span>
           <span className="font-mono text-[9px] text-sky-300/80">@{senderShortId}</span>
           <span className="font-mono text-[9px] text-zinc-600">msg #{shortId(message.id)}</span>
           <span className="text-[9px] text-zinc-700">{messageTime(message.created_at)}</span>
+          <span className="text-[9px] text-zinc-500">{deliveryState}</span>
         </div>
         <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-zinc-300">{message.content}</p>
         {message.attachments && message.attachments.length > 0 && (
@@ -376,7 +463,7 @@ function MessageRow({
                 className="inline-flex max-w-full items-center gap-1 rounded border border-zinc-800 bg-zinc-950/70 px-1.5 py-0.5 text-[10px] text-zinc-400"
               >
                 <FileText size={10} className="shrink-0" />
-                <span className="truncate">{attachment.name || attachment.path || "attachment"}</span>
+                <span className="break-all">{attachment.name || attachment.path || "attachment"}</span>
               </span>
             ))}
           </div>
@@ -403,6 +490,7 @@ export function ChannelButton({
   onClick: () => void;
   onToggleExpand?: () => void;
 }) {
+  const memberListId = domId("subagent-channel-members", channel.id);
   return (
     <div
       data-testid={`subagent-channel-${channel.id}`}
@@ -410,11 +498,16 @@ export function ChannelButton({
         "group flex w-full items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left transition-colors",
         active ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300",
       )}
-      title={channel.description || channelName(channel)}
     >
-      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-        <Hash size={12} className="shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-medium">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-current={active ? "page" : undefined}
+        data-subagent-thread-option
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+      >
+        <Hash aria-hidden="true" size={12} className="shrink-0" />
+        <span className="min-w-0 flex-1 break-words text-[11px] font-medium">
           {channelName(channel)} <span className={active ? "text-zinc-400" : "text-zinc-600"}>({memberCount})</span>
         </span>
       </button>
@@ -424,17 +517,19 @@ export function ChannelButton({
           className={cn("shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold", active ? "bg-zinc-950 text-zinc-200" : "bg-zinc-800 text-zinc-400")}
         >
           {compactCount(unreadCount)}
+          <span className="sr-only"> unread messages</span>
         </span>
       )}
       {onToggleExpand && (
         <button
           type="button"
           onClick={onToggleExpand}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-600 hover:bg-zinc-950 hover:text-zinc-200"
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-950 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
           aria-expanded={expanded}
-          title={`${expanded ? "Collapse" : "Expand"} ${channelName(channel)}`}
+          aria-controls={memberListId}
+          aria-label={`${expanded ? "Collapse" : "Expand"} members of ${channelName(channel)}`}
         >
-          <ChevronDown size={12} className={cn("transition-transform", expanded && "rotate-180")} />
+          <ChevronDown aria-hidden="true" size={12} className={cn("transition-transform motion-reduce:transition-none", expanded && "rotate-180")} />
         </button>
       )}
     </div>
@@ -458,7 +553,7 @@ function AgentAvatar({
         active ? "border-sky-400/40 bg-sky-500/15 text-sky-100" : "border-zinc-800 bg-zinc-950 text-zinc-500",
       )}
     >
-      <Icon size={14} />
+      <Icon aria-hidden="true" size={14} />
     </span>
   );
 }
@@ -480,14 +575,20 @@ function AgentDisclosure({
 }) {
   const status = activity?.status || agent.status || "idle";
   const readableId = agentShortId(agent);
+  const detailId = domId("subagent-agent-details", agent.agent_id);
   return (
     <div className={cn("rounded-md border", activeDm ? "border-sky-500/30 bg-sky-500/10" : "border-zinc-800/70 bg-zinc-950/35")}>
       <div className="flex items-center gap-1 p-1">
-        <button type="button" onClick={onOpenDm} className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-zinc-900/80">
+        <button
+          type="button"
+          onClick={onOpenDm}
+          aria-label={`Open direct message with ${agentName(agent)}`}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-left hover:bg-zinc-900/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        >
           <AgentAvatar agent={agent} active={activeDm} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[11px] font-medium text-zinc-200">{agentName(agent)}</span>
-            <span className="block truncate font-mono text-[9px] text-zinc-600">@{readableId}</span>
+            <span className="block break-words text-[11px] font-medium text-zinc-200">{agentName(agent)}</span>
+            <span className="block break-all font-mono text-[9px] text-zinc-500">@{readableId}</span>
           </span>
           {activity?.openInboxCount ? (
             <span className="rounded bg-sky-500/15 px-1 text-[9px] font-semibold text-sky-200">{compactCount(activity.openInboxCount)}</span>
@@ -496,22 +597,23 @@ function AgentDisclosure({
         <button
           type="button"
           onClick={onToggle}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-900 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
           aria-expanded={expanded}
-          title={`Expand ${agentName(agent)}`}
+          aria-controls={detailId}
+          aria-label={`${expanded ? "Collapse" : "Expand"} details for ${agentName(agent)}`}
         >
-          <ChevronDown size={12} className={cn("transition-transform", expanded && "rotate-180")} />
+          <ChevronDown aria-hidden="true" size={12} className={cn("transition-transform motion-reduce:transition-none", expanded && "rotate-180")} />
         </button>
       </div>
       {expanded && (
-        <div className="border-t border-zinc-800/70 px-2 py-1.5 text-[10px] text-zinc-500">
+        <div id={detailId} className="border-t border-zinc-800/70 px-2 py-1.5 text-[10px] text-zinc-500">
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className={cn("rounded border px-1 py-0.5", statusClassName(status))}>{status}</span>
             <span className="font-mono">@{readableId}</span>
           </div>
-          <p className="truncate font-mono text-zinc-500">{agent.model || "stub/default"}</p>
+          <p className="break-all font-mono text-zinc-400">{agent.model || "stub/default"}</p>
           {agent.allowed_tools && agent.allowed_tools.length > 0 && (
-            <p className="mt-1 line-clamp-2">tools: {agent.allowed_tools.slice(0, 3).join(", ")}</p>
+            <p className="mt-1 break-all">tools: {agent.allowed_tools.join(", ")}</p>
           )}
         </div>
       )}
@@ -535,15 +637,16 @@ function ChannelMemberRow({
     <button
       type="button"
       onClick={onOpenDm}
+      aria-label={`Open direct message with ${agentName(agent, agentId)}`}
       className={cn(
-        "ml-3 flex w-[calc(100%-0.75rem)] min-w-0 items-center gap-2 rounded px-1.5 py-1 text-left",
+        "ml-3 flex min-h-11 w-[calc(100%-0.75rem)] min-w-0 items-center gap-2 rounded px-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
         active ? "bg-sky-500/15 text-sky-100" : "text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-200",
       )}
     >
       <AgentAvatar agent={pseudoAgent} fallbackId={agentId} active={active} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] font-medium">{agentName(agent, agentId)}</span>
-        <span className="block truncate font-mono text-[9px] text-zinc-600">@{agentShortId(agent, agentId)}</span>
+        <span className="block break-words text-[11px] font-medium">{agentName(agent, agentId)}</span>
+        <span className="block break-all font-mono text-[9px] text-zinc-500">@{agentShortId(agent, agentId)}</span>
       </span>
     </button>
   );
@@ -573,7 +676,7 @@ function CreatorSettingsCard({
             <Network size={12} className="text-emerald-300" />
             <span>Creator</span>
           </div>
-          <p className="mt-1 truncate font-mono text-[10px] text-zinc-500">{settings.model || "decision-layer"}</p>
+          <p className="mt-1 break-all font-mono text-[10px] text-zinc-500">{settings.model || "decision-layer"}</p>
         </div>
         <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-[9px]", lifecycleOnly ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-amber-500/25 bg-amber-500/10 text-amber-200")}>
           {lifecycleOnly ? "lifecycle" : "mixed"}
@@ -610,7 +713,8 @@ function CreatorSettingsCard({
         type="button"
         onClick={onTest}
         disabled={busy || source !== "api"}
-        className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-zinc-800 px-2 text-[11px] font-semibold text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-700"
+        className="mt-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-md border border-zinc-800 px-2 text-[11px] font-semibold text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:text-zinc-700"
+        aria-label={`Test Creator for ${settings.model || "decision-layer"}`}
       >
         <MessageSquare size={12} />
         <span>{busy ? "Testing..." : "Test Creator"}</span>
@@ -634,19 +738,19 @@ function AgentDetailCard({ agent, activity }: { agent?: CompanyAgent | null; act
       <div className="flex min-w-0 items-start gap-2">
         <AgentAvatar agent={agent} active />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-semibold text-zinc-100">{agentName(agent)}</p>
-          <p className="truncate font-mono text-[10px] text-sky-300/80">@{agentShortId(agent)}</p>
+          <p className="break-words text-[12px] font-semibold text-zinc-100">{agentName(agent)}</p>
+          <p className="break-all font-mono text-[10px] text-sky-300/80">@{agentShortId(agent)}</p>
         </div>
         <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-[9px]", statusClassName(status))}>{status}</span>
       </div>
       <div className="mt-2 space-y-1 text-[10px] text-zinc-500">
-        <p className="truncate rounded border border-zinc-800 bg-black/20 px-2 py-1.5 font-mono">{agent.model || "stub/default"}</p>
+        <p className="break-all rounded border border-zinc-800 bg-black/20 px-2 py-1.5 font-mono">{agent.model || "stub/default"}</p>
         <p className="rounded border border-zinc-800 bg-black/20 px-2 py-1.5">role: {agentRoleKey(agent)}</p>
         {activity?.latestRun?.agent_run?.result_preview && (
-          <p className="line-clamp-3 rounded border border-zinc-800 bg-black/20 px-2 py-1.5">{activity.latestRun.agent_run.result_preview}</p>
+          <p className="whitespace-pre-wrap break-words rounded border border-zinc-800 bg-black/20 px-2 py-1.5">{activity.latestRun.agent_run.result_preview}</p>
         )}
         {activity?.latestInbox && (
-          <p className="line-clamp-3 rounded border border-zinc-800 bg-black/20 px-2 py-1.5">{activity.latestInbox.content}</p>
+          <p className="whitespace-pre-wrap break-words rounded border border-zinc-800 bg-black/20 px-2 py-1.5">{activity.latestInbox.content}</p>
         )}
       </div>
     </div>
@@ -670,11 +774,11 @@ function TaskListCard({
         {tasks.slice(0, 5).map((task) => (
           <div key={task.id} className="rounded border border-zinc-800 bg-black/20 px-2 py-1.5">
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <p className="min-w-0 truncate text-[11px] font-medium text-zinc-200">{task.title}</p>
+              <p className="min-w-0 break-words text-[11px] font-medium text-zinc-200">{task.title}</p>
               <span className="shrink-0 rounded bg-zinc-900 px-1 py-0.5 text-[9px] text-zinc-500">{task.status || "open"}</span>
             </div>
             {task.target_agent_ids?.length ? (
-              <p className="mt-1 truncate font-mono text-[9px] text-zinc-600">
+              <p className="mt-1 break-all font-mono text-[9px] text-zinc-500">
                 {task.target_agent_ids.map((id) => `@${agentShortId(agentsById.get(id), id)}`).join(" ")}
               </p>
             ) : null}
@@ -708,11 +812,11 @@ function ApprovalCard({
             <ClipboardCheck size={12} />
             <span>Decision preview</span>
           </div>
-          <p className="mt-1 line-clamp-2 text-[12px] font-medium text-zinc-100">{task?.title || "PM goal gate preview"}</p>
+          <p className="mt-1 break-words text-[12px] font-medium text-zinc-100">{task?.title || "PM goal gate preview"}</p>
         </div>
         <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-[9px]", statusClassName(status))}>{status}</span>
       </div>
-      <p className="line-clamp-3 text-[11px] leading-relaxed text-zinc-300">
+      <p className="break-words text-[11px] leading-relaxed text-zinc-300">
         {task?.description || "PM and Creator review channel context before subagents proceed with larger fanout or /goal execution."}
       </p>
       {error && (
@@ -757,6 +861,9 @@ export function SubagentTeamWorkspace({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [workspaceStatus, setWorkspaceStatus] = useState("Loading team workspace.");
+  const [composerStatus, setComposerStatus] = useState("Message composer ready.");
+  const [composerError, setComposerError] = useState<string | null>(null);
   const [decisionPreviewTask, setDecisionPreviewTask] = useState<CompanyTask | null>(null);
   const [decisionPreviewSource, setDecisionPreviewSource] = useState<"api" | "preview">("preview");
   const [decisionPreviewError, setDecisionPreviewError] = useState<string | null>(null);
@@ -769,12 +876,15 @@ export function SubagentTeamWorkspace({
   const [treeError, setTreeError] = useState<string | null>(null);
   const [openingNodeId, setOpeningNodeId] = useState<string | null>(null);
   const [openPreview, setOpenPreview] = useState<SubagentOpenPreview | null>(null);
+  const filesButtonRef = useRef<HTMLButtonElement | null>(null);
+  const historyButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const loadSubagentTree = useCallback(async (companyId?: string | null) => {
     if (!companyId && !activeConversationId) {
       setTreeState(fallbackSubagentTreeState());
       setTreeError(null);
       setOpenPreview(null);
+      setWorkspaceStatus("Preview file and history trees loaded.");
       return;
     }
     try {
@@ -787,9 +897,11 @@ export function SubagentTeamWorkspace({
       setTreeState(normalizeSubagentTreeResponse(result));
       setTreeError(null);
       setOpenPreview(null);
+      setWorkspaceStatus("Team file and history trees loaded.");
     } catch (treeLoadError) {
       setTreeState(fallbackSubagentTreeState());
-      setTreeError(treeLoadError instanceof Error ? treeLoadError.message : "File tree API unavailable.");
+      setTreeError(safeSubagentDiagnostic(treeLoadError, "File tree API unavailable."));
+      setWorkspaceStatus("Team tree API is unavailable. Fallback nodes are shown.");
     }
   }, [activeConversationId]);
 
@@ -809,6 +921,7 @@ export function SubagentTeamWorkspace({
   const loadWorkspace = useCallback(async (requestedCompanyId?: string | null) => {
     setBusy(true);
     setError(null);
+    setWorkspaceStatus("Refreshing team workspace.");
     try {
       const companyListResult = await api.listCompanies({ limit: 8 }).catch(() => ({ companies: [], total: 0 }));
       const listedCompanies = companyListResult.companies;
@@ -837,6 +950,7 @@ export function SubagentTeamWorkspace({
         setTasks([]);
         setRuns([]);
         setInboxItems([]);
+        setWorkspaceStatus("Preview team workspace loaded.");
         return;
       }
 
@@ -874,10 +988,14 @@ export function SubagentTeamWorkspace({
 
       const firstRejected = [agentResult, channelResult, messageResult].find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
       if (firstRejected) {
-        setError(firstRejected.reason instanceof Error ? firstRejected.reason.message : "Some team workspace data could not be loaded.");
+        setError(safeSubagentDiagnostic(firstRejected.reason, "Some team workspace data could not be loaded."));
+        setWorkspaceStatus("Team workspace loaded with some unavailable data.");
+      } else {
+        setWorkspaceStatus(`Team workspace loaded with ${nextChannels.length} channels and ${nextAgents.length} agents.`);
       }
     } catch (workspaceError) {
-      setError(workspaceError instanceof Error ? workspaceError.message : "Team workspace APIs are unavailable.");
+      setError(safeSubagentDiagnostic(workspaceError, "Team workspace APIs are unavailable."));
+      setWorkspaceStatus("Team workspace API is unavailable. Preview data is shown.");
       setCompanies([]);
       setActiveCompanyId(null);
       setCompany(null);
@@ -971,7 +1089,7 @@ const decisionStatus: DecisionStatus = (() => {
     } else {
       setCreatorSettings(fallbackCreatorSettings);
       setCreatorSettingsSource("preview");
-      setCreatorSettingsError(creatorResult.reason instanceof Error ? creatorResult.reason.message : "Creator settings API unavailable.");
+      setCreatorSettingsError(safeSubagentDiagnostic(creatorResult.reason, "Creator settings API unavailable."));
     }
 
     if (decisionResult.status === "fulfilled") {
@@ -981,7 +1099,7 @@ const decisionStatus: DecisionStatus = (() => {
     } else {
       setDecisionPreviewTask(null);
       setDecisionPreviewSource("preview");
-      setDecisionPreviewError(decisionResult.reason instanceof Error ? decisionResult.reason.message : "Creator decision preview API unavailable.");
+      setDecisionPreviewError(safeSubagentDiagnostic(decisionResult.reason, "Creator decision preview API unavailable."));
     }
   }, [activeCompanyId, activeConversationId, activeThread, latestDecisionTask]);
 
@@ -1056,6 +1174,7 @@ const decisionStatus: DecisionStatus = (() => {
     if (!activeConversationId || busy) return;
     setBusy(true);
     setError(null);
+    setWorkspaceStatus("Starting team workspace.");
     try {
       const result = await api.bootstrapSubagentTeamWorkspace(
         subagentTeamWorkspaceMetadata({
@@ -1070,7 +1189,8 @@ const decisionStatus: DecisionStatus = (() => {
       setActiveCompanyId(result.company.id);
       await loadWorkspace(result.company.id);
     } catch (bootstrapError) {
-      setError(bootstrapError instanceof Error ? bootstrapError.message : "Could not create team workspace. Preview remains available.");
+      setError(safeSubagentDiagnostic(bootstrapError, "Could not create team workspace. Preview remains available."));
+      setWorkspaceStatus("Team workspace could not be started. Preview remains available.");
     } finally {
       setBusy(false);
     }
@@ -1080,6 +1200,8 @@ const decisionStatus: DecisionStatus = (() => {
     event.preventDefault();
     const content = draft.trim();
     if (!content || busy) return;
+    setComposerError(null);
+    setComposerStatus(`Sending message to ${threadTitle}.`);
     const now = new Date().toISOString();
     const clientMessageId = createClientMessageId();
     const targetChannelId = activeThread.type === "channel" ? activeThread.id : visibleChannels[0]?.id ?? DEFAULT_CHANNEL_ID;
@@ -1101,7 +1223,10 @@ const decisionStatus: DecisionStatus = (() => {
     setLocalMessages((current) => [...current, optimistic]);
     setDraft("");
 
-    if (isPreviewWorkspace || !activeCompanyId) return;
+    if (isPreviewWorkspace || !activeCompanyId) {
+      setComposerStatus(`Message added locally to preview thread ${threadTitle}.`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -1116,9 +1241,12 @@ const decisionStatus: DecisionStatus = (() => {
         metadata: optimistic.metadata,
       });
       setLocalMessages((current) => removeReconciledLocalSubagentMessages(current, [sentMessage], clientMessageId));
+      setComposerStatus(`Message sent to ${threadTitle}.`);
       await loadWorkspace(activeCompanyId);
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Message was kept locally, but backend send failed.");
+      const safeError = safeSubagentDiagnostic(sendError, "Message was kept locally, but backend send failed.");
+      setComposerError(safeError);
+      setComposerStatus(`Message to ${threadTitle} failed and remains local.`);
     } finally {
       setBusy(false);
     }
@@ -1126,6 +1254,7 @@ const decisionStatus: DecisionStatus = (() => {
 
   const handleOpenTreeNode = async (item: SubagentTreeItem) => {
     setOpeningNodeId(item.nodeId);
+    setWorkspaceStatus(`Opening ${item.label}.`);
     try {
       const result = await api.openSubagentTeamFileTreeNode({
         nodeId: item.nodeId,
@@ -1133,11 +1262,13 @@ const decisionStatus: DecisionStatus = (() => {
         conversationId: activeConversationId,
       });
       setOpenPreview(normalizeSubagentOpenPreview(result, item));
+      setWorkspaceStatus(`${item.label} preview loaded.`);
     } catch (openError) {
       setOpenPreview(fallbackSubagentOpenPreview(
         item,
-        openError instanceof Error ? openError.message : "Could not open tree node.",
+        safeSubagentDiagnostic(openError, "Could not open tree node."),
       ));
+      setWorkspaceStatus(`${item.label} uses a fallback preview.`);
     } finally {
       setOpeningNodeId(null);
     }
@@ -1158,7 +1289,7 @@ const decisionStatus: DecisionStatus = (() => {
       });
       setCreatorTestResult(result);
     } catch (creatorError) {
-      setCreatorSettingsError(creatorError instanceof Error ? creatorError.message : "Creator test API unavailable.");
+      setCreatorSettingsError(safeSubagentDiagnostic(creatorError, "Creator test API unavailable."));
     } finally {
       setCreatorTestBusy(false);
     }
@@ -1179,16 +1310,61 @@ const decisionStatus: DecisionStatus = (() => {
     ? `${activityByAgent.get(activeThread.id)?.status ?? activeAgent?.status ?? "idle"} agent DM`
     : activeChannel?.description || "team channel";
 
+  const selectThread = (thread: SubagentThread) => {
+    setActiveThread(thread);
+    const nextTitle = thread.type === "dm"
+      ? agentName(agentsById.get(thread.id), thread.id)
+      : channelName(channelsById.get(thread.id), thread.id);
+    setWorkspaceStatus(`${thread.type === "dm" ? "Direct message" : "Channel"} ${nextTitle} selected.`);
+  };
+
+  const handleThreadNavigationKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const current = (event.target as HTMLElement).closest<HTMLElement>("[data-subagent-thread-option]");
+    if (!current) return;
+    const options = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>("[data-subagent-thread-option]"),
+    );
+    const currentIndex = options.indexOf(current);
+    const nextIndex = rovingIndexForKey(event.key, currentIndex, options.length);
+    if (nextIndex === null) return;
+    event.preventDefault();
+    options[nextIndex]?.focus();
+  };
+
+  const toggleTree = (mode: Exclude<TreeMode, null>) => {
+    const next = treeMode === mode ? null : mode;
+    setTreeMode(next);
+    setOpenPreview(null);
+    setWorkspaceStatus(next
+      ? `${mode === "files" ? "File" : "History"} tree opened.`
+      : `${mode === "files" ? "File" : "History"} tree closed.`);
+  };
+
+  const closeTree = () => {
+    const opener = treeMode === "history" ? historyButtonRef.current : filesButtonRef.current;
+    setOpenPreview(null);
+    setTreeMode(null);
+    setWorkspaceStatus("Tree closed. Focus returned to its opener.");
+    setTimeout(() => opener?.focus(), 0);
+  };
+
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[#0a0a0c] text-zinc-300" aria-label="Subagents team workspace">
+    <section
+      aria-labelledby="subagent-team-workspace-title"
+      aria-busy={busy}
+      className="subagent-team-workspace flex h-full min-h-0 flex-col bg-[#0a0a0c] text-zinc-300"
+    >
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {workspaceStatus}
+      </p>
       <div className="border-b border-zinc-800/60 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
-              <UsersRound size={14} className="shrink-0 text-sky-300" />
-              <p className="truncate text-[13px] font-semibold text-zinc-100">Subagents / Teams</p>
+              <UsersRound aria-hidden="true" size={14} className="shrink-0 text-sky-300" />
+              <h1 id="subagent-team-workspace-title" className="break-words text-[13px] font-semibold text-zinc-100">Subagents / Teams</h1>
             </div>
-            <p className="truncate text-[10px] text-zinc-600">
+            <p className="break-words text-[10px] text-zinc-500">
               {activeConversationTitle || visibleCompany.name || activeConversationId || "preview workspace"}
             </p>
           </div>
@@ -1198,7 +1374,8 @@ const decisionStatus: DecisionStatus = (() => {
                 type="button"
                 onClick={bootstrapWorkspace}
                 disabled={busy}
-                className="h-7 rounded-md bg-zinc-100 px-2 text-[10px] font-semibold text-zinc-950 hover:bg-white disabled:opacity-40"
+                className="min-h-11 rounded-md bg-zinc-100 px-3 text-[10px] font-semibold text-zinc-950 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:opacity-40"
+                aria-label="Start Subagent Team workspace for this conversation"
               >
                 Start
               </button>
@@ -1207,10 +1384,10 @@ const decisionStatus: DecisionStatus = (() => {
               type="button"
               onClick={() => void loadWorkspace(activeCompanyId)}
               disabled={busy}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40"
-              title="Refresh team workspace"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:opacity-40"
+              aria-label={busy ? "Refreshing team workspace" : "Refresh team workspace"}
             >
-              <RefreshCw size={13} className={cn(busy && "animate-spin")} />
+              <RefreshCw aria-hidden="true" size={13} className={cn(busy && "animate-spin motion-reduce:animate-none")} />
             </button>
           </div>
         </div>
@@ -1226,37 +1403,39 @@ const decisionStatus: DecisionStatus = (() => {
       )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-        <aside className="flex min-h-[240px] shrink-0 flex-col border-b border-zinc-800/60 bg-[#09090b] lg:min-h-0 lg:w-[300px] lg:border-b-0 lg:border-r xl:w-[320px]" aria-label="Team channels">
+        <aside className="flex min-h-[240px] shrink-0 flex-col border-b border-zinc-800/60 bg-[#09090b] lg:min-h-0 lg:w-[300px] lg:border-b-0 lg:border-r xl:w-[320px]" aria-label="Team navigation">
+          <nav aria-label="Team channels and direct messages" onKeyDown={handleThreadNavigationKeyDown} className="contents">
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             <div className="mb-3">
               <div className="mb-1 flex items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">
                 <span>Channels</span>
                 <span>{visibleChannels.length}</span>
               </div>
-              <div className="space-y-1">
+              <div role="list" aria-label="Channels" className="space-y-1">
                 {visibleChannels.map((channel) => {
                   const expanded = expandedChannelIds.has(channel.id);
                   return (
-                    <div key={channel.id} className="space-y-0.5">
+                    <div key={channel.id} role="listitem" className="space-y-0.5">
                       <ChannelButton
                         channel={channel}
                         active={activeThread.type === "channel" && activeThread.id === channel.id}
                         memberCount={channelMemberCount(channel)}
                         unreadCount={channelUnreadCount(channel, allMessages)}
                         expanded={expanded}
-                        onClick={() => setActiveThread({ type: "channel", id: channel.id })}
+                        onClick={() => selectThread({ type: "channel", id: channel.id })}
                         onToggleExpand={() => toggleExpandedChannel(channel.id)}
                       />
                       {expanded && (
-                        <div className="space-y-0.5">
+                        <div id={domId("subagent-channel-members", channel.id)} role="list" aria-label={`Members of ${channelName(channel)}`} className="space-y-0.5">
                           {(channel.members ?? []).map((agentId) => (
-                            <ChannelMemberRow
-                              key={`${channel.id}-${agentId}`}
-                              agentId={agentId}
-                              agent={agentsById.get(agentId)}
-                              active={activeThread.type === "dm" && activeThread.id === agentId}
-                              onOpenDm={() => setActiveThread({ type: "dm", id: agentId })}
-                            />
+                            <div key={`${channel.id}-${agentId}`} role="listitem">
+                              <ChannelMemberRow
+                                agentId={agentId}
+                                agent={agentsById.get(agentId)}
+                                active={activeThread.type === "dm" && activeThread.id === agentId}
+                                onOpenDm={() => selectThread({ type: "dm", id: agentId })}
+                              />
+                            </div>
                           ))}
                           {channel.members?.length === 0 && (
                             <p className="ml-3 rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-[10px] text-zinc-600">No agents</p>
@@ -1277,30 +1456,33 @@ const decisionStatus: DecisionStatus = (() => {
                 <span>DMs</span>
                 <span>{visibleAgents.length}</span>
               </div>
-              <div className="space-y-1">
+              <div role="list" aria-label="Direct messages" className="space-y-1">
                 {visibleAgents.map((agent) => {
                   const activity = activityByAgent.get(agent.agent_id);
                   const active = activeThread.type === "dm" && activeThread.id === agent.agent_id;
                   return (
+                    <div key={agent.agent_id} role="listitem">
                     <button
-                      key={agent.agent_id}
                       type="button"
                       data-testid={`subagent-dm-${agent.agent_id}`}
-                      onClick={() => setActiveThread({ type: "dm", id: agent.agent_id })}
+                      data-subagent-thread-option
+                      onClick={() => selectThread({ type: "dm", id: agent.agent_id })}
+                      aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left",
+                        "flex min-h-11 w-full items-center gap-1.5 rounded-md px-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300",
                         active ? "bg-sky-500/15 text-sky-100 ring-1 ring-sky-500/25" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300",
                       )}
                     >
                       <AgentAvatar agent={agent} active={active} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[11px] font-medium">{agentName(agent)}</span>
-                        <span className="block truncate font-mono text-[9px] text-zinc-600">@{agentShortId(agent)}</span>
+                        <span className="block break-words text-[11px] font-medium">{agentName(agent)}</span>
+                        <span className="block break-all font-mono text-[9px] text-zinc-500">@{agentShortId(agent)}</span>
                       </span>
                       {activity?.openInboxCount ? (
                         <span className="rounded bg-sky-500/15 px-1 text-[9px] font-semibold text-sky-200">{compactCount(activity.openInboxCount)}</span>
                       ) : null}
                     </button>
+                    </div>
                   );
                 })}
               </div>
@@ -1310,23 +1492,27 @@ const decisionStatus: DecisionStatus = (() => {
               <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">Files / History</div>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
+                  ref={filesButtonRef}
                   type="button"
-                  onClick={() => setTreeMode((current) => current === "files" ? null : "files")}
+                  onClick={() => toggleTree("files")}
                   data-testid="subagent-open-files"
-                  className={cn("flex h-8 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px]", treeMode === "files" ? "border-sky-500/30 bg-sky-500/10 text-sky-200" : "border-zinc-800 bg-zinc-950/40 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200")}
+                  className={cn("flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300", treeMode === "files" ? "border-sky-500/30 bg-sky-500/10 text-sky-200" : "border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}
                   aria-pressed={treeMode === "files"}
+                  aria-controls="subagent-files-tree-panel"
                 >
-                  <FolderTree size={13} />
+                  <FolderTree aria-hidden="true" size={13} />
                   <span>Files</span>
                 </button>
                 <button
+                  ref={historyButtonRef}
                   type="button"
-                  onClick={() => setTreeMode((current) => current === "history" ? null : "history")}
+                  onClick={() => toggleTree("history")}
                   data-testid="subagent-open-history"
-                  className={cn("flex h-8 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px]", treeMode === "history" ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-zinc-800 bg-zinc-950/40 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200")}
+                  className={cn("flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300", treeMode === "history" ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100")}
                   aria-pressed={treeMode === "history"}
+                  aria-controls="subagent-history-tree-panel"
                 >
-                  <History size={13} />
+                  <History aria-hidden="true" size={13} />
                   <span>History</span>
                 </button>
               </div>
@@ -1336,40 +1522,43 @@ const decisionStatus: DecisionStatus = (() => {
               <button
                 type="button"
                 onClick={() => setIsAgentsOpen((value) => !value)}
-                className="mb-1 flex w-full items-center justify-between rounded px-1 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-600 hover:bg-zinc-900 hover:text-zinc-300"
+                className="mb-1 flex min-h-11 w-full items-center justify-between rounded px-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
                 aria-expanded={isAgentsOpen}
+                aria-controls="subagent-agent-list"
               >
                 <span>Agents</span>
-                <ChevronDown size={12} className={cn("transition-transform", isAgentsOpen && "rotate-180")} />
+                <ChevronDown aria-hidden="true" size={12} className={cn("transition-transform motion-reduce:transition-none", isAgentsOpen && "rotate-180")} />
               </button>
               {isAgentsOpen && (
-                <div className="space-y-1">
+                <div id="subagent-agent-list" role="list" aria-label="Agent details" className="space-y-1">
                   {visibleAgents.map((agent) => (
-                    <AgentDisclosure
-                      key={agent.agent_id}
-                      agent={agent}
-                      activity={activityByAgent.get(agent.agent_id)}
-                      expanded={expandedAgentIds.has(agent.agent_id)}
-                      activeDm={activeThread.type === "dm" && activeThread.id === agent.agent_id}
-                      onToggle={() => toggleExpandedAgent(agent.agent_id)}
-                      onOpenDm={() => setActiveThread({ type: "dm", id: agent.agent_id })}
-                    />
+                    <div key={agent.agent_id} role="listitem">
+                      <AgentDisclosure
+                        agent={agent}
+                        activity={activityByAgent.get(agent.agent_id)}
+                        expanded={expandedAgentIds.has(agent.agent_id)}
+                        activeDm={activeThread.type === "dm" && activeThread.id === agent.agent_id}
+                        onToggle={() => toggleExpandedAgent(agent.agent_id)}
+                        onOpenDm={() => selectThread({ type: "dm", id: agent.agent_id })}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
             </div>
           </div>
+          </nav>
         </aside>
 
-        <main className="flex min-h-[360px] min-w-0 flex-1 flex-col border-b border-zinc-800/60 lg:min-h-0 lg:border-b-0 lg:border-r">
+        <main aria-labelledby="subagent-active-thread-title" className="flex min-h-[360px] min-w-0 flex-1 flex-col border-b border-zinc-800/60 lg:min-h-0 lg:border-b-0 lg:border-r">
           <div className="border-b border-zinc-800/60 px-2.5 py-2">
             <div className="flex min-w-0 items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  {activeThread.type === "dm" ? <MessageCircle size={14} className="shrink-0 text-sky-300" /> : <Hash size={14} className="shrink-0 text-zinc-400" />}
-                  <h2 className="truncate text-[13px] font-semibold text-zinc-100">{threadTitle}</h2>
+                  {activeThread.type === "dm" ? <MessageCircle aria-hidden="true" size={14} className="shrink-0 text-sky-300" /> : <Hash aria-hidden="true" size={14} className="shrink-0 text-zinc-400" />}
+                  <h2 id="subagent-active-thread-title" className="break-words text-[13px] font-semibold text-zinc-100">{threadTitle}</h2>
                 </div>
-                <p className="mt-0.5 line-clamp-1 text-[10px] text-zinc-600">{threadSubtitle}</p>
+                <p className="mt-0.5 break-words text-[10px] text-zinc-500">{threadSubtitle}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <span className="rounded border border-zinc-800 bg-zinc-950/50 px-1.5 py-0.5 text-[10px] text-zinc-500">
@@ -1387,7 +1576,7 @@ const decisionStatus: DecisionStatus = (() => {
                 text="PM summarizes handoffs and queues Creator decisions before subagents fan out."
               />
             </div>
-            <div className="px-1 pb-2">
+            <div role="feed" aria-label={`Messages in ${threadTitle}`} aria-busy={busy} className="px-1 pb-2">
               {threadMessages.map((message) => (
                 <MessageRow key={`${message.channel_id}-${message.id}`} message={message} sender={agentsById.get(message.sender_id)} />
               ))}
@@ -1401,32 +1590,57 @@ const decisionStatus: DecisionStatus = (() => {
             </div>
           </div>
 
-          <form className="border-t border-zinc-800/60 p-2" onSubmit={handleSubmit}>
+          <form aria-label={`Message ${threadTitle}`} className="border-t border-zinc-800/60 p-2" onSubmit={handleSubmit}>
+            <label htmlFor="subagent-message-composer" className="sr-only">
+              {activeThread.type === "dm" ? `Direct message to ${threadTitle}` : `Message channel ${threadTitle}`}
+            </label>
             <div className="flex items-end gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950/65 p-1.5 focus-within:border-zinc-600">
               <textarea
+                id="subagent-message-composer"
                 value={draft}
                 data-testid="subagent-message-input"
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (
+                    event.key === "Enter"
+                    && !event.shiftKey
+                    && !event.altKey
+                    && !event.ctrlKey
+                    && !event.metaKey
+                    && !event.nativeEvent.isComposing
+                  ) {
                     event.preventDefault();
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
                 placeholder={activeThread.type === "dm" ? `DM ${threadTitle}` : `Message #${threadTitle}`}
-                className="max-h-24 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-[12px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-700"
+                aria-describedby={`subagent-composer-help subagent-composer-status${composerError ? " subagent-composer-error" : ""}`}
+                aria-invalid={Boolean(composerError)}
+                aria-errormessage={composerError ? "subagent-composer-error" : undefined}
+                aria-busy={busy}
+                className="max-h-40 min-h-11 min-w-0 flex-1 resize-y bg-transparent px-2 py-2 text-[12px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-sky-300"
                 rows={1}
-                disabled={busy}
               />
               <button
                 type="submit"
-                disabled={busy || !draft.trim()}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
-                title="Send team message"
+                aria-disabled={busy || !draft.trim()}
+                aria-label={`Send message to ${threadTitle}`}
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 aria-disabled:cursor-not-allowed aria-disabled:opacity-30"
               >
-                <Send size={13} />
+                <Send aria-hidden="true" size={13} />
               </button>
             </div>
+            <p id="subagent-composer-help" className="mt-1 break-words text-[10px] text-zinc-500">
+              Enter sends. Shift+Enter adds a new line. Messages may remain local if delivery fails.
+            </p>
+            <p id="subagent-composer-status" role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+              {composerStatus}
+            </p>
+            {composerError && (
+              <p id="subagent-composer-error" role="alert" className="mt-1 break-words text-[10px] text-amber-100">
+                {composerError}
+              </p>
+            )}
           </form>
         </main>
 
@@ -1434,8 +1648,8 @@ const decisionStatus: DecisionStatus = (() => {
           <div className="border-b border-zinc-800/60 px-3 py-2">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-[12px] font-semibold text-zinc-100">Agent / task detail</p>
-                <p className="truncate text-[10px] text-zinc-600">{threadTitle}</p>
+                <p className="break-words text-[12px] font-semibold text-zinc-100">Agent / task detail</p>
+                <p className="break-words text-[10px] text-zinc-500">{threadTitle}</p>
               </div>
               <span className="rounded border border-zinc-800 bg-zinc-950/50 px-1.5 py-0.5 text-[9px] text-zinc-500">
                 {decisionPreviewSource}
@@ -1467,7 +1681,11 @@ const decisionStatus: DecisionStatus = (() => {
                 openingNodeId={openingNodeId}
                 treeError={treeError}
                 onOpenNode={(item) => void handleOpenTreeNode(item)}
-                onClose={() => setTreeMode(null)}
+                onClearPreview={() => {
+                  setOpenPreview(null);
+                  setWorkspaceStatus(`${treeMode === "files" ? "File" : "History"} preview closed.`);
+                }}
+                onClose={closeTree}
               />
             )}
             <TaskListCard tasks={detailTasks} agentsById={agentsById} />
