@@ -22,6 +22,19 @@ This pack keeps its own scope narrow. When work crosses into code execution, con
 ## Required Secrets
 None. This pack is declarative and does not bundle credentials, API keys, or executable network clients.
 
+## Deterministic Offline Smoke Runner
+The developer-side `scripts/agent_eval_harness.py` runner turns this pack's
+scenario and evidence vocabulary into replayable local artifacts without
+making the declarative pack executable. Its built-in smoke tier uses only a
+registered in-process stub solver, needs no cloud keys or network, and covers
+exact response, artifact diff, and tool/audit trace scoring. Failed tasks can
+be replayed from `result.json` with the same finite fixtures.
+
+The runner intentionally cannot load arbitrary solver modules, start commands,
+or invoke host tools. A future defaultspack, browser, mobile, or external-model
+solver must enter through the canonical V4 Broker, Authority, approval, audit,
+and isolation boundary; it must not be added as a direct CLI escape hatch.
+
 ## defaultspack Relationship
 This pack depends on defaultspack and contributes routing metadata, handoff boundaries, and evidence requirements.
 
