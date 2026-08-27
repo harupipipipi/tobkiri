@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 import urllib.error
 
 import pytest
+
+DEFAULTSPACK = Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
+if str(DEFAULTSPACK) not in sys.path:
+    sys.path.insert(0, str(DEFAULTSPACK))
 
 from domain.ai_client.providers.llamacpp_provider import LlamaCppProvider
 
