@@ -4598,7 +4598,7 @@
             {
               "entrypoint_id": "company-coordinator-control",
               "id": "rumi_company_coordinator_pack.company-coordinator-control",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
+              "implementation_digest": "sha256:754b4f2a2cf65349636f5d0ddafce7b3023df886f7fa020c1e868168d8a6856d"
             }
           ],
           "owner": "rumi_company_coordinator_pack",
@@ -4632,7 +4632,7 @@
             {
               "entrypoint_id": "company-supervisor-job-adapter",
               "id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
+              "implementation_digest": "sha256:754b4f2a2cf65349636f5d0ddafce7b3023df886f7fa020c1e868168d8a6856d"
             }
           ],
           "owner": "rumi_company_coordinator_pack",
@@ -4665,7 +4665,7 @@
             {
               "entrypoint_id": "company-runtime-resource",
               "id": "rumi_company_coordinator_pack.company-runtime-resource",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
+              "implementation_digest": "sha256:754b4f2a2cf65349636f5d0ddafce7b3023df886f7fa020c1e868168d8a6856d"
             }
           ],
           "owner": "rumi_company_coordinator_pack",
@@ -4713,7 +4713,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+          "digest": "sha256:754b4f2a2cf65349636f5d0ddafce7b3023df886f7fa020c1e868168d8a6856d",
           "kind": "executable",
           "path": "runtime/coordinator.py"
         }
@@ -4786,7 +4786,7 @@
             {
               "entrypoint_id": "company-state-action",
               "id": "rumi_company_state_store_pack.company-state-action",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
+              "implementation_digest": "sha256:0f96a6a0877eda73f6256e27612bd03c024e4af9b445490c2085cfdb85aae987"
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -4819,7 +4819,7 @@
             {
               "entrypoint_id": "company-state-resource",
               "id": "rumi_company_state_store_pack.company-state-resource",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
+              "implementation_digest": "sha256:0f96a6a0877eda73f6256e27612bd03c024e4af9b445490c2085cfdb85aae987"
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -4849,7 +4849,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
+          "digest": "sha256:0f96a6a0877eda73f6256e27612bd03c024e4af9b445490c2085cfdb85aae987",
           "kind": "executable",
           "path": "runtime/store.py"
         }
@@ -5059,7 +5059,7 @@
             {
               "entrypoint_id": "connector-company-route",
               "id": "rumi_connector_company_adapter_pack.connector-company-route",
-              "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d"
+              "implementation_digest": "sha256:294058105366cce7cf79f40cbffaf547faeb019073534c33b60e677a44c3a3ab"
             }
           ],
           "owner": "rumi_connector_company_adapter_pack",
@@ -5107,7 +5107,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+          "digest": "sha256:294058105366cce7cf79f40cbffaf547faeb019073534c33b60e677a44c3a3ab",
           "kind": "executable",
           "path": "runtime/adapter.py"
         }
