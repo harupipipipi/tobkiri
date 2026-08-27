@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 import threading
 import time
@@ -523,6 +525,65 @@ def test_browser_companion_extension_keeps_pairing_token_in_local_storage():
     assert "profileLabel" in options
     assert 'name="profileLabel"' in options_html
     assert "chrome.storage.sync.set({ [STORAGE_KEY]: settings })" not in options
+
+
+def test_browser_companion_options_status_contract() -> None:
+    """Exercise the extension's redaction and transactional status helpers."""
+    subprocess.run(
+        ["node", "--test", "tests/js/browser_companion_options_state.test.mjs"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_browser_companion_options_locales_and_accessible_states() -> None:
+    """Keep localized copy and the accessible transactional UI in sync."""
+    extension_root = _browser_companion_extension_root()
+    manifest = json.loads((extension_root / "manifest.json").read_text(encoding="utf-8"))
+    english = json.loads(
+        (extension_root / "_locales" / "en" / "messages.json").read_text(encoding="utf-8")
+    )
+    japanese = json.loads(
+        (extension_root / "_locales" / "ja" / "messages.json").read_text(encoding="utf-8")
+    )
+    options = (extension_root / "options.js").read_text(encoding="utf-8")
+    options_html = (extension_root / "options.html").read_text(encoding="utf-8")
+
+    assert manifest["default_locale"] == "en"
+    assert manifest["name"] == "__MSG_extensionName__"
+    assert set(english) == set(japanese)
+    for state in (
+        "Loading",
+        "Dirty",
+        "Saving",
+        "SavedUnverified",
+        "Connecting",
+        "Connected",
+        "Offline",
+        "Unauthorized",
+        "PermissionBlocked",
+        "Error",
+    ):
+        assert f"state{state}" in english
+        assert f"detail{state}" in english
+    assert 'aria-busy="true"' in options_html
+    assert 'aria-live="polite"' in options_html
+    assert 'aria-atomic="true"' in options_html
+    assert "element.disabled = Boolean(operation)" in options
+    assert 'state: "saved_unverified"' in options
+    assert "status.message" not in options
+
+    background = (extension_root / "background.js").read_text(encoding="utf-8")
+    poll_body = background[
+        background.index("async function pollBridge") : background.index("async function buildClientMetadata")
+    ]
+    set_status_body = background[
+        background.index("async function setStatus") : background.index("function normalizePollInterval")
+    ]
+    assert "JSON.stringify(envelope)" not in poll_body
+    assert "sanitizeConnectionStatus" in set_status_body
 
 
 def test_browser_companion_bridge_routes_support_batch_results(tmp_path, monkeypatch):

@@ -3,53 +3,63 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rumi Browser Companion Options</title>
+    <title>Tobkiri Browser Companion Options</title>
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
     <main class="page">
       <section class="card">
-        <h1>Rumi Browser Companion</h1>
-        <p class="lede">Configure the local Rumi bridge endpoint and pairing token used by this browser.</p>
-        <form id="settings-form">
+        <h1 data-i18n="optionsHeading">Tobkiri Browser Companion</h1>
+        <p class="lede" data-i18n="optionsLede">Configure the local Tobkiri bridge used by this browser profile.</p>
+        <form id="settings-form" aria-describedby="privacy-note" aria-busy="true">
           <label class="field">
-            <span>Server URL</span>
+            <span data-i18n="serverUrlLabel">Server URL</span>
             <input id="server-url" name="serverUrl" type="url" placeholder="http://127.0.0.1:8766" required>
           </label>
           <label class="field">
-            <span>Pairing Token</span>
-            <input id="pairing-token" name="pairingToken" type="password" placeholder="Paste your bridge pairing token" required>
+            <span data-i18n="pairingTokenLabel">Pairing token</span>
+            <input id="pairing-token" name="pairingToken" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="pairingTokenPlaceholder" placeholder="Paste your bridge pairing token" required>
           </label>
           <label class="field">
-            <span>Client Label</span>
-            <input id="client-label" name="clientLabel" type="text" placeholder="Optional name shown to Rumi">
+            <span data-i18n="clientLabelLabel">Client label</span>
+            <input id="client-label" name="clientLabel" type="text" data-i18n-placeholder="clientLabelPlaceholder" placeholder="Optional name shown to Tobkiri">
           </label>
           <label class="field">
-            <span>Profile Label</span>
-            <input id="profile-label" name="profileLabel" type="text" placeholder="Optional browser profile name">
+            <span data-i18n="profileLabelLabel">Profile label</span>
+            <input id="profile-label" name="profileLabel" type="text" data-i18n-placeholder="profileLabelPlaceholder" placeholder="Optional browser profile name">
           </label>
           <label class="field">
-            <span>Poll Interval (minutes)</span>
+            <span data-i18n="pollIntervalLabel">Poll interval (minutes)</span>
             <input id="poll-interval" name="pollIntervalMinutes" type="number" min="1" step="1" value="1" required>
           </label>
+          <p id="privacy-note" class="privacy-note" data-i18n="privacyNote">The pairing token stays in this browser profile. Connection checks send browser/profile metadata to the selected local bridge; page content is sent only for an approved companion command.</p>
           <div class="actions">
-            <button type="submit">Save Settings</button>
-            <button id="poll-now" type="button" class="secondary">Poll Bridge Now</button>
+            <button id="save-settings" type="submit" data-i18n="saveSettings">Save settings</button>
+            <button id="poll-now" type="button" class="secondary" data-i18n="verifyConnection">Verify connection</button>
           </div>
         </form>
-        <div id="status" class="status" role="status" aria-live="polite"></div>
       </section>
-      <section class="card">
-        <h2>Capabilities</h2>
-        <ul class="capabilities">
-          <li>Periodic bridge poll with browser metadata and tabs summary</li>
-          <li>Local browser/profile metadata with installation id and profile label</li>
-          <li>Tab operations: list, select, navigate, capture visible tab</li>
-          <li>Semantic DOM snapshot with element id, role, labels, nearby text, geometry, and action hints</li>
-          <li>Element actions by `element_id`, CSS selector, text, accessible name, role, semantic id, or nearby text</li>
-        </ul>
+      <section id="status-panel" class="card status-panel" data-state="loading" aria-labelledby="status-heading">
+        <div class="status-heading-row">
+          <h2 id="status-heading" data-i18n="connectionStatus">Connection status</h2>
+          <span id="status-badge" class="status-badge" data-i18n="stateLoading">Loading</span>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true" data-i18n="detailLoading">Loading saved settings and connection state.</p>
+        <dl class="status-details">
+          <div><dt data-i18n="selectedInstance">Selected instance</dt><dd id="status-instance">—</dd></div>
+          <div><dt data-i18n="authorizedIdentity">Authorized identity</dt><dd id="status-identity">—</dd></div>
+          <div><dt data-i18n="lastAttempt">Last attempt</dt><dd id="status-last-attempt">—</dd></div>
+          <div><dt data-i18n="lastSuccess">Last success</dt><dd id="status-last-success">—</dd></div>
+          <div><dt data-i18n="pollingSchedule">Polling</dt><dd id="status-polling">—</dd></div>
+        </dl>
+        <div class="status-actions">
+          <button id="retry" type="button" class="secondary" data-i18n="retry" hidden>Retry</button>
+          <button id="re-pair" type="button" class="secondary" data-i18n="rePair" hidden>Re-pair</button>
+          <button id="open-permissions" type="button" class="secondary" data-i18n="openPermissions" hidden>Open permissions</button>
+          <button id="copy-diagnostics" type="button" class="secondary" data-i18n="copyDiagnostics">Copy safe diagnostics</button>
+        </div>
       </section>
     </main>
-    <script src="options.js"></script>
+    <script type="module" src="options.js"></script>
   </body>
 </html>

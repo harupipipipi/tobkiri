@@ -1,4 +1,9 @@
 import "./search_home_destination_policy.js";
+import {
+  bridgeFailureStatus,
+  safeServerOrigin,
+  sanitizeConnectionStatus
+} from "./status_contract.mjs";
 
 const DEFAULT_SETTINGS = {
   serverUrl: "http://127.0.0.1:8766",
@@ -199,16 +204,21 @@ function stringOrEmpty(value) {
 
 async function getStatus() {
   const stored = await chrome.storage.local.get(LAST_STATUS_KEY);
-  return stored[LAST_STATUS_KEY] || { ok: true, state: "idle" };
+  const original = stored[LAST_STATUS_KEY];
+  const sanitized = sanitizeConnectionStatus(original || { state: "idle" });
+  if (original && JSON.stringify(original) !== JSON.stringify(sanitized)) {
+    await chrome.storage.local.set({ [LAST_STATUS_KEY]: sanitized });
+  }
+  return sanitized;
 }
 
 async function setStatus(status) {
-  const withTimestamp = {
+  const sanitized = sanitizeConnectionStatus({
     ...status,
     updatedAt: new Date().toISOString()
-  };
-  await chrome.storage.local.set({ [LAST_STATUS_KEY]: withTimestamp });
-  return withTimestamp;
+  });
+  await chrome.storage.local.set({ [LAST_STATUS_KEY]: sanitized });
+  return sanitized;
 }
 
 function normalizePollInterval(value) {
@@ -222,12 +232,24 @@ function normalizePollInterval(value) {
 async function pollBridge(trigger) {
   const settings = await getSettings();
   const identity = await ensureClientIdentity();
+  const previousStatus = await getStatus();
+  const lastAttemptAt = new Date().toISOString();
+  const statusContext = {
+    trigger,
+    lastAttemptAt,
+    lastSuccessAt: previousStatus.lastSuccessAt,
+    serverOrigin: safeServerOrigin(settings.serverUrl),
+    clientLabel: settings.clientLabel,
+    profileLabel: settings.profileLabel,
+    pollIntervalMinutes: settings.pollIntervalMinutes
+  };
   if (!settings.serverUrl || !settings.pairingToken) {
     return setStatus({
       ok: false,
       state: "not_configured",
-      trigger,
-      message: "Set server URL and pairing token in Options."
+      code: "PAIRING_REQUIRED",
+      action: "re_pair",
+      ...statusContext
     });
   }
 
@@ -251,7 +273,15 @@ async function pollBridge(trigger) {
     const envelope = await safeJson(response);
     const payload = unwrapBridgePayload(envelope);
     if (!response.ok || envelope.status === "error") {
-      throw new Error(`Bridge poll failed (${response.status}): ${JSON.stringify(envelope)}`);
+      const failure = bridgeFailureStatus({
+        responseStatus: response.status,
+        isOnline: navigator.onLine
+      });
+      return setStatus({
+        ok: false,
+        ...failure,
+        ...statusContext
+      });
     }
 
     const commands = normalizeCommands(payload);
@@ -267,17 +297,18 @@ async function pollBridge(trigger) {
     return setStatus({
       ok: true,
       state: "connected",
-      trigger,
+      code: "CONNECTED",
+      action: "none",
       commandCount: commands.length,
-      serverUrl: settings.serverUrl
+      ...statusContext,
+      lastSuccessAt: new Date().toISOString()
     });
   } catch (error) {
+    const failure = bridgeFailureStatus({ error, isOnline: navigator.onLine });
     return setStatus({
       ok: false,
-      state: "bridge_error",
-      trigger,
-      serverUrl: settings.serverUrl,
-      message: String(error && error.message ? error.message : error)
+      ...failure,
+      ...statusContext
     });
   }
 }

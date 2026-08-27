@@ -6,6 +6,9 @@
   --muted: #6b645c;
   --accent: #1f6f78;
   --accent-strong: #134d54;
+  --success: #17632f;
+  --warning: #805300;
+  --danger: #9b2929;
   --border: rgba(39, 33, 24, 0.12);
   --shadow: 0 24px 60px rgba(31, 27, 22, 0.12);
   --radius: 20px;
@@ -76,6 +79,18 @@ input:focus {
   border-color: var(--accent);
 }
 
+input:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.privacy-note {
+  max-width: 72ch;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
 .actions {
   display: flex;
   gap: 12px;
@@ -92,6 +107,7 @@ button {
   color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   cursor: pointer;
+  min-height: 44px;
 }
 
 button.secondary {
@@ -99,19 +115,110 @@ button.secondary {
   background: #e7ddd0;
 }
 
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.status-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.status-heading-row h2 {
+  margin-bottom: 0;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-badge::before {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
 .status {
   min-height: 24px;
   margin-top: 18px;
-  color: var(--muted);
+  color: var(--text);
   font-size: 0.95rem;
+  line-height: 1.5;
 }
 
-.status.ok {
-  color: #1f6a36;
+.status-panel[data-state="connected"] .status-badge {
+  color: var(--success);
 }
 
-.status.error {
-  color: #a23333;
+.status-panel[data-state="dirty"] .status-badge,
+.status-panel[data-state="saved_unverified"] .status-badge,
+.status-panel[data-state="connecting"] .status-badge,
+.status-panel[data-state="not_configured"] .status-badge,
+.status-panel[data-state="paused"] .status-badge {
+  color: var(--warning);
+}
+
+.status-panel[data-state="offline"] .status-badge,
+.status-panel[data-state="unauthorized"] .status-badge,
+.status-panel[data-state="permission_blocked"] .status-badge,
+.status-panel[data-state="error"] .status-badge {
+  color: var(--danger);
+}
+
+.status-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 20px 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--border);
+}
+
+.status-details div {
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--panel);
+}
+
+.status-details dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.status-details dd {
+  overflow-wrap: anywhere;
+  margin: 5px 0 0;
+  font-weight: 650;
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .capabilities {
@@ -128,7 +235,73 @@ button.secondary {
     flex-direction: column;
   }
 
-  button {
+  .actions button,
+  .status-actions button {
     width: 100%;
+  }
+
+  .status-heading-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .status-details {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #171a1b;
+    --panel: rgba(31, 35, 36, 0.97);
+    --text: #f5f3ef;
+    --muted: #c1bbb2;
+    --accent: #76c8d0;
+    --accent-strong: #297985;
+    --success: #77d391;
+    --warning: #f0bd5b;
+    --danger: #ff8f8f;
+    --border: rgba(255, 255, 255, 0.16);
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  }
+
+  body {
+    background: radial-gradient(circle at top left, rgba(118, 200, 208, 0.12), transparent 36%), var(--bg);
+  }
+
+  input {
+    background: #111415;
+  }
+
+  button.secondary {
+    color: var(--text);
+    background: #343a3c;
+  }
+}
+
+@media (forced-colors: active) {
+  .card,
+  .status-badge,
+  .status-details {
+    border: 1px solid CanvasText;
+  }
+
+  button {
+    border: 1px solid ButtonText;
+  }
+
+  .status-badge::before {
+    background: currentColor;
+    forced-color-adjust: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
