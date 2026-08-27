@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   PLACEMENT_HTML_MAX_SOURCE_BYTES,
   buildBuiltinPlacementManifests,
+  buildToggleablePlacementCandidates,
   filterPlacementCandidates,
   readPinnedPlacements,
   resolvePlacementHtmlRendering,
@@ -66,6 +67,28 @@ test("pinned placements persist through storage helpers", () => {
   writePinnedPlacements(storage, next);
 
   assert.deepEqual(readPinnedPlacements(storage), [{ id: "yolo-switch", surface: "right_sidebar" }]);
+});
+
+test("placement menus retain pinned candidates so selecting again can unpin", () => {
+  const manifests = buildBuiltinPlacementManifests([]);
+  const candidates = buildToggleablePlacementCandidates(
+    manifests,
+    [{ id: "tool-filter-log", surface: "right_sidebar" }],
+    {
+      surface: "right_sidebar",
+      orientation: "vertical",
+      configurableOnly: true,
+    },
+  );
+
+  assert.equal(
+    candidates.find(({ manifest }) => manifest.id === "tool-filter-log")?.pinned,
+    true,
+  );
+  assert.equal(
+    candidates.find(({ manifest }) => manifest.id === "runtime-status")?.pinned,
+    false,
+  );
 });
 
 test("builtin placements include yolo switch and model manager", () => {

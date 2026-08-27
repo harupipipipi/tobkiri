@@ -74,6 +74,11 @@ export type PlacementFilterOptions = {
   availableSettings?: string[];
 };
 
+export type ToggleablePlacementCandidate = {
+  manifest: PlacementManifest;
+  pinned: boolean;
+};
+
 export type PlacementHtmlBlockReason =
   | "empty_html"
   | "oversized_html"
@@ -134,6 +139,19 @@ export function filterPlacementCandidates(
     if (!includesAll(constraints.requires_settings, settings)) return false;
     return true;
   });
+}
+
+export function buildToggleablePlacementCandidates(
+  manifests: PlacementManifest[],
+  pinnedPlacements: PinnedPlacement[],
+  options: PlacementFilterOptions,
+): ToggleablePlacementCandidate[] {
+  return filterPlacementCandidates(manifests, options).map((manifest) => ({
+    manifest,
+    pinned: pinnedPlacements.some((placement) => (
+      placement.id === manifest.id && placement.surface === options.surface
+    )),
+  }));
 }
 
 export function readPinnedPlacements(storage: Pick<Storage, "getItem"> | null | undefined): PinnedPlacement[] {

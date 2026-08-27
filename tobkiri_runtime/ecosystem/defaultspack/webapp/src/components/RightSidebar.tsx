@@ -71,7 +71,7 @@ import type {
 import { toolResources } from "../features/tools/resources/toolResources";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
 import { toolFilterBlockedSummary } from "../lib/toolStatus";
-import { buildBuiltinPlacementManifests, filterPlacementCandidates, normalizePinnedPlacements, togglePinnedPlacement } from "../lib/placement";
+import { buildBuiltinPlacementManifests, buildToggleablePlacementCandidates, normalizePinnedPlacements, togglePinnedPlacement } from "../lib/placement";
 import { compareToolUiItems, sortedToolGroups, sortedToolUiItems, supportedComposerDropKind, supportsComposerDrop, toolGroupFor } from "../lib/toolUi";
 import { PlacementHtmlRenderer } from "./PlacementHtmlRenderer";
 import { ToolFilterLogWidget, ToolManagerWidget } from "./ToolStatusWidgets";
@@ -1095,13 +1095,11 @@ export function RightSidebar({
     [settingsSections],
   );
   const rightSidebarPlacementCandidates = useMemo(() => (
-    filterPlacementCandidates([...placementManifestMap.values()], {
+    buildToggleablePlacementCandidates([...placementManifestMap.values()], pinnedPlacements, {
       surface: "right_sidebar",
       orientation: "vertical",
       configurableOnly: true,
-    }).filter((manifest) => !pinnedPlacements.some((placement) => (
-      placement.id === manifest.id && placement.surface === "right_sidebar"
-    )))
+    })
   ), [pinnedPlacements, placementManifestMap]);
 
   useEffect(() => {
@@ -2565,14 +2563,15 @@ export function RightSidebar({
                   onPointerDown={(event) => event.stopPropagation()}
                 >
                   <div className="border-b border-zinc-800 px-3 py-2">
-                    <p className="text-[11px] font-semibold text-zinc-200">サイドバーにピン留め</p>
-                    <p className="text-[10px] text-zinc-500">縦表示 / 設定可</p>
+                    <p className="text-[11px] font-semibold text-zinc-200">サイドバーのピン留め</p>
+                    <p className="text-[10px] text-zinc-500">選択して追加または解除</p>
                   </div>
                   <div className="max-h-64 overflow-y-auto py-1">
-                    {rightSidebarPlacementCandidates.map((manifest) => (
+                    {rightSidebarPlacementCandidates.map(({ manifest, pinned }) => (
                       <button
                         key={manifest.id}
                         type="button"
+                        aria-pressed={pinned}
                         onClick={() => {
                           updatePinnedPlacements((current) => togglePinnedPlacement(current, { id: manifest.id, surface: "right_sidebar" }));
                           setPlacementMenuOpen(false);
@@ -2586,6 +2585,11 @@ export function RightSidebar({
                           <span className="block truncate text-[12px]">{manifest.label}</span>
                           {manifest.description && <span className="block truncate text-[10px] text-zinc-500">{manifest.description}</span>}
                         </span>
+                        {pinned && (
+                          <span className="ml-auto flex-shrink-0 text-[10px] font-medium text-sky-300" aria-hidden="true">
+                            ピン留め済み
+                          </span>
+                        )}
                       </button>
                     ))}
                     {rightSidebarPlacementCandidates.length === 0 && (
