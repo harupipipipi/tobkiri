@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "97e2cdd18b65d77d7b601a2766533327f165b12333d0e80627d500e480ff3697",
+    "digest": "582d67bf19054700ac58eddf8001bcfa2a660d03e90a1a0135af082a3af36088",
     "entries": [
       {
         "path": "index.html",
@@ -885,8 +885,8 @@
       },
       {
         "path": "src/features/models/thinkingControl.ts",
-        "size": 3780,
-        "sha256": "4d7e150e6ba702fad0e1f240ac299483457865821804d1e5de915fa35b6e4ec5"
+        "size": 3781,
+        "sha256": "93e4965f5b89be57ee9fcb41ba65e13fabe59c3ef95a9ea5222b0274aa7f880c"
       },
       {
         "path": "src/features/projects/ProjectPicker.tsx",
@@ -1861,7 +1861,7 @@
     ]
   },
   "bundle": {
-    "digest": "abfe4a06efa34877228325dac7b7da98bdd85acc27570d816347606a07c60275",
+    "digest": "fcb44068f81aaa3cebfd09c05b0b7ef71795beb7b346a87160258b8069001364",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1875,8 +1875,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2211396,
-        "sha256": "f8fcc76bc5e008a109e9b01a9d87766e5b9de48a5c4e34791d29c9092103ea27"
+        "size": 2211397,
+        "sha256": "b21aa6236d9f23ce93dd872c65717b61c8de3a129f379cff7c5ec0c9c1956034"
       },
       {
         "path": "shell-rolldown-runtime.js",

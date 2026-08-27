@@ -3,7 +3,7 @@ import type { ModelProfile, ThinkingControlContract } from "../../lib/api";
 export type ThinkingControlMode = "none" | "number" | "enum" | "text";
 
 export function thinkingControlForProfile(profile?: ModelProfile | null): ThinkingControlContract {
-  if (profile?.thinking_control?.source === "profile" && profile.thinking_control.input_schema) {
+  if (profile?.thinking_control?.source !== "legacy" && profile?.thinking_control?.input_schema) {
     return profile.thinking_control;
   }
   const values = profile?.thinking_levels?.length
