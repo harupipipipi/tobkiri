@@ -21,7 +21,11 @@ grant host authority.
   workspace, or authority fields.
 - Members carry an exact `profile_id`, adopted revision, and content hash.
   Profile changes are visible through `plan_profile_update` and require an
-  explicit materialization/adoption operation.
+  explicit materialization/adoption operation. Mutation helpers never trust a
+  caller-supplied boolean: a Host-owned callback must verify and consume a
+  one-shot approval token bound to the exact Team generation, plan/Profile
+  hash, actor, and active-work strategy. Only the receipt ID and binding hash
+  are retained; the token is never persisted.
 
 ## Policy and work snapshots
 

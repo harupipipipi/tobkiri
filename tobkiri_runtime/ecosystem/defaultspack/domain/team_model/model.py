@@ -20,7 +20,7 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -154,6 +154,8 @@ _ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _HASH_PATTERN = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}$")
 _UNLIMITED = "unlimited"
 
+ApprovalConsumer = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
+
 
 class TeamModelError(ValueError):
     """Base error for malformed or unsafe Team model input."""
@@ -218,6 +220,40 @@ def canonical_hash(value: Any) -> str:
         default=str,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _consume_bound_approval(
+    *,
+    operation: str,
+    approval_token: str | None,
+    approval_consumer: ApprovalConsumer | None,
+    binding: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Consume one Host-owned approval bound to the exact requested mutation."""
+
+    token = str(approval_token or "").strip()
+    if not token or approval_consumer is None:
+        raise ProfileAdoptionError(
+            "Mutation requires a Host-owned one-shot approval token and consumer"
+        )
+    binding_payload = _copy(dict(binding))
+    binding_hash = canonical_hash(binding_payload)
+    receipt = approval_consumer(token, binding_payload)
+    if not isinstance(receipt, Mapping):
+        raise ProfileAdoptionError("Approval consumer returned an invalid receipt")
+    if receipt.get("authorized") is not True or receipt.get("consumed") is not True:
+        raise ProfileAdoptionError("Approval was not authorized and consumed")
+    if str(receipt.get("operation") or "") != operation:
+        raise ProfileAdoptionError("Approval receipt operation does not match mutation")
+    if str(receipt.get("binding_hash") or "") != binding_hash:
+        raise ProfileAdoptionError("Approval receipt is not bound to the exact mutation")
+    receipt_id = _required_id(receipt.get("receipt_id"), "approval_receipt_id")
+    return {
+        "receipt_id": receipt_id,
+        "operation": operation,
+        "binding_hash": binding_hash,
+        "consumed": True,
+    }
 
 
 def _canonicalize(value: Any) -> Any:
@@ -1722,11 +1758,10 @@ def materialization_plan(
         "changes": changes,
         "active_work_impact": impact,
         "required_approval": bool(changes or impact),
-        "approved": False,
         "definition": normalized,
     }
     plan["plan_hash"] = canonical_hash(
-        {key: value for key, value in plan.items() if key not in {"plan_hash", "approved"}}
+        {key: value for key, value in plan.items() if key != "plan_hash"}
     )
     return plan
 
@@ -1736,7 +1771,8 @@ def apply_materialization_plan(
     plan: Mapping[str, Any],
     *,
     profiles: Mapping[str, Any] | Sequence[Mapping[str, Any]],
-    approved: bool = False,
+    approval_token: str | None = None,
+    approval_consumer: ApprovalConsumer | None = None,
     active_work_strategy: str | None = None,
     actor_id: str = "system",
     now: str | None = None,
@@ -1746,12 +1782,10 @@ def apply_materialization_plan(
     if str(plan.get("schema_version") or "") != "tobkiri.team-materialization-plan/v1":
         raise ProfileAdoptionError("Invalid Team materialization plan")
     expected_hash = canonical_hash(
-        {key: value for key, value in plan.items() if key not in {"plan_hash", "approved"}}
+        {key: value for key, value in plan.items() if key != "plan_hash"}
     )
     if expected_hash != str(plan.get("plan_hash") or ""):
         raise ProfileAdoptionError("Materialization plan has been modified")
-    if plan.get("required_approval") and not approved:
-        raise ProfileAdoptionError("Materialization plan requires explicit approval")
     impact = (
         plan.get("active_work_impact") if isinstance(plan.get("active_work_impact"), list) else []
     )
@@ -1770,6 +1804,22 @@ def apply_materialization_plan(
         actor_id=actor_id,
         now=now,
     )
+    approval_receipt = None
+    if plan.get("required_approval"):
+        approval_receipt = _consume_bound_approval(
+            operation="team.materialization.apply",
+            approval_token=approval_token,
+            approval_consumer=approval_consumer,
+            binding={
+                "operation": "team.materialization.apply",
+                "team_id": str(current_team.get("team_id") or ""),
+                "from_generation": int(current_team.get("generation") or 0),
+                "to_generation": int(plan.get("to_generation") or 0),
+                "plan_hash": str(plan.get("plan_hash") or ""),
+                "actor_id": str(actor_id or "system"),
+                "active_work_strategy": active_work_strategy,
+            },
+        )
     # Materialization changes organizational configuration, not the durable
     # history of work.  Existing Assignments/Attempts retain their original
     # profile and policy provenance until the explicit drain/reassign/cancel
@@ -1779,6 +1829,8 @@ def apply_materialization_plan(
     result["materialized_from_generation"] = int(current_team.get("generation") or 0)
     result["materialization_plan_hash"] = str(plan["plan_hash"])
     result["active_work_strategy"] = active_work_strategy
+    if approval_receipt is not None:
+        result["provenance"]["materialization_approval"] = approval_receipt
     return result
 
 
@@ -1881,7 +1933,7 @@ def plan_profile_update(
     ]
     plan["required_approval"] = bool(plan["profile_updates"])
     plan["plan_hash"] = canonical_hash(
-        {key: value for key, value in plan.items() if key not in {"plan_hash", "approved"}}
+        {key: value for key, value in plan.items() if key != "plan_hash"}
     )
     return plan
 
@@ -1891,14 +1943,13 @@ def adopt_profile_revision(
     member_id: str,
     profile: Mapping[str, Any],
     *,
-    approved: bool = False,
+    approval_token: str | None = None,
+    approval_consumer: ApprovalConsumer | None = None,
     actor_id: str = "system",
     now: str | None = None,
 ) -> dict[str, Any]:
     """Explicitly materialize one Profile revision onto a Member."""
 
-    if not approved:
-        raise ProfileAdoptionError("Profile adoption requires explicit approval/materialization")
     normalized_profile = normalize_profile(profile)
     result = _copy(dict(team))
     target = _member_map(result).get(str(member_id))
@@ -1906,6 +1957,21 @@ def adopt_profile_revision(
         raise ProfileAdoptionError(f"Unknown Member {member_id}")
     if str(target.get("profile_id") or "") != normalized_profile["profile_id"]:
         raise ProfileAdoptionError("Profile revision adoption cannot change a Member's profile_id")
+    approval_receipt = _consume_bound_approval(
+        operation="team.profile.adopt",
+        approval_token=approval_token,
+        approval_consumer=approval_consumer,
+        binding={
+            "operation": "team.profile.adopt",
+            "team_id": str(team.get("team_id") or ""),
+            "from_generation": int(team.get("generation") or 0),
+            "member_id": str(member_id),
+            "profile_id": normalized_profile["profile_id"],
+            "profile_revision": normalized_profile["revision"],
+            "profile_hash": normalized_profile["content_hash"],
+            "actor_id": str(actor_id or "system"),
+        },
+    )
     for member in result.get("members", []):
         if isinstance(member, dict) and member.get("member_id") == str(member_id):
             member["adopted_profile_revision"] = normalized_profile["revision"]
@@ -1931,6 +1997,7 @@ def adopt_profile_revision(
             "hash": normalized_profile["content_hash"],
             "actor_id": str(actor_id or "system"),
             "at": result["updated_at"],
+            "approval": approval_receipt,
         },
     }
     return result

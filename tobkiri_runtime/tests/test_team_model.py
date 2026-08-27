@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 
@@ -66,6 +67,17 @@ def _profile(
             },
         }
     )
+
+
+def _consume_test_approval(token: str, binding: Mapping[str, object]) -> dict[str, object]:
+    assert token == "test-one-shot-token"
+    return {
+        "authorized": True,
+        "consumed": True,
+        "receipt_id": "test-receipt",
+        "operation": binding["operation"],
+        "binding_hash": canonical_hash(binding),
+    }
 
 
 def _team(
@@ -364,7 +376,13 @@ def test_attempt_uses_assignment_profile_provenance_after_profile_adoption() -> 
         review={"reviewer_member_id": "reviewer", "reviewed_input_revision": "input-2"},
     )
     new_profile = _profile(revision=2)
-    updated_team = adopt_profile_revision(team, "coder", new_profile, approved=True)
+    updated_team = adopt_profile_revision(
+        team,
+        "coder",
+        new_profile,
+        approval_token="test-one-shot-token",
+        approval_consumer=_consume_test_approval,
+    )
     attempt = create_attempt(updated_team, assignment, member_id="coder")
     assert attempt["provenance"]["adopted_profile_revision"] == 1
     assert attempt["provenance"]["adopted_profile_hash"] == old_profile["content_hash"]
@@ -394,13 +412,14 @@ def test_profile_update_requires_explicit_plan_and_preserves_old_provenance() ->
     assert plan["kind"] == "profile_adoption"
     assert plan["profile_updates"]
     assert plan["active_work_impact"][0]["required_action"] == "old_snapshot_preserved"
-    with pytest.raises(ProfileAdoptionError, match="explicit approval"):
+    with pytest.raises(ProfileAdoptionError, match="Host-owned one-shot approval"):
         apply_materialization_plan(team, plan, profiles={new_profile["profile_id"]: new_profile})
     updated = apply_materialization_plan(
         team,
         plan,
         profiles={new_profile["profile_id"]: new_profile},
-        approved=True,
+        approval_token="test-one-shot-token",
+        approval_consumer=_consume_test_approval,
         active_work_strategy="drain",
     )
     assert updated["generation"] == team["generation"] + 1
@@ -417,14 +436,93 @@ def test_direct_profile_adoption_requires_approval_and_keeps_team_identity() -> 
     new_profile = _profile(revision=2)
     with pytest.raises(ProfileAdoptionError):
         adopt_profile_revision(team, "coder", new_profile)
-    adopted = adopt_profile_revision(team, "coder", new_profile, approved=True)
+    adopted = adopt_profile_revision(
+        team,
+        "coder",
+        new_profile,
+        approval_token="test-one-shot-token",
+        approval_consumer=_consume_test_approval,
+    )
     assert adopted["team_id"] == team["team_id"]
     member = next(item for item in adopted["members"] if item["member_id"] == "coder")
     assert member["adopted_profile_revision"] == 2
     assert member["adopted_profile_hash"] == new_profile["content_hash"]
     different_profile = _profile(profile_id="different-profile", revision=2)
     with pytest.raises(ProfileAdoptionError, match="cannot change"):
-        adopt_profile_revision(team, "coder", different_profile, approved=True)
+        adopt_profile_revision(
+            team,
+            "coder",
+            different_profile,
+            approval_token="test-one-shot-token",
+            approval_consumer=_consume_test_approval,
+        )
+
+
+def test_profile_adoption_rejects_unconsumed_or_wrongly_bound_approval() -> None:
+    _old_profile, _definition, team = _team()
+    new_profile = _profile(revision=2)
+
+    def unconsumed(_token: str, binding: Mapping[str, object]) -> dict[str, object]:
+        return {
+            "authorized": True,
+            "consumed": False,
+            "receipt_id": "unconsumed-receipt",
+            "operation": binding["operation"],
+            "binding_hash": canonical_hash(binding),
+        }
+
+    with pytest.raises(ProfileAdoptionError, match="authorized and consumed"):
+        adopt_profile_revision(
+            team,
+            "coder",
+            new_profile,
+            approval_token="test-one-shot-token",
+            approval_consumer=unconsumed,
+        )
+
+    def wrong_binding(_token: str, binding: Mapping[str, object]) -> dict[str, object]:
+        return {
+            "authorized": True,
+            "consumed": True,
+            "receipt_id": "wrong-binding-receipt",
+            "operation": binding["operation"],
+            "binding_hash": canonical_hash({**binding, "member_id": "another-member"}),
+        }
+
+    with pytest.raises(ProfileAdoptionError, match="exact mutation"):
+        adopt_profile_revision(
+            team,
+            "coder",
+            new_profile,
+            approval_token="test-one-shot-token",
+            approval_consumer=wrong_binding,
+        )
+
+
+def test_materialization_validates_everything_before_consuming_approval() -> None:
+    _old_profile, _definition, team = _team()
+    new_profile = _profile(revision=2)
+    plan = plan_profile_update(team, {new_profile["profile_id"]: new_profile})
+    malformed = deepcopy(plan)
+    malformed["definition"]["manager_member_id"] = "missing-member"
+    malformed["plan_hash"] = canonical_hash(
+        {key: value for key, value in malformed.items() if key != "plan_hash"}
+    )
+    consumed: list[str] = []
+
+    def consumer(token: str, binding: Mapping[str, object]) -> dict[str, object]:
+        consumed.append(token)
+        return _consume_test_approval(token, binding)
+
+    with pytest.raises(TeamValidationError, match="manager_member_id"):
+        apply_materialization_plan(
+            team,
+            malformed,
+            profiles={new_profile["profile_id"]: new_profile},
+            approval_token="test-one-shot-token",
+            approval_consumer=consumer,
+        )
+    assert consumed == []
 
 
 def test_configuration_and_availability_are_separate_and_never_done() -> None:
