@@ -100,12 +100,11 @@ async function loadSettings() {
   setOperation("loading");
   try {
     const stored = await chrome.storage.local.get(STORAGE_KEY);
-    const settings = { ...DEFAULT_SETTINGS, ...(stored[STORAGE_KEY] || {}) };
-    field("serverUrl").value = settings.serverUrl;
-    field("pairingToken").value = settings.pairingToken;
-    field("clientLabel").value = settings.clientLabel;
-    field("profileLabel").value = settings.profileLabel;
-    field("pollIntervalMinutes").value = settings.pollIntervalMinutes;
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      ...(stored[STORAGE_KEY] || {})
+    };
+    populateSettingsForm(settings);
     currentStatus = sanitizeConnectionStatus(
       await chrome.runtime.sendMessage({ type: "rumi:get-status" })
     );
@@ -174,6 +173,14 @@ function readSettings() {
     profileLabel: String(field("profileLabel").value || "").trim(),
     pollIntervalMinutes: Math.max(1, Number(field("pollIntervalMinutes").value) || 1)
   };
+}
+
+function populateSettingsForm(settings) {
+  form.serverUrl.value = settings.serverUrl;
+  form.pairingToken.value = settings.pairingToken;
+  form.clientLabel.value = settings.clientLabel;
+  form.profileLabel.value = settings.profileLabel;
+  form.pollIntervalMinutes.value = settings.pollIntervalMinutes;
 }
 
 function field(name) {
