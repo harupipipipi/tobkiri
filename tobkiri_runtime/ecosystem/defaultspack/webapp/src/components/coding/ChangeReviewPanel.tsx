@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Download, FileSearch, GitCommit, MessageSquare, RefreshCw, RotateCw, ShieldCheck, SplitSquareHorizontal } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import type { CodingDiffResponse, CodingGitStatus } from "../../lib/api";
 import type { ChangeRequestRecord } from "../../lib/changeRequests";
@@ -24,10 +24,13 @@ import {
 import { codingResources } from "../../features/coding/resources/codingResources";
 import { ErrorNotice } from "../ErrorNotice";
 import { ChangeReviewChecksTab } from "./ChangeReviewChecksTab";
+import { handleHorizontalTabKey } from "./codingA11y";
 import { FilesChangedPane, filesFromStatusAndDiff } from "./FilesChangedPane";
 
 type DetailTab = "summary" | "files" | "checks" | "review" | "commit";
 type ReviewFilter = "open" | "closed";
+
+const REVIEW_DETAIL_TABS: DetailTab[] = ["summary", "files", "checks", "review"];
 
 function checkLabel(review: ChangeRequestRecord): string {
   const checks = review.check_summary;
@@ -56,22 +59,26 @@ function ReviewListItem({
   onSelect: (review: ChangeRequestRecord) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(review)}
-      className={`w-full rounded-md border px-2 py-1.5 text-left ${
-        selected ? "border-sky-500/40 bg-sky-500/10" : "border-zinc-800 bg-zinc-950/40 hover:bg-zinc-900/70"
-      }`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate font-mono text-[11px] text-zinc-200">{review.id}</span>
-        <span className="flex-shrink-0 rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{review.status}</span>
-      </div>
-      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-zinc-600">
-        <span className="truncate">{review.title || review.summary || "Working tree review"}</span>
-        <span className="flex-shrink-0">{checkLabel(review)}</span>
-      </div>
-    </button>
+    <div role="listitem">
+      <button
+        type="button"
+        aria-current={selected ? "true" : undefined}
+        aria-label={`${review.title || review.summary || "Working tree review"}, ${review.status}, ${checkLabel(review)}`}
+        onClick={() => onSelect(review)}
+        className={`w-full rounded-md border px-2 py-1.5 text-left ${
+          selected ? "border-sky-500/40 bg-sky-500/10" : "border-zinc-800 bg-zinc-950/40 hover:bg-zinc-900/70"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate font-mono text-[11px] text-zinc-200">{review.id}</span>
+          <span className="flex-shrink-0 rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{review.status}</span>
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-zinc-600">
+          <span className="truncate">{review.title || review.summary || "Working tree review"}</span>
+          <span className="flex-shrink-0">{checkLabel(review)}</span>
+        </div>
+      </button>
+    </div>
   );
 }
 
@@ -111,6 +118,15 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   const selectionRequestRef = useRef(0);
   const activeActionKeysRef = useRef(new Set<string>());
   const [pendingViewed, setPendingViewed] = useState<Record<string, boolean>>({});
+  const idPrefix = `change-review-${useId().replace(/:/g, "")}`;
+  const headingId = `${idPrefix}-heading`;
+  const reviewListId = `${idPrefix}-list`;
+  const detailTabs = useMemo(
+    () => changeRequestCommitEnabled ? [...REVIEW_DETAIL_TABS, "commit" as const] : REVIEW_DETAIL_TABS,
+    [],
+  );
+  const detailTabId = (tab: DetailTab) => `${idPrefix}-tab-${tab}`;
+  const detailPanelId = (tab: DetailTab) => `${idPrefix}-panel-${tab}`;
 
   const changedFiles = useMemo(() => filesFromStatusAndDiff(status, diff), [status, diff]);
   const selectedReview = reviews.find((review) => review.id === selectedReviewId) ?? null;
@@ -381,11 +397,15 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   };
 
   return (
-    <section className="border-b border-zinc-800/60 p-3" aria-label="Rumi Review">
+    <section
+      className="border-b border-zinc-800/60 p-3"
+      aria-labelledby={headingId}
+      aria-busy={busy || actionBusy !== null}
+    >
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <FileSearch size={14} className="text-teal-300" />
-          <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Rumi Review</h2>
+          <h2 id={headingId} className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Rumi Review</h2>
           <span className="truncate font-mono text-[10px] text-zinc-600">{status?.branch ?? "working tree"}</span>
         </div>
         <button
@@ -394,6 +414,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
           onClick={() => void load()}
           className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40"
           title="Refresh review desk"
+          aria-label={`Refresh Rumi Review${selectedReview ? ` ${selectedReview.id}` : " working tree"}`}
         >
           <RefreshCw size={13} />
         </button>
@@ -420,9 +441,9 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
           </div>
         </ErrorNotice>
       )}
-      {notice && <p className="mb-2 rounded border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-[11px] text-teal-100">{notice}</p>}
+      {notice && <p role="status" aria-live="polite" className="mb-2 rounded border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-[11px] text-teal-100">{notice}</p>}
       {!apiAvailable && (
-        <p className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
+        <p role="status" className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
           Change request API is not enabled yet; working tree review remains local.
         </p>
       )}
@@ -436,6 +457,8 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
               setDetailTab("summary");
             }}
             className="min-w-0 text-left"
+            aria-current={selectedReviewId === "working-tree" ? "true" : undefined}
+            aria-label={`Working Tree, ${dirty ? "dirty" : "clean"}, ${changedFiles.length} changed files, ${highRiskCount} high risk`}
           >
             <p className="truncate text-xs font-semibold text-zinc-200">Working Tree</p>
             <p className="mt-0.5 text-[10px] text-zinc-600">{dirty ? "dirty" : "clean"} candidate</p>
@@ -471,12 +494,13 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
 
       <div className="mt-3 grid gap-2 min-[1440px]:grid-cols-[150px_minmax(0,1fr)]">
         <div className="space-y-2">
-          <div className="flex rounded-md border border-zinc-800 bg-black/20 p-0.5">
+          <div className="flex rounded-md border border-zinc-800 bg-black/20 p-0.5" role="group" aria-label="Filter reviews">
             {(["open", "closed"] as const).map((item) => (
               <button
                 key={item}
                 type="button"
                 onClick={() => setFilter(item)}
+                aria-pressed={filter === item}
                 className={`h-6 flex-1 rounded px-2 text-[10px] capitalize ${
                   filter === item ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
                 }`}
@@ -485,7 +509,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
               </button>
             ))}
           </div>
-          <div className="space-y-1.5">
+          <div id={reviewListId} className="space-y-1.5" role="list" aria-label={`${filter} reviews`}>
             {visibleReviews.map((review) => (
               <ReviewListItem
                 key={review.id}
@@ -520,12 +544,18 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
             </div>
           )}
 
-          <div className="flex flex-wrap gap-1">
-            {(["summary", "files", "checks", "review", ...(changeRequestCommitEnabled ? ["commit" as const] : [])] as const).map((tab) => (
+          <div className="flex flex-wrap gap-1" role="tablist" aria-label="Review details">
+            {detailTabs.map((tab) => (
               <button
                 key={tab}
                 type="button"
+                id={detailTabId(tab)}
+                role="tab"
+                aria-selected={detailTab === tab}
+                aria-controls={detailPanelId(tab)}
+                tabIndex={detailTab === tab ? 0 : -1}
                 onClick={() => setDetailTab(tab)}
+                onKeyDown={(event) => handleHorizontalTabKey(event, detailTabs, tab, setDetailTab, detailTabId)}
                 className={`h-7 rounded-md px-2 text-[11px] capitalize ${
                   detailTab === tab ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
                 }`}
@@ -535,7 +565,17 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
             ))}
           </div>
 
-          {detailTab === "summary" && (
+          <p className="sr-only" role="status" aria-live="polite">
+            {selectedReview ? `Review ${selectedReview.id}` : "Working tree"}; {stale ? "stale" : "current"}; {dirty ? "dirty" : "clean"}; {highRiskCount} high risk files; {failingChecks} failing checks; {unresolvedCount} unresolved comments{changeRequestCommitEnabled ? `; commit ${commitReady ? "ready" : "blocked"}` : ""}.
+          </p>
+
+          <div
+            id={detailPanelId(detailTab)}
+            role="tabpanel"
+            aria-labelledby={detailTabId(detailTab)}
+            tabIndex={0}
+          >
+            {detailTab === "summary" && (
             <div className="rounded-md border border-zinc-800 bg-black/20 p-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={14} className="text-teal-300" />
@@ -597,18 +637,24 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
                   <MessageSquare size={13} className="text-teal-300" />
                   <p className="text-xs font-semibold text-zinc-200">Review comments</p>
                 </div>
-                <textarea
-                  value={commentBody}
-                  onChange={(event) => setCommentBody(event.target.value)}
-                  placeholder="Leave a review comment"
-                  className="mt-2 min-h-20 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-zinc-600"
-                />
-                <textarea
-                  value={suggestionPatch}
-                  onChange={(event) => setSuggestionPatch(event.target.value)}
-                  placeholder="Suggested patch"
-                  className="mt-2 min-h-16 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 font-mono text-[10px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-zinc-600"
-                />
+                <label className="mt-2 block text-[11px] font-medium text-zinc-400">
+                  Review comment
+                  <textarea
+                    value={commentBody}
+                    onChange={(event) => setCommentBody(event.target.value)}
+                    placeholder="Leave a review comment"
+                    className="mt-2 min-h-20 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-zinc-600"
+                  />
+                </label>
+                <label className="mt-2 block text-[11px] font-medium text-zinc-400">
+                  Suggested patch
+                  <textarea
+                    value={suggestionPatch}
+                    onChange={(event) => setSuggestionPatch(event.target.value)}
+                    placeholder="Suggested patch"
+                    className="mt-1 min-h-16 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 font-mono text-[10px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-zinc-600"
+                  />
+                </label>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <button type="button" onClick={() => handleAddComment("comment")} disabled={!selectedReview || actionBusy === "comment"} className="h-7 rounded-md border border-zinc-800 px-2 text-[11px] text-zinc-300 hover:bg-zinc-900 disabled:opacity-40">Comment</button>
                   <button type="button" onClick={() => handleAddComment("suggestion")} disabled={!selectedReview || actionBusy === "comment"} className="h-7 rounded-md border border-zinc-800 px-2 text-[11px] text-zinc-300 hover:bg-zinc-900 disabled:opacity-40">Suggest</button>
@@ -629,7 +675,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
                         {comment.resolved ? "Resolved" : "Resolve"}
                       </button>
                     </div>
-                    {comment.suggested_patch && <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-zinc-950 p-2 font-mono text-[10px] text-zinc-500">{comment.suggested_patch}</pre>}
+                    {comment.suggested_patch && <pre role="region" aria-label={`Suggested patch for comment ${comment.id}`} tabIndex={0} className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-zinc-950 p-2 font-mono text-[10px] text-zinc-500">{comment.suggested_patch}</pre>}
                   </div>
                 ))}
                 {selectedReview && (selectedReview.comments ?? []).length === 0 && <p className="rounded-md border border-zinc-800 bg-black/20 px-2 py-4 text-center text-[11px] text-zinc-600">No review comments</p>}
@@ -679,17 +725,21 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
                   <p>{unresolvedCount === 0 ? "no unresolved comments" : `${unresolvedCount} unresolved comments`}</p>
                   <p>{failingChecks === 0 ? "checks are not failing" : `${failingChecks} failing checks`}</p>
                 </div>
-                <input
-                  value={commitMessage}
-                  onChange={(event) => setCommitMessage(event.target.value)}
-                  className="mt-2 h-8 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-zinc-200 outline-none focus:border-zinc-600"
-                />
+                <label className="mt-2 block text-[11px] font-medium text-zinc-400">
+                  Commit message
+                  <input
+                    value={commitMessage}
+                    onChange={(event) => setCommitMessage(event.target.value)}
+                    className="mt-1 h-8 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-zinc-200 outline-none focus:border-zinc-600"
+                  />
+                </label>
                 <button type="button" onClick={handleCommit} disabled={!selectedReview || !commitReady || !commitMessage.trim() || actionBusy === "commit"} className="mt-2 flex h-8 items-center gap-1 rounded-md bg-zinc-100 px-2 text-[11px] font-semibold text-zinc-950 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-600">
                   <GitCommit size={12} /> Commit sealed snapshot
                 </button>
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
     </section>

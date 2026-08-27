@@ -1,5 +1,5 @@
-import { GitCompare, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Clipboard, GitCompare, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import type { CodingDiffResponse, CodingGitStatus } from "../../lib/api";
 import { codingResources } from "../../features/coding/resources/codingResources";
@@ -24,6 +24,8 @@ export function DiffPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
+  const headingId = `diff-panel-${useId().replace(/:/g, "")}`;
 
   const changedFiles = useMemo(() => collectFiles(status), [status]);
 
@@ -54,11 +56,11 @@ export function DiffPanel({
   }, [initialDiff, initialStatus, refresh, workspaceId]);
 
   return (
-    <section className="border-b border-zinc-800/60 p-3" aria-label="Git diff" aria-busy={busy}>
+    <section className="border-b border-zinc-800/60 p-3" aria-labelledby={headingId} aria-busy={busy}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <GitCompare size={14} className="text-sky-300" />
-          <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Diff</h2>
+          <h2 id={headingId} className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Diff</h2>
           {status?.branch && <span className="truncate font-mono text-[10px] text-zinc-600">{status.branch}</span>}
         </div>
         <button
@@ -85,6 +87,7 @@ export function DiffPanel({
           Refreshed {new Date(refreshedAt).toLocaleTimeString()}
         </p>
       )}
+      {copyNotice && <p role="status" aria-live="polite" className="mb-2 text-[10px] text-zinc-500">{copyNotice}</p>}
 
       <div className="mb-2 flex flex-wrap gap-1">
         <span className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
@@ -97,7 +100,23 @@ export function DiffPanel({
         ))}
       </div>
 
-      <pre className="max-h-56 overflow-auto rounded-md border border-zinc-800 bg-black/30 p-2 font-mono text-[10px] leading-relaxed text-zinc-400">
+      <div className="mb-1 flex justify-end">
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(diff?.diff || status?.porcelain || "").then(
+              () => setCopyNotice("Diff copied to clipboard."),
+              () => setCopyNotice("Diff could not be copied."),
+            );
+          }}
+          disabled={!diff?.diff && !status?.porcelain}
+          aria-label={`Copy diff${status?.branch ? ` for ${status.branch}` : ""}`}
+          className="flex items-center gap-1 rounded-md border border-zinc-800 px-2 text-[11px] text-zinc-400 hover:bg-zinc-900 disabled:opacity-40"
+        >
+          <Clipboard size={12} aria-hidden="true" /> Copy diff
+        </button>
+      </div>
+      <pre role="region" aria-label={`Git diff${status?.branch ? ` for ${status.branch}` : ""}`} tabIndex={0} className="max-h-56 overflow-auto rounded-md border border-zinc-800 bg-black/30 p-2 font-mono text-[10px] leading-relaxed text-zinc-400">
         {diff?.diff || status?.porcelain || "No diff"}
       </pre>
     </section>

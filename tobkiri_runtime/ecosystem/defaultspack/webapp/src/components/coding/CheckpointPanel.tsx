@@ -286,8 +286,8 @@ export function CheckpointPanel({
       )}
       {message && <p role="status" className="mb-2 rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300">{message}</p>}
 
+      <label htmlFor={selectId} className="mb-1 block text-[11px] font-medium text-zinc-400">Checkpoint snapshot</label>
       <div className="flex items-center gap-1.5">
-        <label htmlFor={selectId} className="sr-only">Checkpoint snapshot</label>
         <select
           id={selectId}
           value={selectedSnapshotId}
@@ -355,7 +355,7 @@ export function CheckpointPanel({
           <ShieldAlert size={11} aria-hidden="true" />
           Restore diff
         </div>
-        <pre className="max-h-28 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
+        <pre role="region" aria-label="Checkpoint restore diff" tabIndex={0} className="max-h-28 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
           {diff?.diff || "No diff"}
         </pre>
       </div>

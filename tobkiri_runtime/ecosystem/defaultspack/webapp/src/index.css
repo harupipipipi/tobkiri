@@ -972,6 +972,36 @@ body {
   }
 }
 
+/* Coding Cockpit is an operations surface: keep every action reachable at a
+   touch-safe size and preserve a visible focus path at high zoom/contrast. */
+.coding-cockpit :is(button, input, select) {
+  min-height: 2.75rem;
+}
+
+.coding-cockpit button {
+  min-width: 2.75rem;
+}
+
+.coding-cockpit :is(button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid rgb(125 211 252);
+  outline-offset: 2px;
+}
+
+.coding-cockpit [role="tabpanel"]:focus-visible,
+.coding-cockpit [role="region"]:focus-visible {
+  border-radius: 0.375rem;
+}
+
+@media (forced-colors: active) {
+  .coding-cockpit :is(button, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .coding-cockpit :is([aria-selected="true"], [aria-current="true"], [aria-pressed="true"]) {
+    border: 2px solid Highlight;
+  }
+}
+
 @media (max-width: 1180px) {
   .rumi-workspace-main {
     --rumi-activity-preview-width: clamp(180px, 32%, 300px);

@@ -1,5 +1,5 @@
 import { Bot, FolderGit2, FolderPlus, Globe2, PlugZap, RefreshCw, ShieldCheck, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import type {
   BrowserArtifact,
@@ -19,6 +19,9 @@ import { RumiLogPanel } from "./RumiLogPanel";
 import { TerminalPanel, type ApprovedTerminalDecision } from "./TerminalPanel";
 import { nextApprovalQueueRefreshSignal } from "./approvalQueueSync";
 import { approvedMcpRetryReason, isMcpApprovalRequest, sameMcpDraft, type McpConnectionDraft, type PendingMcpConnection } from "./mcpApproval";
+import { handleHorizontalTabKey } from "./codingA11y";
+
+const COCKPIT_TABS = ["review", "workspace"] as const;
 
 function workspaceLabel(workspace: CodingWorkspaceRecord): string {
   return workspace.label || workspace.workspace_id;
@@ -99,6 +102,12 @@ export function CodingCockpit({
   const [pendingMcpApproval, setPendingMcpApproval] = useState<PendingMcpApproval | null>(null);
   const [activeCockpitTab, setActiveCockpitTab] = useState<"review" | "workspace">("review");
   const isSidebar = variant === "sidebar";
+  const idPrefix = `coding-cockpit-${useId().replace(/:/g, "")}`;
+  const headingId = `${idPrefix}-heading`;
+  const workspaceSelectId = `${idPrefix}-workspace`;
+  const tabId = (tab: (typeof COCKPIT_TABS)[number]) => `${idPrefix}-${tab}-tab`;
+  const panelId = (tab: (typeof COCKPIT_TABS)[number]) => `${idPrefix}-${tab}-panel`;
+  const activeWorkspaceLabel = selectedWorkspace ? workspaceLabel(selectedWorkspace) : "no workspace";
 
   const loadSidecarState = useCallback(async () => {
     setStatus(null);
@@ -304,13 +313,13 @@ export function CodingCockpit({
           ? "coding-cockpit flex h-full min-h-[520px] w-full flex-col overflow-hidden rounded-2xl border border-zinc-800/80 bg-[#0b0b0f]/95 shadow-[0_18px_46px_rgba(0,0,0,0.28)]"
           : "coding-cockpit flex w-[410px] max-w-[42vw] flex-shrink-0 flex-col overflow-hidden border-l border-zinc-800/60 bg-[#0b0b0f] max-[1180px]:hidden"
       }
-      aria-label={isSidebar ? "Coding widget" : "Coding cockpit"}
+      aria-labelledby={headingId}
     >
       <div className="border-b border-zinc-800/60 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <FolderGit2 size={15} className="text-zinc-300" />
-            <h1 className="truncate text-sm font-semibold text-zinc-100">{isSidebar ? "Coding widget" : "Coding Cockpit"}</h1>
+            <h1 id={headingId} className="truncate text-sm font-semibold text-zinc-100">{isSidebar ? "Coding widget" : "Coding Cockpit"}</h1>
           </div>
           <button
             type="button"
@@ -319,12 +328,17 @@ export function CodingCockpit({
               void loadSidecarState();
             }}
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
-            title="Refresh cockpit"
+            title={`Refresh coding cockpit for ${activeWorkspaceLabel}`}
+            aria-label={`Refresh coding cockpit for ${activeWorkspaceLabel}`}
           >
-            <RefreshCw size={13} />
+            <RefreshCw size={13} aria-hidden="true" />
           </button>
         </div>
+        <label htmlFor={workspaceSelectId} className="mb-1 block text-[11px] font-medium text-zinc-300">
+          Coding workspace
+        </label>
         <select
+          id={workspaceSelectId}
           value={selectedWorkspace?.workspace_id ?? ""}
           onChange={(event) => event.target.value && onWorkspaceSelect?.(event.target.value)}
           className="h-8 w-full rounded-md border border-zinc-800 bg-zinc-950/50 px-2 font-mono text-[11px] text-zinc-300 outline-none"
@@ -341,7 +355,8 @@ export function CodingCockpit({
             type="button"
             onClick={onWorkspaceCreate}
             className="flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md border border-zinc-800 px-2 text-[11px] text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100"
-            title="Add workspace"
+            title="Add a coding workspace"
+            aria-label="Add a coding workspace"
           >
             <FolderPlus size={12} className="shrink-0" />
             <span className="truncate">Add</span>
@@ -351,7 +366,8 @@ export function CodingCockpit({
             onClick={() => activeWorkspaceId && onWorkspaceTrust?.(activeWorkspaceId)}
             disabled={!activeWorkspaceId || selectedWorkspace?.trusted === true}
             className="flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md border border-zinc-800 px-2 text-[11px] text-zinc-400 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
-            title="Trust workspace"
+            title={`Trust coding workspace ${activeWorkspaceLabel}`}
+            aria-label={`Trust coding workspace ${activeWorkspaceLabel}`}
           >
             <ShieldCheck size={12} className="shrink-0" />
             <span className="truncate">{selectedWorkspace?.trusted ? "Trusted" : "Trust"}</span>
@@ -370,10 +386,16 @@ export function CodingCockpit({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="sticky top-0 rumi-layer-panel border-b border-zinc-800/60 bg-[#0b0b0f]/95 p-2 backdrop-blur">
-          <div className="grid grid-cols-2 gap-1 rounded-md border border-zinc-800 bg-black/20 p-0.5">
+          <div role="tablist" aria-label="Coding cockpit views" className="grid grid-cols-2 gap-1 rounded-md border border-zinc-800 bg-black/20 p-0.5">
             <button
+              id={tabId("review")}
+              role="tab"
+              aria-selected={activeCockpitTab === "review"}
+              aria-controls={panelId("review")}
+              tabIndex={activeCockpitTab === "review" ? 0 : -1}
               type="button"
               onClick={() => setActiveCockpitTab("review")}
+              onKeyDown={(event) => handleHorizontalTabKey(event, COCKPIT_TABS, activeCockpitTab, setActiveCockpitTab, tabId)}
               className={`h-7 rounded px-2 text-[11px] font-semibold ${
                 activeCockpitTab === "review" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
               }`}
@@ -381,8 +403,14 @@ export function CodingCockpit({
               Rumi Review
             </button>
             <button
+              id={tabId("workspace")}
+              role="tab"
+              aria-selected={activeCockpitTab === "workspace"}
+              aria-controls={panelId("workspace")}
+              tabIndex={activeCockpitTab === "workspace" ? 0 : -1}
               type="button"
               onClick={() => setActiveCockpitTab("workspace")}
+              onKeyDown={(event) => handleHorizontalTabKey(event, COCKPIT_TABS, activeCockpitTab, setActiveCockpitTab, tabId)}
               className={`h-7 rounded px-2 text-[11px] font-semibold ${
                 activeCockpitTab === "workspace" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
               }`}
@@ -392,11 +420,11 @@ export function CodingCockpit({
           </div>
         </div>
 
-        <div hidden={activeCockpitTab !== "review"}>
+        <div id={panelId("review")} role="tabpanel" aria-labelledby={tabId("review")} tabIndex={0} hidden={activeCockpitTab !== "review"}>
           <ChangeReviewPanel workspaceId={activeWorkspaceId} />
         </div>
 
-        <div hidden={activeCockpitTab !== "workspace"}>
+        <div id={panelId("workspace")} role="tabpanel" aria-labelledby={tabId("workspace")} tabIndex={0} hidden={activeCockpitTab !== "workspace"}>
           <RumiLogPanel workspaceId={activeWorkspaceId} />
           <ApprovalQueue
             onApproved={handleApprovalApproved}
@@ -444,36 +472,43 @@ export function CodingCockpit({
               <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">MCP</h2>
             </div>
             <div className="mb-3 grid gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/40 p-2">
+              <label className="grid gap-1 text-[10px] font-medium text-zinc-400">
+                Server ID
               <input
-                aria-label="MCP server id"
                 value={mcpServerId}
                 onChange={(event) => setMcpServerId(event.target.value)}
                 className="h-7 rounded-md border border-zinc-800 bg-black/30 px-2 font-mono text-[11px] text-zinc-300 outline-none"
                 placeholder="server id"
                 disabled={mcpBusy}
               />
+              </label>
+              <label className="grid gap-1 text-[10px] font-medium text-zinc-400">
+                Command
               <input
-                aria-label="MCP command"
                 value={mcpCommand}
                 onChange={(event) => setMcpCommand(event.target.value)}
                 className="h-7 rounded-md border border-zinc-800 bg-black/30 px-2 font-mono text-[11px] text-zinc-300 outline-none"
                 placeholder="command"
                 disabled={mcpBusy}
               />
+              </label>
+              <label className="grid gap-1 text-[10px] font-medium text-zinc-400">
+                Arguments
               <textarea
-                aria-label="MCP args"
                 value={mcpArgs}
                 onChange={(event) => setMcpArgs(event.target.value)}
                 className="min-h-12 resize-none rounded-md border border-zinc-800 bg-black/30 px-2 py-1 font-mono text-[11px] text-zinc-300 outline-none"
                 placeholder="args, one per line or JSON array"
                 disabled={mcpBusy}
               />
+              </label>
               <button
                 type="button"
                 onClick={() => void connectMcpServer()}
                 disabled={mcpBusy || !mcpServerId.trim() || !mcpCommand.trim()}
                 className="h-7 rounded-md bg-zinc-100 px-2 text-[11px] font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600"
                 title="Connect MCP server"
+                aria-label={`Connect MCP server ${mcpServerId.trim() || "unnamed"}`}
               >
                 {mcpBusy ? "Connecting..." : "Connect MCP"}
               </button>
@@ -564,23 +599,28 @@ export function CodingCockpit({
                 type="button"
                 onClick={() => void refreshSessions()}
                 className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
-                title="Refresh sessions"
+                title={`Refresh agent sessions for ${activeWorkspaceLabel}`}
+                aria-label={`Refresh agent sessions for ${activeWorkspaceLabel}`}
               >
                 <RefreshCw size={13} />
               </button>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-end gap-1.5">
+              <label className="grid min-w-0 flex-1 gap-1 text-[10px] font-medium text-zinc-400">
+                Agent session task
               <input
                 value={sessionTask}
                 onChange={(event) => setSessionTask(event.target.value)}
-                className="h-8 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950/40 px-2 text-[11px] text-zinc-300 outline-none"
+                className="h-8 w-full min-w-0 rounded-md border border-zinc-800 bg-zinc-950/40 px-2 text-[11px] text-zinc-300 outline-none"
                 placeholder="Session task"
               />
+              </label>
               <button
                 type="button"
                 onClick={() => void createSession()}
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white"
-                title="Start session"
+                title={`Start agent session for ${activeWorkspaceLabel}`}
+                aria-label={`Start agent session for ${activeWorkspaceLabel}`}
               >
                 <Bot size={13} />
               </button>

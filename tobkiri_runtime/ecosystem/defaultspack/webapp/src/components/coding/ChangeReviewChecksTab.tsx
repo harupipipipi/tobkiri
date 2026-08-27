@@ -24,12 +24,15 @@ export function ChangeReviewChecksTab({
         <button type="button" onClick={onReloadChecks} disabled={!review || actionBusy === "checks"} className="flex h-7 items-center gap-1 rounded-md border border-zinc-800 px-2 text-[11px] text-zinc-300 hover:bg-zinc-900 disabled:opacity-40">
           <RefreshCw size={12} /> Reload
         </button>
-        <input
-          value={checkCommand}
-          onChange={(event) => onCheckCommandChange(event.target.value)}
-          placeholder="python -m pytest"
-          className="h-7 min-w-0 flex-1 rounded-md border border-zinc-800 bg-black/30 px-2 font-mono text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-zinc-600"
-        />
+        <label className="min-w-0 flex-1 text-[11px] font-medium text-zinc-400">
+          Check command
+          <input
+            value={checkCommand}
+            onChange={(event) => onCheckCommandChange(event.target.value)}
+            placeholder="python -m pytest"
+            className="mt-1 h-7 w-full rounded-md border border-zinc-800 bg-black/30 px-2 font-mono text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-zinc-600"
+          />
+        </label>
         <button type="button" onClick={() => onRunCheck(checkCommand)} disabled={!review || !checkCommand.trim() || actionBusy?.startsWith("check-")} className="flex h-7 items-center gap-1 rounded-md bg-zinc-100 px-2 text-[11px] font-semibold text-zinc-950 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-600">
           <Play size={12} /> Run
         </button>

@@ -12,6 +12,7 @@ import { CodingCockpit } from "./CodingCockpit";
 import { DiffPanel } from "./DiffPanel";
 import { TERMINAL_HISTORY_POLICY, TerminalPanel } from "./TerminalPanel";
 import { codingApprovalRequestId } from "./CheckpointPanel";
+import { nextHorizontalTab } from "./codingA11y";
 import {
   codingActionRequiresApproval,
   nextApprovalQueueRefreshSignal,
@@ -92,6 +93,8 @@ test("diff panel renders status, content, and an operable refresh control", () =
   assert.match(html, /-old/);
   assert.match(html, /\+new/);
   assert.match(html, /aria-label="Refresh diff"/);
+  assert.match(html, /role="region" aria-label="Git diff for main"/);
+  assert.match(html, /Copy diff/);
 });
 
 test("checkpoint panel renders refresh and restore-review controls for supplied snapshots", () => {
@@ -171,6 +174,32 @@ test("coding cockpit renders workspace and sidecar sections", () => {
   assert.match(html, /Browser/);
   assert.match(html, /MCP/);
   assert.match(html, /Agents/);
+  assert.match(html, />Coding workspace</);
+  assert.match(html, /role="tablist" aria-label="Coding cockpit views"/);
+  assert.match(html, /role="tab" aria-selected="true"/);
+  assert.match(html, /role="tabpanel"/);
+  assert.match(html, /role="list" aria-label="open reviews"/);
+  assert.match(html, /role="tablist" aria-label="Review details"/);
+});
+
+test("horizontal cockpit tabs follow APG arrow, Home, and End behavior", () => {
+  const tabs = ["review", "workspace"] as const;
+
+  assert.equal(nextHorizontalTab(tabs, "review", "ArrowRight"), "workspace");
+  assert.equal(nextHorizontalTab(tabs, "workspace", "ArrowRight"), "review");
+  assert.equal(nextHorizontalTab(tabs, "review", "ArrowLeft"), "workspace");
+  assert.equal(nextHorizontalTab(tabs, "workspace", "Home"), "review");
+  assert.equal(nextHorizontalTab(tabs, "review", "End"), "workspace");
+  assert.equal(nextHorizontalTab(tabs, "review", "Tab"), null);
+});
+
+test("coding cockpit interaction and forced-color accessibility rules stay scoped", () => {
+  const css = readFileSync(resolve(import.meta.dirname, "../../index.css"), "utf8");
+
+  assert.match(css, /\.coding-cockpit :is\(button, input, select\)/);
+  assert.match(css, /min-height: 2\.75rem/);
+  assert.match(css, /@media \(forced-colors: active\)/);
+  assert.match(css, /\[aria-selected="true"\]/);
 });
 
 test("MCP requester never approves its own request", () => {

@@ -1,5 +1,5 @@
 import { RefreshCw, ShieldAlert } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { CodingApprovalDecision, CodingApprovalRequest } from "../../lib/api";
 import { cn } from "../../lib/cn";
@@ -56,6 +56,7 @@ export function ApprovalQueue({
   const [busy, setBusy] = useState<{ id: string; decision: "approve" | "deny" } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeDecisionsRef = useRef(new Set<string>());
+  const headingId = `approval-queue-${useId().replace(/:/g, "")}`;
 
   const load = useCallback(async () => {
     if (initialApprovals) return;
@@ -139,14 +140,15 @@ export function ApprovalQueue({
   };
 
   return (
-    <section className="border-b border-zinc-800/60 p-3" aria-label="Approval queue">
+    <section className="border-b border-zinc-800/60 p-3" aria-labelledby={headingId} aria-busy={busy !== null}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <ShieldAlert size={14} className="text-amber-300" />
-          <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Approvals</h2>
+          <h2 id={headingId} className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Approvals</h2>
           <span
             className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500"
             title="Active pending approvals"
+            aria-label={`${pendingCount} active pending approvals`}
           >
             {pendingCount}
           </span>
@@ -156,8 +158,9 @@ export function ApprovalQueue({
           onClick={() => void load()}
           className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
           title="Refresh approvals"
+          aria-label={`Refresh approvals, ${pendingCount} active`}
         >
-          <RefreshCw size={13} />
+          <RefreshCw size={13} aria-hidden="true" />
         </button>
       </div>
 
@@ -181,7 +184,7 @@ export function ApprovalQueue({
         )}
         {historyRequests.length > 0 && (
           <div className="space-y-2">
-            <p className="px-1 text-[10px] uppercase tracking-wide text-zinc-600">Recent approval history</p>
+            <h3 className="px-1 text-[10px] uppercase tracking-wide text-zinc-600">Recent approval history</h3>
             {historyRequests.map((request) => renderApprovalRequest(request, false))}
           </div>
         )}

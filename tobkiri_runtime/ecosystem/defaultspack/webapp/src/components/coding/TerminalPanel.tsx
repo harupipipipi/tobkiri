@@ -1,5 +1,5 @@
 import { Play, Shield, Terminal as TerminalIcon, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { CodingTerminalResponse } from "../../lib/api";
 import { cn } from "../../lib/cn";
@@ -46,6 +46,9 @@ export function TerminalPanel({
   const [busy, setBusy] = useState(false);
   const handledApprovalKeys = useRef<Set<string>>(new Set());
   const sessionPendingApprovals = useRef<Map<string, TerminalLog>>(new Map());
+  const idPrefix = `terminal-panel-${useId().replace(/:/g, "")}`;
+  const headingId = `${idPrefix}-heading`;
+  const commandId = `${idPrefix}-command`;
 
   useEffect(() => {
     setLogs([]);
@@ -142,10 +145,10 @@ export function TerminalPanel({
   }, [approvedDecision, onActionResult, workspaceId]);
 
   return (
-    <section className="border-b border-zinc-800/60 p-3" aria-label="Terminal">
+    <section className="border-b border-zinc-800/60 p-3" aria-labelledby={headingId} aria-busy={busy}>
       <div className="mb-2 flex items-center gap-2">
         <TerminalIcon size={14} className="text-emerald-300" />
-        <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Terminal</h2>
+        <h2 id={headingId} className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Terminal</h2>
         <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-2 py-1 text-[10px] text-emerald-200" title="Commands and output remain only in this private panel session">
           <Shield size={10} /> Memory only
         </span>
@@ -168,8 +171,10 @@ export function TerminalPanel({
         Private session · not saved to browser storage · cleared when this panel closes
       </p>
 
+      <label htmlFor={commandId} className="mb-1 block text-[11px] font-medium text-zinc-400">Terminal command</label>
       <div className="flex items-center gap-1.5">
         <input
+          id={commandId}
           value={command}
           onChange={(event) => setCommand(event.target.value)}
           onKeyDown={(event) => {
@@ -183,12 +188,13 @@ export function TerminalPanel({
           onClick={() => void run()}
           className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-40"
           title="Run command"
+          aria-label={`Run terminal command ${command.trim() || "(empty)"}${workspaceId ? ` in workspace ${workspaceId}` : ""}`}
         >
           <Play size={13} />
         </button>
       </div>
 
-      <div className="mt-2 space-y-2">
+      <div className="mt-2 space-y-2" role="log" aria-live="polite" aria-relevant="additions">
         {logs.map((log) => (
           <div key={log.id} className="rounded-md border border-zinc-800 bg-black/30 p-2">
             <div className="flex items-center justify-between gap-2">
