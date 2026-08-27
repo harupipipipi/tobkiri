@@ -413,7 +413,12 @@ def test_profile_update_requires_explicit_plan_and_preserves_old_provenance() ->
     assert plan["profile_updates"]
     assert plan["active_work_impact"][0]["required_action"] == "old_snapshot_preserved"
     with pytest.raises(ProfileAdoptionError, match="Host-owned one-shot approval"):
-        apply_materialization_plan(team, plan, profiles={new_profile["profile_id"]: new_profile})
+        apply_materialization_plan(
+            team,
+            plan,
+            profiles={new_profile["profile_id"]: new_profile},
+            active_work_strategy="drain",
+        )
     updated = apply_materialization_plan(
         team,
         plan,
