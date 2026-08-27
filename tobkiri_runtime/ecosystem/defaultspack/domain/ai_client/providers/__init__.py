@@ -16,6 +16,8 @@ from ..api_key_store import (
     read_provider_api_key,
 )
 from ..provider_program import (
+    PROVIDER_ID_ALIASES,
+    canonical_provider_id,
     local_openai_runtime_manifests,
     missing_program_provider_ids,
     provider_program_manifests,
@@ -344,7 +346,7 @@ _CURATED_PROVIDER_METADATA: Dict[str, Dict[str, Any]] = {
         "base_url_envs": ["LLAMACPP_BASE_URL"],
         "catalog_only": True,
         "supports_invoke": False,
-        "default_model": "local-gguf",
+        "default_model": "",
         "default_base_url": "http://127.0.0.1:8080/v1",
         "capabilities": ["chat", "embedding", "local", "openai_compatible"],
     },
@@ -597,7 +599,7 @@ _CURATED_PROVIDER_MODELS: Dict[str, List[Dict[str, Any]]] = {
         {"model_id": "qwen2.5-coder:32b", "name": "Qwen 2.5 Coder 32B", "type": "chat"},
         {"model_id": "gpt-oss-20b", "name": "GPT OSS 20B", "type": "chat"},
     ],
-    "llamacpp": [{"model_id": "local-gguf", "name": "Local GGUF Model", "type": "chat"}],
+    "llamacpp": [],
     "openai_compatible": [
         {"model_id": "custom-model", "name": "Custom Model", "type": "chat"},
     ],
@@ -628,7 +630,7 @@ _BEST_MODEL_BY_PROVIDER = {
     "ollama": "llama3.1:8b",
     "lmstudio": "deepseek-r1",
     "vllm": "deepseek-r1",
-    "llamacpp": "local-gguf",
+    "llamacpp": "",
     "openai_compatible": "custom-model",
     "rumi": "rumi",
 }
@@ -1751,6 +1753,7 @@ def _annotate_model_collisions(models):
 
 
 def get_all_known_models(provider_id=None, active_provider_ids=None):
+    provider_id = canonical_provider_id(provider_id) if provider_id else None
     catalog_map = get_provider_catalog_map(active_provider_ids=active_provider_ids)
     if provider_id:
         provider_ids = [provider_id]
@@ -2060,6 +2063,14 @@ def _instantiate_manifest_provider(
             requires_credential = bool(manifest.get("credential_required", True))
             if not api_key and requires_credential:
                 return None
+            provider_cls = OPENAI_COMPATIBLE_PROVIDER_CLASSES.get(provider_id)
+            if provider_cls is not None and provider_id == "llamacpp":
+                return provider_cls.from_manifest(
+                    manifest,
+                    api_key=api_key,
+                    model_manifests=[],
+                    allow_declared_models=False,
+                )
             return OpenAICompatibleProvider(
                 provider_id=provider_id,
                 display_name=str(manifest.get("display_name") or provider_id),
@@ -2100,17 +2111,25 @@ def _instantiate_manifest_provider(
 def _manifest_credential(provider_id: str) -> str:
     """Resolve a selected connection without consulting process globals."""
 
-    value = read_provider_api_key(provider_id, "legacy")
-    if value:
-        return str(value).strip()
-    for connection in provider_named_api_keys(provider_id):
-        if not connection.get("configured"):
-            continue
-        api_id = str(connection.get("api_id") or "").strip()
-        if api_id:
-            value = read_provider_api_key(provider_id, api_id)
-            if value:
-                return str(value).strip()
+    canonical_id = canonical_provider_id(provider_id)
+    candidates = [canonical_id]
+    candidates.extend(
+        alias
+        for alias, target in PROVIDER_ID_ALIASES.items()
+        if target == canonical_id
+    )
+    for candidate in candidates:
+        value = read_provider_api_key(candidate, "legacy")
+        if value:
+            return str(value).strip()
+        for connection in provider_named_api_keys(candidate):
+            if not connection.get("configured"):
+                continue
+            api_id = str(connection.get("api_id") or "").strip()
+            if api_id:
+                value = read_provider_api_key(candidate, api_id)
+                if value:
+                    return str(value).strip()
     return ""
 
 

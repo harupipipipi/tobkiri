@@ -31,6 +31,7 @@ from domain.ai_client.model_metadata_schema import (
 from domain.ai_client import rumi_process
 from domain.ai_client.rumi_process_runner import RumiProcessRunner
 from domain.ai_client.oauth_store import provider_has_oauth_connection
+from domain.ai_client.provider_program import canonical_provider_id
 from domain.ai_client.providers import (
     _cloud_runtime_enabled,
     build_profile_catalog,
@@ -146,7 +147,7 @@ class AIClient:
 
     def register_provider(self, name, provider):
         """プロバイダーを動的に登録する。"""
-        self._providers[name] = provider
+        self._providers[canonical_provider_id(name)] = provider
 
     def register_profile(self, name, profile=None, provider="", model="", **kwargs):
         """互換的にプロファイルを登録する。"""
@@ -157,9 +158,12 @@ class AIClient:
             if profile is not None and not provider:
                 provider = str(profile)
             if provider:
-                payload["provider"] = provider
+                payload["provider"] = canonical_provider_id(provider)
             if model:
                 payload["model"] = model
+        for key in ("provider", "provider_id"):
+            if payload.get(key):
+                payload[key] = canonical_provider_id(payload[key])
         self._profiles[name] = payload
 
     def _active_provider_ids(self):
@@ -392,6 +396,7 @@ class AIClient:
                 else:
                     provider_name = "stub"
                     model_name = model_str
+        provider_name = canonical_provider_id(provider_name)
         provider = self._providers.get(provider_name, self._providers["stub"])
         return provider, model_name
 
@@ -1664,6 +1669,7 @@ class AIClient:
 
     def list_models(self, provider=None):
         """登録済みプロバイダーの既知モデル一覧を返す。"""
+        provider = canonical_provider_id(provider) if provider is not None else None
         active_provider_ids = self._active_provider_ids()
         if provider is not None and provider not in active_provider_ids:
             return []

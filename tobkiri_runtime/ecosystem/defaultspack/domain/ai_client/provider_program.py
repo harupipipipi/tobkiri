@@ -11,6 +11,16 @@ from __future__ import annotations
 from typing import Any, Dict
 
 
+PROVIDER_ID_ALIASES = {"llama_cpp": "llamacpp"}
+
+
+def canonical_provider_id(provider_id: Any) -> str:
+    """Return the canonical provider identity for saved legacy references."""
+
+    value = str(provider_id or "").strip()
+    return PROVIDER_ID_ALIASES.get(value, value)
+
+
 # Derived from the provider-completion program matrix (2026-07-11).  Existing
 # component manifests take precedence; these records make every remaining
 # required connection visible and give it one canonical inventory strategy.
