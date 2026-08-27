@@ -22,7 +22,9 @@ def run(input_data, context, *, settings_owner=None):
             profile_id=model,
             conversation_id=input_data.get("conversation_id"),
         )["level"]
-    params = model_settings_service.apply_thinking_control(str(model), params)
+    apply_thinking_control = getattr(model_settings_service, "apply_thinking_control", None)
+    if callable(apply_thinking_control):
+        params = apply_thinking_control(str(model), params)
 
     stream_id = gen_id()
 
