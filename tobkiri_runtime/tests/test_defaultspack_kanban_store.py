@@ -61,6 +61,44 @@ def test_kanban_store_bootstraps_board_and_moves_cards(tmp_path):
     }
 
 
+def test_kanban_store_reorders_cards_and_enforces_wip_limit(tmp_path):
+    store = _store(tmp_path / "kanban.db")
+    board = store.get_or_create_board("workspace", "accessible-board")
+    columns = store.list_columns(board["board_id"])
+    backlog = _column_by_title(columns, "Backlog")
+    doing = _column_by_title(columns, "Doing")
+    store.update_column(doing["column_id"], {"wip_limit": 1})
+
+    first = store.create_card(board["board_id"], {"title": "First"})
+    second = store.create_card(board["board_id"], {"title": "Second"})
+    third = store.create_card(board["board_id"], {"title": "Third"})
+
+    store.move_card(
+        third["card_id"],
+        {
+            "column_id": backlog["column_id"],
+            "before_card_id": first["card_id"],
+        },
+    )
+    backlog_cards = [
+        card
+        for card in store.list_cards(board["board_id"])
+        if card["column_id"] == backlog["column_id"]
+    ]
+    assert [card["title"] for card in backlog_cards] == [
+        "Third",
+        "First",
+        "Second",
+    ]
+    assert [card["position"] for card in backlog_cards] == [0, 1, 2]
+
+    store.move_card(first["card_id"], {"column_id": doing["column_id"]})
+    with pytest.raises(RuntimeError, match="WIP limit 1 is reached"):
+        store.move_card(second["card_id"], {"column_id": doing["column_id"]})
+
+    assert store.require_card(second["card_id"])["column_id"] == backlog["column_id"]
+
+
 def test_kanban_store_rejects_empty_title_updates(tmp_path):
     from domain.kanban.models import KanbanValidationError
 

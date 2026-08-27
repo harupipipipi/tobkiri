@@ -415,11 +415,29 @@ class KanbanStore:
             "review": "review",
             "done": "done",
         }.get(str(target_column.get("title") or "").casefold(), current.get("status"))
-        return self.update_card(
-            card_id,
-            {**dict(updates or {}), "column_id": column_id, "status": status},
-            event_type=event_type,
+        merged = {
+            **current,
+            **dict(updates or {}),
+            "column_id": column_id,
+            "status": status,
+        }
+        record = _card_record(merged, card_id=str(card_id), column_id=column_id)
+        for key in ("before_card_id", "after_card_id"):
+            value = str(updates.get(key) or "").strip()
+            if value:
+                record[key] = value
+        self._apply(
+            "card.move",
+            {"board_id": str(current["board_id"]), "record": record},
         )
+        card = self.require_card(str(card_id))
+        self._append_event(
+            str(current["board_id"]),
+            event_type,
+            {"card_id": str(card_id), "updates": dict(updates or {})},
+            card_id=str(card_id),
+        )
+        return card
 
     def delete_card(self, card_id: str) -> dict[str, Any]:
         """Delete one card through the canonical owner."""

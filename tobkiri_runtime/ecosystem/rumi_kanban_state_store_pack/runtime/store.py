@@ -372,12 +372,107 @@ def _card_transition(
             raise KeyError("Kanban card is unknown")
         board["updated_at_ms"] = now_ms
         return {"deleted_card_id": record_id}
+    if name == "card.move":
+        return _move_card(board, record_id, arguments["record"], now_ms)
     current = board["cards"].get(record_id, {})
     incoming = {**current, **arguments["record"], "id": record_id}
     card = _card(incoming, board, now_ms)
     board["cards"][record_id] = card
     board["updated_at_ms"] = now_ms
     return {"card": _copy(card)}
+
+
+def _move_card(
+    board: dict[str, Any],
+    record_id: str,
+    record: Mapping[str, Any],
+    now_ms: int,
+) -> dict[str, Any]:
+    """Move and reorder one card atomically inside the canonical owner."""
+
+    current = board["cards"].get(record_id)
+    if not isinstance(current, Mapping):
+        raise KeyError("Kanban card is unknown")
+    target_column_id = _identifier(
+        record.get("column_id") or current.get("column_id") or ""
+    )
+    target_column = board["columns"].get(target_column_id)
+    if not isinstance(target_column, Mapping):
+        raise KeyError("Kanban card column is unknown")
+    source_column_id = str(current.get("column_id") or "")
+    target_cards = sorted(
+        (
+            card
+            for card_id, card in board["cards"].items()
+            if card_id != record_id and card.get("column_id") == target_column_id
+        ),
+        key=lambda card: (
+            int(card.get("position") or 0),
+            int(card.get("created_at_ms") or 0),
+            str(card.get("id") or ""),
+        ),
+    )
+    wip_limit = target_column.get("wip_limit")
+    if (
+        target_column_id != source_column_id
+        and isinstance(wip_limit, int)
+        and wip_limit > 0
+        and len(target_cards) >= wip_limit
+    ):
+        raise KanbanConflict(f"WIP limit {wip_limit} is reached")
+
+    before_card_id = str(record.get("before_card_id") or "").strip()
+    after_card_id = str(record.get("after_card_id") or "").strip()
+    if before_card_id and after_card_id:
+        raise ValueError("Kanban move accepts only one relative card")
+    target_ids = [str(card.get("id") or "") for card in target_cards]
+    if before_card_id:
+        if before_card_id not in target_ids:
+            raise KanbanConflict("relative Kanban card is unavailable")
+        target_index = target_ids.index(before_card_id)
+    elif after_card_id:
+        if after_card_id not in target_ids:
+            raise KanbanConflict("relative Kanban card is unavailable")
+        target_index = target_ids.index(after_card_id) + 1
+    elif "position" in record:
+        target_index = max(0, min(len(target_cards), int(record["position"])))
+    else:
+        target_index = len(target_cards)
+
+    move_record = {
+        key: value
+        for key, value in record.items()
+        if key not in {"before_card_id", "after_card_id"}
+    }
+    moved = _card(
+        {**current, **move_record, "id": record_id, "column_id": target_column_id},
+        board,
+        now_ms,
+    )
+    target_cards.insert(target_index, moved)
+
+    if source_column_id != target_column_id:
+        source_cards = sorted(
+            (
+                card
+                for card_id, card in board["cards"].items()
+                if card_id != record_id and card.get("column_id") == source_column_id
+            ),
+            key=lambda card: (
+                int(card.get("position") or 0),
+                int(card.get("created_at_ms") or 0),
+                str(card.get("id") or ""),
+            ),
+        )
+        for position, card in enumerate(source_cards):
+            card["position"] = position
+            card["updated_at_ms"] = now_ms
+    for position, card in enumerate(target_cards):
+        card["position"] = position
+        card["updated_at_ms"] = now_ms
+        board["cards"][str(card["id"])] = card
+    board["updated_at_ms"] = now_ms
+    return {"card": _copy(board["cards"][record_id])}
 
 
 def _column(value: Mapping[str, Any], now_ms: int) -> dict[str, Any]:
