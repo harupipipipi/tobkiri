@@ -2096,6 +2096,12 @@ def _instantiate_manifest_provider(
         provider_cls = _import_provider_entrypoint(entrypoint)
         if provider_id.startswith("xiaomi-token-plan-"):
             return provider_cls(api_key=str(injected_api_key or "").strip())
+        if provider_id == "ollama":
+            return provider_cls(
+                api_key=str(
+                    injected_api_key or _manifest_credential(provider_id) or ""
+                ).strip()
+            )
         return provider_cls()
     return None
 

@@ -217,8 +217,7 @@ def test_url_normalization_no_auth_and_optional_proxy_auth(monkeypatch):
     assert "Authorization" not in provider._headers(content_type="")
 
     monkeypatch.setenv("OLLAMA_HOST", "https://proxy.example.test/team/v1")
-    monkeypatch.setenv("OLLAMA_API_KEY", "proxy-token")
-    authenticated = OllamaProvider()
+    authenticated = OllamaProvider(api_key="proxy-token")
     assert authenticated.BASE_URL == "https://proxy.example.test/team/v1"
     assert authenticated._server_base_url() == "https://proxy.example.test/team"
     assert authenticated._headers(content_type="")["Authorization"] == ("Bearer proxy-token")
@@ -327,6 +326,15 @@ def test_catalog_pack_owns_native_provider_without_static_inventory():
     manifest = _provider_manifest_map()["ollama"]
     assert manifest["adapter"] == "python_entrypoint"
     assert isinstance(_instantiate_manifest_provider(manifest), OllamaProvider)
+    with patch(
+        "domain.ai_client.providers._manifest_credential",
+        return_value="scoped-proxy-token",
+    ):
+        scoped = _instantiate_manifest_provider(manifest)
+    assert isinstance(scoped, OllamaProvider)
+    assert scoped._headers(content_type="")["Authorization"] == (
+        "Bearer scoped-proxy-token"
+    )
     entry = get_provider_catalog_map()["ollama"]
     assert entry["default_model"] == ""
     assert entry["availability"]["supports_invoke"] is True

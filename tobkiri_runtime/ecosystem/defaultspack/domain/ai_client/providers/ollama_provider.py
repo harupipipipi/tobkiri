@@ -68,9 +68,8 @@ class OllamaProvider(OpenAICompatibleProvider):
             self._detail_workers = max(1, min(8, int(detail_workers)))
         except (TypeError, ValueError):
             self._detail_workers = 4
-        resolved_api_key = str(api_key or os.environ.get("OLLAMA_API_KEY", "") or "").strip()
         super().__init__(
-            api_key=resolved_api_key,
+            api_key=str(api_key or "").strip(),
             base_url=explicit_inference,
             provider_id=self.provider_name,
             display_name=self.display_name,
