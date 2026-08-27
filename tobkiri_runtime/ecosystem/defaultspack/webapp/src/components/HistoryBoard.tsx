@@ -54,6 +54,83 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Full History uses the ARIA tree pattern: groups and conversations are
+ * treeitems, nested content is a group, and linear arrows/Home/End move among
+ * visible items. Expandable items use Right/Left; Enter/Space activates them.
+ */
+const HISTORY_TREE_ITEM_SELECTOR = '[data-history-tree-item="true"]';
+
+function visibleHistoryTreeItems(tree: HTMLElement): HTMLElement[] {
+  return Array.from(tree.querySelectorAll<HTMLElement>(HISTORY_TREE_ITEM_SELECTOR))
+    .filter((item) => (
+      item.offsetParent !== null
+      && !item.closest('[aria-hidden="true"], [inert]')
+    ));
+}
+
+function focusLinearHistoryTreeItem(
+  event: React.KeyboardEvent<HTMLElement>,
+): boolean {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    return false;
+  }
+  const tree = event.currentTarget.closest<HTMLElement>('[role="tree"]');
+  if (!tree) return false;
+  const items = visibleHistoryTreeItems(tree);
+  const currentIndex = items.indexOf(event.currentTarget);
+  if (currentIndex < 0 || items.length === 0) return false;
+  const targetIndex = event.key === "Home"
+    ? 0
+    : event.key === "End"
+      ? items.length - 1
+      : event.key === "ArrowDown"
+        ? Math.min(items.length - 1, currentIndex + 1)
+        : Math.max(0, currentIndex - 1);
+  event.preventDefault();
+  items[targetIndex]?.focus();
+  return true;
+}
+
+function focusHistoryTreeParent(event: React.KeyboardEvent<HTMLElement>): boolean {
+  const tree = event.currentTarget.closest<HTMLElement>('[role="tree"]');
+  if (!tree) return false;
+  const items = visibleHistoryTreeItems(tree);
+  const currentIndex = items.indexOf(event.currentTarget);
+  const currentLevel = Number(event.currentTarget.getAttribute("aria-level") || 1);
+  for (let index = currentIndex - 1; index >= 0; index -= 1) {
+    const candidateLevel = Number(items[index]?.getAttribute("aria-level") || 1);
+    if (candidateLevel < currentLevel) {
+      event.preventDefault();
+      items[index]?.focus();
+      return true;
+    }
+  }
+  return false;
+}
+
+function focusHistoryTreeFirstChild(event: React.KeyboardEvent<HTMLElement>): boolean {
+  const tree = event.currentTarget.closest<HTMLElement>('[role="tree"]');
+  if (!tree) return false;
+  const items = visibleHistoryTreeItems(tree);
+  const currentIndex = items.indexOf(event.currentTarget);
+  const currentLevel = Number(event.currentTarget.getAttribute("aria-level") || 1);
+  const candidate = items[currentIndex + 1];
+  if (candidate && Number(candidate.getAttribute("aria-level") || 1) > currentLevel) {
+    event.preventDefault();
+    candidate.focus();
+    return true;
+  }
+  return false;
+}
+
+function restoreHistoryTreeItemFocus(itemId: string): void {
+  window.requestAnimationFrame(() => {
+    const items = document.querySelectorAll<HTMLElement>(HISTORY_TREE_ITEM_SELECTOR);
+    Array.from(items).find((item) => item.dataset.historyTreeId === itemId)?.focus();
+  });
+}
+
 // ============================================================
 // Types
 // ============================================================
@@ -156,6 +233,24 @@ export type ChatGroup = {
   workspaceRoot?: string | null;
   rumiDataPath?: string | null;
 };
+
+export type HistoryMoveTarget = {
+  id: string;
+  label: string;
+};
+
+export function buildHistoryMoveTargets(
+  groups: ChatGroup[],
+  ancestors: string[] = [],
+): HistoryMoveTarget[] {
+  return groups.flatMap((group) => {
+    const path = [...ancestors, group.title];
+    return [
+      { id: group.id, label: path.join(" / ") },
+      ...buildHistoryMoveTargets(group.subGroups, path),
+    ];
+  });
+}
 
 /** @deprecated API/storage compatibility alias. Use ProjectInfo in new UI code. */
 export type CustomGroupInfo = ProjectInfo;
@@ -684,10 +779,14 @@ interface SortableChatItemProps {
   onToggleStarred?: (chat: ChatItem) => void;
   onToggleChildren: (chatId: string) => void;
   isChildrenExpanded: (chatId: string) => boolean;
+  moveTargets: HistoryMoveTarget[];
+  currentGroupId: string;
+  canMove?: boolean;
+  onMoveChat: (chatId: string, targetGroupId: string) => void;
   depth?: number;
 }
 
-function SortableChatItem({ chat, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onRename, onTogglePinned, onToggleStarred, onToggleChildren, isChildrenExpanded, depth = 0 }: SortableChatItemProps) {
+function SortableChatItem({ chat, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onRename, onTogglePinned, onToggleStarred, onToggleChildren, isChildrenExpanded, moveTargets, currentGroupId, canMove = true, onMoveChat, depth = 0 }: SortableChatItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(chat.title);
   const children = chat.children ?? [];
@@ -699,7 +798,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: chat.id,
     data: { type: 'Chat', chat },
-    disabled: isEditing || selectionMode,
+    disabled: isEditing || selectionMode || !canMove,
   });
 
   const style = {
@@ -722,8 +821,14 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
       <div
         ref={setNodeRef}
         style={style}
-        {...(selectionMode ? { role: "button", "aria-selected": isSelected } : attributes)}
-        {...(selectionMode ? {} : listeners)}
+        role="treeitem"
+        aria-level={depth + 2}
+        aria-current={isActive ? "page" : undefined}
+        aria-selected={selectionMode ? isSelected : undefined}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-label={`${chat.title}${chat.date ? `, ${chat.date}` : ""}`}
+        data-history-tree-item="true"
+        data-history-tree-id={`chat:${chat.id}`}
         draggable={!selectionMode}
         onDragStart={(event) => {
           if (selectionMode) return;
@@ -742,7 +847,26 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
         )}
         onClick={() => { if (!isEditing) onChatSelect(chat.id); }}
         onKeyDown={(event) => {
-          if (!selectionMode || isEditing) return;
+          if (event.target !== event.currentTarget) return;
+          if (isEditing || focusLinearHistoryTreeItem(event)) return;
+          if (event.key === "ArrowRight" && hasChildren) {
+            if (!expanded) {
+              event.preventDefault();
+              onToggleChildren(chat.id);
+            } else {
+              focusHistoryTreeFirstChild(event);
+            }
+            return;
+          }
+          if (event.key === "ArrowLeft") {
+            if (expanded) {
+              event.preventDefault();
+              onToggleChildren(chat.id);
+            } else {
+              focusHistoryTreeParent(event);
+            }
+            return;
+          }
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             onChatSelect(chat.id);
@@ -751,7 +875,21 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
         onDoubleClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
         tabIndex={0}
       >
-        <GripVertical size={10} className="w-3 text-zinc-700 group-hover/chat:text-zinc-500 flex-shrink-0" />
+        {selectionMode || !canMove ? (
+          <GripVertical size={10} aria-hidden="true" className="w-3 text-zinc-700 flex-shrink-0" />
+        ) : (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            onClick={(event) => event.stopPropagation()}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-zinc-700 hover:bg-zinc-800 hover:text-zinc-300 focus-visible:ring-1 focus-visible:ring-emerald-400/70"
+            aria-label={`Move ${chat.title}. Press Space to pick up, arrows to move, Space to drop, or Escape to cancel.`}
+            title="Drag or use keyboard to move"
+          >
+            <GripVertical size={11} aria-hidden="true" />
+          </button>
+        )}
         {icon}
         {hasChildren && (
           <button
@@ -760,8 +898,10 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
               e.stopPropagation();
               onToggleChildren(chat.id);
             }}
-            className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100 focus-visible:ring-1 focus-visible:ring-emerald-400/70"
             title={expanded ? "子スレッドを閉じる" : "子スレッドを開く"}
+            aria-label={`${chat.title} の子スレッドを${expanded ? "閉じる" : "開く"}`}
+            aria-expanded={expanded}
           >
             <ChevronRight size={13} className={cn("transition-transform", expanded && "rotate-90")} />
           </button>
@@ -795,6 +935,25 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
             {selectionLabel}
           </span>
         )}
+        {!selectionMode && canMove && moveTargets.some((target) => target.id !== currentGroupId) && (
+          <select
+            value=""
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+            onChange={(event) => {
+              event.stopPropagation();
+              if (event.target.value) onMoveChat(chat.id, event.target.value);
+            }}
+            aria-label={`Move ${chat.title} to project`}
+            title="Move to project"
+            className="h-7 max-w-20 rounded border border-zinc-700 bg-zinc-900 px-1 text-[10px] text-zinc-300 opacity-0 group-hover/chat:opacity-100 group-focus-within/chat:opacity-100 focus:opacity-100"
+          >
+            <option value="">Move…</option>
+            {moveTargets.filter((target) => target.id !== currentGroupId).map((target) => (
+              <option key={target.id} value={target.id}>{target.label}</option>
+            ))}
+          </select>
+        )}
         <ConversationPinStarMenu
           isPinned={chat.isPinned}
           isStarred={chat.isStarred}
@@ -803,7 +962,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
         />
       </div>
       {expanded && (
-        <div className="space-y-0.5">
+        <div role="group" className="space-y-0.5">
           {children.map((child) => (
             <SortableChatItem
               key={child.id}
@@ -818,6 +977,10 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
               onToggleStarred={onToggleStarred}
               onToggleChildren={onToggleChildren}
               isChildrenExpanded={isChildrenExpanded}
+              moveTargets={moveTargets}
+              currentGroupId={currentGroupId}
+              canMove={false}
+              onMoveChat={onMoveChat}
               depth={depth + 1}
             />
           ))}
@@ -846,11 +1009,13 @@ interface SubGroupProps {
   onToggleStarred?: (chat: ChatItem) => void;
   onToggleChatChildren: (chatId: string) => void;
   isChatChildrenExpanded: (chatId: string) => boolean;
+  moveTargets: HistoryMoveTarget[];
+  onMoveChat: (chatId: string, targetGroupId: string) => void;
   onGroupHeaderClick: (group: ChatGroup) => void;
   depth: number;
 }
 
-function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onChatRename, onToggleCollapse, onRenameGroup, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, depth }: SubGroupProps) {
+function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onChatRename, onToggleCollapse, onRenameGroup, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, moveTargets, onMoveChat, onGroupHeaderClick, depth }: SubGroupProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(group.title);
 
@@ -897,9 +1062,42 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
       )}
     >
       <div
-        className="flex h-7 items-center gap-1 px-1 rounded-[3px] hover:bg-zinc-800/50 cursor-default group/folder"
+        role="treeitem"
+        aria-level={depth + 2}
+        aria-expanded={!group.isCollapsed}
+        aria-label={`${group.title}, ${total} chats`}
+        tabIndex={0}
+        data-history-tree-item="true"
+        data-history-tree-id={`group:${group.id}`}
+        className="flex min-h-9 items-center gap-1 px-1 rounded-[3px] hover:bg-zinc-800/50 cursor-default group/folder outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-emerald-400/70"
         style={{ paddingLeft: `${depth * 14 + 4}px` }}
         onClick={() => onGroupHeaderClick(group)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (isEditing || focusLinearHistoryTreeItem(event)) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onGroupHeaderClick(group);
+            return;
+          }
+          if (event.key === "ArrowRight") {
+            if (group.isCollapsed) {
+              event.preventDefault();
+              onToggleCollapse(group.id);
+            } else {
+              focusHistoryTreeFirstChild(event);
+            }
+            return;
+          }
+          if (event.key === "ArrowLeft") {
+            if (!group.isCollapsed) {
+              event.preventDefault();
+              onToggleCollapse(group.id);
+            } else {
+              focusHistoryTreeParent(event);
+            }
+          }
+        }}
       >
         <ChevronRight size={13} className={cn("text-zinc-600 transition-transform duration-200 flex-shrink-0", !group.isCollapsed && "rotate-90")} />
         {group.isCollapsed
@@ -930,22 +1128,28 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
         <div
           {...attributes}
           {...listeners}
-          className="flex h-5 w-4 items-center justify-center text-zinc-700 hover:text-zinc-400 opacity-0 group-hover/folder:opacity-100 transition-all cursor-grab active:cursor-grabbing"
+          className="flex h-7 w-7 items-center justify-center rounded text-zinc-700 hover:bg-zinc-800 hover:text-zinc-300 opacity-0 group-hover/folder:opacity-100 group-focus-within/folder:opacity-100 focus:opacity-100 transition-all cursor-grab active:cursor-grabbing"
           onClick={(e) => e.stopPropagation()}
-          title="Drag to move"
+          title="Drag or use keyboard to move"
+          aria-label={`Move ${group.title}. Press Space to pick up, arrows to move, Space to drop, or Escape to cancel.`}
         >
           <GripVertical size={10} />
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onUngroup(group.id); }}
-          className="flex h-5 w-5 items-center justify-center text-zinc-600 hover:text-zinc-300 opacity-0 group-hover/folder:opacity-100 transition-all"
+          className="flex h-7 w-7 items-center justify-center rounded text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200 opacity-0 group-hover/folder:opacity-100 group-focus-within/folder:opacity-100 focus:opacity-100 transition-all"
           title="Remove from project"
+          aria-label={`Remove ${group.title} from its parent project`}
         >
           <X size={11} />
         </button>
       </div>
 
       <div
+        role="group"
+        hidden={group.isCollapsed}
+        aria-hidden={group.isCollapsed || undefined}
+        inert={group.isCollapsed || undefined}
         className={cn(
           "rumi-history-collapse overflow-hidden",
           group.isCollapsed && "is-collapsed"
@@ -967,6 +1171,9 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
                 onToggleStarred={onToggleStarred}
                 onToggleChildren={onToggleChatChildren}
                 isChildrenExpanded={isChatChildrenExpanded}
+                moveTargets={moveTargets}
+                currentGroupId={group.id}
+                onMoveChat={onMoveChat}
                 depth={depth + 1}
               />
             ))}
@@ -988,6 +1195,8 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
               onToggleStarred={onToggleStarred}
               onToggleChatChildren={onToggleChatChildren}
               isChatChildrenExpanded={isChatChildrenExpanded}
+              moveTargets={moveTargets}
+              onMoveChat={onMoveChat}
               onGroupHeaderClick={onGroupHeaderClick}
               depth={depth + 1}
             />
@@ -1019,13 +1228,15 @@ interface DroppableColumnProps {
   onToggleStarred?: (chat: ChatItem) => void;
   onToggleChatChildren: (chatId: string) => void;
   isChatChildrenExpanded: (chatId: string) => boolean;
+  moveTargets: HistoryMoveTarget[];
+  onMoveChat: (chatId: string, targetGroupId: string) => void;
   onGroupHeaderClick: (group: ChatGroup) => void;
   isDraggedOver: boolean;
   isDragging: boolean;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 }
 
-function DroppableColumn({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onNewTask, onSettingsClick, onRename, onToggleCollapse, onChatRename, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, onGroupHeaderClick, isDraggedOver, isDragging, dragHandleProps }: DroppableColumnProps) {
+function DroppableColumn({ group, activeChatId, selectedChatId = null, selectionMode = false, selectionLabel = "選択中", onChatSelect, onNewTask, onSettingsClick, onRename, onToggleCollapse, onChatRename, onUngroup, onTogglePinned, onToggleStarred, onToggleChatChildren, isChatChildrenExpanded, moveTargets, onMoveChat, onGroupHeaderClick, isDraggedOver, isDragging, dragHandleProps }: DroppableColumnProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(group.title);
 
@@ -1053,9 +1264,38 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
     >
       {/* Header */}
       <div
+        role="treeitem"
+        aria-level={1}
+        aria-expanded={!group.isCollapsed}
+        aria-label={`${group.title}, ${totalChats} chats${workspaceText ? `, workspace ${workspaceText}` : ""}`}
+        tabIndex={0}
+        data-history-tree-item="true"
+        data-history-tree-id={`group:${group.id}`}
         onClick={() => onGroupHeaderClick(group)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (isEditing || focusLinearHistoryTreeItem(event)) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onGroupHeaderClick(group);
+            return;
+          }
+          if (event.key === "ArrowRight") {
+            if (group.isCollapsed) {
+              event.preventDefault();
+              onToggleCollapse(group.id);
+            } else {
+              focusHistoryTreeFirstChild(event);
+            }
+            return;
+          }
+          if (event.key === "ArrowLeft" && !group.isCollapsed) {
+            event.preventDefault();
+            onToggleCollapse(group.id);
+          }
+        }}
         className={cn(
-          "h-7 flex items-center px-2 border-b border-zinc-900/70 justify-between hover:bg-zinc-900/50 transition-colors cursor-pointer group/colheader",
+          "min-h-9 flex items-center px-2 border-b border-zinc-900/70 justify-between hover:bg-zinc-900/50 transition-colors cursor-pointer group/colheader outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-emerald-400/70",
           isDraggedOver && !isDragging && "bg-emerald-500/15"
         )}
       >
@@ -1064,10 +1304,11 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
             {...dragHandleProps}
             onClick={(event) => event.stopPropagation()}
             className={cn(
-              "flex h-5 w-3 flex-shrink-0 items-center justify-center rounded text-zinc-700 transition-all cursor-grab active:cursor-grabbing hover:bg-zinc-800 hover:text-zinc-400",
-              group.isCollapsed ? "opacity-100" : "opacity-0 group-hover/colheader:opacity-100"
+              "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-zinc-700 transition-all cursor-grab active:cursor-grabbing hover:bg-zinc-800 hover:text-zinc-300 focus:opacity-100",
+              group.isCollapsed ? "opacity-100" : "opacity-0 group-hover/colheader:opacity-100 group-focus-within/colheader:opacity-100"
             )}
-            title="Drag project"
+            title="Drag or use keyboard to move project"
+            aria-label={`Move ${group.title}. Press Space to pick up, arrows to move, Space to drop, or Escape to cancel.`}
           >
             <GripVertical size={10} />
           </div>
@@ -1106,8 +1347,8 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
           )}
           <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">{totalChats}</span>
         </div>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover/colheader:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onNewTask(group.id)} className="flex h-5 w-5 items-center justify-center text-zinc-500 hover:text-emerald-400 transition-colors" title="New chat in project">
+        <div className="flex items-center gap-0.5 opacity-0 group-hover/colheader:opacity-100 group-focus-within/colheader:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => onNewTask(group.id)} className="flex h-7 w-7 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-emerald-400 transition-colors" title="New chat in project" aria-label={`New chat in ${group.title}`}>
             <Plus size={13} />
           </button>
         </div>
@@ -1115,6 +1356,10 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
 
       {/* Content */}
       <div
+        role="group"
+        hidden={group.isCollapsed}
+        aria-hidden={group.isCollapsed || undefined}
+        inert={group.isCollapsed || undefined}
         className={cn(
           "rumi-history-collapse overflow-hidden",
           group.isCollapsed && "is-collapsed"
@@ -1136,6 +1381,9 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
                 onToggleStarred={onToggleStarred}
                 onToggleChildren={onToggleChatChildren}
                 isChildrenExpanded={isChatChildrenExpanded}
+                moveTargets={moveTargets}
+                currentGroupId={group.id}
+                onMoveChat={onMoveChat}
                 depth={0}
               />
             ))}
@@ -1157,6 +1405,8 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
               onToggleStarred={onToggleStarred}
               onToggleChatChildren={onToggleChatChildren}
               isChatChildrenExpanded={isChatChildrenExpanded}
+              moveTargets={moveTargets}
+              onMoveChat={onMoveChat}
               onGroupHeaderClick={onGroupHeaderClick}
               depth={0}
             />
@@ -1186,8 +1436,8 @@ function DraggableColumnHandle({ group, children }: { group: ChatGroup; children
   const dragHandleProps = { ...attributes, ...listeners } as React.HTMLAttributes<HTMLDivElement>;
 
   return (
-    <div ref={setNodeRef} className={cn("relative", isDragging && "opacity-30")}>
-      <div>{children(dragHandleProps)}</div>
+    <div ref={setNodeRef} role="none" className={cn("relative", isDragging && "opacity-30")}>
+      <div role="none">{children(dragHandleProps)}</div>
     </div>
   );
 }
@@ -1468,6 +1718,9 @@ export function HistoryBoard({
   const visibleChatItems = useMemo(() => filterChatTree(chatItems, searchQuery, activeTag), [activeTag, chatItems, searchQuery]);
   const [customGroups, setCustomGroups] = useState<CustomGroupInfo[]>(() => loadCustomGroups());
   const [groups, setGroups] = useState<ChatGroup[]>(() => buildGroupsFromChats(visibleChatItems, customGroups));
+  const moveTargets = useMemo(() => buildHistoryMoveTargets(groups), [groups]);
+  const [moveAnnouncement, setMoveAnnouncement] = useState("");
+  const [undoMoveGroups, setUndoMoveGroups] = useState<ChatGroup[] | null>(null);
   const [expandedChatIds, setExpandedChatIds] = useState<Set<string>>(() => new Set());
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [newGroupStep, setNewGroupStep] = useState<GroupCreationStep>("details");
@@ -1504,6 +1757,7 @@ export function HistoryBoard({
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const activeDragStartPointRef = useRef<ClientPoint | null>(null);
+  const dragUndoGroupsRef = useRef<ChatGroup[] | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1513,14 +1767,17 @@ export function HistoryBoard({
   // --- Drag Start ---
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
+    dragUndoGroupsRef.current = groups;
     if (active.data.current?.type === 'ColumnDrag') {
       setActiveColumnDrag(active.data.current.group);
       setActiveType('ColumnDrag');
       activeDragStartPointRef.current = null;
+      setMoveAnnouncement(`Picked up project ${active.data.current.group.title}. Use arrow keys to move, Space to drop, or Escape to cancel.`);
     } else if (active.data.current?.type === 'Chat') {
       setActiveChat(active.data.current.chat);
       setActiveType('Chat');
       activeDragStartPointRef.current = clientPointFromEvent(event.activatorEvent);
+      setMoveAnnouncement(`Picked up conversation ${active.data.current.chat.title}. Use arrow keys to move, Space to drop, or Escape to cancel.`);
     }
   };
 
@@ -1611,7 +1868,16 @@ export function HistoryBoard({
     setOverColumnId(null);
     setActiveType(null);
 
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id) {
+      dragUndoGroupsRef.current = null;
+      setMoveAnnouncement(over ? "The item stayed in its original position." : "Move cancelled.");
+      return;
+    }
+    if (dragUndoGroupsRef.current) {
+      setUndoMoveGroups(dragUndoGroupsRef.current);
+    }
+    dragUndoGroupsRef.current = null;
+    setMoveAnnouncement("History item moved. Use Undo to restore its previous position.");
 
     // Column → Column: nest inside
     if (active.data.current?.type === 'ColumnDrag' && over.data.current?.type === 'Column') {
@@ -1670,6 +1936,17 @@ export function HistoryBoard({
     }
   };
 
+  const handleDragCancel = () => {
+    if (dragUndoGroupsRef.current) setGroups(dragUndoGroupsRef.current);
+    dragUndoGroupsRef.current = null;
+    activeDragStartPointRef.current = null;
+    setActiveColumnDrag(null);
+    setActiveChat(null);
+    setOverColumnId(null);
+    setActiveType(null);
+    setMoveAnnouncement("Move cancelled. The history order was restored.");
+  };
+
   // --- Actions ---
   const handleRenameGroup = async (id: string, newTitle: string) => {
     const sourceGroupId = findGroupById(groups, id)?.sourceGroupId ?? id;
@@ -1685,6 +1962,30 @@ export function HistoryBoard({
 
   const handleToggleCollapse = (id: string) => {
     setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, isCollapsed: !g.isCollapsed } : g));
+  };
+
+  const handleMoveChat = (chatId: string, targetGroupId: string) => {
+    const sourceGroupId = findGroupContainingChat(groups, chatId);
+    const target = findGroupById(groups, targetGroupId);
+    if (!sourceGroupId || !target || sourceGroupId === targetGroupId) return;
+    const previousGroups = groups;
+    const { groups: stripped, chat } = removeChatFromTree(groups, chatId);
+    if (!chat) return;
+    const nextGroups = mapGroups(
+      addChatToGroup(stripped, targetGroupId, chat),
+      (group) => group.id === targetGroupId ? { ...group, isCollapsed: false } : group,
+    );
+    setUndoMoveGroups(previousGroups);
+    setGroups(nextGroups);
+    setMoveAnnouncement(`${chat.title} moved to ${target.title}.`);
+    restoreHistoryTreeItemFocus(`chat:${chatId}`);
+  };
+
+  const handleUndoMove = () => {
+    if (!undoMoveGroups) return;
+    setGroups(undoMoveGroups);
+    setUndoMoveGroups(null);
+    setMoveAnnouncement("The last history move was undone.");
   };
 
   const handleGroupHeaderClick = (group: ChatGroup) => {
@@ -2251,6 +2552,7 @@ export function HistoryBoard({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div
         data-history-pane-content="true"
@@ -2344,10 +2646,33 @@ export function HistoryBoard({
         </header>
 
         {/* Columns */}
+        {moveAnnouncement && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mx-3 my-1 flex min-h-9 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/80 px-2 text-[10px] text-zinc-300"
+          >
+            <span className="min-w-0 flex-1">{moveAnnouncement}</span>
+            {undoMoveGroups && (
+              <button
+                type="button"
+                onClick={handleUndoMove}
+                className="min-h-7 rounded border border-zinc-700 px-2 font-medium text-zinc-200 hover:bg-zinc-800 focus-visible:ring-1 focus-visible:ring-emerald-400/70"
+              >
+                Undo
+              </button>
+            )}
+          </div>
+        )}
         <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
-          <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto pb-12">
+          <div
+            role="tree"
+            aria-label="Conversation history"
+            aria-multiselectable={selectionMode || undefined}
+            className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto pb-12"
+          >
             {!selectionMode && (
-              <div className="relative border-b border-zinc-800/70 bg-[#09090b] px-3 py-1">
+              <div role="presentation" className="relative border-b border-zinc-800/70 bg-[#09090b] px-3 py-1">
                 <div className="flex min-h-8 items-center justify-between gap-3 px-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <FolderOpen size={14} className="shrink-0 text-zinc-500" aria-hidden="true" />
@@ -2389,6 +2714,8 @@ export function HistoryBoard({
                     onToggleStarred={onChatMetadataChange ? handleToggleStarred : undefined}
                     onToggleChatChildren={handleToggleChatChildren}
                     isChatChildrenExpanded={isChatChildrenExpanded}
+                    moveTargets={moveTargets}
+                    onMoveChat={handleMoveChat}
                     onGroupHeaderClick={handleGroupHeaderClick}
                     isDraggedOver={overColumnId === group.id}
                     isDragging={activeColumnDrag?.id === group.id}

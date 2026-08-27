@@ -8,6 +8,7 @@ import {
   buildCompactHistoryRailItems,
   buildGroupsFromChats,
   buildHistoryCalendarSummary,
+  buildHistoryMoveTargets,
   HistoryBoard,
   loadCustomGroups,
   type ChatItem,
@@ -265,6 +266,58 @@ test("compact history rail keeps group entries and respects collapsed groups", (
     ["group:group-pinned", "chat:chat-1", "group:group-coding"],
   );
   assert.equal(railItems.find((item) => item.id === "group-coding")?.type, "group");
+});
+
+test("history move targets preserve nested project paths", () => {
+  const targets = buildHistoryMoveTargets([
+    {
+      id: "project-main",
+      title: "Main",
+      chats: [],
+      subGroups: [{ id: "project-docs", title: "Docs", chats: [], subGroups: [] }],
+    },
+  ]);
+
+  assert.deepEqual(targets, [
+    { id: "project-main", label: "Main" },
+    { id: "project-docs", label: "Main / Docs" },
+  ]);
+});
+
+test("HistoryBoard exposes an ARIA tree with named current and expandable items", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    activeChatId: "chat-active",
+    chatItems: [
+      { id: "chat-active", title: "Active chat", date: "Today", type: "chat", isPinned: true,
+        children: [{ id: "chat-child", title: "Child chat", date: "Today", type: "chat" }] },
+      { id: "chat-code", title: "Code chat", date: "Today", type: "code", tags: ["coding"] },
+    ],
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+
+  assert.match(html, /role="tree" aria-label="Conversation history"/);
+  assert.match(html, /role="treeitem" aria-level="1" aria-expanded="true"/);
+  assert.match(html, /role="treeitem" aria-level="2" aria-current="page"[^>]*aria-expanded="false"/);
+  assert.match(html, /aria-label="Active chat, Today"/);
+  assert.match(html, /aria-label="Move Active chat to project"/);
+  assert.match(html, /Press Space to pick up, arrows to move, Space to drop, or Escape to cancel/);
+});
+
+test("HistoryBoard marks selection mode as a multiselectable tree", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    activeChatId: null,
+    chatItems: [{ id: "chat-selected", title: "Selected chat", date: "Today", type: "chat" }],
+    selectionMode: true,
+    selectedChatId: "chat-selected",
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+
+  assert.match(html, /role="tree" aria-label="Conversation history" aria-multiselectable="true"/);
+  assert.match(html, /role="treeitem" aria-level="2" aria-selected="true"/);
 });
 
 test("history chat drag payload becomes composer metadata widget", () => {
