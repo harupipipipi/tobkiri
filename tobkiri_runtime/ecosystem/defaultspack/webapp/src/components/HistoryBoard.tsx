@@ -26,10 +26,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  Bot, BookOpen, BriefcaseBusiness, Bug, Calendar, ChartNoAxesColumn,
-  Cloud, Coffee, Database, FlaskConical, Globe, Heart, Image, Mail, Map as MapIcon,
-  MessageSquare, Music, Palette, PenLine, Search, Server, Settings,
-  Shield, ShoppingCart, Terminal, Video, Wrench, Zap,
+  Calendar, Globe, MessageSquare, Settings, Shield, Terminal,
   Plus, ChevronRight,
   GripVertical, FolderOpen, Folder, KanbanSquare, Monitor, PanelLeftOpen, PanelLeftClose, X,
 } from 'lucide-react';
@@ -41,7 +38,13 @@ import type { CodingWorkspaceRecord } from '../lib/api';
 import { ConversationPinStarMenu } from './history/ConversationPinStarMenu';
 import { ConversationSearchBar } from './history/ConversationSearchBar';
 import { ConversationTagFilter } from './history/ConversationTagFilter';
+import { ConversationAttentionIndicator } from './conversation/ConversationAttentionIndicator';
+import { ConversationGlyph } from './conversation/ConversationGlyph';
 import { WarmActionIcon } from './WarmActionIcon';
+import {
+  fallbackConversationPresentation,
+  type ConversationPresentation,
+} from '../features/conversations/conversationPresentation';
 import {
   PROJECTS_CHANGED_EVENT,
   loadProjects,
@@ -73,73 +76,29 @@ export type ChatItem = {
   companyId?: string | null;
   workspaceId?: string | null;
   metadata?: Record<string, unknown> | null;
+  presentation?: ConversationPresentation;
   children?: ChatItem[];
 };
 
 const HISTORY_CHAT_ICON_SIZE = 14;
-const HISTORY_ICON_COMPONENTS = {
-  ai: Bot,
-  book: BookOpen,
-  briefcase: BriefcaseBusiness,
-  bug: Bug,
-  calendar: Calendar,
-  chart: ChartNoAxesColumn,
-  chat: MessageSquare,
-  cloud: Cloud,
-  code: Terminal,
-  coffee: Coffee,
-  database: Database,
-  email: Mail,
-  folder: Folder,
-  globe: Globe,
-  heart: Heart,
-  image: Image,
-  lightning: Zap,
-  map: MapIcon,
-  music: Music,
-  paint: Palette,
-  science: FlaskConical,
-  search: Search,
-  security: Shield,
-  server: Server,
-  settings: Settings,
-  shield: Shield,
-  shopping: ShoppingCart,
-  terminal: Terminal,
-  tools: Wrench,
-  video: Video,
-  write: PenLine,
-} as const;
+
+function presentationForChat(chat: ChatItem): ConversationPresentation {
+  return chat.presentation ?? fallbackConversationPresentation({
+    conversationId: chat.id,
+    title: chat.title,
+    metadata: chat.metadata,
+  });
+}
 
 function HistoryChatIcon({ chat, tone = "text-zinc-500" }: { chat: ChatItem; tone?: string }) {
-  const iconId = typeof chat.metadata?.icon_id === "string" ? chat.metadata.icon_id : "";
-  const Icon = HISTORY_ICON_COMPONENTS[iconId as keyof typeof HISTORY_ICON_COMPONENTS]
-    ?? (chat.type === "research"
-      ? Globe
-      : chat.type === "code"
-        ? Terminal
-        : MessageSquare);
-  const className = cn(
-    "flex h-3.5 w-3.5 min-h-3.5 min-w-3.5 shrink-0 items-center justify-center overflow-hidden leading-none [&>svg]:block [&>svg]:h-full [&>svg]:w-full",
-    tone,
-  );
-  const style = {
-    width: HISTORY_CHAT_ICON_SIZE,
-    height: HISTORY_CHAT_ICON_SIZE,
-    flexBasis: HISTORY_CHAT_ICON_SIZE,
-  };
-
   return (
-    <span
-      aria-hidden="true"
-      data-history-chat-icon="true"
-      data-history-chat-icon-id={iconId || undefined}
-      data-history-chat-icon-size={HISTORY_CHAT_ICON_SIZE}
-      className={className}
-      style={style}
-    >
-      <Icon size={HISTORY_CHAT_ICON_SIZE} strokeWidth={2} />
-    </span>
+    <ConversationGlyph
+      presentation={presentationForChat(chat)}
+      fallbackKind={chat.type}
+      size={HISTORY_CHAT_ICON_SIZE}
+      tone={tone}
+      historyCompatibility
+    />
   );
 }
 
@@ -715,6 +674,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
     else setTitle(chat.title);
   };
 
+  const presentation = presentationForChat(chat);
   const icon = <HistoryChatIcon chat={chat} />;
 
   return (
@@ -785,6 +745,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
             isActive ? "text-zinc-100" : "text-zinc-300 group-hover/chat:text-zinc-100"
           )}>{chat.title}</span>
         )}
+        {!isEditing && <ConversationAttentionIndicator presentation={presentation} />}
         {!isEditing && chat.date && (
           <span className="ml-auto hidden shrink-0 font-mono text-[10px] leading-none text-zinc-600 opacity-0 transition-opacity group-hover/chat:inline group-hover/chat:opacity-100 group-focus-within/chat:inline group-focus-within/chat:opacity-100">
             {chat.date}
@@ -2223,6 +2184,10 @@ export function HistoryBoard({
                 aria-label={chat.title}
               >
                 <HistoryChatIcon chat={chat} tone={isActive ? "text-zinc-100" : "text-zinc-500"} />
+                <ConversationAttentionIndicator
+                  presentation={presentationForChat(chat)}
+                  className="absolute -bottom-0.5 -right-0.5 rounded-full bg-[#09090b]"
+                />
                 {isActive && <span className="absolute left-0 h-5 w-0.5 rounded-r bg-emerald-400" />}
               </button>
             );
@@ -2438,6 +2403,7 @@ export function HistoryBoard({
             <GripVertical size={12} className="text-zinc-500" />
             <HistoryChatIcon chat={activeChat} tone="text-zinc-400" />
             <span className="text-sm truncate text-zinc-100">{activeChat.title}</span>
+            <ConversationAttentionIndicator presentation={presentationForChat(activeChat)} />
           </div>
         ) : null}
       </DragOverlay>

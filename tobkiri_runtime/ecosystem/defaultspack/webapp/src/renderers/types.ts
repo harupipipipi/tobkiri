@@ -4,6 +4,7 @@ import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGit
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
+import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
 import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
@@ -300,6 +301,7 @@ export type RightSidebarRendererProps = {
   showChatPromptUsage?: boolean;
   yoloMode?: boolean;
   workspaceTabs?: WorkspaceTab[];
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: SettingChangeHandler;
