@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "c0f3a65e570c0039284a71313a2c8101fc150e1a6c6e4161aff533dc70a057b5",
+    "digest": "47da3090d8e5436a03a0219323ba6d75e9bc60ccd565eed623c514118cd6a994",
     "entries": [
       {
         "path": "index.html",
@@ -626,12 +626,12 @@
       {
         "path": "src/components/company/CompanyTree.tsx",
         "size": 4911,
-        "sha256": "026c249275b53bbd37d791edbccf670f8a5725d6c0688dcac8e6922b6755d675"
+        "sha256": "be67f6ee994af41bee4f145830eedde3e10812551987a6a1cdf410e6db4ba1b9"
       },
       {
         "path": "src/components/company/CompanyWorkspacePanel.tsx",
         "size": 37714,
-        "sha256": "abd166bf7d0f192179ba4297e73b8797343dd967d33fcd7d01fbb1d88993ccb2"
+        "sha256": "3ad9bdc0e2f30d159db7e4a0c6814cad71c5cad27539da0193097f9d3afd6c22"
       },
       {
         "path": "src/components/company/companyAccessibility.ts",
@@ -1856,7 +1856,7 @@
     ]
   },
   "bundle": {
-    "digest": "1c6f3b09a31000afccf395860c913f7ef447e44a055d35452f8a990572b482e4",
+    "digest": "8812b803259f123ee756c38806c20895e21277720626618b4570ac15b858a61b",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1871,7 +1871,7 @@
       {
         "path": "shell-defaultspack-app.js",
         "size": 2215766,
-        "sha256": "e4849cbca05c3b0d62f2148696f1786f573db1f49aa19f67a8be2c45192e8d97"
+        "sha256": "681bae071ba1ee56af5185c469b4f6bc2d1052e0b382169e64a51a3c37ea1105"
       },
       {
         "path": "shell-rolldown-runtime.js",
