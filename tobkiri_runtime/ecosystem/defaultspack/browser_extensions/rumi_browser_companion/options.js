@@ -84,8 +84,12 @@ async function saveSettings() {
   }
 
   await chrome.storage.local.set({ [STORAGE_KEY]: settings });
-  const removedOrigins = previous.allowedOrigins.filter(
-    (origin) => !settings.allowedOrigins.includes(origin)
+  const previousDenied = new Set(previous.deniedOrigins);
+  const previousGrantedOrigins = previous.allowedOrigins.filter(
+    (origin) => !previousDenied.has(origin)
+  );
+  const removedOrigins = previousGrantedOrigins.filter(
+    (origin) => !requestedOrigins.includes(origin)
   );
   const removedPatterns = TobkiriBrowserAccessPolicy.permissionPatterns(
     removedOrigins

@@ -64,6 +64,10 @@ chrome.action.onClicked.addListener(() => {
   void chrome.runtime.openOptionsPage();
 });
 
+chrome.permissions.onRemoved.addListener((permissions) => {
+  void handleRemovedPermissions(permissions);
+});
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes[STORAGE_KEY]) {
     return;
@@ -330,6 +334,34 @@ async function recordActivity(activity) {
     [RECENT_ACTIVITY_KEY]: [entry, ...current].slice(0, 10)
   });
   return entry;
+}
+
+async function handleRemovedPermissions(permissions) {
+  const settings = await getSettings();
+  const denied = new Set(settings.deniedOrigins);
+  const configured = new Set(
+    settings.allowedOrigins.filter((origin) => !denied.has(origin))
+  );
+  const removed = (Array.isArray(permissions?.origins)
+    ? permissions.origins
+    : [])
+    .map((value) => TobkiriBrowserAccessPolicy.normalizeOrigin(value))
+    .filter((origin) => origin && configured.has(origin));
+  if (removed.length === 0) {
+    return;
+  }
+  const origins = removed.join(", ");
+  await recordActivity({
+    kind: "permission",
+    action: "host permission removed",
+    ok: false,
+    message: origins
+  });
+  await setStatus({
+    ok: false,
+    state: "permission_changed",
+    message: `Browser access changed for ${origins}. Open Options to grant it again or remove the origin from Allowed.`
+  });
 }
 
 function normalizePollInterval(value) {

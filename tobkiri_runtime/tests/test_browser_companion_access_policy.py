@@ -117,6 +117,7 @@ def test_browser_companion_uses_optional_site_access_and_visible_controls() -> N
     assert "authorizeTargetTab" in background
     assert "recordActivity" in background
     assert "chrome.action.setBadgeText" in background
+    assert "chrome.permissions.onRemoved.addListener" in background
 
     for control_id in (
         'id="control-enabled"',
