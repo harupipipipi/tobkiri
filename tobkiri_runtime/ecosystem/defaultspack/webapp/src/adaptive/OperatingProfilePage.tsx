@@ -45,6 +45,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
   const [draftDirty, setDraftDirty] = useState(false);
   const [draftState, setDraftState] = useState<"confirmed" | "unsaved" | "saving" | "failed" | "offline" | "conflict">("confirmed");
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [conflictRevision, setConflictRevision] = useState<number | null>(null);
   const [reloadPrompt, setReloadPrompt] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
         setRequestId(restored.requestId ?? null);
         setDraftDirty(true);
         setDraftState(restored.baseRevision === data.revision ? "unsaved" : "conflict");
+        setConflictRevision(restored.baseRevision === data.revision ? null : data.revision);
         setSaveStatus(restored.baseRevision === data.revision
           ? "Recovered an unsaved local draft."
           : "Recovered a draft based on an older backend revision. Choose how to resolve it.");
@@ -71,6 +73,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
     if (draftDirty) {
       if (data.revision !== baseRevision) {
         setDraftState("conflict");
+        setConflictRevision(data.revision);
         setSaveStatus("The backend profile changed while this local draft was unsaved.");
       }
       return;
@@ -79,6 +82,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
     setAutonomyDraft(data.autonomy.level);
     setBaseRevision(data.revision);
     setDraftState("confirmed");
+    setConflictRevision(null);
   }, [baseRevision, data, draftDirty]);
 
   useEffect(() => {
@@ -142,6 +146,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
       setDraftDirty(false);
       setDraftState("confirmed");
       setRequestId(null);
+      setConflictRevision(null);
       clearAdaptiveDraft(adaptiveDraftKey("operating-profile", data.id));
       setSaveStatus(`Profile draft confirmed at revision ${saved.revision}.`);
     } catch (err) {
@@ -159,6 +164,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
     setDraftDirty(false);
     setDraftState("confirmed");
     setRequestId(null);
+    setConflictRevision(null);
     setReloadPrompt(false);
     setSaveStatus("Local draft discarded. Reloading the backend profile.");
     refresh();
@@ -166,13 +172,15 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
 
   const keepDraftOnLatestRevision = () => {
     if (!data) return;
-    setBaseRevision(data.revision);
+    const latestRevision = conflictRevision ?? data.revision;
+    setBaseRevision(latestRevision);
     setRequestId(null);
+    setConflictRevision(null);
     persistDraft(summaryDraft, autonomyDraft, {
-      nextBaseRevision: data.revision,
+      nextBaseRevision: latestRevision,
       nextRequestId: null,
       nextState: "unsaved",
-      nextStatus: `Local draft rebased for explicit retry against revision ${data.revision}.`,
+      nextStatus: `Local draft rebased for explicit retry against revision ${latestRevision}.`,
     });
   };
 

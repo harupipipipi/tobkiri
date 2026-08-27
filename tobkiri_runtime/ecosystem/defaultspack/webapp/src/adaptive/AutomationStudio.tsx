@@ -24,12 +24,14 @@ function AutomationItem({
   automation,
   mutation,
   onDiscard,
+  onRefresh,
   onRetry,
   onToggle,
 }: {
   automation: AdaptiveAutomation;
   mutation?: AutomationMutation;
   onDiscard: () => void;
+  onRefresh: () => void;
   onRetry: () => void;
   onToggle: () => void;
 }) {
@@ -83,7 +85,11 @@ function AutomationItem({
         <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3" role="status">
           <p className="text-xs text-amber-100">The backend still reports this automation as {enabled ? "enabled" : "paused"}. {mutation.error}</p>
           <div className="mt-2 flex gap-2">
-            <button type="button" className={adaptiveControlClass} onClick={onRetry}>Retry</button>
+            {mutation.status === "conflict" ? (
+              <button type="button" className={adaptiveControlClass} onClick={onRefresh}>Reload backend</button>
+            ) : (
+              <button type="button" className={adaptiveControlClass} onClick={onRetry}>Retry</button>
+            )}
             <button type="button" className={adaptiveControlClass} onClick={onDiscard}>Discard request</button>
           </div>
         </div>
@@ -168,6 +174,12 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
     setMessage("Unsaved automation request discarded.");
   };
 
+  const refreshAfterConflict = (automationId: string) => {
+    discardMutation(automationId);
+    refresh();
+    setMessage("Reloading backend-confirmed automation revisions before a new request.");
+  };
+
   return (
     <section className={`${adaptivePageClass} ${adaptivePanelClass}`} aria-label="Adaptive automation studio">
       <SurfaceHeader
@@ -216,6 +228,7 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
                 automation={automation}
                 mutation={mutations[automation.id]}
                 onDiscard={() => discardMutation(automation.id)}
+                onRefresh={() => refreshAfterConflict(automation.id)}
                 onRetry={() => void submitToggle(automation, mutations[automation.id])}
                 onToggle={() => void submitToggle(automation)}
               />
