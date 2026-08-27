@@ -96,19 +96,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "rumi:poll-now":
         sendResponse(await pollBridge("manual"));
         return;
-      case "rumi:list-tabs":
-        sendResponse({ ok: true, tabs: await getTabsSummary(await getSettings()) });
+      case "rumi:list-tabs": {
+        const settings = await requireControlSettings();
+        sendResponse({ ok: true, tabs: await getTabsSummary(settings) });
         return;
+      }
       case "rumi:search-home:set-route-state":
+        await requireControlSettings();
         sendResponse(await setSearchHomeRouteState(sender?.tab?.id, message.payload, {
           senderUrl: sender?.url || sender?.tab?.url || "",
           sourceOrigin: message.source_origin
         }));
         return;
       case "rumi:search-home:get-route-state":
+        await requireControlSettings();
         sendResponse(await getSearchHomeRouteState(sender?.tab?.id));
         return;
       case "rumi:search-home:advance-candidate":
+        await requireControlSettings();
         sendResponse(await advanceSearchHomeRouteState(sender?.tab?.id, message.action));
         return;
       default:
@@ -158,6 +163,15 @@ async function getSettings() {
     merged.deniedOrigins
   );
   return merged;
+}
+
+async function requireControlSettings() {
+  const settings = await getSettings();
+  const decision = TobkiriBrowserAccessPolicy.canPoll(settings);
+  if (!decision.allowed) {
+    throw new Error(decision.message);
+  }
+  return settings;
 }
 
 async function readLocalSettingsWithSyncMigration() {
