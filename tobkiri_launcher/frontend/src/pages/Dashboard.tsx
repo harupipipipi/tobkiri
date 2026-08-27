@@ -680,6 +680,265 @@ export function Dashboard() {
             <p className="mt-1 text-xs text-text-muted">Uptime: {summaryAvailable ? dashboard.uptime : '--'}</p>
           </div>
         </section>
+
+        {/* Advanced diagnostics stay subordinate to the task-first Home flow. */}
+        <SupervisorSnapshot
+          data={dashboard.supervisor}
+          loading={dashboardLoading && !dashboard.supervisor}
+          error={dashboardError}
+        />
+      </div>
+    </div>
+  );
+}
+
+export type SupervisorHealthSummary = {
+  state: 'healthy' | 'attention' | 'loading' | 'unavailable';
+  label: string;
+  summary: string;
+  issues: string[];
+};
+
+/** Summarize runtime blockers without exposing raw supervisor internals on Home. */
+export function summarizeSupervisorHealth(
+  data: DashboardData['supervisor'],
+  loading: boolean,
+  error: string | null,
+): SupervisorHealthSummary {
+  if (error) {
+    return {
+      state: 'attention',
+      label: 'Needs attention',
+      summary: 'Tobkiri could not refresh runtime diagnostics.',
+      issues: ['Runtime diagnostics could not be refreshed.'],
+    };
+  }
+  if (!data) {
+    return loading
+      ? {
+          state: 'loading',
+          label: 'Checking',
+          summary: 'Checking runtime health in the background.',
+          issues: [],
+        }
+      : {
+          state: 'unavailable',
+          label: 'Unavailable',
+          summary: 'Advanced runtime diagnostics are unavailable.',
+          issues: [],
+        };
+  }
+
+  const issues: string[] = [];
+  if (data.metrics.failed_runs > 0) {
+    issues.push(`${data.metrics.failed_runs} failed ${data.metrics.failed_runs === 1 ? 'run' : 'runs'}`);
+  }
+  if (data.metrics.stale_runs > 0) {
+    issues.push(`${data.metrics.stale_runs} stale ${data.metrics.stale_runs === 1 ? 'run' : 'runs'}`);
+  }
+  if (data.metrics.waiting_approvals > 0) {
+    issues.push(`${data.metrics.waiting_approvals} ${data.metrics.waiting_approvals === 1 ? 'approval needs' : 'approvals need'} review`);
+  }
+  if (issues.length > 0) {
+    return {
+      state: 'attention',
+      label: 'Needs attention',
+      summary: 'Runtime work needs review before it can continue normally.',
+      issues,
+    };
+  }
+  if (!data.metrics.available) {
+    return {
+      state: 'unavailable',
+      label: 'Limited',
+      summary: 'The runtime is available, but detailed health metrics are not.',
+      issues: [],
+    };
+  }
+  return {
+    state: 'healthy',
+    label: 'Healthy',
+    summary: 'No failed, stale, or approval-blocked runs need attention.',
+    issues: [],
+  };
+}
+
+/** Render concise runtime health with technical details behind a disclosure. */
+export function SupervisorSnapshot({
+  data,
+  loading,
+  error,
+}: {
+  data: DashboardData['supervisor'];
+  loading: boolean;
+  error: string | null;
+}) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const router = data?.router ?? null;
+  const metrics = data?.metrics ?? null;
+  const defaultSandbox = data?.sandbox_providers.find((provider) => provider.default) ?? null;
+  const localSandbox = data?.sandbox_providers.find((provider) => provider.id === 'local_packaged') ?? null;
+  const selectedSession = data?.selected_session ?? null;
+  const computerLayer = router?.fallback_layers.find((layer) => layer.id === 'computer_use') ?? null;
+  const recentEvent = data?.recent_events[0] ?? null;
+  const macDriverOrder = router?.computer_driver_order.darwin ?? [];
+  const routeCount = (router?.operation_layers.length ?? 0) + (router?.fallback_layers.length ?? 0);
+  const capabilities = data?.capabilities ?? null;
+  const health = summarizeSupervisorHealth(data, loading, error);
+  const healthBadgeVariant = health.state === 'healthy'
+    ? 'success'
+    : health.state === 'attention'
+      ? 'warning'
+      : 'secondary';
+
+  const reviewDiagnostics = () => {
+    if (!detailsRef.current) return;
+    detailsRef.current.open = true;
+    detailsRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    detailsRef.current.querySelector<HTMLElement>('summary')?.focus();
+  };
+
+  return (
+    <section className="space-y-3" aria-labelledby="runtime-diagnostics-title">
+      {health.issues.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-100 sm:flex-row sm:items-center">
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1" role="alert">
+            <p className="text-sm font-semibold">Runtime needs attention</p>
+            <p className="mt-0.5 text-xs">{health.issues.join(' · ')}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={reviewDiagnostics}>Review diagnostics</Button>
+        </div>
+      )}
+      <details ref={detailsRef} className="group rounded-xl border border-border bg-bg-card">
+        <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 rounded-xl px-5 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring-color)]">
+          <Monitor className="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <h2 id="runtime-diagnostics-title" className="text-sm font-semibold text-text-main">Advanced runtime diagnostics</h2>
+            <p className="mt-0.5 text-xs text-text-muted">{health.summary}</p>
+          </div>
+          {loading && !data ? <TobkiriLoadingMark /> : null}
+          <Badge variant={healthBadgeVariant} className="shrink-0 text-[10px]">{health.label}</Badge>
+        </summary>
+        {data ? (
+          <div className="grid gap-4 border-t border-border p-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
+      <article className="min-w-0 rounded-xl border border-border bg-bg-card p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Route className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold text-text-main">Runtime Router</h2>
+          </div>
+          <Badge variant="secondary" className="text-[10px]">{formatRuntimeLabel(router?.policy)}</Badge>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+          <MetricTile label="Routes" value={String(routeCount || '--')} />
+          <MetricTile label="Structured" value={String(router?.operation_layers.length ?? '--')} />
+          <MetricTile label="Fallback" value={String(router?.fallback_layers.length ?? '--')} />
+        </div>
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-text-muted">First layer</span>
+            <span className="truncate text-text-main">{router?.operation_layers[0]?.label ?? '--'}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-text-muted">Last layer</span>
+            <span className="truncate text-text-main">{computerLayer?.label ?? 'Computer use'}</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <Terminal className="h-3.5 w-3.5" />
+            <span className="truncate">{formatCompactList(macDriverOrder.slice(0, 4))}</span>
+          </div>
+        </div>
+      </article>
+
+      <article className="min-w-0 rounded-xl border border-border bg-bg-card p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Cloud className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold text-text-main">Sandbox Providers</h2>
+          </div>
+          <Badge variant="success" className="text-[10px]">{defaultSandbox?.tier ?? 'default'}</Badge>
+        </div>
+        <div className="mt-4 space-y-3">
+          <ProviderRow provider={defaultSandbox} />
+          <ProviderRow provider={localSandbox} />
+        </div>
+        <div className="mt-4 flex items-center gap-2 text-xs text-text-muted">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          <span className="truncate">{formatCompactList(data.security_guardrails.slice(0, 3))}</span>
+        </div>
+      </article>
+
+      <article className="min-w-0 rounded-xl border border-border bg-bg-card p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Monitor className="h-4 w-4 text-accent" />
+            <h2 className="text-sm font-semibold text-text-main">Run Snapshot</h2>
+          </div>
+          <Badge variant={capabilities?.snapshot ? 'success' : 'secondary'} className="text-[10px]">
+            {capabilities?.snapshot ? 'Snapshot' : 'Unavailable'}
+          </Badge>
+        </div>
+        <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+          <MetricTile label="Active" value={String(metrics?.active_runs ?? 0)} />
+          <MetricTile label="Approval" value={String(metrics?.waiting_approvals ?? 0)} />
+          <MetricTile label="Stale" value={String(metrics?.stale_runs ?? 0)} />
+          <MetricTile label="Failed" value={String(metrics?.failed_runs ?? 0)} />
+        </div>
+        <div className="mt-4 space-y-2 text-xs">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-text-muted">Run</span>
+            <span className="truncate text-text-main">{selectedSession?.run_id ?? 'No run snapshot'}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-text-muted">Last event</span>
+            <span className="truncate text-text-main">{recentEvent?.event_type ?? '--'}</span>
+          </div>
+          <CapabilityRow label="Live screen" enabled={capabilities?.live_screen === true} />
+          <CapabilityRow label="Takeover" enabled={capabilities?.takeover === true} />
+          <CapabilityRow label="Replay" enabled={capabilities?.replay === true} />
+        </div>
+      </article>
+          </div>
+        ) : (
+          <p className="border-t border-border px-5 py-4 text-sm text-text-muted">
+            {error || (loading ? 'Loading runtime diagnostics…' : 'Runtime diagnostics are unavailable.')}
+          </p>
+        )}
+      </details>
+    </section>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-bg-hover/40 px-2 py-2">
+      <div className="text-[11px] text-text-muted">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-text-main">{value}</div>
+    </div>
+  );
+}
+
+function CapabilityRow({ label, enabled }: { label: string; enabled: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-text-muted">{label}</span>
+      <span className={enabled ? 'truncate text-text-main' : 'truncate text-text-muted'}>
+        {enabled ? 'Available' : 'Not available'}
+      </span>
+    </div>
+  );
+}
+
+function ProviderRow({ provider }: { provider: NonNullable<DashboardData['supervisor']>['sandbox_providers'][number] | null }) {
+  if (!provider) {
+    return null;
+  }
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-bg-hover/40 px-3 py-2">
+      <div className="min-w-0">
+        <div className="truncate text-xs font-medium text-text-main">{provider.label}</div>
+        <div className="mt-0.5 truncate text-[11px] text-text-muted">{formatCompactList(provider.providers.slice(0, 4))}</div>
       </div>
     </div>
   );
