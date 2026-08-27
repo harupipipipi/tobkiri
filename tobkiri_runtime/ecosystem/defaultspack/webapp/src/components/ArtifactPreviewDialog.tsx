@@ -1,4 +1,5 @@
-import { Code2, ExternalLink, FileText, Image as ImageIcon, Wrench, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Code2, Copy, ExternalLink, FileText, Image as ImageIcon, Link2, Wrench, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import { ModalFoundation } from "./ModalFoundation";
@@ -13,6 +14,7 @@ export type ArtifactPreviewDialogItem = {
   title: string;
   subtitle?: string;
   href?: string;
+  untrustedSourceUrl?: string;
   imageUrl?: string;
   imageAlt?: string;
   content?: string;
@@ -44,6 +46,34 @@ export function ArtifactPreviewDialog({
   item: ArtifactPreviewDialogItem | null;
   onClose: () => void;
 }) {
+  const [copyStatus, setCopyStatus] = useState("");
+
+  useEffect(() => {
+    setCopyStatus("");
+  }, [item]);
+
+  const copyUntrustedSource = async () => {
+    if (!item?.untrustedSourceUrl) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard is unavailable");
+      await navigator.clipboard.writeText(item.untrustedSourceUrl);
+      setCopyStatus("URL をコピーしました。");
+    } catch {
+      setCopyStatus("URL をコピーできませんでした。");
+    }
+  };
+
+  const copyArtifactContent = async () => {
+    if (!item?.content) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard is unavailable");
+      await navigator.clipboard.writeText(item.content);
+      setCopyStatus("内容をコピーしました。");
+    } catch {
+      setCopyStatus("内容をコピーできませんでした。");
+    }
+  };
+
   if (!item) return null;
 
   const Icon = iconFor(item.kind);
@@ -81,6 +111,28 @@ export function ArtifactPreviewDialog({
               >
                 <ExternalLink size={15} />
               </a>
+            )}
+            {item.untrustedSourceUrl && (
+              <button
+                type="button"
+                aria-label="未検証の source URL をコピー"
+                title="未検証の source URL をコピー"
+                onClick={() => { void copyUntrustedSource(); }}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200 focus-visible:bg-zinc-900 focus-visible:text-zinc-200 focus-visible:outline-none"
+              >
+                <Link2 size={15} />
+              </button>
+            )}
+            {item.content && (
+              <button
+                type="button"
+                aria-label="アーティファクト内容をコピー"
+                title="アーティファクト内容をコピー"
+                onClick={() => { void copyArtifactContent(); }}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200 focus-visible:bg-zinc-900 focus-visible:text-zinc-200 focus-visible:outline-none"
+              >
+                <Copy size={15} />
+              </button>
             )}
             <button
               type="button"
@@ -133,6 +185,13 @@ export function ArtifactPreviewDialog({
               </div>
             ))}
           </dl>
+        )}
+        {item.untrustedSourceUrl && (
+          <div className="border-t border-zinc-800 bg-zinc-950/95 px-3 py-2 text-[10px] text-zinc-500">
+            <p role="status" className="text-amber-300">Remote preview blocked</p>
+            <p className="mt-1 truncate font-mono">{item.untrustedSourceUrl}</p>
+            <p aria-live="polite" className="mt-1 min-h-4">{copyStatus}</p>
+          </div>
         )}
     </ModalFoundation>
   );

