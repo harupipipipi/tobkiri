@@ -207,6 +207,57 @@ test("Project state never exposes legacy localStorage before owner acknowledgeme
   }
 });
 
+test("HistoryBoard exposes recovery controls when organization storage is corrupt", () => {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => key === HISTORY_ORGANIZATION_STORAGE_KEY ? "{broken" : null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    },
+  });
+
+  try {
+    const html = renderToStaticMarkup(createElement(HistoryBoard, {
+      activeChatId: null,
+      chatItems: [],
+      onChatSelect: () => undefined,
+      onNewTask: () => undefined,
+      onSettingsClick: () => undefined,
+    }));
+    assert.match(html, /data-history-save-state="corrupt"/);
+    assert.match(html, /History changes are not saved/);
+    assert.match(html, /Export<\/button>/);
+    assert.match(html, />Reset</);
+  } finally {
+    if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
+
+test("project storage reports corrupt data and write failures", () => {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: () => "{broken",
+      setItem: () => { throw new Error("quota"); },
+      removeItem: () => undefined,
+    },
+  });
+
+  try {
+    const loaded = loadProjectsResult();
+    assert.equal(loaded.status, "corrupt");
+    assert.deepEqual(loaded.projects, []);
+    assert.equal(saveProjects([{ id: "alpha", title: "Alpha" }]), false);
+  } finally {
+    if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
+
 test("Project helpers preserve group ids while exposing project context", () => {
   assert.equal(newProjectId(123), "group-123");
   assert.deepEqual(projectTaskContext({
