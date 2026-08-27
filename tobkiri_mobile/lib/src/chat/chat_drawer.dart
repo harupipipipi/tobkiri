@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../domain/space.dart';
 import 'chat_models.dart';
 import 'defaultspack_action_icon.dart';
+import 'mobile_operation_failure.dart';
 
 class ChatDrawer extends StatelessWidget {
   const ChatDrawer({
@@ -22,6 +23,9 @@ class ChatDrawer extends StatelessWidget {
     required this.onContinueOffline,
     this.pcConversations = const [],
     this.loadingPc = false,
+    this.pcConversationFailure,
+    this.onRetryPcConversations,
+    this.onRepairPcConnection,
   });
 
   final List<Space> spaces;
@@ -39,6 +43,9 @@ class ChatDrawer extends StatelessWidget {
   final VoidCallback onReconnectSpace;
   final VoidCallback onContinueOffline;
   final bool loadingPc;
+  final MobileOperationFailure? pcConversationFailure;
+  final VoidCallback? onRetryPcConversations;
+  final VoidCallback? onRepairPcConnection;
 
   @override
   Widget build(BuildContext context) {
@@ -131,6 +138,15 @@ class ChatDrawer extends StatelessWidget {
   }
 
   Widget _buildConversationList(Space space, ThemeData theme) {
+    final conversationFailure = pcConversationFailure;
+    if (space.isPc && conversationFailure != null) {
+      return MobileOperationFailureView(
+        failure: conversationFailure,
+        onRetry: onRetryPcConversations ?? onReconnectSpace,
+        onRepair: onRepairPcConnection,
+        compact: true,
+      );
+    }
     if (space.isPc && space.isOffline) {
       return _OfflineSpaceView(
         space: space,

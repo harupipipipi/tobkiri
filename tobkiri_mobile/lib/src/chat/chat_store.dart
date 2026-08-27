@@ -47,6 +47,12 @@ class ChatStore {
       ? null
       : _firstWhere(_conversations, (c) => c.id == _activeId);
 
+  /// Verifies that startup storage can be read before tolerant recovery runs.
+  Future<void> verifyInitializationStorage() async {
+    await _storage.read(_kConversationsKey);
+    await _storage.read(_kActiveConversationKey);
+  }
+
   Future<void> load() async {
     String? raw;
     try {

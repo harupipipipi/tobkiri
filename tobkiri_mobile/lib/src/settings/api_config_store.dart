@@ -468,6 +468,13 @@ class ApiConfigStore {
 
   final SecureKeyValueStorage _storage;
 
+  /// Verifies that the secure values required during startup are readable.
+  Future<void> verifyInitializationStorage() async {
+    await _storage.read(_apiKey);
+    await _storage.read(_modelFavoritesKey);
+    await _storage.read(_notificationKey);
+  }
+
   Future<ApiConfig> loadApi() async {
     try {
       final raw = await _storage.read(_apiKey);

@@ -27,6 +27,18 @@ import 'chat_store.dart';
 import 'composer_bar.dart';
 import 'model_selection_screen.dart';
 import 'message_view.dart';
+import 'mobile_operation_failure.dart';
+
+/// Creates the PC conversation boundary used by [ChatScreen].
+typedef PcConversationBackendFactory = PcConversationBackend Function(
+  PcConnection connection,
+  String? deviceId,
+);
+/// Creates the PC catalog boundary used by [ChatScreen].
+typedef PcCatalogClientFactory = PcCatalogClient Function();
+
+/// The explicit startup lifecycle shown by [ChatScreen].
+enum MobileInitializationState { loading, ready, error }
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -35,12 +47,16 @@ class ChatScreen extends StatefulWidget {
     required this.configStore,
     required this.deviceStore,
     this.localBackend,
+    this.pcBackendFactory,
+    this.pcCatalogClientFactory,
   });
 
   final ChatStore store;
   final ApiConfigStore configStore;
   final MobileDeviceStore deviceStore;
   final LocalConversationBackend? localBackend;
+  final PcConversationBackendFactory? pcBackendFactory;
+  final PcCatalogClientFactory? pcCatalogClientFactory;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -57,15 +73,22 @@ class _ChatScreenState extends State<ChatScreen>
   bool _busy = false;
   bool _streaming = false;
   late Future<void> _initFuture;
+  MobileInitializationState _initializationState =
+      MobileInitializationState.loading;
+  MobileOperationFailure? _initializationFailure;
 
   List<Space> _spaces = [Space.local];
   String _activeSpaceId = Space.local.id;
   List<PcConversationItem> _pcConversations = [];
   ConversationSnapshot? _activePcSnapshot;
   bool _loadingPc = false;
+  MobileOperationFailure? _pcConversationFailure;
+  MobileOperationFailure? _pcActiveConversationFailure;
+  String? _failedPcConversationId;
   List<PairedDevice> _pairedDevices = [];
   PcCatalog? _pcCatalog;
   bool _loadingPcCatalog = false;
+  MobileOperationFailure? _pcCatalogFailure;
   String? _selectedPcModel;
   String _pcThinkingLevel = 'medium';
   bool _pcDeepthinkEnabled = false;
@@ -104,6 +127,11 @@ class _ChatScreenState extends State<ChatScreen>
 
   Future<void> _init() async {
     try {
+      await Future.wait([
+        widget.store.verifyInitializationStorage(),
+        widget.configStore.verifyInitializationStorage(),
+        widget.deviceStore.verifyInitializationStorage(),
+      ]);
       await widget.store.load();
       _apiConfig = await widget.configStore.loadApi();
       _modelFavorites = await widget.configStore.loadModelFavorites();
@@ -115,10 +143,25 @@ class _ChatScreenState extends State<ChatScreen>
       }
       await _loadPcConnection();
       await _loadSpaces();
+      _initializationFailure = null;
+      _initializationState = MobileInitializationState.ready;
     } catch (error, stack) {
-      debugPrint('Rumi init error: $error\n$stack');
+      debugPrint('Tobkiri init error: ${error.runtimeType}\n$stack');
+      _initializationFailure = MobileOperationFailure.from(
+        error,
+        area: 'Tobkiriの初期化',
+      );
+      _initializationState = MobileInitializationState.error;
     }
     if (mounted) setState(() {});
+  }
+
+  void _retryInitialization() {
+    setState(() {
+      _initializationFailure = null;
+      _initializationState = MobileInitializationState.loading;
+      _initFuture = _init();
+    });
   }
 
   Future<void> _loadSpaces() async {
@@ -136,6 +179,7 @@ class _ChatScreenState extends State<ChatScreen>
       await _loadPcCatalogForActiveSpace();
     } else {
       _pcCatalog = null;
+      _pcCatalogFailure = null;
     }
   }
 
@@ -143,14 +187,22 @@ class _ChatScreenState extends State<ChatScreen>
     final space = _activeSpace();
     if (space == null || !space.isPc) {
       _pcConversations = [];
+      _pcConversationFailure = null;
       return;
     }
     final backend = _ensurePcBackendForSpace(space);
     if (backend == null) {
       _pcConversations = [];
+      _pcConversationFailure = MobileOperationFailure.from(
+        StateError('PC接続が設定されていません。'),
+        area: 'PC会話一覧',
+      );
       return;
     }
-    setState(() => _loadingPc = true);
+    setState(() {
+      _loadingPc = true;
+      _pcConversationFailure = null;
+    });
     try {
       final summaries = await backend.listConversations();
       if (!mounted) return;
@@ -168,14 +220,18 @@ class _ChatScreenState extends State<ChatScreen>
             )
             .toList();
         _loadingPc = false;
+        _pcConversationFailure = null;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _pcConversations = [];
         _loadingPc = false;
+        _pcConversationFailure = MobileOperationFailure.from(
+          error,
+          area: 'PC会話一覧',
+        );
       });
-      _updateSpaceOffline(_activeSpaceId, true);
     }
   }
 
@@ -184,11 +240,23 @@ class _ChatScreenState extends State<ChatScreen>
     final connection = space?.pcConnection;
     if (space == null || !space.isPc || connection == null) {
       _pcCatalog = null;
+      _pcCatalogFailure = null;
       return;
     }
-    if (!connection.isConfigured) return;
-    if (mounted) setState(() => _loadingPcCatalog = true);
-    final client = PcCatalogClient();
+    if (!connection.isConfigured) {
+      _pcCatalogFailure = MobileOperationFailure.from(
+        StateError('PC接続が設定されていません。'),
+        area: 'PCモデルカタログ',
+      );
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _loadingPcCatalog = true;
+        _pcCatalogFailure = null;
+      });
+    }
+    final client = _newPcCatalogClient();
     try {
       final catalog = await client.fetchCapabilities(connection);
       final selected = _initialPcModelForCatalog(catalog);
@@ -199,12 +267,17 @@ class _ChatScreenState extends State<ChatScreen>
         _pcThinkingLevel = catalog.runtime.thinkingLevel;
         _pcDeepthinkEnabled = catalog.runtime.deepthinkEnabled;
         _loadingPcCatalog = false;
+        _pcCatalogFailure = null;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _pcCatalog = null;
         _loadingPcCatalog = false;
+        _pcCatalogFailure = MobileOperationFailure.from(
+          error,
+          area: 'PCモデルカタログ',
+        );
       });
     } finally {
       client.close();
@@ -239,6 +312,16 @@ class _ChatScreenState extends State<ChatScreen>
         .toList();
   }
 
+  PcCatalogClient _newPcCatalogClient() =>
+      widget.pcCatalogClientFactory?.call() ?? PcCatalogClient();
+
+  PcConversationBackend _newPcBackend(
+    PcConnection connection,
+    String? deviceId,
+  ) =>
+      widget.pcBackendFactory?.call(connection, deviceId) ??
+      PcConversationBackend(connection: connection, deviceId: deviceId);
+
   Future<void> _selectSpace(String spaceId) async {
     if (spaceId == _activeSpaceId) return;
     setState(() {
@@ -246,6 +329,10 @@ class _ChatScreenState extends State<ChatScreen>
       _pcConversations = [];
       _activePcSnapshot = null;
       _pcCatalog = null;
+      _pcConversationFailure = null;
+      _pcActiveConversationFailure = null;
+      _failedPcConversationId = null;
+      _pcCatalogFailure = null;
     });
     if (spaceId != Space.local.id) {
       await _loadPcConversations();
@@ -259,10 +346,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (paired != null && paired.deviceToken.isNotEmpty) {
       final pc = paired.toPcConnection();
       _pcBackend?.close();
-      _pcBackend = PcConversationBackend(
-        connection: pc,
-        deviceId: paired.deviceId,
-      );
+      _pcBackend = _newPcBackend(pc, paired.deviceId);
       _router.setPc(_pcBackend!);
       _pairedDevice = paired;
     } else {
@@ -294,10 +378,7 @@ class _ChatScreenState extends State<ChatScreen>
       return current;
     }
     _pcBackend?.close();
-    final backend = PcConversationBackend(
-      connection: connection,
-      deviceId: space.deviceId,
-    );
+    final backend = _newPcBackend(connection, space.deviceId);
     _pcBackend = backend;
     _router.setPc(backend);
     return backend;
@@ -341,6 +422,10 @@ class _ChatScreenState extends State<ChatScreen>
         return;
       }
       try {
+        setState(() {
+          _pcActiveConversationFailure = null;
+          _failedPcConversationId = null;
+        });
         final locator = await backend.createConversation(
           CreateConversationRequest(
             authority: ConversationAuthorityKind.pc,
@@ -351,9 +436,15 @@ class _ChatScreenState extends State<ChatScreen>
         if (!mounted) return;
         setState(() => _activePcSnapshot = snapshot);
         await _loadPcConversations();
-      } catch (e) {
-        _updateSpaceOffline(_activeSpaceId, true);
-        if (mounted) setState(() {});
+      } catch (error) {
+        if (!mounted) return;
+        setState(() {
+          _pcActiveConversationFailure = MobileOperationFailure.from(
+            error,
+            area: 'PCの新規会話',
+          );
+          _failedPcConversationId = null;
+        });
       }
       return;
     }
@@ -379,21 +470,46 @@ class _ChatScreenState extends State<ChatScreen>
       return;
     }
     try {
+      setState(() {
+        _pcActiveConversationFailure = null;
+        _failedPcConversationId = null;
+      });
       final locator = ConversationLocator.pc(id, deviceId: space.deviceId);
       final snapshot = await backend.getConversation(locator);
       if (!mounted) return;
       setState(() => _activePcSnapshot = snapshot);
       _scrollToBottom(animate: false);
-    } catch (e) {
-      _updateSpaceOffline(_activeSpaceId, true);
-      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _pcActiveConversationFailure = MobileOperationFailure.from(
+          error,
+          area: 'PC会話',
+        );
+        _failedPcConversationId = id;
+      });
     }
   }
 
   Future<void> _reconnectActiveSpace() async {
     _updateSpaceOffline(_activeSpaceId, false);
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        _pcConversationFailure = null;
+        _pcActiveConversationFailure = null;
+      });
+    }
     await _loadPcConversations();
+    await _loadPcCatalogForActiveSpace();
+  }
+
+  Future<void> _retryActivePcConversation() async {
+    final conversationId = _failedPcConversationId;
+    if (conversationId == null) {
+      await _newChat();
+      return;
+    }
+    await _selectPcConversation(conversationId);
   }
 
   Future<void> _continuePcConversationLocally() async {
@@ -651,15 +767,31 @@ class _ChatScreenState extends State<ChatScreen>
 
     var snapshot = _activePcSnapshot;
     if (snapshot == null) {
-      final locator = await backend.createConversation(
-        CreateConversationRequest(
-          authority: ConversationAuthorityKind.pc,
-          deviceId: space.deviceId,
-        ),
-      );
-      snapshot = await backend.getConversation(locator);
-      if (!mounted) return;
-      setState(() => _activePcSnapshot = snapshot);
+      try {
+        final locator = await backend.createConversation(
+          CreateConversationRequest(
+            authority: ConversationAuthorityKind.pc,
+            deviceId: space.deviceId,
+          ),
+        );
+        snapshot = await backend.getConversation(locator);
+        if (!mounted) return;
+        setState(() {
+          _activePcSnapshot = snapshot;
+          _pcActiveConversationFailure = null;
+          _failedPcConversationId = null;
+        });
+      } catch (error) {
+        if (!mounted) return;
+        setState(() {
+          _pcActiveConversationFailure = MobileOperationFailure.from(
+            error,
+            area: 'PCの新規会話',
+          );
+          _failedPcConversationId = null;
+        });
+        return;
+      }
     }
     final locator = snapshot.locator;
     final clientMessageId = _uuid.v4();
@@ -712,10 +844,24 @@ class _ChatScreenState extends State<ChatScreen>
       }
       try {
         final refreshed = await backend.getConversation(locator);
-        if (mounted) setState(() => _activePcSnapshot = refreshed);
+        if (mounted) {
+          setState(() {
+            _activePcSnapshot = refreshed;
+            _pcActiveConversationFailure = null;
+            _failedPcConversationId = null;
+          });
+        }
         await _loadPcConversations();
-      } catch (_) {
-        // Keep optimistic snapshot if refresh fails.
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _pcActiveConversationFailure = MobileOperationFailure.from(
+              error,
+              area: 'PC会話の更新',
+            );
+            _failedPcConversationId = locator.conversationId;
+          });
+        }
       }
       if (completed) {
         unawaited(_notifyPcTaskFinished(finalAssistantText));
@@ -1269,7 +1415,7 @@ class _ChatScreenState extends State<ChatScreen>
       return;
     }
     setState(() => _selectedPcModel = profileId);
-    final client = PcCatalogClient();
+    final client = _newPcCatalogClient();
     try {
       final result = await client.executeCommand(
         connection,
@@ -1507,7 +1653,7 @@ class _ChatScreenState extends State<ChatScreen>
       _promptPcConfigure();
       return;
     }
-    final client = PcCatalogClient();
+    final client = _newPcCatalogClient();
     try {
       final result = await client.executeCommand(
         connection,
@@ -1907,7 +2053,7 @@ class _ChatScreenState extends State<ChatScreen>
   Widget build(BuildContext context) {
     return FutureBuilder<void>(
       future: _initFuture,
-      builder: (context, snapshot) {
+      builder: (context, _) {
         return Scaffold(
           drawer: Drawer(
             width: 320,
@@ -1917,6 +2063,7 @@ class _ChatScreenState extends State<ChatScreen>
               conversations: widget.store.conversations,
               pcConversations: _pcConversations,
               loadingPc: _loadingPc,
+              pcConversationFailure: _pcConversationFailure,
               activeId: _displayActiveId(),
               onNewChat: () {
                 Navigator.of(context).pop();
@@ -1936,6 +2083,13 @@ class _ChatScreenState extends State<ChatScreen>
               onReconnectSpace: () {
                 Navigator.of(context).pop();
                 _reconnectActiveSpace();
+              },
+              onRetryPcConversations: () {
+                unawaited(_loadPcConversations());
+              },
+              onRepairPcConnection: () {
+                Navigator.of(context).pop();
+                _openSettings();
               },
               onContinueOffline: () {
                 Navigator.of(context).pop();
@@ -1979,16 +2133,64 @@ class _ChatScreenState extends State<ChatScreen>
               ),
             ],
           ),
-          body: _buildBody(snapshot),
+          body: _buildBody(),
         );
       },
     );
   }
 
-  Widget _buildBody(AsyncSnapshot<void> snapshot) {
-    if (snapshot.connectionState != ConnectionState.done) {
-      return const Center(child: CircularProgressIndicator());
+  Widget _buildBody() {
+    if (_initializationState == MobileInitializationState.loading) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('Tobkiriを準備しています'),
+          ],
+        ),
+      );
     }
+    final initializationFailure = _initializationFailure;
+    if (_initializationState == MobileInitializationState.error &&
+        initializationFailure != null) {
+      return MobileOperationFailureView(
+        failure: initializationFailure,
+        onRetry: _retryInitialization,
+        onRepair: _openSettings,
+      );
+    }
+
+    final activeFailure = _pcActiveConversationFailure;
+    if (_activeSpaceIsPc && activeFailure != null) {
+      return MobileOperationFailureView(
+        failure: activeFailure,
+        onRetry: () => unawaited(_retryActivePcConversation()),
+        onRepair: _openSettings,
+      );
+    }
+
+    final content = _buildConversationBody();
+    final catalogFailure = _pcCatalogFailure;
+    if (!_activeSpaceIsPc || catalogFailure == null) return content;
+    return Column(
+      children: [
+        SizedBox(
+          height: 280,
+          child: MobileOperationFailureView(
+            failure: catalogFailure,
+            onRetry: () => unawaited(_loadPcCatalogForActiveSpace()),
+            onRepair: _openSettings,
+            compact: true,
+          ),
+        ),
+        Expanded(child: content),
+      ],
+    );
+  }
+
+  Widget _buildConversationBody() {
     final convo = _displayConversation();
     if (convo == null || convo.messages.isEmpty) {
       return _EmptyState(

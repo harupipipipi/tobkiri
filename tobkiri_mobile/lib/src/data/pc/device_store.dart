@@ -358,6 +358,18 @@ class MobileDeviceStore {
   final SecureKeyValueStorage? _legacyStorage;
   final _uuid = const Uuid();
 
+  /// Verifies that pairing storage is readable before tolerant recovery runs.
+  Future<void> verifyInitializationStorage() async {
+    await _storage.read(_pairedKey);
+    await _storage.read(_pairedListKey);
+    final legacyStorage = _legacyStorage;
+    if (legacyStorage != null) {
+      await legacyStorage.read(_legacyPcKey);
+      await legacyStorage.read(_legacyRemoteBaseUrlKey);
+      await legacyStorage.read(_legacyRemoteTokenKey);
+    }
+  }
+
   Future<DeviceIdentity> loadOrCreateIdentity() async {
     try {
       final raw = await _storage.read(_identityKey);
