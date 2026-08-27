@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "runtime/store.py",
-      "sha256": "a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
+      "sha256": "0f96a6a0877eda73f6256e27612bd03c024e4af9b445490c2085cfdb85aae987",
       "role": "runtime"
     }
   ]
