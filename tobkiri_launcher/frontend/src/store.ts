@@ -55,6 +55,7 @@ import {
 } from './lib/operationStatus';
 import {recordClientDiagnostic} from './lib/clientDiagnostics';
 import {setRuntimeDispatchStatus} from './lib/runtimeDispatchGate';
+import {resolveUiLocale} from './lib/localeAvailability';
 import {
   getBrowserStorage,
   readSafeStorageValue,
@@ -258,9 +259,7 @@ function readLocalProfile(): Profile {
     const avatar = typeof value.avatar === 'string' && AVATAR_OPTIONS.includes(value.avatar)
       ? value.avatar
       : defaultProfile.avatar;
-    const language = typeof value.language === 'string' && ['en', 'ja'].includes(value.language)
-      ? value.language
-      : defaultProfile.language;
+    const language = resolveUiLocale(value.language);
     const job = typeof value.job === 'string' ? value.job.slice(0, 120) : defaultProfile.job;
     return {...defaultProfile, avatar, username, language, job};
   } catch {
@@ -1669,7 +1668,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   profile: readLocalProfile(),
   updateLocalProfile: (profileUpdate) => {
     set((state) => {
-      const profile = {...state.profile, ...profileUpdate, connected: state.profile.connected};
+      const normalizedUpdate = profileUpdate.language === undefined
+        ? profileUpdate
+        : {...profileUpdate, language: resolveUiLocale(profileUpdate.language)};
+      const profile = {...state.profile, ...normalizedUpdate, connected: state.profile.connected};
       writeLocalStorage(PROFILE_STORAGE_KEY, JSON.stringify({
         avatar: profile.avatar,
         username: profile.username,

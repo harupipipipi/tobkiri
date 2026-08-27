@@ -25,6 +25,8 @@ import type {ApiUpdateInfo, ApiUpdateTarget, LauncherUpdateStatus} from '@/src/l
 import {useT} from '@/src/lib/i18n';
 import {PRODUCT_DISPLAY_NAME} from '@/src/lib/launcherBrand';
 import {extractRuntimeProfileSettings} from '@/src/lib/runtimeSurface';
+import {UI_LOCALE_OPTIONS, uiLocaleOption} from '@/src/lib/localeAvailability';
+import {useT} from '@/src/lib/i18n';
 import {useAppStore} from '@/src/store';
 
 export function Settings() {
@@ -211,8 +213,11 @@ export function Settings() {
                 onChange={(event) => updateLocalProfile({language: event.target.value})}
                 aria-label={t('settings.language')}
               >
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
+                {UI_LOCALE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.nativeLabel} — {t(`settings.language_${option.availability}`)}
+                  </option>
+                ))}
               </select>
               <span className="text-xs font-normal text-text-muted">{t('settings.language_storage_note')}</span>
             </label>

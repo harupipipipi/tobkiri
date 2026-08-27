@@ -20,6 +20,7 @@ import { DialogContainer } from '@/src/components/ui/DialogContainer';
 import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
 import {bootstrapPanelSession, hasPendingPanelBootstrapCode} from '@/src/lib/apiTransport';
 import { applyAppearanceToRoot } from '@/src/lib/appearance';
+import {applyLocaleToRoot} from '@/src/lib/localeAvailability';
 import { runtimeMonitorDelay } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';
 import {
@@ -44,6 +45,7 @@ import {
 export default function App() {
   const theme = useAppStore(state => state.theme);
   const colorMode = useAppStore(state => state.colorMode);
+  const language = useAppStore(state => state.profile.language);
   const isSetupDone = useAppStore(state => state.isSetupDone);
   const runtimeReady = useAppStore(state => state.runtimeReady);
   const runtimeStatus = useAppStore(state => state.runtimeStatus);
@@ -55,6 +57,10 @@ export default function App() {
   useLayoutEffect(() => {
     applyAppearanceToRoot(document.documentElement, { theme, colorMode });
   }, [theme, colorMode]);
+
+  useLayoutEffect(() => {
+    applyLocaleToRoot(document.documentElement, language);
+  }, [language]);
 
   useEffect(() => () => {
     cancelPackMutationReconciliation();

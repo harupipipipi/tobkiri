@@ -86,3 +86,17 @@ test('Advanced action metadata is visible and aligned with desktop/mobile-safe c
   assert.match(graph + apiMap, /No runtime invocation controls are available/);
   assert.doesNotMatch(graph + apiMap, /Invoke declared operation/);
 });
+
+test('Settings labels incomplete languages as preview instead of complete UI support', () => {
+  const previousState = useAppStore.getState();
+  useAppStore.setState({profile: {...previousState.profile, language: 'en'}});
+  try {
+    const html = renderToStaticMarkup(<MemoryRouter><Settings /></MemoryRouter>);
+    assert.match(html, /English — Generally available/);
+    assert.match(html, /日本語 — Preview/);
+    assert.match(html, /English is available across the current Launcher surface/);
+    assert.doesNotMatch(html, /value="(?:zh|ko|es|fr|de|pt|ru|ar)"/);
+  } finally {
+    useAppStore.setState(previousState, true);
+  }
+});

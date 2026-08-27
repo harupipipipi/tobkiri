@@ -4,8 +4,15 @@
  */
 
 import { useAppStore } from '@/src/store';
+import {
+  GENERAL_LOCALE_COVERAGE_THRESHOLD,
+  UI_LOCALE_OPTIONS,
+  resolveUiLocale,
+  type UiLocale,
+} from '@/src/lib/localeAvailability';
 
-export type Locale = 'en' | 'ja' | 'zh' | 'ko' | 'es' | 'fr' | 'de' | 'pt' | 'ru' | 'ar';
+export type Locale = UiLocale;
+type CatalogLocale = Locale | 'zh' | 'ko' | 'es' | 'fr' | 'de' | 'pt' | 'ru' | 'ar';
 
 type Dict = Record<string, string>;
 
@@ -59,6 +66,10 @@ const en: Dict = {
   'settings.basic_info_desc': 'Update your profile information.',
   'settings.username': 'Username',
   'settings.language': 'Language',
+  'settings.language_general': 'Generally available',
+  'settings.language_preview': 'Preview',
+  'settings.language_general_help': 'English is available across the current Launcher surface.',
+  'settings.language_preview_help': 'Preview language. Some Launcher screens still use English.',
   'settings.job': 'Job',
   'settings.save': 'Save',
   'settings.saved': 'Settings saved',
@@ -347,6 +358,10 @@ const ja: Dict = {
   'settings.basic_info_desc': '\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u60c5\u5831\u3092\u66f4\u65b0\u3057\u307e\u3059\u3002',
   'settings.username': '\u30e6\u30fc\u30b6\u30fc\u540d',
   'settings.language': '\u8a00\u8a9e',
+  'settings.language_general': '\u4e00\u822c\u63d0\u4f9b',
+  'settings.language_preview': '\u30d7\u30ec\u30d3\u30e5\u30fc',
+  'settings.language_general_help': '\u82f1\u8a9e\u306f\u73fe\u884c\u306e Launcher \u5168\u4f53\u3067\u5229\u7528\u3067\u304d\u307e\u3059\u3002',
+  'settings.language_preview_help': '\u30d7\u30ec\u30d3\u30e5\u30fc\u8a00\u8a9e\u3067\u3059\u3002Launcher \u306e\u4e00\u90e8\u753b\u9762\u306f\u307e\u3060\u82f1\u8a9e\u3067\u8868\u793a\u3055\u308c\u307e\u3059\u3002',
   'settings.job': '\u8077\u696d',
   'settings.save': '\u4fdd\u5b58',
   'settings.saved': '\u8a2d\u5b9a\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f',
@@ -724,15 +739,66 @@ const ar: Dict = {
   'flows.loading': '\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u062a\u062f\u0641\u0642\u0627\u062a...', 'dialog.cancel': '\u0625\u0644\u063a\u0627\u0621', 'dialog.confirm': '\u062a\u0623\u0643\u064a\u062f',
 };
 
-const dict: Record<Locale, Dict> = { en, ja, zh, ko, es, fr, de, pt, ru, ar };
+const dict: Record<CatalogLocale, Dict> = { en, ja, zh, ko, es, fr, de, pt, ru, ar };
+
+export type TranslationCoverage = {
+  locale: Locale;
+  translated: number;
+  total: number;
+  ratio: number;
+};
+
+export type MissingTranslationReporter = (locale: Locale, key: string) => void;
+
+const defaultMissingTranslationReporter: MissingTranslationReporter = (locale, key) => {
+  if (import.meta.env?.DEV) {
+    console.warn(`[i18n] missing ${locale} translation for ${key}`);
+  }
+};
+
+let missingTranslationReporter = defaultMissingTranslationReporter;
+
+export function setMissingTranslationReporterForTests(
+  reporter: MissingTranslationReporter,
+): () => void {
+  const previous = missingTranslationReporter;
+  missingTranslationReporter = reporter;
+  return () => {
+    missingTranslationReporter = previous;
+  };
+}
+
+export function translationCoverage(locale: Locale): TranslationCoverage {
+  const canonicalKeys = Object.keys(en);
+  const translated = canonicalKeys.filter((key) => Boolean(dict[locale][key])).length;
+  return {
+    locale,
+    translated,
+    total: canonicalKeys.length,
+    ratio: canonicalKeys.length === 0 ? 1 : translated / canonicalKeys.length,
+  };
+}
+
+export function localeIsGenerallyAvailable(locale: Locale): boolean {
+  const option = UI_LOCALE_OPTIONS.find((candidate) => candidate.id === locale);
+  return Boolean(
+    option?.availability === 'general'
+    && option.surfaceCatalogComplete
+    && translationCoverage(locale).ratio >= GENERAL_LOCALE_COVERAGE_THRESHOLD,
+  );
+}
 
 export function resolveLocale(language?: string): Locale {
-  return (language && language in dict) ? (language as Locale) : 'en';
+  return resolveUiLocale(language);
 }
 
 export function translate(key: string, params?: Record<string, string>, language?: string): string {
   const locale = resolveLocale(language ?? useAppStore.getState().profile.language);
-  let text = dict[locale][key] ?? dict.en[key] ?? key;
+  const translated = dict[locale][key];
+  if (locale !== 'en' && translated === undefined) {
+    missingTranslationReporter(locale, key);
+  }
+  let text = translated ?? dict.en[key] ?? key;
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       text = text.replace(`{${k}}`, v);
