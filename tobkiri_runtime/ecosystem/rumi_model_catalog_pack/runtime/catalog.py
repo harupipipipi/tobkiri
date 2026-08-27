@@ -21,7 +21,7 @@ if TYPE_CHECKING:
         HostProviderInvocationContextV4,
     )
 
-CATALOG_REVISION = "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd"
+CATALOG_REVISION = "sha256:3f969dc7962722c4cfb30562c514ebcb70f9d4c379bf58781eaca245c0a10b36"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
 _EXTENSION_ROOT = Path(__file__).resolve().parents[1] / "extensions" / "llm" / "providers"
 _OPENROUTER_PROVIDER_ID = "openrouter"
