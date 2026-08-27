@@ -3,17 +3,33 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rumi Browser Companion Options</title>
+    <title>Tobkiri Browser Companion Access Controls</title>
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
     <main class="page">
       <section class="card">
-        <h1>Rumi Browser Companion</h1>
-        <p class="lede">Configure the local Rumi bridge endpoint and pairing token used by this browser.</p>
+        <h1>Tobkiri Browser Companion</h1>
+        <p class="lede">Control exactly when Tobkiri may connect to this browser and which sites it may use.</p>
+        <div class="notice" aria-labelledby="access-explanation-title">
+          <h2 id="access-explanation-title">Review browser access before enabling</h2>
+          <p>When enabled, the paired local Tobkiri instance may receive metadata for allowed tabs, including each page title and URL. Commands may read page content and accessibility labels, capture the visible page, navigate, click, type, press keys, or scroll on allowed sites.</p>
+          <p>Polling sends that allowed-tab metadata to the local bridge even when no command is waiting. Browser-internal pages, file URLs, incognito tabs, denied sites, and sites without browser permission remain blocked.</p>
+        </div>
         <form id="settings-form">
+          <fieldset class="control-group">
+            <legend>Consent and control</legend>
+            <label class="check-field">
+              <input id="consent-acknowledged" name="consentAcknowledged" type="checkbox">
+              <span>I understand what tab metadata, page content, screenshots, and actions can be sent to my paired local Tobkiri instance.</span>
+            </label>
+            <label class="check-field">
+              <input id="control-enabled" name="enabled" type="checkbox">
+              <span>Enable polling and browser control. Clear this at any time to pause without deleting pairing data.</span>
+            </label>
+          </fieldset>
           <label class="field">
-            <span>Server URL</span>
+            <span>Authorized Tobkiri instance URL</span>
             <input id="server-url" name="serverUrl" type="url" placeholder="http://127.0.0.1:8766" required>
           </label>
           <label class="field">
@@ -22,7 +38,7 @@
           </label>
           <label class="field">
             <span>Client Label</span>
-            <input id="client-label" name="clientLabel" type="text" placeholder="Optional name shown to Rumi">
+            <input id="client-label" name="clientLabel" type="text" placeholder="Optional name shown to Tobkiri">
           </label>
           <label class="field">
             <span>Profile Label</span>
@@ -32,24 +48,40 @@
             <span>Poll Interval (minutes)</span>
             <input id="poll-interval" name="pollIntervalMinutes" type="number" min="1" step="1" value="1" required>
           </label>
+          <label class="field">
+            <span>Allowed site origins</span>
+            <textarea id="allowed-origins" name="allowedOrigins" rows="5" placeholder="https://example.com&#10;https://app.example.net"></textarea>
+            <small>Enter exact HTTP or HTTPS origins, one per line. Saving requests browser permission only for these sites. Access is denied everywhere else.</small>
+          </label>
+          <label class="field">
+            <span>Denied site origins</span>
+            <textarea id="denied-origins" name="deniedOrigins" rows="4" placeholder="https://sensitive.example"></textarea>
+            <small>Denied sites override the allowed list. Remove a site from Allowed to revoke its browser permission.</small>
+          </label>
           <div class="actions">
-            <button type="submit">Save Settings</button>
+            <button type="submit">Save access settings</button>
             <button id="poll-now" type="button" class="secondary">Poll Bridge Now</button>
           </div>
         </form>
         <div id="status" class="status" role="status" aria-live="polite"></div>
       </section>
       <section class="card">
-        <h2>Capabilities</h2>
-        <ul class="capabilities">
-          <li>Periodic bridge poll with browser metadata and tabs summary</li>
-          <li>Local browser/profile metadata with installation id and profile label</li>
-          <li>Tab operations: list, select, navigate, capture visible tab</li>
-          <li>Semantic DOM snapshot with element id, role, labels, nearby text, geometry, and action hints</li>
-          <li>Element actions by `element_id`, CSS selector, text, accessible name, role, semantic id, or nearby text</li>
-        </ul>
+        <h2>Current access and activity</h2>
+        <dl class="status-grid">
+          <div><dt>Control state</dt><dd id="control-state">Loading…</dd></div>
+          <div><dt>Authorized instance</dt><dd id="authorized-instance">Loading…</dd></div>
+          <div><dt>Active scope</dt><dd id="active-scope">Loading…</dd></div>
+          <div><dt>Last poll</dt><dd id="last-poll">Never</dd></div>
+          <div><dt>Recent command/action</dt><dd id="recent-command">None</dd></div>
+        </dl>
+        <h3>Recent activity</h3>
+        <ol id="recent-activity" class="activity-list">
+          <li>No activity recorded.</li>
+        </ol>
+        <p class="recovery">If a site is blocked, add its exact origin to Allowed, remove it from Denied, save, and approve the browser permission prompt. The toolbar badge uses text as well as status styling: <strong>OFF</strong> means paused, <strong>SET</strong> means setup is required, <strong>ON</strong> means connected, and <strong>!</strong> means attention is required.</p>
       </section>
     </main>
+    <script src="browser_access_policy.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

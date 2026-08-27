@@ -1,11 +1,16 @@
 import "./search_home_destination_policy.js";
+import "./browser_access_policy.js";
 
 const DEFAULT_SETTINGS = {
   serverUrl: "http://127.0.0.1:8766",
   pairingToken: "",
   clientLabel: "",
   profileLabel: "",
-  pollIntervalMinutes: 1
+  pollIntervalMinutes: 1,
+  enabled: false,
+  consentAcknowledged: false,
+  allowedOrigins: [],
+  deniedOrigins: []
 };
 
 const STORAGE_KEY = "rumiBrowserCompanionSettings";
@@ -13,6 +18,7 @@ const CLIENT_ID_KEY = "rumiBrowserCompanionClientId";
 const INSTALLATION_ID_KEY = "rumiBrowserCompanionInstallationId";
 const BROWSER_PROFILE_ID_KEY = "rumiBrowserCompanionProfileId";
 const LAST_STATUS_KEY = "rumiBrowserCompanionLastStatus";
+const RECENT_ACTIVITY_KEY = "rumiBrowserCompanionRecentActivity";
 const ALARM_NAME = "rumi-browser-companion-poll";
 const BRIDGE_POLL_PATH = "/api/tools/browser-companion/bridge/poll";
 const BRIDGE_RESULT_PATH = "/api/tools/browser-companion/bridge/result";
@@ -28,16 +34,20 @@ const SEARCH_HOME_TRUSTED_ORIGINS = Object.freeze(
 chrome.runtime.onInstalled.addListener(async () => {
   const settings = await ensureSettings();
   await ensureClientIdentity();
-  chrome.alarms.create(ALARM_NAME, { periodInMinutes: normalizePollInterval(settings.pollIntervalMinutes) });
+  await configurePolling(settings);
+  await updateActionBadge({ state: settings.enabled ? "waiting" : "paused" });
   await chrome.runtime.openOptionsPage();
-  void pollBridge("onInstalled");
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   const settings = await ensureSettings();
   await ensureClientIdentity();
-  chrome.alarms.create(ALARM_NAME, { periodInMinutes: normalizePollInterval(settings.pollIntervalMinutes) });
-  void pollBridge("onStartup");
+  await configurePolling(settings);
+  if (TobkiriBrowserAccessPolicy.canPoll(settings).allowed) {
+    void pollBridge("onStartup");
+  } else {
+    await updateActionBadge({ state: "paused" });
+  }
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -50,13 +60,26 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void clearSearchHomeRouteState(tabId);
 });
 
+chrome.action.onClicked.addListener(() => {
+  void chrome.runtime.openOptionsPage();
+});
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local" || !changes[STORAGE_KEY]) {
     return;
   }
   void ensureSettings().then((settings) => {
-    chrome.alarms.create(ALARM_NAME, { periodInMinutes: normalizePollInterval(settings.pollIntervalMinutes) });
-    void pollBridge("settingsChanged");
+    void configurePolling(settings);
+    if (TobkiriBrowserAccessPolicy.canPoll(settings).allowed) {
+      void pollBridge("settingsChanged");
+    } else {
+      void setStatus({
+        ok: true,
+        state: "paused",
+        trigger: "settingsChanged",
+        message: "Browser control and polling are paused."
+      });
+    }
   });
 });
 
@@ -74,7 +97,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse(await pollBridge("manual"));
         return;
       case "rumi:list-tabs":
-        sendResponse({ ok: true, tabs: await getTabsSummary() });
+        sendResponse({ ok: true, tabs: await getTabsSummary(await getSettings()) });
         return;
       case "rumi:search-home:set-route-state":
         sendResponse(await setSearchHomeRouteState(sender?.tab?.id, message.payload, {
@@ -105,19 +128,36 @@ async function ensureSettings() {
     ...(stored || {})
   };
   merged.pollIntervalMinutes = normalizePollInterval(merged.pollIntervalMinutes);
+  merged.enabled = merged.enabled === true;
+  merged.consentAcknowledged = merged.consentAcknowledged === true;
+  merged.allowedOrigins = TobkiriBrowserAccessPolicy.normalizeOrigins(
+    merged.allowedOrigins
+  );
+  merged.deniedOrigins = TobkiriBrowserAccessPolicy.normalizeOrigins(
+    merged.deniedOrigins
+  );
   await chrome.storage.local.set({ [STORAGE_KEY]: merged });
   return merged;
 }
 
 async function getSettings() {
   const stored = await readLocalSettingsWithSyncMigration();
-  return {
+  const merged = {
     ...DEFAULT_SETTINGS,
     ...(stored || {}),
     pollIntervalMinutes: normalizePollInterval(
       stored?.pollIntervalMinutes ?? DEFAULT_SETTINGS.pollIntervalMinutes
     )
   };
+  merged.enabled = merged.enabled === true;
+  merged.consentAcknowledged = merged.consentAcknowledged === true;
+  merged.allowedOrigins = TobkiriBrowserAccessPolicy.normalizeOrigins(
+    merged.allowedOrigins
+  );
+  merged.deniedOrigins = TobkiriBrowserAccessPolicy.normalizeOrigins(
+    merged.deniedOrigins
+  );
+  return merged;
 }
 
 async function readLocalSettingsWithSyncMigration() {
@@ -198,8 +238,25 @@ function stringOrEmpty(value) {
 }
 
 async function getStatus() {
-  const stored = await chrome.storage.local.get(LAST_STATUS_KEY);
-  return stored[LAST_STATUS_KEY] || { ok: true, state: "idle" };
+  const stored = await chrome.storage.local.get([
+    LAST_STATUS_KEY,
+    RECENT_ACTIVITY_KEY
+  ]);
+  const settings = await getSettings();
+  const lastStatus = stored[LAST_STATUS_KEY] || { ok: true, state: "idle" };
+  return {
+    ...lastStatus,
+    state: settings.enabled ? lastStatus.state : "paused",
+    ok: settings.enabled ? lastStatus.ok : true,
+    authorizedInstance: settings.serverUrl || "Not configured",
+    enabled: settings.enabled,
+    consentAcknowledged: settings.consentAcknowledged,
+    allowedOrigins: settings.allowedOrigins,
+    deniedOrigins: settings.deniedOrigins,
+    recentActivity: Array.isArray(stored[RECENT_ACTIVITY_KEY])
+      ? stored[RECENT_ACTIVITY_KEY]
+      : []
+  };
 }
 
 async function setStatus(status) {
@@ -208,7 +265,57 @@ async function setStatus(status) {
     updatedAt: new Date().toISOString()
   };
   await chrome.storage.local.set({ [LAST_STATUS_KEY]: withTimestamp });
+  await updateActionBadge(withTimestamp);
   return withTimestamp;
+}
+
+async function configurePolling(settings) {
+  if (!TobkiriBrowserAccessPolicy.canPoll(settings).allowed) {
+    await chrome.alarms.clear(ALARM_NAME);
+    return;
+  }
+  chrome.alarms.create(ALARM_NAME, {
+    periodInMinutes: normalizePollInterval(settings.pollIntervalMinutes)
+  });
+}
+
+async function updateActionBadge(status) {
+  const state = String(status?.state || "idle");
+  const badgeText = state === "connected"
+    ? "ON"
+    : state === "paused"
+      ? "OFF"
+      : state === "not_configured" || state === "waiting"
+        ? "SET"
+        : state === "idle"
+          ? ""
+          : "!";
+  const title = state === "connected"
+    ? "Tobkiri Browser Companion — control active; open access controls"
+    : state === "paused"
+      ? "Tobkiri Browser Companion — polling paused; open access controls"
+      : "Tobkiri Browser Companion — attention needed; open access controls";
+  await chrome.action.setBadgeText({ text: badgeText });
+  await chrome.action.setTitle({ title });
+}
+
+async function recordActivity(activity) {
+  const stored = await chrome.storage.local.get(RECENT_ACTIVITY_KEY);
+  const current = Array.isArray(stored[RECENT_ACTIVITY_KEY])
+    ? stored[RECENT_ACTIVITY_KEY]
+    : [];
+  const entry = {
+    kind: String(activity.kind || "event"),
+    action: String(activity.action || ""),
+    ok: activity.ok === true,
+    origin: String(activity.origin || ""),
+    message: String(activity.message || ""),
+    at: new Date().toISOString()
+  };
+  await chrome.storage.local.set({
+    [RECENT_ACTIVITY_KEY]: [entry, ...current].slice(0, 10)
+  });
+  return entry;
 }
 
 function normalizePollInterval(value) {
@@ -221,15 +328,24 @@ function normalizePollInterval(value) {
 
 async function pollBridge(trigger) {
   const settings = await getSettings();
-  const identity = await ensureClientIdentity();
-  if (!settings.serverUrl || !settings.pairingToken) {
+  const pollDecision = TobkiriBrowserAccessPolicy.canPoll(settings);
+  if (!pollDecision.allowed) {
+    return setStatus({
+      ok: pollDecision.reason === "paused",
+      state: pollDecision.reason === "paused" ? "paused" : "not_configured",
+      trigger,
+      message: pollDecision.message
+    });
+  }
+  if (!settings.serverUrl) {
     return setStatus({
       ok: false,
       state: "not_configured",
       trigger,
-      message: "Set server URL and pairing token in Options."
+      message: "Set a local server URL in Options."
     });
   }
+  const identity = await ensureClientIdentity();
 
   const metadata = await buildClientMetadata(settings, identity);
   const requestBody = {
@@ -257,34 +373,49 @@ async function pollBridge(trigger) {
     const commands = normalizeCommands(payload);
     const results = [];
     for (const command of commands) {
-      results.push(await executeBridgeCommand(command));
+      results.push(await executeBridgeCommand(command, settings));
     }
 
     if (results.length > 0) {
       await postCommandResults(settings, metadata, results);
     }
 
+    await recordActivity({
+      kind: "poll",
+      action: trigger,
+      ok: true,
+      message: `${commands.length} command(s) received.`
+    });
     return setStatus({
       ok: true,
       state: "connected",
       trigger,
       commandCount: commands.length,
-      serverUrl: settings.serverUrl
+      serverUrl: settings.serverUrl,
+      lastPollAt: new Date().toISOString()
     });
   } catch (error) {
+    const message = String(error && error.message ? error.message : error);
+    await recordActivity({
+      kind: "poll",
+      action: trigger,
+      ok: false,
+      message
+    });
     return setStatus({
       ok: false,
       state: "bridge_error",
       trigger,
       serverUrl: settings.serverUrl,
-      message: String(error && error.message ? error.message : error)
+      message,
+      lastPollAt: new Date().toISOString()
     });
   }
 }
 
 async function buildClientMetadata(settings, identity) {
   const browser = detectBrowser();
-  const tabs = await getTabsSummary();
+  const tabs = await getTabsSummary(settings);
   const activeTab = tabs.find((tab) => tab.active) || null;
   const profile = buildClientProfileMetadata(settings, identity, browser);
   return {
@@ -364,9 +495,17 @@ function detectBrowser() {
   return { name: "Unknown Chromium Browser", version: "unknown" };
 }
 
-async function getTabsSummary() {
+async function getTabsSummary(settings = null) {
+  const accessSettings = settings || await getSettings();
   const tabs = await chrome.tabs.query({});
-  return tabs.map((tab) => tabSummary(tab));
+  const summaries = [];
+  for (const tab of tabs) {
+    const decision = await accessDecisionForTab(tab, accessSettings);
+    if (decision.allowed) {
+      summaries.push(tabSummary(tab));
+    }
+  }
+  return summaries;
 }
 
 async function postCommandResults(settings, client, results) {
@@ -390,13 +529,24 @@ async function postCommandResults(settings, client, results) {
   }
 }
 
-async function executeBridgeCommand(command) {
+async function executeBridgeCommand(command, settings = null) {
   const startedAt = new Date().toISOString();
   const action = String(command?.action || "");
+  const accessSettings = settings || await getSettings();
   try {
-    const result = await dispatchCommand(command);
+    const pollDecision = TobkiriBrowserAccessPolicy.canPoll(accessSettings);
+    if (!pollDecision.allowed) {
+      throw new Error(pollDecision.message);
+    }
+    const result = await dispatchCommand(command, accessSettings);
     const semantics = actionResultSemantics(action, result);
     const publicResultFields = topLevelResultFields(result);
+    await recordActivity({
+      kind: "command",
+      action,
+      ok: true,
+      origin: result?.tab?.url ? safeOrigin(result.tab.url) : ""
+    });
     return {
       command_id: command.command_id || null,
       action,
@@ -409,6 +559,13 @@ async function executeBridgeCommand(command) {
     };
   } catch (error) {
     const semantics = actionResultSemantics(action);
+    const message = String(error && error.message ? error.message : error);
+    await recordActivity({
+      kind: "command",
+      action,
+      ok: false,
+      message
+    });
     return {
       command_id: command.command_id || null,
       action,
@@ -416,7 +573,7 @@ async function executeBridgeCommand(command) {
       started_at: startedAt,
       finished_at: new Date().toISOString(),
       ...semantics,
-      error: String(error && error.message ? error.message : error)
+      error: message
     };
   }
 }
@@ -472,20 +629,20 @@ function actionResultSemantics(action, result) {
   return {};
 }
 
-async function dispatchCommand(command) {
+async function dispatchCommand(command, settings) {
   const action = String(command?.action || "");
   const payload = command && typeof command.payload === "object" ? command.payload : {};
   switch (action) {
     case "browser.tabs":
-      return listTabs();
+      return listTabs(settings);
     case "browser.select_tab":
-      return selectTab(payload);
+      return selectTab(payload, settings);
     case "page.navigate":
-      return navigateTab(payload);
+      return navigateTab(payload, settings);
     case "page.capture":
-      return captureVisibleTab(payload);
+      return captureVisibleTab(payload, settings);
     case "page.snapshot":
-      return captureDomSnapshot(payload);
+      return captureDomSnapshot(payload, settings);
     case "page.click":
     case "page.type":
     case "page.press":
@@ -493,14 +650,14 @@ async function dispatchCommand(command) {
     case "page.extract":
     case "page.highlight":
     case "page.clear_highlight":
-      return sendElementCommand(action, payload);
+      return sendElementCommand(action, payload, settings);
     default:
       throw new Error(`Unsupported command action: ${action}`);
   }
 }
 
-async function listTabs() {
-  const tabs = await getTabsSummary();
+async function listTabs(settings) {
+  const tabs = await getTabsSummary(settings);
   const activeTab = tabs.find((tab) => tab.active) || null;
   return {
     tabs,
@@ -510,9 +667,8 @@ async function listTabs() {
   };
 }
 
-async function selectTab(payload) {
-  const tabId = await resolveTabId(payload.tab_id);
-  const tab = await chrome.tabs.get(tabId);
+async function selectTab(payload, settings) {
+  const { tab, tabId } = await authorizeTargetTab(payload, settings);
   await chrome.tabs.update(tabId, { active: true });
   await chrome.windows.update(tab.windowId, { focused: true });
   const selected = await chrome.tabs.get(tabId);
@@ -524,11 +680,12 @@ async function selectTab(payload) {
   };
 }
 
-async function navigateTab(payload) {
-  const tabId = await resolveTabId(payload.tab_id);
+async function navigateTab(payload, settings) {
   if (!payload.url) {
     throw new Error("navigate requires url");
   }
+  const { tabId } = await authorizeTargetTab(payload, settings);
+  await authorizeUrl(payload.url, settings, { incognito: false });
   const tab = await chrome.tabs.update(tabId, { url: payload.url });
   return {
     tab: tabSummary(tab),
@@ -539,9 +696,8 @@ async function navigateTab(payload) {
   };
 }
 
-async function captureVisibleTab(payload) {
-  const tabId = await resolveTabId(payload.tab_id);
-  const tab = await chrome.tabs.get(tabId);
+async function captureVisibleTab(payload, settings) {
+  const { tab, tabId } = await authorizeTargetTab(payload, settings);
   await chrome.tabs.update(tabId, { active: true });
   await chrome.windows.update(tab.windowId, { focused: true });
   const format = payload.format === "jpeg" ? "jpeg" : "png";
@@ -563,9 +719,8 @@ async function captureVisibleTab(payload) {
   };
 }
 
-async function captureDomSnapshot(payload) {
-  const tabId = await resolveTabId(payload.tab_id);
-  const settings = await getSettings();
+async function captureDomSnapshot(payload, settings) {
+  const { tabId } = await authorizeTargetTab(payload, settings);
   const identity = await ensureClientIdentity();
   const clientProfile = buildClientProfileMetadata(settings, identity, detectBrowser());
   const snapshotOptions = {};
@@ -621,16 +776,18 @@ async function captureDomSnapshot(payload) {
     can_parallel_user_work: true
   };
   if (payload.include_capture) {
-    result.capture = await captureVisibleTab({ ...payload, tab_id: tabId });
+    result.capture = await captureVisibleTab(
+      { ...payload, tab_id: tabId },
+      settings
+    );
     result.requires_foreground = true;
     result.can_parallel_user_work = false;
   }
   return result;
 }
 
-async function sendElementCommand(action, payload) {
-  const tabId = await resolveTabId(payload.tab_id);
-  const settings = await getSettings();
+async function sendElementCommand(action, payload, settings) {
+  const { tabId } = await authorizeTargetTab(payload, settings);
   const identity = await ensureClientIdentity();
   const clientProfile = buildClientProfileMetadata(settings, identity, detectBrowser());
   const result = await sendToTab(tabId, {
@@ -681,10 +838,69 @@ async function sendToTab(tabId, message) {
   if (!Number.isInteger(resolvedTabId)) {
     throw new Error("A numeric tab_id is required");
   }
+  await ensureContentScript(resolvedTabId);
   try {
     return await chrome.tabs.sendMessage(resolvedTabId, message);
   } catch (error) {
     throw new Error(`Tab message failed for ${resolvedTabId}: ${String(error && error.message ? error.message : error)}`);
+  }
+}
+
+async function ensureContentScript(tabId) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "rumi:access-ping" });
+    return;
+  } catch (_error) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content_script.js"]
+    });
+  }
+}
+
+async function authorizeTargetTab(payload, settings) {
+  const tabId = await resolveTabId(payload.tab_id);
+  const tab = await chrome.tabs.get(tabId);
+  const decision = await accessDecisionForTab(tab, settings);
+  if (!decision.allowed) {
+    throw new Error(decision.message);
+  }
+  return { tab, tabId, decision };
+}
+
+async function accessDecisionForTab(tab, settings) {
+  const origin = safeOrigin(tab?.url || "");
+  const pattern = TobkiriBrowserAccessPolicy.permissionPattern(origin);
+  const hasHostPermission = pattern
+    ? await chrome.permissions.contains({ origins: [pattern] })
+    : false;
+  return TobkiriBrowserAccessPolicy.evaluateUrl(tab?.url || "", settings, {
+    incognito: tab?.incognito === true,
+    hasHostPermission
+  });
+}
+
+async function authorizeUrl(value, settings, context = {}) {
+  const origin = safeOrigin(value);
+  const pattern = TobkiriBrowserAccessPolicy.permissionPattern(origin);
+  const hasHostPermission = pattern
+    ? await chrome.permissions.contains({ origins: [pattern] })
+    : false;
+  const decision = TobkiriBrowserAccessPolicy.evaluateUrl(value, settings, {
+    ...context,
+    hasHostPermission
+  });
+  if (!decision.allowed) {
+    throw new Error(decision.message);
+  }
+  return decision;
+}
+
+function safeOrigin(value) {
+  try {
+    return new URL(String(value || "")).origin;
+  } catch (_error) {
+    return "";
   }
 }
 

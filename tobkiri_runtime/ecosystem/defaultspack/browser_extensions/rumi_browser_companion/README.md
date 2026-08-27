@@ -1,11 +1,11 @@
-# Rumi Browser Companion
+# Tobkiri Browser Companion
 
-`Rumi Browser Companion` is a Manifest V3 Chromium extension that lets Rumi drive the user's real browser session through a local bridge. It is designed to complement the existing `browser_use` and `computer_use` tools:
+`Tobkiri Browser Companion` is a Manifest V3 Chromium extension that lets Tobkiri drive explicitly allowed sites in the user's real browser session through a local bridge. It is designed to complement the existing `browser_use` and `computer_use` tools:
 
 - `computer_use` / `browser_computer`: visible-window, computer-use style control
 - `browser_companion`: DOM-aware browser control inside the user's signed-in browser profile
 
-This gives Rumi a "computer use + browser use" path where the model can inspect DOM state, select between connected browsers, and operate with the user's live cookies and sessions.
+This gives Tobkiri a consent-aware browser path where the model can inspect DOM state and operate with the user's live session only after the user enables polling, allowlists an exact origin, and grants the browser's host permission.
 
 ## Files
 
@@ -22,14 +22,18 @@ This gives Rumi a "computer use + browser use" path where the model can inspect 
 
    `<repo>/tobkiri_runtime/ecosystem/defaultspack/browser_extensions/rumi_browser_companion`
 
-4. In Rumi, call `browser_companion` with `action: "bridge.pairing"` to get the pairing token and candidate server URLs.
+4. In Tobkiri, call `browser_companion` with `action: "bridge.pairing"` to get the pairing token and candidate server URLs.
 5. Open the extension options page and paste:
 
    - `Server URL` such as `http://127.0.0.1:8766`
    - `Pairing Token`
    - Optional `Profile Label`, for example `Work` or `Personal`
 
-6. Click `Poll Bridge Now` to confirm the extension can connect.
+6. Read the access explanation, add the exact HTTP/HTTPS origins Tobkiri may control, and approve the browser permission prompt.
+7. Acknowledge the explanation and enable control. The default remains paused and no bridge polling occurs until this explicit choice is saved.
+8. Click `Poll Bridge Now` to confirm the extension can connect.
+
+The options page and toolbar badge remain the source of truth for control state. `OFF` means paused, `SET` means setup is incomplete, `ON` means connected, and `!` means attention is required. Removing an origin from the allowlist revokes its optional host permission. Denied origins override allowed origins, and incognito, browser-internal, and file pages are always blocked.
 
 ## Bridge API
 
@@ -219,10 +223,12 @@ For `page.extract` and `page.highlight`, text and accessibility matching prefers
 
 ## Safety Notes
 
-- This extension can inspect and act on pages in the user's real browser profile.
-- Only pair it with a local Rumi server you control.
+- This extension can inspect and act only on explicitly allowed HTTP/HTTPS pages in the user's real browser profile.
+- Only pair it with a local Tobkiri server you control.
 - Do not share the pairing token.
 - The pairing token is stored in browser-local extension storage and is not synced between browser profiles.
+- Polling is paused by default, and the extension sends metadata only for allowed, host-permitted tabs.
+- Incognito, browser-internal, file, denied, unlisted, and host-permission-denied pages fail closed.
 - Capture and tab selection may foreground the browser tab.
 - DOM actions are best-effort and may not work on all pages.
 

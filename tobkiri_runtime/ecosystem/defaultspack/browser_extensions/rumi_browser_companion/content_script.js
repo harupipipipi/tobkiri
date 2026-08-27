@@ -1,4 +1,9 @@
 (function () {
+  if (globalThis.__tobkiriBrowserCompanionContentScriptLoaded) {
+    return;
+  }
+  globalThis.__tobkiriBrowserCompanionContentScriptLoaded = true;
+
   const ELEMENT_ATTR = "data-rumi-element-id";
   const HIGHLIGHT_LAYER_ID = "rumi-browser-companion-highlight-layer";
   const SEARCH_HOME_MESSAGE_SOURCE = "rumi-search-home";
@@ -93,6 +98,11 @@
     }
 
     (async () => {
+      if (message.type === "rumi:access-ping") {
+        sendResponse({ ok: true });
+        return;
+      }
+
       if (message.type === "rumi:dom-snapshot") {
         const viewport = buildViewportMetadata();
         const nodes = collectSnapshot(Number(message.maxNodes) || 300, message.options || message);

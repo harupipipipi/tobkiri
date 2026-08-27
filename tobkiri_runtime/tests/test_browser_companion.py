@@ -424,7 +424,7 @@ def test_browser_companion_extension_focus_semantics_are_explicit():
     ]
 
     assert "chrome.tabs.update(tabId, { url: payload.url })" in background
-    assert "return sendElementCommand(action, payload);" in background
+    assert "return sendElementCommand(action, payload, settings);" in background
     assert "chrome.tabs.sendMessage(resolvedTabId, message)" in send_to_tab_body
     assert "chrome.tabs.update" not in send_element_body
     assert "chrome.windows.update" not in send_element_body

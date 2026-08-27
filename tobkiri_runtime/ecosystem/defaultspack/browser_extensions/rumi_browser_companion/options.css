@@ -48,8 +48,53 @@ p {
 }
 
 .lede,
-.capabilities {
+.capabilities,
+.field small,
+.recovery {
   color: var(--muted);
+}
+
+.notice {
+  margin: 20px 0 24px;
+  padding: 18px;
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  background: rgba(31, 111, 120, 0.08);
+}
+
+.notice h2 {
+  font-size: 1.15rem;
+}
+
+.notice p:last-child {
+  margin-bottom: 0;
+}
+
+.control-group {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.control-group legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.check-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.check-field input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
 }
 
 .field {
@@ -62,7 +107,8 @@ p {
   font-weight: 600;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -71,7 +117,12 @@ input {
   background: #fff;
 }
 
-input:focus {
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus {
   outline: 2px solid rgba(31, 111, 120, 0.3);
   border-color: var(--accent);
 }
@@ -119,6 +170,40 @@ button.secondary {
   margin-bottom: 0;
 }
 
+.status-grid {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 24px;
+}
+
+.status-grid div {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.35fr) 1fr;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.status-grid dt {
+  font-weight: 700;
+}
+
+.status-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.activity-list {
+  display: grid;
+  gap: 8px;
+  padding-left: 22px;
+  color: var(--muted);
+}
+
+.recovery {
+  margin-bottom: 0;
+}
+
 @media (max-width: 640px) {
   .card {
     padding: 22px;
@@ -130,5 +215,10 @@ button.secondary {
 
   button {
     width: 100%;
+  }
+
+  .status-grid div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }

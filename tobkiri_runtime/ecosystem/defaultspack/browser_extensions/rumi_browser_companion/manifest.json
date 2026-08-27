@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Rumi Browser Companion",
-  "description": "MV3 browser companion for the local Rumi bridge.",
+  "name": "Tobkiri Browser Companion",
+  "description": "Consent-aware browser companion for the local Tobkiri bridge.",
   "version": "0.1.0",
   "minimum_chrome_version": "114",
   "x_rumi_search_home_origins": [
@@ -10,11 +10,16 @@
   "permissions": [
     "activeTab",
     "alarms",
+    "scripting",
     "storage",
     "tabs"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "http://127.0.0.1:8777/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -22,12 +27,12 @@
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "Rumi Browser Companion"
+    "default_title": "Tobkiri Browser Companion — open access controls"
   },
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "http://127.0.0.1:8777/*"
       ],
       "js": [
         "content_script.js"
