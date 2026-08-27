@@ -420,7 +420,7 @@ void main() {
     await tester.pump();
     var copied = await Clipboard.getData(Clipboard.kTextPlain);
     expect(copied?.text, 'ユーザーの本文');
-    await tester.tapAt(const Offset(8, 820));
+    await tester.tapAt(const Offset(8, 590));
     await tester.pump();
 
     await tester.longPress(
