@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from ecosystem.rumi_company_state_store_pack.runtime.store import CompanyStateStore
+from ecosystem.rumi_company_state_store_pack.runtime import store as store_module
+from ecosystem.rumi_company_state_store_pack.runtime.store import (
+    CompanyStateStore,
+    create_company_action,
+)
 from ecosystem.rumi_company_state_store_pack.runtime.team_store import (
     LEGACY_VERSION,
     TeamStateConflict,
@@ -58,6 +62,67 @@ def test_different_teams_progress_with_independent_revisions(tmp_path: Path) -> 
         assert sorted(executor.map(append, ("team-a", "team-b"))) == [2, 2]
     assert store.get("team-a")["revision"] == 2
     assert store.get("team-b")["revision"] == 2
+
+
+def test_authority_redeems_exact_normalized_team_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    redeemed: list[dict[str, object]] = []
+
+    class AuthorityClient:
+        def invoke(
+            self, contract: str, operation: str, payload: dict[str, object]
+        ) -> dict[str, object]:
+            assert contract == "rumi.service.host.authorize.v1"
+            assert operation == "redeem"
+            redeemed.append(payload)
+            return {"authorized": True}
+
+    monkeypatch.setattr(store_module, "USER_DATA_DIR", tmp_path)
+    action = create_company_action(AuthorityClient())
+    result = action(
+        "company.create",
+        {
+            "profile_id": "default",
+            "company_id": "team",
+            "expected_revision": 0,
+            "name": "Team",
+            "description": "",
+            "settings": {},
+            "metadata": {},
+            "conversation_group_id": "company:team",
+            "authority_receipt": "receipt",
+            "caller_id": "caller",
+            "caller_pack_id": "caller-pack",
+            "caller_function_id": "caller.function",
+            "session_id": "session",
+        },
+    )
+
+    assert result["revision"] == 1
+    assert redeemed == [
+        {
+            "receipt": "receipt",
+            "service_pack_id": "rumi_company_state_store_pack",
+            "operation": "company.state.company.create",
+            "authority": "company.state.manage",
+            "caller_id": "caller",
+            "caller_pack_id": "caller-pack",
+            "caller_function_id": "caller.function",
+            "profile_id": "default",
+            "workspace_id": "",
+            "session_id": "session",
+            "arguments": {
+                "company_id": "team",
+                "expected_revision": 0,
+                "name": "Team",
+                "settings": {},
+                "description": "",
+                "metadata": {},
+                "conversation_group_id": "company:team",
+            },
+        }
+    ]
 
 
 def test_same_team_compare_and_set_has_one_retryable_winner(tmp_path: Path) -> None:
