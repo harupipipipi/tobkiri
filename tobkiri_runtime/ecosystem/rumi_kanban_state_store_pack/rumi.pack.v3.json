@@ -63,7 +63,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "artifact_hash": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
       "contract_id": "rumi.resource.kanban.v1",
       "id": "kanban-state-resource",
       "loader": "python",
@@ -71,7 +71,7 @@
       "symbol": "create_kanban_resource"
     },
     {
-      "artifact_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "artifact_hash": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
       "contract_id": "rumi.action.kanban.v1",
       "id": "kanban-state-action",
       "loader": "python",
@@ -132,7 +132,7 @@
         "pack_identity": "rumi:ecosystem/rumi_kanban_state_store_pack",
         "provenance": {
           "build_identity": "rumi_kanban_state_store_pack:1.0.0",
-          "content_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+          "content_hash": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
           "signature": null,
           "trust_class": "local"
         },
@@ -203,7 +203,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_kanban_state_store_pack:1.0.0",
-    "content_hash": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+    "content_hash": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
     "signature": null,
     "trust_class": "local"
   },

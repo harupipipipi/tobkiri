@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:89d908b7e51c1f9331d475ed5cf7e88e933099c0f674fa51dac6d4e94265e81a",
+  "catalog_digest": "sha256:77471aa2f01264f9da6ae706fb5c86a3d89a9c3d2998f30ca13e4f937b0bc47a",
   "pack_id": "rumi_kanban_state_store_pack",
-  "source_identity": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c",
+  "source_identity": "sha256:b49eae6e73012fac6cfcbe40fafcf7fdf662ae7e4d8e19d066f3f67ac7973755",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
-      "implementation_digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "implementation_digest": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
       "implementation_path": "runtime/store.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
-      "implementation_digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "implementation_digest": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
       "implementation_path": "runtime/store.py",
       "materialization_mode": "on_demand",
       "operations": [

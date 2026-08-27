@@ -623,22 +623,22 @@ export function KanbanWorkspacePanel({
                         aria-current={isKeyboardMoving ? "true" : undefined}
                       >
                         <div className="flex items-start gap-2">
-                          <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center text-zinc-600" title="Pointer drag handle" aria-hidden="true">
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center text-zinc-600" title="Pointer drag handle" aria-hidden="true">
                             <GripVertical size={16} className="cursor-grab group-hover/card:text-zinc-400" />
                           </span>
                           <div className="min-w-0 flex-1">
                             <h4 className="text-sm font-medium leading-5 text-zinc-200">
                               <button
+                                id={cardTitleId}
+                                type="button"
+                                onClick={() => setExpandedCardId((current) => current === card.card_id ? null : card.card_id)}
                                 ref={(node) => {
                                   if (node) cardFocusTargetsRef.current.set(card.card_id, node);
                                   else cardFocusTargetsRef.current.delete(card.card_id);
                                 }}
-                                id={cardTitleId}
-                                type="button"
                                 aria-expanded={expanded}
                                 aria-controls={`kanban-card-details-${card.card_id}`}
                                 onKeyDown={(event) => handleKeyboardMoveKeyDown(event, card)}
-                                onClick={() => setExpandedCardId((current) => current === card.card_id ? null : card.card_id)}
                                 className="min-h-11 w-full rounded-md px-1 text-left font-semibold outline-none hover:bg-zinc-900 focus-visible:ring-2 focus-visible:ring-sky-400"
                               >
                                 {card.title}

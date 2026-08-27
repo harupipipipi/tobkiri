@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:485441952e1a2ed967f01ef92d7029f93de13c5b6c976e9293c5d9604c5cf1ba",
+      "digest": "sha256:2abf8453a32386c66730b1078283c15a29642e3f590099394855af8f1bc36d20",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "digest": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
       "kind": "executable",
       "path": "runtime/store.py"
     }
@@ -31,7 +31,7 @@
     {
       "contract_revision_digest": "sha256:e0039add360ec1f3bbe64d55faefa78402dab364cc372d34459f4220c898f73c",
       "id": "rumi_kanban_state_store_pack.kanban-state.action",
-      "implementation_digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "implementation_digest": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_kanban_state_store_pack.kanban-state-action"
@@ -41,7 +41,7 @@
     {
       "contract_revision_digest": "sha256:162b7343f551e1fa8e2a70f80a7ac7e460be91f6514a0da9989111feadeea464",
       "id": "rumi_kanban_state_store_pack.kanban-state.resource",
-      "implementation_digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+      "implementation_digest": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_kanban_state_store_pack.kanban-state-resource"
@@ -50,9 +50,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:5d3b69b5258e320b73c23efa3ca44575321bfb848d51bc306a5d1dedd12b6334",
-    "contract_catalog_digest": "sha256:076b56dcd9ae158aeec947c0f391f6a9d1e61b39761987acc70cc5e3dbe39f98",
-    "source_identity": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c"
+    "artifact_set_digest": "sha256:9baa8181bf927e7fc149554aea348f54c1f95e3f020faac053d280d7e78fed39",
+    "contract_catalog_digest": "sha256:e6e5e62d1b15b80c723370a2bb5c976ba0b91ddc624e1470922a5562d734d4c1",
+    "source_identity": "sha256:b49eae6e73012fac6cfcbe40fafcf7fdf662ae7e4d8e19d066f3f67ac7973755"
   },
   "migration": {
     "compatibility": "read_only",
@@ -88,7 +88,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:5d3b69b5258e320b73c23efa3ca44575321bfb848d51bc306a5d1dedd12b6334",
+    "artifact_digest": "sha256:9baa8181bf927e7fc149554aea348f54c1f95e3f020faac053d280d7e78fed39",
     "display_name": "Rumi Kanban State Store",
     "id": "rumi_kanban_state_store_pack",
     "kind": "normal_sandbox",
@@ -98,7 +98,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c",
+        "digest": "sha256:b49eae6e73012fac6cfcbe40fafcf7fdf662ae7e4d8e19d066f3f67ac7973755",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -109,7 +109,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:3c67862413398cd57e25a7266efc914c64781b821ebaa51f1b64b893e51e5e3c",
+    "source_digest": "sha256:b49eae6e73012fac6cfcbe40fafcf7fdf662ae7e4d8e19d066f3f67ac7973755",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_kanban_state_store_pack"
   },
