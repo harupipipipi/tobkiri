@@ -1,5 +1,7 @@
 import { Bot, ClipboardList, MessageSquare, Route, Settings, Share2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Bot, ClipboardList, MessageSquare, Route, Settings, Share2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   CompanyAgent,
@@ -254,8 +256,7 @@ function researchTaskDescription(query: string, sources: Array<Record<string, un
 
 function settledErrorMessage(label: string, result: PromiseSettledResult<unknown>): string | null {
   if (result.status !== "rejected") return null;
-  const detail = result.reason instanceof Error ? result.reason.message : "unavailable";
-  return `${label}: ${detail}`;
+  return `${label} is temporarily unavailable.`;
 }
 
 function preferLoadedCompanyResource<T>(loaded: T[] | null, fallback: T[]): T[] {
@@ -355,8 +356,24 @@ export function CompanyWorkspacePanel({
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<CompanyTab>("tasks");
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [staleResources, setStaleResources] = useState<string[]>([]);
+  const [resourceRevision, setResourceRevision] = useState<number | undefined>(undefined);
+  const [actionStates, setActionStates] = useState<Record<string, CompanyActionState>>({});
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
+  const [pendingCompanyNavigation, setPendingCompanyNavigation] = useState<{
+    companyId?: string;
+    tabId?: CompanyTab;
+    label: string;
+  } | null>(null);
+  const loadGate = useRef(new CompanyLoadGate());
+  const resourceRevisionRef = useRef(resourceRevision);
+  const pendingActions = useRef(new Set<string>());
+  const currentState = useRef({ companies, agents, channels, messages, tasks, runs, inboxItems, routes, p2pStatus, p2pIdentity, peers, activeCompanyId });
+  currentState.current = { companies, agents, channels, messages, tasks, runs, inboxItems, routes, p2pStatus, p2pIdentity, peers, activeCompanyId };
+  resourceRevisionRef.current = resourceRevision;
   const hasActiveConversation = Boolean(activeConversationId);
   const isOverflowTabActive = OVERFLOW_TABS.some((tab) => tab.id === activeTab);
   const titleCompanyIdHint = companyIdFromConversationTitle(activeCompanyIdHint) ?? companyIdFromConversationTitle(activeConversationTitle);
@@ -373,8 +390,9 @@ export function CompanyWorkspacePanel({
   }), [activeConversationId, companies, company, normalizedActiveCompanyIdHint]);
 
   const loadCompany = useCallback(async (requestedCompanyId?: string | null, requestedChannelId?: string | null) => {
-    setBusy(true);
-    setError(null);
+    const loadToken = loadGate.current.begin(requestedCompanyId, requestedChannelId);
+    setRefreshing(true);
+    setLoadError(null);
     try {
       const requestedCompanyWasProvided = requestedCompanyId !== undefined;
       const hintedCompanyId = requestedCompanyWasProvided
@@ -395,8 +413,15 @@ export function CompanyWorkspacePanel({
         statusRequest,
         companyResources.getP2PStatus(),
       ]);
+      if (!loadGate.current.isCurrent(loadToken)) return;
 
-      const listedCompanies = companyListResult.status === "fulfilled" ? companyListResult.value.companies : [];
+      const listedCompanies = companyListResult.status === "fulfilled"
+        ? companyListResult.value.companies
+        : currentState.current.companies;
+      if (companyListResult.status === "fulfilled") {
+        resourceRevisionRef.current = companyListResult.value.revision;
+        setResourceRevision(companyListResult.value.revision);
+      }
       const statusCompanyId = statusResult.status === "fulfilled" ? statusResult.value.company_id : null;
       let statusCompany = statusResult.status === "fulfilled" ? statusResult.value.company ?? null : null;
       const selectedId = resolveSelectedCompanyId({
@@ -421,6 +446,7 @@ export function CompanyWorkspacePanel({
           selectedCompanyDetails = detailsResult.value;
         }
       }
+      if (!loadGate.current.isCurrent(loadToken)) return;
       if (!statusCompany && selectedId) {
         statusCompany = listedCompanies.find((item) => item.id === selectedId) ?? selectedCompanyDetails;
       }
@@ -441,16 +467,27 @@ export function CompanyWorkspacePanel({
       setActiveCompanyId(selectedId);
       setCompany(selectedCompany);
 
-      const nextP2PStatus = p2pStatusResult.status === "fulfilled" ? p2pStatusResult.value : null;
+      const nextP2PStatus = p2pStatusResult.status === "fulfilled"
+        ? p2pStatusResult.value
+        : currentState.current.p2pStatus;
       setP2PStatus(nextP2PStatus);
       const p2pDetails = await loadEnabledP2PDetails(nextP2PStatus);
-      setP2PIdentity(p2pDetails.identity);
-      setPeers(p2pDetails.peers);
+      if (!loadGate.current.isCurrent(loadToken)) return;
+      if (p2pStatusResult.status === "fulfilled") {
+        setP2PIdentity(p2pDetails.identity);
+        setPeers(p2pDetails.peers);
+      }
 
       const loadErrors = [
         settledErrorMessage("Company list", companyListResult),
         settledErrorMessage("Company status", statusResult),
+        settledErrorMessage("P2P status", p2pStatusResult),
       ].filter((message): message is string => Boolean(message));
+      const nextStaleResources = [
+        companyListResult.status === "rejected" ? "companies" : null,
+        statusResult.status === "rejected" ? "status" : null,
+        p2pStatusResult.status === "rejected" ? "p2p" : null,
+      ].filter((resource): resource is string => Boolean(resource));
       const companyDetailsError = companyDetailsResult ? settledErrorMessage("Company details", companyDetailsResult) : null;
       if (companyDetailsError && !selectedCompany) loadErrors.push(companyDetailsError);
 
@@ -462,16 +499,18 @@ export function CompanyWorkspacePanel({
           companyResources.listCompanyInboundRoutes(selectedId),
           companyResources.listCompanyRuns(selectedId, { limit: 80 }),
         ]);
+        if (!loadGate.current.isCurrent(loadToken)) return;
+        const sameCompany = selectedId === currentState.current.activeCompanyId;
         const fallbackAgents = arrayFromRecord(selectedCompany?.agents);
         const nextAgents = preferLoadedCompanyResource(
           agentResult.status === "fulfilled" ? agentResult.value.agents : null,
-          fallbackAgents,
+          sameCompany ? currentState.current.agents : fallbackAgents,
         );
         setAgents(nextAgents);
         const fallbackChannels = arrayFromRecord(selectedCompany?.channels);
         const nextChannels = preferLoadedCompanyResource(
           channelResult.status === "fulfilled" ? channelResult.value.channels : null,
-          fallbackChannels,
+          sameCompany ? currentState.current.channels : fallbackChannels,
         );
         setChannels(nextChannels);
         const resolvedChannelId = resolveActiveChannelId(requestedChannelId ?? activeChannelId, nextChannels);
@@ -479,13 +518,13 @@ export function CompanyWorkspacePanel({
         const fallbackTasks = arrayFromRecord(selectedCompany?.tasks);
         const nextTasks = preferLoadedCompanyResource(
           taskResult.status === "fulfilled" ? taskResult.value.tasks : null,
-          fallbackTasks,
+          sameCompany ? currentState.current.tasks : fallbackTasks,
         );
         setTasks(nextTasks);
         const fallbackRoutes = arrayFromRecord(selectedCompany?.inbound_routes);
         const nextRoutes = preferLoadedCompanyResource(
           routeResult.status === "fulfilled" ? routeResult.value.routes : null,
-          fallbackRoutes,
+          sameCompany ? currentState.current.routes : fallbackRoutes,
         );
         setRoutes(nextRoutes);
         if (selectedCompany) {
@@ -501,6 +540,7 @@ export function CompanyWorkspacePanel({
         const [messageResult] = await Promise.allSettled([
           companyResources.listCompanyMessages(selectedId, resolveCompanyMessageListOptions(nextChannels, resolvedChannelId)),
         ]);
+        if (!loadGate.current.isCurrent(loadToken)) return;
         let loadedMessages = messageResult.status === "fulfilled" ? messageResult.value.messages : null;
         let messageRetryResult: PromiseSettledResult<{ messages: CompanyMessage[]; total: number }> | null = null;
         const selectedChannel = nextChannels.find((channel) => channel.id === resolvedChannelId);
@@ -514,19 +554,38 @@ export function CompanyWorkspacePanel({
           }
         }
         const fallbackMessages = arrayFromRecord(selectedCompany?.messages);
-        setMessages(preferLoadedCompanyResource(loadedMessages, fallbackMessages));
-        setRuns(runResult.status === "fulfilled" ? runResult.value.runs : []);
-        const channelError = settledErrorMessage("Channels", channelResult);
-        const messageError = settledErrorMessage("Messages", messageResult);
+        setMessages(preferLoadedCompanyResource(
+          loadedMessages,
+          sameCompany ? currentState.current.messages : fallbackMessages,
+        ));
+        setRuns(runResult.status === "fulfilled"
+          ? runResult.value.runs
+          : sameCompany ? currentState.current.runs : []);
+        for (const [resource, result] of [
+          ["agents", agentResult],
+          ["channels", channelResult],
+          ["tasks", taskResult],
+          ["routes", routeResult],
+          ["runs", runResult],
+          ["messages", messageResult],
+        ] as const) {
+          if (result.status === "rejected") nextStaleResources.push(resource);
+          const resourceError = settledErrorMessage(resource[0].toUpperCase() + resource.slice(1), result);
+          if (resourceError) loadErrors.push(resourceError);
+        }
         const messageRetryError = messageRetryResult ? settledErrorMessage("Messages retry", messageRetryResult) : null;
-        if (channelError) loadErrors.push(channelError);
-        if (messageError) loadErrors.push(messageError);
         if (messageRetryError) loadErrors.push(messageRetryError);
         const inboxResults = await Promise.allSettled(
           nextAgents.map((agent) => companyResources.listCompanyAgentInbox(selectedId, agent.agent_id, { limit: 20 })),
         );
+        if (!loadGate.current.isCurrent(loadToken)) return;
+        const loadedInbox = inboxResults.flatMap((result) => result.status === "fulfilled" ? result.value.inbox : []);
+        if (inboxResults.some((result) => result.status === "rejected")) {
+          nextStaleResources.push("inbox");
+          loadErrors.push("Agent inbox is temporarily unavailable.");
+        }
         setInboxItems(
-          inboxResults.flatMap((result) => result.status === "fulfilled" ? result.value.inbox : []),
+          loadedInbox.length > 0 || !sameCompany ? loadedInbox : currentState.current.inboxItems,
         );
       } else {
         setAgents([]);
@@ -539,51 +598,146 @@ export function CompanyWorkspacePanel({
       }
 
       if (loadErrors.length > 0) {
-        setError(loadErrors.join(" "));
+        setLoadError(loadErrors.join(" "));
       }
+      setStaleResources([...new Set(nextStaleResources)]);
     } finally {
-      setBusy(false);
+      if (loadGate.current.isCurrent(loadToken)) setRefreshing(false);
     }
   }, [activeChannelId, activeCompanyId, activeConversationId, normalizedActiveCompanyIdHint]);
 
+  const requestCompanyLoad = useCallback((companyId: string, channelId?: string | null) => {
+    if (settingsDirty && companyId !== activeCompanyId) {
+      const target = effectiveCompanies.find((item) => item.id === companyId);
+      setPendingCompanyNavigation({ companyId, label: target?.name || companyId });
+      setActiveTab("settings");
+      return;
+    }
+    void loadCompany(companyId, channelId);
+  }, [activeCompanyId, effectiveCompanies, loadCompany, settingsDirty]);
+
   useEffect(() => {
-    setActiveCompanyId(normalizedActiveCompanyIdHint);
-    void loadCompany(normalizedActiveCompanyIdHint);
+    if (!normalizedActiveCompanyIdHint) {
+      void loadCompany(null);
+      return;
+    }
+    requestCompanyLoad(normalizedActiveCompanyIdHint);
   }, [activeConversationId, normalizedActiveCompanyIdHint]);
 
   useEffect(() => {
     if (!titleCompanyIdHint || activeCompanyId === titleCompanyIdHint) return;
-    setActiveCompanyId(titleCompanyIdHint);
-    void loadCompany(titleCompanyIdHint);
-  }, [activeCompanyId, loadCompany, titleCompanyIdHint]);
+    requestCompanyLoad(titleCompanyIdHint);
+  }, [activeCompanyId, requestCompanyLoad, titleCompanyIdHint]);
 
   useEffect(() => {
     if (!activeCompanyId) return undefined;
     const intervalId = window.setInterval(() => {
+      if (!shouldRunCompanyPoll({
+        visible: document.visibilityState === "visible",
+        online: navigator.onLine,
+        editing: settingsDirty,
+        mutationPending: pendingActions.current.size > 0,
+      })) return;
       void loadCompany(activeCompanyId);
     }, 30000);
     return () => window.clearInterval(intervalId);
-  }, [activeCompanyId, loadCompany]);
+  }, [activeCompanyId, loadCompany, settingsDirty]);
+
+  useEffect(() => {
+    const updateConnectivity = () => setOffline(!navigator.onLine);
+    window.addEventListener("online", updateConnectivity);
+    window.addEventListener("offline", updateConnectivity);
+    return () => {
+      window.removeEventListener("online", updateConnectivity);
+      window.removeEventListener("offline", updateConnectivity);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeCompanyId) return undefined;
+    const resumeRefresh = () => {
+      if (!shouldRunCompanyPoll({
+        visible: document.visibilityState === "visible",
+        online: navigator.onLine,
+        editing: settingsDirty,
+        mutationPending: pendingActions.current.size > 0,
+      })) return;
+      void loadCompany(activeCompanyId);
+    };
+    window.addEventListener("online", resumeRefresh);
+    document.addEventListener("visibilitychange", resumeRefresh);
+    return () => {
+      window.removeEventListener("online", resumeRefresh);
+      document.removeEventListener("visibilitychange", resumeRefresh);
+    };
+  }, [activeCompanyId, loadCompany, settingsDirty]);
 
   const activeCompany = company ?? effectiveCompanies.find((item) => item.id === activeCompanyId) ?? null;
 
-  const run = async (work: () => Promise<unknown>) => {
-    setBusy(true);
-    setError(null);
+  const run = async <T,>(
+    actionKey: string,
+    operationId: string,
+    work: () => Promise<T>,
+  ): Promise<CompanyMutationReceipt<T>> => {
+    if (pendingActions.current.has(actionKey)) {
+      return {
+        operationId,
+        phase: "rejected",
+        error: "This action is already pending.",
+        retryable: false,
+      };
+    }
+    pendingActions.current.add(actionKey);
+    setActionStates((current) => ({
+      ...current,
+      [actionKey]: { phase: "pending", operationId, message: "Saving…" },
+    }));
     try {
-      await work();
+      const value = await work();
+      setActionStates((current) => ({
+        ...current,
+        [actionKey]: { phase: "committed", operationId, message: "Saved", updatedAt: Date.now() },
+      }));
       await loadCompany(activeCompanyId);
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Company action failed.");
+      return { operationId, phase: "committed", value, revision: resourceRevision };
+    } catch (error) {
+      const normalized = safeCompanyMutationError(error);
+      setActionStates((current) => ({
+        ...current,
+        [actionKey]: {
+          phase: "rejected",
+          operationId,
+          message: normalized.message,
+          retryable: normalized.retryable,
+          ambiguous: normalized.ambiguous,
+          updatedAt: Date.now(),
+        },
+      }));
+      await loadCompany(activeCompanyId);
+      return { operationId, phase: "rejected", error: normalized.message, ...normalized };
     } finally {
-      setBusy(false);
+      pendingActions.current.delete(actionKey);
     }
   };
 
   const selectTab = (tabId: CompanyTab) => {
+    if (settingsDirty && activeTab === "settings" && tabId !== "settings") {
+      const target = TABS.find((tab) => tab.id === tabId);
+      setPendingCompanyNavigation({ tabId, label: target?.label || tabId });
+      setIsMoreMenuOpen(false);
+      return;
+    }
     setActiveTab(tabId);
     setIsMoreMenuOpen(false);
   };
+
+  const mutationRequest = (operationId: string) => ({
+    operation_id: operationId,
+    idempotency_key: operationId,
+    ...(resourceRevisionRef.current !== undefined
+      ? { expected_revision: resourceRevisionRef.current }
+      : {}),
+  });
 
   const renderTab = () => {
     if (!activeCompanyId && activeTab !== "p2p") {
@@ -596,13 +750,20 @@ export function CompanyWorkspacePanel({
             channels={channels}
             messages={messages}
             activeChannelId={activeChannelId}
-            busy={busy}
             onChannelChange={(channelId) => {
               if (!activeCompanyId) return;
               setActiveChannelId(channelId);
               void loadCompany(activeCompanyId, channelId);
             }}
-            onSendMessage={(content, channelId) => activeCompanyId && void run(() => companyResources.sendCompanyMessage(activeCompanyId, { content, channel_id: channelId, sender_id: "user" }))}
+            onSendMessage={(content, channelId, operationId) => run(
+              `message:${activeCompanyId}:${channelId}`,
+              operationId,
+              () => companyResources.sendCompanyMessage(
+                activeCompanyId!,
+                { content, channel_id: channelId, sender_id: "user" },
+                mutationRequest(operationId),
+              ),
+            )}
           />
         );
       case "agents":
@@ -612,25 +773,68 @@ export function CompanyWorkspacePanel({
             runs={runs}
             inboxItems={inboxItems}
             expectedAgentCount={activeCompany?.agent_count}
-            busy={busy}
-            onUpsertAgent={(agent) => activeCompanyId && void run(() => companyResources.upsertCompanyAgent(activeCompanyId, agent))}
+            busy={actionStates.agents?.phase === "pending"}
+            onUpsertAgent={(agent, operationId) => run(
+              "agents",
+              operationId,
+              () => companyResources.upsertCompanyAgent(
+                activeCompanyId!,
+                agent,
+                mutationRequest(operationId),
+              ),
+            )}
           />
         );
       case "routes":
         return (
           <CompanyInboundRoutesPanel
             routes={routes}
-            busy={busy}
-            onUpsertRoute={(route) => activeCompanyId && void run(() => companyResources.upsertCompanyInboundRoute(activeCompanyId, route))}
-            onDeleteRoute={(routeId) => activeCompanyId && void run(() => companyResources.deleteCompanyInboundRoute(activeCompanyId, routeId))}
+            busy={actionStates.routes?.phase === "pending"}
+            onUpsertRoute={(route, operationId) => run(
+              "routes",
+              operationId,
+              () => companyResources.upsertCompanyInboundRoute(
+                activeCompanyId!,
+                route,
+                mutationRequest(operationId),
+              ),
+            )}
+            onDeleteRoute={(routeId, operationId) => run(
+              "routes",
+              operationId,
+              () => companyResources.deleteCompanyInboundRoute(
+                activeCompanyId!,
+                routeId,
+                mutationRequest(operationId),
+              ),
+            )}
           />
         );
       case "settings":
         return (
           <CompanySettingsPanel
             settings={activeCompany?.settings ?? {}}
-            busy={busy}
-            onSave={(settings) => activeCompanyId && void run(() => companyResources.updateCompanySettings(activeCompanyId, settings))}
+            busy={actionStates.settings?.phase === "pending"}
+            onDirtyChange={setSettingsDirty}
+            navigationRequest={pendingCompanyNavigation}
+            onResolveNavigation={(decision) => {
+              const pending = pendingCompanyNavigation;
+              setPendingCompanyNavigation(null);
+              if (decision === "cancelled" || !pending) return;
+              setSettingsDirty(false);
+              if (pending.companyId) void loadCompany(pending.companyId);
+              if (pending.tabId) setActiveTab(pending.tabId);
+            }}
+            onSave={(settings, operationId) => run(
+              "settings",
+              operationId,
+              () => companyResources.updateCompanySettings(
+                activeCompanyId!,
+                settings,
+                false,
+                mutationRequest(operationId),
+              ),
+            )}
           />
         );
       case "p2p":
@@ -639,9 +843,24 @@ export function CompanyWorkspacePanel({
             status={p2pStatus}
             identity={p2pIdentity}
             peers={peers}
-            busy={busy}
-            onStartPairing={(peerLabel) => void run(() => companyResources.startP2PPairing({ peer_label: peerLabel, allowed_company_ids: activeCompanyId ? [activeCompanyId] : undefined }))}
-            onSendMessage={(peerId, text) => void run(() => companyResources.sendP2PMessage(peerId, { text, body: { text, company_id: activeCompanyId ?? undefined } }))}
+            busy={actionStates.p2p?.phase === "pending"}
+            onStartPairing={(peerLabel, operationId) => run(
+              "p2p:pairing",
+              operationId,
+              () => companyResources.startP2PPairing(
+                { peer_label: peerLabel, allowed_company_ids: activeCompanyId ? [activeCompanyId] : undefined },
+                mutationRequest(operationId),
+              ),
+            )}
+            onSendMessage={(peerId, text, operationId) => run(
+              `p2p:message:${peerId}`,
+              operationId,
+              () => companyResources.sendP2PMessage(
+                peerId,
+                { text, body: { text, company_id: activeCompanyId ?? undefined } },
+                mutationRequest(operationId),
+              ),
+            )}
           />
         );
       case "tasks":
@@ -652,21 +871,24 @@ export function CompanyWorkspacePanel({
             agents={agents}
             runs={runs}
             expectedTaskCount={activeCompany?.task_count}
-            busy={busy}
-            onCreateTask={(title, targetAgentIds) => activeCompanyId && void run(() => companyResources.createCompanyTask(activeCompanyId, {
-              title,
-              target_agent_ids: targetAgentIds,
-              source: "president",
-              metadata: {
-                ...(activeConversationId ? { conversation_id: activeConversationId } : {}),
-                ...(activeConversationTitle ? { source_chat_title: activeConversationTitle } : {}),
-                source_message: title,
-              },
-            }))}
-            onCreateResearchTask={(query, targetAgentIds) => activeCompanyId && void run(async () => {
+            onCreateTask={(title, targetAgentIds, operationId) => run(
+              "task:create",
+              operationId,
+              () => companyResources.createCompanyTask(activeCompanyId!, {
+                title,
+                target_agent_ids: targetAgentIds,
+                source: "president",
+                metadata: {
+                  ...(activeConversationId ? { conversation_id: activeConversationId } : {}),
+                  ...(activeConversationTitle ? { source_chat_title: activeConversationTitle } : {}),
+                  source_message: title,
+                },
+              }, mutationRequest(operationId)),
+            )}
+            onCreateResearchTask={(query, targetAgentIds, operationId) => run("task:create", operationId, async () => {
               const searchResult = await companyResources.webSearch(query, true);
               const sources = researchSources(searchResult.sources);
-              return companyResources.createCompanyTask(activeCompanyId, {
+              return companyResources.createCompanyTask(activeCompanyId!, {
                 title: `Deep research: ${query}`,
                 description: researchTaskDescription(query, sources),
                 target_agent_ids: targetAgentIds.length > 0 ? targetAgentIds : ["research_specialist"],
@@ -679,11 +901,23 @@ export function CompanyWorkspacePanel({
                   search_provider: textValue(searchResult.provider) || "external_web",
                   sources,
                 },
-              });
+              }, mutationRequest(operationId));
             })}
-            onUpdateTask={(taskId, updates) => activeCompanyId && void run(() => companyResources.updateCompanyTask(activeCompanyId, taskId, updates))}
-            onDeleteTask={(taskId) => activeCompanyId && void run(() => companyResources.deleteCompanyTask(activeCompanyId, taskId))}
-            onDispatchTask={(taskId) => activeCompanyId && void run(() => companyResources.dispatchCompanyTask(activeCompanyId, taskId))}
+            onUpdateTask={(taskId, updates, operationId) => run(
+              `task:${taskId}:status`,
+              operationId,
+              () => companyResources.updateCompanyTask(activeCompanyId!, taskId, updates, mutationRequest(operationId)),
+            )}
+            onDeleteTask={(taskId, operationId) => run(
+              `task:${taskId}:delete`,
+              operationId,
+              () => companyResources.deleteCompanyTask(activeCompanyId!, taskId, mutationRequest(operationId)),
+            )}
+            onDispatchTask={(taskId, operationId) => run(
+              `task:${taskId}:dispatch`,
+              operationId,
+              () => companyResources.dispatchCompanyTask(activeCompanyId!, taskId, undefined, mutationRequest(operationId)),
+            )}
           />
         );
     }
@@ -714,22 +948,35 @@ export function CompanyWorkspacePanel({
           severity="warning"
         />
       )}
+      {staleResources.length > 0 && (
+        <p role="status" className="mx-2 mb-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-1 text-[10px] text-amber-200">
+          Showing last known data for: {staleResources.join(", ")}.
+        </p>
+      )}
+      {offline && (
+        <p role="status" className="mx-2 mb-2 rounded-md border border-sky-500/20 bg-sky-500/5 px-2 py-1 text-[10px] text-sky-200">
+          Offline. Last known Company data and unsaved drafts are preserved; refresh resumes when connectivity returns.
+        </p>
+      )}
 
       <CompanyTree
         companies={effectiveCompanies}
         activeCompanyId={activeCompanyId}
         activeTaskCount={Math.max(tasks.length, activeCompany?.task_count ?? 0)}
-        busy={busy}
+        busy={refreshing}
         emptyMessage={hasActiveConversation ? "No Subagent Team loaded." : "Start or send a chat message to create its Subagent Team."}
-        onSelect={(companyId) => void loadCompany(companyId)}
-        onBootstrap={hasActiveConversation ? () => void run(() => companyResources.bootstrapCompanyWorkspace(
-          {
-            source: "webapp",
-            name: "Executive Team",
-            ...(activeConversationId ? { conversation_id: activeConversationId, scope: "conversation" } : {}),
-          },
-          activeConversationId ? { conversationId: activeConversationId, scope: "conversation" } : undefined,
-        )) : undefined}
+        onSelect={requestCompanyLoad}
+        onBootstrap={hasActiveConversation ? () => {
+          const operationId = createCompanyOperationId("company-bootstrap");
+          void run("bootstrap", operationId, () => companyResources.bootstrapCompanyWorkspace(
+            {
+              source: "webapp",
+              name: "Executive Team",
+              ...(activeConversationId ? { conversation_id: activeConversationId, scope: "conversation" } : {}),
+            },
+            activeConversationId ? { conversationId: activeConversationId, scope: "conversation" } : undefined,
+          ));
+        } : undefined}
         onRefresh={() => void loadCompany(activeCompanyId)}
       />
 

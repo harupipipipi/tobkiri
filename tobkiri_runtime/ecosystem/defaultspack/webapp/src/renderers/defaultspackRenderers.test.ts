@@ -25,6 +25,11 @@ import {
 import { buildCompactHistoryRailItems, buildGroupsFromChats } from "../components/HistoryBoard";
 import { defaultspackRendererIds, defaultspackRenderers, resolveDefaultspackRenderers } from "./defaultspackRenderers";
 
+const committedCompanyMutation = async () => ({
+  operationId: "test-operation",
+  phase: "committed" as const,
+});
+
 test("defaultspack renderer registry covers visible shell regions", () => {
   assert.deepEqual([...defaultspackRendererIds].sort(), [
     "activity_preview",
@@ -136,9 +141,9 @@ test("company task board renders dispatched completed runs", () => {
           },
         },
       ],
-      onCreateTask: () => {},
-      onDispatchTask: () => {},
-      onCreateResearchTask: () => {},
+      onCreateTask: committedCompanyMutation,
+      onDispatchTask: committedCompanyMutation,
+      onCreateResearchTask: committedCompanyMutation,
     }),
   );
 
@@ -163,8 +168,8 @@ test("company task board exposes chosen-status moves and confirmed deletion entr
         title: "Recover blocked work",
         status: "blocked",
       }],
-      onUpdateTask: () => {},
-      onDeleteTask: () => {},
+      onUpdateTask: committedCompanyMutation,
+      onDeleteTask: committedCompanyMutation,
     }),
   );
 
@@ -630,8 +635,8 @@ test("company p2p panel disables durable actions while p2p is disabled", () => {
     createElement(CompanyP2PPanel, {
       status: { p2p: { enabled: false }, peer_count: 0, approved_peer_count: 0 },
       peers: [{ peer_id: "peer-1", label: "Peer one", status: "approved" }],
-      onStartPairing: () => {},
-      onSendMessage: () => {},
+      onStartPairing: committedCompanyMutation,
+      onSendMessage: committedCompanyMutation,
     }),
   );
 
@@ -648,7 +653,7 @@ test("company p2p panel fails closed while p2p status is unavailable", () => {
     createElement(CompanyP2PPanel, {
       status: null,
       peers: [],
-      onStartPairing: () => {},
+      onStartPairing: committedCompanyMutation,
     }),
   );
 

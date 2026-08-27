@@ -1,6 +1,13 @@
 import { MessageSquare, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import {
+  createCompanyOperationId,
+  pendingCompanyAction,
+  rejectedCompanyAction,
+  type CompanyActionState,
+  type CompanyMutationReceipt,
+} from "../../features/company/companyWorkspaceState";
 import type { CompanyChannel, CompanyMessage } from "../../lib/api";
 
 function positiveCount(value: unknown): number {
@@ -58,9 +65,20 @@ export function CompanyChannelView({
   activeChannelId?: string | null;
   busy?: boolean;
   onChannelChange?: (channelId: string) => void;
-  onSendMessage?: (content: string, channelId: string) => void;
+  onSendMessage?: (
+    content: string,
+    channelId: string,
+    operationId: string,
+  ) => Promise<CompanyMutationReceipt<CompanyMessage>>;
 }) {
   const [draft, setDraft] = useState("");
+  const [sendState, setSendState] = useState<CompanyActionState>({ phase: "idle" });
+  const [lastAttempt, setLastAttempt] = useState<{
+    content: string;
+    channelId: string;
+    operationId: string;
+  } | null>(null);
+  const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
   const selectedChannelId = activeChannelId || channels[0]?.id || "ops-company";
   const activeChannel = useMemo(
     () => channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? null,
@@ -79,6 +97,43 @@ export function CompanyChannelView({
     }
     return scopedMessages;
   }, [channels, expectedMessageCount, messages, selectedChannelId]);
+  const sendPending = sendState.phase === "pending";
+
+  const submitMessage = async (attempt?: typeof lastAttempt): Promise<boolean> => {
+    if (!onSendMessage || sendPending) return false;
+    const content = attempt?.content ?? draft.trim();
+    const channelId = attempt?.channelId ?? selectedChannelId;
+    if (!content) return false;
+    const operationId = attempt?.operationId ?? createCompanyOperationId("company-message");
+    const nextAttempt = { content, channelId, operationId };
+    setLastAttempt(nextAttempt);
+    setSendState(pendingCompanyAction(operationId));
+    try {
+      const receipt = await onSendMessage(content, channelId, operationId);
+      if (receipt.phase === "committed") {
+        setSendState({
+          phase: "committed",
+          operationId,
+          message: "Message sent",
+          updatedAt: Date.now(),
+        });
+        setDraft((current) => current.trim() === content ? "" : current);
+        setLastAttempt(null);
+        return true;
+      }
+      setSendState({
+        phase: "rejected",
+        operationId,
+        message: receipt.error ?? "The message was not sent. Your draft was kept.",
+        retryable: receipt.retryable ?? true,
+        ambiguous: receipt.ambiguous,
+      });
+      return false;
+    } catch (error) {
+      setSendState(rejectedCompanyAction(operationId, error));
+      return false;
+    }
+  };
 
   return (
     <section className="space-y-2 p-2">
@@ -86,7 +141,15 @@ export function CompanyChannelView({
         <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Channels</h4>
         <select
           value={selectedChannelId}
-          onChange={(event) => onChannelChange?.(event.target.value)}
+          onChange={(event) => {
+            if (draft.trim()) {
+              setPendingChannelId(event.target.value);
+              return;
+            }
+            setSendState({ phase: "idle" });
+            onChannelChange?.(event.target.value);
+          }}
+          disabled={sendPending}
           className="max-w-[150px] bg-transparent text-[11px] text-zinc-300 outline-none"
         >
           {channels.map((channel) => (
@@ -122,28 +185,83 @@ export function CompanyChannelView({
           className="flex items-center gap-1.5"
           onSubmit={(event) => {
             event.preventDefault();
-            const content = draft.trim();
-            if (!content) return;
-            onSendMessage(content, selectedChannelId);
-            setDraft("");
+            void submitMessage();
           }}
         >
           <input
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            disabled={busy}
+            disabled={busy || sendPending}
             placeholder="@pm handoff note"
             className="h-8 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <button
             type="submit"
-            disabled={busy || !draft.trim()}
+            disabled={busy || sendPending || !draft.trim()}
+            aria-busy={sendPending}
             className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
             title="Send company message"
           >
             <Send size={13} />
           </button>
         </form>
+      )}
+      {sendState.phase !== "idle" && (
+        <div
+          role={sendState.phase === "rejected" ? "alert" : "status"}
+          aria-live={sendState.phase === "rejected" ? "assertive" : "polite"}
+          className={`flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-[11px] ${
+            sendState.phase === "rejected"
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+              : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+          }`}
+        >
+          <span>{sendState.message}</span>
+          {sendState.phase === "rejected" && sendState.retryable && lastAttempt && (
+            <button
+              type="button"
+              onClick={() => void submitMessage(lastAttempt)}
+              className="rounded border border-amber-400/30 px-2 py-1 font-medium hover:bg-amber-400/10"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+      {pendingChannelId && (
+        <div role="alertdialog" aria-label="Unsent Company channel message" className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/10 p-2 text-[11px] text-sky-100">
+          <p>Send or discard your draft before switching channels.</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              disabled={sendPending}
+              onClick={() => void submitMessage().then((sent) => {
+                if (!sent) return;
+                const channelId = pendingChannelId;
+                setPendingChannelId(null);
+                onChannelChange?.(channelId);
+              })}
+              className="rounded border border-sky-300/30 px-2 py-1"
+            >
+              Send &amp; switch
+            </button>
+            <button
+              type="button"
+              disabled={sendPending}
+              onClick={() => {
+                const channelId = pendingChannelId;
+                setDraft("");
+                setSendState({ phase: "idle" });
+                setPendingChannelId(null);
+                onChannelChange?.(channelId);
+              }}
+              className="rounded border border-zinc-600 px-2 py-1"
+            >
+              Discard &amp; switch
+            </button>
+            <button type="button" disabled={sendPending} onClick={() => setPendingChannelId(null)} className="rounded border border-zinc-600 px-2 py-1">Cancel</button>
+          </div>
+        </div>
       )}
     </section>
   );

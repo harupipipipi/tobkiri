@@ -1,6 +1,8 @@
 import { Bot, Plus, Save, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import type { CompanyMutationReceipt } from "../../features/company/companyWorkspaceState";
+import { useCompanyMutation } from "../../features/company/useCompanyMutation";
 import type { CompanyAgent, CompanyInboxItem, CompanyRunLink } from "../../lib/api";
 import { CompanyRunConversation } from "./CompanyRunConversation";
 
@@ -17,14 +19,25 @@ export function CompanyAgentList({
   inboxItems?: CompanyInboxItem[];
   expectedAgentCount?: number;
   busy?: boolean;
-  onUpsertAgent?: (agent: Partial<CompanyAgent>) => void;
+  onUpsertAgent?: (agent: Partial<CompanyAgent>, operationId: string) => Promise<CompanyMutationReceipt<CompanyAgent>>;
 }) {
   const [modelDrafts, setModelDrafts] = useState<Record<string, string>>({});
+  const modelBaselines = useRef<Record<string, string>>({});
   const [newAgentId, setNewAgentId] = useState("");
   const [newAgentModel, setNewAgentModel] = useState("stub/default");
+  const mutation = useCompanyMutation("company-agent", onUpsertAgent);
 
   useEffect(() => {
-    setModelDrafts(Object.fromEntries(agents.map((agent) => [agent.agent_id, agent.model ?? "stub/default"])));
+    setModelDrafts((current) => Object.fromEntries(agents.map((agent) => {
+      const remoteModel = agent.model ?? "stub/default";
+      const previousBaseline = modelBaselines.current[agent.agent_id];
+      const currentDraft = current[agent.agent_id];
+      const dirty = previousBaseline !== undefined && currentDraft !== previousBaseline;
+      return [agent.agent_id, dirty ? currentDraft : remoteModel];
+    })));
+    modelBaselines.current = Object.fromEntries(
+      agents.map((agent) => [agent.agent_id, agent.model ?? "stub/default"]),
+    );
   }, [agents]);
 
   const activityByAgent = useMemo(() => {
@@ -58,7 +71,7 @@ export function CompanyAgentList({
             event.preventDefault();
             const agentId = newAgentId.trim();
             if (!agentId) return;
-            onUpsertAgent({
+            const payload = {
               agent_id: agentId,
               role_key: agentId,
               agent_name: agentId,
@@ -71,27 +84,32 @@ export function CompanyAgentList({
               placement_id: `${agentId}-subagent`,
               system_prompt:
                 "You are a custom Subagent delegated by Tobkiri's Main Agent. Treat the assigned task as a bounded user instruction and use only the capabilities in your Effective Subagent Plan.",
+            } satisfies Partial<CompanyAgent>;
+            void mutation.submit(payload).then((receipt) => {
+              if (receipt.phase === "committed") {
+                setNewAgentId((current) => current.trim() === agentId ? "" : current);
+              }
             });
-            setNewAgentId("");
           }}
         >
           <input
             value={newAgentId}
             onChange={(event) => setNewAgentId(event.target.value)}
-            disabled={busy}
+            disabled={busy || mutation.pending}
             placeholder="subagent id"
             className="h-8 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <input
             value={newAgentModel}
             onChange={(event) => setNewAgentModel(event.target.value)}
-            disabled={busy}
+            disabled={busy || mutation.pending}
             placeholder="model"
             className="h-8 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[11px] text-zinc-300 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <button
             type="submit"
-            disabled={busy || !newAgentId.trim()}
+            disabled={busy || mutation.pending || !newAgentId.trim()}
+            aria-busy={mutation.pending}
             className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
             title="Create Subagent"
             aria-label="Create Subagent"
@@ -99,6 +117,12 @@ export function CompanyAgentList({
             <Plus size={13} />
           </button>
         </form>
+      )}
+      {mutation.state.phase !== "idle" && (
+        <p role={mutation.state.phase === "rejected" ? "alert" : "status"} className={mutation.state.phase === "rejected" ? "text-[11px] text-amber-200" : "text-[11px] text-emerald-300"}>
+          {mutation.state.message}
+          {mutation.canRetry && <button type="button" className="ml-2 underline" onClick={() => void mutation.retry()}>Retry</button>}
+        </p>
       )}
       <div className="space-y-1.5">
         {agents.map((agent) => {
@@ -129,14 +153,14 @@ export function CompanyAgentList({
                     <input
                       value={modelDraft}
                       onChange={(event) => setModelDrafts((current) => ({ ...current, [agent.agent_id]: event.target.value }))}
-                      disabled={busy}
+                      disabled={busy || mutation.pending}
                       className="h-7 min-w-0 flex-1 rounded border border-zinc-800 bg-zinc-950 px-1.5 font-mono text-[10px] text-zinc-300 outline-none focus:border-zinc-600"
                       aria-label={`Model for ${agent.agent_id}`}
                     />
                     <button
                       type="button"
-                      disabled={busy || !modelChanged || !modelDraft.trim()}
-                      onClick={() => onUpsertAgent({ ...agent, model: modelDraft.trim() })}
+                      disabled={busy || mutation.pending || !modelChanged || !modelDraft.trim()}
+                      onClick={() => void mutation.submit({ ...agent, model: modelDraft.trim() })}
                       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded border border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
                       title="Save agent model"
                       aria-label={`Save model for ${agent.agent_id}`}
