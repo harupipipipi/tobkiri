@@ -420,12 +420,19 @@ void main() {
     await tester.pump();
     var copied = await Clipboard.getData(Clipboard.kTextPlain);
     expect(copied?.text, 'ユーザーの本文');
-    await tester.tapAt(const Offset(8, 590));
-    await tester.pump();
-
-    await tester.longPress(
-      find.byKey(const ValueKey('message-semantics:a-copy')),
+    final assistantMessage = find.byKey(
+      const ValueKey('message-semantics:a-copy'),
     );
+    tester
+        .widget<GestureDetector>(
+          find
+              .descendant(
+                of: assistantMessage,
+                matching: find.byType(GestureDetector),
+              )
+              .first,
+        )
+        .onLongPress!();
     await tester.pump();
     copyButton = find.byKey(const ValueKey('message-copy'));
     expect(copyButton, findsOneWidget);
