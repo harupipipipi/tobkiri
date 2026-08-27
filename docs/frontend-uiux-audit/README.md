@@ -8,7 +8,7 @@ The authoritative GitHub tracker is **#1069**. Detailed defects remain split int
 
 | Surface | Primary source root | Typical runtime |
 |---|---|---|
-| Rumi Viewer | `tobkiri_launcher/frontend` | React/Tauri/browser |
+| Tobkiri Launcher | `tobkiri_launcher/frontend` | React/Tauri/browser |
 | defaultspack Web | `tobkiri_runtime/ecosystem/defaultspack/webapp` | React/browser/WebView |
 | Search Home | `tobkiri_runtime/ecosystem/search_home_pack/webapp` | React/browser |
 | Rumi Mobile | `tobkiri_runtime/ecosystem/tobkiri_mobile` | Flutter/iOS/Android |

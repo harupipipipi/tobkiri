@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare trusted runtime tools for Rumi Viewer development and release builds."""
+"""Prepare trusted runtime tools for Tobkiri Launcher builds."""
 
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ def host_target() -> str:
         arch = "aarch64"
     else:
         raise RuntimeError(
-            "Unsupported host architecture for Rumi Viewer: "
+            "Unsupported host architecture for Tobkiri Launcher: "
             f"{machine or '<unknown>'}"
         )
 
@@ -73,7 +73,9 @@ def host_target() -> str:
         return f"{arch}-apple-darwin"
     if sys.platform.startswith("linux"):
         return f"{arch}-unknown-linux-gnu"
-    raise RuntimeError(f"Unsupported host platform for Rumi Viewer: {sys.platform}")
+    raise RuntimeError(
+        f"Unsupported host platform for Tobkiri Launcher: {sys.platform}"
+    )
 
 
 def resolve_target(explicit: str | None, environ: Mapping[str, str] = os.environ) -> str:
@@ -682,7 +684,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             prepare_release(repo_root, target)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
-        print(f"Rumi Viewer runtime preparation failed: {exc}", file=sys.stderr)
+        print(f"Tobkiri Launcher runtime preparation failed: {exc}", file=sys.stderr)
         return 1
 
     return 0

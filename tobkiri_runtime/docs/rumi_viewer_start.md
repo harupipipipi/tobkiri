@@ -84,7 +84,7 @@ RUMI_AUTO_APPROVE_LOCAL=true npm run tauri -- dev
 ## defaultspack を開発中に起動するときの注意
 
 viewer 経由で検証するときは、まず `tobkiri_launcher` を起動し、viewer の Home から `Open Defaultspack` / `Launch Defaultspack` を押してください。
-`pack-shell run defaultspack` を先に直接実行すると、pack-shell が別の kernel を `8765` に起動することがあります。その kernel は viewer が生成した `RUMI_PANEL_BOOTSTRAP_SECRET` を知らないため、あとから viewer を開いたときに bootstrap 401、黒画面、または「Rumi Viewer と Rumi AI/defaultspack が複数起動している」状態に見えます。
+`pack-shell run defaultspack` を先に直接実行すると、pack-shell が別の kernel を `8765` に起動することがあります。その kernel は viewer が生成した `RUMI_PANEL_BOOTSTRAP_SECRET` を知らないため、あとから viewer を開いたときに bootstrap 401、黒画面、または「Tobkiri Launcher と Tobkiri/defaultspack が複数起動している」状態に見えます。
 
 defaultspack の独立 UI は `8766` を使います。viewer 本体は `8765` の kernel を管理し、defaultspack は viewer から必要になったタイミングで別ウィンドウとして開かれるのが通常の流れです。
 fresh checkout から確認するときは、`python -m rumi_ai` や `pack-shell run defaultspack` を先に起動するのではなく、viewer の Home から `Open Defaultspack` / `Launch Defaultspack` を押してください。

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "metadata": {
     "name": "Viewer Example Pack",
-    "description": "Rumi AI OS の viewer:display capability 使用例。Pack フロントエンドを Rumi Viewer に表示するサンプルです。",
+    "description": "Tobkiri の viewer:display capability 使用例。Pack フロントエンドを Tobkiri Launcher に表示するサンプルです。",
     "author": "Rumi AI Team",
     "license": "MIT",
     "is_core_pack": false
@@ -20,7 +20,7 @@
   },
   "functions": {
     "request_display": {
-      "description": "Rumi Viewer にフロントエンドの表示を要求する",
+      "description": "Tobkiri Launcher にフロントエンドの表示を要求する",
       "calling_convention": "block",
       "vocab_aliases": [
         "viewer.display"

@@ -749,7 +749,7 @@ def test_viewer_connection_required_message_mentions_approval_and_foreground(mon
     assert "foreground/on-screen" in result["message"]
     assert "承認してください" in result["message"]
     assert "表/前面で作業しますか" in result["user_prompt"]
-    assert "Rumi Viewer" in result["user_prompt"]
+    assert "Tobkiri Launcher" in result["user_prompt"]
     assert result["recovery"]["kind"] == "viewer_connection_required"
     assert result["recovery"]["requires_approval"] is True
     assert result["recovery"]["requires_viewer_connection"] is True

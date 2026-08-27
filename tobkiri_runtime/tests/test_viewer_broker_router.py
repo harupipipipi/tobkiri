@@ -567,8 +567,8 @@ def test_computer_router_returns_recovery_when_viewer_is_unavailable(monkeypatch
     result = computer_router.run_computer_action("computer.screenshot", {}, {})
 
     assert result["is_error"] is True
-    assert result["permission_subject"] == "Rumi Viewer"
-    assert "Open Rumi Viewer" in result["recovery"]["note"]
+    assert result["permission_subject"] == "Tobkiri Launcher"
+    assert "Open Tobkiri Launcher" in result["recovery"]["note"]
 
 
 def test_computer_router_returns_recovery_when_viewer_connection_is_stale(monkeypatch, tmp_path):
@@ -588,7 +588,7 @@ def test_computer_router_returns_recovery_when_viewer_connection_is_stale(monkey
 
     assert result["is_error"] is True
     assert "unavailable" in result["reason"]
-    assert result["permission_subject"] == "Rumi Viewer"
+    assert result["permission_subject"] == "Tobkiri Launcher"
 
 
 def test_viewer_broker_client_includes_artifact_root_but_not_pack_chat_store(tmp_path, monkeypatch):

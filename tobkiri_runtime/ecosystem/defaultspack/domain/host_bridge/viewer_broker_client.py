@@ -229,7 +229,7 @@ class ViewerBrokerClient:
             )
             if audit_id:
                 result.setdefault("host_audit_id", audit_id)
-            result.setdefault("permission_subject", "Rumi Viewer")
+            result.setdefault("permission_subject", "Tobkiri Launcher")
             _trace_broker_result(
                 function_id,
                 helper_args,
@@ -252,7 +252,7 @@ class ViewerBrokerClient:
             result.setdefault("error_code", code)
             if audit_id:
                 result.setdefault("host_audit_id", audit_id)
-            result.setdefault("permission_subject", "Rumi Viewer")
+            result.setdefault("permission_subject", "Tobkiri Launcher")
             _trace_broker_result(
                 function_id,
                 helper_args,
@@ -296,7 +296,7 @@ class ViewerBrokerClient:
             **selection_facts,
             **({"ax_candidate": ax_candidate} if ax_candidate else {}),
             **({"diagnostics": diagnostics} if diagnostics else {}),
-            "permission_subject": "Rumi Viewer",
+            "permission_subject": "Tobkiri Launcher",
             **({"host_audit_id": audit_id} if audit_id else {}),
         }
         _trace_broker_result(
@@ -312,7 +312,7 @@ class ViewerBrokerClient:
 
     def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.available():
-            raise RuntimeError("Rumi Viewer host broker is unavailable.")
+            raise RuntimeError("Tobkiri Launcher host broker is unavailable.")
         body = None
         request_nonce = secrets.token_urlsafe(32)
         headers = {
@@ -562,12 +562,12 @@ def _safe_broker_error_reason(code: str, *, action: str = "") -> str:
     if code in SAFE_WINDOW_SELECTION_ERROR_CODES:
         return "Computer window selection did not produce a verified exact binding."
     if code == "VIEWER_HOST_TIMEOUT":
-        return "Rumi Viewer host helper timed out."
+        return "Tobkiri Launcher host helper timed out."
     if code == "FUNCTION_NOT_ALLOWED":
-        return "The requested computer function is not allowed by Rumi Viewer."
+        return "The requested computer function is not allowed by Tobkiri Launcher."
     if code == "INVALID_ARTIFACT_ROOT":
         return "The Computer Use artifact destination is invalid."
-    return "Rumi Viewer could not complete the computer action."
+    return "Tobkiri Launcher could not complete the computer action."
 
 
 def _trace_broker_result(

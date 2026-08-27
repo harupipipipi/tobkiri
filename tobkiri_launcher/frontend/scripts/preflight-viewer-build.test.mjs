@@ -41,6 +41,11 @@ test("assertEnoughDiskSpace reports required and available space", () => {
       minFreeMb: 5,
       statfs: () => ({ bavail: 4, bsize: 1024 * 1024 }),
     }),
-    /Required: 5.0 MiB\nAvailable: 4.0 MiB/,
+    (error) => {
+      assert.match(error.message, /Tobkiri Launcher build preflight failed/);
+      assert.match(error.message, /Required: 5.0 MiB\nAvailable: 4.0 MiB/);
+      assert.doesNotMatch(error.message, /Rumi Viewer/);
+      return true;
+    },
   );
 });

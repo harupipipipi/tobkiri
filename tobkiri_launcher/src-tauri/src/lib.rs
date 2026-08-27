@@ -1,4 +1,4 @@
-//! Rumi Viewer — Tauri application library.
+//! Tobkiri Launcher — Tauri application library.
 //!
 //! V2: Full implementation with setup hook, commands, tray menu, and navigation guard.
 

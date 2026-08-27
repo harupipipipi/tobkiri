@@ -600,12 +600,12 @@ fn warn_legacy_defaultspack_app_bundle() {
     .collect::<Vec<_>>();
     if missing_markers.is_empty() {
         println!(
-            "cargo:warning=legacy underscore-named Defaultspack app bundle detected at {}; re-register Defaultspack from Rumi Viewer to clean it up",
+            "cargo:warning=legacy underscore-named Defaultspack app bundle detected at {}; re-register Defaultspack from Tobkiri Launcher to clean it up",
             legacy_app.display()
         );
     } else {
         println!(
-            "cargo:warning=legacy Defaultspack app bundle detected at {}; missing launch markers: {}; re-register Defaultspack from Rumi Viewer or remove the legacy bundle",
+            "cargo:warning=legacy Defaultspack app bundle detected at {}; missing launch markers: {}; re-register Defaultspack from Tobkiri Launcher or remove the legacy bundle",
             legacy_app.display(),
             missing_markers.join(", ")
         );

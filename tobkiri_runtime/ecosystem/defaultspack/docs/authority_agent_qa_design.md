@@ -139,7 +139,7 @@ faster with a broker-wired standalone defaultspack port instead of the
 Viewer-integrated `8765` chat path, which can hang before a provider call or
 tool log is created. The missing debug environment for issue555 was:
 
-- A one-command harness that starts defaultspack and the Rumi Viewer host broker
+- A one-command harness that starts defaultspack and the Tobkiri Launcher host broker
   together, wires `RUMI_USER_DATA`, `RUMI_VIEWER_HOST_BROKER_CONNECTION`,
   isolated provider-credential/secret storage, local UI approval credentials,
   and `RUMI_DEFAULTSPACK_PROVIDER_TRACE=full`, then blocks model requests until

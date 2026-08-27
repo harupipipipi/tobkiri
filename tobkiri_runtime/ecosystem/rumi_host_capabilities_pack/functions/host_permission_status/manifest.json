@@ -1,6 +1,6 @@
 {
   "function_id": "host_permission_status",
-  "description": "Read host permission status through the Rumi Viewer host broker.",
+  "description": "Read host permission status through the Tobkiri Launcher host broker.",
   "calling_convention": "subprocess",
   "entrypoint": "main.py:run",
   "host_execution": false,

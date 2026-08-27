@@ -63,7 +63,7 @@ export function assertEnoughDiskSpace({
   if (availableBytes < requiredBytes) {
     throw new Error(
       [
-        "Rumi Viewer build preflight failed: not enough free disk space.",
+        "Tobkiri Launcher build preflight failed: not enough free disk space.",
         `Checked path: ${nearestExistingPath(checkPath)}`,
         `Required: ${formatBytes(requiredBytes)}`,
         `Available: ${formatBytes(availableBytes)}`,
@@ -79,7 +79,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const { availableBytes, requiredBytes } = assertEnoughDiskSpace();
     console.log(
-      `Rumi Viewer build preflight passed: ${formatBytes(availableBytes)} free (${formatBytes(requiredBytes)} required).`,
+      `Tobkiri Launcher build preflight passed: ${formatBytes(availableBytes)} free (${formatBytes(requiredBytes)} required).`,
     );
   } catch (error) {
     console.error(error.message);

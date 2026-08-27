@@ -1,6 +1,6 @@
 {
   "function_id": "host_permission_open_settings",
-  "description": "Open OS settings for a host permission through the Rumi Viewer host broker.",
+  "description": "Open OS settings for a host permission through the Tobkiri Launcher host broker.",
   "calling_convention": "subprocess",
   "entrypoint": "main.py:run",
   "host_execution": false,

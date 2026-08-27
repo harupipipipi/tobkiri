@@ -1,6 +1,6 @@
 # Viewer Example Pack
 
-`viewer:display` capability を使って Rumi Viewer にフロントエンドを表示する Pack の最小限の例です。
+`viewer:display` capability を使って Tobkiri Launcher にフロントエンドを表示する Pack の最小限の例です。
 
 ## 概要
 
@@ -31,7 +31,7 @@ viewer_pack/
 ### ecosystem.json
 
 Pack のマニフェストです。`pack_id`、`metadata`、`web_mount`、`functions` を定義します。
-`web_mount` フィールドにより、`web/` ディレクトリの内容が Rumi Viewer 内で配信されます。
+`web_mount` フィールドにより、`web/` ディレクトリの内容が Tobkiri Launcher 内で配信されます。
 
 ### functions/request_display/manifest.json
 
@@ -50,7 +50,7 @@ Pack 構造の完全性のために存在します。
 
 ### web/index.html, web/style.css
 
-Pack のフロントエンドです。Rumi Viewer の sandbox WebView 内にロードされます。
+Pack のフロントエンドです。Tobkiri Launcher の sandbox WebView 内にロードされます。
 CDN は使用せず、素の HTML/CSS で記述しています。
 
 ## viewer:display capability の仕組み
@@ -60,7 +60,7 @@ CDN は使用せず、素の HTML/CSS で記述しています。
 3. `grant_config` が設定されている場合、`capability_grant_manager` が Grant を確認
 4. `calling_convention: "block"` → Kernel の DI ハンドラ（`handle_display`）が実行
 5. トークンと `web_mount_url` が返却される
-6. Rumi Viewer が `web_mount_url` を sandbox WebView にロード
+6. Tobkiri Launcher が `web_mount_url` を sandbox WebView にロード
 
 ## Grant の取得
 

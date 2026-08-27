@@ -63,7 +63,7 @@
       "device_kind": "videoinput",
       "checking_message": "カメラを確認しています。",
       "available_message": "カメラを検出しました。指で録音を開始できます。",
-      "lock_message": "カメラが見つかりません。接続してからRumi Viewerを再読み込みしてください。",
+      "lock_message": "カメラが見つかりません。接続してからTobkiri Launcherを再読み込みしてください。",
       "visible_when": {"field": "ambient.monitor.enabled", "truthy": true},
       "help": "カメラが見つからない場合、指で録音はロックされます。"
     },

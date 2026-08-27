@@ -1,6 +1,6 @@
 {
   "function_id": "request_display",
-  "description": "Rumi Viewer にフロントエンドの表示を要求する",
+  "description": "Tobkiri Launcher にフロントエンドの表示を要求する",
   "requires": [
     "viewer.display"
   ],

@@ -1,7 +1,7 @@
 # Viewer Hello Pack
 
 Rumi AI OS の **viewer:display** capability を使うサンプル Pack です。
-Rumi Viewer 内に Hello World フロントエンドを表示します。
+Tobkiri Launcher 内に Hello World フロントエンドを表示します。
 
 Pack 開発者がコピーして改造できるテンプレートとしても機能します。
 
@@ -22,7 +22,7 @@ viewer_hello_pack/
 
 ## viewer:display capability とは
 
-`viewer:display` は Rumi AI OS の core capability の一つで、Pack が Rumi Viewer（Tauri ベースのデスクトップ UI）にフロントエンドを表示するための権限です。
+`viewer:display` は Tobkiri の core capability の一つで、Pack が Tobkiri Launcher（Tauri ベースのデスクトップ UI）にフロントエンドを表示するための権限です。
 
 この capability を持つ Pack は:
 
@@ -67,7 +67,7 @@ Kernel の API または管理画面から Pack を承認してください。
 
 ### 5. Viewer で表示する
 
-Rumi Viewer を起動すると、承認・Grant 済みの Pack のフロントエンドが表示されます。
+Tobkiri Launcher を起動すると、承認・Grant 済みの Pack のフロントエンドが表示されます。
 `web/index.html` が Viewer 内にレンダリングされ、Kernel API との通信デモが動作します。
 
 ---

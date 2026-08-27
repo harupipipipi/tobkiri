@@ -1,1 +1,1 @@
-"""Helpers for the Rumi Viewer host broker."""
+"""Helpers for the Tobkiri Launcher host broker."""

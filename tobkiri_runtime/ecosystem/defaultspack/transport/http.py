@@ -1059,7 +1059,8 @@ class DefaultsHttpServer:
                                 "platform": sys.platform,
                                 "platform_release": _platform_release(),
                                 "permission_subject": str(
-                                    payload.get("permission_subject") or "Rumi Viewer"
+                                    payload.get("permission_subject")
+                                    or "Tobkiri Launcher"
                                 ),
                                 "host_broker": host_broker,
                                 "host_permissions": (
@@ -1083,12 +1084,14 @@ class DefaultsHttpServer:
                     "build_channel": "beta",
                     "platform": sys.platform,
                     "platform_release": _platform_release(),
-                    "permission_subject": "Rumi Viewer",
+                    "permission_subject": "Tobkiri Launcher",
                     "host_broker": {
                         "enabled": False,
                         "available": False,
                         "status": "unavailable",
-                        "recovery": "Open Rumi Viewer and grant macOS permissions there.",
+                        "recovery": (
+                            "Open Tobkiri Launcher and grant macOS permissions there."
+                        ),
                     },
                     "host_permissions": [],
                     "permissions": [],
@@ -1117,7 +1120,7 @@ class DefaultsHttpServer:
                 "build_channel": "beta",
                 "platform": sys.platform,
                 "platform_release": _platform_release(),
-                "permission_subject": "Rumi Viewer",
+                "permission_subject": "Tobkiri Launcher",
                 "host_broker": {
                     "enabled": False,
                     "available": False,

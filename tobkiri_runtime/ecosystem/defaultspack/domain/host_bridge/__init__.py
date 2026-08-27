@@ -1,1 +1,1 @@
-"""Defaultspack host-bridge helpers for the Rumi Viewer host broker."""
+"""Defaultspack host-bridge helpers for the Tobkiri Launcher host broker."""

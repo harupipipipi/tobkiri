@@ -12,8 +12,9 @@ from core_runtime.global_contract_dispatch import invoke_global_contract
 from .viewer_broker_client import ViewerBrokerClient
 
 _VIEWER_RECOVERY_MESSAGE = (
-    "Rumi Viewer が未接続です。foreground/on-screen 操作は承認と Rumi Viewer 接続後に利用できます。"
-    "承認してください。Rumi Viewer を起動または前面表示して macOS 権限を許可するか、表/前面で作業しますか?"
+    "Tobkiri Launcher が未接続です。foreground/on-screen 操作は承認と "
+    "Tobkiri Launcher 接続後に利用できます。承認してください。Tobkiri Launcher を"
+    "起動または前面表示して macOS 権限を許可するか、表/前面で作業しますか?"
 )
 
 # Test and embedding callers may inject a controller explicitly.  Runtime
@@ -149,11 +150,11 @@ def run_computer_action(
             except Exception as exc:
                 return _viewer_connection_required_response(
                     normalized_action,
-                    f"Rumi Viewer host broker is unavailable: {exc}",
+                    f"Tobkiri Launcher host broker is unavailable: {exc}",
                 )
         return _viewer_connection_required_response(
             normalized_action,
-            "Rumi Viewer is required for computer control on macOS.",
+            "Tobkiri Launcher is required for computer control on macOS.",
         )
     return _run_local_controller(
         normalized_action,
@@ -305,8 +306,9 @@ def _viewer_connection_required_response(action: str, reason: str) -> dict[str, 
             "requires_viewer_connection": True,
             "prompt": _VIEWER_RECOVERY_MESSAGE,
             "note": (
-                "Open Rumi Viewer and approve the request; foreground/on-screen operation is "
-                "available after a connected Rumi Viewer has macOS permissions."
+                "Open Tobkiri Launcher and approve the request; foreground/on-screen "
+                "operation is available after a connected Tobkiri Launcher has macOS "
+                "permissions."
             ),
             "recommended_next_actions": [
                 "approve_request",
@@ -314,7 +316,7 @@ def _viewer_connection_required_response(action: str, reason: str) -> dict[str, 
                 "choose_foreground_work",
             ],
         },
-        "permission_subject": "Rumi Viewer",
+        "permission_subject": "Tobkiri Launcher",
     }
 
 
@@ -434,7 +436,7 @@ def _approval_required_response(
             "args_hash": request.get("args_hash"),
             "expires_at": request.get("expires_at"),
             "display_summary": request.get("display_summary") or safe_action,
-            "permission_subject": "Rumi Viewer",
+            "permission_subject": "Tobkiri Launcher",
         }
     )
     if not wrapped.get("message") and wrapped.get("approval_hint"):

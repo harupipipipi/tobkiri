@@ -101,7 +101,7 @@ A card needs:
 Prefer:
 
 - “Profile could not be saved. Your changes are still here.”
-- “Connected to Rumi Viewer on this device.”
+- “Connected to Tobkiri Launcher on this device.”
 - “This schedule will run at 09:00 Asia/Tokyo.”
 
 Avoid:
