@@ -18410,7 +18410,7 @@
     ]
   },
   "repository": {
-    "commit": "d8b41fa9655f5503f1457e5df445558d15f0d603",
+    "commit": "a1153deaaac74b43224ae2cf0bbabfd8b8bc05ca",
     "tree_digest": "d4525e61c9825f921138e751051a0b5d41b442ad3e2d025f4ffe0a38f4900d0d"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
