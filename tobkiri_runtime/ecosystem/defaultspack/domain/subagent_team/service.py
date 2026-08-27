@@ -29,6 +29,20 @@ from .prompt_context import build_channel_check_context
 from .rich_policy import evaluate_rich_payload, evaluate_rich_policy
 
 
+def _client_message_id(value: Any) -> str:
+    candidate = str(value or "").strip()
+    if not candidate or len(candidate) > 160:
+        return ""
+    allowed = set(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-"
+    )
+    return candidate if all(character in allowed for character in candidate) else ""
+
+
+def _message_sync_key(company_id: str, client_message_id: str) -> str:
+    return f"subagent-team:{company_id}:{client_message_id}"
+
+
 class SubagentTeamService:
     """Slack/Discord-like Team Workspace facade over CompanySlackRuntime."""
 
@@ -326,6 +340,53 @@ class SubagentTeamService:
     def send_message(self, company_id: str, data: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any] | None:
         if self.company_store.get_company(company_id) is None:
             return None
+        supplied_client_message_id = data.get("client_message_id")
+        client_message_id = _client_message_id(supplied_client_message_id)
+        if supplied_client_message_id is not None and not client_message_id:
+            return _deny(
+                "client_message_id is invalid", "INVALID_CLIENT_MESSAGE_ID"
+            )
+        if client_message_id:
+            sync_key = _message_sync_key(company_id, client_message_id)
+            existing = self.runtime_store.get_message_by_sync_key(
+                company_id, sync_key
+            )
+            if existing is not None:
+                existing_metadata = existing.get("metadata")
+                existing_team_metadata = (
+                    existing_metadata.get("subagent_team")
+                    if isinstance(existing_metadata, dict)
+                    and isinstance(existing_metadata.get("subagent_team"), dict)
+                    else {}
+                )
+                original_content = str(
+                    existing_team_metadata.get("original_content")
+                    or existing.get("content")
+                    or ""
+                )
+                requested_content = str(
+                    data.get("content") or data.get("message") or data.get("text") or ""
+                )
+                requested_channel = str(data.get("channel_id") or DEFAULT_CHANNEL_ID)
+                if (
+                    requested_content != original_content
+                    or requested_channel != str(existing.get("channel_id") or "")
+                ):
+                    return _deny(
+                        "client_message_id was already used for a different message",
+                        "IDEMPOTENCY_CONFLICT",
+                    )
+                return CompanySlackRuntime(
+                    company_store=self.company_store,
+                    runtime_store=self.runtime_store,
+                ).post_message(
+                    company_id,
+                    content=requested_content,
+                    sender_id=str(existing.get("sender_id") or "user"),
+                    channel_id=requested_channel,
+                    metadata={"sync_key": sync_key},
+                    context=context or {},
+                )
         message = normalize_message_request(data)
         sender_id = self._effective_actor_id(company_id, data, context=context, fallback="user")
         message["sender_id"] = sender_id
@@ -378,8 +439,11 @@ class SubagentTeamService:
             project_manager_id=str(recorded_check.get("pm_agent_id") or "project_manager"),
         )
         routed_content = gated_content(content=rich["content"], sender_id=message["sender_id"], gate=gate)
+        client_metadata = dict(message["metadata"])
+        client_metadata.pop("client_message_id", None)
+        client_metadata.pop("sync_key", None)
         metadata = {
-            **message["metadata"],
+            **client_metadata,
             "subagent_team": {
                 "parsed": message["parsed"],
                 "rich": rich,
@@ -390,6 +454,9 @@ class SubagentTeamService:
                 "client_approved_ignored": "approved" in data,
             },
         }
+        if client_message_id:
+            metadata["client_message_id"] = client_message_id
+            metadata["sync_key"] = _message_sync_key(company_id, client_message_id)
         if rich["rich_payload"]:
             metadata["rich_payload"] = rich["rich_payload"]
         if rich["attachments"]:
@@ -411,6 +478,45 @@ class SubagentTeamService:
         if isinstance(result, dict):
             result["channel_check"] = recorded_check
         return result
+
+    def message_status(
+        self,
+        company_id: str,
+        data: dict[str, Any],
+        *,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Look up authoritative delivery state for a client message id."""
+
+        if self.company_store.get_company(company_id) is None:
+            return None
+        if not trusted_actor_from_context(context):
+            return _deny(
+                "trusted context actor is required to inspect message delivery",
+                "ACTOR_REQUIRED",
+            )
+        client_message_id = _client_message_id(data.get("client_message_id"))
+        if not client_message_id:
+            return _deny("client_message_id is required", "INVALID_CLIENT_MESSAGE_ID")
+        message = self.runtime_store.get_message_by_sync_key(
+            company_id,
+            _message_sync_key(company_id, client_message_id),
+        )
+        if message is not None:
+            actor_id = trusted_actor_from_context(context)
+            if actor_id != str(message.get("sender_id") or ""):
+                auth = self.authorize_channel_read(
+                    company_id,
+                    str(message.get("channel_id") or DEFAULT_CHANNEL_ID),
+                    context=context,
+                )
+                if is_denial(auth):
+                    return auth
+        return {
+            "client_message_id": client_message_id,
+            "state": "committed" if message is not None else "missing",
+            "message": message,
+        }
 
     def _resolve_target_agent_ids(self, company_id: str, *, explicit: list[str], content: str, channel_id: str | None = None) -> list[str]:
         resolved: list[str] = []

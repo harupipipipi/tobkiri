@@ -459,6 +459,19 @@ class CompanyRuntimeStore:
             data["id"] = data["message_id"]
         return data
 
+    def get_message_by_sync_key(
+        self, company_id: str, sync_key: str
+    ) -> dict[str, Any] | None:
+        """Return the company message identified by a stable sync key."""
+
+        message_id = _stable_sync_id("msg_sync_", {"sync_key": sync_key})
+        if message_id is None:
+            return None
+        message = self.get_message(message_id)
+        if message is None or str(message.get("company_id") or "") != str(company_id):
+            return None
+        return message
+
     def update_message_tasks(self, message_id: str, task_ids: list[str]) -> dict[str, Any] | None:
         now = utc_now()
         with self.conn:

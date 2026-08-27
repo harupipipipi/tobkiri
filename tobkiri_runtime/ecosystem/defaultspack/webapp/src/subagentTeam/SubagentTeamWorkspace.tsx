@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Code2,
+  Copy,
   Crown,
   FileText,
   FlaskConical,
@@ -14,15 +15,18 @@ import {
   MessageCircle,
   MessageSquare,
   Network,
+  Pencil,
   RefreshCw,
+  RotateCcw,
   Send,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import {
   api,
@@ -62,7 +66,6 @@ import {
   previewMessages,
   previewRuns,
   previewTasks,
-  removeReconciledLocalSubagentMessages,
   shortId,
   subagentTeamPreviewDataReason,
   subagentTreeItemsForMode,
@@ -74,6 +77,19 @@ import {
   type SubagentTreeMode,
   type SubagentTreeState,
 } from "./subagentTeamData";
+import {
+  createOutboxItem,
+  createLatestRequestGate,
+  deliveryFailureState,
+  outboxItemAsMessage,
+  outboxScopeKey,
+  readOutbox,
+  reconcileOutbox,
+  transitionOutboxItem,
+  writeOutbox,
+  type OutgoingMessageState,
+  type SubagentTeamOutboxItem,
+} from "./subagentTeamOutbox";
 
 type TreeMode = SubagentTreeMode | null;
 type DecisionStatus = "waiting" | "approved" | "revision";
@@ -95,6 +111,32 @@ function createClientMessageId(): string {
   }
   return `subagent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+
+function availableOutboxStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function outgoingStateFromMessage(message: CompanyMessage): OutgoingMessageState | null {
+  const value = message.metadata?.outgoing_state;
+  if (["draft", "queued", "sending", "committed", "failed", "unknown", "cancelled"].includes(String(value))) {
+    return value as OutgoingMessageState;
+  }
+  return message.sender_id === "user" && message.metadata?.client_message_id ? "committed" : null;
+}
+
+const OUTGOING_STATE_LABELS: Record<OutgoingMessageState, string> = {
+  draft: "Local preview draft",
+  queued: "Queued",
+  sending: "Sending",
+  committed: "Delivered",
+  failed: "Failed",
+  unknown: "Delivery unknown",
+  cancelled: "Cancelled",
+};
 
 const ROLE_ICON_REGISTRY: Record<string, LucideIcon> = {
   pm: Crown,
@@ -348,17 +390,37 @@ function CreatorDecisionPreview({
   );
 }
 
-function MessageRow({
+export function MessageRow({
   message,
   sender,
+  onRetry,
+  onEdit,
+  onCopy,
+  onRemove,
 }: {
   message: CompanyMessage;
   sender?: CompanyAgent;
+  onRetry?: () => void;
+  onEdit?: () => void;
+  onCopy?: () => void;
+  onRemove?: () => void;
 }) {
   const name = message.sender_id === "user" || message.sender_id === "you" ? "You" : agentName(sender, message.sender_id);
   const senderShortId = message.sender_id === "user" || message.sender_id === "you" ? "main" : agentShortId(sender, message.sender_id);
+  const outgoingState = outgoingStateFromMessage(message);
+  const canRetry = outgoingState === "failed" || outgoingState === "unknown";
+  const canManage = Boolean(
+    outgoingState && ["draft", "failed", "unknown", "cancelled"].includes(outgoingState),
+  );
   return (
-    <article className="group flex gap-2 rounded-lg px-2 py-2 hover:bg-zinc-900/45">
+    <article
+      className={cn(
+        "group flex gap-2 rounded-lg px-2 py-2 hover:bg-zinc-900/45",
+        outgoingState === "failed" && "bg-red-500/5",
+        outgoingState === "unknown" && "bg-amber-500/5",
+      )}
+      data-outgoing-state={outgoingState ?? undefined}
+    >
       <AgentAvatar agent={sender} fallbackId={message.sender_id} />
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -366,8 +428,47 @@ function MessageRow({
           <span className="font-mono text-[9px] text-sky-300/80">@{senderShortId}</span>
           <span className="font-mono text-[9px] text-zinc-600">msg #{shortId(message.id)}</span>
           <span className="text-[9px] text-zinc-700">{messageTime(message.created_at)}</span>
+          {outgoingState && (
+            <span className={cn(
+              "rounded border px-1.5 py-0.5 text-[9px]",
+              outgoingState === "committed" && "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
+              (outgoingState === "draft" || outgoingState === "queued" || outgoingState === "sending") && "border-sky-500/25 bg-sky-500/10 text-sky-200",
+              outgoingState === "unknown" && "border-amber-500/25 bg-amber-500/10 text-amber-100",
+              outgoingState === "failed" && "border-red-500/25 bg-red-500/10 text-red-200",
+              outgoingState === "cancelled" && "border-zinc-700 bg-zinc-900 text-zinc-400",
+            )}>
+              {OUTGOING_STATE_LABELS[outgoingState]}
+            </span>
+          )}
         </div>
         <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-zinc-300">{message.content}</p>
+        {typeof message.metadata?.outgoing_error === "string" && message.metadata.outgoing_error && (
+          <p className="mt-1 text-[10px] text-amber-100/80">{message.metadata.outgoing_error}</p>
+        )}
+        {canManage && (
+          <div className="mt-1.5 flex flex-wrap gap-1" aria-label="Outgoing message actions">
+            {canRetry && onRetry && (
+              <button type="button" onClick={onRetry} className="inline-flex items-center gap-1 rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800">
+                <RotateCcw size={10} /> Retry
+              </button>
+            )}
+            {onEdit && (
+              <button type="button" onClick={onEdit} className="inline-flex items-center gap-1 rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800">
+                <Pencil size={10} /> Edit
+              </button>
+            )}
+            {onCopy && (
+              <button type="button" onClick={onCopy} className="inline-flex items-center gap-1 rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800">
+                <Copy size={10} /> Copy
+              </button>
+            )}
+            {onRemove && (
+              <button type="button" onClick={onRemove} className="inline-flex items-center gap-1 rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-800 hover:text-red-200">
+                <Trash2 size={10} /> Remove
+              </button>
+            )}
+          </div>
+        )}
         {message.attachments && message.attachments.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {message.attachments.slice(0, 3).map((attachment, index) => (
@@ -748,7 +849,7 @@ export function SubagentTeamWorkspace({
   const [tasks, setTasks] = useState<CompanyTask[]>([]);
   const [runs, setRuns] = useState<CompanyRunLink[]>([]);
   const [inboxItems, setInboxItems] = useState<CompanyInboxItem[]>([]);
-  const [localMessages, setLocalMessages] = useState<CompanyMessage[]>([]);
+  const [outboxItems, setOutboxItems] = useState<SubagentTeamOutboxItem[]>([]);
   const [activeThread, setActiveThread] = useState<SubagentThread>({ type: "channel", id: DEFAULT_CHANNEL_ID });
   const [expandedAgentIds, setExpandedAgentIds] = useState<Set<string>>(() => new Set(["creator", "pm"]));
   const [expandedChannelIds, setExpandedChannelIds] = useState<Set<string>>(() => new Set([DEFAULT_CHANNEL_ID]));
@@ -769,6 +870,7 @@ export function SubagentTeamWorkspace({
   const [treeError, setTreeError] = useState<string | null>(null);
   const [openingNodeId, setOpeningNodeId] = useState<string | null>(null);
   const [openPreview, setOpenPreview] = useState<SubagentOpenPreview | null>(null);
+  const workspaceLoadGate = useRef(createLatestRequestGate());
 
   const loadSubagentTree = useCallback(async (companyId?: string | null) => {
     if (!companyId && !activeConversationId) {
@@ -807,16 +909,19 @@ export function SubagentTeamWorkspace({
   }, [activeConversationId]);
 
   const loadWorkspace = useCallback(async (requestedCompanyId?: string | null) => {
+    const loadSequence = workspaceLoadGate.current.begin();
     setBusy(true);
     setError(null);
     try {
       const companyListResult = await api.listCompanies({ limit: 8 }).catch(() => ({ companies: [], total: 0 }));
+      if (!workspaceLoadGate.current.isCurrent(loadSequence)) return;
       const listedCompanies = companyListResult.companies;
       let statusCompany: CompanyRecord | null = null;
       let selectedId = requestedCompanyId ?? null;
 
       if (activeConversationId) {
         const status = await api.getCompanyStatus({ conversationId: activeConversationId, bootstrap: false });
+        if (!workspaceLoadGate.current.isCurrent(loadSequence)) return;
         statusCompany = status.company ?? null;
         selectedId = requestedCompanyId ?? statusCompany?.id ?? null;
       } else if (!selectedId) {
@@ -828,6 +933,7 @@ export function SubagentTeamWorkspace({
       const selectedCompany = await ensureSubagentCompanyMarker(
         statusCompany ?? (selectedId ? listedCompanies.find((item) => item.id === selectedId) ?? null : null),
       );
+      if (!workspaceLoadGate.current.isCurrent(loadSequence)) return;
       setCompany(selectedCompany);
 
       if (!selectedId) {
@@ -847,6 +953,7 @@ export function SubagentTeamWorkspace({
         api.listCompanyMessages(selectedId, { limit: 100 }),
         api.listCompanyRuns(selectedId, { limit: 80 }),
       ]);
+      if (!workspaceLoadGate.current.isCurrent(loadSequence)) return;
 
       const nextAgents = agentResult.status === "fulfilled" ? agentResult.value.agents : arrayFromRecord(statusCompany?.agents);
       const nextChannels = channelResult.status === "fulfilled" ? channelResult.value.channels : arrayFromRecord(statusCompany?.channels);
@@ -858,12 +965,12 @@ export function SubagentTeamWorkspace({
       setChannels(nextChannels);
       setTasks(nextTasks);
       setMessages(nextMessages);
-      setLocalMessages((current) => removeReconciledLocalSubagentMessages(current, nextMessages));
       setRuns(nextRuns);
 
       const inboxResults = await Promise.allSettled(
         nextAgents.map((agent) => api.listCompanyAgentInbox(selectedId, agent.agent_id, { limit: 20 })),
       );
+      if (!workspaceLoadGate.current.isCurrent(loadSequence)) return;
       setInboxItems(inboxResults.flatMap((result) => result.status === "fulfilled" ? result.value.inbox : []));
 
       setActiveThread((current) => {
@@ -877,6 +984,7 @@ export function SubagentTeamWorkspace({
         setError(firstRejected.reason instanceof Error ? firstRejected.reason.message : "Some team workspace data could not be loaded.");
       }
     } catch (workspaceError) {
+      if (!workspaceLoadGate.current.isCurrent(loadSequence)) return;
       setError(workspaceError instanceof Error ? workspaceError.message : "Team workspace APIs are unavailable.");
       setCompanies([]);
       setActiveCompanyId(null);
@@ -891,13 +999,12 @@ export function SubagentTeamWorkspace({
       setTreeError(null);
       setOpenPreview(null);
     } finally {
-      setBusy(false);
+      if (workspaceLoadGate.current.isCurrent(loadSequence)) setBusy(false);
     }
   }, [activeConversationId, ensureSubagentCompanyMarker]);
 
   useEffect(() => {
     setActiveCompanyId(null);
-    setLocalMessages([]);
     void loadWorkspace(null);
   }, [activeConversationId, loadWorkspace]);
 
@@ -913,6 +1020,32 @@ export function SubagentTeamWorkspace({
   });
   const isPreviewWorkspace = previewDataReason === "preview_workspace";
   const isUsingPreviewFallbackData = previewDataReason !== null;
+  const currentOutboxScope = useMemo(
+    () => outboxScopeKey(activeConversationId, activeCompanyId),
+    [activeCompanyId, activeConversationId],
+  );
+
+  useEffect(() => {
+    const restored = readOutbox(availableOutboxStorage(), currentOutboxScope).map((item) => (
+      item.state === "sending" || item.state === "queued"
+        ? transitionOutboxItem(item, "unknown", {
+          error: "Delivery needs confirmation after the app was reloaded.",
+        })
+        : item
+    ));
+    writeOutbox(availableOutboxStorage(), currentOutboxScope, restored);
+    setOutboxItems(restored);
+  }, [currentOutboxScope]);
+
+  useEffect(() => {
+    setOutboxItems((current) => {
+      const next = reconcileOutbox(current, messages);
+      if (next.length === current.length) return current;
+      writeOutbox(availableOutboxStorage(), currentOutboxScope, next);
+      return next;
+    });
+  }, [currentOutboxScope, messages]);
+
   const visibleCompany = company ?? companies.find((item) => item.id === activeCompanyId) ?? previewCompany;
   const visibleAgents = isUsingPreviewFallbackData ? previewAgents : agents;
   const visibleChannels = isUsingPreviewFallbackData ? previewChannels : channels;
@@ -923,9 +1056,13 @@ export function SubagentTeamWorkspace({
   const allMessages = useMemo(
     () => [
       ...visibleMessages,
-      ...removeReconciledLocalSubagentMessages(localMessages, visibleMessages),
+      ...outboxItems.map(outboxItemAsMessage),
     ].sort((left, right) => messageTimestamp(left.created_at) - messageTimestamp(right.created_at)),
-    [localMessages, visibleMessages],
+    [outboxItems, visibleMessages],
+  );
+  const outboxByClientId = useMemo(
+    () => new Map(outboxItems.map((item) => [item.clientMessageId, item])),
+    [outboxItems],
   );
   const agentsById = useMemo(() => new Map(visibleAgents.map((agent) => [agent.agent_id, agent])), [visibleAgents]);
   const channelsById = useMemo(() => new Map(visibleChannels.map((channel) => [channel.id, channel])), [visibleChannels]);
@@ -1076,51 +1213,122 @@ const decisionStatus: DecisionStatus = (() => {
     }
   };
 
+  const updateOutboxItem = (
+    clientMessageId: string,
+    update: (item: SubagentTeamOutboxItem) => SubagentTeamOutboxItem,
+  ) => {
+    setOutboxItems((current) => {
+      const next = current.map((item) => item.clientMessageId === clientMessageId ? update(item) : item);
+      writeOutbox(availableOutboxStorage(), currentOutboxScope, next);
+      return next;
+    });
+  };
+
+  const removeOutboxItem = (clientMessageId: string) => {
+    setOutboxItems((current) => {
+      const next = current.filter((item) => item.clientMessageId !== clientMessageId);
+      writeOutbox(availableOutboxStorage(), currentOutboxScope, next);
+      return next;
+    });
+  };
+
+  const sendOutboxItem = async (item: SubagentTeamOutboxItem, verifyFirst: boolean) => {
+    if (!item.companyId) return;
+    if (verifyFirst) {
+      try {
+        const status = await api.getSubagentTeamMessageStatus({
+          companyId: item.companyId,
+          conversationId: item.conversationId,
+          clientMessageId: item.clientMessageId,
+        });
+        if (status.state === "committed") {
+          removeOutboxItem(item.clientMessageId);
+          if (activeCompanyId === item.companyId) await loadWorkspace(item.companyId);
+          return;
+        }
+      } catch (statusError) {
+        updateOutboxItem(item.clientMessageId, (current) => transitionOutboxItem(current, "unknown", {
+          error: statusError instanceof Error
+            ? `Could not confirm delivery: ${statusError.message}`
+            : "Could not confirm delivery before retry.",
+        }));
+        return;
+      }
+      updateOutboxItem(item.clientMessageId, (current) => transitionOutboxItem(current, "queued"));
+    }
+
+    updateOutboxItem(item.clientMessageId, (current) => transitionOutboxItem(current, "sending"));
+    try {
+      await api.sendSubagentTeamMessage({
+        companyId: item.companyId,
+        conversationId: item.conversationId,
+        content: item.content,
+        channel_id: item.channelId,
+        sender_id: "user",
+        mentions: item.mentions,
+        client_message_id: item.clientMessageId,
+        metadata: subagentTeamWorkspaceMetadata({
+          source: "subagent_team_ui",
+          client_message_id: item.clientMessageId,
+          ...(item.thread.type === "dm" ? { dm_agent_id: item.thread.id } : {}),
+        }),
+      });
+      updateOutboxItem(item.clientMessageId, (current) => transitionOutboxItem(current, "committed"));
+      removeOutboxItem(item.clientMessageId);
+      if (activeCompanyId === item.companyId) await loadWorkspace(item.companyId);
+    } catch (sendError) {
+      const state = deliveryFailureState(sendError);
+      updateOutboxItem(item.clientMessageId, (current) => transitionOutboxItem(current, state, {
+        error: sendError instanceof Error ? sendError.message : "Backend send failed.",
+      }));
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const content = draft.trim();
-    if (!content || busy) return;
+    const content = draft;
+    if (!content.trim()) return;
     const now = new Date().toISOString();
     const clientMessageId = createClientMessageId();
     const targetChannelId = activeThread.type === "channel" ? activeThread.id : visibleChannels[0]?.id ?? DEFAULT_CHANNEL_ID;
     const mentions = activeThread.type === "dm" ? [activeThread.id] : mentionIdsFromText(content, visibleAgents);
-    const optimistic: CompanyMessage = {
-      id: `local-${clientMessageId}`,
-      company_id: visibleCompany.id,
-      channel_id: activeThread.type === "dm" ? effectiveThreadId(activeThread) : targetChannelId,
-      sender_id: "you",
+    const outboxItem = createOutboxItem({
+      clientMessageId,
+      scopeKey: currentOutboxScope,
+      companyId: activeCompanyId,
+      conversationId: activeConversationId,
+      thread: activeThread,
+      channelId: targetChannelId,
       content,
       mentions,
-      created_at: now,
-      metadata: subagentTeamWorkspaceMetadata({
-        source: "subagent_team_ui",
-        client_message_id: clientMessageId,
-        ...(activeThread.type === "dm" ? { dm_agent_id: activeThread.id } : {}),
-      }),
-    };
-    setLocalMessages((current) => [...current, optimistic]);
+      state: isPreviewWorkspace || !activeCompanyId ? "draft" : "queued",
+      now,
+    });
+    const nextOutbox = [...outboxItems, outboxItem];
+    if (!writeOutbox(availableOutboxStorage(), currentOutboxScope, nextOutbox)) {
+      setError("The local outbox is unavailable. Your draft was not cleared or sent.");
+      return;
+    }
+    setOutboxItems(nextOutbox);
     setDraft("");
+    setError(null);
 
     if (isPreviewWorkspace || !activeCompanyId) return;
-    setBusy(true);
-    setError(null);
+    await sendOutboxItem(outboxItem, false);
+  };
+
+  const editOutboxItem = (item: SubagentTeamOutboxItem) => {
+    setActiveThread(item.thread);
+    setDraft(item.content);
+    removeOutboxItem(item.clientMessageId);
+  };
+
+  const copyOutboxItem = async (item: SubagentTeamOutboxItem) => {
     try {
-      const sentMessage = await api.sendSubagentTeamMessage({
-        companyId: activeCompanyId,
-        conversationId: activeConversationId,
-        content,
-        channel_id: targetChannelId,
-        sender_id: "user",
-        mentions,
-        client_message_id: clientMessageId,
-        metadata: optimistic.metadata,
-      });
-      setLocalMessages((current) => removeReconciledLocalSubagentMessages(current, [sentMessage], clientMessageId));
-      await loadWorkspace(activeCompanyId);
-    } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Message was kept locally, but backend send failed.");
-    } finally {
-      setBusy(false);
+      await navigator.clipboard.writeText(item.content);
+    } catch {
+      setDraft(item.content);
+      setError("Clipboard access was unavailable, so the message was copied to the composer.");
     }
   };
 
@@ -1388,9 +1596,23 @@ const decisionStatus: DecisionStatus = (() => {
               />
             </div>
             <div className="px-1 pb-2">
-              {threadMessages.map((message) => (
-                <MessageRow key={`${message.channel_id}-${message.id}`} message={message} sender={agentsById.get(message.sender_id)} />
-              ))}
+              {threadMessages.map((message) => {
+                const clientMessageId = typeof message.metadata?.client_message_id === "string"
+                  ? message.metadata.client_message_id
+                  : null;
+                const outboxItem = clientMessageId ? outboxByClientId.get(clientMessageId) : undefined;
+                return (
+                  <MessageRow
+                    key={`${message.channel_id}-${message.id}`}
+                    message={message}
+                    sender={agentsById.get(message.sender_id)}
+                    onRetry={outboxItem ? () => void sendOutboxItem(outboxItem, true) : undefined}
+                    onEdit={outboxItem ? () => editOutboxItem(outboxItem) : undefined}
+                    onCopy={outboxItem ? () => void copyOutboxItem(outboxItem) : undefined}
+                    onRemove={outboxItem ? () => removeOutboxItem(outboxItem.clientMessageId) : undefined}
+                  />
+                );
+              })}
               {threadMessages.length === 0 && (
                 <div className="mx-1 rounded-lg border border-zinc-800/70 bg-zinc-950/45 px-3 py-5 text-center">
                   <Inbox size={18} className="mx-auto mb-2 text-zinc-600" />
@@ -1402,6 +1624,11 @@ const decisionStatus: DecisionStatus = (() => {
           </div>
 
           <form className="border-t border-zinc-800/60 p-2" onSubmit={handleSubmit}>
+            {isPreviewWorkspace && (
+              <p role="note" className="mb-1.5 rounded border border-sky-500/20 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-100">
+                Preview workspace: submitted text is saved only as a local draft and is never delivered to agents.
+              </p>
+            )}
             <div className="flex items-end gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950/65 p-1.5 focus-within:border-zinc-600">
               <textarea
                 value={draft}
@@ -1416,11 +1643,10 @@ const decisionStatus: DecisionStatus = (() => {
                 placeholder={activeThread.type === "dm" ? `DM ${threadTitle}` : `Message #${threadTitle}`}
                 className="max-h-24 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-[12px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-700"
                 rows={1}
-                disabled={busy}
               />
               <button
                 type="submit"
-                disabled={busy || !draft.trim()}
+                disabled={!draft.trim()}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
                 title="Send team message"
               >

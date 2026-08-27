@@ -60,6 +60,27 @@ class CompanyMessageRouter:
         company = self.company_store.get_company(company_id)
         if company is None:
             return None
+        sync_key = str((metadata or {}).get("sync_key") or "").strip()
+        if sync_key:
+            existing = self.runtime_store.get_message_by_sync_key(company_id, sync_key)
+            if existing is not None:
+                task_ids = [str(item) for item in existing.get("task_ids") or []]
+                return {
+                    "message": existing,
+                    "task": self.runtime_store.get_task(
+                        task_ids[0], company_id=company_id
+                    )
+                    if task_ids
+                    else None,
+                    "tasks": [
+                        self.runtime_store.get_task(task_id, company_id=company_id)
+                        for task_id in task_ids
+                    ],
+                    "routes": [],
+                    "resolution": {"idempotent_replay": True},
+                    "idempotent_replay": True,
+                    "deprecation": None,
+                }
         fallback_mentions = extract_mentions(content)
         resolution = CompanyMentionService(
             self.company_store,
@@ -124,6 +145,7 @@ class CompanyMessageRouter:
             "tasks": [self.runtime_store.get_task(task_id, company_id=company_id) for task_id in task_ids],
             "routes": routes,
             "resolution": {**resolution, "resolved_agent_ids": target_ids},
+            "idempotent_replay": False,
             "deprecation": None,
         }
 

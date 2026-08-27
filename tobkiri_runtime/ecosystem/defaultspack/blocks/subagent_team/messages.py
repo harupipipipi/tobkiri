@@ -28,6 +28,17 @@ def run(input_data, context, *, settings_owner=None):
             if result is None:
                 return missing_team(company_id)
             return ok(result)
+        if action == "status":
+            result = service.message_status(
+                company_id,
+                input_data,
+                context=context if isinstance(context, dict) else {},
+            )
+            if is_denied(result):
+                return denied(result)
+            if result is None:
+                return missing_team(company_id)
+            return ok(result)
         if action == "parse":
             return ok(service.parse_message(str(input_data.get("content") or input_data.get("message") or "")))
         return invalid("unsupported messages action: " + action)
