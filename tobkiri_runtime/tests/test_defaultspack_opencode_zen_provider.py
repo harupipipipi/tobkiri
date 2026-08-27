@@ -63,6 +63,205 @@ def _provider(monkeypatch):
     return provider
 
 
+def test_opencode_zen_uses_browser_compatible_user_agent(monkeypatch):
+    provider = _provider(monkeypatch)
+
+    assert provider._headers()["User-Agent"] == provider.DEFAULT_USER_AGENT
+    assert provider._openai_headers()["User-Agent"] == provider.DEFAULT_USER_AGENT
+    assert provider.DEFAULT_USER_AGENT.startswith("Mozilla/5.0")
+
+
+def test_opencode_zen_user_agent_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("OPENCODE_ZEN_USER_AGENT", "Tobkiri Provider QA/1.0")
+    provider = _provider(monkeypatch)
+
+    assert provider._headers()["User-Agent"] == "Tobkiri Provider QA/1.0"
+    assert provider._openai_headers()["User-Agent"] == "Tobkiri Provider QA/1.0"
+
+
+def test_opencode_zen_mimo_free_stream_uses_bounded_completion(monkeypatch):
+    provider = _provider(monkeypatch)
+    captured = {}
+
+    def fake_request_openai_json(path, body, **kwargs):
+        captured["path"] = path
+        captured["body"] = body
+        captured["kwargs"] = kwargs
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": "MIMO FREE OK",
+                        "reasoning_content": "Reply in one line.",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 3,
+                "total_tokens": 8,
+            },
+        }
+
+    with (
+        patch.object(
+            provider,
+            "_request_openai_json",
+            side_effect=fake_request_openai_json,
+        ),
+        patch.object(
+            provider,
+            "_request_openai_stream",
+            side_effect=AssertionError("MiMo Free must not use unbounded SSE"),
+        ),
+    ):
+        events = list(
+            provider.stream(
+                "opencode-zen/mimo-v2.5-free",
+                [{"role": "user", "content": "Say MIMO FREE OK"}],
+                [],
+                {"max_tokens": 16, "request_timeout": 7},
+            )
+        )
+
+    assert captured["path"] == "/v1/chat/completions"
+    assert captured["body"] == {
+        "model": "mimo-v2.5-free",
+        "messages": [{"role": "user", "content": "Say MIMO FREE OK"}],
+        "max_tokens": 16,
+    }
+    assert captured["kwargs"] == {"timeout": 7.0}
+    assert events == [
+        {
+            "type": "reasoning_delta",
+            "delta": {"type": "text", "text": "Reply in one line."},
+        },
+        {
+            "type": "content_delta",
+            "delta": {"type": "text", "text": "MIMO FREE OK"},
+        },
+        {
+            "type": "stream_end",
+            "finish_reason": "stop",
+            "usage": {
+                "input_tokens": 5,
+                "output_tokens": 3,
+                "total_tokens": 8,
+            },
+        },
+    ]
+
+
+def test_opencode_zen_mimo_free_synthetic_stream_preserves_tool_calls(monkeypatch):
+    provider = _provider(monkeypatch)
+    response = {
+        "content": [
+            {
+                "type": "tool_use",
+                "id": "call_noop",
+                "name": "noop",
+                "input": {"value": 1},
+            }
+        ],
+        "finish_reason": "tool_calls",
+        "usage": {"input_tokens": 2, "output_tokens": 1, "total_tokens": 3},
+    }
+
+    assert list(provider._synthetic_stream_events(response)) == [
+        {"type": "tool_call_start", "id": "call_noop", "name": "noop"},
+        {
+            "type": "tool_call_delta",
+            "id": "call_noop",
+            "name": "noop",
+            "arguments_chunk": '{"value":1}',
+        },
+        {"type": "tool_call_end", "id": "call_noop", "name": "noop"},
+        {
+            "type": "stream_end",
+            "finish_reason": "tool_calls",
+            "usage": {
+                "input_tokens": 2,
+                "output_tokens": 1,
+                "total_tokens": 3,
+            },
+        },
+    ]
+
+
+@pytest.mark.parametrize("text", ["", "   "])
+def test_opencode_zen_mimo_free_empty_completion_is_recoverable_error(
+    monkeypatch,
+    text,
+):
+    provider = _provider(monkeypatch)
+    response = {
+        "content": [{"type": "text", "text": text}],
+        "finish_reason": "stop",
+        "usage": {},
+    }
+
+    with pytest.raises(RuntimeError, match="returned no text or tool call"):
+        list(provider._synthetic_stream_events(response))
+
+
+def test_opencode_zen_mimo_free_rejects_nameless_tool_call(monkeypatch):
+    provider = _provider(monkeypatch)
+    response = {
+        "content": [
+            {
+                "type": "tool_use",
+                "id": "call_invalid",
+                "name": "",
+                "input": {},
+            }
+        ],
+        "finish_reason": "tool_calls",
+        "usage": {},
+    }
+
+    with pytest.raises(RuntimeError, match="tool call without a name"):
+        list(provider._synthetic_stream_events(response))
+
+
+def test_opencode_zen_mimo_free_rejects_empty_choices(monkeypatch):
+    provider = _provider(monkeypatch)
+
+    with patch.object(
+        provider,
+        "_request_openai_json",
+        return_value={"choices": [], "usage": {}},
+    ):
+        with pytest.raises(RuntimeError, match="invalid chat completion"):
+            list(
+                provider.stream(
+                    "opencode-zen/mimo-v2.5-free",
+                    [{"role": "user", "content": "Say OK"}],
+                    [],
+                    {},
+                )
+            )
+
+
+def test_opencode_zen_mimo_free_completion_error_propagates(monkeypatch):
+    provider = _provider(monkeypatch)
+
+    with patch.object(
+        provider,
+        "_request_openai_json",
+        side_effect=RuntimeError("OpenCode Zen API connection error: timed out"),
+    ):
+        with pytest.raises(RuntimeError, match="connection error: timed out"):
+            list(
+                provider.stream(
+                    "opencode-zen/mimo-v2.5-free",
+                    [{"role": "user", "content": "Say OK"}],
+                    [],
+                    {"request_timeout": 2},
+                )
+            )
+
+
 def test_opencode_zen_model_inventory_prefers_live_endpoint(monkeypatch):
     provider = _provider(monkeypatch)
     response = _FakeJsonResponse(
@@ -487,8 +686,9 @@ def test_opencode_zen_reasoning_stream_omits_tools_and_applies_token_floor(
     assert response.closed is True
 
 
-def test_opencode_zen_mimo_free_stream_stops_on_done_without_finish_chunk(monkeypatch):
+def test_opencode_zen_native_stream_stops_on_done_without_finish_chunk(monkeypatch):
     provider = _provider(monkeypatch)
+    provider._model_inventory_cache = [{"model_id": "account-stream-model"}]
     captured = {}
     response = _FakeSseResponse(
         [
@@ -508,7 +708,7 @@ def test_opencode_zen_mimo_free_stream_stops_on_done_without_finish_chunk(monkey
     with patch.object(provider, "_request_openai_stream", side_effect=fake_request_openai_stream):
         events = list(
             provider.stream(
-                "opencode-zen/mimo-v2.5-free",
+                "opencode-zen/account-stream-model",
                 [{"role": "user", "content": "Say OK"}],
                 [{"name": "noop", "input_schema": {"type": "object"}}],
                 {"max_tokens": 8},
@@ -516,7 +716,7 @@ def test_opencode_zen_mimo_free_stream_stops_on_done_without_finish_chunk(monkey
         )
 
     assert captured["path"] == "/v1/chat/completions"
-    assert captured["body"]["model"] == "mimo-v2.5-free"
+    assert captured["body"]["model"] == "account-stream-model"
     assert captured["body"]["stream_options"] == {"include_usage": True}
     assert captured["body"]["tools"] == [
         {
@@ -541,7 +741,7 @@ def test_opencode_zen_mimo_free_stream_stops_on_done_without_finish_chunk(monkey
 
 def test_opencode_zen_stream_emits_one_end_after_final_usage(monkeypatch):
     provider = _provider(monkeypatch)
-    provider._model_inventory_cache = [{"model_id": "mimo-v2.5-free"}]
+    provider._model_inventory_cache = [{"model_id": "account-stream-model"}]
     response = _FakeSseResponse(
         [
             b'data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n',
@@ -554,7 +754,7 @@ def test_opencode_zen_stream_emits_one_end_after_final_usage(monkeypatch):
     with patch.object(provider, "_request_openai_stream", return_value=response):
         events = list(
             provider.stream(
-                "opencode-zen/mimo-v2.5-free",
+                "opencode-zen/account-stream-model",
                 [{"role": "user", "content": "Say OK"}],
                 [],
                 {"max_tokens": 8},
@@ -582,7 +782,7 @@ def test_opencode_zen_stream_recovers_completed_tool_calls_outside_delta(
     container_key,
 ):
     provider = _provider(monkeypatch)
-    provider._model_inventory_cache = [{"model_id": "mimo-v2.5-free"}]
+    provider._model_inventory_cache = [{"model_id": "account-stream-model"}]
     tool_call = {
         "id": "call_repository",
         "type": "function",
@@ -619,7 +819,7 @@ def test_opencode_zen_stream_recovers_completed_tool_calls_outside_delta(
     with patch.object(provider, "_request_openai_stream", return_value=response):
         events = list(
             provider.stream(
-                "opencode-zen/mimo-v2.5-free",
+                "opencode-zen/account-stream-model",
                 [{"role": "user", "content": "Use the tool"}],
                 [{"name": "repository_context_prepare", "input_schema": {"type": "object"}}],
                 {},
@@ -659,7 +859,7 @@ def test_opencode_zen_stream_recovers_missing_tool_payload_with_complete_call(
     monkeypatch,
 ):
     provider = _provider(monkeypatch)
-    provider._model_inventory_cache = [{"model_id": "mimo-v2.5-free"}]
+    provider._model_inventory_cache = [{"model_id": "account-stream-model"}]
     response = _FakeSseResponse(
         [
             (
@@ -710,7 +910,7 @@ def test_opencode_zen_stream_recovers_missing_tool_payload_with_complete_call(
     ):
         events = list(
             provider.stream(
-                "opencode-zen/mimo-v2.5-free",
+                "opencode-zen/account-stream-model",
                 [{"role": "user", "content": "Use the tool"}],
                 [
                     {

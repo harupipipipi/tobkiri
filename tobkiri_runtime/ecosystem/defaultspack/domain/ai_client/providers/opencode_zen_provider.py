@@ -6,7 +6,7 @@ import ssl
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List
 
 from ..api_key_store import read_provider_api_key
 from .anthropic_provider import AnthropicProvider
@@ -19,6 +19,11 @@ class OpencodeZenProvider(AnthropicProvider):
     provider_name = "opencode-zen"
     display_name = "OpenCode Zen"
     DEFAULT_BASE_URL = "https://opencode.ai/zen"
+    DEFAULT_USER_AGENT = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 Chrome/124 Safari/537.36"
+    )
+    MIMO_FREE_MODEL_ID = "mimo-v2.5-free"
     MODEL_INVENTORY_TTL_SECONDS = 300
     ANTHROPIC_MESSAGES_MODELS: set[str] = set()
     OPENAI_CHAT_MODELS: set[str] = set()
@@ -73,7 +78,7 @@ class OpencodeZenProvider(AnthropicProvider):
             "anthropic-version": self.API_VERSION,
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "RumiAI/1.0",
+            "User-Agent": self._user_agent(),
         }
 
     def _openai_headers(self) -> Dict[str, str]:
@@ -82,8 +87,12 @@ class OpencodeZenProvider(AnthropicProvider):
             "x-api-key": self._api_key,
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "RumiAI/1.0",
+            "User-Agent": self._user_agent(),
         }
+
+    def _user_agent(self) -> str:
+        configured = str(os.environ.get("OPENCODE_ZEN_USER_AGENT") or "").strip()
+        return configured or self.DEFAULT_USER_AGENT
 
     def _request_openai_json(self, path, body, *, timeout=120.0):
         url = self.BASE_URL + path
@@ -267,7 +276,12 @@ class OpencodeZenProvider(AnthropicProvider):
             body,
             **self._request_timeout_kwargs(params),
         )
-        return OpenAIProvider.parse_response(self, raw)
+        try:
+            return OpenAIProvider.parse_response(self, raw)
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "OpenCode Zen API returned an invalid chat completion"
+            ) from exc
 
     def _stream_openai_chat(self, model_id, messages, tools, params):
         params = self._openai_params(params)
@@ -408,6 +422,105 @@ class OpencodeZenProvider(AnthropicProvider):
         finally:
             resp.close()
 
+    @staticmethod
+    def _synthetic_stream_events(
+        response: Dict[str, Any],
+    ) -> Iterator[Dict[str, Any]]:
+        if not isinstance(response, dict):
+            raise RuntimeError("OpenCode Zen API returned an invalid chat completion")
+
+        content = response.get("content")
+        content = content if isinstance(content, list) else []
+        invalid_tool_call = any(
+            isinstance(item, dict)
+            and str(item.get("type") or "") == "tool_use"
+            and not str(item.get("name") or "").strip()
+            for item in content
+        )
+        if invalid_tool_call:
+            raise RuntimeError(
+                "OpenCode Zen MiMo V2.5 Free returned a tool call without a name"
+            )
+        has_output = any(
+            isinstance(item, dict)
+            and (
+                (
+                    str(item.get("type") or "") == "tool_use"
+                    and bool(str(item.get("name") or "").strip())
+                )
+                or (
+                    str(item.get("type") or "") == "text"
+                    and bool(str(item.get("text") or "").strip())
+                )
+            )
+            for item in content
+        )
+        if not has_output:
+            raise RuntimeError(
+                "OpenCode Zen MiMo V2.5 Free returned no text or tool call"
+            )
+
+        reasoning = str(response.get("reasoning_content") or "").strip()
+        if not reasoning:
+            metadata = response.get("metadata")
+            if isinstance(metadata, dict):
+                reasoning = str(metadata.get("reasoning_content") or "").strip()
+                thinking = metadata.get("thinking")
+                if not reasoning and isinstance(thinking, dict):
+                    reasoning = str(thinking.get("transcript") or "").strip()
+        if reasoning:
+            yield {
+                "type": "reasoning_delta",
+                "delta": {"type": "text", "text": reasoning},
+            }
+
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            item_type = str(item.get("type") or "")
+            if item_type == "text":
+                text = str(item.get("text") or "")
+                if text:
+                    yield {
+                        "type": "content_delta",
+                        "delta": {"type": "text", "text": text},
+                    }
+                continue
+            if item_type != "tool_use":
+                continue
+            call_id = str(item.get("id") or "tool_call_completed")
+            name = str(item.get("name") or "")
+            yield {"type": "tool_call_start", "id": call_id, "name": name}
+            arguments = item.get("input")
+            if arguments not in (None, ""):
+                yield {
+                    "type": "tool_call_delta",
+                    "id": call_id,
+                    "name": name,
+                    "arguments_chunk": (
+                        arguments
+                        if isinstance(arguments, str)
+                        else json.dumps(
+                            arguments,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    ),
+                }
+            yield {"type": "tool_call_end", "id": call_id, "name": name}
+
+        usage = response.get("usage")
+        usage = usage if isinstance(usage, dict) else {}
+        yield {
+            "type": "stream_end",
+            "finish_reason": str(response.get("finish_reason") or "stop"),
+            "usage": {
+                "input_tokens": int(usage.get("input_tokens") or 0),
+                "output_tokens": int(usage.get("output_tokens") or 0),
+                "total_tokens": int(usage.get("total_tokens") or 0),
+            },
+        }
+
     def complete(self, model, messages, tools, params):
         model_id = self._assert_supported_model(model)
         self._assert_text_only_messages(messages)
@@ -433,6 +546,17 @@ class OpencodeZenProvider(AnthropicProvider):
             if self._model_needs_token_floor(model_id)
             else params
         )
+        if model_id == self.MIMO_FREE_MODEL_ID:
+            completion_params = dict(next_params or {})
+            completion_params.pop("stream_options", None)
+            response = self._complete_openai_chat(
+                model_id,
+                messages,
+                tools,
+                completion_params,
+            )
+            yield from self._synthetic_stream_events(response)
+            return
         yield from self._stream_openai_chat(model_id, messages, tools, next_params)
 
     @staticmethod
