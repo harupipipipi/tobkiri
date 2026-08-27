@@ -14,6 +14,13 @@ This gives Rumi a "computer use + browser use" path where the model can inspect 
 - `content_script.js`: DOM snapshots and element-level actions
 - `options.html`, `options.css`, `options.js`: local bridge configuration UI
 
+## Motion accessibility
+
+The extension options UI does not use motion to communicate state. Its CSS
+also honors `prefers-reduced-motion: reduce`, making any future animation,
+transition, or smooth scrolling instant while preserving the same visible
+labels, status text, focus treatment, and actions.
+
 ## Install
 
 1. Open a Chromium-based browser such as Chrome, Edge, Brave, or Vivaldi.

@@ -130,6 +130,19 @@ No action may be permanently offscreen, hidden behind a fixed layer, or availabl
 
 Animations MUST respect reduced-motion preference and MUST NOT be required to understand state.
 
+The shared policy covers entrance, layout, hover, loading, streaming, scrolling,
+and decorative motion. Web surfaces MUST use `prefers-reduced-motion: reduce` to
+make nonessential animation and transitions effectively instant, force automatic
+scrolling to `auto`, and replace self-animating media with a static equivalent.
+Flutter surfaces MUST use `MediaQueryData.disableAnimations` through the shared
+motion helper; looping indicators stop, animated scroll becomes a jump, and
+component transition durations become zero. Labels, live regions, color, shape,
+and explicit state text MUST remain sufficient when all motion is removed.
+
+New components MUST consume surface motion tokens/helpers rather than defining
+an independent accessibility preference. Browser-extension UI MUST follow the
+same CSS preference even when its current design has no animation.
+
 Loading skeletons MUST not imply content that may never arrive indefinitely. Long operations need status, cancellation where real, timeout/recovery, and preserved context.
 
 Images, panels, fonts, and late content SHOULD avoid layout shift. Large lists/canvases MUST have a performance strategy and remain focus-stable under virtualization.

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
+import '../accessibility/motion_policy.dart';
 import '../app_theme.dart';
 import '../platform/platform_services.dart';
 import 'chat_models.dart';
@@ -155,7 +156,18 @@ class _TypingIndicatorState extends State<_TypingIndicator>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
-    )..repeat();
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (motionAllowedOf(context)) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.value = 1;
+    }
   }
 
   @override
@@ -166,28 +178,42 @@ class _TypingIndicatorState extends State<_TypingIndicator>
 
   @override
   Widget build(BuildContext context) {
+    final animate = motionAllowedOf(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(3, (i) {
         return Padding(
           padding: const EdgeInsets.only(right: 4),
-          child: FadeTransition(
-            opacity: _controller.drive(
-              Tween(begin: 0.3, end: 1.0).chain(
-                CurveTween(curve: Interval(i * 0.2, 0.6 + i * 0.2)),
-              ),
-            ),
-            child: Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                color: widget.fg.withValues(alpha: 0.7),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
+          child: animate
+              ? FadeTransition(
+                  opacity: _controller.drive(
+                    Tween(begin: 0.3, end: 1.0).chain(
+                      CurveTween(curve: Interval(i * 0.2, 0.6 + i * 0.2)),
+                    ),
+                  ),
+                  child: _TypingDot(color: widget.fg),
+                )
+              : _TypingDot(color: widget.fg),
         );
       }),
+    );
+  }
+}
+
+class _TypingDot extends StatelessWidget {
+  const _TypingDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.7),
+        shape: BoxShape.circle,
+      ),
     );
   }
 }

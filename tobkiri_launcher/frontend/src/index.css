@@ -275,4 +275,42 @@
     border-radius: 999px;
     background: currentColor;
   }
+
+  /*
+   * Shared motion contract: platform reduced-motion preference wins over
+   * component utilities, embedded loading artwork, and smooth scrolling.
+   */
+  [data-reduced-motion-wordmark] {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --transition-fast: 0ms linear;
+      --transition-base: 0ms linear;
+      --transition-slow: 0ms linear;
+    }
+
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+
+    [data-motion-animation] {
+      display: none !important;
+    }
+
+    [data-reduced-motion-wordmark] {
+      display: flex !important;
+    }
+  }
 }

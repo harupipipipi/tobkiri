@@ -81,3 +81,20 @@ test('viewer overlays use shared layer tokens instead of competing z-50 classes'
   assert.doesNotMatch(dialog, /z-50/);
   assert.doesNotMatch(popover, /z-50/);
 });
+
+test('viewer motion policy honors the platform preference and replaces animated loading art', () => {
+  const styles = source('index.css');
+  const loader = source('components/ui/TobkiriLoader.tsx');
+
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /--transition-fast: 0ms linear/);
+  assert.match(styles, /animation-duration: 0\.01ms !important/);
+  assert.match(styles, /animation-iteration-count: 1 !important/);
+  assert.match(styles, /scroll-behavior: auto !important/);
+  assert.match(styles, /transition-duration: 0\.01ms !important/);
+  assert.match(styles, /\[data-motion-animation\][\s\S]*display: none !important/);
+  assert.match(styles, /\[data-reduced-motion-wordmark\][\s\S]*display: flex !important/);
+  assert.match(loader, /data-motion-animation/);
+  assert.match(loader, /data-reduced-motion-wordmark/);
+  assert.match(loader, />\s*Tobkiri\s*</);
+});

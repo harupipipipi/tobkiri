@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import '../accessibility/motion_policy.dart';
 import '../application/conversation_router.dart';
 import '../data/local/local_chat_backend.dart';
 import '../data/local/mobile_tool_runtime.dart';
@@ -316,10 +317,11 @@ class _ChatScreenState extends State<ChatScreen>
   void _onScroll() {}
 
   void _scrollToBottom({bool animate = true}) {
+    final shouldAnimate = animate && motionAllowedOf(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       final max = _scrollController.position.maxScrollExtent;
-      if (animate) {
+      if (shouldAnimate) {
         _scrollController.animateTo(
           max,
           duration: const Duration(milliseconds: 180),
