@@ -1974,7 +1974,7 @@
   },
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v1",
   "source": {
-    "observed_head_sha": "bcf2d0ccc0a3040ed7d5b8a7968b07905be83742",
+    "observed_head_sha": "152265203baca3acc6cf7874c9ea881ce892e9e8",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
