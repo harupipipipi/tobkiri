@@ -346,6 +346,51 @@ class PcConnection {
       );
 }
 
+class SettingsRevision {
+  const SettingsRevision({
+    required this.revision,
+    required this.api,
+    required this.pc,
+  });
+
+  final int revision;
+  final ApiConfig api;
+  final PcConnection? pc;
+}
+
+enum SettingsCommitStatus { saved, conflict, failed }
+
+class SettingsCommitResult {
+  const SettingsCommitResult._({
+    required this.status,
+    this.snapshot,
+    this.message,
+  });
+
+  const SettingsCommitResult.saved(SettingsRevision snapshot)
+      : this._(status: SettingsCommitStatus.saved, snapshot: snapshot);
+
+  const SettingsCommitResult.conflict(String message)
+      : this._(status: SettingsCommitStatus.conflict, message: message);
+
+  const SettingsCommitResult.failed(String message)
+      : this._(status: SettingsCommitStatus.failed, message: message);
+
+  final SettingsCommitStatus status;
+  final SettingsRevision? snapshot;
+  final String? message;
+}
+
+class SettingsStorageException implements Exception {
+  const SettingsStorageException(this.code, this.message);
+
+  final String code;
+  final String message;
+
+  @override
+  String toString() => 'SettingsStorageException($code)';
+}
+
 class MobileNotificationSettings {
   const MobileNotificationSettings({
     this.pcTaskFinishedEnabled = true,
@@ -465,24 +510,130 @@ class ApiConfigStore {
   static const _knowledgeRecordsKey = 'rumi.mobile_knowledge_records.v1';
   static const _pcKey = 'rumi.pc_connection.v1';
   static const _notificationKey = 'rumi.mobile_notifications.v1';
+  static const settingsRecordKey = 'rumi.settings_revision.v1';
+  static const settingsJournalKey = 'rumi.settings_revision.journal.v1';
+  static const _settingsSchemaVersion = 1;
 
   final SecureKeyValueStorage _storage;
 
+  Future<SettingsRevision> loadSettingsRevision() async {
+    try {
+      await _recoverSettingsCommit();
+      final record = await _storage.read(settingsRecordKey);
+      if (record != null && record.trim().isNotEmpty) {
+        return _decodeSettingsRevision(record);
+      }
+      return _loadLegacySettingsRevision();
+    } on SettingsStorageException {
+      rethrow;
+    } catch (_) {
+      throw const SettingsStorageException(
+        'read_failed',
+        '安全な設定を読み出せませんでした。保存済みの値は変更していません。',
+      );
+    }
+  }
+
+  Future<SettingsCommitResult> commitSettings({
+    required ApiConfig api,
+    required PcConnection? pc,
+    required int expectedRevision,
+  }) async {
+    final normalizedApi = _normalizeApiConfig(api);
+    final normalizedPc = _normalizePcConnection(pc);
+    if (!_validHttpUrl(normalizedApi.baseUrl) ||
+        (normalizedPc != null &&
+            (!normalizedPc.isConfigured ||
+                !_validHttpUrl(normalizedPc.baseUrl)))) {
+      return const SettingsCommitResult.failed(
+        '入力内容を確認してください。設定は保存されていません。',
+      );
+    }
+
+    SettingsRevision current;
+    String? previousRecord;
+    try {
+      current = await loadSettingsRevision();
+      if (current.revision != expectedRevision) {
+        return const SettingsCommitResult.conflict(
+          '設定が別の操作で更新されました。画面を開き直して再試行してください。',
+        );
+      }
+      previousRecord = await _storage.read(settingsRecordKey);
+    } catch (_) {
+      return const SettingsCommitResult.failed(
+        '安全な設定領域を利用できません。編集内容は保存されていません。',
+      );
+    }
+
+    final next = SettingsRevision(
+      revision: current.revision + 1,
+      api: normalizedApi,
+      pc: normalizedPc,
+    );
+    final nextRecord = _encodeSettingsRevision(next);
+    final journal = jsonEncode({
+      'schemaVersion': _settingsSchemaVersion,
+      'previousRecord': previousRecord,
+      'nextRecord': nextRecord,
+    });
+
+    try {
+      await _storage.write(settingsJournalKey, journal);
+      if (await _storage.read(settingsJournalKey) != journal) {
+        await _deleteBestEffort(settingsJournalKey);
+        return const SettingsCommitResult.failed(
+          '設定の保存を安全に開始できませんでした。',
+        );
+      }
+      await _storage.write(settingsRecordKey, nextRecord);
+      if (await _storage.read(settingsRecordKey) != nextRecord) {
+        await _restoreSettingsRecord(previousRecord);
+        await _deleteBestEffort(settingsJournalKey);
+        return const SettingsCommitResult.failed(
+          '保存した設定を確認できませんでした。以前の設定を維持しています。',
+        );
+      }
+    } catch (_) {
+      try {
+        if (await _storage.read(settingsRecordKey) == nextRecord) {
+          await _finishSettingsCommit();
+          return SettingsCommitResult.saved(next);
+        }
+        await _restoreSettingsRecord(previousRecord);
+        await _deleteBestEffort(settingsJournalKey);
+      } catch (_) {
+        // Keep the journal so the next read can recover deterministically.
+      }
+      return const SettingsCommitResult.failed(
+        '設定を保存できませんでした。以前の設定を維持しています。',
+      );
+    }
+
+    await _finishSettingsCommit();
+    return SettingsCommitResult.saved(next);
+  }
+
   Future<ApiConfig> loadApi() async {
     try {
-      final raw = await _storage.read(_apiKey);
-      if (raw == null || raw.trim().isEmpty) return ApiConfig.defaults;
-      return ApiConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      return (await loadSettingsRevision()).api;
     } catch (_) {
       return ApiConfig.defaults;
     }
   }
 
-  Future<void> saveApi(ApiConfig config) async {
+  Future<SettingsCommitResult> saveApi(ApiConfig config) async {
     try {
-      await _storage.write(_apiKey, jsonEncode(config.toJson()));
+      final current = await loadSettingsRevision();
+      return commitSettings(
+        api: config,
+        pc: current.pc,
+        expectedRevision: current.revision,
+      );
     } catch (_) {
-      // ignore secure storage failures (e.g. simulator keychain unavailable)
+      return const SettingsCommitResult.failed(
+        '安全な設定領域を利用できません。編集内容は保存されていません。',
+      );
     }
   }
 
@@ -735,23 +886,24 @@ class ApiConfigStore {
 
   Future<PcConnection?> loadPc() async {
     try {
-      final raw = await _storage.read(_pcKey);
-      if (raw == null || raw.trim().isEmpty) return null;
-      return PcConnection.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      return (await loadSettingsRevision()).pc;
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> savePc(PcConnection? pc) async {
+  Future<SettingsCommitResult> savePc(PcConnection? pc) async {
     try {
-      if (pc == null || !pc.isConfigured) {
-        await _storage.delete(_pcKey);
-        return;
-      }
-      await _storage.write(_pcKey, jsonEncode(pc.toJson()));
+      final current = await loadSettingsRevision();
+      return commitSettings(
+        api: current.api,
+        pc: pc,
+        expectedRevision: current.revision,
+      );
     } catch (_) {
-      // ignore secure storage failures
+      return const SettingsCommitResult.failed(
+        '安全な設定領域を利用できません。編集内容は保存されていません。',
+      );
     }
   }
 
@@ -837,6 +989,173 @@ class ApiConfigStore {
           .toList(),
     );
   }
+
+  Future<SettingsRevision> _loadLegacySettingsRevision() async {
+    final values = await Future.wait([
+      _storage.read(_apiKey),
+      _storage.read(_pcKey),
+    ]);
+    try {
+      final rawApi = values[0];
+      final api = rawApi == null || rawApi.trim().isEmpty
+          ? ApiConfig.defaults
+          : ApiConfig.fromJson(
+              Map<String, dynamic>.from(jsonDecode(rawApi) as Map),
+            );
+      final rawPc = values[1];
+      final pc = rawPc == null || rawPc.trim().isEmpty
+          ? null
+          : PcConnection.fromJson(
+              Map<String, dynamic>.from(jsonDecode(rawPc) as Map),
+            );
+      final normalizedApi = _normalizeApiConfig(api);
+      final normalizedPc = _normalizePcConnection(pc);
+      if (!_validHttpUrl(normalizedApi.baseUrl) ||
+          (normalizedPc != null &&
+              (!normalizedPc.isConfigured ||
+                  !_validHttpUrl(normalizedPc.baseUrl)))) {
+        throw const FormatException();
+      }
+      return SettingsRevision(
+        revision: 0,
+        api: normalizedApi,
+        pc: normalizedPc,
+      );
+    } catch (_) {
+      throw const SettingsStorageException(
+        'legacy_corrupt',
+        '保存済みの設定を確認できません。値は変更していません。',
+      );
+    }
+  }
+
+  SettingsRevision _decodeSettingsRevision(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic> ||
+          decoded['schemaVersion'] != _settingsSchemaVersion ||
+          decoded['revision'] is! int ||
+          decoded['revision'] as int < 1 ||
+          decoded['api'] is! Map ||
+          (decoded['pc'] != null && decoded['pc'] is! Map)) {
+        throw const FormatException();
+      }
+      final api = _normalizeApiConfig(
+        ApiConfig.fromJson(Map<String, dynamic>.from(decoded['api'] as Map)),
+      );
+      final pc = decoded['pc'] == null
+          ? null
+          : _normalizePcConnection(
+              PcConnection.fromJson(
+                Map<String, dynamic>.from(decoded['pc'] as Map),
+              ),
+            );
+      if (!_validHttpUrl(api.baseUrl) ||
+          (pc != null && (!pc.isConfigured || !_validHttpUrl(pc.baseUrl)))) {
+        throw const FormatException();
+      }
+      return SettingsRevision(
+        revision: decoded['revision'] as int,
+        api: api,
+        pc: pc,
+      );
+    } catch (_) {
+      throw const SettingsStorageException(
+        'record_corrupt',
+        '保存済みの設定リビジョンを確認できません。値は変更していません。',
+      );
+    }
+  }
+
+  String _encodeSettingsRevision(SettingsRevision snapshot) => jsonEncode({
+        'schemaVersion': _settingsSchemaVersion,
+        'revision': snapshot.revision,
+        'api': snapshot.api.toJson(),
+        'pc': snapshot.pc?.toJson(),
+      });
+
+  Future<void> _recoverSettingsCommit() async {
+    final rawJournal = await _storage.read(settingsJournalKey);
+    if (rawJournal == null || rawJournal.trim().isEmpty) return;
+    try {
+      final decoded = jsonDecode(rawJournal);
+      if (decoded is! Map<String, dynamic> ||
+          decoded['schemaVersion'] != _settingsSchemaVersion ||
+          decoded['nextRecord'] is! String) {
+        throw const FormatException();
+      }
+      final previous = decoded['previousRecord'] as String?;
+      final next = decoded['nextRecord'] as String;
+      final current = await _storage.read(settingsRecordKey);
+      if (current == next || current == previous) {
+        await _deleteBestEffort(settingsJournalKey);
+        return;
+      }
+      await _restoreSettingsRecord(previous);
+      await _deleteBestEffort(settingsJournalKey);
+    } catch (_) {
+      throw const SettingsStorageException(
+        'recovery_failed',
+        '中断された設定保存を回復できません。値は変更していません。',
+      );
+    }
+  }
+
+  Future<void> _restoreSettingsRecord(String? previous) async {
+    if (previous == null) {
+      await _storage.delete(settingsRecordKey);
+      return;
+    }
+    await _storage.write(settingsRecordKey, previous);
+    if (await _storage.read(settingsRecordKey) != previous) {
+      throw const SettingsStorageException(
+        'rollback_failed',
+        '以前の設定リビジョンを復元できません。',
+      );
+    }
+  }
+
+  Future<void> _finishSettingsCommit() async {
+    await _deleteBestEffort(settingsJournalKey);
+    await _deleteBestEffort(_apiKey);
+    await _deleteBestEffort(_pcKey);
+  }
+
+  Future<void> _deleteBestEffort(String key) async {
+    try {
+      await _storage.delete(key);
+    } catch (_) {
+      // A stale compatibility key cannot invalidate a verified revision.
+    }
+  }
+}
+
+ApiConfig _normalizeApiConfig(ApiConfig config) => config.copyWith(
+      providerId: config.providerId.trim(),
+      baseUrl: config.baseUrl.trim().replaceFirst(RegExp(r'/+$'), ''),
+      apiKey: config.apiKey.trim(),
+      model: config.model.trim().isEmpty
+          ? ApiConfig.defaults.model
+          : config.model.trim(),
+      label: config.label.trim(),
+      systemPrompt: config.systemPrompt.trim(),
+      apiCompatibility: config.apiCompatibility.trim(),
+    );
+
+PcConnection? _normalizePcConnection(PcConnection? pc) {
+  if (pc == null) return null;
+  return PcConnection(
+    baseUrl: pc.baseUrl.trim().replaceFirst(RegExp(r'/+$'), ''),
+    token: pc.token.trim(),
+    approvalToken: pc.approvalToken.trim(),
+  );
+}
+
+bool _validHttpUrl(String raw) {
+  final uri = Uri.tryParse(raw.trim());
+  return uri != null &&
+      uri.host.isNotEmpty &&
+      (uri.scheme == 'http' || uri.scheme == 'https');
 }
 
 List<ModelFavoriteConfig> _dedupeModelFavorites(
