@@ -2344,7 +2344,9 @@ def test_defaultspack_runtime_service_registers_cross_platform_providers(tmp_pat
     assert "PC-local" in cloudflare_isolation["summary"]
 
 
-def test_windows_wsl_provider_detects_utf16_like_distribution_names(monkeypatch) -> None:
+def test_windows_wsl_provider_accepts_host_decoded_utf16_distribution_names(
+    monkeypatch,
+) -> None:
     from ecosystem.defaultspack.backend.sandbox.providers import managed_ubuntu
     from ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu import (
         GuestCommandResult,
@@ -2362,7 +2364,8 @@ def test_windows_wsl_provider_detects_utf16_like_distribution_names(monkeypatch)
         if argv == ("wsl.exe", "-l", "-q"):
             return GuestCommandResult(
                 returncode=0,
-                stdout="d\x00o\x00c\x00k\x00e\x00r\x00-\x00d\x00e\x00s\x00k\x00t\x00o\x00p\x00\n\x00R\x00u\x00m\x00i\x00U\x00b\x00u\x00n\x00t\x00u\x00\n\x00",
+                stdout="docker-desktop\nRumiUbuntu\n",
+                stdout_decoding="utf-16-le",
             )
         if argv[:5] == ("wsl.exe", "-d", "RumiUbuntu", "--", "bash"):
             return GuestCommandResult(returncode=0, stdout="")
