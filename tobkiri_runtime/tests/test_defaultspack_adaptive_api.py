@@ -633,6 +633,107 @@ def test_coding_mutation_requests_approval_before_resolving_workspace(
     assert result["data"]["approval_required"] is True
 
 
+def test_adaptive_mutations_require_revision_and_are_idempotent(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
+    from domain.adaptive.service import dispatch
+
+    initial = dispatch("activity_snapshot", {"profile_id": "coding"}, {})
+    automation = next(
+        item
+        for item in initial["data"]["automations"]
+        if item["id"] == "automation_daily_context"
+    )
+    assert initial["data"]["automation_revision"] == 0
+    assert automation["resource_id"] == automation["id"]
+    assert automation["revision"] == 0
+
+    missing_revision = dispatch(
+        "automation_update",
+        {
+            "profile_id": "coding",
+            "automation_id": automation["id"],
+            "request_id": "automation-enable",
+            "patch": {"enabled": True},
+        },
+        {},
+    )
+    assert missing_revision["status"] == "error"
+    assert missing_revision["code"] == "REVISION_REQUIRED"
+
+    missing_request = dispatch(
+        "automation_update",
+        {
+            "profile_id": "coding",
+            "automation_id": automation["id"],
+            "expected_revision": 0,
+            "patch": {"enabled": True},
+        },
+        {},
+    )
+    assert missing_request["status"] == "error"
+    assert missing_request["code"] == "REQUEST_ID_REQUIRED"
+
+    mutation = {
+        "profile_id": "coding",
+        "automation_id": automation["id"],
+        "expected_revision": 0,
+        "request_id": "automation-enable",
+        "patch": {"enabled": True},
+    }
+    first = dispatch("automation_update", mutation, {})
+    retry = dispatch("automation_update", mutation, {})
+    assert first["status"] == retry["status"] == "ok"
+    assert first["data"]["automation"] == retry["data"]["automation"]
+    assert first["data"]["automation"]["revision"] == 1
+
+    reused_request = dispatch(
+        "automation_update",
+        {**mutation, "patch": {"enabled": False}},
+        {},
+    )
+    assert reused_request["status"] == "error"
+    assert reused_request["code"] == "IDEMPOTENCY_CONFLICT"
+
+    stale = dispatch(
+        "automation_update",
+        {**mutation, "request_id": "stale-automation-disable", "patch": {"enabled": False}},
+        {},
+    )
+    assert stale["status"] == "error"
+    assert stale["code"] == "REVISION_CONFLICT"
+    assert stale["details"]["current_revision"] == 1
+
+    profile_mutation = {
+        "profile_id": "coding",
+        "id": "coding",
+        "expected_revision": 0,
+        "request_id": "profile-draft-save",
+        "patch": {
+            "summary": "Local-only coding profile",
+            "autonomy": {"level": "confirm", "label": "Ask before acting"},
+        },
+    }
+    saved = dispatch("operating_profiles_update", profile_mutation, {})
+    duplicate = dispatch("operating_profiles_update", profile_mutation, {})
+    assert saved["status"] == duplicate["status"] == "ok"
+    assert saved["data"]["profile"] == duplicate["data"]["profile"]
+    assert saved["data"]["profile"]["revision"] == 1
+    assert saved["data"]["profile"]["summary"] == "Local-only coding profile"
+
+    status = dispatch("onboarding_status", {"profile_id": "coding"}, {})
+    assert status["data"]["operating_profile_draft"] == saved["data"]["profile"]
+
+    stale_profile = dispatch(
+        "operating_profiles_update",
+        {**profile_mutation, "request_id": "stale-profile-save"},
+        {},
+    )
+    assert stale_profile["status"] == "error"
+    assert stale_profile["code"] == "REVISION_CONFLICT"
+
+
 def test_adaptive_pack_skill_automation_and_event_state_are_not_placeholders(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -668,7 +769,12 @@ def test_adaptive_pack_skill_automation_and_event_state_are_not_placeholders(
         {
             "profile_id": "coding",
             "action_type": "automation.update",
-            "arguments": {"automationId": "automation_daily_context", "patch": {"enabled": True}},
+            "arguments": {
+                "automationId": "automation_daily_context",
+                "expected_revision": 0,
+                "request_id": "prepared-automation-enable",
+                "patch": {"enabled": True},
+            },
         },
         {},
     )
@@ -694,6 +800,8 @@ def test_adaptive_pack_skill_automation_and_event_state_are_not_placeholders(
         {
             "profile_id": "coding",
             "automation_id": "automation_daily_context",
+            "expected_revision": 1,
+            "request_id": "direct-automation-disable",
             "patch": {"enabled": False},
         },
         {},

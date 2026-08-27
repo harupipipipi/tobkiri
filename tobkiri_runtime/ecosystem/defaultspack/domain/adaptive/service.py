@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import re
 import uuid
 from pathlib import Path
@@ -67,7 +69,7 @@ OPERATION_ALIASES: dict[str, str] = {
     "operating_profiles_get": "operating_profile.get",
     "operating_profiles_list": "operating_profile.list",
     "operating_profiles_preview": "operating_profile.preview",
-    "operating_profiles_update": "operating_profile.preview",
+    "operating_profiles_update": "operating_profile.update",
     "pack_recommendations_list": "pack_recommendations.preview",
     "pack_recommendations_preview": "pack_recommendations.preview",
     "prepared_action_commit": "prepared_action.commit",
@@ -160,6 +162,7 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
             "operating_profile.get": self.operating_profile_get,
             "operating_profile.list": self.operating_profile_list,
             "operating_profile.preview": self.operating_profile_preview,
+            "operating_profile.update": self.operating_profile_update,
             "orchestration.lease.acquire": self.orchestration_lease_acquire,
             "orchestration.lease.list": self.orchestration_lease_list,
             "orchestration.lease.release": self.orchestration_lease_release,
@@ -183,11 +186,13 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
         state = self._onboarding_state()
         history = self._history()
         active_profile = self._load_active_operating_profile_dict()
+        profile_draft = self._operating_profile_draft()
         return {
             "profile_id": self.profile_id,
             "configured": isinstance(active_profile, dict) or isinstance(state.get("current"), dict),
             "current": state.get("current"),
             "operating_profile": active_profile or state.get("current"),
+            "operating_profile_draft": profile_draft,
             "last_history_entry": history[-1] if history else None,
             "freeze": self._freeze_state(),
             "prepared_actions": self._prepared_actions(),
@@ -351,6 +356,7 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
             lease for lease in leases if lease.get("status") == "active" and int(lease.get("expires_at") or 0) > now
         ]
         events = self.events_list({"limit": 20}, {}).get("events", [])
+        automation_state = self._automation_state()
         snapshot = {
             "profile_id": self.profile_id,
             "created_at": now_iso(),
@@ -371,7 +377,8 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
                 "open": len([item for item in conflicts if item.get("status") == "open"]),
             },
             "leases": {"active": active_leases, "total": len(leases)},
-            "automations": self._automations(),
+            "automations": self._automations(automation_state),
+            "automation_revision": int(automation_state.get("revision") or 0),
             "automation_templates": self._automation_templates(),
             "automation_simulation": {
                 "scenario": "Review automation activation",
@@ -418,7 +425,14 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
         if not automation_id:
             raise AdaptiveError("INVALID_INPUT", "automation_id is required")
         patch = args.get("patch") if isinstance(args.get("patch"), dict) else {}
-        automation = self._apply_automation_patch(automation_id, patch)
+        expected_revision = _required_revision(args)
+        request_id = _required_request_id(args)
+        automation = self._apply_automation_patch(
+            automation_id,
+            patch,
+            expected_revision=expected_revision,
+            request_id=request_id,
+        )
         return {"profile_id": self.profile_id, "automation": automation}
 
     # Context
@@ -860,6 +874,37 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
                         payload["profile"] = {"profile_id": route_id}
         return self.onboarding_compile(payload, ctx)
 
+    def operating_profile_update(
+        self,
+        args: dict[str, Any],
+        ctx: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Save a revision-bound local draft without activating its policy."""
+
+        del ctx
+        self._ensure_not_frozen("operating_profile.update")
+        target_id = str(
+            args.get("target_profile_id")
+            or args.get("id")
+            or args.get("profile_id")
+            or self.profile_id
+        ).strip()
+        if not target_id or target_id != self.profile_id:
+            raise AdaptiveError(
+                "PROFILE_SCOPE_MISMATCH",
+                "operating profile draft must match the active profile scope",
+            )
+        patch = args.get("patch") if isinstance(args.get("patch"), dict) else {}
+        expected_revision = _required_revision(args)
+        request_id = _required_request_id(args)
+        profile = self._apply_operating_profile_patch(
+            target_id,
+            patch,
+            expected_revision=expected_revision,
+            request_id=request_id,
+        )
+        return {"profile_id": self.profile_id, "profile": profile}
+
     def operating_profile_activate(self, args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         del ctx
         self._ensure_not_frozen("operating_profile.activate")
@@ -899,7 +944,14 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
             patch = arguments.get("patch") if isinstance(arguments.get("patch"), dict) else {}
             if not automation_id:
                 raise AdaptiveError("INVALID_INPUT", "automation update requires automationId")
-            automation = self._apply_automation_patch(automation_id, patch)
+            expected_revision = _required_revision(arguments)
+            request_id = _required_request_id(arguments)
+            automation = self._apply_automation_patch(
+                automation_id,
+                patch,
+                expected_revision=expected_revision,
+                request_id=request_id,
+            )
             return {"status": "executed", "result": automation}
         outbox = self._append_outbox("prepared_action.commit", {"action_id": action.get("action_id"), "operation": operation})
         return {
@@ -909,14 +961,32 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
             "continuation": {"kind": "prepared_action", "outbox_id": outbox["outbox_id"], "action_id": action.get("action_id")},
         }
 
-    def _automations(self) -> list[dict[str, Any]]:
-        state = self.store.read_json("automation/state.json", {"version": 1, "automations": []})
-        automations = state.get("automations") if isinstance(state, dict) and isinstance(state.get("automations"), list) else []
+    def _automation_state(self) -> dict[str, Any]:
+        state = self.store.read_json(
+            "automation/state.json",
+            {"version": 2, "revision": 0, "automations": [], "requests": {}},
+        )
+        return state if isinstance(state, dict) else {
+            "version": 2,
+            "revision": 0,
+            "automations": [],
+            "requests": {},
+        }
+
+    def _automations(self, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        state = state or self._automation_state()
+        automations = (
+            state.get("automations")
+            if isinstance(state.get("automations"), list)
+            else []
+        )
         if automations:
             return automations
         return [
             {
                 "id": "automation_daily_context",
+                "resource_id": "automation_daily_context",
+                "revision": 0,
                 "name": "Daily context refresh",
                 "description": "Prepare bounded repository and activity context for the next local session.",
                 "trigger": "daily",
@@ -931,6 +1001,8 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
             },
             {
                 "id": "automation_release_notes",
+                "resource_id": "automation_release_notes",
+                "revision": 0,
                 "name": "Release notes draft",
                 "description": "Draft release notes from committed adaptive events and prepared actions.",
                 "trigger": "manual",
@@ -959,17 +1031,56 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
             },
         ]
 
-    def _apply_automation_patch(self, automation_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+    def _apply_automation_patch(
+        self,
+        automation_id: str,
+        patch: dict[str, Any],
+        *,
+        expected_revision: int,
+        request_id: str,
+    ) -> dict[str, Any]:
         result: dict[str, Any] = {}
+        duplicate = False
         allowed_keys = {"name", "description", "trigger", "schedule", "enabled", "risk", "last_run", "lastRun"}
+        fingerprint = _mutation_fingerprint(
+            {
+                "resource": f"automation:{automation_id}",
+                "expected_revision": expected_revision,
+                "patch": patch,
+            }
+        )
 
         def update(state: Any) -> dict[str, Any]:
-            nonlocal result
-            automations = state.get("automations") if isinstance(state, dict) and isinstance(state.get("automations"), list) else self._automations()
+            nonlocal duplicate, result
+            state = dict(state) if isinstance(state, dict) else {}
+            requests = state.get("requests") if isinstance(state.get("requests"), dict) else {}
+            previous = requests.get(request_id)
+            if isinstance(previous, dict):
+                if previous.get("fingerprint") != fingerprint:
+                    raise AdaptiveError(
+                        "IDEMPOTENCY_CONFLICT",
+                        "request_id was already used for a different automation update",
+                    )
+                saved = previous.get("result")
+                if not isinstance(saved, dict):
+                    raise AdaptiveError(
+                        "IDEMPOTENCY_STATE_INVALID",
+                        "saved automation request result is invalid",
+                    )
+                duplicate = True
+                result = dict(saved)
+                return state
+            automations = (
+                state.get("automations")
+                if isinstance(state.get("automations"), list)
+                else self._automations({})
+            )
             target = next((item for item in automations if item.get("id") == automation_id), None)
             if target is None:
                 target = {
                     "id": automation_id,
+                    "resource_id": automation_id,
+                    "revision": 0,
                     "name": automation_id.replace("_", " ").title(),
                     "description": "Locally prepared adaptive automation.",
                     "trigger": "manual",
@@ -979,15 +1090,155 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
                     "steps": [],
                 }
                 automations.append(target)
+            current_revision = int(target.get("revision") or 0)
+            if current_revision != expected_revision:
+                raise AdaptiveError(
+                    "REVISION_CONFLICT",
+                    "automation changed since it was loaded",
+                    details={
+                        "resource_id": automation_id,
+                        "expected_revision": expected_revision,
+                        "current_revision": current_revision,
+                    },
+                )
             for key, value in patch.items():
                 if key in allowed_keys:
                     target["last_run" if key == "lastRun" else key] = redact(value)
+            target["resource_id"] = automation_id
+            target["revision"] = current_revision + 1
             target["updated_at"] = now_iso()
             result = dict(target)
-            return {"version": 1, "automations": automations[-100:]}
+            requests[request_id] = {
+                "fingerprint": fingerprint,
+                "result": result,
+                "saved_at": target["updated_at"],
+            }
+            return {
+                "version": 2,
+                "revision": int(state.get("revision") or 0) + 1,
+                "automations": automations[-100:],
+                "requests": dict(list(requests.items())[-200:]),
+            }
 
-        self.store.update_json("automation/state.json", {"version": 1, "automations": self._automations()}, update)
-        self._append_event("adaptive.automation.update", {"automation_id": automation_id, "patch": patch})
+        self.store.update_json(
+            "automation/state.json",
+            {
+                "version": 2,
+                "revision": 0,
+                "automations": self._automations({}),
+                "requests": {},
+            },
+            update,
+        )
+        if not duplicate:
+            self._append_event(
+                "adaptive.automation.update",
+                {
+                    "automation_id": automation_id,
+                    "revision": result.get("revision"),
+                    "request_id": request_id,
+                },
+            )
+        return result
+
+    def _operating_profile_draft(self) -> dict[str, Any] | None:
+        state = self.store.read_json(
+            "operating_profile/drafts.json",
+            {"version": 1, "profiles": {}, "requests": {}},
+        )
+        profiles = state.get("profiles") if isinstance(state, dict) else None
+        draft = profiles.get(self.profile_id) if isinstance(profiles, dict) else None
+        return dict(draft) if isinstance(draft, dict) else None
+
+    def _apply_operating_profile_patch(
+        self,
+        profile_id: str,
+        patch: dict[str, Any],
+        *,
+        expected_revision: int,
+        request_id: str,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        duplicate = False
+        sanitized = _operating_profile_patch(patch)
+        fingerprint = _mutation_fingerprint(
+            {
+                "resource": f"operating-profile:{profile_id}",
+                "expected_revision": expected_revision,
+                "patch": sanitized,
+            }
+        )
+
+        def update(state: Any) -> dict[str, Any]:
+            nonlocal duplicate, result
+            state = dict(state) if isinstance(state, dict) else {}
+            profiles = state.get("profiles") if isinstance(state.get("profiles"), dict) else {}
+            requests = state.get("requests") if isinstance(state.get("requests"), dict) else {}
+            previous = requests.get(request_id)
+            if isinstance(previous, dict):
+                if previous.get("fingerprint") != fingerprint:
+                    raise AdaptiveError(
+                        "IDEMPOTENCY_CONFLICT",
+                        "request_id was already used for a different profile update",
+                    )
+                saved = previous.get("result")
+                if not isinstance(saved, dict):
+                    raise AdaptiveError(
+                        "IDEMPOTENCY_STATE_INVALID",
+                        "saved profile request result is invalid",
+                    )
+                duplicate = True
+                result = dict(saved)
+                return state
+            current = profiles.get(profile_id)
+            current = dict(current) if isinstance(current, dict) else {
+                "id": profile_id,
+                "resource_id": profile_id,
+                "revision": 0,
+            }
+            current_revision = int(current.get("revision") or 0)
+            if current_revision != expected_revision:
+                raise AdaptiveError(
+                    "REVISION_CONFLICT",
+                    "operating profile changed since it was loaded",
+                    details={
+                        "resource_id": profile_id,
+                        "expected_revision": expected_revision,
+                        "current_revision": current_revision,
+                    },
+                )
+            current.update(sanitized)
+            current["id"] = profile_id
+            current["resource_id"] = profile_id
+            current["revision"] = current_revision + 1
+            current["updated_at"] = now_iso()
+            profiles[profile_id] = current
+            result = dict(current)
+            requests[request_id] = {
+                "fingerprint": fingerprint,
+                "result": result,
+                "saved_at": current["updated_at"],
+            }
+            return {
+                "version": 1,
+                "profiles": profiles,
+                "requests": dict(list(requests.items())[-200:]),
+            }
+
+        self.store.update_json(
+            "operating_profile/drafts.json",
+            {"version": 1, "profiles": {}, "requests": {}},
+            update,
+        )
+        if not duplicate:
+            self._append_event(
+                "adaptive.operating_profile.draft.update",
+                {
+                    "profile_id": profile_id,
+                    "revision": result.get("revision"),
+                    "request_id": request_id,
+                },
+            )
         return result
 
     # State helpers
@@ -1243,6 +1494,81 @@ def _operation_name(args: dict[str, Any], ctx: dict[str, Any]) -> str:
     if not operation:
         raise AdaptiveError("INVALID_INPUT", "operation is required")
     return OPERATION_ALIASES.get(operation, operation)
+
+
+def _required_revision(args: dict[str, Any]) -> int:
+    value = args.get("expected_revision")
+    if value is None:
+        value = args.get("expectedRevision")
+    if isinstance(value, bool):
+        raise AdaptiveError(
+            "REVISION_REQUIRED",
+            "expected_revision must be a non-negative integer",
+        )
+    try:
+        revision = int(value)
+    except (TypeError, ValueError) as exc:
+        raise AdaptiveError(
+            "REVISION_REQUIRED",
+            "expected_revision must be a non-negative integer",
+        ) from exc
+    if revision < 0:
+        raise AdaptiveError(
+            "REVISION_REQUIRED",
+            "expected_revision must be a non-negative integer",
+        )
+    return revision
+
+
+def _required_request_id(args: dict[str, Any]) -> str:
+    request_id = str(
+        args.get("request_id")
+        or args.get("requestId")
+        or args.get("idempotency_key")
+        or ""
+    ).strip()
+    if not request_id or len(request_id) > 160 or not request_id.isprintable():
+        raise AdaptiveError(
+            "REQUEST_ID_REQUIRED",
+            "request_id must be a printable identifier of at most 160 characters",
+        )
+    return request_id
+
+
+def _mutation_fingerprint(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        redact(payload),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _operating_profile_patch(patch: dict[str, Any]) -> dict[str, Any]:
+    summary = str(patch.get("summary") or "").strip()
+    if len(summary) > 4000:
+        raise AdaptiveError(
+            "INVALID_INPUT",
+            "operating profile summary must not exceed 4000 characters",
+        )
+    autonomy = patch.get("autonomy")
+    autonomy = dict(autonomy) if isinstance(autonomy, dict) else {}
+    level = str(autonomy.get("level") or patch.get("autonomy_level") or "").strip()
+    allowed_levels = {"draft", "confirm", "supervised", "autonomous"}
+    if level not in allowed_levels:
+        raise AdaptiveError(
+            "INVALID_INPUT",
+            "operating profile autonomy level is invalid",
+        )
+    return {
+        "summary": summary,
+        "autonomy": {
+            "level": level,
+            "label": compact_text(autonomy.get("label") or level, limit=120),
+        },
+    }
 
 
 def dispatch(

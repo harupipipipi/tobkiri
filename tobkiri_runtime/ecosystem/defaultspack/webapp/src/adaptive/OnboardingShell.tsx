@@ -13,7 +13,7 @@ import {
   UserRound,
   Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AdaptiveOnboardingActionId,
@@ -44,6 +44,12 @@ import {
   toneForRisk,
 } from "./AdaptivePrimitives";
 import { demoOnboardingState } from "./demoData";
+import {
+  adaptiveDraftKey,
+  clearAdaptiveDraft,
+  loadAdaptiveDraft,
+  saveAdaptiveDraft,
+} from "./adaptiveDraftStore";
 import { useAdaptiveResource } from "./useAdaptiveResource";
 
 const steps = [
@@ -618,8 +624,14 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
     load: fetchAdaptiveOnboarding,
   });
   const displayState = data ?? initialState ?? null;
-  const [draft, setDraftValue] = useState(() => onboardingAnswersFromState(initialState ?? demoOnboardingState));
-  const [draftTouched, setDraftTouched] = useState(false);
+  const initialSource = initialState ?? demoOnboardingState;
+  const initialResourceId = initialSource.profileId ?? "default";
+  const restoredDraftRef = useRef(loadAdaptiveDraft<AdaptiveOnboardingAnswers>(
+    adaptiveDraftKey("onboarding", initialResourceId),
+  ));
+  const [draft, setDraftValue] = useState(() => restoredDraftRef.current?.value ?? onboardingAnswersFromState(initialSource));
+  const [draftTouched, setDraftTouched] = useState(Boolean(restoredDraftRef.current));
+  const [draftMessage, setDraftMessage] = useState<string | null>(restoredDraftRef.current ? "Recovered an unsaved onboarding draft." : null);
   const [busyAction, setBusyAction] = useState<OnboardingOperation | null>(null);
   const [result, setResult] = useState<AdaptiveOnboardingApiResult | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
@@ -630,7 +642,20 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
   const progress = useMemo(() => `${activeIndex + 1} / ${steps.length}`, [activeIndex]);
   const applyDisabledReason = "Approval flow is not connected.";
   const setDraft = (next: AdaptiveOnboardingAnswers) => {
+    const resourceId = displayState?.profileId ?? next.profile_id ?? "default";
+    const stored = saveAdaptiveDraft(
+      adaptiveDraftKey("onboarding", resourceId),
+      {
+        baseRevision: 0,
+        resourceId,
+        updatedAt: new Date().toISOString(),
+        value: next,
+      },
+    );
     setDraftTouched(true);
+    setDraftMessage(stored
+      ? "Unsaved onboarding draft stored locally."
+      : "Unsaved onboarding draft is only in this tab because local storage is unavailable.");
     setResult(null);
     setOperationMessage(null);
     setOperationError(null);
@@ -641,6 +666,27 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
     if (!data || draftTouched) return;
     setDraftValue(onboardingAnswersFromState(data));
   }, [data, draftTouched]);
+
+  useEffect(() => {
+    if (!draftTouched) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [draftTouched]);
+
+  const discardDraft = () => {
+    const resourceId = displayState?.profileId ?? draft.profile_id ?? "default";
+    clearAdaptiveDraft(adaptiveDraftKey("onboarding", resourceId));
+    setDraftValue(onboardingAnswersFromState(displayState ?? demoOnboardingState));
+    setDraftTouched(false);
+    setDraftMessage("Local onboarding draft discarded.");
+    setResult(null);
+    setOperationMessage(null);
+    setOperationError(null);
+  };
 
   const runOperation = async (operation: OnboardingOperation) => {
     setBusyAction(operation);
@@ -676,6 +722,14 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
       ) : (
         <>
       <div className={`${adaptiveSectionClass} flex flex-wrap gap-2`}>
+        {draftTouched ? (
+          <div className="basis-full rounded-md border border-amber-500/30 bg-amber-500/10 p-3" role="status">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-amber-100">{draftMessage ?? "Unsaved onboarding draft."}</p>
+              <button type="button" className={adaptiveControlClass} onClick={discardDraft}>Discard draft</button>
+            </div>
+          </div>
+        ) : null}
         <button
           type="button"
           className={adaptiveControlClass}

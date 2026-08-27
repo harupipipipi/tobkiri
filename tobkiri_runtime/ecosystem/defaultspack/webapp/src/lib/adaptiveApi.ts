@@ -9,6 +9,7 @@ import {
 type ApiErrorPayload = {
   code?: string;
   message?: string;
+  details?: Record<string, unknown>;
 };
 
 type ApiEnvelope<T> = {
@@ -17,7 +18,22 @@ type ApiEnvelope<T> = {
   error?: ApiErrorPayload;
   code?: string;
   message?: string;
+  details?: Record<string, unknown>;
 };
+
+export class AdaptiveApiError extends Error {
+  readonly code: string;
+  readonly details: Record<string, unknown>;
+  readonly status: number;
+
+  constructor(message: string, options: { code?: string; details?: Record<string, unknown>; status?: number } = {}) {
+    super(message);
+    this.name = "AdaptiveApiError";
+    this.code = options.code ?? "ADAPTIVE_API_ERROR";
+    this.details = options.details ?? {};
+    this.status = options.status ?? 0;
+  }
+}
 
 export type AdaptiveTone = "neutral" | "good" | "warning" | "danger" | "info";
 
@@ -106,6 +122,8 @@ export type AdaptiveOnboardingState = {
 
 export type AdaptiveOperatingProfile = {
   id: string;
+  resourceId: string;
+  revision: number;
   name: string;
   summary: string;
   role: AdaptiveRoleProfile;
@@ -166,6 +184,8 @@ export type AdaptiveAutomationStep = {
 
 export type AdaptiveAutomation = {
   id: string;
+  resourceId: string;
+  revision: number;
   name: string;
   description: string;
   trigger: string;
@@ -183,6 +203,7 @@ export type AdaptiveAutomationTemplate = {
 };
 
 export type AdaptiveAutomationState = {
+  revision: number;
   automations: AdaptiveAutomation[];
   templates: AdaptiveAutomationTemplate[];
   simulation: {
@@ -363,10 +384,12 @@ function errorPayloadFrom(value: unknown): ApiErrorPayload | undefined {
   const nested = recordValue(value.error);
   const code = nested.code ?? value.code;
   const message = nested.message ?? value.message;
+  const details = isRecord(nested.details) ? nested.details : isRecord(value.details) ? value.details : undefined;
   if (code === undefined && message === undefined) return undefined;
   return {
     code: code === undefined ? undefined : String(code),
     message: message === undefined ? undefined : String(message),
+    details,
   };
 }
 
@@ -385,13 +408,21 @@ export async function adaptiveApiRequest<T>(path: DefaultspackContractRoute, ini
 
   if (isEnvelope<T>(payload)) {
     if (!response.ok || payload.status === "error") {
-      throw new Error(explainAdaptiveError(response.status, errorPayloadFrom(payload), response.statusText));
+      const error = errorPayloadFrom(payload);
+      throw new AdaptiveApiError(
+        explainAdaptiveError(response.status, error, response.statusText),
+        { code: error?.code, details: error?.details, status: response.status },
+      );
     }
     if ("data" in payload) return payload.data as T;
   }
 
   if (!response.ok) {
-    throw new Error(explainAdaptiveError(response.status, errorPayloadFrom(payload), response.statusText));
+    const error = errorPayloadFrom(payload);
+    throw new AdaptiveApiError(
+      explainAdaptiveError(response.status, error, response.statusText),
+      { code: error?.code, details: error?.details, status: response.status },
+    );
   }
 
   return payload as T;
@@ -444,11 +475,37 @@ export function fetchAdaptiveOperatingProfile(): Promise<AdaptiveOperatingProfil
     .then(toOperatingProfile);
 }
 
-export function saveAdaptiveOperatingProfile(profile: AdaptiveOperatingProfile): Promise<AdaptiveOperatingProfile> {
-  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute(`api/operating-profiles/${encodeURIComponent(profile.id)}/preview`), {
-    method: "POST",
-    body: JSON.stringify({ answers: { profile_id: profile.id, role_context: profile.role } }),
-  }).then(() => profile);
+export function saveAdaptiveOperatingProfile(
+  profile: AdaptiveOperatingProfile,
+  options: { expectedRevision: number; requestId: string },
+): Promise<AdaptiveOperatingProfile> {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute(`api/operating-profiles/${encodeURIComponent(profile.id)}`), {
+    method: "PUT",
+    body: JSON.stringify({
+      patch: {
+        summary: profile.summary,
+        autonomy: profile.autonomy,
+      },
+      expected_revision: options.expectedRevision,
+      request_id: options.requestId,
+    }),
+  }).then((updated) => {
+    const draft = recordValue(updated.profile ?? updated);
+    const autonomy = recordValue(draft.autonomy);
+    return {
+      ...profile,
+      id: String(draft.id ?? profile.id),
+      resourceId: String(draft.resource_id ?? profile.resourceId),
+      revision: revisionFrom(draft.revision),
+      summary: String(draft.summary ?? profile.summary),
+      autonomy: {
+        ...profile.autonomy,
+        level: autonomyLevelFrom(autonomy.level) ?? profile.autonomy.level,
+        label: String(autonomy.label ?? profile.autonomy.label),
+      },
+      updatedAt: String(draft.updated_at ?? profile.updatedAt),
+    };
+  });
 }
 
 export function fetchAdaptiveActivity(): Promise<AdaptiveActivityState> {
@@ -464,11 +521,23 @@ export function fetchAdaptiveAutomations(): Promise<AdaptiveAutomationState> {
 export function updateAdaptiveAutomation(
   automationId: string,
   patch: Partial<AdaptiveAutomation>,
+  options: { expectedRevision: number; requestId: string },
 ): Promise<AdaptiveAutomation> {
   return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute(`api/automations/${encodeURIComponent(automationId)}`), {
     method: "PUT",
-    body: JSON.stringify({ patch }),
+    body: JSON.stringify({
+      patch,
+      expected_revision: options.expectedRevision,
+      request_id: options.requestId,
+    }),
   }).then((updated) => toAutomation(recordValue(updated.automation ?? updated), automationId));
+}
+
+export function createAdaptiveRequestId(resourceId: string): string {
+  const suffix = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `${resourceId}:${suffix}`;
 }
 
 export function fetchAdaptiveEvidence(): Promise<AdaptiveEvidenceBundle> {
@@ -672,14 +741,24 @@ export function toOnboardingState(payload: Record<string, unknown>): AdaptiveOnb
 
 export function toOperatingProfile(payload: Record<string, unknown>): AdaptiveOperatingProfile {
   const profile = recordValue(payload.operating_profile);
+  const draft = recordValue(payload.operating_profile_draft);
   const sideEffect = recordValue(profile.side_effect_policy ?? profile.policy);
   const presetLabel = String(recordValue(profile.source).preset_id ?? profile.preset_id ?? "guided");
+  const profileId = String(draft.id ?? profile.profile_id ?? "default");
+  const draftAutonomy = recordValue(draft.autonomy);
+  const autonomyLevel = autonomyLevelFrom(draftAutonomy.level) ?? "supervised";
   return {
-    id: String(profile.profile_id ?? "default"),
+    id: profileId,
+    resourceId: String(draft.resource_id ?? profileId),
+    revision: revisionFrom(draft.revision),
     name: String(profile.operating_profile_id ?? presetLabel),
-    summary: "Deterministic local-first adaptive runtime profile.",
+    summary: String(draft.summary ?? "Deterministic local-first adaptive runtime profile."),
     role: { title: String(recordValue(profile.role_context).title ?? "Local operator"), scope: "Profile-scoped", stakeholders: ["User"] },
-    autonomy: { level: "supervised", label: presetLabel, guardrails: ["No occupation-based authority widening"] },
+    autonomy: {
+      level: autonomyLevel,
+      label: String(draftAutonomy.label ?? presetLabel),
+      guardrails: ["No occupation-based authority widening"],
+    },
     focusAreas: (Array.isArray(profile.uses) ? profile.uses : []).map((item) => titleCase(String(recordValue(item).id ?? item))),
     boundaries: ["External messages", "Secrets", "Production deploys"],
     approvalPolicy: Object.entries(sideEffect).slice(0, 12).map(([id, mode]) => ({ id, label: titleCase(id), risk: "medium", mode: String(mode), description: "Compiled side-effect policy" })),
@@ -687,7 +766,7 @@ export function toOperatingProfile(payload: Record<string, unknown>): AdaptiveOp
     skillLearning: { enabled: false, sources: ["verified episodes"], reviewRequired: true },
     packRecommendations: [],
     review: { cadence: "Before high-risk actions", reviewers: ["User"], gates: ["Exact plan"] },
-    updatedAt: String(profile.updated_at ?? ""),
+    updatedAt: String(draft.updated_at ?? profile.updated_at ?? ""),
   };
 }
 
@@ -759,6 +838,7 @@ export function toAutomationState(payload: Record<string, unknown>): AdaptiveAut
     : [];
   const simulation = recordValue(payload.automation_simulation ?? payload.simulation);
   return {
+    revision: revisionFrom(payload.automation_revision),
     automations: automations.map((item, index) => toAutomation(recordValue(item), `automation-${index}`)),
     templates: templates.map((item, index) => {
       const record = recordValue(item);
@@ -781,6 +861,8 @@ function toAutomation(record: Record<string, unknown>, fallbackId: string): Adap
   const steps = Array.isArray(record.steps) ? record.steps : [];
   return {
     id,
+    resourceId: String(record.resource_id ?? id),
+    revision: revisionFrom(record.revision),
     name: String(record.name ?? titleCase(id)),
     description: String(record.description ?? ""),
     trigger: String(record.trigger ?? "manual"),
@@ -799,6 +881,17 @@ function toAutomation(record: Record<string, unknown>, fallbackId: string): Adap
       };
     }),
   };
+}
+
+function revisionFrom(value: unknown): number {
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+}
+
+function autonomyLevelFrom(value: unknown): AdaptiveAutonomyLevel | null {
+  return value === "draft" || value === "confirm" || value === "supervised" || value === "autonomous"
+    ? value
+    : null;
 }
 
 export function toEvidenceBundle(payload: Record<string, unknown>): AdaptiveEvidenceBundle {

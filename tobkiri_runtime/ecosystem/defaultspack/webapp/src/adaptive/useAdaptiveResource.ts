@@ -7,6 +7,7 @@ export type AdaptiveResource<T> = {
   status: AdaptiveResourceStatus;
   error: string | null;
   refresh: () => void;
+  updateData: (update: T | ((current: T | null) => T | null)) => void;
 };
 
 export function useAdaptiveResource<T>({
@@ -57,5 +58,12 @@ export function useAdaptiveResource<T>({
     status,
     error,
     refresh: () => setNonce((value) => value + 1),
+    updateData: (update) => {
+      setData((current) => (typeof update === "function"
+        ? (update as (value: T | null) => T | null)(current)
+        : update));
+      hasLiveDataRef.current = true;
+      setStatus("live");
+    },
   };
 }
