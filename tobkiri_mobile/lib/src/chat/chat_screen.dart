@@ -28,6 +28,13 @@ import 'composer_bar.dart';
 import 'model_selection_screen.dart';
 import 'message_view.dart';
 
+bool _isRunningToolStatus(String status) {
+  final normalized = status.trim().toLowerCase();
+  return normalized == 'running' ||
+      normalized == 'started' ||
+      normalized == 'pending';
+}
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
@@ -74,6 +81,7 @@ class _ChatScreenState extends State<ChatScreen>
   bool _pcUltraYoloMode = false;
   final Map<String, String> _assistantMessageByRunId = {};
   final Map<String, List<ChatEvent>> _activityByAssistantMessageId = {};
+  Future<void> _activityPersistChain = Future<void>.value();
   MobileNotificationSettings _notificationSettings =
       MobileNotificationSettings.defaults;
   List<ModelFavoriteConfig> _modelFavorites = [];
@@ -851,6 +859,7 @@ class _ChatScreenState extends State<ChatScreen>
     final runId = event.runId ?? '';
     final assistantId = _assistantMessageByRunId[runId];
     if (assistantId == null || assistantId.isEmpty) return;
+    var recordedEvent = event;
     setState(() {
       final list = _activityByAssistantMessageId.putIfAbsent(
         assistantId,
@@ -858,14 +867,35 @@ class _ChatScreenState extends State<ChatScreen>
       );
       final replaceIndex = _matchingActivityIndex(list, event);
       if (replaceIndex >= 0) {
-        list[replaceIndex] = event;
+        final current = list[replaceIndex];
+        if (current is ToolCallEvent && event is ToolCallEvent) {
+          final startedAt = current.startedAt ?? event.startedAt;
+          final endedAt = event.endedAt;
+          final duration = event.duration ??
+              (startedAt != null && endedAt != null
+                  ? endedAt.difference(startedAt)
+                  : current.duration);
+          recordedEvent = event.copyWith(
+            summary: event.summary ?? current.summary,
+            output: event.output ?? current.output,
+            error: event.error ?? current.error,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            duration: duration,
+          );
+        }
+        list[replaceIndex] = recordedEvent;
       } else {
-        list.add(event);
+        list.add(recordedEvent);
       }
       if (list.length > 8) {
         list.removeRange(0, list.length - 8);
       }
     });
+    final persistedEvent = recordedEvent;
+    if (persistedEvent is ToolCallEvent) {
+      _persistToolActivity(assistantId, persistedEvent);
+    }
   }
 
   int _matchingActivityIndex(List<ChatEvent> events, ChatEvent next) {
@@ -890,9 +920,32 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   List<ChatEvent> _activityForMessage(String messageId) {
-    return List<ChatEvent>.unmodifiable(
-      _activityByAssistantMessageId[messageId] ?? const <ChatEvent>[],
-    );
+    final live =
+        _activityByAssistantMessageId[messageId] ?? const <ChatEvent>[];
+    if (live.any((event) => event is ToolCallEvent)) {
+      return List<ChatEvent>.unmodifiable(live);
+    }
+    final message = _messageForActivity(messageId);
+    if (message == null || message.toolActivities.isEmpty) {
+      return List<ChatEvent>.unmodifiable(live);
+    }
+    final locator = _activePcSnapshot?.locator ??
+        ConversationLocator.local(widget.store.active?.id ?? 'restored');
+    final restored = message.toolActivities.map((snapshot) => ToolCallEvent(
+          locator: locator,
+          runId: null,
+          toolId: snapshot.toolId,
+          toolName: snapshot.toolName,
+          status: snapshot.status,
+          arguments: snapshot.arguments,
+          summary: snapshot.summary,
+          output: snapshot.output,
+          error: snapshot.error,
+          startedAt: snapshot.startedAt,
+          endedAt: snapshot.endedAt,
+          duration: snapshot.duration,
+        ));
+    return List<ChatEvent>.unmodifiable([...restored, ...live]);
   }
 
   void _clearTransientActivityForRun(ChatEvent event) {
@@ -901,24 +954,148 @@ class _ChatScreenState extends State<ChatScreen>
     if (assistantId == null || assistantId.isEmpty) return;
     final list = _activityByAssistantMessageId[assistantId];
     if (list == null) return;
-    final hasTransient = list.any(
-      (item) =>
-          item is ChatStatusEvent ||
-          item is ToolCallEvent ||
-          (item is ApprovalEvent && !item.pending),
-    );
+    final hasTransient = list.any((item) =>
+        item is ChatStatusEvent ||
+        _isRunningActivity(item) ||
+        (item is ApprovalEvent && !item.pending));
     if (!hasTransient) return;
+    final settled = <ToolCallEvent>[];
     setState(() {
       list.removeWhere(
         (item) =>
-            item is ChatStatusEvent ||
-            item is ToolCallEvent ||
-            (item is ApprovalEvent && !item.pending),
+            item is ChatStatusEvent || (item is ApprovalEvent && !item.pending),
       );
+      for (var index = 0; index < list.length; index += 1) {
+        final current = list[index];
+        if (current is! ToolCallEvent || !_isRunningActivity(current)) {
+          continue;
+        }
+        final next = _settleToolActivity(current, event);
+        list[index] = next;
+        settled.add(next);
+      }
       if (list.isEmpty) {
         _activityByAssistantMessageId.remove(assistantId);
       }
     });
+    for (final activity in settled) {
+      _persistToolActivity(assistantId, activity);
+    }
+  }
+
+  bool _isRunningActivity(ChatEvent event) {
+    if (event is! ToolCallEvent) return false;
+    return _isRunningToolStatus(event.status) ||
+        event.status == 'cancel_requested';
+  }
+
+  ToolCallEvent _settleToolActivity(
+    ToolCallEvent current,
+    ChatEvent settlement,
+  ) {
+    var status = current.status;
+    String? error = current.error;
+    if (settlement is ChatRunStopped) {
+      status = 'cancelled';
+    } else if (settlement is ChatErrorEvent) {
+      status = 'failed';
+      error = settlement.message;
+    } else if (settlement is ChatRunCompleted) {
+      status = 'interrupted';
+      error ??= 'ツールの完了状態を確認できませんでした。';
+    } else if (settlement is ChatMessageCommitted && settlement.error) {
+      status = 'failed';
+      error ??= settlement.content;
+    } else {
+      return current;
+    }
+    final endedAt = DateTime.now();
+    return current.copyWith(
+      status: status,
+      error: error,
+      endedAt: endedAt,
+      duration: current.duration ??
+          (current.startedAt == null
+              ? null
+              : endedAt.difference(current.startedAt!)),
+    );
+  }
+
+  void _markRunningTools(String status, {String? error}) {
+    final changed = <MapEntry<String, ToolCallEvent>>[];
+    setState(() {
+      for (final entry in _activityByAssistantMessageId.entries) {
+        final list = entry.value;
+        for (var index = 0; index < list.length; index += 1) {
+          final current = list[index];
+          if (current is! ToolCallEvent || !_isRunningActivity(current)) {
+            continue;
+          }
+          if (status == 'cancel_requested' &&
+              current.status == 'cancel_requested') {
+            continue;
+          }
+          final endedAt = status == 'cancelled' ? DateTime.now() : null;
+          final next = current.copyWith(
+            status: status,
+            error: error ?? current.error,
+            endedAt: endedAt,
+            duration: endedAt == null || current.startedAt == null
+                ? current.duration
+                : endedAt.difference(current.startedAt!),
+          );
+          list[index] = next;
+          changed.add(MapEntry(entry.key, next));
+        }
+      }
+    });
+    for (final entry in changed) {
+      _persistToolActivity(entry.key, entry.value);
+    }
+  }
+
+  ChatMessage? _messageForActivity(String assistantId) {
+    final conversation = _activeSpaceIsPc
+        ? _activePcSnapshot?.conversation
+        : widget.store.active;
+    if (conversation == null) return null;
+    for (final message in conversation.messages) {
+      if (message.id == assistantId) return message;
+    }
+    return null;
+  }
+
+  void _persistToolActivity(String assistantId, ToolCallEvent event) {
+    final message = _messageForActivity(assistantId);
+    if (message == null) return;
+    final snapshot = ToolActivitySnapshot(
+      toolId: event.toolId,
+      toolName: event.toolName,
+      status: event.status,
+      arguments: safeToolActivityArguments(event.arguments),
+      summary: safeToolActivityText(event.summary),
+      output: safeToolActivityText(event.output, maxLength: 4000),
+      error: safeToolActivityText(event.error, maxLength: 1200),
+      startedAt: event.startedAt,
+      endedAt: event.endedAt,
+      duration: event.duration,
+    );
+    final index = message.toolActivities.indexWhere(
+      (item) => item.toolId.isNotEmpty && item.toolId == event.toolId,
+    );
+    if (index >= 0) {
+      message.toolActivities[index] = snapshot;
+    } else {
+      message.toolActivities.add(snapshot);
+    }
+    if (message.toolActivities.length > 8) {
+      message.toolActivities.removeRange(0, message.toolActivities.length - 8);
+    }
+    if (!_activeSpaceIsPc) {
+      _activityPersistChain = _activityPersistChain
+          .catchError((Object _) {})
+          .then((_) => widget.store.persist());
+    }
   }
 
   void _removePendingPcPlaceholders() {
@@ -937,19 +1114,38 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   void _stop() {
+    _markRunningTools('cancel_requested');
+    Future<void>? stopFuture;
     if (_activeSpaceIsPc) {
       final locator = _activePcSnapshot?.locator;
       if (locator != null) {
-        unawaited(_router.backendFor(locator).stop(locator.conversationId));
+        stopFuture = _router.backendFor(locator).stop(locator.conversationId);
       }
       setState(() => _streaming = false);
-      return;
+    } else {
+      final id = widget.store.active?.id;
+      if (id != null) {
+        stopFuture = _router.local.stop(id);
+      }
+      setState(() => _streaming = false);
     }
-    final id = widget.store.active?.id;
-    if (id != null) {
-      unawaited(_router.local.stop(id));
+    if (stopFuture != null) {
+      unawaited(stopFuture.then((_) {
+        if (mounted) _markRunningTools('cancelled');
+      }).catchError((Object _) {
+        if (mounted) {
+          _markRunningTools(
+            'cancel_failed',
+            error: '停止要求を完了できませんでした。会話の状態を確認してください。',
+          );
+        }
+      }));
+    } else {
+      _markRunningTools(
+        'cancel_failed',
+        error: '停止対象の会話を確認できませんでした。',
+      );
     }
-    setState(() => _streaming = false);
   }
 
   void _promptConfigure() {
@@ -2016,6 +2212,7 @@ class _ChatScreenState extends State<ChatScreen>
                     _RunActivityList(
                       events: activity,
                       onApprovalAction: _openPcApprovals,
+                      onStop: _stop,
                     ),
                 ],
               );
@@ -2033,17 +2230,29 @@ class _ChatScreenState extends State<ChatScreen>
   }
 }
 
-class _RunActivityList extends StatelessWidget {
+class _RunActivityList extends StatefulWidget {
   const _RunActivityList({
     required this.events,
     required this.onApprovalAction,
+    required this.onStop,
   });
 
   final List<ChatEvent> events;
   final VoidCallback onApprovalAction;
+  final VoidCallback onStop;
+
+  @override
+  State<_RunActivityList> createState() => _RunActivityListState();
+}
+
+class _RunActivityListState extends State<_RunActivityList> {
+  bool _showAllTools = false;
 
   @override
   Widget build(BuildContext context) {
+    final toolCount = widget.events.whereType<ToolCallEvent>().length;
+    final hiddenToolCount = toolCount > 3 ? toolCount - 3 : 0;
+    var toolIndex = 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 52, 6),
       child: ConstrainedBox(
@@ -2051,17 +2260,47 @@ class _RunActivityList extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final event in events)
-              switch (event) {
-                ChatStatusEvent() => _StatusActivityCard(event: event),
-                ToolCallEvent() => ToolActivityCard(event: event),
-                ApprovalEvent() => ApprovalCard(
-                    event: event,
-                    onApprove: onApprovalAction,
-                    onDeny: onApprovalAction,
+            if (hiddenToolCount > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() => _showAllTools = !_showAllTools);
+                  },
+                  icon: Icon(
+                    _showAllTools ? Icons.expand_less : Icons.history,
+                    size: 18,
                   ),
-                _ => const SizedBox.shrink(),
-              },
+                  label: Text(
+                    _showAllTools
+                        ? '過去のツール履歴を折りたたむ'
+                        : '過去のツール履歴 $hiddenToolCount件を表示',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                  ),
+                ),
+              ),
+            for (final event in widget.events)
+              if (event is! ToolCallEvent ||
+                  _showAllTools ||
+                  toolIndex++ >= hiddenToolCount)
+                switch (event) {
+                  ChatStatusEvent() => _StatusActivityCard(event: event),
+                  ToolCallEvent() => ToolActivityCard(
+                      key: ValueKey('tool-activity:${event.toolId}'),
+                      event: event,
+                      onStop: _isRunningToolStatus(event.status)
+                          ? widget.onStop
+                          : null,
+                    ),
+                  ApprovalEvent() => ApprovalCard(
+                      event: event,
+                      onApprove: widget.onApprovalAction,
+                      onDeny: widget.onApprovalAction,
+                    ),
+                  _ => const SizedBox.shrink(),
+                },
           ],
         ),
       ),

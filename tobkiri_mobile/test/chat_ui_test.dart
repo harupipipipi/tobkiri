@@ -62,9 +62,11 @@ class _FakeActivityBackend extends LocalConversationBackend {
   _FakeActivityBackend({
     required super.store,
     required super.configStore,
+    this.toolCount = 1,
   }) : _store = store;
 
   final ChatStore _store;
+  final int toolCount;
   final started = Completer<void>();
   final releaseTool = Completer<void>();
   final releaseFinal = Completer<void>();
@@ -115,15 +117,20 @@ class _FakeActivityBackend extends LocalConversationBackend {
     );
 
     await releaseTool.future.timeout(const Duration(seconds: 2));
-    yield ToolCallEvent(
-      locator: locator,
-      runId: runId,
-      toolId: 'tool-todo',
-      toolName: 'todo',
-      status: 'completed',
-      arguments: {'action': 'add', 'title': 'Write UI activity test'},
-      summary: 'Write UI activity test',
-    );
+    for (var index = 0; index < toolCount; index += 1) {
+      final summary = toolCount == 1
+          ? 'Write UI activity test'
+          : 'Write UI activity test ${index + 1}';
+      yield ToolCallEvent(
+        locator: locator,
+        runId: runId,
+        toolId: 'tool-todo-$index',
+        toolName: 'todo',
+        status: 'completed',
+        arguments: {'action': 'add', 'title': summary},
+        summary: summary,
+      );
+    }
 
     await releaseFinal.future.timeout(const Duration(seconds: 2));
     await _store.updateMessage(
@@ -302,7 +309,8 @@ void main() {
   testWidgets('chat screen renders thinking and tool activity while streaming',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
-    final store = ChatStore(storage: _FakeChatStorage());
+    final chatStorage = _FakeChatStorage();
+    final store = ChatStore(storage: chatStorage);
     final fakeStorage = _FakeSecureStorage();
     final configStore = ApiConfigStore(storage: fakeStorage);
     await configStore.saveApi(const ApiConfig(
@@ -345,16 +353,80 @@ void main() {
         .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
     await tester.pump();
 
-    expect(find.text('todo'), findsOneWidget);
+    expect(find.text('タスク更新'), findsOneWidget);
+    expect(find.text('完了'), findsOneWidget);
     expect(find.textContaining('Write UI activity test'), findsOneWidget);
 
     backend.releaseFinal.complete();
     await tester.pumpAndSettle();
 
     expect(find.textContaining('できました'), findsOneWidget);
-    expect(find.text('todo'), findsNothing);
-    expect(find.textContaining('Write UI activity test'), findsNothing);
+    expect(find.text('タスク更新'), findsOneWidget);
+    expect(find.textContaining('Write UI activity test'), findsOneWidget);
     expect(find.text('考えています'), findsNothing);
+    final reloadedStore = ChatStore(storage: chatStorage);
+    await reloadedStore.load();
+    final persistedActivities = reloadedStore.active!.messages
+        .where((message) => message.id == 'assistant-activity-test')
+        .single
+        .toolActivities;
+    expect(persistedActivities, hasLength(1));
+    expect(persistedActivities.single.status, 'completed');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('chat screen collapses older tool events without losing history',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    final store = ChatStore(storage: _FakeChatStorage());
+    final fakeStorage = _FakeSecureStorage();
+    final configStore = ApiConfigStore(storage: fakeStorage);
+    await configStore.saveApi(const ApiConfig(
+      baseUrl: 'http://127.0.0.1:8765/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-test',
+    ));
+    final backend = _FakeActivityBackend(
+      store: store,
+      configStore: configStore,
+      toolCount: 5,
+    );
+    await tester.pumpWidget(wrap(ChatScreen(
+      store: store,
+      configStore: configStore,
+      deviceStore: MobileDeviceStore(storage: fakeStorage),
+      localBackend: backend,
+    )));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '複数toolを実行');
+    await tester.pump();
+    await tester.tap(find.ancestor(
+      of: find.byIcon(Icons.arrow_upward_rounded),
+      matching: find.bySubtype<IconButton>(),
+    ));
+    await tester.runAsync(
+      () => backend.started.future.timeout(const Duration(seconds: 2)),
+    );
+    backend.releaseTool.complete();
+    await tester.pump();
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pump();
+
+    expect(find.text('過去のツール履歴 2件を表示'), findsOneWidget);
+    expect(find.text('Write UI activity test 1'), findsNothing);
+    expect(find.text('Write UI activity test 3'), findsOneWidget);
+    await tester.tap(find.text('過去のツール履歴 2件を表示'));
+    await tester.pump();
+    expect(find.text('Write UI activity test 1'), findsOneWidget);
+    expect(find.text('過去のツール履歴を折りたたむ'), findsOneWidget);
+
+    backend.releaseFinal.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Write UI activity test 1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

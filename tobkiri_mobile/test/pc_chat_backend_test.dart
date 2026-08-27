@@ -311,8 +311,8 @@ void main() {
     test('parses canonical defaultspack status and tool events', () async {
       final sseChunks = [
         'data: {"type":"status","message":"モデルが考えています","phase":"thinking"}\n\n',
-        'data: {"type":"tool_call_started","tool_call_id":"tc1","tool_name":"calculator","status":"running","summary":"2+2"}\n\n',
-        'data: {"type":"tool_call_completed","tool_call_id":"tc1","tool_name":"calculator","status":"completed","result_summary":"4"}\n\n',
+        'data: {"type":"tool_call_started","tool_call_id":"tc1","tool_name":"calculator","status":"running","summary":"2+2","started_at":"2026-08-27T01:00:00Z"}\n\n',
+        'data: {"type":"tool_call_completed","tool_call_id":"tc1","tool_name":"calculator","status":"completed","result_summary":"4","ended_at":"2026-08-27T01:00:02Z","duration_ms":2000}\n\n',
         'data: {"type":"approval_requested","request_id":"req1","tool_name":"terminal","message":"承認が必要です","arguments":{"command":"pwd"}}\n\n',
         'data: [DONE]\n\n',
       ];
@@ -344,6 +344,10 @@ void main() {
       expect(toolEvents.first.toolId, 'tc1');
       expect(toolEvents.last.status, 'completed');
       expect(toolEvents.last.summary, '4');
+      expect(
+          toolEvents.first.startedAt, DateTime.parse('2026-08-27T01:00:00Z'));
+      expect(toolEvents.last.endedAt, DateTime.parse('2026-08-27T01:00:02Z'));
+      expect(toolEvents.last.duration, const Duration(seconds: 2));
       final approval = events.whereType<ApprovalEvent>().single;
       expect(approval.approvalId, 'req1');
       expect(approval.prompt, '承認が必要です');

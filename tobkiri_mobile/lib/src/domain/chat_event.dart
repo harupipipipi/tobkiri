@@ -79,6 +79,10 @@ class ToolCallEvent extends ChatEvent {
   final Map<String, dynamic> arguments;
   final String? summary;
   final String? output;
+  final String? error;
+  final DateTime? startedAt;
+  final DateTime? endedAt;
+  final Duration? duration;
 
   const ToolCallEvent({
     required super.locator,
@@ -89,7 +93,36 @@ class ToolCallEvent extends ChatEvent {
     this.arguments = const {},
     this.summary,
     this.output,
+    this.error,
+    this.startedAt,
+    this.endedAt,
+    this.duration,
   });
+
+  ToolCallEvent copyWith({
+    String? status,
+    String? summary,
+    String? output,
+    String? error,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    Duration? duration,
+  }) {
+    return ToolCallEvent(
+      locator: locator,
+      runId: runId,
+      toolId: toolId,
+      toolName: toolName,
+      status: status ?? this.status,
+      arguments: arguments,
+      summary: summary ?? this.summary,
+      output: output ?? this.output,
+      error: error ?? this.error,
+      startedAt: startedAt ?? this.startedAt,
+      endedAt: endedAt ?? this.endedAt,
+      duration: duration ?? this.duration,
+    );
+  }
 }
 
 class ApprovalEvent extends ChatEvent {

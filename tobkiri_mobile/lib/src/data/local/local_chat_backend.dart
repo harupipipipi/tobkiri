@@ -154,6 +154,7 @@ class LocalConversationBackend implements ConversationBackend {
     final history = List<ChatMessage>.from(convo.messages)
       ..removeWhere((m) => m.id == assistantId);
     final buffer = StringBuffer();
+    final toolStartedAt = <String, DateTime>{};
 
     try {
       await for (final event in _client!.streamAgentChat(
@@ -201,6 +202,12 @@ class LocalConversationBackend implements ConversationBackend {
               }
               break;
             }
+            final observedAt = DateTime.now();
+            final isRunning = event.status == 'running';
+            final startedAt = toolStartedAt.putIfAbsent(
+              event.call.id,
+              () => observedAt,
+            );
             yield ToolCallEvent(
               locator: locator,
               runId: runId,
@@ -210,6 +217,12 @@ class LocalConversationBackend implements ConversationBackend {
               arguments: event.call.arguments,
               summary: event.result?.summary,
               output: event.result?.output,
+              error: event.result != null && !event.result!.ok
+                  ? event.result!.summary
+                  : null,
+              startedAt: startedAt,
+              endedAt: isRunning ? null : observedAt,
+              duration: isRunning ? null : observedAt.difference(startedAt),
             );
           default:
             break;

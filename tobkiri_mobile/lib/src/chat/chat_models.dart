@@ -1,5 +1,63 @@
 import '../domain/conversation_locator.dart';
 
+class ToolActivitySnapshot {
+  const ToolActivitySnapshot({
+    required this.toolId,
+    required this.toolName,
+    required this.status,
+    this.arguments = const {},
+    this.summary,
+    this.output,
+    this.error,
+    this.startedAt,
+    this.endedAt,
+    this.duration,
+  });
+
+  final String toolId;
+  final String toolName;
+  final String status;
+  final Map<String, dynamic> arguments;
+  final String? summary;
+  final String? output;
+  final String? error;
+  final DateTime? startedAt;
+  final DateTime? endedAt;
+  final Duration? duration;
+
+  Map<String, dynamic> toJson() => {
+        'toolId': toolId,
+        'toolName': toolName,
+        'status': status,
+        'arguments': arguments,
+        'summary': summary,
+        'output': output,
+        'error': error,
+        'startedAt': startedAt?.toIso8601String(),
+        'endedAt': endedAt?.toIso8601String(),
+        'durationMs': duration?.inMilliseconds,
+      };
+
+  factory ToolActivitySnapshot.fromJson(Map<String, dynamic> json) {
+    final rawArguments = json['arguments'];
+    final durationMs = (json['durationMs'] as num?)?.toInt();
+    return ToolActivitySnapshot(
+      toolId: json['toolId'] as String? ?? '',
+      toolName: json['toolName'] as String? ?? '',
+      status: json['status'] as String? ?? 'unknown',
+      arguments: rawArguments is Map
+          ? Map<String, dynamic>.from(rawArguments)
+          : const {},
+      summary: json['summary'] as String?,
+      output: json['output'] as String?,
+      error: json['error'] as String?,
+      startedAt: DateTime.tryParse(json['startedAt'] as String? ?? ''),
+      endedAt: DateTime.tryParse(json['endedAt'] as String? ?? ''),
+      duration: durationMs == null ? null : Duration(milliseconds: durationMs),
+    );
+  }
+}
+
 class ChatRole {
   const ChatRole._(this.value);
   final String value;
@@ -37,7 +95,8 @@ class ChatMessage {
     this.createdAt,
     this.pending = false,
     this.error = false,
-  });
+    List<ToolActivitySnapshot>? toolActivities,
+  }) : toolActivities = toolActivities ?? <ToolActivitySnapshot>[];
 
   final String id;
   final ChatRole role;
@@ -45,6 +104,7 @@ class ChatMessage {
   final DateTime? createdAt;
   bool pending;
   bool error;
+  final List<ToolActivitySnapshot> toolActivities;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -53,6 +113,7 @@ class ChatMessage {
         'createdAt': createdAt?.toIso8601String(),
         'pending': pending,
         'error': error,
+        'toolActivities': toolActivities.map((item) => item.toJson()).toList(),
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -65,6 +126,12 @@ class ChatMessage {
           : DateTime.tryParse(json['createdAt'] as String),
       pending: json['pending'] as bool? ?? false,
       error: json['error'] as bool? ?? false,
+      toolActivities: (json['toolActivities'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => ToolActivitySnapshot.fromJson(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList(),
     );
   }
 
@@ -75,6 +142,7 @@ class ChatMessage {
         createdAt: createdAt,
         pending: pending,
         error: error,
+        toolActivities: List<ToolActivitySnapshot>.from(toolActivities),
       );
 }
 

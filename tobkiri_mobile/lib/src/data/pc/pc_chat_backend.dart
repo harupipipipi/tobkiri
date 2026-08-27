@@ -326,6 +326,24 @@ class PcConversationBackend implements ConversationBackend {
               data['tool_status'] as String? ??
               data['status'] as String? ??
               (type == 'tool_call_completed' ? 'completed' : 'running');
+          final observedAt = DateTime.now();
+          final isRunning = status == 'running' || status == 'started';
+          final startedAt = _dateTimeValueOrNull(
+            json['started_at'] ?? data['started_at'] ?? json['created_at'],
+          );
+          final endedAt = _dateTimeValueOrNull(
+            json['ended_at'] ??
+                data['ended_at'] ??
+                json['completed_at'] ??
+                data['completed_at'],
+          );
+          final durationMs = _numberValue(
+            json['duration_ms'] ?? data['duration_ms'],
+          );
+          final rawError = json['error_message'] ??
+              data['error_message'] ??
+              json['error'] ??
+              data['error'];
           return ToolCallEvent(
             locator: locator,
             runId: runId,
@@ -347,6 +365,12 @@ class PcConversationBackend implements ConversationBackend {
                 data['result_summary'] as String? ??
                 json['message'] as String?,
             output: json['output'] as String? ?? data['output'] as String?,
+            error: rawError is String ? rawError : null,
+            startedAt: startedAt ?? (isRunning ? observedAt : null),
+            endedAt: endedAt ?? (isRunning ? null : observedAt),
+            duration: durationMs == null
+                ? null
+                : Duration(milliseconds: durationMs.round()),
           );
 
         case 'approval':
@@ -468,6 +492,12 @@ class PcConversationBackend implements ConversationBackend {
       return normalized == 'true' || normalized == '1' || normalized == 'yes';
     }
     return false;
+  }
+
+  num? _numberValue(Object? value) {
+    if (value is num) return value;
+    if (value is String) return num.tryParse(value.trim());
+    return null;
   }
 
   DateTime _dateTimeValue(Object? value) {
