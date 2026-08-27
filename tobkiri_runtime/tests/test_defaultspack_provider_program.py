@@ -1431,6 +1431,12 @@ def test_every_python_entrypoint_program_provider_uses_its_live_models_endpoint(
     )
 
     class Response:
+        def __init__(self, payload=None):
+            self.payload = payload or {
+                "data": [{"id": "account-visible-model"}],
+                "models": [{"key": "account-visible-model", "type": "llm"}],
+            }
+
         def __enter__(self):
             return self
 
@@ -1438,12 +1444,29 @@ def test_every_python_entrypoint_program_provider_uses_its_live_models_endpoint(
             return False
 
         def read(self):
-            return b'{"data":[{"id":"account-visible-model"}],"models":[{"key":"account-visible-model","type":"llm"}]}'
+            return json.dumps(self.payload).encode("utf-8")
 
     seen = []
 
     def fake_urlopen(request, **_kwargs):
         seen.append(request.full_url)
+        if request.full_url.endswith("/api/tags"):
+            return Response(
+                {
+                    "models": [
+                        {
+                            "name": "account-visible-model",
+                            "model": "account-visible-model",
+                            "digest": "account-visible-digest",
+                            "details": {"format": "gguf"},
+                        }
+                    ]
+                }
+            )
+        if request.full_url.endswith("/api/ps"):
+            return Response({"models": []})
+        if request.full_url.endswith("/api/show"):
+            return Response({"capabilities": ["completion"]})
         return Response()
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
