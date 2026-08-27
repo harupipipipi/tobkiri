@@ -375,33 +375,14 @@ def test_unsafe_redirect_target_removes_entire_candidate():
     assert decision.resolution_reason == "no_viable_target_fallback"
 
 
-def test_desktop_route_state_round_trip(tmp_path):
+def test_desktop_route_state_cleanup_is_delete_only(tmp_path):
     from ecosystem.search_home_pack import desktop_app
 
-    payload = {"query": "openai pricing latest", "target_url": "https://platform.openai.com/docs/overview"}
-    desktop_app.persist_route_state(payload, root=tmp_path)
-
-    assert desktop_app.load_route_state(root=tmp_path) == payload
+    path = desktop_app.route_state_path(root=tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"query":"private legacy query"}', encoding="utf-8")
 
     desktop_app.clear_route_state(root=tmp_path)
-    assert desktop_app.load_route_state(root=tmp_path) == {}
-
-
-def test_desktop_route_state_does_not_persist_secret_bearing_urls(tmp_path):
-    from ecosystem.search_home_pack import desktop_app
-
-    fake_secret = "fake-secret-do-not-store"
-    desktop_app.persist_route_state(
-        {
-            "query": f"https://example.com/callback?access_token={fake_secret}",
-            "target_url": f"https://example.com/callback?access_token={fake_secret}",
-            "target_candidates": [
-                {"url": f"https://example.com/path#{fake_secret}"}
-            ],
-        },
-        root=tmp_path,
-    )
-
-    serialized = desktop_app.route_state_path(root=tmp_path).read_text(encoding="utf-8")
-    assert fake_secret not in serialized
-    assert desktop_app.load_route_state(root=tmp_path)["target_url"] == ""
+    assert not path.exists()
+    assert not hasattr(desktop_app, "persist_route_state")
+    assert not hasattr(desktop_app, "load_route_state")

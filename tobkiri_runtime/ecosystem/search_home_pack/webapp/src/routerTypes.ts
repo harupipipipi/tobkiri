@@ -31,25 +31,6 @@ export type RouteDecision = {
   metadata?: Record<string, unknown>;
 };
 
-export type RouteSessionCandidate = {
-  url: string;
-  final_url: string;
-  title: string;
-  domain: string;
-};
-
-export type RouteSessionState = {
-  query: string;
-  target_url: string;
-  fallback_url: string;
-  selected_index: number;
-  target_candidates: RouteSessionCandidate[];
-  updated_at: string;
-  state_id: string;
-  issued_at: string;
-  expires_at: string;
-};
-
 export type RouteDestinationBlockCode =
   | "empty"
   | "too_long"
@@ -79,21 +60,9 @@ export type RouteDestinationReview =
       message: string;
     };
 
-export type BrowserCompanionRouteMessage = {
-  type: typeof ROUTE_BROWSER_MESSAGE_TYPE;
-  source: typeof ROUTE_BROWSER_MESSAGE_SOURCE;
-  payload: RouteSessionState;
-};
-
-export const ROUTE_SESSION_STORAGE_KEY = "rumi-search-home-route-state";
-export const ROUTE_BROWSER_MESSAGE_TYPE = "rumi:search-home:set-route-state";
-export const ROUTE_BROWSER_MESSAGE_SOURCE = "rumi-search-home";
-
 const MAX_ROUTE_URL_LENGTH = 4096;
-const MAX_ROUTE_QUERY_LENGTH = 2048;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
 const ENCODED_CONTROL_PATTERN = /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i;
-const SECRET_QUERY_KEY_PATTERN = /(?:^|[_-])(token|secret|password|passwd|key|signature|credential|auth|code)(?:$|[_-])/i;
 const ABSOLUTE_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
 
 function parseIpv4(hostname: string): [number, number, number, number] | null {
@@ -267,115 +236,4 @@ export function cycleCandidateIndex(decision: RouteDecision, currentIndex: numbe
   }
   const start = normalizeSelectedIndex(decision, currentIndex);
   return (start + delta + total) % total;
-}
-
-function safeSessionCandidate(candidate: RouteCandidate): RouteSessionCandidate | null {
-  const url = safeUrlForStorage(candidate.url || candidate.final_url || "");
-  const finalUrl = safeUrlForStorage(candidate.final_url || candidate.url || "");
-  const review = reviewRouteDestination(finalUrl);
-  if (!url || !finalUrl || !review.ok) {
-    return null;
-  }
-  return {
-    url,
-    final_url: finalUrl,
-    title: candidate.title || "",
-    domain: review.host,
-  };
-}
-
-function safeUrlForStorage(input: string): string {
-  try {
-    if (new URL(input).hash) return "";
-  } catch {
-    return "";
-  }
-  const review = reviewRouteDestination(input);
-  if (!review.ok) return "";
-  const parsed = new URL(review.url);
-  if (parsed.hash) return "";
-  for (const key of parsed.searchParams.keys()) {
-    if (SECRET_QUERY_KEY_PATTERN.test(key)) return "";
-  }
-  return review.url;
-}
-
-function safeQueryForStorage(query: string): string {
-  const bounded = query.slice(0, MAX_ROUTE_QUERY_LENGTH);
-  return bounded.includes("://") && !safeUrlForStorage(bounded) ? "" : bounded;
-}
-
-function createRouteStateId(): string {
-  const random = globalThis.crypto?.getRandomValues?.(new Uint8Array(16));
-  if (!random) throw new Error("Secure randomness is required for route state.");
-  return Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-export function buildRouteSessionState(decision: RouteDecision, selectedIndex = decision.selected_index): RouteSessionState {
-  const normalizedOriginalIndex = normalizeSelectedIndex(decision, selectedIndex);
-  const selectedRawUrl = selectedCandidateUrl(decision, normalizedOriginalIndex);
-  const selectedUrl = safeUrlForStorage(selectedRawUrl);
-  const fallbackUrl = safeUrlForStorage(decision.fallback_url);
-  const candidates = decision.target_candidates
-    .map((candidate) => safeSessionCandidate(candidate))
-    .filter((candidate): candidate is RouteSessionCandidate => candidate !== null);
-  const safeSelectedIndex = selectedUrl
-    ? candidates.findIndex((candidate) => candidate.final_url === selectedUrl)
-    : -1;
-  const issuedAt = new Date();
-
-  return {
-    query: safeQueryForStorage(decision.query),
-    target_url: selectedUrl || fallbackUrl,
-    fallback_url: fallbackUrl,
-    selected_index: safeSelectedIndex,
-    target_candidates: candidates,
-    updated_at: issuedAt.toISOString(),
-    state_id: createRouteStateId(),
-    issued_at: issuedAt.toISOString(),
-    expires_at: new Date(issuedAt.getTime() + 5 * 60 * 1000).toISOString(),
-  };
-}
-
-export function sanitizeRouteDecisionForStorage(
-  decision: RouteDecision,
-  selectedIndex = decision.selected_index,
-): RouteDecision {
-  const session = buildRouteSessionState(decision, selectedIndex);
-  return {
-    route_type: decision.route_type,
-    query: session.query,
-    target_url: session.target_url,
-    target_candidates: session.target_candidates.map((candidate) => ({ ...candidate })),
-    selected_index: session.selected_index,
-    fallback_url: session.fallback_url,
-    resolution_reason: decision.resolution_reason,
-    used_ai_judge: Boolean(decision.used_ai_judge),
-    used_visual_judge: Boolean(decision.used_visual_judge),
-    metadata: {},
-  };
-}
-
-export function persistRouteSessionState(
-  storage: Pick<Storage, "setItem"> | null | undefined,
-  decision: RouteDecision,
-  selectedIndex = decision.selected_index,
-): RouteSessionState | null {
-  if (!storage) {
-    return null;
-  }
-  const state = buildRouteSessionState(decision, selectedIndex);
-  storage.setItem(ROUTE_SESSION_STORAGE_KEY, JSON.stringify(state));
-  return state;
-}
-
-export function buildBrowserCompanionRouteMessage(
-  decision: RouteDecision,
-  selectedIndex = decision.selected_index,
-): BrowserCompanionRouteMessage {
-  return {
-    type: ROUTE_BROWSER_MESSAGE_TYPE,
-    source: ROUTE_BROWSER_MESSAGE_SOURCE,
-    payload: buildRouteSessionState(decision, selectedIndex),
-  };
 }

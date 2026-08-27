@@ -1,4 +1,4 @@
-import type { RouteDecision, RouteSessionState } from "./routerTypes";
+import type { RouteDecision } from "./routerTypes";
 
 export const MODEL_SETTINGS_KEY = "preferred" + "_model";
 export const SEARCH_HOME_CONTRACT_ENDPOINT = "/api/contracts/search_home_pack/";
@@ -133,46 +133,5 @@ export async function setPreferredModel(model: string): Promise<void> {
   await requestJson<unknown>(searchHomeContractRoute("api/settings/model"), {
     method: "POST",
     body: JSON.stringify({ model }),
-  });
-}
-
-export async function loadRouteState(): Promise<Record<string, unknown> | null> {
-  try {
-    return await requestJson<Record<string, unknown>>(searchHomeContractRoute("api/route-state"));
-  } catch {
-    return null;
-  }
-}
-
-export function persistRouteStateRemotely(state: RouteSessionState): void {
-  const payload = JSON.stringify(state);
-  const route = searchHomeContractRoute("api/route-state");
-  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-    const blob = new Blob([payload], { type: "application/json" });
-    if (navigator.sendBeacon(searchHomeContractUrl(route, "POST"), blob)) {
-      return;
-    }
-  }
-  void fetch(searchHomeContractUrl(route, "POST"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: payload,
-    keepalive: true,
-  }).catch(() => undefined);
-}
-
-export function clearRouteStateRemotely(): void {
-  const issuedAt = new Date();
-  const random = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  persistRouteStateRemotely({
-    query: "",
-    target_url: "",
-    fallback_url: "",
-    selected_index: -1,
-    target_candidates: [],
-    updated_at: issuedAt.toISOString(),
-    state_id: Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join(""),
-    issued_at: issuedAt.toISOString(),
-    expires_at: new Date(issuedAt.getTime() + 5 * 60 * 1000).toISOString(),
   });
 }

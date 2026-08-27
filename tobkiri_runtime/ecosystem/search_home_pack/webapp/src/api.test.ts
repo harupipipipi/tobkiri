@@ -6,7 +6,6 @@ import {
   answerInput,
   loadModelSettings,
   loadModels,
-  loadRouteState,
   routeInput,
   searchHomeContractRoute,
   searchHomeContractUrl,
@@ -42,7 +41,6 @@ test("search home API map emits only canonical Host contract URLs", async () => 
     await loadModels();
     await loadModelSettings();
     await setPreferredModel("demo/model");
-    await loadRouteState();
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -53,7 +51,6 @@ test("search home API map emits only canonical Host contract URLs", async () => 
     routeKey("api/models"),
     routeKey("api/settings"),
     routeKey("api/settings/model"),
-    routeKey("api/route-state"),
   ]);
   assert.deepEqual(requests.map((request) => request.method), [
     "POST",
@@ -61,7 +58,6 @@ test("search home API map emits only canonical Host contract URLs", async () => 
     "GET",
     "GET",
     "POST",
-    "GET",
   ]);
 });
 

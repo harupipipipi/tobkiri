@@ -61,8 +61,8 @@ def test_search_home_operation_resolves_exact_route_and_query() -> None:
 
     assert resolved is not None
     assert resolved.method == "GET"
-    assert resolved.path == "/api/route-state"
-    assert resolved.query == {"source": "restart"}
+    assert resolved.path == "/api/models"
+    assert resolved.query == {"source": "picker"}
 
 
 @pytest.mark.parametrize(

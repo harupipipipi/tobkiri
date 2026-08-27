@@ -241,6 +241,9 @@ export function NavigationReview({
           <p style={styles.muted}>
             Search Homeは自動では移動しません。ホストと警告を確認してから開いてください。
           </p>
+          <p role="status" style={styles.muted}>
+            Browser Companion同期は無効です。検索語と候補はこの画面のメモリだけに保持され、再読み込み時に消去されます。
+          </p>
         </div>
         <span style={styles.host}>{destination.ok ? destination.host : "ブロック"}</span>
       </div>

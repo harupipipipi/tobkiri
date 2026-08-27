@@ -29,11 +29,9 @@ _SEARCH_HOME_ROUTE_POLICIES = {
     ("GET", "/api/health"): {"approval_required": False},
     ("GET", "/api/models"): {"approval_required": False},
     ("GET", "/api/settings"): {"approval_required": False},
-    ("GET", "/api/route-state"): {"approval_required": False},
     ("POST", "/api/route"): {"approval_required": False},
     ("POST", "/api/answer"): {"approval_required": False},
     ("POST", "/api/settings/model"): {"approval_required": False},
-    ("POST", "/api/route-state"): {"approval_required": False},
 }
 
 
@@ -152,44 +150,8 @@ def route_state_path(*, root: Path | None = None) -> Path:
     return base / "route_state.json"
 
 
-def persist_route_state(state: dict[str, Any], *, root: Path | None = None) -> Path:
-    path = route_state_path(root=root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = _sanitize_route_state_for_persistence(dict(state or {}))
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return path
-
-
-def _sanitize_route_state_for_persistence(value: Any, key: str = "") -> Any:
-    """Remove secret-bearing URLs from backend-restored route state."""
-    from ecosystem.search_home_pack.domain.safe_url import url_safe_for_persistence
-
-    if isinstance(value, dict):
-        return {
-            str(child_key): _sanitize_route_state_for_persistence(child, str(child_key))
-            for child_key, child in value.items()
-        }
-    if isinstance(value, list):
-        return [_sanitize_route_state_for_persistence(child, key) for child in value]
-    if isinstance(value, str) and (key.endswith("_url") or key == "url"):
-        return url_safe_for_persistence(value)
-    if isinstance(value, str) and key == "query" and "://" in value:
-        return value if url_safe_for_persistence(value) else ""
-    return value
-
-
-def load_route_state(*, root: Path | None = None) -> dict[str, Any]:
-    path = route_state_path(root=root)
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return dict(data) if isinstance(data, dict) else {}
-
-
 def clear_route_state(*, root: Path | None = None) -> None:
+    """Delete legacy persisted Search Home routing data, if present."""
     path = route_state_path(root=root)
     if path.exists():
         path.unlink()
@@ -286,12 +248,8 @@ def _make_handler(pack_root: Path):
                     {
                         "status": "ok",
                         "pack_id": "search_home_pack",
-                        "route_state_path": str(route_state_path(root=pack_root / "user_data" / "shared" / "search_home")),
                     }
                 )
-                return
-            if path == "/api/route-state":
-                self._json_response(load_route_state(root=pack_root / "user_data" / "shared" / "search_home"))
                 return
             if path == "/api/models":
                 self._json_response(bridge.list_models())
@@ -324,7 +282,6 @@ def _make_handler(pack_root: Path):
                     str(payload.get("input") or ""),
                     context={"source": "search_home.route", _SETTINGS_MODEL_KEY: selected_model},
                 )
-                persist_route_state(decision.to_dict(), root=pack_root / "user_data" / "shared" / "search_home")
                 self._json_response(decision.to_dict())
                 return
             if path == "/api/answer":
@@ -347,10 +304,6 @@ def _make_handler(pack_root: Path):
                     )
                     return
                 self._json_response({"status": "ok", "data": result})
-                return
-            if path == "/api/route-state":
-                persist_route_state(payload, root=pack_root / "user_data" / "shared" / "search_home")
-                self._json_response({"status": "ok", "saved": True})
                 return
             self._json_response(
                 {"status": "error", "error": {"message": "not found", "code": "NOT_FOUND"}},
@@ -416,6 +369,7 @@ def _make_handler(pack_root: Path):
 
 class SearchHomeServer:
     def __init__(self, host: str, port: int, pack_root: Path) -> None:
+        clear_route_state(root=pack_root / "user_data" / "shared" / "search_home")
         handler = _make_handler(pack_root)
         self._httpd = ThreadingHTTPServer((host, port), handler)
         self._httpd.daemon_threads = True
