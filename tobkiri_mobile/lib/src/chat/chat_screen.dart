@@ -272,9 +272,8 @@ class _ChatScreenState extends State<ChatScreen>
     final thinking = coordinator.state('thinking').confirmedValue;
     final deepthink = coordinator.state('deepthink').confirmedValue;
     setState(() {
-      _selectedPcModel = model is String && model.trim().isNotEmpty
-          ? model.trim()
-          : null;
+      _selectedPcModel =
+          model is String && model.trim().isNotEmpty ? model.trim() : null;
       if (thinking is String && thinking.trim().isNotEmpty) {
         _pcThinkingLevel = thinking.trim();
       }
@@ -454,9 +453,8 @@ class _ChatScreenState extends State<ChatScreen>
   Future<void> _continuePcConversationLocally() async {
     final snapshot = _activePcSnapshot;
     if (snapshot == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('コピーできるPC会話がありません')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('コピーできるPC会話がありません')));
       return;
     }
     final local = await widget.store.createAndPersist();
@@ -2375,9 +2373,8 @@ List<String> _pcCommandNames(PcCommandItem command) {
 }
 
 String? _matchPcCommandName(String body, String candidate) {
-  final direct = RegExp(
-    '^${RegExp.escape(candidate)}(?:\\s+|\$)',
-  ).firstMatch(body);
+  final direct =
+      RegExp('^${RegExp.escape(candidate)}(?:\\s+|\$)').firstMatch(body);
   if (direct != null) return direct.group(0)?.trimRight();
 
   final parts = candidate.split(RegExp(r'[\s_-]+')).where((p) => p.isNotEmpty);

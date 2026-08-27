@@ -28,10 +28,10 @@ class PcCatalogClient {
   }
 
   Map<String, String> _headers(PcConnection pc) => {
-    'Authorization': 'Bearer ${pc.token.trim()}',
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-  };
+        'Authorization': 'Bearer ${pc.token.trim()}',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
 
   Uri _uri(String baseUrl, String path) {
     var trimmed = baseUrl.trim();
@@ -94,12 +94,11 @@ class PcCatalogClient {
     PcConnection pc,
     Set<String> stateRefs,
   ) async {
-    final refs =
-        stateRefs
-            .map((item) => item.trim())
-            .where((item) => item.isNotEmpty)
-            .toList()
-          ..sort();
+    final refs = stateRefs
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList()
+      ..sort();
     final resp = await _post(pc, '/api/mobile/v1/control-states/query', {
       'state_refs': refs,
     });
