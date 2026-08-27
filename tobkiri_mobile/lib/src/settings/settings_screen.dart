@@ -102,15 +102,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     try {
       final api = await widget.configStore.loadApi();
-      final savedProviderConfigs = await widget.configStore
-          .loadProviderConfigs();
+      final savedProviderConfigs =
+          await widget.configStore.loadProviderConfigs();
       final providerConfigs = _mergeDefaultProviderConfigs(
         savedProviderConfigs,
       );
       final modelFavorites = await widget.configStore.loadModelFavorites();
       final pc = await widget.configStore.loadPc();
-      final notificationSettings = await widget.configStore
-          .loadNotificationSettings();
+      final notificationSettings =
+          await widget.configStore.loadNotificationSettings();
       final paired = await widget.deviceStore.loadPairedDevice();
       final pairedDevices = await widget.deviceStore.loadPairedDevices();
       final identity = await widget.deviceStore.loadOrCreateIdentity();
@@ -158,17 +158,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   ApiConfig _buildConfig() => ApiConfig(
-    providerId: 'openai-compatible',
-    baseUrl: _baseUrl.text.trim(),
-    apiKey: _apiKey.text.trim(),
-    model: _model.text.trim().isEmpty
-        ? ApiConfig.defaults.model
-        : _model.text.trim(),
-    label: _label.text.trim(),
-    systemPrompt: _systemPrompt.text.trim(),
-    temperature: _config.temperature,
-    apiCompatibility: 'openai',
-  );
+        providerId: 'openai-compatible',
+        baseUrl: _baseUrl.text.trim(),
+        apiKey: _apiKey.text.trim(),
+        model: _model.text.trim().isEmpty
+            ? ApiConfig.defaults.model
+            : _model.text.trim(),
+        label: _label.text.trim(),
+        systemPrompt: _systemPrompt.text.trim(),
+        temperature: _config.temperature,
+        apiCompatibility: 'openai',
+      );
 
   Future<bool> _save() async {
     if (_saving) return false;
@@ -194,9 +194,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       return false;
     }
-    final pc = pcUrl.isEmpty
-        ? null
-        : PcConnection(baseUrl: pcUrl, token: pcToken);
+    final pc =
+        pcUrl.isEmpty ? null : PcConnection(baseUrl: pcUrl, token: pcToken);
 
     setState(() {
       _saving = true;
@@ -284,13 +283,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _scanApi({BuildContext? navigationContext}) async {
     final result = await Navigator.of(navigationContext ?? context)
         .push<(QrPayload, bool)>(
-          MaterialPageRoute(
-            builder: (_) => const QrScannerScreen(
-              purpose: QrScanPurpose.apiImport,
-              hint: 'PCの「アプリ」欄に表示されたAPI/モデルQRをスキャン',
-            ),
-          ),
-        );
+      MaterialPageRoute(
+        builder: (_) => const QrScannerScreen(
+          purpose: QrScanPurpose.apiImport,
+          hint: 'PCの「アプリ」欄に表示されたAPI/モデルQRをスキャン',
+        ),
+      ),
+    );
     if (result == null) return;
     final (payload, mismatch) = result;
     if (mismatch) {
@@ -507,12 +506,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   deviceId: _deviceIdentity!.deviceId,
                 )
               : <String, dynamic>{};
-          final token =
-              (deliveryPayload['client_access_token'] as String? ??
-                      deliveryPayload['device_token'] as String? ??
-                      tokenResp.deviceToken ??
-                      '')
-                  .trim();
+          final token = (deliveryPayload['client_access_token'] as String? ??
+                  deliveryPayload['device_token'] as String? ??
+                  tokenResp.deviceToken ??
+                  '')
+              .trim();
           final approvalToken =
               (deliveryPayload['approver_access_token'] as String? ??
                       deliveryPayload['approval_token'] as String? ??
@@ -721,9 +719,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               baseUrl: saved.baseUrl.trim().isNotEmpty
                   ? saved.baseUrl
                   : fallback.baseUrl,
-              model: saved.model.trim().isNotEmpty
-                  ? saved.model
-                  : fallback.model,
+              model:
+                  saved.model.trim().isNotEmpty ? saved.model : fallback.model,
               openaiCompatible: saved.openaiCompatible,
               local: saved.local,
               catalogOnly: saved.catalogOnly,
@@ -808,8 +805,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final baseUrl = existing?.baseUrl.trim().isNotEmpty == true
           ? existing!.baseUrl
           : _defaultBaseUrlForProvider(provider);
-      final openaiCompatible =
-          provider.openaiCompatible ||
+      final openaiCompatible = provider.openaiCompatible ||
           _usesOpenAiCompatibleFallback(provider) ||
           _baseUrlLooksOpenAiCompatible(baseUrl);
       final apiCompatibility = _apiCompatibilityForProvider(
@@ -936,12 +932,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final byKey = {
       for (final favorite in _modelFavorites) favorite.key: favorite,
     };
-    final favoriteProfiles = catalog.runtime.favoriteProfiles
-        .map((id) => id.trim())
-        .toSet();
+    final favoriteProfiles =
+        catalog.runtime.favoriteProfiles.map((id) => id.trim()).toSet();
     for (final profile in catalog.selectableProfiles) {
-      final isFavorite =
-          profile.favorite ||
+      final isFavorite = profile.favorite ||
           favoriteProfiles.any((id) => _pcProfileMatchesId(profile, id));
       if (!isFavorite) continue;
       final favorite = _favoriteFromPcProfile(profile, pcLabel: pcLabel);
@@ -985,8 +979,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             favorite,
           ])
         : _modelFavorites
-              .where((existing) => existing.key != favorite.key)
-              .toList();
+            .where((existing) => existing.key != favorite.key)
+            .toList();
     setState(() {
       _favoriteSaving = true;
       _modelFavorites = next;
@@ -1189,9 +1183,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     await _persistNotificationSettings(
       next,
-      successMessage: enabled
-          ? 'PC環境のtool委譲をONで保存しました'
-          : 'PC環境のtool委譲をOFFで保存しました',
+      successMessage:
+          enabled ? 'PC環境のtool委譲をONで保存しました' : 'PC環境のtool委譲をOFFで保存しました',
       retry: () => _setPcToolDelegation(enabled),
     );
   }
@@ -1459,8 +1452,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     color: Theme.of(context).cardTheme.color,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color:
-                          Theme.of(context).dividerTheme.color ??
+                      color: Theme.of(context).dividerTheme.color ??
                           Colors.transparent,
                     ),
                   ),
@@ -1478,12 +1470,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _pairingVerificationCode,
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
-                                ],
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontFeatures: const [
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 4),
                         const Text(
@@ -1665,8 +1657,8 @@ List<ModelFavoriteConfig> _sortModelFavorites(
     final source = a.source.compareTo(b.source);
     if (source != 0) return source;
     return a.effectiveLabel.toLowerCase().compareTo(
-      b.effectiveLabel.toLowerCase(),
-    );
+          b.effectiveLabel.toLowerCase(),
+        );
   });
   return list;
 }
@@ -1907,12 +1899,12 @@ class _MobileApiSettingsPageState extends State<_MobileApiSettingsPage> {
   bool _submitting = false;
 
   List<TextEditingController> get _draftControllers => [
-    widget.baseUrl,
-    widget.apiKey,
-    widget.model,
-    widget.label,
-    widget.systemPrompt,
-  ];
+        widget.baseUrl,
+        widget.apiKey,
+        widget.model,
+        widget.label,
+        widget.systemPrompt,
+      ];
 
   @override
   void initState() {
@@ -1941,12 +1933,12 @@ class _MobileApiSettingsPageState extends State<_MobileApiSettingsPage> {
   }
 
   String _draftFingerprint() => [
-    widget.baseUrl.text,
-    widget.apiKey.text,
-    widget.model.text,
-    widget.label.text,
-    widget.systemPrompt.text,
-  ].join('\u0000');
+        widget.baseUrl.text,
+        widget.apiKey.text,
+        widget.model.text,
+        widget.label.text,
+        widget.systemPrompt.text,
+      ].join('\u0000');
 
   void _onDraftChanged() {
     final dirty = _draftFingerprint() != _savedDraft;
@@ -2018,8 +2010,8 @@ class _MobileApiSettingsPageState extends State<_MobileApiSettingsPage> {
     final providers = widget.providerConfigs.toList()
       ..sort(
         (a, b) => a.effectiveLabel.toLowerCase().compareTo(
-          b.effectiveLabel.toLowerCase(),
-        ),
+              b.effectiveLabel.toLowerCase(),
+            ),
       );
     final filtered = providers.where(_matchesQuery).toList();
     final configuredCount = _configuredProviderCount(widget.providerConfigs);
@@ -2043,8 +2035,7 @@ class _MobileApiSettingsPageState extends State<_MobileApiSettingsPage> {
                     color: Theme.of(context).cardTheme.color,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color:
-                          Theme.of(context).dividerTheme.color ??
+                      color: Theme.of(context).dividerTheme.color ??
                           Colors.transparent,
                     ),
                   ),
@@ -2284,10 +2275,10 @@ class _ModelSettingsPage extends StatefulWidget {
   final bool Function(MobileProviderConfig provider) providerRunsOnMobile;
   final Future<void> Function() onFetchPcCatalog;
   final Future<void> Function(ModelFavoriteConfig favorite, bool enabled)
-  onToggleFavorite;
+      onToggleFavorite;
   final Future<void> Function(MobileProviderConfig provider) onUseProvider;
   final ModelFavoriteConfig Function(ProfileEntry profile, {String pcLabel})
-  favoriteFromPcProfile;
+      favoriteFromPcProfile;
 
   @override
   State<_ModelSettingsPage> createState() => _ModelSettingsPageState();
@@ -2298,19 +2289,17 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final mobileProviders =
-        widget.providerConfigs
-            .where((provider) => provider.model.trim().isNotEmpty)
-            .toList()
-          ..sort(
-            (a, b) => a.effectiveLabel.toLowerCase().compareTo(
+    final mobileProviders = widget.providerConfigs
+        .where((provider) => provider.model.trim().isNotEmpty)
+        .toList()
+      ..sort(
+        (a, b) => a.effectiveLabel.toLowerCase().compareTo(
               b.effectiveLabel.toLowerCase(),
             ),
-          );
+      );
     final pcProfiles = widget.pcCatalog?.selectableProfiles ?? [];
-    final filteredMobile = mobileProviders
-        .where(_matchesMobileProvider)
-        .toList();
+    final filteredMobile =
+        mobileProviders.where(_matchesMobileProvider).toList();
     final filteredPc = pcProfiles.where(_matchesPcProfile).toList();
 
     return _UnfocusOnTapOutside(
@@ -2412,11 +2401,9 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
                       provider.model,
                     ].where((part) => part.trim().isNotEmpty).join(' · '),
                     sourceLabel: provider.isConfigured ? 'このスマホ' : 'Key未設定',
-                    active:
-                        widget.config.providerId == provider.providerId &&
+                    active: widget.config.providerId == provider.providerId &&
                         widget.config.model == provider.model,
-                    supported:
-                        provider.isConfigured &&
+                    supported: provider.isConfigured &&
                         widget.providerRunsOnMobile(provider),
                     starred: widget.isFavorite(
                       ModelFavoriteConfig.fromMobileProvider(provider),
@@ -2427,8 +2414,7 @@ class _ModelSettingsPageState extends State<_ModelSettingsPage> {
                         starred,
                       ),
                     ),
-                    onUse:
-                        provider.isConfigured &&
+                    onUse: provider.isConfigured &&
                             widget.providerRunsOnMobile(provider)
                         ? () => unawaited(widget.onUseProvider(provider))
                         : null,
@@ -3217,29 +3203,28 @@ class _PcInfoCard extends StatelessWidget {
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children:
-                    configured
-                        .take(4)
-                        .map(
-                          (p) => Chip(
-                            label: Text(p.displayName),
-                            avatar: const Icon(Icons.cloud_done, size: 16),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        )
-                        .toList()
-                      ..addAll(
-                        configured.length > visibleConfigured.length
-                            ? [
-                                Chip(
-                                  label: Text(
-                                    '+${configured.length - visibleConfigured.length}',
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ]
-                            : const [],
+                children: configured
+                    .take(4)
+                    .map(
+                      (p) => Chip(
+                        label: Text(p.displayName),
+                        avatar: const Icon(Icons.cloud_done, size: 16),
+                        visualDensity: VisualDensity.compact,
                       ),
+                    )
+                    .toList()
+                  ..addAll(
+                    configured.length > visibleConfigured.length
+                        ? [
+                            Chip(
+                              label: Text(
+                                '+${configured.length - visibleConfigured.length}',
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ]
+                        : const [],
+                  ),
               ),
             ],
           ],
@@ -3304,9 +3289,8 @@ class _PcModelPickerState extends State<_PcModelPicker> {
   void initState() {
     super.initState();
     final configured = widget.catalog.configuredProviders;
-    _selectedProvider = configured.isNotEmpty
-        ? configured.first.providerId
-        : null;
+    _selectedProvider =
+        configured.isNotEmpty ? configured.first.providerId : null;
   }
 
   @override
@@ -3395,8 +3379,8 @@ class _PcModelPickerState extends State<_PcModelPicker> {
                       m.supportsVision
                           ? Icons.visibility_outlined
                           : m.supportsThinking
-                          ? Icons.psychology_outlined
-                          : Icons.chat_outlined,
+                              ? Icons.psychology_outlined
+                              : Icons.chat_outlined,
                       size: 20,
                     ),
                     title: Text(
