@@ -4,7 +4,6 @@ import type { PinchState } from "./gesturePinchDetector";
 import { startHandLandmarkerLoop, type HandTrackingFrame } from "./mediaPipeHandLandmarker";
 
 type UseAmbientHandTrackerOptions = {
-  approvalTargetActive: boolean;
   cameraStream: MediaStream | null;
   monitorEnabled: boolean;
   onPinchState: (state: PinchState) => void;
@@ -16,7 +15,6 @@ type UseAmbientHandTrackerOptions = {
 };
 
 export function useAmbientHandTracker({
-  approvalTargetActive,
   cameraStream,
   monitorEnabled,
   onPinchState,
@@ -39,7 +37,7 @@ export function useAmbientHandTracker({
     }
     setPinchDetectorStatus("loading");
     startHandLandmarkerLoop(videoElement, onPinchState, {
-      choiceRequiresPinch: !approvalTargetActive,
+      choiceRequiresPinch: true,
       pinchStartMs: 250,
       pinchReleaseMs: 180,
       onFrame: (frame) => setTrackingFrame(frame),
@@ -71,7 +69,6 @@ export function useAmbientHandTracker({
       setTrackingFrame(null);
     };
   }, [
-    approvalTargetActive,
     cameraStream,
     monitorEnabled,
     onPinchState,

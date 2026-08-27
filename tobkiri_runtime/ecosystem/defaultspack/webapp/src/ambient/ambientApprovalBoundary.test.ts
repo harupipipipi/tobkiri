@@ -300,18 +300,15 @@ test("ambient browser-owned monitor keeps camera lifecycle local to the active w
   assert.match(panelSource, /await ambientTriggerClient\.stopMonitor\(\)\.catch\(\(\) => undefined\);[\s\S]*await refresh\(\{ probeOs: true \}\)/);
 });
 
-test("ambient approval gesture requires audit event before executing approval", () => {
+test("ambient gestures cannot settle approval requests", () => {
   const panelSource = readSource("ambient", "AmbientTriggerPanel.tsx");
-  const start = panelSource.indexOf("async function submitApprovalGesture");
-  const end = panelSource.indexOf("async function approvePendingApproval", start);
-  assert.notEqual(start, -1);
-  assert.notEqual(end, -1);
-  const submitApprovalGestureSource = panelSource.slice(start, end);
+  const trackerSource = readSource("ambient", "useAmbientHandTracker.ts");
 
-  assert.doesNotMatch(submitApprovalGestureSource, /\.catch\(\(\) => undefined\)/);
-  assert.match(submitApprovalGestureSource, /const auditResult = await ambientTriggerClient\.submitEvent\(\{[\s\S]*trigger: "approval_gesture"/);
-  assert.match(submitApprovalGestureSource, /if \(auditResult\.status !== "approval_intent"\) \{/);
-  assert.match(submitApprovalGestureSource, /await onApprovalGestureRef\.current\?\.\(decision\)/);
+  assert.doesNotMatch(panelSource, /approvalTarget/);
+  assert.doesNotMatch(panelSource, /onApprovalGesture/);
+  assert.doesNotMatch(panelSource, /submitApprovalGesture/);
+  assert.doesNotMatch(panelSource, /trigger: "approval_gesture"/);
+  assert.match(trackerSource, /choiceRequiresPinch: true/);
 });
 
 test("Viewer authenticates every dedicated Defaultspack window and rejects unsafe stale listeners", (context) => {
