@@ -6,8 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CompanyAgentList } from "../components/company/CompanyAgentList";
 import { CompanyChannelView, companyMessageChannelId, visibleCompanyMessagesForChannel } from "../components/company/CompanyChannelView";
 import { CompanyP2PPanel } from "../components/company/CompanyP2PPanel";
+import { CompanySettingsPanel } from "../components/company/CompanySettingsPanel";
 import { CompanyTaskBoard } from "../components/company/CompanyTaskBoard";
 import { CompanyTree } from "../components/company/CompanyTree";
+import { nextCompositeIndex } from "../components/company/companyAccessibility";
 import {
   CompanyWorkspacePanel,
   MIMO_CODING_COMPANY_ID,
@@ -174,6 +176,46 @@ test("company task board exposes chosen-status moves and confirmed deletion entr
   assert.match(html, /aria-label="Delete Recover blocked work"/);
 });
 
+test("company composite navigation wraps and supports APG boundary keys", () => {
+  assert.equal(nextCompositeIndex(0, 3, "ArrowLeft"), 2);
+  assert.equal(nextCompositeIndex(2, 3, "ArrowRight"), 0);
+  assert.equal(nextCompositeIndex(1, 3, "ArrowUp"), 0);
+  assert.equal(nextCompositeIndex(1, 3, "ArrowDown"), 2);
+  assert.equal(nextCompositeIndex(2, 3, "Home"), 0);
+  assert.equal(nextCompositeIndex(0, 3, "End"), 2);
+  assert.equal(nextCompositeIndex(1, 3, "Escape"), null);
+  assert.equal(nextCompositeIndex(1, 0, "ArrowRight"), null);
+});
+
+test("company task controls expose stable labels, affected resources, and touch targets", () => {
+  const html = renderToStaticMarkup(
+    createElement(CompanyTaskBoard, {
+      agents: [{ agent_id: "reviewer", role_key: "reviewer" }],
+      tasks: [{
+        id: "task-review",
+        company_id: "operations-company",
+        title: "Review audit report",
+        status: "queued",
+        target_agent_ids: ["reviewer"],
+      }],
+      onCreateTask: () => {},
+      onCreateResearchTask: () => {},
+      onDispatchTask: () => {},
+      onUpdateTask: () => {},
+      onDeleteTask: () => {},
+    }),
+  );
+
+  assert.match(html, /aria-label="Create a delegated task"/);
+  assert.match(html, /for="company-task-title"/);
+  assert.match(html, /for="company-task-agent"/);
+  assert.match(html, /aria-required="true"/);
+  assert.match(html, /aria-label="Dispatch Review audit report to reviewer"/);
+  assert.match(html, /aria-label="Move Review audit report to status"/);
+  assert.match(html, /aria-label="Delete Review audit report"/);
+  assert.match(html, /h-11 w-11/);
+});
+
 test("company workspace renders a visible empty state before a chat exists", () => {
   const html = renderToStaticMarkup(
     createElement(CompanyWorkspacePanel, {
@@ -185,6 +227,11 @@ test("company workspace renders a visible empty state before a chat exists", () 
   assert.match(html, /Main Agent &amp; Subagents/);
   assert.match(html, /Subagent Team/);
   assert.match(html, /Subagent Team options/);
+  assert.match(html, /role="tablist" aria-label="Subagent Team workspace sections"/);
+  assert.match(html, /role="tab" aria-selected="true" aria-controls="company-workspace-panel-tasks"/);
+  assert.match(html, /role="tabpanel" aria-labelledby="company-workspace-tab-tasks"/);
+  assert.match(html, /aria-controls="company-workspace-more-menu"/);
+  assert.match(html, /role="status" aria-live="polite"/);
   assert.doesNotMatch(html, />Routes</);
   assert.doesNotMatch(html, />P2P</);
   assert.match(html, /Start or send a chat message to create its Subagent Team/);
@@ -226,6 +273,48 @@ test("company workspace selects and renders the first global MiMo company withou
   assert.match(html, /7 Agents/);
   assert.match(html, /6 tasks/);
   assert.doesNotMatch(html, /Start or send a chat message/);
+  assert.match(html, /role="tree" aria-label="Companies"/);
+  assert.match(html, /role="treeitem" aria-selected="true" aria-current="true"/);
+});
+
+test("company channel controls expose channel scope and durable send status relationships", () => {
+  const html = renderToStaticMarkup(
+    createElement(CompanyChannelView, {
+      channels: [{ id: "ops", name: "Operations" }],
+      messages: [],
+      activeChannelId: "ops",
+      onChannelChange: () => {},
+      onSendMessage: () => {},
+    }),
+  );
+
+  assert.match(html, /for="company-channel-select"/);
+  assert.match(html, /role="log" aria-live="polite" aria-relevant="additions" aria-label="Messages in Operations"/);
+  assert.match(html, /aria-label="Send a message to Operations"/);
+  assert.match(html, /for="company-channel-message"/);
+  assert.match(html, /aria-describedby="company-channel-message-help company-channel-send-status"/);
+  assert.match(html, /aria-label="Send message to Operations"/);
+  assert.match(html, /role="status" aria-live="polite" aria-atomic="true"/);
+});
+
+test("company settings form labels controls and announces its saved state", () => {
+  const html = renderToStaticMarkup(
+    createElement(CompanySettingsPanel, {
+      settings: {
+        task_policy: "queued",
+        dispatch_policy: "local_queue_only",
+        normal_status_silent: true,
+      },
+      onSave: () => {},
+    }),
+  );
+
+  assert.match(html, /aria-labelledby="company-settings-title" aria-describedby="company-settings-help"/);
+  assert.match(html, /aria-label="Company settings have no unsaved changes"/);
+  assert.match(html, /for="company-task-policy"/);
+  assert.match(html, /for="company-setting-normal_status_silent"/);
+  assert.match(html, /role="status" aria-live="polite" aria-atomic="true"/);
+  assert.match(html, /Company settings are saved/);
 });
 
 test("company workspace keeps global companies visible for conversation-scoped groups", () => {
