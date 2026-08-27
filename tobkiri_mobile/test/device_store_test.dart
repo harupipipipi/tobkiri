@@ -8,13 +8,32 @@ import 'package:rumi_remote_app/src/data/pc/device_store.dart';
 import 'package:rumi_remote_app/src/settings/api_config_store.dart';
 
 class _FakeSecureStorage implements SecureKeyValueStorage {
-  final Map<String, String> _values = {};
+  _FakeSecureStorage({
+    Map<String, String>? values,
+    this.readError,
+    this.writeError,
+    this.dropWrites = false,
+  }) : _values = {...?values};
+
+  final Map<String, String> _values;
+  final Object? readError;
+  final Object? writeError;
+  final bool dropWrites;
+  int readCount = 0;
+  int writeCount = 0;
 
   @override
-  Future<String?> read(String key) async => _values[key];
+  Future<String?> read(String key) async {
+    readCount += 1;
+    if (readError != null) throw readError!;
+    return _values[key];
+  }
 
   @override
   Future<void> write(String key, String? value) async {
+    writeCount += 1;
+    if (writeError != null) throw writeError!;
+    if (dropWrites) return;
     if (value == null) {
       _values.remove(key);
     } else {
@@ -330,7 +349,8 @@ void main() {
   });
 
   test('device identity stores an Ed25519 signing key', () async {
-    final store = MobileDeviceStore(storage: _FakeSecureStorage());
+    final storage = _FakeSecureStorage();
+    final store = MobileDeviceStore(storage: storage);
 
     final identity = await store.loadOrCreateIdentity();
     final signature = await store.signApprovalPayloadHash(
@@ -342,7 +362,283 @@ void main() {
     expect(identity.privateKey, isNotEmpty);
     expect(identity.encryptionPrivateKey, isNotEmpty);
     expect(identity.canDecryptTokenDelivery, isTrue);
+    expect(identity.schemaVersion, DeviceIdentity.currentSchemaVersion);
+    expect(identity.keyVersion, 1);
+    expect(identity.recordBinding, isNotEmpty);
+    expect(store.lastIdentityStorageState, DeviceIdentityStorageState.loaded);
+    expect(storage.writeCount, 1);
     expect(signature, isNotEmpty);
+  });
+
+  test('secure storage read failure never creates a new identity', () async {
+    final storage = _FakeSecureStorage(
+      readError: StateError('keychain temporarily locked'),
+    );
+    final store = MobileDeviceStore(storage: storage);
+
+    await expectLater(
+      store.loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.lockedOrUnavailable,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 0);
+    expect(
+      store.lastIdentityStorageState,
+      DeviceIdentityStorageState.lockedOrUnavailable,
+    );
+  });
+
+  test('corrupt identity is not overwritten with a new principal', () async {
+    final storage = _FakeSecureStorage(values: {
+      'rumi.device.identity.v1': '{not valid json',
+    });
+    final store = MobileDeviceStore(storage: storage);
+
+    await expectLater(
+      store.loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.corrupt,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 0);
+    expect(storage._values['rumi.device.identity.v1'], '{not valid json');
+  });
+
+  test('native secure storage corruption is not treated as absence', () async {
+    final storage = _FakeSecureStorage(
+      readError: StateError('Corrupt secure storage value'),
+    );
+    final store = MobileDeviceStore(storage: storage);
+
+    await expectLater(
+      store.loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.corrupt,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 0);
+  });
+
+  test('partial encryption identity is blocked without migration', () async {
+    final originalStorage = _FakeSecureStorage();
+    final original = await MobileDeviceStore(storage: originalStorage)
+        .loadOrCreateIdentity();
+    final partial = original.toJson()..['encryptionPrivateKey'] = '';
+    final encodedPartial = jsonEncode(partial);
+    final storage = _FakeSecureStorage(values: {
+      'rumi.device.identity.v1': encodedPartial,
+    });
+
+    await expectLater(
+      MobileDeviceStore(storage: storage).loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.incomplete,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 0);
+    expect(storage._values['rumi.device.identity.v1'], encodedPartial);
+  });
+
+  test('current identity missing integrity metadata is not rewritten',
+      () async {
+    final originalStorage = _FakeSecureStorage();
+    final original = await MobileDeviceStore(storage: originalStorage)
+        .loadOrCreateIdentity();
+    final partial = original.toJson()..remove('recordBinding');
+    final encodedPartial = jsonEncode(partial);
+    final storage = _FakeSecureStorage(values: {
+      'rumi.device.identity.v1': encodedPartial,
+    });
+
+    await expectLater(
+      MobileDeviceStore(storage: storage).loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.incomplete,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 0);
+    expect(storage._values['rumi.device.identity.v1'], encodedPartial);
+  });
+
+  test('new identity is not returned when secure storage write fails',
+      () async {
+    final storage = _FakeSecureStorage(
+      writeError: StateError('keychain write failed'),
+    );
+    final store = MobileDeviceStore(storage: storage);
+
+    await expectLater(
+      store.loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.writeFailed,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 1);
+    expect(storage._values, isEmpty);
+  });
+
+  test('new identity is not returned when persistence cannot be verified',
+      () async {
+    final storage = _FakeSecureStorage(dropWrites: true);
+    final store = MobileDeviceStore(storage: storage);
+
+    await expectLater(
+      store.loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.writeFailed,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 1);
+    expect(storage.readCount, 2);
+  });
+
+  test('concurrent first-run callers share one persisted identity', () async {
+    final storage = _FakeSecureStorage();
+    final store = MobileDeviceStore(storage: storage);
+
+    final identities = await Future.wait([
+      store.loadOrCreateIdentity(),
+      store.loadOrCreateIdentity(),
+      store.loadOrCreateIdentity(),
+    ]);
+
+    expect(
+        identities.map((identity) => identity.deviceId).toSet(), hasLength(1));
+    expect(
+      identities.map((identity) => identity.publicKey).toSet(),
+      hasLength(1),
+    );
+    expect(storage.writeCount, 1);
+  });
+
+  test('legacy identity migration preserves signing principal', () async {
+    final originalStorage = _FakeSecureStorage();
+    final original = await MobileDeviceStore(storage: originalStorage)
+        .loadOrCreateIdentity();
+    final legacyJson = original.toJson()
+      ..remove('schemaVersion')
+      ..remove('keyVersion')
+      ..remove('recordBinding')
+      ..remove('encryptionPublicKey')
+      ..remove('encryptionPrivateKey');
+    final storage = _FakeSecureStorage(values: {
+      'rumi.device.identity.v1': jsonEncode(legacyJson),
+    });
+
+    final migrated =
+        await MobileDeviceStore(storage: storage).loadOrCreateIdentity();
+
+    expect(migrated.deviceId, original.deviceId);
+    expect(migrated.publicKey, original.publicKey);
+    expect(migrated.privateKey, original.privateKey);
+    expect(migrated.encryptionPublicKey, startsWith('x25519:'));
+    expect(migrated.schemaVersion, DeviceIdentity.currentSchemaVersion);
+    expect(storage.writeCount, 1);
+  });
+
+  test('legacy identity migration blocks when persistence fails', () async {
+    final originalStorage = _FakeSecureStorage();
+    final original = await MobileDeviceStore(storage: originalStorage)
+        .loadOrCreateIdentity();
+    final legacyJson = original.toJson()
+      ..remove('schemaVersion')
+      ..remove('keyVersion')
+      ..remove('recordBinding')
+      ..remove('encryptionPublicKey')
+      ..remove('encryptionPrivateKey');
+    final encodedLegacy = jsonEncode(legacyJson);
+    final storage = _FakeSecureStorage(
+      values: {'rumi.device.identity.v1': encodedLegacy},
+      writeError: StateError('keychain write failed'),
+    );
+
+    await expectLater(
+      MobileDeviceStore(storage: storage).loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.writeFailed,
+        ),
+      ),
+    );
+
+    expect(storage._values['rumi.device.identity.v1'], encodedLegacy);
+  });
+
+  test('stored public key mismatch is rejected cryptographically', () async {
+    final storage = _FakeSecureStorage();
+    final original =
+        await MobileDeviceStore(storage: storage).loadOrCreateIdentity();
+    final other = await MobileDeviceStore(storage: _FakeSecureStorage())
+        .loadOrCreateIdentity();
+    final tampered = original.toJson()
+      ..['publicKey'] = other.publicKey
+      ..['recordBinding'] = other.recordBinding;
+    storage._values['rumi.device.identity.v1'] = jsonEncode(tampered);
+
+    await expectLater(
+      MobileDeviceStore(storage: storage).loadOrCreateIdentity(),
+      throwsA(
+        isA<DeviceIdentityStorageException>().having(
+          (error) => error.state,
+          'state',
+          DeviceIdentityStorageState.cryptographicallyInvalid,
+        ),
+      ),
+    );
+
+    expect(storage.writeCount, 1);
+  });
+
+  test('identity remains stable after store restart', () async {
+    final storage = _FakeSecureStorage();
+    final first =
+        await MobileDeviceStore(storage: storage).loadOrCreateIdentity();
+    final restarted =
+        await MobileDeviceStore(storage: storage).loadOrCreateIdentity();
+
+    expect(restarted.deviceId, first.deviceId);
+    expect(restarted.publicKey, first.publicKey);
+    expect(restarted.encryptionPublicKey, first.encryptionPublicKey);
+    expect(restarted.keyVersion, first.keyVersion);
+    expect(storage.writeCount, 1);
   });
 
   test('decrypts encrypted token delivery envelope', () async {

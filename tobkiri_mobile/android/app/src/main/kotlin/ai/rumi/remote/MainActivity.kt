@@ -608,7 +608,7 @@ private class RumiSecureStorage(context: Context) {
     fun read(key: String): String? {
         val encoded = prefs.getString(key, null) ?: return null
         val payload = Base64.decode(encoded, Base64.NO_WRAP)
-        if (payload.size < IV_SIZE + 1) return null
+        require(payload.size >= IV_SIZE + 1) { "Corrupt secure storage value" }
         val iv = payload.copyOfRange(0, IV_SIZE)
         val ciphertext = payload.copyOfRange(IV_SIZE, payload.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -624,11 +624,15 @@ private class RumiSecureStorage(context: Context) {
             .put(cipher.iv)
             .put(ciphertext)
             .array()
-        prefs.edit().putString(key, Base64.encodeToString(payload, Base64.NO_WRAP)).apply()
+        check(
+            prefs.edit()
+                .putString(key, Base64.encodeToString(payload, Base64.NO_WRAP))
+                .commit(),
+        ) { "Secure storage write failed" }
     }
 
     fun delete(key: String) {
-        prefs.edit().remove(key).apply()
+        check(prefs.edit().remove(key).commit()) { "Secure storage delete failed" }
     }
 
     private fun secretKey(): SecretKey {

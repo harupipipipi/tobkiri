@@ -2,74 +2,15 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../settings/api_config_store.dart';
+import 'device_identity_store.dart';
 
-class DeviceIdentity {
-  const DeviceIdentity({
-    required this.deviceId,
-    required this.deviceLabel,
-    required this.publicKey,
-    this.encryptionPublicKey = '',
-    this.encryptionPrivateKey = '',
-    this.privateKey = '',
-    this.keyType = 'ed25519',
-  });
-
-  final String deviceId;
-  final String deviceLabel;
-  final String publicKey;
-  final String encryptionPublicKey;
-  final String encryptionPrivateKey;
-  final String privateKey;
-  final String keyType;
-
-  bool get canSignApproval =>
-      keyType == 'ed25519' &&
-      publicKey.trim().startsWith('ed25519:') &&
-      privateKey.trim().isNotEmpty;
-  bool get canDecryptTokenDelivery =>
-      encryptionPublicKey.trim().startsWith('x25519:') &&
-      encryptionPrivateKey.trim().isNotEmpty;
-
-  Map<String, dynamic> toJson() => {
-        'deviceId': deviceId,
-        'deviceLabel': deviceLabel,
-        'publicKey': publicKey,
-        'encryptionPublicKey': encryptionPublicKey,
-        'encryptionPrivateKey': encryptionPrivateKey,
-        'privateKey': privateKey,
-        'keyType': keyType,
-      };
-
-  factory DeviceIdentity.fromJson(Map<String, dynamic> json) {
-    return DeviceIdentity(
-      deviceId: json['deviceId'] as String? ?? '',
-      deviceLabel: json['deviceLabel'] as String? ?? '',
-      publicKey: json['publicKey'] as String? ?? '',
-      encryptionPublicKey: json['encryptionPublicKey'] as String? ?? '',
-      encryptionPrivateKey: json['encryptionPrivateKey'] as String? ?? '',
-      privateKey: json['privateKey'] as String? ?? '',
-      keyType: json['keyType'] as String? ?? 'ed25519',
-    );
-  }
-
-  DeviceIdentity copyWith({
-    String? encryptionPublicKey,
-    String? encryptionPrivateKey,
-  }) {
-    return DeviceIdentity(
-      deviceId: deviceId,
-      deviceLabel: deviceLabel,
-      publicKey: publicKey,
-      encryptionPublicKey: encryptionPublicKey ?? this.encryptionPublicKey,
-      encryptionPrivateKey: encryptionPrivateKey ?? this.encryptionPrivateKey,
-      privateKey: privateKey,
-      keyType: keyType,
-    );
-  }
-}
+export 'device_identity_store.dart'
+    show
+        DeviceIdentity,
+        DeviceIdentityStorageException,
+        DeviceIdentityStorageState;
 
 class PairedDevice {
   const PairedDevice({
@@ -149,16 +90,6 @@ class PairedDevice {
       pairingId: json['pairingId'] as String? ?? '',
     );
   }
-}
-
-class _EncryptionKeyPair {
-  const _EncryptionKeyPair({
-    required this.publicKey,
-    required this.privateKey,
-  });
-
-  final String publicKey;
-  final String privateKey;
 }
 
 String friendlyPcLabel(String? label, String baseUrl) {
@@ -347,7 +278,6 @@ class MobileDeviceStore {
         _legacyStorage = legacyStorage ??
             (storage == null ? LegacyFlutterSecureStorage() : null);
 
-  static const _identityKey = 'rumi.device.identity.v1';
   static const _pairedKey = 'rumi.paired_device.v1';
   static const _pairedListKey = 'rumi.paired_devices.v1';
   static const _legacyPcKey = 'rumi.pc_connection.v1';
@@ -356,7 +286,7 @@ class MobileDeviceStore {
 
   final SecureKeyValueStorage _storage;
   final SecureKeyValueStorage? _legacyStorage;
-  final _uuid = const Uuid();
+  DurableDeviceIdentityStore? _identityStore;
 
   Future<DeviceIdentity> loadOrCreateIdentity() async {
     try {
@@ -397,47 +327,6 @@ class MobileDeviceStore {
       keyPair: keyPair,
     );
     return _encodeBase64Url(signature.bytes);
-  }
-
-  Future<DeviceIdentity> _createIdentity() async {
-    final signingKeyPair = await Ed25519().newKeyPair();
-    final signingKeyPairData = await signingKeyPair.extract();
-    final signingPublicKey = await signingKeyPair.extractPublicKey();
-    final encryption = await _createEncryptionKeyPair();
-    return DeviceIdentity(
-      deviceId: 'mobile-${_uuid.v4().substring(0, 12)}',
-      deviceLabel: 'Rumi Mobile',
-      publicKey: 'ed25519:${_encodeBase64Url(signingPublicKey.bytes)}',
-      encryptionPublicKey: encryption.publicKey,
-      encryptionPrivateKey: encryption.privateKey,
-      privateKey: _encodeBase64Url(signingKeyPairData.bytes),
-      keyType: 'ed25519',
-    );
-  }
-
-  Future<DeviceIdentity> _ensureEncryptionKey(DeviceIdentity identity) async {
-    if (identity.canDecryptTokenDelivery) return identity;
-    final encryption = await _createEncryptionKeyPair();
-    final upgraded = identity.copyWith(
-      encryptionPublicKey: encryption.publicKey,
-      encryptionPrivateKey: encryption.privateKey,
-    );
-    try {
-      await _storage.write(_identityKey, jsonEncode(upgraded.toJson()));
-    } catch (_) {
-      // ignore secure storage failures
-    }
-    return upgraded;
-  }
-
-  Future<_EncryptionKeyPair> _createEncryptionKeyPair() async {
-    final keyPair = await X25519().newKeyPair();
-    final keyPairData = await keyPair.extract();
-    final publicKey = await keyPair.extractPublicKey();
-    return _EncryptionKeyPair(
-      publicKey: 'x25519:${_encodeBase64Url(publicKey.bytes)}',
-      privateKey: _encodeBase64Url(keyPairData.bytes),
-    );
   }
 
   Future<Map<String, dynamic>> decryptTokenDeliveryEnvelope(

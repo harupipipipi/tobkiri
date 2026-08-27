@@ -633,10 +633,15 @@ private final class RumiKeychainStorage {
     guard status == errSecSuccess else {
       throw keychainError(status)
     }
-    guard let data = item as? Data else {
-      return nil
+    guard let data = item as? Data,
+          let value = String(data: data, encoding: .utf8) else {
+      throw NSError(
+        domain: "ai.rumi.remote.keychain",
+        code: Int(errSecDecode),
+        userInfo: [NSLocalizedDescriptionKey: "Corrupt secure storage value"]
+      )
     }
-    return String(data: data, encoding: .utf8)
+    return value
   }
 
   func write(key: String, value: String) throws {
