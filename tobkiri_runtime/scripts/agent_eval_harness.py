@@ -139,6 +139,7 @@ def run_suite(
     """Run a validated suite and atomically write one replayable result artifact."""
     normalized = _validate_suite(suite)
     suite_id = str(normalized["suite_id"])
+    results = [_run_task(task) for task in normalized["tasks"]]
     output_root = _prepare_output_root(output_root)
     run_id = (
         dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
@@ -146,7 +147,6 @@ def run_suite(
     run_directory = output_root / f"{suite_id}-{run_id}"
     run_directory.mkdir(mode=0o700)
 
-    results = [_run_task(task) for task in normalized["tasks"]]
     passed = sum(result.passed for result in results)
     artifact = {
         "schema": ARTIFACT_SCHEMA,

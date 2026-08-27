@@ -30,6 +30,12 @@ registered in-process stub solver, needs no cloud keys or network, and covers
 exact response, artifact diff, and tool/audit trace scoring. Failed tasks can
 be replayed from `result.json` with the same finite fixtures.
 
+```bash
+python scripts/agent_eval_harness.py smoke --output-dir /tmp/tobkiri-evals
+python scripts/agent_eval_harness.py replay /path/to/result.json \
+  --output-dir /tmp/tobkiri-eval-replays
+```
+
 The runner intentionally cannot load arbitrary solver modules, start commands,
 or invoke host tools. A future defaultspack, browser, mobile, or external-model
 solver must enter through the canonical V4 Broker, Authority, approval, audit,
