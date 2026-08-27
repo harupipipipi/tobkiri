@@ -11,6 +11,7 @@ import threading
 import time
 from contextlib import contextmanager
 from collections.abc import Iterator
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -29,6 +30,7 @@ _MAX_POLICY_STREAM_BYTES = 256 * 1024 * 1024
 _PROCESS_TERM_GRACE_SECONDS = 0.5
 _PROCESS_REAP_GRACE_SECONDS = 0.5
 _IO_JOIN_GRACE_SECONDS = 0.5
+_ALLOWED_STDOUT_DECODINGS = frozenset({"utf-8", "windows-wsl-list"})
 _BACKEND_RESULT_KEYS = frozenset(
     {
         "command",
@@ -69,6 +71,7 @@ class ProcessExecutionPolicy:
     redact_values: tuple[str, ...] = ()
     allow_path_search: bool = False
     allow_inherited_readonly_fds: bool = False
+    stdout_decoding: str = "utf-8"
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,9 @@ class BoundedProcessResult:
     stderr_truncated: bool
     attestation: HostProcessAttestation
     transport_error: str | None = None
+    stdout_decoding: str = "utf-8-replace"
+    stdout_decoding_error: str | None = None
+    stderr_present: bool = False
 
     @property
     def completed(self) -> bool:
@@ -444,7 +450,7 @@ class HostBoundedProcessRunner:
                 payload.get("error_type") or payload.get("error") or "provider_unavailable"
             )
             transport_error, _ = self._redacted_bounded_text(
-                raw_transport_error.encode("utf-8", errors="replace"),
+                raw_transport_error,
                 policy.max_stderr_bytes,
                 policy,
             )
@@ -614,6 +620,8 @@ class HostBoundedProcessRunner:
             or policy.max_timeout_seconds > 3600
         ):
             raise ValueError("process policy violates the bounded schema")
+        if policy.stdout_decoding not in _ALLOWED_STDOUT_DECODINGS:
+            raise ValueError("process stdout decoding violates the bounded schema")
         if (
             not isinstance(policy.redact_values, tuple)
             or len(policy.redact_values) > _MAX_REDACT_VALUES
@@ -935,7 +943,17 @@ class HostBoundedProcessRunner:
     @staticmethod
     def _redaction_lookahead_bytes(policy: ProcessExecutionPolicy) -> int:
         return max(
-            (len(value.encode("utf-8")) - 1 for value in policy.redact_values if value),
+            (
+                max(
+                    len(value.encode("utf-8")),
+                    len(value.encode("utf-16-le"))
+                    if policy.stdout_decoding == "windows-wsl-list"
+                    else 0,
+                )
+                - 1
+                for value in policy.redact_values
+                if value
+            ),
             default=0,
         )
 
@@ -953,13 +971,17 @@ class HostBoundedProcessRunner:
         transport_error: str | None,
         policy: ProcessExecutionPolicy,
     ) -> BoundedProcessResult:
-        stdout_text, redacted_stdout_truncated = cls._redacted_bounded_text(
+        stdout_text, stdout_decoding, stdout_decoding_error = cls._decode_stdout(
             stdout,
+            policy,
+        )
+        stdout_text, redacted_stdout_truncated = cls._redacted_bounded_text(
+            stdout_text,
             policy.max_stdout_bytes,
             policy,
         )
         stderr_text, redacted_stderr_truncated = cls._redacted_bounded_text(
-            stderr,
+            stderr.decode("utf-8", errors="replace"),
             policy.max_stderr_bytes,
             policy,
         )
@@ -972,19 +994,71 @@ class HostBoundedProcessRunner:
             stderr_truncated=stderr_truncated or redacted_stderr_truncated,
             attestation=attestation,
             transport_error=transport_error,
+            stdout_decoding=stdout_decoding,
+            stdout_decoding_error=stdout_decoding_error,
+            stderr_present=bool(stderr),
         )
 
     @classmethod
     def _redacted_bounded_text(
         cls,
-        value: bytes,
+        value: str,
         limit: int,
         policy: ProcessExecutionPolicy,
     ) -> tuple[str, bool]:
-        redacted = cls._redact(value.decode("utf-8", errors="replace"), policy)
+        redacted = cls._redact(value, policy)
         encoded = redacted.encode("utf-8")
         clipped, truncated = cls._bounded_bytes(encoded, limit)
         return clipped.decode("utf-8", errors="replace"), truncated
+
+    @classmethod
+    def _decode_stdout(
+        cls,
+        value: bytes,
+        policy: ProcessExecutionPolicy,
+    ) -> tuple[str, str, str | None]:
+        if policy.stdout_decoding == "utf-8":
+            return value.decode("utf-8", errors="replace"), "utf-8-replace", None
+        return cls._decode_windows_wsl_list(value)
+
+    @staticmethod
+    def _decode_windows_wsl_list(value: bytes) -> tuple[str, str, str | None]:
+        method = "utf-8"
+        payload = value
+        try:
+            if value.startswith(b"\xff\xfe"):
+                method = "utf-16-le-bom"
+                payload = value[2:]
+                if len(payload) % 2:
+                    return "", method, "truncated_code_unit"
+                decoded = payload.decode("utf-16-le", errors="strict")
+            elif value.startswith(b"\xfe\xff"):
+                return "", "utf-16-be-bom", "unsupported_byte_order"
+            elif value.startswith(b"\xef\xbb\xbf"):
+                method = "utf-8-bom"
+                decoded = value.decode("utf-8-sig", errors="strict")
+            elif b"\x00" not in value:
+                try:
+                    decoded = value.decode("utf-8", errors="strict")
+                except UnicodeDecodeError:
+                    method = "utf-16-le"
+                    if len(value) % 2:
+                        return "", method, "truncated_code_unit"
+                    decoded = value.decode("utf-16-le", errors="strict")
+            else:
+                method = "utf-16-le"
+                if len(value) % 2:
+                    return "", method, "truncated_code_unit"
+                decoded = value.decode("utf-16-le", errors="strict")
+        except UnicodeDecodeError:
+            return "", method, "invalid_encoding"
+
+        if any(
+            unicodedata.category(character) == "Cc" and character not in {"\t", "\r", "\n"}
+            for character in decoded
+        ):
+            return "", method, "control_character"
+        return decoded, method, None
 
     @staticmethod
     def _redact(value: str, policy: ProcessExecutionPolicy) -> str:

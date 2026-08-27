@@ -912,7 +912,7 @@ def test_windows_wsl_provider_does_not_claim_existing_user_ubuntu_distribution(m
     assert "managed_guest" in status.missing_requirements
 
 
-def test_windows_wsl_provider_detects_nul_separated_rumi_distribution(monkeypatch) -> None:
+def test_windows_wsl_provider_requires_exact_normalized_distribution_name(monkeypatch) -> None:
     monkeypatch.setattr(
         "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
         lambda: "Windows",
@@ -920,10 +920,7 @@ def test_windows_wsl_provider_detects_nul_separated_rumi_distribution(monkeypatc
     fake = FakeManagedUbuntuCli(mode="wsl", runtime_name=DEFAULT_WSL_RUNTIME_NAME)
     fake.guest_exists = True
     fake.deps_installed = True
-    fake.wsl_list_stdout = (
-        "\ufeffd\x00o\x00c\x00k\x00e\x00r\x00-\x00d\x00e\x00s\x00k\x00t\x00o\x00p\x00\n\x00"
-        "R\x00u\x00m\x00i\x00U\x00b\x00u\x00n\x00t\x00u\x00\n\x00"
-    )
+    fake.wsl_list_stdout = "docker-desktop\r\n  RumiUbuntu  \r\n"
     provider = WindowsWslProvider(command_path="C:/Windows/System32/wsl.exe", runner=fake)
 
     status = provider.doctor(RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec"})))
@@ -931,6 +928,111 @@ def test_windows_wsl_provider_detects_nul_separated_rumi_distribution(monkeypatc
     assert status.ready is True
     assert "managed_guest" not in status.missing_requirements
     assert not any("--import" in command for command, _input_text, _timeout in fake.calls)
+
+
+@pytest.mark.parametrize(
+    "probe_result",
+    (
+        GuestCommandResult(
+            returncode=0,
+            stdout_decoding="utf-16-le",
+            stdout_decoding_error="truncated_code_unit",
+        ),
+        GuestCommandResult(
+            returncode=0,
+            stdout="RumiUbuntu\n",
+            stdout_truncated=True,
+        ),
+        GuestCommandResult(
+            returncode=0,
+            stdout="RumiUbuntu\n",
+            stderr="localized warning with host data",
+        ),
+        GuestCommandResult(returncode=1, stderr="host-specific failure"),
+    ),
+)
+def test_windows_wsl_provider_reports_invalid_probe_without_claiming_guest_missing(
+    monkeypatch,
+    probe_result: GuestCommandResult,
+) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
+
+    def runner(command, input_text, timeout):
+        del input_text, timeout
+        if list(command)[1:] == ["--version"]:
+            return GuestCommandResult(returncode=0, stdout="WSL version: 2.0\n")
+        return probe_result
+
+    provider = WindowsWslProvider(
+        command_path="C:/Windows/System32/wsl.exe",
+        runner=runner,
+    )
+
+    status = provider.doctor(RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec"})))
+
+    assert status.ready is False
+    assert "managed_guest_probe" in status.missing_requirements
+    assert "managed_guest" not in status.missing_requirements
+    diagnostic = next(
+        item for item in status.diagnostics if item.code == "WINDOWS_WSL_GUEST_PROBE_INVALID"
+    )
+    assert set(diagnostic.details) == {
+        "command_exit",
+        "decode_method",
+        "stderr_present",
+        "stdout_truncated",
+    }
+    assert "host" not in repr(diagnostic.details)
+
+
+def test_windows_wsl_provider_does_not_import_after_invalid_probe(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
+    calls: list[list[str]] = []
+
+    def runner(command, input_text, timeout):
+        del input_text, timeout
+        cmd = list(command)
+        calls.append(cmd)
+        return GuestCommandResult(
+            returncode=0,
+            stdout_decoding="utf-16-le",
+            stdout_decoding_error="truncated_code_unit",
+        )
+
+    provider = WindowsWslProvider(
+        command_path="C:/Windows/System32/wsl.exe",
+        runner=runner,
+    )
+
+    result = provider.ensure(
+        EnsureRuntimeRequest(provider_id="windows_wsl"),
+        NullProgressSink(),
+    )
+
+    assert result.ok is False
+    assert result.diagnostics[0].code == "WINDOWS_WSL_GUEST_PROBE_INVALID"
+    assert not any("--import" in command for command in calls)
+
+
+def test_windows_wsl_provider_does_not_casefold_distribution_names(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
+    fake = FakeManagedUbuntuCli(mode="wsl", runtime_name=DEFAULT_WSL_RUNTIME_NAME)
+    fake.wsl_list_stdout = "rumiubuntu\n"
+    provider = WindowsWslProvider(command_path="C:/Windows/System32/wsl.exe", runner=fake)
+
+    status = provider.doctor(RuntimeRequirements())
+
+    assert status.ready is False
+    assert "managed_guest" in status.missing_requirements
 
 
 def test_windows_wsl_provider_downloads_rumi_rootfs_when_not_configured(

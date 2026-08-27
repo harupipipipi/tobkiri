@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import urllib.parse
 import urllib.request
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -143,6 +144,10 @@ class GuestCommandResult:
     returncode: int
     stdout: str = ""
     stderr: str = ""
+    stdout_decoding: str = "injected-text"
+    stdout_decoding_error: str | None = None
+    stdout_truncated: bool = False
+    stderr_present: bool | None = None
 
 
 CommandRunner = Callable[[Sequence[str], str | None, float | None], GuestCommandResult]
@@ -150,11 +155,21 @@ RootfsDownloader = Callable[[str, str], None]
 ChecksumFetcher = Callable[[str], str]
 
 
+class _ManagedGuestProbeInvalid(SandboxContractError):
+    """A retryable launcher probe failure that must not mean guest absence."""
+
+
 def _wsl_distribution_names(output: str) -> tuple[str, ...]:
-    # Some Windows WSL builds can return UTF-16-like text through subprocess
-    # decoding, leaving NUL separators in distro names such as R\0u\0m\0i...
-    normalized = str(output or "").replace("\x00", "").replace("\ufeff", "")
-    return tuple(line.strip() for line in normalized.splitlines() if line.strip())
+    normalized = str(output or "")
+    if normalized.startswith("\ufeff"):
+        normalized = normalized[1:]
+    if "\ufeff" in normalized or any(
+        unicodedata.category(character) == "Cc" and character not in {"\t", "\r", "\n"}
+        for character in normalized
+    ):
+        raise ValueError("WSL distribution output contains control characters")
+    normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+    return tuple(line.strip() for line in normalized.split("\n") if line.strip())
 
 
 class ManagedUbuntuProvider:
@@ -213,8 +228,22 @@ class ManagedUbuntuProvider:
         guest_ready = False
         missing_deps: tuple[str, ...] = ()
         if platform_ok and command_path is not None:
-            guest_ready = self._guest_exists(command_path)
-            if not guest_ready:
+            guest_probe_error: _ManagedGuestProbeInvalid | None = None
+            try:
+                guest_ready = self._guest_exists(command_path)
+            except _ManagedGuestProbeInvalid as exc:
+                guest_probe_error = exc
+            if guest_probe_error is not None:
+                missing.append("managed_guest_probe")
+                diagnostics.append(
+                    Diagnostic(
+                        code=guest_probe_error.code,
+                        message=guest_probe_error.message,
+                        severity="warning",
+                        details=guest_probe_error.details,
+                    )
+                )
+            elif not guest_ready:
                 missing.append("managed_guest")
                 diagnostics.append(
                     Diagnostic(
@@ -1050,9 +1079,45 @@ class WindowsWslProvider(ManagedUbuntuProvider):
 
     def _guest_exists(self, command_path: str) -> bool:
         result = self._run((command_path, "-l", "-q"), timeout=10)
-        return result.returncode == 0 and self._runtime_name.casefold() in {
-            name.casefold() for name in _wsl_distribution_names(result.stdout)
-        }
+        stderr_present = (
+            result.stderr_present if result.stderr_present is not None else bool(result.stderr)
+        )
+        if (
+            result.returncode != 0
+            or result.stdout_decoding_error is not None
+            or result.stdout_truncated
+            or stderr_present
+        ):
+            raise self._invalid_guest_probe(result, stderr_present=stderr_present)
+        try:
+            names = _wsl_distribution_names(result.stdout)
+        except ValueError as exc:
+            raise self._invalid_guest_probe(
+                result,
+                stderr_present=stderr_present,
+            ) from exc
+        return self._runtime_name in names
+
+    @staticmethod
+    def _invalid_guest_probe(
+        result: GuestCommandResult,
+        *,
+        stderr_present: bool,
+    ) -> _ManagedGuestProbeInvalid:
+        return _ManagedGuestProbeInvalid(
+            code="WINDOWS_WSL_GUEST_PROBE_INVALID",
+            message=(
+                "WSL distribution discovery returned an invalid or ambiguous result; "
+                "retry before creating a managed guest."
+            ),
+            status_code=503,
+            details={
+                "decode_method": result.stdout_decoding,
+                "command_exit": result.returncode,
+                "stderr_present": stderr_present,
+                "stdout_truncated": result.stdout_truncated,
+            },
+        )
 
     def _ensure_guest(self, command_path: str) -> None:
         if self._guest_exists(command_path):
@@ -1587,11 +1652,19 @@ class ManagedUbuntuGuestAgent:
 def _subprocess_runner(
     command: Sequence[str], input_text: str | None, timeout: float | None
 ) -> GuestCommandResult:
+    argv = tuple(command)
+    executable_name = os.path.basename(str(argv[0]).replace("\\", "/")).casefold()
+    stdout_decoding = (
+        "windows-wsl-list"
+        if executable_name == "wsl.exe" and argv[1:] == ("-l", "-q")
+        else "utf-8"
+    )
     try:
         completed = run_cancellable_subprocess(
-            command,
+            argv,
             input_text=input_text,
             timeout=timeout,
+            stdout_decoding=stdout_decoding,
         )
     except subprocess.TimeoutExpired as exc:
         raise TimeoutError(str(exc)) from exc
@@ -1599,6 +1672,10 @@ def _subprocess_runner(
         returncode=int(completed.returncode),
         stdout=str(completed.stdout or ""),
         stderr=str(completed.stderr or ""),
+        stdout_decoding=completed.stdout_decoding,
+        stdout_decoding_error=completed.stdout_decoding_error,
+        stdout_truncated=completed.stdout_truncated,
+        stderr_present=completed.stderr_present,
     )
 
 

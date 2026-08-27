@@ -26,6 +26,33 @@ class RuntimeOperationCancelled(Exception):
     """Raised when a managed runtime operation is cancelled."""
 
 
+class BoundedCompletedProcess(subprocess.CompletedProcess[str]):
+    """Completed process plus safe Host-owned output metadata."""
+
+    stdout_decoding: str
+    stdout_decoding_error: str | None
+    stdout_truncated: bool
+    stderr_present: bool
+
+    def __init__(
+        self,
+        *,
+        args: Sequence[str],
+        returncode: int,
+        stdout: str,
+        stderr: str,
+        stdout_decoding: str,
+        stdout_decoding_error: str | None,
+        stdout_truncated: bool,
+        stderr_present: bool,
+    ) -> None:
+        super().__init__(args=args, returncode=returncode, stdout=stdout, stderr=stderr)
+        self.stdout_decoding = stdout_decoding
+        self.stdout_decoding_error = stdout_decoding_error
+        self.stdout_truncated = stdout_truncated
+        self.stderr_present = stderr_present
+
+
 class CancellationToken:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -103,7 +130,8 @@ def run_cancellable_subprocess(
     *,
     input_text: str | None = None,
     timeout: float | None = None,
-) -> subprocess.CompletedProcess[str]:
+    stdout_decoding: str = "utf-8",
+) -> BoundedCompletedProcess:
     token = current_cancellation_token()
     if token is not None:
         token.raise_if_cancelled()
@@ -126,6 +154,7 @@ def run_cancellable_subprocess(
                 max_stderr_bytes=_DEFAULT_MAX_OUTPUT_BYTES,
                 max_timeout_seconds=timeout_seconds,
                 redact_values=_environment_redact_values(environment),
+                stdout_decoding=stdout_decoding,
             ),
             cancel_event=token.cancel_event if token is not None else None,
         )
@@ -140,11 +169,15 @@ def run_cancellable_subprocess(
         )
     if result.exit_code is None:
         raise OSError(result.transport_error or "Host process transport failed")
-    return subprocess.CompletedProcess(
+    return BoundedCompletedProcess(
         args=list(argv),
         returncode=int(result.exit_code),
         stdout=result.stdout,
         stderr=result.stderr,
+        stdout_decoding=result.stdout_decoding,
+        stdout_decoding_error=result.stdout_decoding_error,
+        stdout_truncated=result.stdout_truncated,
+        stderr_present=result.stderr_present,
     )
 
 

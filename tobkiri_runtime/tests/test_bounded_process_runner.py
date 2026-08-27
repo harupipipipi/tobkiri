@@ -92,6 +92,90 @@ def test_runner_accepts_bounded_binary_stdin(tmp_path: Path) -> None:
     assert result.stdout.strip() == payload.hex()
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected", "decoding"),
+    (
+        (
+            b"\xff\xfe" + "docker-desktop\r\nRumiUbuntu\r\n".encode("utf-16-le"),
+            "docker-desktop\r\nRumiUbuntu\r\n",
+            "utf-16-le-bom",
+        ),
+        (
+            "Ubuntu\r\nRumiUbuntu\r\n".encode("utf-16-le"),
+            "Ubuntu\r\nRumiUbuntu\r\n",
+            "utf-16-le",
+        ),
+        (
+            "Ubuntu\r\nRumiUbuntu\r\n".encode("utf-8"),
+            "Ubuntu\r\nRumiUbuntu\r\n",
+            "utf-8",
+        ),
+        (
+            "開発環境\r\nRumiUbuntu\r\n".encode("utf-16-le"),
+            "開発環境\r\nRumiUbuntu\r\n",
+            "utf-16-le",
+        ),
+    ),
+)
+def test_runner_decodes_windows_wsl_list_output_at_host_boundary(
+    tmp_path: Path,
+    payload: bytes,
+    expected: str,
+    decoding: str,
+) -> None:
+    argv = (
+        sys.executable,
+        "-c",
+        "import sys; sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))",
+        payload.hex(),
+    )
+
+    result = HostBoundedProcessRunner().run_local(
+        argv=argv,
+        cwd=tmp_path,
+        stdin=None,
+        timeout_seconds=1,
+        environment={},
+        policy=_policy(argv, tmp_path, stdout_decoding="windows-wsl-list"),
+    )
+
+    assert result.stdout == expected
+    assert result.stdout_decoding == decoding
+    assert result.stdout_decoding_error is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    (
+        (b"R\x00u", "truncated_code_unit"),
+        (b"R\x00u\x00m\x00i\x00\x00\x00", "control_character"),
+    ),
+)
+def test_runner_rejects_malformed_windows_wsl_list_output(
+    tmp_path: Path,
+    payload: bytes,
+    expected_error: str,
+) -> None:
+    argv = (
+        sys.executable,
+        "-c",
+        "import sys; sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))",
+        payload.hex(),
+    )
+
+    result = HostBoundedProcessRunner().run_local(
+        argv=argv,
+        cwd=tmp_path,
+        stdin=None,
+        timeout_seconds=1,
+        environment={},
+        policy=_policy(argv, tmp_path, stdout_decoding="windows-wsl-list"),
+    )
+
+    assert result.stdout == ""
+    assert result.stdout_decoding_error == expected_error
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX descriptor inheritance")
 def test_runner_inherits_only_explicit_readonly_regular_descriptor(
     tmp_path: Path,
