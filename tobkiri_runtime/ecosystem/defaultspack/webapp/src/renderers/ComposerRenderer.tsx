@@ -96,6 +96,12 @@ import {
   filterModelProfilesBySelector,
   modelSelectorSchemaForSurface,
 } from "../features/models";
+import {
+  thinkingControlCandidates,
+  thinkingControlForProfile,
+  thinkingControlInputError,
+  thinkingControlMode,
+} from "../features/models/thinkingControl";
 import { ActionApprovalControl } from "../features/tools/ActionApprovalControl";
 import { ProjectPicker } from "../features/projects/ProjectPicker";
 import { ToolOverrideChips } from "../features/tools/ToolOverrideChips";
@@ -2709,6 +2715,8 @@ export function ComposerRenderer({
   const [textareaCollapsed, setTextareaCollapsed] = useState(false);
   const [textareaCanCollapse, setTextareaCanCollapse] = useState(false);
   const [textareaFocused, setTextareaFocused] = useState(false);
+  const [thinkingInputValue, setThinkingInputValue] = useState(thinkingLevel ?? "");
+  const [thinkingInputError, setThinkingInputError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2729,11 +2737,18 @@ export function ComposerRenderer({
   const selectedModelRouteLabel = modelRouteReason(selectedProfile) || selectedProviderLabel;
   const modelControlWidth = composerModelControlWidth(profileName);
   const visibleModelStatusIndicators = modelStatusIndicators.filter(Boolean);
-  const levels = selectedProfile?.supports_thinking
-    ? selectedProfile.thinking_levels?.length
-      ? selectedProfile.thinking_levels
-      : ["low", "medium", "high"]
-    : [];
+  const thinkingControl = thinkingControlForProfile(selectedProfile);
+  const thinkingMode = thinkingControlMode(selectedProfile);
+  const levels = thinkingControlCandidates(selectedProfile);
+  useEffect(() => {
+    setThinkingInputValue(thinkingLevel ?? "");
+    setThinkingInputError(null);
+  }, [selectedProfile?.profile_id, thinkingLevel]);
+  const commitThinkingInput = () => {
+    const error = thinkingControlInputError(selectedProfile, thinkingInputValue);
+    setThinkingInputError(error);
+    if (!error) onThinkingLevelChange(thinkingInputValue.trim());
+  };
   const contextDegrees = Math.round(contextUsage.ratio * 360);
   const contextTitle =
     contextUsage.maxContext < 0
@@ -4115,28 +4130,59 @@ export function ComposerRenderer({
       slot: "trailing",
       homeSlot: "toolbar-trailing",
       order: 20,
-      visible: levels.length > 0,
+      visible: thinkingMode !== "none",
       mobile: "hide",
       width: COMPOSER_CHROME_WIDTHS.thinking,
       className: "rumi-composer-dock-control",
       render: () => (
         <label className={`${COMPOSER_CONTROL_SURFACE_CLASSNAME} cursor-pointer justify-between gap-1.5 text-[11px] font-medium text-zinc-500`}>
-          <select
-            value={thinkingLevel ?? levels[0]}
-            onChange={(event) => onThinkingLevelChange(event.target.value)}
-            disabled={isGenerating}
-            tabIndex={chromeButtonTabIndex}
-            className="h-full w-full cursor-pointer appearance-none bg-transparent text-right text-[11px] font-medium text-zinc-300 outline-none transition-colors hover:text-zinc-100 disabled:opacity-50"
-            aria-label="Thinking level"
-            title="Thinking level"
-          >
-            {levels.map((level) => (
-              <option key={level} value={level} className="bg-zinc-900 text-zinc-100">
-                {THINKING_LABELS[level] ?? level}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={12} className="pointer-events-none flex-shrink-0 text-zinc-500" />
+          {thinkingMode === "enum" ? (
+            <>
+              <select
+                value={thinkingLevel ?? levels[0]}
+                onChange={(event) => onThinkingLevelChange(event.target.value)}
+                disabled={isGenerating}
+                tabIndex={chromeButtonTabIndex}
+                className="h-full w-full cursor-pointer appearance-none bg-transparent text-right text-[11px] font-medium text-zinc-300 outline-none transition-colors hover:text-zinc-100 disabled:opacity-50"
+                aria-label="Thinking level"
+                title="Thinking control"
+              >
+                {levels.map((level) => (
+                  <option key={level} value={level} className="bg-zinc-900 text-zinc-100">
+                    {THINKING_LABELS[level] ?? level}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={12} className="pointer-events-none flex-shrink-0 text-zinc-500" />
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                inputMode={thinkingMode === "number" ? "decimal" : "text"}
+                value={thinkingInputValue}
+                onChange={(event) => {
+                  setThinkingInputValue(event.target.value);
+                  setThinkingInputError(thinkingControlInputError(selectedProfile, event.target.value));
+                }}
+                onBlur={commitThinkingInput}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitThinkingInput();
+                }}
+                disabled={isGenerating}
+                tabIndex={chromeButtonTabIndex}
+                className="h-full w-full bg-transparent text-right text-[11px] font-medium text-zinc-300 outline-none transition-colors hover:text-zinc-100 disabled:opacity-50"
+                aria-label={thinkingMode === "number" ? "Thinking token budget" : "Thinking control"}
+                aria-invalid={Boolean(thinkingInputError)}
+                title={thinkingInputError ?? (
+                  thinkingMode === "number"
+                    ? `Thinking budget${thinkingControl.input_schema?.unit ? ` (${thinkingControl.input_schema.unit})` : ""}`
+                    : "Thinking control"
+                )}
+              />
+              {thinkingInputError && <span className="sr-only" aria-live="polite">{thinkingInputError}</span>}
+            </>
+          )}
         </label>
       ),
     },

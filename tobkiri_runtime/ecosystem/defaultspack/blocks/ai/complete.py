@@ -24,6 +24,7 @@ def run(input_data, context, *, settings_owner=None):
     messages = list(messages)
     tools = input_data.get("tools", [])
     params = dict(input_data.get("params") or {})
+    model_settings_service = ModelRuntimeSettingsService()
     if "thinking_level" not in params:
         params["thinking_level"] = ModelRuntimeSettingsService(
             settings_owner=settings_owner
@@ -31,6 +32,7 @@ def run(input_data, context, *, settings_owner=None):
             profile_id=model,
             conversation_id=input_data.get("conversation_id"),
         )["level"]
+    params = model_settings_service.apply_thinking_control(str(model), params)
 
     # P1-4: Inspector 用のリクエストID を生成
     temporal_context = current_datetime_context(

@@ -23,6 +23,9 @@ from ecosystem.defaultspack.domain.ai_client.model_capability_schema import (
     knowledge_band_for_level,
 )
 from ecosystem.defaultspack.domain.ai_client.model_metadata_schema import context_window_value
+from ecosystem.defaultspack.domain.ai_client.thinking_control import (
+    normalize_thinking_control,
+)
 from ecosystem.defaultspack.domain.ai_client.providers import (
     get_all_known_models,
     get_provider_catalog,
@@ -620,6 +623,7 @@ def _with_legacy_model_fields(model: Dict[str, Any]) -> Dict[str, Any]:
     item["max_context_tokens"] = max_context
     item["supports_thinking"] = supports_thinking
     item["thinking_levels"] = thinking_levels
+    item["thinking_control"] = normalize_thinking_control(item)
     item["default_thinking_level"] = capability_fields.get(
         "default_thinking_level",
         item.get("default_thinking_level", "medium" if supports_thinking else None),
@@ -652,6 +656,7 @@ def _with_legacy_model_fields(model: Dict[str, Any]) -> Dict[str, Any]:
             "max_context": max_context,
             "supports_thinking": supports_thinking,
             "thinking_levels": thinking_levels,
+            "thinking_control": item["thinking_control"],
             "supports_vision": item["supports_vision"],
             "supports_image_input": item["supports_image_input"],
             "supports_audio": item["supports_audio"],
@@ -700,6 +705,7 @@ def _with_legacy_profile_fields(profile: Dict[str, Any]) -> Dict[str, Any]:
         "routing": item.get("routing", {}),
         "request_features": item.get("request_features", {}),
         "thinking": item.get("thinking", {}),
+        "thinking_control": item.get("thinking_control", {}),
         "pricing": item.get("pricing", {}),
         "capabilities": item.get("capabilities", []),
         "supports_vision": item.get("supports_vision"),
@@ -725,6 +731,7 @@ def _with_legacy_profile_fields(profile: Dict[str, Any]) -> Dict[str, Any]:
     item["max_context_tokens"] = enriched["max_context_tokens"]
     item["supports_thinking"] = enriched["supports_thinking"]
     item["thinking_levels"] = enriched["thinking_levels"]
+    item["thinking_control"] = enriched["thinking_control"]
     item["default_thinking_level"] = enriched["default_thinking_level"]
     item["supports_vision"] = enriched["supports_vision"]
     item["supports_image_input"] = enriched["supports_image_input"]

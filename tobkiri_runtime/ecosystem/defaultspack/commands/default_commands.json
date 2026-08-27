@@ -27,13 +27,13 @@
     "id": "think",
     "name": "think",
     "aliases": ["thinking", "t"],
-    "label": "Thinking Level",
-    "description": "Set thinking level.",
+    "label": "Thinking Control",
+    "description": "Set the selected model profile thinking control.",
     "category": "model",
     "visibility": "default",
     "risk": "low",
     "modes": ["chat", "coding", "agent"],
-    "args": [{ "name": "level", "type": "enum", "required": false, "values": ["none", "low", "medium", "high", "xhigh"] }],
+    "args": [{ "name": "level", "type": "string", "required": false }],
     "execution": { "type": "rumi_function", "qualified_name": "defaultspack:ai_set_thinking_level" }
   },
   {
