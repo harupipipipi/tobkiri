@@ -303,8 +303,8 @@ export function TreePreview({
             aria-expanded={item.kind === "folder" ? preview?.nodeId === item.nodeId : undefined}
             aria-controls={preview?.nodeId === item.nodeId ? previewId : undefined}
             tabIndex={index === selectedIndex ? 0 : -1}
-            ref={(node) => { itemRefs.current[index] = node; }}
             onClick={() => onOpenNode(item)}
+            ref={(node) => { itemRefs.current[index] = node; }}
             onKeyDown={(event) => handleTreeKeyDown(event, index)}
             data-testid={`subagent-tree-node-${item.nodeId}`}
             className="flex min-h-11 w-full items-center gap-1.5 rounded px-2 text-left text-[11px] text-zinc-300 hover:bg-zinc-900/80 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
