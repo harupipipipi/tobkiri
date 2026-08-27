@@ -8,12 +8,17 @@ startup profile.  A Launcher must capture and inject a verified
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Reject implicit startup that lacks a Launcher-captured v4 snapshot."""
-    del argv
+    """Expose health diagnostics and reject implicit runtime startup."""
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments == ["--health"]:
+        from app import main as host_main
+
+        return host_main(arguments)
     raise SystemExit(
         "Tobkiri requires a Launcher-injected Pack v4 activation snapshot"
     )

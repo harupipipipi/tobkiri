@@ -103,21 +103,16 @@ class TestHealthFlag(unittest.TestCase):
         from rumi_ai import __main__ as compatibility
 
         with patch.object(app, "main", return_value=1) as host_main:
-            with patch.object(compatibility, "runtime_main") as runtime_main:
-                code = compatibility.main(["--health"])
+            code = compatibility.main(["--health"])
 
         assert code == 1
         host_main.assert_called_once_with(["--health"])
-        runtime_main.assert_not_called()
 
     def test_legacy_module_keeps_non_health_startup_fail_closed(self):
         from rumi_ai import __main__ as compatibility
 
-        with patch.object(compatibility, "runtime_main", return_value=7) as runtime_main:
-            code = compatibility.main(["--headless"])
-
-        assert code == 7
-        runtime_main.assert_called_once_with(["--headless"])
+        with pytest.raises(SystemExit, match="Launcher-injected Pack v4"):
+            compatibility.main(["--headless"])
 
 
 class TestExistingFlagsNotBroken(unittest.TestCase):
