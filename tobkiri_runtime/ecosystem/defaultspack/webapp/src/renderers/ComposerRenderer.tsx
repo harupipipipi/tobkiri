@@ -155,6 +155,10 @@ export function isComposerImeEvent(event: {
   return event.keyCode === 229 || event.nativeEvent?.isComposing === true;
 }
 
+export function isComputerControlToolId(toolId: string): boolean {
+  return toolId === "computer_use" || toolId === "browser_computer";
+}
+
 const THINKING_LABELS: Record<string, string> = {
   none: "なし",
   low: "低",
@@ -2827,12 +2831,7 @@ export function ComposerRenderer({
   const labelForToolTarget = useCallback((target: { kind: string; id: string }) => (
     target.kind === "tool" ? (toolLabelById.get(target.id) ?? target.id) : labelForServiceId(target.id)
   ), [labelForServiceId, toolLabelById]);
-  const computerUseSelected = selectedToolIds.some((toolId) => (
-    toolId === "computer_use"
-    || toolId === "browser_computer"
-    || toolId === "browser_use"
-    || toolId === "browser_companion"
-  ));
+  const computerUseSelected = selectedToolIds.some(isComputerControlToolId);
   const hasAttachedImages = attachedFiles.some((file) => String(file.type ?? "").startsWith("image/"));
   const imageBridgePlanned = hasAttachedImages && !selectedProfile?.supports_vision && !selectedProfile?.supports_image_input;
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;

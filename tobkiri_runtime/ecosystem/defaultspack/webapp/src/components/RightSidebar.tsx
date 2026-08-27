@@ -94,6 +94,24 @@ const PLACEMENT_PANEL_PREFIX = "__placement__:";
 const DEFAULT_TOOL_GROUP_RAIL_LIMIT = 8;
 const RAIL_MENU_GAP = 8;
 
+export const CLOSE_RIGHT_SIDEBAR_PANEL_REQUEST = "__close_right_sidebar_panel__";
+
+export type ToolGroupRailClickAction = "dismiss-panel" | "close-menu" | "open-menu";
+
+export function toolGroupRailClickAction({
+  activeToolGroupId,
+  clickedGroupId,
+  openToolGroupId,
+}: {
+  activeToolGroupId: string | null;
+  clickedGroupId: string;
+  openToolGroupId: string | null;
+}): ToolGroupRailClickAction {
+  if (activeToolGroupId === clickedGroupId) return "dismiss-panel";
+  if (openToolGroupId === clickedGroupId) return "close-menu";
+  return "open-menu";
+}
+
 type ToolSelectionScope = "turn" | "conversation";
 
 type ToolServiceCard = {
@@ -1173,6 +1191,11 @@ export function RightSidebar({
 
   useEffect(() => {
     const requestedId = requestedPanelIdFromActiveItemId(activeItemId);
+    if (requestedId === CLOSE_RIGHT_SIDEBAR_PANEL_REQUEST) {
+      setActivePanel(null);
+      setOpenToolGroupMenu(null);
+      return;
+    }
     const specialPanelIds = new Set([
       "__tool_manager__",
       "__tool_filter_log__",
@@ -2641,7 +2664,17 @@ export function RightSidebar({
                               type="button"
                               tabIndex={buttonTabIndex}
                               onClick={(event) => {
-                                if (openToolGroupMenu === group.id) {
+                                const action = toolGroupRailClickAction({
+                                  activeToolGroupId,
+                                  clickedGroupId: group.id,
+                                  openToolGroupId: openToolGroupMenu,
+                                });
+                                if (action === "dismiss-panel") {
+                                  setActivePanel(null);
+                                  setOpenToolGroupMenu(null);
+                                  return;
+                                }
+                                if (action === "close-menu") {
                                   setOpenToolGroupMenu(null);
                                   return;
                                 }

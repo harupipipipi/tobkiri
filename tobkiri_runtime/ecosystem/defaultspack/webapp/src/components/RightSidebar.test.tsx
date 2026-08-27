@@ -1,18 +1,49 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import {
+  CLOSE_RIGHT_SIDEBAR_PANEL_REQUEST,
   getRailFloatingMenuPosition,
   RightSidebar,
   shouldShowToolManagerEmptyState,
   sidebarActionDisabledReason,
   toolManagerBaseItemsForNameSearch,
+  toolGroupRailClickAction,
 } from "./RightSidebar";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 
 const noop = () => undefined;
+
+test("active tool folder click dismisses its detail before opening the group list", () => {
+  assert.equal(toolGroupRailClickAction({
+    activeToolGroupId: "browser",
+    clickedGroupId: "browser",
+    openToolGroupId: null,
+  }), "dismiss-panel");
+  assert.equal(toolGroupRailClickAction({
+    activeToolGroupId: null,
+    clickedGroupId: "browser",
+    openToolGroupId: "browser",
+  }), "close-menu");
+  assert.equal(toolGroupRailClickAction({
+    activeToolGroupId: null,
+    clickedGroupId: "browser",
+    openToolGroupId: null,
+  }), "open-menu");
+});
+
+test("normal composer sends explicitly dismiss transient sidebar tool details", () => {
+  const appSource = readFileSync(resolve(import.meta.dirname, "..", "App.tsx"), "utf8");
+  const sidebarSource = readFileSync(resolve(import.meta.dirname, "RightSidebar.tsx"), "utf8");
+
+  assert.match(appSource, /setActiveSidebarItemId\(CLOSE_RIGHT_SIDEBAR_PANEL_REQUEST\);\s+setSidebarSelectionTick/);
+  assert.match(sidebarSource, /requestedId === CLOSE_RIGHT_SIDEBAR_PANEL_REQUEST/);
+  assert.equal(CLOSE_RIGHT_SIDEBAR_PANEL_REQUEST, "__close_right_sidebar_panel__");
+});
 
 test("share and export actions are disabled until a conversation is saved", () => {
   assert.equal(
