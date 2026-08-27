@@ -131,6 +131,17 @@
   100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
 
+@keyframes rumi-widget-attention-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 0 currentColor);
+  }
+  50% {
+    opacity: 0.62;
+    filter: drop-shadow(0 0 4px currentColor);
+  }
+}
+
 /* Utility classes (auto-play on mount) */
 .rumi-anim-fade-in {
   animation: rumi-fade-in var(--rumi-dur-slow) var(--rumi-ease-out) both;
@@ -205,6 +216,10 @@
 
 .rumi-anim-pulse-ring {
   animation: rumi-pulse-ring 1.8s var(--rumi-ease-out) infinite;
+}
+
+.rumi-widget-attention-pulse {
+  animation: rumi-widget-attention-pulse 2.4s var(--rumi-ease-in-out) infinite;
 }
 
 /* Skeleton / shimmer placeholder. Apply to a rectangular element. */

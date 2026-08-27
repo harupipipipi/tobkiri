@@ -59,6 +59,7 @@ export type ComposerExtensionItem = {
   tags?: string[];
   disabled?: boolean;
   ui?: SidebarItem["ui"];
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
 };
 
 export type ComposerSkillItem = {
@@ -386,5 +387,6 @@ export type DroppedWidget = {
   sourceItemId?: string;
   description?: string;
   icon?: string;
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
   metadata?: Record<string, unknown>;
 };

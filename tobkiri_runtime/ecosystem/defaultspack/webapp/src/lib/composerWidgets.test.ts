@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 
 import {
   canExecuteComposerEndpointAction,
+  composerExtensionItems,
   composerMentionMetadataFromWidgets,
   composerFileMentionWidget,
   composerServiceMentionWidget,
@@ -23,6 +24,7 @@ import {
   skillMentionIdsFromText,
   toolMentionIdsFromText,
   trustedComposerActionForWidget,
+  widgetWithCurrentPresentation,
   withComposerMentionSelectionOwnership,
 } from "./composerWidgets";
 import {
@@ -168,6 +170,70 @@ test("composer widget drops rebuild actions from trusted catalog items", () => {
   assert.equal(action.widget.label, "Git Status");
   assert.deepEqual(action.widget.action, toolItems[0].ui.composer_action);
   assert.equal(trustedComposerActionForWidget(action.widget, toolItems), toolItems[0].ui.composer_action);
+});
+
+test("composer widget attention updates and clears without recreating the widget", () => {
+  const widget = {
+    id: "notifications",
+    sourceItemId: "notifications",
+    type: "tool",
+    label: "Notifications",
+    widgetKind: "tool_toggle",
+    presentation: {
+      icon_attention: {
+        active: true,
+        tone: "danger",
+        effect: "pulse",
+      },
+    },
+  };
+  const updated = widgetWithCurrentPresentation(widget, [{
+    id: "notifications",
+    label: "Notifications",
+    presentation: {
+      icon_attention: {
+        active: true,
+        tone: "info",
+        effect: "pulse",
+      },
+    },
+  }]);
+  assert.equal(updated.id, widget.id);
+  assert.deepEqual(updated.presentation?.icon_attention, {
+    active: true,
+    tone: "info",
+    effect: "pulse",
+  });
+
+  const cleared = widgetWithCurrentPresentation(updated, [{
+    id: "notifications",
+    label: "Notifications",
+  }]);
+  assert.equal(cleared.id, widget.id);
+  assert.equal(cleared.presentation, undefined);
+});
+
+test("sidebar projection keeps root widget presentation for composer surfaces", () => {
+  const attention = {
+    active: true,
+    tone: "info",
+    effect: "pulse",
+    accessible_label: "New activity",
+  };
+  assert.deepEqual(composerExtensionItems([{
+    id: "notifications",
+    label: "Notifications",
+    category: "tool",
+    presentation: { icon_attention: attention },
+  }]), [{
+    id: "notifications",
+    label: "Notifications",
+    category: "tool",
+    description: undefined,
+    tags: [],
+    ui: undefined,
+    presentation: { icon_attention: attention },
+  }]);
 });
 
 test("composer skill mentions resolve aliases and create prompt widgets", () => {

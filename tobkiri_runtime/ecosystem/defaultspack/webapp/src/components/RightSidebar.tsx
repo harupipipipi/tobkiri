@@ -79,6 +79,7 @@ import { WorkspaceTabRailPanel, type WorkspaceTab, type WorkspaceTabKind } from 
 import { LayerPortal } from "../ui/layers/LayerPortal";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 import type { ContextUsageInfo } from "../renderers/types";
+import { WidgetAttentionIcon } from "../lib/widgetAttention";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -487,15 +488,16 @@ export function sidebarActionDisabledReason(action: SidebarAction, activeConvers
   return "";
 }
 
-function iconForItem(item: SidebarItem) {
+function iconForItem(item: SidebarItem, railSize?: number) {
   const declaredIcon = item.ui?.item_icon || item.ui?.group_icon;
-  if (declaredIcon && ITEM_ICONS[declaredIcon]) return ITEM_ICONS[declaredIcon];
+  let icon: ReactElement | undefined;
+  if (declaredIcon && ITEM_ICONS[declaredIcon]) icon = ITEM_ICONS[declaredIcon];
 
   // Legacy fallback for pre-ui metadata tools.
   const direct = item.id.toLowerCase();
-  if (ITEM_ICONS[direct]) return ITEM_ICONS[direct];
+  if (!icon && ITEM_ICONS[direct]) icon = ITEM_ICONS[direct];
   const normalized = item.label.toLowerCase().replace(/\s+/g, "_");
-  if (ITEM_ICONS[normalized]) return ITEM_ICONS[normalized];
+  if (!icon && ITEM_ICONS[normalized]) icon = ITEM_ICONS[normalized];
   const byCategory: Record<SidebarCategory, ReactElement> = {
     activity: <Route size={18} />,
     tool: <Wrench size={18} />,
@@ -504,7 +506,13 @@ function iconForItem(item: SidebarItem) {
     integration: <Blocks size={18} />,
     capability: <ShieldCheck size={18} />,
   };
-  return byCategory[item.category];
+  const attention = item.presentation?.icon_attention ?? item.ui?.icon_attention;
+  const baseIcon = icon ?? byCategory[item.category];
+  return (
+    <WidgetAttentionIcon attention={attention} widgetId={item.id}>
+      {railSize === undefined ? baseIcon : railIcon(baseIcon, railSize)}
+    </WidgetAttentionIcon>
+  );
 }
 
 function railIcon(item: ReactElement, size = 18): ReactElement {
@@ -1701,7 +1709,7 @@ export function RightSidebar({
       )}
       title={item.label}
     >
-      {railIcon(iconForItem(item), pinnedZone ? 21 : 20)}
+      {iconForItem(item, pinnedZone ? 21 : 20)}
 
       {activePanel === item.id && (
         <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full", categoryColor(item.category, "indicator"))} />
