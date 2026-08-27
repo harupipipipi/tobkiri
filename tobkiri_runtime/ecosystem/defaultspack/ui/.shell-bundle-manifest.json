@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "c2760ac16bd278ae6d18f5c8cc809291873fbc1c928487c299f08af88566cd2c",
+    "digest": "c5e3f6434854f07a9075c77749e9c6995792f92773f17220dddfdbd7d3f9addd",
     "entries": [
       {
         "path": "index.html",
@@ -140,8 +140,8 @@
       },
       {
         "path": "src/adaptive/AutomationStudio.tsx",
-        "size": 11603,
-        "sha256": "a715c4f30cdda7c49aa69def7a6d8037ea7c86b8605afad86cbaa5d7c928fb74"
+        "size": 12112,
+        "sha256": "cd86eb1f4351725f7fba221f929e7fd06c338be9b81f3ce57b4cefb3f8b6bb0c"
       },
       {
         "path": "src/adaptive/EvidencePanels.tsx",
@@ -155,8 +155,8 @@
       },
       {
         "path": "src/adaptive/OperatingProfilePage.tsx",
-        "size": 15718,
-        "sha256": "68dd82ace2187a977895436cd5e072f1f4bcb46782616a9a59b7c02f218efdb9"
+        "size": 16448,
+        "sha256": "cbf69e5bcfc79d0bd1299808b4f24f7b26f06f89b7666209c97f791342b08849"
       },
       {
         "path": "src/adaptive/adaptiveBackend.fixture.json",
@@ -1856,7 +1856,7 @@
     ]
   },
   "bundle": {
-    "digest": "361e9ce8f37107d2fa2548292d4ab5f727d716842584ebad65568969ebd94f1d",
+    "digest": "ad6955ae68016707151654bb6e5f4c6ca3ed202274d97bb907edfe3336a6bdc0",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1870,8 +1870,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2216767,
-        "sha256": "142be7f1dcbfdf2d42c38d64cbdbf69df1419fdf594a966474710ce792fd362a"
+        "size": 2217265,
+        "sha256": "81a5020735c8f30f417e33abf3fc524d22a07b5da498f664755be9365e8fa696"
       },
       {
         "path": "shell-rolldown-runtime.js",
