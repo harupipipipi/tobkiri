@@ -134,3 +134,7 @@ def test_browser_companion_uses_optional_site_access_and_visible_controls() -> N
     assert "chrome.permissions.request" in options_js
     assert "Permission was not granted" in options_js
     assert "renderActivity" in options_js
+    assert "chrome.storage.session" in background
+    assert "chrome.storage.session" in options_js
+    assert "withoutPairingSecret" in background
+    assert "withoutPairingSecret" in options_js

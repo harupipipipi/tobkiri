@@ -508,18 +508,21 @@ def test_browser_companion_snapshot_forwards_snapshot_options_to_content_script(
         assert needle in capture_body
 
 
-def test_browser_companion_extension_keeps_pairing_token_in_local_storage():
+def test_browser_companion_extension_keeps_pairing_token_in_session_storage():
     extension_root = _browser_companion_extension_root()
     background = (extension_root / "background.js").read_text(encoding="utf-8")
     options = (extension_root / "options.js").read_text(encoding="utf-8")
     options_html = (extension_root / "options.html").read_text(encoding="utf-8")
 
     assert "readLocalSettingsWithSyncMigration" in background
-    assert "chrome.storage.local.set({ [STORAGE_KEY]: merged })" in background
+    assert "chrome.storage.session.get(PAIRING_SECRET_KEY)" in background
+    assert "chrome.storage.session.set" in background
+    assert "withoutPairingSecret" in background
     assert "chrome.storage.sync.remove(STORAGE_KEY)" in background
-    assert 'areaName !== "local"' in background
-    assert "chrome.storage.local.get(STORAGE_KEY)" in options
-    assert "chrome.storage.local.set({ [STORAGE_KEY]: settings })" in options
+    assert 'areaName === "session"' in background
+    assert "chrome.storage.session.get(PAIRING_SECRET_KEY)" in options
+    assert "chrome.storage.session.set" in options
+    assert "withoutPairingSecret" in options
     assert "profileLabel" in options
     assert 'name="profileLabel"' in options_html
     assert "chrome.storage.sync.set({ [STORAGE_KEY]: settings })" not in options

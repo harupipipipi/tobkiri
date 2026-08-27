@@ -33,6 +33,8 @@ This gives Tobkiri a consent-aware browser path where the model can inspect DOM 
 7. Acknowledge the explanation and enable control. The default remains paused and no bridge polling occurs until this explicit choice is saved.
 8. Click `Poll Bridge Now` to confirm the extension can connect.
 
+The pairing token is held only for the current browser session. Re-enter it after restarting the browser; polling and control remain fail-closed until then.
+
 The options page and toolbar badge remain the source of truth for control state. `OFF` means paused, `SET` means setup is incomplete, `ON` means connected, and `!` means attention is required. Removing an origin from the allowlist revokes its optional host permission. Denied origins override allowed origins, and incognito, browser-internal, and file pages are always blocked.
 
 ## Bridge API
@@ -226,7 +228,7 @@ For `page.extract` and `page.highlight`, text and accessibility matching prefers
 - This extension can inspect and act only on explicitly allowed HTTP/HTTPS pages in the user's real browser profile.
 - Only pair it with a local Tobkiri server you control.
 - Do not share the pairing token.
-- The pairing token is stored in browser-local extension storage and is not synced between browser profiles.
+- The pairing token is held in in-memory browser-session extension storage, is never synced, and must be re-entered after a browser restart.
 - Polling is paused by default, and the extension sends metadata only for allowed, host-permitted tabs.
 - Incognito, browser-internal, file, denied, unlisted, and host-permission-denied pages fail closed.
 - Capture and tab selection may foreground the browser tab.

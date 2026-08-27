@@ -1,4 +1,5 @@
 const STORAGE_KEY = "rumiBrowserCompanionSettings";
+const PAIRING_SECRET_KEY = "rumiBrowserCompanionPairingSecret";
 const DEFAULT_SETTINGS = {
   serverUrl: "http://127.0.0.1:8766",
   pairingToken: "",
@@ -35,8 +36,8 @@ pollNowButton.addEventListener("click", () => {
 });
 
 async function loadSettings() {
-  const stored = await chrome.storage.local.get(STORAGE_KEY);
-  const settings = normalizeSettings(stored[STORAGE_KEY]);
+  const settings = normalizeSettings(await readPersistedSettings());
+  settings.pairingToken = await readPairingSecret();
   form.serverUrl.value = settings.serverUrl;
   form.pairingToken.value = settings.pairingToken;
   form.clientLabel.value = settings.clientLabel;
@@ -54,8 +55,7 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
-  const previousStored = await chrome.storage.local.get(STORAGE_KEY);
-  const previous = normalizeSettings(previousStored[STORAGE_KEY]);
+  const previous = normalizeSettings(await readPersistedSettings());
   const settings = readFormSettings();
   const pollDecision = TobkiriBrowserAccessPolicy.canPoll(settings);
   if (settings.enabled && !pollDecision.allowed) {
@@ -83,7 +83,8 @@ async function saveSettings() {
     }
   }
 
-  await chrome.storage.local.set({ [STORAGE_KEY]: settings });
+  await writePairingSecret(settings.pairingToken);
+  await writePersistedSettings(withoutPairingSecret(settings));
   const previousDenied = new Set(previous.deniedOrigins);
   const previousGrantedOrigins = previous.allowedOrigins.filter(
     (origin) => !previousDenied.has(origin)
@@ -101,7 +102,7 @@ async function saveSettings() {
   setStatus(
     settings.enabled
       ? "Access settings saved. Polling and control are enabled for the listed sites."
-      : "Access settings saved. Polling and control are paused; pairing data is retained.",
+      : "Access settings saved. Polling and control are paused; the pairing token is retained for this browser session.",
     true
   );
   const backgroundStatus = await chrome.runtime.sendMessage({
@@ -148,6 +149,25 @@ function normalizeSettings(value) {
     settings.deniedOrigins
   );
   return settings;
+}
+
+function withoutPairingSecret(settings) {
+  const { pairingToken: _pairingToken, ...persisted } = settings;
+  return persisted;
+}
+
+async function readPairingSecret() {
+  const stored = await chrome.storage.session.get(PAIRING_SECRET_KEY);
+  return String(stored[PAIRING_SECRET_KEY] || "").trim();
+}
+
+async function writePairingSecret(value) {
+  const pairingSecret = String(value || "").trim();
+  if (pairingSecret) {
+    await chrome.storage.session.set({ [PAIRING_SECRET_KEY]: pairingSecret });
+  } else {
+    await chrome.storage.session.remove(PAIRING_SECRET_KEY);
+  }
 }
 
 function renderStatus(status, options = {}) {
@@ -231,4 +251,13 @@ function setStatus(message, isOk) {
   statusEl.textContent = message;
   statusEl.classList.toggle("ok", Boolean(isOk));
   statusEl.classList.toggle("error", !isOk);
+}
+
+async function readPersistedSettings() {
+  const stored = await chrome.storage.local.get(STORAGE_KEY);
+  return stored[STORAGE_KEY];
+}
+
+async function writePersistedSettings(settings) {
+  await chrome.storage.local.set({ [STORAGE_KEY]: settings });
 }

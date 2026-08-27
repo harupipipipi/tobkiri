@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const STORAGE_KEY = "rumiBrowserCompanionSettings";
+const PAIRING_SECRET_KEY = "rumiBrowserCompanionPairingSecret";
 const CLIENT_ID_KEY = "rumiBrowserCompanionClientId";
 const INSTALLATION_ID_KEY = "rumiBrowserCompanionInstallationId";
 const BROWSER_PROFILE_ID_KEY = "rumiBrowserCompanionProfileId";
@@ -69,7 +70,11 @@ chrome.permissions.onRemoved.addListener((permissions) => {
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "local" || !changes[STORAGE_KEY]) {
+  const persistedSettingsChanged =
+    areaName === "local" && Boolean(changes[STORAGE_KEY]);
+  const pairingSecretChanged =
+    areaName === "session" && Boolean(changes[PAIRING_SECRET_KEY]);
+  if (!persistedSettingsChanged && !pairingSecretChanged) {
     return;
   }
   void ensureSettings().then((settings) => {
@@ -132,9 +137,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function ensureSettings() {
   const stored = await readLocalSettingsWithSyncMigration();
+  const persisted = withoutPairingSecret(stored || {});
+  const legacyPairingSecret = stringOrEmpty(stored?.pairingToken);
+  let pairingSecret = await readPairingSecret();
+  if (!pairingSecret && legacyPairingSecret) {
+    pairingSecret = legacyPairingSecret;
+    await writePairingSecret(pairingSecret);
+  }
   const merged = {
     ...DEFAULT_SETTINGS,
-    ...(stored || {})
+    ...persisted,
+    pairingToken: pairingSecret
   };
   merged.pollIntervalMinutes = normalizePollInterval(merged.pollIntervalMinutes);
   merged.enabled = merged.enabled === true;
@@ -145,17 +158,25 @@ async function ensureSettings() {
   merged.deniedOrigins = TobkiriBrowserAccessPolicy.normalizeOrigins(
     merged.deniedOrigins
   );
-  await chrome.storage.local.set({ [STORAGE_KEY]: merged });
+  await writePersistedSettings(withoutPairingSecret(merged));
   return merged;
 }
 
 async function getSettings() {
   const stored = await readLocalSettingsWithSyncMigration();
+  const persisted = withoutPairingSecret(stored || {});
+  const legacyPairingSecret = stringOrEmpty(stored?.pairingToken);
+  let pairingSecret = await readPairingSecret();
+  if (!pairingSecret && legacyPairingSecret) {
+    pairingSecret = legacyPairingSecret;
+    await writePairingSecret(pairingSecret);
+  }
   const merged = {
     ...DEFAULT_SETTINGS,
-    ...(stored || {}),
+    ...persisted,
+    pairingToken: pairingSecret,
     pollIntervalMinutes: normalizePollInterval(
-      stored?.pollIntervalMinutes ?? DEFAULT_SETTINGS.pollIntervalMinutes
+      persisted.pollIntervalMinutes ?? DEFAULT_SETTINGS.pollIntervalMinutes
     )
   };
   merged.enabled = merged.enabled === true;
@@ -166,7 +187,24 @@ async function getSettings() {
   merged.deniedOrigins = TobkiriBrowserAccessPolicy.normalizeOrigins(
     merged.deniedOrigins
   );
+  await writePersistedSettings(withoutPairingSecret(merged));
   return merged;
+}
+
+function withoutPairingSecret(settings) {
+  const { pairingToken: _pairingToken, ...persisted } = settings;
+  return persisted;
+}
+
+async function readPairingSecret() {
+  const stored = await chrome.storage.session.get(PAIRING_SECRET_KEY);
+  return stringOrEmpty(stored[PAIRING_SECRET_KEY]);
+}
+
+async function writePairingSecret(value) {
+  await chrome.storage.session.set({
+    [PAIRING_SECRET_KEY]: stringOrEmpty(value)
+  });
 }
 
 async function requireControlSettings() {
@@ -185,7 +223,6 @@ async function readLocalSettingsWithSyncMigration() {
   }
   const syncStored = await chrome.storage.sync.get(STORAGE_KEY);
   if (syncStored[STORAGE_KEY]) {
-    await chrome.storage.local.set({ [STORAGE_KEY]: syncStored[STORAGE_KEY] });
     await chrome.storage.sync.remove(STORAGE_KEY);
     return syncStored[STORAGE_KEY];
   }
@@ -1286,4 +1323,8 @@ function imageSizeFromDataUrl(dataUrl) {
     return null;
   }
   return null;
+}
+
+async function writePersistedSettings(settings) {
+  await chrome.storage.local.set({ [STORAGE_KEY]: settings });
 }
