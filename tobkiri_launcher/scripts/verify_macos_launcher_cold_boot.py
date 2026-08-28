@@ -60,6 +60,15 @@ DIAGNOSTIC_FILENAME = "launcher-cold-boot.v1.json"
 class ColdBootError(RuntimeError):
     """Raised when the packaged Launcher cannot prove a safe cold boot."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        observations: Optional[Mapping[str, object]] = None,
+    ) -> None:
+        super().__init__(message)
+        self.observations = dict(observations or {})
+
 
 @dataclass(frozen=True)
 class HttpResponse:
@@ -777,6 +786,7 @@ def _write_failure_diagnostic(
         "launcher_pid": launcher_pid,
         "error": _sanitize_diagnostic_text(str(error)),
         "kernel_log_tail": _kernel_log_tail(config.app_data_dir),
+        "readiness_observations": getattr(error, "observations", {}),
         "process_output_tail": _sanitize_diagnostic_text(output),
     }
     destination = config.diagnostics_dir / DIAGNOSTIC_FILENAME
@@ -854,6 +864,7 @@ def _wait_for_readiness(
                 int(process.pid),
             ):
                 broker_ready = True
+                observations["broker_ready"] = True
 
         if broker_ready:
             pending_stage = "bootstrap_contract"
@@ -903,16 +914,21 @@ def _wait_for_readiness(
                             panel_reachable=True,
                         )
                 else:
+                    observations["kernel_listener_owned"] = False
                     kernel_ownership_error = True
 
         probes.sleep(POLL_INTERVAL_SECONDS)
 
     if kernel_ownership_error:
         raise ColdBootError(
-            "Kernel health listener is not owned by the launched CI/E2E app"
+            "Kernel health listener is not owned by the launched CI/E2E app",
+            observations=observations,
         )
     if not broker_ready:
-        raise ColdBootError("embedded host broker did not become ready before timeout")
+        raise ColdBootError(
+            "embedded host broker did not become ready before timeout",
+            observations=observations,
+        )
     raise ColdBootError(
         "owned Kernel health and panel authentication did not become ready before "
         f"timeout (pending stage: {pending_stage}; health: {health_failure})"

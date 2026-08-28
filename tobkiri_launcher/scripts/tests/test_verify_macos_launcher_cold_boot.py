@@ -456,6 +456,16 @@ def test_cold_boot_rejects_healthy_kernel_not_owned_by_launched_app(
         (diagnostics / VERIFY.DIAGNOSTIC_FILENAME).read_text(encoding="utf-8")
     )
     assert diagnostic["status"] == "failed"
+    assert diagnostic["readiness_observations"] == {
+        "broker_ready": True,
+        "kernel_http_status": 200,
+        "kernel_success": True,
+        "kernel_panel_ready": True,
+        "kernel_listener_present": True,
+        "kernel_listener_owned": False,
+        "panel_http_status": None,
+        "panel_reachable": False,
+    }
     assert "not-printed-test-token" not in json.dumps(diagnostic)
     assert signals == [
         (4242, signal.SIGTERM),
