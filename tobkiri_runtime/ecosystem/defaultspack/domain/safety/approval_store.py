@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _pack_root() -> Path:
@@ -19,14 +19,14 @@ def _pack_root() -> Path:
 
 
 def default_approval_db_path() -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_APPROVAL_DB_PATH")
+    override = os.getenv("RUMI_DEFAULTSPACK_APPROVAL_DB_PATH")
     if override:
         return Path(override)
     return _pack_root() / "user_data" / "safety" / "approval.sqlite3"
 
 
 def default_approval_secret_path() -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_APPROVAL_SECRET_PATH")
+    override = os.getenv("RUMI_DEFAULTSPACK_APPROVAL_SECRET_PATH")
     if override:
         return Path(override)
     return default_approval_db_path().with_name("approval_runtime_secret")
@@ -82,6 +82,24 @@ class ApprovalStore:
                     )
                     """
                 )
+                existing_columns = {
+                    str(row["name"])
+                    for row in conn.execute("PRAGMA table_info(approval_requests)").fetchall()
+                }
+                for column, declaration in (
+                    ("debug_session_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("lease_epoch", "INTEGER NOT NULL DEFAULT 0"),
+                    ("debug_run_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("workspace_identity_digest", "TEXT NOT NULL DEFAULT ''"),
+                    ("pack_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("profile_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("conversation_id", "TEXT NOT NULL DEFAULT ''"),
+                    ("operation_owner", "TEXT NOT NULL DEFAULT ''"),
+                ):
+                    if column not in existing_columns:
+                        conn.execute(
+                            f"ALTER TABLE approval_requests ADD COLUMN {column} {declaration}"
+                        )
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS used_tokens (
@@ -115,8 +133,11 @@ class ApprovalStore:
                 """
                 INSERT INTO approval_requests(
                     request_id, operation, risk_level, args_hash, details_json,
-                    created_at, expires_at, status, decision_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, expires_at, status, decision_at,
+                    debug_session_id, lease_epoch, debug_run_id,
+                    workspace_identity_digest, pack_id, profile_id,
+                    conversation_id, operation_owner
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(request_id) DO UPDATE SET
                     operation=excluded.operation,
                     risk_level=excluded.risk_level,
@@ -137,6 +158,14 @@ class ApprovalStore:
                     int(data["expires_at"]),
                     data.get("status", "pending"),
                     data.get("decision_at"),
+                    str(data.get("debug_session_id") or ""),
+                    int(data.get("lease_epoch") or 0),
+                    str(data.get("debug_run_id") or ""),
+                    str(data.get("workspace_identity_digest") or ""),
+                    str(data.get("pack_id") or ""),
+                    str(data.get("profile_id") or ""),
+                    str(data.get("conversation_id") or ""),
+                    str(data.get("operation_owner") or ""),
                 ),
             )
         return data
@@ -149,6 +178,52 @@ class ApprovalStore:
                 (str(request_id),),
             ).fetchone()
         return self._row_to_request(row) if row is not None else None
+
+    def bind_debug_context(self, request_id: str, binding: dict[str, Any]) -> bool:
+        """Bind an approval request once to the verified Launcher lease."""
+        fields = {
+            "debug_session_id": str(binding.get("debug_session_id") or ""),
+            "lease_epoch": int(binding.get("lease_epoch") or 0),
+            "debug_run_id": str(binding.get("debug_run_id") or ""),
+            "workspace_identity_digest": str(
+                binding.get("workspace_identity_digest") or ""
+            ),
+            "pack_id": str(binding.get("pack_id") or ""),
+            "profile_id": str(binding.get("profile_id") or ""),
+            "conversation_id": str(binding.get("conversation_id") or ""),
+            "operation_owner": str(binding.get("operation_owner") or ""),
+        }
+        if any(not str(value) for value in fields.values()):
+            return False
+        self._ensure_schema()
+        with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """
+                SELECT debug_session_id, lease_epoch, debug_run_id,
+                       workspace_identity_digest, pack_id, profile_id,
+                       conversation_id, operation_owner
+                FROM approval_requests WHERE request_id = ?
+                """,
+                (str(request_id),),
+            ).fetchone()
+            if row is None:
+                return False
+            existing = {key: row[key] for key in fields}
+            already_bound = bool(str(existing["debug_session_id"] or ""))
+            if already_bound:
+                return all(str(existing[key]) == str(value) for key, value in fields.items())
+            cursor = conn.execute(
+                """
+                UPDATE approval_requests
+                SET debug_session_id = ?, lease_epoch = ?, debug_run_id = ?,
+                    workspace_identity_digest = ?, pack_id = ?, profile_id = ?,
+                    conversation_id = ?, operation_owner = ?
+                WHERE request_id = ? AND debug_session_id = ''
+                """,
+                (*fields.values(), str(request_id)),
+            )
+            return cursor.rowcount == 1
 
     def update_request_status(
         self, request_id: str, status: str, *, decision_at: int | None = None
@@ -317,6 +392,18 @@ class ApprovalStore:
         if existing:
             persist_runtime_secret_for_broker(existing)
             return existing
+        # The isolated Viewer harness creates this owner-only file before
+        # either the broker or Defaultspack starts.  Adopt it for a fresh
+        # approval database so both processes verify the same one-shot tokens.
+        # Existing database state remains authoritative for normal restarts.
+        try:
+            prepared = default_approval_secret_path().read_text(encoding="utf-8").strip()
+        except OSError:
+            prepared = ""
+        if prepared:
+            self.set_metadata("runtime_secret", prepared)
+            persist_runtime_secret_for_broker(prepared)
+            return prepared
         generated = secrets.token_urlsafe(32)
         self.set_metadata("runtime_secret", generated)
         persist_runtime_secret_for_broker(generated)
@@ -334,6 +421,14 @@ class ApprovalStore:
             "expires_at": int(row["expires_at"]),
             "status": row["status"],
             "decision_at": row["decision_at"],
+            "debug_session_id": row["debug_session_id"],
+            "lease_epoch": int(row["lease_epoch"] or 0),
+            "debug_run_id": row["debug_run_id"],
+            "workspace_identity_digest": row["workspace_identity_digest"],
+            "pack_id": row["pack_id"],
+            "profile_id": row["profile_id"],
+            "conversation_id": row["conversation_id"],
+            "operation_owner": row["operation_owner"],
         }
 
 

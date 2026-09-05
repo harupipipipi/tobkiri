@@ -1,0 +1,143 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:723e05977651e71d1f7f2320f5709c2be91c39a7533f976883105fa7fc575d13",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:0f5cf7acdb2419c0f921b100506eee87acd21681a4f7ae88814a999a97deea33",
+      "kind": "executable",
+      "path": "runtime/materializer.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.context.v1",
+      "operations": [
+        "rumi_context_runtime_pack.context-materialize"
+      ],
+      "revision_digest": "sha256:e374f1e6b5cbad00d493833207731b40af2c2af7ea20d4004ef86dcd60172275"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:e374f1e6b5cbad00d493833207731b40af2c2af7ea20d4004ef86dcd60172275",
+      "id": "rumi_context_runtime_pack.context-runtime.materialize",
+      "implementation_digest": "sha256:0f5cf7acdb2419c0f921b100506eee87acd21681a4f7ae88814a999a97deea33",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_context_runtime_pack.context-materialize"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:123ae6e205ea886b50a253163f7c20776fb878358b07dece64dbb7856d658bb3",
+    "artifact_set_digest": "sha256:26bff16170ed4f100379a682db8b02ef468b12cd062db2ae70ec2d483c5d35ca",
+    "contract_catalog_digest": "sha256:84da800bf7625daa4a0e13ce5b76a15d762d9acfc5983e427ca2e27636a0023c"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.context.v1",
+      "rumi:ecosystem/rumi_context_runtime_pack",
+      "rumi_context_runtime_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_context_runtime_pack.context-materialize",
+      "owner": "rumi_context_runtime_pack",
+      "contract_reference": "tobkiri.service.context.v1",
+      "provider_id": "rumi_context_runtime_pack.context-runtime.materialize",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:1d0a4329cd25c818085e0522880ab3859cd7a2b0045c585b9459e1fb98ed0b8a",
+    "display_name": "Rumi Context Runtime",
+    "id": "rumi_context_runtime_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_context_runtime_pack/pack.v4.json",
+    "source_digest": "sha256:123ae6e205ea886b50a253163f7c20776fb878358b07dece64dbb7856d658bb3",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:4f7e1efb99e174c9ad2ca49dad5c36b03f7b11e59979ab5e47eb1391f5eaf6c7",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:4a6b33b1d69ba34f7f1a8c10f1cb33e107dc91d064f1e2a67333f67740c1b30f",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_context_runtime_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:123ae6e205ea886b50a253163f7c20776fb878358b07dece64dbb7856d658bb3"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_context_runtime_pack.context-runtime.materialize",
+      "owner": "rumi_context_runtime_pack",
+      "contract_reference": "tobkiri.service.context.v1",
+      "operations": [
+        "rumi_context_runtime_pack.context-materialize"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "context.materialize"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.knowledge.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.memory.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_knowledge_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_memory_store_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

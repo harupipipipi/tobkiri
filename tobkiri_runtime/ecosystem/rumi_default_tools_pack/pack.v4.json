@@ -1,0 +1,75 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:5b102e597767ec223d72f395be88ba3bfdecaa29194d0b19538beed491d1ab6f",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:ef8ae5ffa668b40553758d1324b929f56f3a16977af87d17669fad25867ec1ab",
+      "kind": "sidecar",
+      "path": "host_contract_contributions.v1.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:053f86ccbad532466189eec787696daefe943628acaa8082371520138abe997c",
+    "contract_catalog_digest": "sha256:4fa31fccb1296e4c8d8885680dac0a96f6e8297ad94e867cf2f6db653efac7a0",
+    "source_identity": "sha256:f71e1b5c8c4a61e616572f413ca613570dba2d7c25a4922a7329b29b91a67f75"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_default_tools_pack",
+      "rumi_default_tools_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:053f86ccbad532466189eec787696daefe943628acaa8082371520138abe997c",
+    "display_name": "rumi_default_tools_pack",
+    "id": "rumi_default_tools_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:f71e1b5c8c4a61e616572f413ca613570dba2d7c25a4922a7329b29b91a67f75",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:f71e1b5c8c4a61e616572f413ca613570dba2d7c25a4922a7329b29b91a67f75",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
+      "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0",
+      "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

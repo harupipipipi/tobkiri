@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schemas.tobkiri.dev/activity/v1.json",
+  "schema_version": "tobkiri.activity/v1",
+  "kind": "activity",
+  "id": "coding",
+  "version": "1.0.0",
+  "display_name": {"ja": "Coding", "en": "Coding"},
+  "description": {
+    "ja": "コード、ファイル、Terminal、Gitを扱います。",
+    "en": "Work with code, files, terminals, and Git."
+  },
+  "aliases": ["code", "developer", "programming", "コーディング", "開発"],
+  "members": {
+    "tool_ids": [
+      "coding_file_list",
+      "coding_file_read",
+      "coding_file_search",
+      "coding_file_create",
+      "coding_file_write",
+      "coding_file_patch",
+      "coding_file_delete",
+      "coding_file_restore",
+      "coding_terminal_exec",
+      "coding_git_status",
+      "coding_git_diff",
+      "coding_git_commit",
+      "coding_git_push"
+    ],
+    "tool_tags": ["activity:coding"],
+    "skills": {"required": [], "optional": [], "safety": []}
+  },
+  "selection": {
+    "explicit_intent_required": false,
+    "schema_policy": "progressive",
+    "max_candidate_tools": 20,
+    "max_attached_tools": 8
+  },
+  "permissions": {
+    "default_action_class": "execute",
+    "minimum": "confirm"
+  },
+  "ui": {
+    "mentionable": true,
+    "pinnable": true,
+    "default_pinned": false,
+    "widget": "coding-status"
+  }
+}

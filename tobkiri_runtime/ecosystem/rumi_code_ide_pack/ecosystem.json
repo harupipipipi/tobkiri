@@ -1,76 +1,109 @@
 {
-  "pack_id": "rumi_code_ide_pack",
-  "pack_identity": "rumi:ecosystem/rumi_code_ide_pack",
-  "version": "1.0.0",
+  "components": {},
+  "dependencies": {
+    "rumi_default_tools_pack": ">=1.0.0"
+  },
+  "load_order": [],
   "metadata": {
-    "name": "Rumi Code IDE Pack",
-    "description": "Optional advanced code, CLI, and IDE workflow profiles, prompts, presets, command recipes, and tool scope metadata.",
     "author": "Rumi AI Team",
-    "license": "MIT",
-    "tags": ["coding", "cli", "ide", "local-first", "agent-workflow"]
-  },
-  "vocabulary": {
-    "types": ["agent", "coding", "profile", "prompt", "tool", "permissions", "project"]
-  },
-  "depends_on": [
-    {
-      "pack_id": "defaultspack",
-      "version": ">=2.0.0",
-      "reason": "Uses defaultspack coding graph, agent_chat flow, prompt/profile conventions, and core local coding capabilities."
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:7a3d8ca54b5ffc40215892fe58b1dc3a8c9374de6453363856b70b63c45a1fed",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:90dcc1063765278230742732fd89c10a7013345f8a14a0fed9136e0eddd4cb4d"
     },
-    {
-      "pack_id": "rumi_default_tools_pack",
-      "version": ">=1.0.0",
-      "reason": "Scopes existing concrete file, terminal, git, todo, subagent, and browser companion tools instead of redefining them."
-    }
-  ],
-  "optional_integrations": [
-    {
-      "pack_id": "rumi_local_agent_pack",
-      "version": ">=1.0.0",
-      "reason": "Can coexist with starter local-agent presets; this pack is narrower and IDE/CLI specific."
-    }
-  ],
-  "assets": {
-    "profiles": [
-      "profiles/code_cli_ide.profile.yaml",
-      "profiles/code_review_terminal.profile.yaml",
-      "profiles/local_first_pair_programmer.profile.yaml"
-    ],
-    "prompts": [
-      "prompts/code_ide_agent.system.md",
-      "prompts/code_review_terminal.system.md",
-      "prompts/command_recipe_runner.system.md"
-    ],
-    "presets": [
-      "presets/claude_code_style_workspace.preset.yaml",
-      "presets/cline_style_ide_pairing.preset.yaml",
-      "presets/codex_patch_loop.preset.yaml",
-      "presets/gemini_cli_style_discovery.preset.yaml",
-      "presets/local_first_strict.preset.yaml"
-    ],
-    "examples": [
-      "examples/bugfix_session.example.yaml",
-      "examples/refactor_session.example.yaml",
-      "examples/review_session.example.yaml"
-    ],
-    "command_recipes": [
-      "command_recipes/code_cli_recipes.yaml"
-    ],
-    "tool_scopes": [
-      "tool_scopes/code_ide_tool_scope.yaml"
-    ],
-    "metadata": [
-      "metadata/overlap_conflicts.yaml"
-    ],
-    "docs": [
-      "README.md",
-      "docs/README.md",
-      "docs/architecture.md",
-      "docs/interfaces.md",
-      "docs/operations.md"
+    "description": "Optional advanced code, CLI, and IDE workflow profiles, prompts, presets, command recipes, and tool scope metadata.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:90dcc1063765278230742732fd89c10a7013345f8a14a0fed9136e0eddd4cb4d"
+    },
+    "legacy_annotations": {
+      "assets": {
+        "command_recipes": [
+          "command_recipes/code_cli_recipes.yaml"
+        ],
+        "docs": [
+          "README.md",
+          "docs/README.md",
+          "docs/architecture.md",
+          "docs/interfaces.md",
+          "docs/operations.md"
+        ],
+        "examples": [
+          "examples/bugfix_session.example.yaml",
+          "examples/refactor_session.example.yaml",
+          "examples/review_session.example.yaml"
+        ],
+        "metadata": [
+          "metadata/overlap_conflicts.yaml"
+        ],
+        "presets": [
+          "presets/claude_code_style_workspace.preset.yaml",
+          "presets/cline_style_ide_pairing.preset.yaml",
+          "presets/codex_patch_loop.preset.yaml",
+          "presets/gemini_cli_style_discovery.preset.yaml",
+          "presets/local_first_strict.preset.yaml"
+        ],
+        "profiles": [
+          "profiles/code_cli_ide.profile.yaml",
+          "profiles/code_review_terminal.profile.yaml",
+          "profiles/local_first_pair_programmer.profile.yaml"
+        ],
+        "prompts": [
+          "prompts/code_ide_agent.system.md",
+          "prompts/code_review_terminal.system.md",
+          "prompts/command_recipe_runner.system.md"
+        ],
+        "tool_scopes": [
+          "tool_scopes/code_ide_tool_scope.yaml"
+        ]
+      },
+      "optional_integrations": [
+        {
+          "pack_id": "rumi_local_agent_pack",
+          "reason": "Can coexist with starter local-agent presets; this pack is narrower and IDE/CLI specific.",
+          "version": ">=1.0.0"
+        }
+      ],
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Code IDE Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "tags": [
+      "coding",
+      "cli",
+      "ide",
+      "local-first",
+      "agent-workflow"
     ]
   },
-  "components": {},
-  "load_order": []
+  "pack_id": "rumi_code_ide_pack",
+  "pack_identity": "rumi:ecosystem/rumi_code_ide_pack",
+  "provenance": {
+    "build_identity": "rumi_code_ide_pack:1.0.0",
+    "content_hash": "sha256:7a3d8ca54b5ffc40215892fe58b1dc3a8c9374de6453363856b70b63c45a1fed",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "agent",
+      "coding",
+      "profile",
+      "prompt",
+      "tool",
+      "permissions",
+      "project"
+    ]
+  }
 }

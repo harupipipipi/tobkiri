@@ -1,0 +1,65 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.guard.evaluate.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Ordered fail-closed pre-authorization tool guards.",
+  "display_name": "Rumi Tool Guard",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:f8972319e44b6a0349f808fe0b6bf0671cac92e3fde62aa5bda659a7bdce4e25",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:cfffe062c7b916e597b26d1d6d40752601ea24f8572d64fe6dcce4d5b461e172"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:cfffe062c7b916e597b26d1d6d40752601ea24f8572d64fe6dcce4d5b461e172"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_guard_chain"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "authority": false,
+      "fail_closed": true
+    }
+  },
+  "pack_id": "rumi_tool_guard_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_guard_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_guard_pack:1.0.0",
+    "content_hash": "sha256:b9dd753535c1bdac37d4338a009308603b69348afeddd41d984db33513883868",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.guard.evaluate"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

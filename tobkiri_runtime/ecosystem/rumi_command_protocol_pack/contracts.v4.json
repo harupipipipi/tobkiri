@@ -1,0 +1,102 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.command.high-risk.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "host:brokered-execution",
+            "capability:host.authority.consume"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:da3382e223f82f5704aa896f03f463585fd9b4f3358a61f4c27eb63e9edf5dfa",
+          "operation_id": "high_risk_command.manage",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:f91a400692b4824dfb0151af58d9a516821604a0abab13435526631d325a132c",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:f91a400692b4824dfb0151af58d9a516821604a0abab13435526631d325a132c",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_command_protocol_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_command_protocol_pack.high-risk-command.service",
+        "required_capabilities": [
+          "host.authority.consume"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:036e4b61a2be06a5cfe321d9d15c2511bd0f2b7feb55ebdccca764b4685b732f",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:da3382e223f82f5704aa896f03f463585fd9b4f3358a61f4c27eb63e9edf5dfa": {
+          "additionalProperties": false,
+          "properties": {
+            "arguments": {
+              "type": "object"
+            },
+            "command_ref": {
+              "enum": [
+                "terminal",
+                "commit",
+                "push",
+                "patch",
+                "restore"
+              ]
+            },
+            "invocation_id": {
+              "maxLength": 160,
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "prepare",
+                "resume",
+                "status",
+                "cancel",
+                "list_pending"
+              ]
+            },
+            "presentation": {
+              "type": "object"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_command_protocol_pack",
+  "source_identity": "sha256:f91a400692b4824dfb0151af58d9a516821604a0abab13435526631d325a132c"
+}

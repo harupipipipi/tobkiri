@@ -4,12 +4,99 @@ import os
 import platform
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Mapping
 
-from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
 from ..tool_policy.internal_context import tool_server_approval_context_is_internal
-
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import invoke_global_contract
 from .viewer_broker_client import ViewerBrokerClient
+
+_VIEWER_RECOVERY_MESSAGE = (
+    "Rumi Viewer が未接続です。foreground/on-screen 操作は承認と Rumi Viewer 接続後に利用できます。"
+    "承認してください。Rumi Viewer を起動または前面表示して macOS 権限を許可するか、表/前面で作業しますか?"
+)
+
+# Test and embedding callers may inject a controller explicitly.  Runtime
+# dispatch never populates this hook; it must use the captured v4 contract.
+BrowserComputerController: type[Any] | None = None
+_BROWSER_OBSERVE: Final[str] = "rumi.resource.browser.host.v1"
+_BROWSER_CONTROL: Final[str] = "rumi.action.browser.host.v1"
+_DESKTOP_OBSERVE: Final[str] = "rumi.resource.desktop.host.v1"
+_DESKTOP_CONTROL: Final[str] = "rumi.action.desktop.host.v1"
+_CLIPBOARD_READ: Final[str] = "rumi.resource.clipboard.v1"
+_CLIPBOARD_WRITE: Final[str] = "rumi.action.clipboard.v1"
+_HOST_ACTIONS: Final[dict[str, tuple[str, str]]] = {
+    "browser.session": (_BROWSER_OBSERVE, "browser.session.get"),
+    "browser.profiles.list": (_BROWSER_OBSERVE, "browser.profiles.list"),
+    "browser.cookies.list": (_BROWSER_OBSERVE, "browser.cookies.list"),
+    "browser.open_url": (_BROWSER_CONTROL, "browser.navigate"),
+    "browser.profile.create": (_BROWSER_CONTROL, "browser.profile.create"),
+    "browser.profile.set_active": (_BROWSER_CONTROL, "browser.profile.set_active"),
+    "browser.profile.delete": (_BROWSER_CONTROL, "browser.profile.delete"),
+    "browser.profile.clear_cache": (_BROWSER_CONTROL, "browser.profile.clear_cache"),
+    "browser.profile.clear_cookies": (_BROWSER_CONTROL, "browser.profile.clear_cookies"),
+    "browser.cookies.import": (_BROWSER_CONTROL, "browser.cookies.import"),
+    "browser.cookies.delete": (_BROWSER_CONTROL, "browser.cookies.delete"),
+    "computer.context": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.state": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.app_context": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.apps": (_DESKTOP_OBSERVE, "desktop.applications.list"),
+    "computer.list_apps": (_DESKTOP_OBSERVE, "desktop.applications.list"),
+    "computer.windows": (_DESKTOP_OBSERVE, "desktop.windows.list"),
+    "computer.list_windows": (_DESKTOP_OBSERVE, "desktop.windows.list"),
+    "computer.screenshot": (_DESKTOP_OBSERVE, "desktop.capture.frame"),
+    "computer.observe": (_DESKTOP_OBSERVE, "desktop.capture.frame"),
+    "computer.ax_tree": (_DESKTOP_OBSERVE, "desktop.accessibility.snapshot"),
+    "computer.ocr": (_DESKTOP_OBSERVE, "desktop.accessibility.snapshot"),
+    "computer.doctor": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.select_app": (_DESKTOP_CONTROL, "desktop.application.select"),
+    "computer.show_app": (_DESKTOP_CONTROL, "desktop.application.activate"),
+    "computer.focus_app": (_DESKTOP_CONTROL, "desktop.application.activate"),
+    "computer.activate_app": (_DESKTOP_CONTROL, "desktop.application.activate"),
+    "computer.select_window": (_DESKTOP_CONTROL, "desktop.window.select"),
+    "computer.move": (_DESKTOP_CONTROL, "desktop.pointer.move"),
+    "computer.click": (_DESKTOP_CONTROL, "desktop.pointer.click"),
+    "computer.drag": (_DESKTOP_CONTROL, "desktop.pointer.drag"),
+    "computer.type": (_DESKTOP_CONTROL, "desktop.keyboard.type"),
+    "computer.key": (_DESKTOP_CONTROL, "desktop.keyboard.key"),
+    "computer.backspace": (_DESKTOP_CONTROL, "desktop.keyboard.key"),
+    "computer.scroll": (_DESKTOP_CONTROL, "desktop.scroll"),
+    "computer.semantic_action": (_DESKTOP_CONTROL, "desktop.accessibility.action"),
+    "computer.click_text": (_DESKTOP_CONTROL, "desktop.accessibility.action"),
+    "computer.pid_event": (_DESKTOP_CONTROL, "desktop.accessibility.action"),
+    "computer.clipboard.read": (_CLIPBOARD_READ, "read"),
+    "computer.clipboard.get": (_CLIPBOARD_READ, "read"),
+    "computer.clipboard.write": (_CLIPBOARD_WRITE, "write"),
+    "computer.clipboard.set": (_CLIPBOARD_WRITE, "write"),
+    "computer.clipboard.clear": (_CLIPBOARD_WRITE, "write"),
+}
+_FORBIDDEN_HOST_ARGUMENTS: Final[frozenset[str]] = frozenset(
+    {
+        "approved",
+        "approval_token",
+        "authority_token",
+        "viewer_host_approved",
+        "yolo_mode",
+        "_contract_consumer_pack_id",
+        "_contract_consumer_function_id",
+        "_host_context",
+    }
+)
+_BROWSER_TEXT_INPUT_RECOMMENDED_NEXT_ACTIONS = (
+    "computer.type",
+    "computer.key",
+    "computer.click",
+    "computer.screenshot",
+    "computer.observe",
+)
+_BROWSER_TEXT_INPUT_GUIDANCE = (
+    "If the browser page or search field is ready, use computer.type for text input "
+    "and computer.key for Enter or shortcuts; normal approval gates still apply. "
+    "The computer.type text must be the literal user-requested URL, query, or form "
+    "text to enter; do not type the current URL, app name, or window title unless "
+    "that is exactly what the user asked to enter."
+)
+
 
 def should_route_to_viewer(action: str) -> bool:
     if os.environ.get("RUMI_COMPUTER_HOST_INTERNAL") == "1":
@@ -58,28 +145,16 @@ def run_computer_action(
                         result,
                         normalized_context,
                     )
-                return dict(result)
+                return _with_browser_text_input_recommendations(normalized_action, dict(result))
             except Exception as exc:
-                return {
-                    "action": normalized_action,
-                    "is_error": True,
-                    "reason": f"Rumi Viewer host broker is unavailable: {exc}",
-                    "recovery": {
-                        "kind": "open_tobkiri_launcher",
-                        "note": "Open Rumi Viewer and grant macOS permissions there.",
-                    },
-                    "permission_subject": "Rumi Viewer",
-                }
-        return {
-            "action": normalized_action,
-            "is_error": True,
-            "reason": "Rumi Viewer is required for computer control on macOS.",
-            "recovery": {
-                "kind": "open_tobkiri_launcher",
-                "note": "Open Rumi Viewer and grant macOS permissions there.",
-            },
-            "permission_subject": "Rumi Viewer",
-        }
+                return _viewer_connection_required_response(
+                    normalized_action,
+                    f"Rumi Viewer host broker is unavailable: {exc}",
+                )
+        return _viewer_connection_required_response(
+            normalized_action,
+            "Rumi Viewer is required for computer control on macOS.",
+        )
     return _run_local_controller(
         normalized_action,
         normalized_payload,
@@ -103,30 +178,144 @@ def _run_local_controller(
     context: dict[str, Any] | None,
     controller_cls: type[Any] | None = None,
 ) -> dict[str, Any]:
-    controller_type = controller_cls or BrowserComputerController
-    result = controller_type(artifact_root=artifact_root).run(
-        action,
-        payload,
-        yolo_mode=yolo_mode,
-    )
+    if controller_cls is None:
+        controller_cls = BrowserComputerController
+    if controller_cls is None:
+        try:
+            result = _run_captured_host_contract_action(
+                action,
+                {
+                    **payload,
+                    "artifact_root": str(artifact_root) if artifact_root else "",
+                    "yolo_mode": yolo_mode,
+                },
+                source_function_id="defaultspack.domain.host_bridge.computer_router",
+            )
+        except Exception as exc:
+            return {
+                "action": action,
+                "is_error": True,
+                "error_type": "v4_host_contract_unavailable",
+                "reason": str(exc),
+            }
+    else:
+        result = controller_cls(artifact_root=artifact_root).run(
+            action,
+            payload,
+            yolo_mode=yolo_mode,
+        )
     if not isinstance(result, dict):
         return {"action": action, "result": result}
     if _is_request_approval_needed(result):
-        approval_payload = result.get("payload") if isinstance(result.get("payload"), dict) else payload
+        approval_candidate = result.get("payload")
+        approval_payload = (
+            approval_candidate
+            if isinstance(approval_candidate, dict)
+            else dict(payload or {})
+        )
         return _approval_required_response(
             tool_name,
             str(result.get("action") or action),
-            dict(approval_payload),
+            approval_payload,
             result,
             context,
         )
     return dict(result)
 
 
+def _run_captured_host_contract_action(
+    action: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    source_function_id: str,
+) -> dict[str, Any]:
+    """Project a legacy Defaultspack action onto the captured v4 Host session."""
+
+    normalized_action = str(action or "").strip()
+    target = _HOST_ACTIONS.get(normalized_action)
+    if target is None:
+        return {
+            "status": "unavailable",
+            "success": False,
+            "error_type": "legacy_host_action_not_migrated",
+            "action": normalized_action,
+        }
+    session = get_container().get_or_none("v4_dispatch_session")
+    if session is None:
+        return {
+            "status": "unavailable",
+            "success": False,
+            "error_type": "global_host_contract_unavailable",
+            "action": normalized_action,
+        }
+    request = {
+        key: value
+        for key, value in dict(payload or {}).items()
+        if key not in _FORBIDDEN_HOST_ARGUMENTS
+    }
+    if normalized_action == "computer.clipboard.clear":
+        request = {"text": ""}
+    elif normalized_action == "computer.backspace":
+        request = {**request, "key": "BACKSPACE"}
+    elif normalized_action == "computer.ocr":
+        request = {**request, "include_ocr": True}
+    elif target[0] == _CLIPBOARD_WRITE:
+        request = {"text": str(request.get("text", request.get("content", "")))}
+    elif target[0] == _CLIPBOARD_READ:
+        request = {}
+    del source_function_id
+    result = invoke_global_contract(session, target[0], target[1], request)
+    if not isinstance(result, dict):
+        raise RuntimeError("host contract returned an invalid result")
+    return result
+
+
 def _approval_token_present(payload: dict[str, Any] | None) -> bool:
     if not isinstance(payload, dict):
         return False
     return bool(str(payload.get("approval_token") or "").strip())
+
+
+def _with_browser_text_input_recommendations(action: str, result: dict[str, Any]) -> dict[str, Any]:
+    normalized_action = str(result.get("action") or action or "").strip()
+    result.setdefault("action", normalized_action)
+    pending_approval = bool(result.get("requires_approval") or result.get("approval_required"))
+    if normalized_action in {"computer.observe", "computer.screenshot"} and not (
+        result.get("is_error") or pending_approval
+    ):
+        recommendations = list(result.get("recommended_next_actions") or [])
+        for next_action in _BROWSER_TEXT_INPUT_RECOMMENDED_NEXT_ACTIONS:
+            if next_action not in recommendations:
+                recommendations.append(next_action)
+        result["recommended_next_actions"] = recommendations
+        result.setdefault("input_guidance", _BROWSER_TEXT_INPUT_GUIDANCE)
+    return result
+
+
+def _viewer_connection_required_response(action: str, reason: str) -> dict[str, Any]:
+    return {
+        "action": action,
+        "is_error": True,
+        "reason": reason,
+        "message": _VIEWER_RECOVERY_MESSAGE,
+        "user_prompt": _VIEWER_RECOVERY_MESSAGE,
+        "recovery": {
+            "kind": "viewer_connection_required",
+            "requires_approval": True,
+            "requires_viewer_connection": True,
+            "prompt": _VIEWER_RECOVERY_MESSAGE,
+            "note": (
+                "Open Rumi Viewer and approve the request; foreground/on-screen operation is "
+                "available after a connected Rumi Viewer has macOS permissions."
+            ),
+            "recommended_next_actions": [
+                "approve_request",
+                "open_rumi_viewer",
+                "choose_foreground_work",
+            ],
+        },
+        "permission_subject": "Rumi Viewer",
+    }
 
 
 def _approval_token_from_context(
@@ -219,6 +408,7 @@ def _approval_required_response(
             "tool_name": safe_tool_name,
             "action": safe_action,
             "function_id": safe_action,
+            "arguments": dict(request_arguments or {}),
             "payload": dict(payload or {}),
             "pack_id": pack_id,
             "conversation_id": conversation_id,
@@ -246,6 +436,10 @@ def _approval_required_response(
     )
     if not wrapped.get("message") and wrapped.get("approval_hint"):
         wrapped["message"] = wrapped.get("approval_hint")
+    wrapped.setdefault("user_prompt", "承認してください")
+    wrapped.setdefault("message", "承認してください。表/前面で作業しますか?")
+    if isinstance(wrapped.get("recovery"), dict):
+        wrapped["recovery"].setdefault("prompt", wrapped["user_prompt"])
     warning = result.get("approval_warning")
     if isinstance(warning, str) and warning.strip():
         wrapped["approval_warning"] = warning
@@ -256,9 +450,7 @@ def _approval_required_response(
 
 
 def _request_arguments(tool_name: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
-    if tool_name == "browser_computer":
-        return {"action": action, "payload": dict(payload or {})}
-    return {"action": action, **dict(payload or {})}
+    return {"action": action, "payload": dict(payload or {})}
 
 
 def _approval_module():

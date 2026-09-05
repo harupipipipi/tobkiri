@@ -15,12 +15,21 @@ from .security import resolve_jobs_path, validate_no_agent_job
 
 
 def default_scheduler_dir() -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_SCHEDULER_DIR")
+    """Return the durable scheduler directory for this Defaultspack install."""
+    override = os.environ.get("RUMI_DEFAULTSPACK_SCHEDULER_DIR", "").strip()
     if override:
-        return Path(override)
+        return Path(override).expanduser()
     jobs_path = resolve_jobs_path()
     if jobs_path is not None:
         return jobs_path.parent
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return (
+            Path(user_data).expanduser()
+            / "defaultspack"
+            / "shared"
+            / "scheduler"
+        )
     return Path(__file__).resolve().parents[2] / "user_data" / "shared" / "scheduler"
 
 

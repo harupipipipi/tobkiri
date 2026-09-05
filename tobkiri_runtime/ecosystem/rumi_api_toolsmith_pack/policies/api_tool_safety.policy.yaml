@@ -5,7 +5,7 @@ policy:
   executable_code: false
   must_record_evidence: true
   must_check_overlap_policy: true
-  defaultspack_promotion: disabled_without_maintainer_review
+  base_pack_promotion: disabled_without_maintainer_review
   handoff_required_for:
   - mcp_server_registration
   - external_connector_delivery

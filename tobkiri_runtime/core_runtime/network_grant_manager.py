@@ -16,12 +16,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from .hmac_key_manager import (
     generate_or_load_signing_key,
@@ -92,7 +91,11 @@ class NetworkGrantManager:
     GRANTS_DIR = "user_data/permissions/network"
     SECRET_KEY_FILE = "user_data/permissions/.secret_key"
     
-    def __init__(self, grants_dir: str = None, secret_key: str = None):
+    def __init__(
+        self,
+        grants_dir: Optional[str] = None,
+        secret_key: Optional[str] = None,
+    ) -> None:
         if grants_dir:
             self._grants_dir = Path(grants_dir)
         else:
@@ -482,7 +485,9 @@ def get_network_grant_manager() -> NetworkGrantManager:
     return get_container().get("network_grant_manager")
 
 
-def reset_network_grant_manager(grants_dir: str = None) -> NetworkGrantManager:
+def reset_network_grant_manager(
+    grants_dir: Optional[str] = None,
+) -> NetworkGrantManager:
     """
     NetworkGrantManager をリセットする（テスト用）。
 

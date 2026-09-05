@@ -93,10 +93,11 @@ test("risky tool detail keeps a prominent needs approval affordance", () => {
   assert.match(html, />risk:high</);
 });
 
-test("right sidebar initially focuses the rail on tools", () => {
+test("right sidebar initially focuses the rail on activities", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
       items: [
+        { id: "browser", label: "Browser", category: "activity" },
         { id: "tool_a", label: "Tool A", category: "tool" },
         { id: "widget_a", label: "Widget A", category: "widget" },
       ],
@@ -111,9 +112,36 @@ test("right sidebar initially focuses the rail on tools", () => {
     }),
   );
 
-  assert.match(html, /title="Filter: 機能"/);
-  assert.match(html, /title="other \(1\)"/);
+  assert.match(html, /title="Filter: Activities"/);
+  assert.match(html, /title="Browser"/);
+  assert.doesNotMatch(html, /title="other \(1\)"/);
   assert.doesNotMatch(html, /title="Widget A"/);
+});
+
+test("right sidebar rail avoids transform and replayed entrance animations", () => {
+  const html = renderToStaticMarkup(
+    createElement(RightSidebar, {
+      items: [
+        { id: "browser", label: "Browser", category: "activity" },
+        { id: "browser_companion", label: "Browser Companion", category: "tool" },
+      ],
+      settingsValues: {
+        sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: ["browser_companion"],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+
+  assert.match(html, /title="Browser"/);
+  assert.doesNotMatch(html, /title="Browser Companion"/);
+  assert.doesNotMatch(html, /hover:scale/);
+  assert.doesNotMatch(html, /active:scale/);
+  assert.doesNotMatch(html, /rumi-stagger-tight/);
+  assert.doesNotMatch(html, /transition-\[background-color,color,box-shadow\]/);
 });
 
 test("right sidebar keeps starred tools accessible name when count is nonzero", () => {
@@ -185,7 +213,7 @@ test("advanced usage commands can open context token details", () => {
   assert.match(html, />16%</);
 });
 
-test("right sidebar keeps initial tool groups compact", () => {
+test("right sidebar keeps raw tool groups off the initial activity rail", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
       items: Array.from({ length: 12 }, (_value, index) => ({
@@ -205,7 +233,7 @@ test("right sidebar keeps initial tool groups compact", () => {
     }),
   );
 
-  assert.match(html, /title="その他の機能 \(4 groups\)"/);
+  assert.doesNotMatch(html, /title="その他の機能 \(4 groups\)"/);
   assert.doesNotMatch(html, /title="Group 11 \(1\)"/);
 });
 
@@ -356,14 +384,12 @@ test("prompt sidebar widget lists prompt name and token count before details", (
       },
       loadPromptActive: async () => ({ segments: [] }),
       togglePromptEdge: async () => ({ segments: [] }),
-      onOpenStudio: noop,
     }),
   );
 
   assert.match(html, /現在のプロンプト/);
   assert.match(html, /default_chat/);
   assert.match(html, /124/);
-  assert.match(html, /Prompt Studio/);
   assert.doesNotMatch(html, /Selected by the active profile/);
 });
 
@@ -380,7 +406,6 @@ test("prompt sidebar widget exposes chat prompt disclosure toggle", () => {
       togglePromptEdge: async () => ({ segments: [] }),
       showChatPromptUsage: false,
       onToggleChatPromptUsage: noop,
-      onOpenStudio: noop,
     }),
   );
 

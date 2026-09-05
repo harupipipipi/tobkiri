@@ -14,7 +14,6 @@ import subprocess
 import threading
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -240,8 +239,8 @@ class ContainerOrchestrator:
         input_file: str,
         filename: str,
         runtime: str = "binary",
-        docker_image: str = None,
-        container_name: str = None,
+        docker_image: str | None = None,
+        container_name: str | None = None,
     ) -> list:
         """Build a Docker run command for universal_call execution."""
         import uuid

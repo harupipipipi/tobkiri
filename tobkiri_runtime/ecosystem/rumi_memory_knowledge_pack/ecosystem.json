@@ -1,23 +1,94 @@
 {
-  "pack_id": "rumi_memory_knowledge_pack",
-  "pack_identity": "rumi:ecosystem/rumi_memory_knowledge_pack",
-  "version": "1.0.0",
+  "components": {
+    "knowledge_specs": {
+      "connectivity": {
+        "provides": [
+          "rumi.memory.object_schema",
+          "rumi.memory.evidence_schema",
+          "rumi.memory.skill_learning_proposal_schema"
+        ],
+        "requires": []
+      },
+      "id": "knowledge_specs",
+      "path": "specs",
+      "type": "knowledge_spec"
+    },
+    "memory_catalog": {
+      "connectivity": {
+        "provides": [
+          "rumi.memory.capabilities",
+          "rumi.memory.recall_workflows",
+          "rumi.memory.surface_catalog"
+        ],
+        "requires": []
+      },
+      "id": "memory_catalog",
+      "path": "catalog",
+      "type": "memory_capability_catalog"
+    },
+    "memory_policies": {
+      "connectivity": {
+        "provides": [
+          "rumi.memory.hygiene_policy",
+          "rumi.memory.recall_evidence_policy",
+          "rumi.memory.skill_learning_policy"
+        ],
+        "requires": [
+          "rumi.memory.object_schema"
+        ]
+      },
+      "id": "memory_policies",
+      "path": "policies",
+      "type": "memory_policy"
+    }
+  },
+  "load_order": [
+    "memory_capability_catalog:memory_catalog",
+    "knowledge_spec:knowledge_specs",
+    "memory_policy:memory_policies"
+  ],
   "metadata": {
-    "name": "Rumi Memory Knowledge Pack",
-    "description": "Declarative local-first contracts for session recall, user profile memory, project knowledge, skill-learning proposals, hygiene, and evidence-backed recall.",
     "author": "Rumi AI Team",
-    "license": "MIT",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:20bf8969fba8106ff65e3276f32fb01c20e8030cb6ab2efc20a5f37d7190023d",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:369c8c953fe5519ac26858e0c910b9d3b4f6cb5c90d7d2f6fc4b176778dc4967"
+    },
+    "declarative_only": true,
+    "description": "Declarative local-first contracts for session recall, user profile memory, project knowledge, skill-learning proposals, hygiene, and evidence-backed recall.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:369c8c953fe5519ac26858e0c910b9d3b4f6cb5c90d7d2f6fc4b176778dc4967"
+    },
     "inspired_by": [
       "Hermes-style persistent memory and session search",
       "Hermes-style skill creation and self-improvement loops",
       "Cline-style project rules and persistent team state",
       "OpenClaw-style local-first sessions and skills"
     ],
-    "declarative_only": true,
-    "required_secrets": [],
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Memory Knowledge Pack",
     "network_policy": "none_by_default",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
     "runtime_memory_write_policy": "defines_contracts_only"
   },
+  "pack_id": "rumi_memory_knowledge_pack",
+  "pack_identity": "rumi:ecosystem/rumi_memory_knowledge_pack",
+  "provenance": {
+    "build_identity": "rumi_memory_knowledge_pack:1.0.0",
+    "content_hash": "sha256:20bf8969fba8106ff65e3276f32fb01c20e8030cb6ab2efc20a5f37d7190023d",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "1.0.0",
   "vocabulary": {
     "types": [
       "memory_capability_catalog",
@@ -27,51 +98,5 @@
       "memory_preset",
       "memory_example"
     ]
-  },
-  "components": {
-    "memory_catalog": {
-      "type": "memory_capability_catalog",
-      "id": "memory_catalog",
-      "path": "catalog",
-      "connectivity": {
-        "provides": [
-          "rumi.memory.capabilities",
-          "rumi.memory.recall_workflows",
-          "rumi.memory.surface_catalog"
-        ],
-        "requires": []
-      }
-    },
-    "knowledge_specs": {
-      "type": "knowledge_spec",
-      "id": "knowledge_specs",
-      "path": "specs",
-      "connectivity": {
-        "provides": [
-          "rumi.memory.object_schema",
-          "rumi.memory.evidence_schema",
-          "rumi.memory.skill_learning_proposal_schema"
-        ],
-        "requires": []
-      }
-    },
-    "memory_policies": {
-      "type": "memory_policy",
-      "id": "memory_policies",
-      "path": "policies",
-      "connectivity": {
-        "provides": [
-          "rumi.memory.hygiene_policy",
-          "rumi.memory.recall_evidence_policy",
-          "rumi.memory.skill_learning_policy"
-        ],
-        "requires": ["rumi.memory.object_schema"]
-      }
-    }
-  },
-  "load_order": [
-    "memory_capability_catalog:memory_catalog",
-    "knowledge_spec:knowledge_specs",
-    "memory_policy:memory_policies"
-  ]
+  }
 }

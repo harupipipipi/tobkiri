@@ -1,6 +1,29 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+// The broker may receive a result from an older helper during a rolling
+// update. Normalize only this legacy input spelling before returning a result
+// to the current defaults profile; all current helpers emit the narrow branch
+// code below.
+pub const TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE: &str =
+    "TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE";
+pub const LEGACY_TYPE_SEMANTIC_AX_SUBTREE_PERSISTENTLY_STALE: &str =
+    "TYPE_SEMANTIC_AX_SUBTREE_PERSISTENTLY_STALE";
+pub const TYPE_ACCESSIBILITY_API_UNAVAILABLE: &str = "TYPE_ACCESSIBILITY_API_UNAVAILABLE";
+pub const TYPE_SEMANTIC_PROTOCOL_INVALID: &str = "TYPE_SEMANTIC_PROTOCOL_INVALID";
+
+pub fn canonical_type_semantic_error_code(code: &str) -> Option<&'static str> {
+    match code {
+        TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE
+        | LEGACY_TYPE_SEMANTIC_AX_SUBTREE_PERSISTENTLY_STALE => {
+            Some(TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE)
+        }
+        TYPE_ACCESSIBILITY_API_UNAVAILABLE => Some(TYPE_ACCESSIBILITY_API_UNAVAILABLE),
+        TYPE_SEMANTIC_PROTOCOL_INVALID => Some(TYPE_SEMANTIC_PROTOCOL_INVALID),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostBrokerStatus {
     pub enabled: bool,
@@ -34,6 +57,12 @@ pub struct HostBrokerConnectionInfo {
     pub permission_subject: String,
     pub pid: u32,
     pub created_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_nonce: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation_public_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation_instance_nonce: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -108,6 +137,8 @@ pub struct HostBrokerComputerRunResponse {
     pub function_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<HostBrokerError>,
     pub audit_id: String,

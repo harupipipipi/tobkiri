@@ -1,0 +1,147 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:d4ac2e5f2669e24a79547b69edec288b227fafb87ebb4bdb6180bb5a18acb98f",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:32ba6d76166504fb7d991ff60fb8d2756b7288a92d65938c3f971fb148479073",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0",
+      "kind": "executable",
+      "path": "runtime/bridge.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "operations": [
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream"
+      ],
+      "revision_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+      "id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+      "implementation_digest": "sha256:27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:025005f08eb0afcedd74f52429b6641d5c5e788a778ba2b04de8d2f8a7fa4257",
+    "artifact_set_digest": "sha256:d661f7e50ecb3a8ac23c1c5eee5cd6988b472be5bfea26d3fa4f4d8596886a4d",
+    "contract_catalog_digest": "sha256:3ff1c8941496c3b5cae0cc394c4f10ad85e87c5b54a98e735bb9e08269e3e8b7"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.ai.tool_intent.normalize.v1",
+      "rumi:ecosystem/rumi_ai_tool_bridge_pack",
+      "rumi_ai_tool_bridge_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+      "owner": "rumi_ai_tool_bridge_pack",
+      "contract_reference": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "owner": "rumi_ai_tool_bridge_pack",
+      "contract_reference": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "owner": "rumi_ai_tool_bridge_pack",
+      "contract_reference": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:748bda231eadaf01152e7062f339d3cafdd9021cd8505143a5558fd310c9bfdc",
+    "display_name": "Rumi AI Tool Bridge",
+    "id": "rumi_ai_tool_bridge_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json",
+    "source_digest": "sha256:025005f08eb0afcedd74f52429b6641d5c5e788a778ba2b04de8d2f8a7fa4257",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:cf6fe01d2799ae6eccc49fbf2f4d3d0138061bc9c049d1300878e20f3287f9d8",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:b6688a760bd227adfdf25ca2cb97df196284167f5d5cb67dbff68b9d043e099b",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_ai_tool_bridge_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:025005f08eb0afcedd74f52429b6641d5c5e788a778ba2b04de8d2f8a7fa4257"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+      "owner": "rumi_ai_tool_bridge_pack",
+      "contract_reference": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "operations": [
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize",
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+        "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.tool_intent.normalize"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

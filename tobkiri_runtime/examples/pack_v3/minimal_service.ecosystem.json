@@ -1,0 +1,44 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.example.echo.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "",
+  "display_name": "Echo service",
+  "host_execution": false,
+  "metadata": {
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.core_runtime.manifest_projection/v2",
+      "source": "rumi.pack.v3.json",
+      "source_content_hash": "sha256:2390685347dd8ab106842a06a57d35653958f846a7a362c31f1c7e714489362e"
+    },
+    "manifest_authority": "v3-authoritative",
+    "read_only_projection": true
+  },
+  "pack_id": "example_echo_service_pack",
+  "pack_identity": "rumi:ecosystem/example_echo_service_pack",
+  "provenance": {
+    "build_identity": "example-only",
+    "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "signature": null,
+    "trust_class": "untrusted"
+  },
+  "required_capabilities": [],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

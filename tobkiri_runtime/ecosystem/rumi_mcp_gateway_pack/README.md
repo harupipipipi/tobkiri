@@ -10,10 +10,14 @@
 - Prompt and resource templates for reviewing, registering, and documenting MCP servers.
 - Safety policies that keep unsupported MCP servers behind explicit namespace, approval, and audit boundaries.
 - Conflict and overlap notes for `defaultspack` MCP interfaces such as `defaults.tool.mcp_connect`, `defaultspack.tool.mcp_connect`, `defaults.tool.mcp_list`, and `defaultspack.tool.mcp_list`.
+- A finite, consumer-bound `call` adapter that validates namespace and operation
+  syntax, then delegates to the existing `defaultspack` MCP client. The adapter
+  accepts only the selected `rumi_tool_mcp_executor_pack` consumer.
 
 ## What It Does Not Provide
 
-- No executable MCP client, connector, bridge, route, handler, or network transport code.
+- No standalone MCP client, connector process, route, handler, credential store,
+  discovery job, or network transport implementation.
 - No replacement for `defaultspack` MCP execution, approval checks, registry persistence, or tool invocation.
 - No secrets, credentials, API keys, OAuth material, remote endpoints, or server commands.
 - No automatic approval for unknown, unsupported, or remote MCP servers.

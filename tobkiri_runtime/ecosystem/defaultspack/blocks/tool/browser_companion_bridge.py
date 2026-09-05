@@ -6,109 +6,151 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
-from ecosystem.rumi_default_tools_pack.domain.tool.browser_companion import BrowserCompanionController
-from ecosystem.rumi_default_tools_pack.domain.tool.browser_companion_bridge import (
-    BrowserCompanionBridgeStore,
-    bearer_token_from_headers,
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import (
+    GlobalContractInvocationError,
+    GlobalContractUnavailable,
+    invoke_global_contract,
 )
 
 
+_BROWSER_CONTRACT = "rumi.resource.browser.host.v1"
+# An embedding/test harness may supply an isolated bridge store.  Production
+# leaves this unset and therefore cannot reach a Pack implementation directly.
+BrowserCompanionBridgeStore = None
+
+
+def _injected_store():
+    factory = BrowserCompanionBridgeStore
+    return factory() if callable(factory) else None
+
+
 def _authorized_store(input_data):
-    store = BrowserCompanionBridgeStore()
-    headers = input_data.get("_headers") if isinstance(input_data.get("_headers"), dict) else {}
-    token = bearer_token_from_headers(headers) or str(input_data.get("pairing_token") or "")
+    store = _injected_store()
+    if store is None:
+        return None, _contract_unavailable("browser.companion.authorization")
+    headers = input_data.get("_headers") if isinstance(input_data, dict) else {}
+    headers = headers if isinstance(headers, dict) else {}
+    authorization = str(headers.get("Authorization") or headers.get("authorization") or "")
+    token = authorization.removeprefix("Bearer ").strip()
+    token = token or str(input_data.get("pairing_token") or "")
     if not store.pairing_authorized(token):
-        response = error("invalid or missing browser companion pairing token", code="PAIRING_UNAUTHORIZED")
+        response = error(
+            "invalid or missing browser companion pairing token",
+            code="PAIRING_UNAUTHORIZED",
+        )
         response["_http_status"] = 401
         return None, response
     return store, None
 
 
+def _invoke_browser(operation, payload=None):
+    session = get_container().get_or_none("v4_dispatch_session")
+    if session is None:
+        raise GlobalContractUnavailable("a captured v4 dispatch session is required")
+    result = invoke_global_contract(session, _BROWSER_CONTRACT, operation, payload or {})
+    if not isinstance(result, dict):
+        raise GlobalContractInvocationError(
+            "invalid_result", "browser host contract returned an invalid result"
+        )
+    return result
+
+
+def _contract_unavailable(operation):
+    response = error(
+        "Browser companion is not an executable v4 contract operation.",
+        code="BROWSER_COMPANION_CONTRACT_UNAVAILABLE",
+        details={"operation": operation},
+    )
+    response["_http_status"] = 503
+    return response
+
+
 def run_session(input_data=None, context=None):
-    del input_data
-    controller = BrowserCompanionController(bridge_store=BrowserCompanionBridgeStore())
-    return ok(controller.run("session", {}, context=context if isinstance(context, dict) else {}))
+    injected = _injected_store()
+    if injected is not None:
+        context = context if isinstance(context, dict) else {}
+        clients = injected.list_clients()
+        active = next(
+            (client for client in clients if client.get("is_active")), None
+        )
+        pairing = injected.ensure_pairing(rotate=False)
+        return ok(
+            {
+                "action": "session",
+                "pairing": {
+                    **pairing,
+                    "server_urls": [
+                        str(context.get("base_url") or "").rstrip("/")
+                    ],
+                },
+                "clients": clients,
+                "active_client_id": (
+                    active.get("client_id")
+                    if isinstance(active, dict)
+                    else injected.active_client_id()
+                ),
+                "setup_required": not bool(clients),
+            }
+        )
+    del input_data, context
+    try:
+        return ok(_invoke_browser("browser.session.get"))
+    except (GlobalContractInvocationError, GlobalContractUnavailable):
+        return _contract_unavailable("browser.session.get")
 
 
 def run_poll(input_data, context=None):
     store, failure = _authorized_store(input_data if isinstance(input_data, dict) else {})
-    if failure is not None:
-        return failure
-    payload = dict(input_data.get("client") or input_data or {})
-    client = store.upsert_client(payload)
-    command = store.claim_next_command(str(client.get("client_id") or ""))
-    return ok(
-        {
-            "accepted": True,
-            "client_id": client.get("client_id"),
-            "command": _public_command(command),
-            "commands": [_public_command(command)] if isinstance(command, dict) else [],
-        }
-    )
+    if store is not None:
+        payload = dict(input_data.get("client") or input_data or {})
+        client = store.upsert_client(payload)
+        command = store.claim_next_command(str(client.get("client_id") or ""))
+        return ok(
+            {
+                "accepted": True,
+                "client_id": client.get("client_id"),
+                "command": _public_command(command),
+                "commands": [_public_command(command)] if isinstance(command, dict) else [],
+            }
+        )
+    del context
+    return failure
 
 
 def run_result(input_data, context=None):
     store, failure = _authorized_store(input_data if isinstance(input_data, dict) else {})
-    if failure is not None:
-        return failure
-    payload = input_data if isinstance(input_data, dict) else {}
-    client_payload = dict(payload.get("client") or {})
-    client_id = str(payload.get("client_id") or client_payload.get("client_id") or "")
-    if client_id:
-        client_payload["client_id"] = client_id
-    try:
+    if store is not None:
+        payload = input_data if isinstance(input_data, dict) else {}
+        client_payload = dict(payload.get("client") or {})
+        client_id = str(payload.get("client_id") or client_payload.get("client_id") or "")
+        if client_id:
+            client_payload["client_id"] = client_id
         client = store.upsert_client(client_payload)
-    except KeyError as exc:
-        response = error(str(exc), code="UNKNOWN_COMMAND")
-        response["_http_status"] = 404
-        return response
-    except ValueError as exc:
-        response = error(str(exc), code="COMMAND_CLIENT_MISMATCH")
-        response["_http_status"] = 409
-        return response
-    records = []
-    try:
+        records = []
         raw_results = payload.get("results")
-        if isinstance(raw_results, list):
-            for item in raw_results:
-                if not isinstance(item, dict):
-                    continue
-                command_id = str(item.get("command_id") or "")
-                if not command_id:
-                    continue
-                record = store.complete_command(
-                    str(client.get("client_id") or ""),
-                    command_id,
-                    _normalized_result(item),
+        items = raw_results if isinstance(raw_results, list) else [payload]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            command_id = str(item.get("command_id") or "")
+            if command_id:
+                records.append(
+                    store.complete_command(
+                        str(client.get("client_id") or ""),
+                        command_id,
+                        _normalized_result(item),
+                    )
                 )
-                records.append(record)
-        else:
-            command_id = str(payload.get("command_id") or "")
-            if not command_id:
-                response = error("client_id and command_id are required", code="INVALID_INPUT")
-                response["_http_status"] = 400
-                return response
-            record = store.complete_command(
-                str(client.get("client_id") or ""),
-                command_id,
-                _normalized_result(payload),
-            )
-            records.append(record)
-    except KeyError as exc:
-        response = error(str(exc), code="UNKNOWN_COMMAND")
-        response["_http_status"] = 404
-        return response
-    except ValueError as exc:
-        response = error(str(exc), code="COMMAND_CLIENT_MISMATCH")
-        response["_http_status"] = 409
-        return response
-    return ok(
-        {
-            "accepted": True,
-            "command_id": records[0].get("command_id") if records else None,
-            "command_ids": [record.get("command_id") for record in records],
-        }
-    )
+        return ok(
+            {
+                "accepted": True,
+                "command_id": records[0].get("command_id") if records else None,
+                "command_ids": [record.get("command_id") for record in records],
+            }
+        )
+    del context
+    return failure
 
 
 def _public_command(record):

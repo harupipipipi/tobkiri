@@ -8,25 +8,126 @@ import {
   buildAccountConnectionPrelude,
   buildControlCenterSections,
   controlCenterSectionForField,
+  controlCenterSectionMeta,
   localizedSettingsSourceLabel,
+  mapSettingsSectionId,
   safeSettingsLabel,
 } from "./controlCenter";
 
 test("settings control center keeps the required section order", () => {
   const sections = buildControlCenterSections([]);
   assert.deepEqual(sections.map((section) => section.label), [
-    "Quick Setup",
-    "Models & API",
-    "Accounts & Connections",
-    "Tools & MCP",
-    "Computer & Automation",
-    "Workspace & UI",
+    "AI Assistant",
+    "Models",
+    "Display & Input",
+    "Connections",
+    "Features",
+    "Tools",
+    "Automation & Permissions",
+    "Safety & Data",
     "Profiles",
-    "Privacy & Security",
     "Packs & Extensions",
-    "Advanced",
-    "Diagnostics",
+    "Advanced Settings",
+    "Diagnostics & Support",
   ]);
+});
+
+test("control center canonical section ids round-trip through settings navigation", () => {
+  for (const section of controlCenterSectionMeta("ja")) {
+    assert.equal(mapSettingsSectionId(section.id), section.id);
+  }
+});
+
+test("AI API setup is shared with models while connections keeps the source field", () => {
+  const sections = buildControlCenterSections([
+    {
+      id: "models",
+      label: "Models",
+      fields: [
+        { id: "provider_select", label: "Provider", type: "provider_select" },
+        { id: "model_api_routes", label: "Model API Routes", type: "model_api_routes" },
+      ],
+    },
+    {
+      id: "apis",
+      label: "APIs / Tokens",
+      fields: [{ id: "api_keys", label: "API Keys / Tokens", type: "api_keys" }],
+    },
+  ] as SettingsSection[]);
+
+  const modelsApi = sections.find((section) => section.id === "models_api");
+  const connections = sections.find((section) => section.id === "accounts_connections");
+  assert.deepEqual(modelsApi?.fields.map((field) => field.id), ["api_keys", "provider_select", "model_api_routes"]);
+  const aiApiKeys = modelsApi?.fields.find((field) => field.sourceSectionId === "apis" && field.id === "api_keys");
+  assert.equal(aiApiKeys?.type, "api_key_setup");
+  assert.equal((aiApiKeys as unknown as Record<string, unknown>)?.provider_scope, "llm");
+  assert.deepEqual(connections?.fields.map((field) => field.id), ["api_keys"]);
+});
+
+test("pack-owned model and tool choices use their user-facing destinations", () => {
+  const operationsCompany = {
+    id: "operations_company",
+    label: "Operations Company",
+    fields: [],
+  } as SettingsSection;
+
+  assert.equal(
+    controlCenterSectionForField(operationsCompany, { id: "model_allowlist", label: "Model Allowlist", type: "textarea" }),
+    "models_api",
+  );
+  assert.equal(
+    controlCenterSectionForField(operationsCompany, { id: "tool_denylist", label: "Tool Denylist", type: "textarea" }),
+    "tools_mcp",
+  );
+});
+
+test("feature-owned model choices stay with their feature instead of the global model page", () => {
+  const calendar = {
+    id: "calendar",
+    label: "Calendar",
+    fields: [],
+  } as SettingsSection;
+
+  assert.equal(
+    controlCenterSectionForField(calendar, { id: "agent_model", label: "Agent model", type: "select" }),
+    "features",
+  );
+});
+
+test("webhook and channel plumbing is advanced by default", () => {
+  const sections = buildControlCenterSections([
+    {
+      id: "external_input",
+      label: "External input",
+      fields: [{ id: "input_endpoint_id", label: "Endpoint ID", type: "text" }],
+    },
+  ] as SettingsSection[]);
+
+  const field = sections.find((section) => section.id === "accounts_connections")?.fields[0];
+  assert.equal(field?.advanced, true);
+});
+
+test("manual runtime mode selection stays in the advanced settings surface", () => {
+  const sections = buildControlCenterSections([
+    {
+      id: "general",
+      label: "General",
+      fields: [{
+        id: "manual_runtime_mode_selection",
+        label: "Manual Runtime Mode Selection",
+        type: "toggle",
+        default: false,
+        advanced: true,
+        control_center_section: "advanced",
+      }],
+    },
+  ] as SettingsSection[], "ja");
+
+  const field = sections.find((section) => section.id === "advanced")?.fields[0];
+  assert.equal(field?.id, "manual_runtime_mode_selection");
+  assert.equal(field?.label, "実行モードを手動選択できるようにする");
+  assert.equal(field?.advanced, true);
+  assert.equal(field?.default, false);
 });
 
 test("Japanese settings use task-oriented copy while preserving technical search aliases", () => {
@@ -46,7 +147,7 @@ test("Japanese settings use task-oriented copy while preserving technical search
     },
   ] as SettingsSection[], "ja");
 
-  assert.equal(sections.find((section) => section.id === "workspace_ui")?.label, "表示と操作");
+  assert.equal(sections.find((section) => section.id === "workspace_ui")?.label, "表示と入力");
   const workspaceFields = sections.find((section) => section.id === "workspace_ui")?.fields ?? [];
   assert.equal(workspaceFields.find((field) => field.id === "composer_placeholder")?.label, "入力欄の案内文");
   assert.equal(workspaceFields.find((field) => field.id === "language")?.options?.[0]?.label, "端末に合わせる");
@@ -59,6 +160,8 @@ test("Japanese settings use task-oriented copy while preserving technical search
 
 test("Japanese placement and provenance labels never expose raw registry copy", () => {
   assert.equal(localizedSettingsSourceLabel("general", "General", "ja"), "表示と操作");
+  assert.equal(localizedSettingsSourceLabel("mimo_coding_company", "Internal Pack", "ja"), "MiMo Coding");
+  assert.equal(localizedSettingsSourceLabel("external_input", "External Input", "ja"), "外部からの受信・Webhook");
   assert.equal(localizedSettingsSourceLabel("unknown_extension", "Internal Vector Registry", "ja"), "拡張機能の設定");
   assert.equal(localizedSettingsSourceLabel("general", "General", "en"), "General");
 });

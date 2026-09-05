@@ -14,7 +14,7 @@ import hashlib
 import secrets
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 
 class ViewerCapabilityHandler:
@@ -52,14 +52,9 @@ class ViewerCapabilityHandler:
         return min(grant_max, self.ABSOLUTE_MAX_TOKEN_LIFETIME)
 
     def _get_web_mount_url(self, pack_id: str) -> Optional[str]:
-        """PackAPIHandler の _web_mounts テーブルから Pack の path_prefix を取得する。"""
-        try:
-            from .pack_api_server import PackAPIHandler
-            for wm in PackAPIHandler._web_mounts:
-                if wm.get("pack_id") == pack_id:
-                    return wm.get("path_prefix")
-        except Exception:
-            pass
+        """Return no URL because legacy Pack API web mounts are retired."""
+
+        del pack_id
         return None
 
     def _cleanup_expired_tokens(self) -> None:
@@ -74,7 +69,7 @@ class ViewerCapabilityHandler:
 
     def _audit_log(
         self,
-        severity: str,
+        severity: Literal["info", "warning", "error", "critical"],
         action: str,
         success: bool,
         principal_id: str,

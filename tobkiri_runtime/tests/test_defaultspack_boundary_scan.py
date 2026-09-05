@@ -312,7 +312,12 @@ def test_key_edges_use_public_contracts_in_repository_policy():
     }
     assert "domain/capability" not in policy["chat"]["may_import"]
     assert set(policy["chat"]["public_imports"]) == {
+        "domain/capability/activity_registry",
         "domain/capability/catalog",
+        "domain/capability/models",
+        "domain/capability/orchestrator",
+        "domain/capability/repository",
+        "domain/capability/settings",
         "domain/mention",
         "domain/tool_policy/internal_context",
     }
@@ -320,9 +325,13 @@ def test_key_edges_use_public_contracts_in_repository_policy():
         "may_import": [],
         "path": "domain/mention.py",
     }
-    for consumer in ("company", "subagent_team"):
-        assert "domain/mention" not in policy[consumer]["may_import"]
-        assert set(policy[consumer]["public_imports"]) == {"domain/mention"}
+    assert "domain/mention" not in policy["company"]["may_import"]
+    assert set(policy["company"]["public_imports"]) == {
+        "domain/agent/placement_catalog",
+        "domain/mention",
+    }
+    assert "domain/mention" not in policy["subagent_team"]["may_import"]
+    assert set(policy["subagent_team"]["public_imports"]) == {"domain/mention"}
     assert policy["share"]["may_import"] == []
     assert set(policy["share"]["public_imports"]) == {
         "domain/chat/store",

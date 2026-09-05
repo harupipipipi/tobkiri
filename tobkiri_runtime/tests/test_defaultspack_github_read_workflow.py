@@ -83,6 +83,7 @@ def test_github_client_reports_clear_token_setup_error(monkeypatch):
 
 def test_github_pr_read_returns_metadata_files_comments_and_checks(monkeypatch):
     from blocks.coding import github_pr_read
+    from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
     class FakeGitHubClient:
         def pr(self, url):
@@ -101,7 +102,7 @@ def test_github_pr_read_returns_metadata_files_comments_and_checks(monkeypatch):
 
     result = github_pr_read.run(
         {"url": "https://github.com/openai/codex/pull/123"},
-        {"_tool_server_approved": True},
+        mark_tool_server_approval_context({}),
     )
 
     assert result["status"] == "ok"
@@ -113,10 +114,11 @@ def test_github_pr_read_returns_metadata_files_comments_and_checks(monkeypatch):
 
 def test_github_pr_create_uses_approved_write_client(monkeypatch):
     from blocks.coding import github_pr_create
+    from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
     class FakeGitHubClient:
         def resolve_pull_request_args(self, arguments, *, cwd=None):
-            assert cwd is None or cwd.endswith("tobkiri_runtime")
+            assert cwd is None or Path(cwd).resolve() == ROOT.parent.resolve()
             return {
                 "repo": arguments["repo"],
                 "title": arguments["title"],
@@ -150,7 +152,7 @@ def test_github_pr_create_uses_approved_write_client(monkeypatch):
             "base": "main",
             "title": "[mimo] Fix visual QA bug",
         },
-        {"_tool_server_approved": True},
+        mark_tool_server_approval_context({}),
     )
 
     assert result["status"] == "ok"

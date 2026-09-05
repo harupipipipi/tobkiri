@@ -37,6 +37,7 @@ from .models import (
 )
 from .provider_registry import ProviderRegistry
 from .template_catalog import sandbox_template_by_id
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
 REGISTRY_SCHEMA_VERSION = 5
@@ -1247,7 +1248,7 @@ class SandboxManager:
 
             instances: Dict[str, SandboxInstance] = {}
             if isinstance(raw_instances, dict):
-                iterable = raw_instances.values()
+                iterable: list[Any] = list(raw_instances.values())
             elif isinstance(raw_instances, list):
                 iterable = raw_instances
             else:
@@ -2022,18 +2023,14 @@ class SandboxManager:
                 f"Unknown sandbox template: {requested_template_id}",
                 status_code=400,
             )
-        runtime = raw_template.get("runtime") if isinstance(raw_template.get("runtime"), dict) else {}
-        policy = raw_template.get("policy") if isinstance(raw_template.get("policy"), dict) else {}
-        filesystem_policy = policy.get("filesystem") if isinstance(policy.get("filesystem"), dict) else {}
-        workspace_policy = (
-            filesystem_policy.get("workspace")
-            if isinstance(filesystem_policy.get("workspace"), dict)
-            else {}
-        )
-        network_policy = policy.get("network") if isinstance(policy.get("network"), dict) else {}
-        secrets_policy = policy.get("secrets") if isinstance(policy.get("secrets"), dict) else {}
-        resources_policy = policy.get("resources") if isinstance(policy.get("resources"), dict) else {}
-        lifecycle_policy = policy.get("lifecycle") if isinstance(policy.get("lifecycle"), dict) else {}
+        runtime = mapping_or_empty(raw_template.get("runtime"))
+        policy = mapping_or_empty(raw_template.get("policy"))
+        filesystem_policy = mapping_or_empty(policy.get("filesystem"))
+        workspace_policy = mapping_or_empty(filesystem_policy.get("workspace"))
+        network_policy = mapping_or_empty(policy.get("network"))
+        secrets_policy = mapping_or_empty(policy.get("secrets"))
+        resources_policy = mapping_or_empty(policy.get("resources"))
+        lifecycle_policy = mapping_or_empty(policy.get("lifecycle"))
         provider_requirements = set(_clean_string_list(runtime.get("provider_requirements"), max_items=64, max_len=160))
         runtime_capabilities = set(_clean_string_list(runtime.get("capabilities"), max_items=64, max_len=160))
         if not provider_requirements:
@@ -2044,7 +2041,7 @@ class SandboxManager:
         desktop = None
         resolved_template_id = str(raw_template.get("id") or requested_template_id)
         packages = _packages_from_template_runtime(runtime)
-        desktop_policy = policy.get("desktop") if isinstance(policy.get("desktop"), dict) else {}
+        desktop_policy = mapping_or_empty(policy.get("desktop"))
         template_declares_desktop = bool(desktop_policy.get("enabled"))
         if display and not template_declares_desktop:
             raise SandboxContractError(
@@ -2115,11 +2112,8 @@ class SandboxManager:
             allowed_operations=frozenset(allowed_operations),
             source_template_ids=tuple(
                 str(item)
-                for item in (
-                    raw_template.get("source_template_ids")
-                    if isinstance(raw_template.get("source_template_ids"), list)
-                    else [raw_template.get("extends"), resolved_template_id, image]
-                )
+                for item in list_or_empty(raw_template.get("source_template_ids"))
+                or [raw_template.get("extends"), resolved_template_id, image]
                 if item
             ),
         )
@@ -2614,7 +2608,7 @@ def _desktop_access_from_dict(value: Any) -> DesktopAccessPolicy:
 
 def _access_requests_from_registry(value: Any) -> dict[str, dict[str, Any]]:
     if isinstance(value, dict):
-        iterable = value.values()
+        iterable: list[Any] = list(value.values())
     elif isinstance(value, list):
         iterable = value
     else:
@@ -2795,7 +2789,10 @@ def _trusted_workspace_record(workspace_id: str) -> dict[str, Any]:
             status_code=403,
         )
     try:
-        root_path = normalize_workspace_root(record.get("root_path"))
+        root_value = record.get("root_path")
+        if not isinstance(root_value, (str, Path)):
+            raise ValueError("workspace root is missing")
+        root_path = normalize_workspace_root(root_value)
     except ValueError as exc:
         raise SandboxContractError(
             "SANDBOX_WORKSPACE_INVALID",

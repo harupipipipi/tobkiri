@@ -1,0 +1,1 @@
+{"version":1,"artifacts":[{"path":"runtime/service.py","sha256":"978f30aeae69ba9c5616e837c712e0977447e82268cdb82ad3a11366e3f819de","entrypoints":["create_desktop_observer","create_desktop_control"]}]}

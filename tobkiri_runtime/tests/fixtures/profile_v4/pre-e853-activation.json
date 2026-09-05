@@ -1,0 +1,1425 @@
+{
+  "activation": {
+    "activation_api_version": "io.tobkiri.activation-record.v1",
+    "activation_id": "activation:defaults-pre-e853",
+    "committed_at": "2026-08-04T00:00:00Z",
+    "created_at": "2026-08-04T00:00:00Z",
+    "fencing_token": 1,
+    "plan_digest": "sha256:688c81f9506a55394cd82ee0f078f077d3cd645b052545ee61601109455c8146",
+    "profile_authority_snapshot_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "profile_id": "defaults",
+    "security_epoch": 1,
+    "state": "active",
+    "state_generation": 4
+  },
+  "captured_from_commit": "570493cc",
+  "fixture_schema": "io.tobkiri.test.pre-e853-activation.v1",
+  "lock": {
+    "base": {
+      "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "definition_revision": "sha256:87b8beec3375d3b4467760a6ebb18866495a2ecf4bce2e1d831584815e7358b8",
+      "pack_id": "defaults-basepack"
+    },
+    "catalog_revision": "sha256:fc5d7db5d6f6cf6cc33986e13e73c33d69c50de6f24c676d57bbb6b3c0c562f4",
+    "effective_set": [
+      {
+        "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "identity": "defaults-basepack",
+        "role": "base"
+      },
+      {
+        "artifact_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "identity": "shell.tauri.default",
+        "role": "shell"
+      },
+      {
+        "artifact_digest": "sha256:b8b37f87645fc793bd812d5f1ecd758b14405a9936577ca18c36dd40630e4b3f",
+        "identity": "defaultspack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:b2ae2191789ff05bc019e96e30e8155afdb83d5c726230089722c9b14d9a89ed",
+        "identity": "rumi_file_inspect_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "identity": "tobkiri_host_pack_control",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:9de8bae248436fe0dfa800da7641fc9edcb61de5334a0958ead2e6ed9d5584e6",
+        "identity": "runtime.tauri.application.default",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:aeb56abd7ac71de6eff111f0c54ec169fae5abb7538e273ae7d4b4649c572751",
+        "identity": "rumi_ai_gateway_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:25f38c6310dfb85131555648bd336e0d2810806ab5f39e5dd29606ed43ffbd82",
+        "identity": "rumi_model_catalog_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:39f7859bade2a68482d26e5f9f82a72f8c84bf8a0f12f638caec65f88b9ca7ec",
+        "identity": "rumi_model_registry_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0",
+        "identity": "rumi_ai_pipeline_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:dadafa35b49cb548beed7747107be6665681bbacb27824e82f5c55d2ecb5f2a8",
+        "identity": "rumi_provider_adapters_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:2f2594474c717110c03e023bd8ac38fd36d5f7046e971e93acfe6f02ec65bbaa",
+        "identity": "rumi_ai_routing_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:fe2dd574cc33a781474b78bc791fba24d6dd150c8e47cf244eed932488821bfd",
+        "identity": "rumi_ai_stream_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:304064d9650148822bef675a8baf1c4381f364e31b617798835b9fdbffd4a566",
+        "identity": "rumi_ai_tool_bridge_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:99798048c8dcade5d637a27a125270a6768379e6192992ac8390f0ab131d1d75",
+        "identity": "rumi_ai_usage_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979",
+        "identity": "rumi_provider_registry_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:4a5d684826139e2ad47e7538af995cd398ba71330614fa90a8fcb8a50f4d49ed",
+        "identity": "rumi_workspace_mount_pack",
+        "role": "pack"
+      },
+      {
+        "artifact_digest": "sha256:6cd76560192a26c3d0ba24fc0a653ed5f49c7400bd80fa137bd922966a1040bc",
+        "identity": "rumi_host_authority_bridge_pack",
+        "role": "pack"
+      }
+    ],
+    "lock_api_version": "io.tobkiri.profile-lock.v4",
+    "lock_digest": "sha256:054e99417c456fe1583df7ea3aab9c31fde3bd622583d0023eb2f54a89d57822",
+    "plan_digest": "sha256:688c81f9506a55394cd82ee0f078f077d3cd645b052545ee61601109455c8146",
+    "profile_authority_snapshot_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "profile_id": "defaults",
+    "profile_revision": "sha256:33e2137d262994bda3a8643c0dc050fad10f9aebccfde6f7c84e37efa3972327",
+    "security_epoch": 1,
+    "shell": {
+      "architecture": "arm64",
+      "artifact_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "contract_id": "app.shell.v1",
+      "definition_revision": "sha256:10f956483bcc7be0951de38fb0434b09d33f495a68161fd0649a624710071717",
+      "pack_id": "shell.tauri.default",
+      "platform": "macos",
+      "provider_id": "shell.tauri.default"
+    }
+  },
+  "plan": {
+    "base": {
+      "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "definition_digest": "sha256:c316906973ca28b912b8b337eca98b407ca467d4529a04cbbb5ca5c60dfc3095",
+      "pack_id": "defaults-basepack"
+    },
+    "bindings": [
+      {
+        "artifact_digest": "sha256:b8b37f87645fc793bd812d5f1ecd758b14405a9936577ca18c36dd40630e4b3f",
+        "contract_id": "conversation.turn.v1",
+        "domain_kind": "pack_vm",
+        "function_principal": {
+          "contract_revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a",
+          "function_id": "defaultspack.conversation",
+          "function_implementation_digest": "sha256:c53100d459dbf91774dddfe3a266fa33543a1a4f8bc122414343e9bf76a99820",
+          "operation_id": "complete",
+          "parent_artifact_digest": "sha256:b8b37f87645fc793bd812d5f1ecd758b14405a9936577ca18c36dd40630e4b3f"
+        },
+        "operation_id": "complete",
+        "pack_id": "defaultspack"
+      },
+      {
+        "artifact_digest": "sha256:aeb56abd7ac71de6eff111f0c54ec169fae5abb7538e273ae7d4b4649c572751",
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "function_implementation_digest": "sha256:3a9d647efa271e4a41cfa108ca02531452b1f3047fa3b6bb2308f0126fe922c2",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "parent_artifact_digest": "sha256:aeb56abd7ac71de6eff111f0c54ec169fae5abb7538e273ae7d4b4649c572751"
+        },
+        "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "pack_id": "rumi_ai_gateway_pack"
+      },
+      {
+        "artifact_digest": "sha256:aeb56abd7ac71de6eff111f0c54ec169fae5abb7538e273ae7d4b4649c572751",
+        "contract_id": "tobkiri.service.ai.stream.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597",
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+          "function_implementation_digest": "sha256:3a9d647efa271e4a41cfa108ca02531452b1f3047fa3b6bb2308f0126fe922c2",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+          "parent_artifact_digest": "sha256:aeb56abd7ac71de6eff111f0c54ec169fae5abb7538e273ae7d4b4649c572751"
+        },
+        "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "pack_id": "rumi_ai_gateway_pack"
+      },
+      {
+        "artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0",
+        "contract_id": "tobkiri.service.ai.request.prepare.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare",
+          "function_implementation_digest": "sha256:dd9e1e9294cc7232bf5764b8c196a8d56139397582ef522faf742e39d142911c",
+          "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+          "parent_artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0"
+        },
+        "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+        "pack_id": "rumi_ai_pipeline_pack"
+      },
+      {
+        "artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0",
+        "contract_id": "tobkiri.service.ai.request.prepare.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare",
+          "function_implementation_digest": "sha256:dd9e1e9294cc7232bf5764b8c196a8d56139397582ef522faf742e39d142911c",
+          "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.stream",
+          "parent_artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0"
+        },
+        "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.stream",
+        "pack_id": "rumi_ai_pipeline_pack"
+      },
+      {
+        "artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979",
+        "contract_id": "tobkiri.resource.ai.provider.health.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+          "function_id": "rumi_provider_registry_pack.provider-registry.health",
+          "function_implementation_digest": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455",
+          "operation_id": "rumi_provider_registry_pack.provider-registry-health.generate",
+          "parent_artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979"
+        },
+        "operation_id": "rumi_provider_registry_pack.provider-registry-health.generate",
+        "pack_id": "rumi_provider_registry_pack"
+      },
+      {
+        "artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979",
+        "contract_id": "tobkiri.resource.ai.provider.health.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+          "function_id": "rumi_provider_registry_pack.provider-registry.health",
+          "function_implementation_digest": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455",
+          "operation_id": "rumi_provider_registry_pack.provider-registry-health.stream",
+          "parent_artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979"
+        },
+        "operation_id": "rumi_provider_registry_pack.provider-registry-health.stream",
+        "pack_id": "rumi_provider_registry_pack"
+      },
+      {
+        "artifact_digest": "sha256:25f38c6310dfb85131555648bd336e0d2810806ab5f39e5dd29606ed43ffbd82",
+        "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
+          "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
+          "function_implementation_digest": "sha256:de0973b8ad1da4556587f199a4173c6dfb674f314981e331821026c35d8f12ab",
+          "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
+          "parent_artifact_digest": "sha256:25f38c6310dfb85131555648bd336e0d2810806ab5f39e5dd29606ed43ffbd82"
+        },
+        "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "pack_id": "rumi_model_catalog_pack"
+      },
+      {
+        "artifact_digest": "sha256:25f38c6310dfb85131555648bd336e0d2810806ab5f39e5dd29606ed43ffbd82",
+        "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
+          "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
+          "function_implementation_digest": "sha256:de0973b8ad1da4556587f199a4173c6dfb674f314981e331821026c35d8f12ab",
+          "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
+          "parent_artifact_digest": "sha256:25f38c6310dfb85131555648bd336e0d2810806ab5f39e5dd29606ed43ffbd82"
+        },
+        "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
+        "pack_id": "rumi_model_catalog_pack"
+      },
+      {
+        "artifact_digest": "sha256:39f7859bade2a68482d26e5f9f82a72f8c84bf8a0f12f638caec65f88b9ca7ec",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "function_implementation_digest": "sha256:a87b27c7ee0f22e45d05aa86db320e75d298f14831276681e935ac453d9c1099",
+          "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
+          "parent_artifact_digest": "sha256:39f7859bade2a68482d26e5f9f82a72f8c84bf8a0f12f638caec65f88b9ca7ec"
+        },
+        "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
+        "pack_id": "rumi_model_registry_pack"
+      },
+      {
+        "artifact_digest": "sha256:39f7859bade2a68482d26e5f9f82a72f8c84bf8a0f12f638caec65f88b9ca7ec",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "function_implementation_digest": "sha256:a87b27c7ee0f22e45d05aa86db320e75d298f14831276681e935ac453d9c1099",
+          "operation_id": "rumi_model_registry_pack.model-profile-resource.stream",
+          "parent_artifact_digest": "sha256:39f7859bade2a68482d26e5f9f82a72f8c84bf8a0f12f638caec65f88b9ca7ec"
+        },
+        "operation_id": "rumi_model_registry_pack.model-profile-resource.stream",
+        "pack_id": "rumi_model_registry_pack"
+      },
+      {
+        "artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0",
+        "contract_id": "tobkiri.service.ai.failover.decide.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.failover",
+          "function_implementation_digest": "sha256:dd9e1e9294cc7232bf5764b8c196a8d56139397582ef522faf742e39d142911c",
+          "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+          "parent_artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0"
+        },
+        "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+        "pack_id": "rumi_ai_pipeline_pack"
+      },
+      {
+        "artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0",
+        "contract_id": "tobkiri.service.ai.failover.decide.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.failover",
+          "function_implementation_digest": "sha256:dd9e1e9294cc7232bf5764b8c196a8d56139397582ef522faf742e39d142911c",
+          "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.stream",
+          "parent_artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0"
+        },
+        "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.stream",
+        "pack_id": "rumi_ai_pipeline_pack"
+      },
+      {
+        "artifact_digest": "sha256:dadafa35b49cb548beed7747107be6665681bbacb27824e82f5c55d2ecb5f2a8",
+        "contract_id": "tobkiri.service.ai.provider.generate.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:729e08de33262fe2c1b9269ed22d4090f0fcd29321301c46d093c808c9211e95",
+          "function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
+          "function_implementation_digest": "sha256:221d2a1c56f4eb6e2333fed7e52ac181759ce608a7ed266e438b4e48d9838eb9",
+          "operation_id": "rumi_provider_adapters_pack.provider-generate",
+          "parent_artifact_digest": "sha256:dadafa35b49cb548beed7747107be6665681bbacb27824e82f5c55d2ecb5f2a8"
+        },
+        "operation_id": "rumi_provider_adapters_pack.provider-generate",
+        "pack_id": "rumi_provider_adapters_pack"
+      },
+      {
+        "artifact_digest": "sha256:dadafa35b49cb548beed7747107be6665681bbacb27824e82f5c55d2ecb5f2a8",
+        "contract_id": "tobkiri.service.ai.provider.stream.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:8fd2fa8b32bf0d21ffbf0ca8976feeefe042ed54a3e8c6ef93bf00bb9cba971d",
+          "function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
+          "function_implementation_digest": "sha256:221d2a1c56f4eb6e2333fed7e52ac181759ce608a7ed266e438b4e48d9838eb9",
+          "operation_id": "rumi_provider_adapters_pack.provider-stream",
+          "parent_artifact_digest": "sha256:dadafa35b49cb548beed7747107be6665681bbacb27824e82f5c55d2ecb5f2a8"
+        },
+        "operation_id": "rumi_provider_adapters_pack.provider-stream",
+        "pack_id": "rumi_provider_adapters_pack"
+      },
+      {
+        "artifact_digest": "sha256:2f2594474c717110c03e023bd8ac38fd36d5f7046e971e93acfe6f02ec65bbaa",
+        "contract_id": "tobkiri.service.ai.route.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+          "function_id": "rumi_ai_routing_pack.ai-routing.default",
+          "function_implementation_digest": "sha256:e0d076c92b7d45707e7ef90b74c922f1461aeec09b1d9eb429f351a0c12a21fa",
+          "operation_id": "rumi_ai_routing_pack.ai-route.generate",
+          "parent_artifact_digest": "sha256:2f2594474c717110c03e023bd8ac38fd36d5f7046e971e93acfe6f02ec65bbaa"
+        },
+        "operation_id": "rumi_ai_routing_pack.ai-route.generate",
+        "pack_id": "rumi_ai_routing_pack"
+      },
+      {
+        "artifact_digest": "sha256:2f2594474c717110c03e023bd8ac38fd36d5f7046e971e93acfe6f02ec65bbaa",
+        "contract_id": "tobkiri.service.ai.route.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+          "function_id": "rumi_ai_routing_pack.ai-routing.default",
+          "function_implementation_digest": "sha256:e0d076c92b7d45707e7ef90b74c922f1461aeec09b1d9eb429f351a0c12a21fa",
+          "operation_id": "rumi_ai_routing_pack.ai-route.stream",
+          "parent_artifact_digest": "sha256:2f2594474c717110c03e023bd8ac38fd36d5f7046e971e93acfe6f02ec65bbaa"
+        },
+        "operation_id": "rumi_ai_routing_pack.ai-route.stream",
+        "pack_id": "rumi_ai_routing_pack"
+      },
+      {
+        "artifact_digest": "sha256:fe2dd574cc33a781474b78bc791fba24d6dd150c8e47cf244eed932488821bfd",
+        "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:88929a94dedfbbc04a8ca78a3c88c01bcb2703a480402e8ad0afbfea8b62d6ad",
+          "function_id": "rumi_ai_stream_pack.ai-stream.normalize",
+          "function_implementation_digest": "sha256:f79be5b06a11067b796db983762ad268ffcffa774ce34024e3a01ce1457deda0",
+          "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+          "parent_artifact_digest": "sha256:fe2dd574cc33a781474b78bc791fba24d6dd150c8e47cf244eed932488821bfd"
+        },
+        "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+        "pack_id": "rumi_ai_stream_pack"
+      },
+      {
+        "artifact_digest": "sha256:304064d9650148822bef675a8baf1c4381f364e31b617798835b9fdbffd4a566",
+        "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+          "function_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+          "function_implementation_digest": "sha256:92e4d5adfaa75ca8b3ca7756f3e64868dba9db6a788595ed94c9211d842865a1",
+          "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+          "parent_artifact_digest": "sha256:304064d9650148822bef675a8baf1c4381f364e31b617798835b9fdbffd4a566"
+        },
+        "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+        "pack_id": "rumi_ai_tool_bridge_pack"
+      },
+      {
+        "artifact_digest": "sha256:304064d9650148822bef675a8baf1c4381f364e31b617798835b9fdbffd4a566",
+        "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+          "function_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+          "function_implementation_digest": "sha256:92e4d5adfaa75ca8b3ca7756f3e64868dba9db6a788595ed94c9211d842865a1",
+          "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+          "parent_artifact_digest": "sha256:304064d9650148822bef675a8baf1c4381f364e31b617798835b9fdbffd4a566"
+        },
+        "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+        "pack_id": "rumi_ai_tool_bridge_pack"
+      },
+      {
+        "artifact_digest": "sha256:99798048c8dcade5d637a27a125270a6768379e6192992ac8390f0ab131d1d75",
+        "contract_id": "tobkiri.service.ai.usage.cost.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:04a8f126370dafe88c38fe8b465b97e666097e515823d55921d98f0c588d68fc",
+          "function_id": "rumi_ai_usage_pack.ai-usage.cost",
+          "function_implementation_digest": "sha256:9124ba766b36d979c6a00e707b406c55754d57645d7b890824c4bfdfad64d9e6",
+          "operation_id": "rumi_ai_usage_pack.ai-usage-cost.generate",
+          "parent_artifact_digest": "sha256:99798048c8dcade5d637a27a125270a6768379e6192992ac8390f0ab131d1d75"
+        },
+        "operation_id": "rumi_ai_usage_pack.ai-usage-cost.generate",
+        "pack_id": "rumi_ai_usage_pack"
+      },
+      {
+        "artifact_digest": "sha256:99798048c8dcade5d637a27a125270a6768379e6192992ac8390f0ab131d1d75",
+        "contract_id": "tobkiri.service.ai.usage.cost.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:04a8f126370dafe88c38fe8b465b97e666097e515823d55921d98f0c588d68fc",
+          "function_id": "rumi_ai_usage_pack.ai-usage.cost",
+          "function_implementation_digest": "sha256:9124ba766b36d979c6a00e707b406c55754d57645d7b890824c4bfdfad64d9e6",
+          "operation_id": "rumi_ai_usage_pack.ai-usage-cost.stream",
+          "parent_artifact_digest": "sha256:99798048c8dcade5d637a27a125270a6768379e6192992ac8390f0ab131d1d75"
+        },
+        "operation_id": "rumi_ai_usage_pack.ai-usage-cost.stream",
+        "pack_id": "rumi_ai_usage_pack"
+      },
+      {
+        "artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:ae3b4954e4d3ccfce933d44a9fd23409ef9626e5916a280ed304780437088e34",
+          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "function_implementation_digest": "sha256:0b1c688720b296ac8c48f7b43b491a210fbfbf0eac7c13f7d77e6c81e76f8d3f",
+          "operation_id": "rumi_provider_registry_pack.provider-registry-resource.generate",
+          "parent_artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979"
+        },
+        "operation_id": "rumi_provider_registry_pack.provider-registry-resource.generate",
+        "pack_id": "rumi_provider_registry_pack"
+      },
+      {
+        "artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:ae3b4954e4d3ccfce933d44a9fd23409ef9626e5916a280ed304780437088e34",
+          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "function_implementation_digest": "sha256:0b1c688720b296ac8c48f7b43b491a210fbfbf0eac7c13f7d77e6c81e76f8d3f",
+          "operation_id": "rumi_provider_registry_pack.provider-registry-resource.stream",
+          "parent_artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979"
+        },
+        "operation_id": "rumi_provider_registry_pack.provider-registry-resource.stream",
+        "pack_id": "rumi_provider_registry_pack"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "catalog.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "catalog.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "pack.install",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "pack.install",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "dashboard.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "dashboard.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "approval.candidate",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "approval.candidate",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "approval.approve",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "approval.approve",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "approval.revoke",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "approval.revoke",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "pack.enable",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "pack.enable",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "pack.disable",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "pack.disable",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "pack.status",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "pack.status",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "profile.change.activate",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "profile.change.activate",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "profile.change.approve",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "profile.change.approve",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "profile.change.resolve",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "profile.change.resolve",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "profile.change.review",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "profile.change.review",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "profile.catalog.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "profile.catalog.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "profile.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "profile.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "settings.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "settings.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "topology.contracts.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "topology.contracts.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "topology.operations.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "topology.operations.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "topology.packs.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "topology.packs.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:be03402ddb411fdd8dc2368ab6f232f74e6a1bea5ffedcd201f63a0c62ee3a8f",
+          "function_id": "tobkiri.host.control-presentation",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "topology.principals.read",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "topology.principals.read",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "profile.reload",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "profile.reload",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "function_id": "tobkiri.host.pack-control",
+          "function_implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+          "operation_id": "runtime.restart",
+          "parent_artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3"
+        },
+        "operation_id": "runtime.restart",
+        "pack_id": "tobkiri_host_pack_control"
+      },
+      {
+        "artifact_digest": "sha256:b2ae2191789ff05bc019e96e30e8155afdb83d5c726230089722c9b14d9a89ed",
+        "contract_id": "tobkiri.service.file.inspect.v1",
+        "domain_kind": "dedicated_process",
+        "function_principal": {
+          "contract_revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+          "function_id": "rumi_file_inspect_pack.file-inspect.service",
+          "function_implementation_digest": "sha256:9267d5985023bcbdd20c318d07d01dcb8239d7628a2621005a37e89eed7a75bd",
+          "operation_id": "rumi_file_inspect_pack.file-inspect",
+          "parent_artifact_digest": "sha256:b2ae2191789ff05bc019e96e30e8155afdb83d5c726230089722c9b14d9a89ed"
+        },
+        "operation_id": "rumi_file_inspect_pack.file-inspect",
+        "pack_id": "rumi_file_inspect_pack"
+      }
+    ],
+    "plan_api_version": "io.tobkiri.resolved-plan.v1",
+    "plan_digest": "sha256:688c81f9506a55394cd82ee0f078f077d3cd645b052545ee61601109455c8146",
+    "profile_id": "defaults",
+    "profile_revision": "sha256:33e2137d262994bda3a8643c0dc050fad10f9aebccfde6f7c84e37efa3972327",
+    "security_epoch": 1,
+    "shell": {
+      "artifact_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "contract_id": "app.shell.v1",
+      "definition_digest": "sha256:c9cf235286be2e6af6657e372c23a2a6da967a2fac3fe90cb7a14f754d1cb3a0",
+      "pack_id": "shell.tauri.default",
+      "provider_id": "shell.tauri.default"
+    }
+  },
+  "profile": {
+    "authority_references": [
+      "authority-ref:frozen.7160db809ad7df1eb908d7fd6364e314f90e2cfbf4f372d2a763f13d5ae3224d",
+      "authority-ref:frozen.9c6eb29b5daaeb599b8f34d4b3d86001484a4758d051bacd3f69dce8c04ae2fd",
+      "authority-ref:frozen.6b8b8195ccbd5911a9e62e8db65b2193b372d2d80d7fba498a3cf4214c499fef",
+      "authority-ref:frozen.5d76d3a7ab8b82668e5a305e138e73e11e571e321a13fe1fff1ec5f3b31a0ded",
+      "authority-ref:frozen.aa56608af8b4175923617767655425069852edbaaf06b85877816517124a2a79",
+      "authority-ref:frozen.08ec38b9bc34e7d01e81bd2d149b433b96c25ec70965e3d401b4e786611a54b2",
+      "authority-ref:frozen.51eca0f931da153a04cc780281053ea38214a003aa9aacbdee873f57dc1fa340",
+      "authority-ref:frozen.d109ff768fe66c42fcf9925cced2e2bbd0e9f6b3b3a5becda3f16f38c5637a92",
+      "authority-ref:frozen.d7e189983c8b1c0cdd8de5ff05d8a45e3c3b4d2981f94c578765358f727e2aa1",
+      "authority-ref:frozen.000d3977dba751433675b6aacfbee54b1cf05a7eb8779f45a66938df59d5cc8c",
+      "authority-ref:frozen.cbba5b1e0ea3b58610abd8bea26ca7b819cef2328c5516d93f83781e065656ee",
+      "authority-ref:frozen.d23e2a1789bc4ab9d072375a3336eb3dfb2f8d27ab1b63042d6c39bf53b8bc47",
+      "authority-ref:frozen.bb27f7a726ff6aa0e20027e44ddda5fa6fb72f87d41adf6a71757e69d33db62a",
+      "authority-ref:frozen.3a43385b5f5d5740eb0f7cf0f63cbbdb308545bf0876ce4a1174e53d2eebb5a2",
+      "authority-ref:frozen.bcc73dff2386a7d8e4357106cda6d41bb51754d403ee987e90b68556e653bece",
+      "authority-ref:frozen.494a58581b960f430ee4e1dac989252c65620c09cfd46de020af525399a48723",
+      "authority-ref:frozen.814c5b36710c0045ab4ec54a0fe59f8bdac134c236430704f4602f66995c4fd1",
+      "authority-ref:frozen.210b2071e069758c6e7937a2f8ce2cff6f881a68e8ca13ce47c81adc92ab4f0b",
+      "authority-ref:frozen.1d2bc4cad2798c65f644032edb6fb0f16e83628cf27e9783652725aaef0e7519",
+      "authority-ref:frozen.3d2dc607b8b723d939d4836fa661c3c2bd6c5299dfc0a40912c7d0979a9c7403",
+      "authority-ref:frozen.8e8c656d2f0edb57268e9bca0bcdeda073f7139853aa7853b0baec1e712412f7",
+      "authority-ref:frozen.958a1dc43771fa9859bc2ab1119707366b08139fd95f193ff878b8388bb0df8e",
+      "authority-ref:frozen.a71dcd29ef7e94d470d60f60a125df5a5b60e4c77589e5f7544705bae5760636",
+      "authority-ref:frozen.a7dc37b2d44f81a621980234c48cd0332f95226b8f1ec81458ab6968e5aa0189",
+      "authority-ref:frozen.4f5dd14c9c92317a3c46d90fbb73124151df16271a9c2aa1ba0d54ff5f1fdc65",
+      "authority-ref:frozen.77ad16863de211fe9472efe973292bd43a28f8f9598c8a5563c267156bf36aec",
+      "authority-ref:frozen.e68972e745b211943a1ebd6e0c5934124c3a82598f39409e7144b07a9044ebe0",
+      "authority-ref:frozen.9ecd132c806e8d0245678a0c337e0086613b0c885cdeaaa3f85635f60383d71f",
+      "authority-ref:frozen.d6d4b62a7b188e1b58a33efce0e84ee8e5a2050bd2181290c710f88e3454e30d",
+      "authority-ref:frozen.86af31b18d1dfe57ef863112d57160e44a8ddafa2f7b5b07029a57207e709f79",
+      "authority-ref:frozen.8a54917fc7d42c2c1578007988e9a48b712cc6b46a6783bec7b03b5e7c7f6e7f",
+      "authority-ref:frozen.f7010f35b5f2ccfaa7244865be0024872328530a6d74bac1675651a0aff8a175",
+      "authority-ref:frozen.f29fcc5e426744ff89f040fb27142ee448441453007483e928b3d8a25203629a",
+      "authority-ref:frozen.84c21d95c53b6383843e6cd65cea0f4f2961e61db584f9f7126054d020bb8517",
+      "authority-ref:frozen.687b88d5d4391a2ccbccd45e945ef89fbd03493071cd16716b5c887582bcacc6",
+      "authority-ref:frozen.79eecce3822d11e7be34122d203171f2e084912b8a3602d22f2a78f95d994736",
+      "authority-ref:frozen.619d14716ac017db8d82907059e718e0eef6894add891e8104bb20ad120cf352",
+      "authority-ref:frozen.2f5ebded21dc5ec43ac992afb3c6ceeddbb57ee58f05bbd2a8cb0a7f6e4aa3f5",
+      "authority-ref:frozen.1ac30d372fdc3eb10f1350dd2f4e9a7e67e175c5d66a5c15f0edb87ca041b8c0",
+      "authority-ref:frozen.32b92602ef508bd2c585a443f773ed4a891bdc9cb37142579ea4a6ffeeee70b8",
+      "authority-ref:frozen.0e87f2b8110229933aa584a4bd549566ca895494d90f3e96af3dd89892827dfc",
+      "authority-ref:frozen.558ddd60eaafa045c3886169459061cfe7d410f7d31d2f7d106921a849cd9e5b",
+      "authority-ref:frozen.b434ef4ded92fbc2746d7f0067a46d938af93b6a492902a77cb1e6cdb751451d",
+      "authority-ref:frozen.16b93cfe3539e0e367a364b580a3e4dc4cb0471a31bb195368e538ae18e3943f",
+      "authority-ref:frozen.f2b43beba45ae977754dee8b4f62966e7ac1a5f2a15905a106cbf27c0e007232",
+      "authority-ref:frozen.2050369bf427c6e394d13f23d41d1eaaea2062be22c10a8511a83a1de8938016",
+      "authority-ref:frozen.c452e370ad16e036d46b35746041a46115600c665059d2a506db247e3df03af7"
+    ],
+    "base": {
+      "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "definition_revision": "sha256:87b8beec3375d3b4467760a6ebb18866495a2ecf4bce2e1d831584815e7358b8",
+      "pack_id": "defaults-basepack",
+      "resolution": "verified"
+    },
+    "catalog_revision": "sha256:fc5d7db5d6f6cf6cc33986e13e73c33d69c50de6f24c676d57bbb6b3c0c562f4",
+    "display_name": "Tobkiri Defaults",
+    "mode": "interactive",
+    "packs": [
+      {
+        "artifact_digest": "sha256:b8b37f87645fc793bd812d5f1ecd758b14405a9936577ca18c36dd40630e4b3f",
+        "pack_id": "defaultspack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:b2ae2191789ff05bc019e96e30e8155afdb83d5c726230089722c9b14d9a89ed",
+        "pack_id": "rumi_file_inspect_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:801e1f763a046fc003e5665f201b337a272b56febcffb65be4ed9011a8d3bdd3",
+        "pack_id": "tobkiri_host_pack_control",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:9de8bae248436fe0dfa800da7641fc9edcb61de5334a0958ead2e6ed9d5584e6",
+        "pack_id": "runtime.tauri.application.default",
+        "role": "application"
+      },
+      {
+        "artifact_digest": "sha256:aeb56abd7ac71de6eff111f0c54ec169fae5abb7538e273ae7d4b4649c572751",
+        "pack_id": "rumi_ai_gateway_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:25f38c6310dfb85131555648bd336e0d2810806ab5f39e5dd29606ed43ffbd82",
+        "pack_id": "rumi_model_catalog_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:39f7859bade2a68482d26e5f9f82a72f8c84bf8a0f12f638caec65f88b9ca7ec",
+        "pack_id": "rumi_model_registry_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:e021d9331fc16babc4626dd644284485bc29d50814a53d47ef184c500dfbc5d0",
+        "pack_id": "rumi_ai_pipeline_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:dadafa35b49cb548beed7747107be6665681bbacb27824e82f5c55d2ecb5f2a8",
+        "pack_id": "rumi_provider_adapters_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:2f2594474c717110c03e023bd8ac38fd36d5f7046e971e93acfe6f02ec65bbaa",
+        "pack_id": "rumi_ai_routing_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:fe2dd574cc33a781474b78bc791fba24d6dd150c8e47cf244eed932488821bfd",
+        "pack_id": "rumi_ai_stream_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:304064d9650148822bef675a8baf1c4381f364e31b617798835b9fdbffd4a566",
+        "pack_id": "rumi_ai_tool_bridge_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:99798048c8dcade5d637a27a125270a6768379e6192992ac8390f0ab131d1d75",
+        "pack_id": "rumi_ai_usage_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:e6138df16eccc45b3f44b55c7097016074037dc502e6b740676c8c4657598979",
+        "pack_id": "rumi_provider_registry_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:4a5d684826139e2ad47e7538af995cd398ba71330614fa90a8fcb8a50f4d49ed",
+        "pack_id": "rumi_workspace_mount_pack",
+        "role": "provider"
+      },
+      {
+        "artifact_digest": "sha256:6cd76560192a26c3d0ba24fc0a653ed5f49c7400bd80fa137bd922966a1040bc",
+        "pack_id": "rumi_host_authority_bridge_pack",
+        "role": "provider"
+      }
+    ],
+    "profile_api_version": "io.tobkiri.profile.v4",
+    "profile_authority_snapshot_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "profile_id": "defaults",
+    "provenance": {
+      "evidence": [],
+      "generator": "defaultspack-v4-core",
+      "generator_version": "1.0.0",
+      "normative": true,
+      "repository_commit": "working-tree",
+      "repository_tree": "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+      "schema": "io.tobkiri.provenance.v1",
+      "source_digest": "sha256:d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "source_kind": "repository",
+      "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json"
+    },
+    "requested_edges": [
+      {
+        "authority_reference": "authority-ref:frozen.7160db809ad7df1eb908d7fd6364e314f90e2cfbf4f372d2a763f13d5ae3224d",
+        "caller_function_id": "shell.tauri.default",
+        "contract_id": "conversation.turn.v1",
+        "operation_id": "complete",
+        "requested_scope_template": {},
+        "target_provider_id": "defaultspack.conversation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.9c6eb29b5daaeb599b8f34d4b3d86001484a4758d051bacd3f69dce8c04ae2fd",
+        "caller_function_id": "defaultspack.conversation",
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_gateway_pack.ai-gateway.generate"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.6b8b8195ccbd5911a9e62e8db65b2193b372d2d80d7fba498a3cf4214c499fef",
+        "caller_function_id": "defaultspack.conversation",
+        "contract_id": "tobkiri.service.ai.stream.v1",
+        "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_gateway_pack.ai-gateway.stream"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.5d76d3a7ab8b82668e5a305e138e73e11e571e321a13fe1fff1ec5f3b31a0ded",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.service.ai.request.prepare.v1",
+        "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.aa56608af8b4175923617767655425069852edbaaf06b85877816517124a2a79",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.service.ai.request.prepare.v1",
+        "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.08ec38b9bc34e7d01e81bd2d149b433b96c25ec70965e3d401b4e786611a54b2",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.resource.ai.provider.health.v1",
+        "operation_id": "rumi_provider_registry_pack.provider-registry-health.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_provider_registry_pack.provider-registry.health"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.51eca0f931da153a04cc780281053ea38214a003aa9aacbdee873f57dc1fa340",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.resource.ai.provider.health.v1",
+        "operation_id": "rumi_provider_registry_pack.provider-registry-health.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_provider_registry_pack.provider-registry.health"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.d109ff768fe66c42fcf9925cced2e2bbd0e9f6b3b3a5becda3f16f38c5637a92",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+        "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_model_catalog_pack.model-catalog.bundled"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.d7e189983c8b1c0cdd8de5ff05d8a45e3c3b4d2981f94c578765358f727e2aa1",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+        "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_model_catalog_pack.model-catalog.bundled"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.000d3977dba751433675b6aacfbee54b1cf05a7eb8779f45a66938df59d5cc8c",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.cbba5b1e0ea3b58610abd8bea26ca7b819cef2328c5516d93f83781e065656ee",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "operation_id": "rumi_model_registry_pack.model-profile-resource.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.d23e2a1789bc4ab9d072375a3336eb3dfb2f8d27ab1b63042d6c39bf53b8bc47",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.service.ai.failover.decide.v1",
+        "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.failover"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.bb27f7a726ff6aa0e20027e44ddda5fa6fb72f87d41adf6a71757e69d33db62a",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.service.ai.failover.decide.v1",
+        "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.failover"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.3a43385b5f5d5740eb0f7cf0f63cbbdb308545bf0876ce4a1174e53d2eebb5a2",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.service.ai.provider.generate.v1",
+        "operation_id": "rumi_provider_adapters_pack.provider-generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_provider_adapters_pack.provider.compatibility.generate"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.bcc73dff2386a7d8e4357106cda6d41bb51754d403ee987e90b68556e653bece",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.service.ai.provider.stream.v1",
+        "operation_id": "rumi_provider_adapters_pack.provider-stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_provider_adapters_pack.provider.compatibility.stream"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.494a58581b960f430ee4e1dac989252c65620c09cfd46de020af525399a48723",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.service.ai.route.v1",
+        "operation_id": "rumi_ai_routing_pack.ai-route.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_routing_pack.ai-routing.default"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.814c5b36710c0045ab4ec54a0fe59f8bdac134c236430704f4602f66995c4fd1",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.service.ai.route.v1",
+        "operation_id": "rumi_ai_routing_pack.ai-route.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_routing_pack.ai-routing.default"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.210b2071e069758c6e7937a2f8ce2cff6f881a68e8ca13ce47c81adc92ab4f0b",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+        "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_stream_pack.ai-stream.normalize"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.1d2bc4cad2798c65f644032edb6fb0f16e83628cf27e9783652725aaef0e7519",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+        "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.3d2dc607b8b723d939d4836fa661c3c2bd6c5299dfc0a40912c7d0979a9c7403",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+        "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.8e8c656d2f0edb57268e9bca0bcdeda073f7139853aa7853b0baec1e712412f7",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "contract_id": "tobkiri.service.ai.usage.cost.v1",
+        "operation_id": "rumi_ai_usage_pack.ai-usage-cost.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.958a1dc43771fa9859bc2ab1119707366b08139fd95f193ff878b8388bb0df8e",
+        "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "contract_id": "tobkiri.service.ai.usage.cost.v1",
+        "operation_id": "rumi_ai_usage_pack.ai-usage-cost.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.a71dcd29ef7e94d470d60f60a125df5a5b60e4c77589e5f7544705bae5760636",
+        "caller_function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "operation_id": "rumi_provider_registry_pack.provider-registry-resource.generate",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_provider_registry_pack.provider-registry.resource"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.a7dc37b2d44f81a621980234c48cd0332f95226b8f1ec81458ab6968e5aa0189",
+        "caller_function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "operation_id": "rumi_provider_registry_pack.provider-registry-resource.stream",
+        "requested_scope_template": {},
+        "target_provider_id": "rumi_provider_registry_pack.provider-registry.resource"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.4f5dd14c9c92317a3c46d90fbb73124151df16271a9c2aa1ba0d54ff5f1fdc65",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "catalog.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "pack.catalog"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.77ad16863de211fe9472efe973292bd43a28f8f9598c8a5563c267156bf36aec",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "pack.install",
+        "requested_scope_template": {
+          "ceremony": "explicit_install",
+          "resource_namespace": "pack.catalog"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.e68972e745b211943a1ebd6e0c5934124c3a82598f39409e7144b07a9044ebe0",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "dashboard.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "panel.dashboard"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.9ecd132c806e8d0245678a0c337e0086613b0c885cdeaaa3f85635f60383d71f",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "approval.candidate",
+        "requested_scope_template": {
+          "ceremony": "approval_prepare",
+          "resource_namespace": "pack.approval"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.d6d4b62a7b188e1b58a33efce0e84ee8e5a2050bd2181290c710f88e3454e30d",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "approval.approve",
+        "requested_scope_template": {
+          "ceremony": "approval_commit",
+          "resource_namespace": "pack.approval"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.86af31b18d1dfe57ef863112d57160e44a8ddafa2f7b5b07029a57207e709f79",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "approval.revoke",
+        "requested_scope_template": {
+          "ceremony": "approval_revoke",
+          "resource_namespace": "pack.approval"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.8a54917fc7d42c2c1578007988e9a48b712cc6b46a6783bec7b03b5e7c7f6e7f",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "pack.enable",
+        "requested_scope_template": {
+          "ceremony": "profile_activation",
+          "resource_namespace": "profile.pack-set"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.f7010f35b5f2ccfaa7244865be0024872328530a6d74bac1675651a0aff8a175",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "pack.disable",
+        "requested_scope_template": {
+          "ceremony": "profile_revocation",
+          "resource_namespace": "profile.pack-set"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.f29fcc5e426744ff89f040fb27142ee448441453007483e928b3d8a25203629a",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "pack.status",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "pack.status"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.84c21d95c53b6383843e6cd65cea0f4f2961e61db584f9f7126054d020bb8517",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "profile.change.activate",
+        "requested_scope_template": {
+          "ceremony": "activation",
+          "resource_namespace": "profile.activation"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.687b88d5d4391a2ccbccd45e945ef89fbd03493071cd16716b5c887582bcacc6",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "profile.change.approve",
+        "requested_scope_template": {
+          "ceremony": "authority_approval",
+          "resource_namespace": "profile.activation"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.79eecce3822d11e7be34122d203171f2e084912b8a3602d22f2a78f95d994736",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "profile.change.resolve",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.candidate"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.619d14716ac017db8d82907059e718e0eef6894add891e8104bb20ad120cf352",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "profile.change.review",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.candidate"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.2f5ebded21dc5ec43ac992afb3c6ceeddbb57ee58f05bbd2a8cb0a7f6e4aa3f5",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "profile.catalog.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.catalog"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.1ac30d372fdc3eb10f1350dd2f4e9a7e67e175c5d66a5c15f0edb87ca041b8c0",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "profile.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.runtime-surface"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.32b92602ef508bd2c585a443f773ed4a891bdc9cb37142579ea4a6ffeeee70b8",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "settings.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.runtime-settings"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.0e87f2b8110229933aa584a4bd549566ca895494d90f3e96af3dd89892827dfc",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "topology.contracts.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.topology"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.558ddd60eaafa045c3886169459061cfe7d410f7d31d2f7d106921a849cd9e5b",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "topology.operations.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.topology"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.b434ef4ded92fbc2746d7f0067a46d938af93b6a492902a77cb1e6cdb751451d",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "topology.packs.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.topology"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.16b93cfe3539e0e367a364b580a3e4dc4cb0471a31bb195368e538ae18e3943f",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.control-presentation.v4",
+        "operation_id": "topology.principals.read",
+        "requested_scope_template": {
+          "access": "read_only",
+          "resource_namespace": "profile.topology"
+        },
+        "target_provider_id": "tobkiri.host.control-presentation"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.f2b43beba45ae977754dee8b4f62966e7ac1a5f2a15905a106cbf27c0e007232",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "profile.reload",
+        "requested_scope_template": {
+          "ceremony": "explicit_reload",
+          "resource_namespace": "profile.activation"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.2050369bf427c6e394d13f23d41d1eaaea2062be22c10a8511a83a1de8938016",
+        "caller_function_id": "shell.tauri.pack-control",
+        "contract_id": "tobkiri.host.pack-control.v4",
+        "operation_id": "runtime.restart",
+        "requested_scope_template": {
+          "ceremony": "explicit_restart",
+          "resource_namespace": "runtime.lifecycle"
+        },
+        "target_provider_id": "tobkiri.host.pack-control"
+      },
+      {
+        "authority_reference": "authority-ref:frozen.c452e370ad16e036d46b35746041a46115600c665059d2a506db247e3df03af7",
+        "caller_function_id": "defaultspack.conversation",
+        "contract_id": "tobkiri.service.file.inspect.v1",
+        "operation_id": "rumi_file_inspect_pack.file-inspect",
+        "requested_scope_template": {
+          "resource_namespace": "workspace"
+        },
+        "target_provider_id": "rumi_file_inspect_pack.file-inspect.service"
+      }
+    ],
+    "shell": {
+      "architecture": "arm64",
+      "artifact_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "contract_id": "app.shell.v1",
+      "definition_revision": "sha256:10f956483bcc7be0951de38fb0434b09d33f495a68161fd0649a624710071717",
+      "pack_id": "shell.tauri.default",
+      "platform": "macos",
+      "provider_id": "shell.tauri.default"
+    },
+    "state": "resolved"
+  }
+}

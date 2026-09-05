@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "coding-approval",
+  "description": "One-shot native approval provenance for the Defaultspack coding window",
+  "windows": ["defaultspack-main"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:8766/*",
+      "http://localhost:8766/*"
+    ]
+  },
+  "permissions": [
+    "allow-coding-approval-operator"
+  ]
+}

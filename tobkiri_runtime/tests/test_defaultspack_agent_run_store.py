@@ -13,8 +13,11 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 from domain.agent.engine import AgentEngine  # noqa: E402
 from domain.agent_runtime.models import AgentRun  # noqa: E402
-from domain.agent_runtime.run_store import AgentRunStore  # noqa: E402
-from domain.agent_runtime.transcript import TranscriptStore  # noqa: E402
+from domain.agent_runtime.run_store import AgentRunStore, default_runtime_dir  # noqa: E402
+from domain.agent_runtime.transcript import (  # noqa: E402
+    TranscriptStore,
+    default_transcript_dir,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +65,16 @@ def _tool(name: str) -> dict:
             "parameters": {"type": "object", "properties": {}},
         },
     }
+
+
+def test_agent_runtime_defaults_to_launcher_user_data(tmp_path, monkeypatch):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_AGENT_RUNTIME_DIR", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_AGENT_TRANSCRIPT_DIR", raising=False)
+    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
+
+    expected = tmp_path / "user_data" / "defaultspack" / "shared" / "agent_runtime"
+    assert default_runtime_dir() == expected
+    assert default_transcript_dir() == expected / "transcripts"
 
 
 def test_agent_execution_persists_run_and_transcript(tmp_path, monkeypatch):

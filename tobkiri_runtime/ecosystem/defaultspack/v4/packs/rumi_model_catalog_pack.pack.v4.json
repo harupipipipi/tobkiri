@@ -1,0 +1,147 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:7bdbd894272e10e070978b44dd2dbe2439db50b401ff8b7a061d1091d5b3c1d2",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:bf06a7bdec60f689279ff379d9b0c7f47898d8bb559eca1eb6e205dd35f4f273",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:cf339a1e99524d37d5bec3b3ab721aef8063f532b7873c0bafc253f4cabc780f",
+      "kind": "executable",
+      "path": "runtime/catalog.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+      "operations": [
+        "rumi_model_catalog_pack.bundled-model-catalog",
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "rumi_model_catalog_pack.bundled-model-catalog.stream"
+      ],
+      "revision_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
+      "id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "implementation_digest": "sha256:cf339a1e99524d37d5bec3b3ab721aef8063f532b7873c0bafc253f4cabc780f",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_model_catalog_pack.bundled-model-catalog",
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "rumi_model_catalog_pack.bundled-model-catalog.stream"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:3f27eeb4380d91621ced3b43835449690fd3229ac1cefc7bc81f9045399b5c19",
+    "artifact_set_digest": "sha256:8223bd01742e61c3f8f7b165a70440ef01194f9a206dc34eb790223620c814e5",
+    "contract_catalog_digest": "sha256:ae4a44704cd9214256e3c28f3a0959a20dea63590b3c20ab6899ad3997f8fa62"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.resource.ai.model.catalog.v1",
+      "rumi:ecosystem/rumi_model_catalog_pack",
+      "rumi_model_catalog_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:be922c2970c8cf6c6a281993563c2a72141f810ca394b92a62b57f759c674087",
+    "display_name": "Rumi Model Catalog",
+    "id": "rumi_model_catalog_pack",
+    "kind": "host_extension",
+    "version": "2.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_model_catalog_pack/pack.v4.json",
+    "source_digest": "sha256:3f27eeb4380d91621ced3b43835449690fd3229ac1cefc7bc81f9045399b5c19",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:77d2097ee3e5ff2a3f773a2c7156d6eb7081bd1c16cd4cbe4ea96804c6916e54",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:a152c9602b8d182aa5adee72cc6b7a909e2c3f06e7e919adbfd02dd1104ca907",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_model_catalog_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:3f27eeb4380d91621ced3b43835449690fd3229ac1cefc7bc81f9045399b5c19"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_model_catalog_pack.model-catalog.bundled",
+      "owner": "rumi_model_catalog_pack",
+      "contract_reference": "tobkiri.resource.ai.model.catalog.v1",
+      "operations": [
+        "rumi_model_catalog_pack.bundled-model-catalog",
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "rumi_model_catalog_pack.bundled-model-catalog.stream"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.model.catalog.read"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

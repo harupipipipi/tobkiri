@@ -1,68 +1,96 @@
 {
-  "pack_id": "rumi_ambient_trigger_pack",
-  "pack_identity": "rumi:ecosystem/rumi_ambient_trigger_pack",
-  "version": "0.1.0",
-  "metadata": {
-    "name": "Rumi Ambient Trigger Pack",
-    "description": "Voice wake, camera pinch, 2/3/4 gesture replies, and approval gesture extension for defaultspack input.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
-  "depends_on": [
-    {
-      "pack_id": "defaultspack",
-      "version": ">=2.0.0"
-    }
-  ],
   "capabilities": [
     "host.microphone.capture",
     "host.camera.capture",
     "ambient.trigger.dispatch"
   ],
-  "permissions_required": {
-    "host.microphone.capture": {
-      "label": "Microphone capture",
-      "risk": "high",
-      "requires_user_grant": true,
-      "os_permission_hint": "Windows/macOS/Linux microphone permission may also be required."
+  "dependencies": {},
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:d35f856acc3b01b96eefc77b9a405d6d48c2df3ccf0191d2aef8aeed58d57835",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:fb3398b1e0d6a950fd9cb76e1e65f0c7c9994543968d13a7a3af2ee676e9954d"
     },
-    "host.camera.capture": {
-      "label": "Camera capture",
-      "risk": "high",
-      "requires_user_grant": true,
-      "os_permission_hint": "Windows/macOS/Linux camera permission may also be required."
+    "description": "Voice wake, camera pinch, 2/3/4 gesture replies, and approval gesture extension for defaultspack input.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:fb3398b1e0d6a950fd9cb76e1e65f0c7c9994543968d13a7a3af2ee676e9954d"
     },
-    "ambient.trigger.dispatch": {
-      "label": "Create Rumi input from ambient triggers",
-      "risk": "medium",
-      "requires_user_grant": true
-    }
+    "legacy_annotations": {
+      "frontend_extensions": [
+        "frontend_extensions/ambient_trigger.ui.json"
+      ],
+      "permissions_required": {
+        "ambient.trigger.dispatch": {
+          "label": "Create Rumi input from ambient triggers",
+          "requires_user_grant": true,
+          "risk": "medium"
+        },
+        "host.camera.capture": {
+          "label": "Camera capture",
+          "os_permission_hint": "Windows/macOS/Linux camera permission may also be required.",
+          "requires_user_grant": true,
+          "risk": "high"
+        },
+        "host.microphone.capture": {
+          "label": "Microphone capture",
+          "os_permission_hint": "Windows/macOS/Linux microphone permission may also be required.",
+          "requires_user_grant": true,
+          "risk": "high"
+        }
+      },
+      "policy": {
+        "audit": "trigger_events_only",
+        "privacy": "policies/ambient_privacy.policy.yaml"
+      },
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ],
+      "services": {
+        "ambient_trigger_router": {
+          "dispatches_to": [
+            "chat.message",
+            "run.instruction",
+            "agent.delegate",
+            "defaults.console.input"
+          ]
+        },
+        "gesture_wake_monitor": {
+          "approval_mode": "index_swipe_or_button_number_without_pinch",
+          "choice_reply_mode": "pinch_plus_2_3_4_hold_for_3s",
+          "default_enabled": false,
+          "mode": "thumb_index_landmark_distance"
+        },
+        "voice_wake_monitor": {
+          "default_enabled": false,
+          "mode": "wake_phrase_enrollment_audio_embedding"
+        }
+      }
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Ambient Trigger Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
   },
-  "services": {
-    "voice_wake_monitor": {
-      "default_enabled": false,
-      "mode": "wake_phrase_enrollment_audio_embedding"
-    },
-    "gesture_wake_monitor": {
-      "default_enabled": false,
-      "mode": "thumb_index_landmark_distance",
-      "choice_reply_mode": "pinch_plus_2_3_4_hold_for_3s",
-      "approval_mode": "index_swipe_or_button_number_without_pinch"
-    },
-    "ambient_trigger_router": {
-      "dispatches_to": [
-        "chat.message",
-        "run.instruction",
-        "agent.delegate",
-        "defaults.console.input"
-      ]
-    }
+  "pack_id": "rumi_ambient_trigger_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ambient_trigger_pack",
+  "provenance": {
+    "build_identity": "rumi_ambient_trigger_pack:0.1.0",
+    "content_hash": "sha256:d35f856acc3b01b96eefc77b9a405d6d48c2df3ccf0191d2aef8aeed58d57835",
+    "signature": null,
+    "trust_class": "local"
   },
-  "frontend_extensions": [
-    "frontend_extensions/ambient_trigger.ui.json"
-  ],
-  "policy": {
-    "privacy": "policies/ambient_privacy.policy.yaml",
-    "audit": "trigger_events_only"
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
   }
 }

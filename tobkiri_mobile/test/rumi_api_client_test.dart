@@ -130,6 +130,79 @@ void main() {
     expect(ModuleAction.rollback.destructive, isTrue);
   });
 
+  test('command protocol clients use only v1 routes and structured bodies',
+      () async {
+    final requests = <http.Request>[];
+    final client = RumiApiClient(
+      baseUrl: 'http://pc.local:8765',
+      bearerToken: 'token-123',
+      httpClient: MockClient((request) async {
+        requests.add(request);
+        return http.Response(
+          jsonEncode({
+            'status': 'ok',
+            'data': <String, Object?>{'status': 'succeeded'},
+          }),
+          200,
+        );
+      }),
+    );
+
+    await client.commandCatalog();
+    await client.invokeCommand(
+      'defaultspack:terminal',
+      args: const <String, Object?>{'cmd': 'python -V'},
+      invocationId: 'mobile-invocation',
+      mode: 'coding',
+      profileId: 'mobile-profile',
+      catalogRevision: 'catalog-1',
+      expectedRevision: 7,
+      idempotencyKey: 'mobile-idempotency-1',
+      clientSequence: 3,
+    );
+    await client.resumeCommand(
+      'defaultspack:terminal',
+      'approval-token',
+      args: const <String, Object?>{'cmd': 'python -V'},
+      invocationId: 'mobile-invocation',
+      mode: 'coding',
+      profileId: 'mobile-profile',
+      expectedRevision: 7,
+      idempotencyKey: 'mobile-idempotency-1',
+    );
+    await client.commandInvocationEvents('mobile-invocation');
+    await client.commandOfflineQueue(
+      'pending',
+      limit: 10,
+    );
+
+    expect(
+      requests.map((request) => request.url.path),
+      <String>[
+        '/api/command-protocol/v1/catalog',
+        '/api/command-protocol/v1/invoke',
+        '/api/command-protocol/v1/resume',
+        '/api/command-protocol/v1/invocations/events/query',
+        '/api/command-protocol/v1/offline',
+      ],
+    );
+    expect(
+      jsonDecode(requests[1].body),
+      containsPair('command_ref', 'defaultspack:terminal'),
+    );
+    final invokeBody = jsonDecode(requests[1].body) as Map<String, dynamic>;
+    expect(invokeBody['mode'], 'coding');
+    expect(invokeBody['expected_revision'], 7);
+    expect(invokeBody['idempotency_key'], 'mobile-idempotency-1');
+    final resumeBody = jsonDecode(requests[2].body) as Map<String, dynamic>;
+    expect(resumeBody['invocation_id'], 'mobile-invocation');
+    expect(resumeBody['approval_token'], 'approval-token');
+    expect(
+        requests
+            .every((request) => !request.url.path.contains('/api/ui/commands')),
+        isTrue);
+  });
+
   test('throws RumiApiException for API error envelopes', () async {
     final client = RumiApiClient(
       baseUrl: 'http://pc.local:8765',

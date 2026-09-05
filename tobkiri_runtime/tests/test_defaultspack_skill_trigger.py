@@ -31,11 +31,11 @@ def test_runtime_skill_trigger_accepts_at_mention_alias():
     assert "evidence-backed" in result["instructions"]
 
 
-def test_runtime_skill_trigger_reads_prompt_pack_file(tmp_path):
+def test_runtime_skill_trigger_reads_skill_md_file(tmp_path):
     from domain.skill_trigger import RuntimeSkillTriggerService
 
     manifest = tmp_path / "manifest.json"
-    prompt = tmp_path / "PROMPT.md"
+    prompt = tmp_path / "SKILL.md"
     manifest.write_text("{}", encoding="utf-8")
     prompt.write_text("Always check concrete logs before claiming success.", encoding="utf-8")
     service = RuntimeSkillTriggerService(
@@ -45,7 +45,7 @@ def test_runtime_skill_trigger_reads_prompt_pack_file(tmp_path):
                 "display_name": "Log Check",
                 "source_path": str(manifest),
                 "triggers": ["logs"],
-                "config": {"prompt_path": "PROMPT.md"},
+                "instructions": {"max_tokens": 100},
             }
         ]
     )

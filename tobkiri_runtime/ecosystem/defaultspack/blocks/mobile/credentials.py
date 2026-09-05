@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from blocks.p2p._helpers import settings_from
+from core_runtime.profile_credentials import active_profile_id
 from core_runtime.runtime_audit_helpers import audit_event
 from domain.ai_client.api_key_store import provider_api_metadata, read_provider_api_key
 from domain.mobile.contract import mobile_feature_enabled
@@ -44,8 +45,7 @@ def _authenticated_device_id(context) -> str:
 def _profile_id(input_data: dict, context) -> str:
     values = [
         (context or {}).get("profile_id") if isinstance(context, dict) else None,
-        os.environ.get("RUMI_PROFILE_ID"),
-        os.environ.get("RUMI_ACTIVE_PROFILE_ID"),
+        active_profile_id(),
     ]
     for value in values:
         if str(value or "").strip():

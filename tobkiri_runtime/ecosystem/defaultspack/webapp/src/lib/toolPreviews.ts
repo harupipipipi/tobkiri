@@ -1,5 +1,10 @@
 import type { ToolPreviewItem } from "../components/ToolPreview";
-import { conversationArtifactFileUrl, type ChatActivityEvent, type ChatMessage } from "./api";
+import {
+  conversationArtifactFileUrl,
+  defaultspackCanonicalRouteKey,
+  type ChatActivityEvent,
+  type ChatMessage,
+} from "./api";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -124,7 +129,9 @@ function normalizePreviewUrl(value: string): string {
 
 export function isHumanOperatorCanvasPreview(preview: ToolPreviewItem): boolean {
   if (preview.data.type !== "web") return false;
-  return normalizePreviewUrl(preview.data.url).includes("/api/human-operator/conversations/");
+  return normalizePreviewUrl(preview.data.url).includes(
+    defaultspackCanonicalRouteKey("api/human-operator/conversations/"),
+  );
 }
 
 export function collectPreviewUrls(value: unknown, urls: string[] = [], seen = new Set<string>()): string[] {

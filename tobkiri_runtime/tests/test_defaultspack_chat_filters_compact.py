@@ -6,6 +6,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import pytest
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -13,6 +14,8 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
 
 
 def _reset_chat_store(monkeypatch, tmp_path):
@@ -22,6 +25,15 @@ def _reset_chat_store(monkeypatch, tmp_path):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
     ChatStore._instance = None
     return ChatStore()
+
+
+def _owner_storage_path(tmp_path):
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+
+    return ConversationStore(
+        "defaults",
+        user_data_root=Path(os.environ["RUMI_TEST_CONVERSATION_OWNER_ROOT"]),
+    ).path
 
 
 def _add_messages(store, conversation_id, count):
@@ -93,7 +105,7 @@ def test_chat_store_normalizes_duplicate_sequence_numbers_on_load(tmp_path, monk
     first = store.add_message(conversation["id"], {"role": "user", "content": "first"})
     store.add_message(conversation["id"], {"role": "assistant", "content": "first reply"})
     store.add_message(conversation["id"], {"role": "user", "content": "second"})
-    storage_path = Path(os.environ["RUMI_DEFAULTSPACK_CHAT_STORE_PATH"])
+    storage_path = _owner_storage_path(tmp_path)
     payload = json.loads(storage_path.read_text(encoding="utf-8"))
     for message in payload["conversations"][conversation["id"]]["messages"]:
         if message["id"] != first["id"]:
@@ -162,35 +174,16 @@ def test_chat_store_filters_and_sorts_pinned_conversations(tmp_path, monkeypatch
     ChatStore._instance = None
 
 
-def test_chat_store_normalizes_legacy_conversations_with_pin_fields(tmp_path, monkeypatch):
+def test_chat_store_projects_owner_pin_defaults(tmp_path, monkeypatch):
     from domain.chat.store import ChatStore
 
-    storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
-    storage_path.parent.mkdir(parents=True)
-    storage_path.write_text(
-        json.dumps(
-            {
-                "conversations": {
-                    "legacy-1": {
-                        "title": "Legacy",
-                        "created_at": 10,
-                        "updated_at": 20,
-                        "model": "stub/default",
-                        "messages": [],
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
-    ChatStore._instance = None
+    store = _reset_chat_store(monkeypatch, tmp_path)
+    conversation = store.create_conversation(model="stub/default")
+    projected = ChatStore().get_conversation(conversation["id"])
 
-    legacy = ChatStore().get_conversation("legacy-1")
-
-    assert legacy["is_pinned"] is False
-    assert legacy["pinned_at"] is None
-    assert legacy["pin_scope"] == "global"
+    assert projected["is_pinned"] is False
+    assert projected["pinned_at"] is None
+    assert projected["pin_scope"] == "global"
     ChatStore._instance = None
 
 
@@ -203,7 +196,7 @@ def test_chat_store_reloads_external_conversation_index_updates(tmp_path, monkey
         conversation["id"],
         {"role": "user", "content": [{"type": "text", "text": "original"}]},
     )
-    storage_path = Path(os.environ["RUMI_DEFAULTSPACK_CHAT_STORE_PATH"])
+    storage_path = _owner_storage_path(tmp_path)
     payload = json.loads(storage_path.read_text(encoding="utf-8"))
     external_message = {
         "id": "external-assistant-message",

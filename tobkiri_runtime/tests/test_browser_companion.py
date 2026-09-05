@@ -31,14 +31,44 @@ def _browser_companion_extension_root() -> Path:
 
 
 def _defaultspack_domain_module(module_name: str):
-    sys.modules.pop("domain", None)
-    for name in list(sys.modules):
-        if name.startswith("domain."):
-            sys.modules.pop(name, None)
-    while str(DEFAULTSPACK_ROOT) in sys.path:
-        sys.path.remove(str(DEFAULTSPACK_ROOT))
-    sys.path.insert(0, str(DEFAULTSPACK_ROOT))
-    return __import__(module_name, fromlist=["*"])
+    """Import a pack-local domain module without leaking import globals.
+
+    A few compatibility checks need to probe the defaultspack import root,
+    but collected tests may already hold classes whose function globals point
+    at the canonical ``domain.chat.store`` module.  Restoring the exact
+    module and path bindings prevents that probe from leaving a detached
+    ``ChatStore`` class for the next test.
+    """
+    saved_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "domain" or name.startswith("domain.")
+    }
+    saved_path = list(sys.path)
+    try:
+        sys.modules.pop("domain", None)
+        for name in list(sys.modules):
+            if name.startswith("domain."):
+                sys.modules.pop(name, None)
+        while str(DEFAULTSPACK_ROOT) in sys.path:
+            sys.path.remove(str(DEFAULTSPACK_ROOT))
+        sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+        return __import__(module_name, fromlist=["*"])
+    finally:
+        sys.path[:] = saved_path
+        for name in list(sys.modules):
+            if name == "domain" or name.startswith("domain."):
+                if name not in saved_modules:
+                    sys.modules.pop(name, None)
+        for name, module in saved_modules.items():
+            sys.modules[name] = module
+        for name, module in saved_modules.items():
+            if "." not in name:
+                continue
+            parent_name, attr_name = name.rsplit(".", 1)
+            parent = sys.modules.get(parent_name)
+            if parent is not None:
+                setattr(parent, attr_name, module)
 
 
 def test_browser_companion_candidate_urls_match_defaultspack_default_port():

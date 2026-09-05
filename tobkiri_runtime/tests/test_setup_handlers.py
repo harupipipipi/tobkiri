@@ -1,525 +1,360 @@
+"""Tests for the sole live Defaults Profile v4 setup transaction."""
+
 from __future__ import annotations
 
-import sys
-import unittest
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pytest
+
+from core_runtime.api.setup_handlers import SetupHandlersMixin
+from core_runtime.bootstrap import profile_capture
+from ecosystem.defaultspack.domain.runtime_v4 import ProfileResolutionDenied
+from core_runtime.pack_api_server import PackAPIHandler
+from core_runtime.panel_auth import PanelAuthManager
 
 
-class TestSetupHandlers(unittest.TestCase):
-    @staticmethod
-    def _reviewed_payload(handler, pack_ids):
-        packs = [{"pack_id": pack_id, "risk_level": "low", "supports_all_ok": False} for pack_id in pack_ids]
-        return packs, {
-            "setup_pack_ids": pack_ids,
-            "reviewed_pack_ids": pack_ids,
-            "review_revision": handler._setup_pack_review_revision(packs),
-            "confirmed_privileged_pack_ids": [],
-        }
-    class _FakeFunctionRegistry:
-        def __init__(self, registered=None):
-            self._registered = set(registered or [])
+class _Handler(SetupHandlersMixin):
+    pass
 
-        def get(self, qualified_name):
-            return object() if qualified_name in self._registered else None
 
-    class _FakeContainer:
-        def __init__(self, function_registry=None):
-            self._function_registry = function_registry
+@pytest.fixture(autouse=True)
+def _install_profile_runtime() -> None:
+    """Compose the Pack port explicitly for this isolated Host-handler suite."""
 
-        def get_or_none(self, name):
-            if name == "function_registry":
-                return self._function_registry
-            return None
+    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+        install_defaultspack_profile_runtime,
+    )
 
-    def test_setup_handler_lists_packs(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
+    install_defaultspack_profile_runtime()
 
-        class _Handler(SetupHandlersMixin):
-            pass
 
-        handler = _Handler()
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked:
-            mocked.return_value.list_packs.return_value = {"packs": []}
-            result = handler._setup_list_packs()
-        self.assertEqual(result["packs"], [])
-        self.assertRegex(result["review_revision"], r"^setup-review-v1:[0-9a-f]{64}$")
+def _preview() -> dict[str, object]:
+    return _listing()["recommended_default_profile"]
 
-    def test_setup_install_rejects_stale_tampered_and_unconfirmed_privileged_reviews(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
 
-        class _Handler(SetupHandlersMixin):
-            pass
+def _listing() -> dict[str, object]:
+    fixture = (
+        Path(__file__).resolve().parents[1]
+        / "tobkiri_protocol"
+        / "fixtures"
+        / "defaults_setup_v4.canonical.json"
+    )
+    return json.loads(fixture.read_text(encoding="utf-8"))
 
-        handler = _Handler()
-        packs = [{"pack_id": "danger", "version": "2", "risk_level": "high", "supports_all_ok": True}]
-        revision = handler._setup_pack_review_revision(packs)
-        with patch("core_runtime.api.setup_handlers.get_setup_pack_manager") as mocked:
-            mocked.return_value.list_packs.return_value = {"packs": packs}
-            stale = handler._setup_install_pack({
-                "setup_pack_ids": ["danger"], "reviewed_pack_ids": ["danger"],
-                "review_revision": "setup-review-v1:stale", "confirmed_privileged_pack_ids": ["danger"],
-            })
-            tampered = handler._setup_install_pack({
-                "setup_pack_ids": ["danger"], "reviewed_pack_ids": [],
-                "review_revision": revision, "confirmed_privileged_pack_ids": ["danger"],
-            })
-            unconfirmed = handler._setup_install_pack({
-                "setup_pack_ids": ["danger"], "reviewed_pack_ids": ["danger"],
-                "review_revision": revision, "confirmed_privileged_pack_ids": [],
-            })
 
-        self.assertEqual(stale["status_code"], 409)
-        self.assertEqual(tampered["status_code"], 409)
-        self.assertEqual(unconfirmed["status_code"], 400)
-        mocked.return_value.install.assert_not_called()
+def _request(*, confirmed: bool = True) -> dict[str, object]:
+    return {
+        "setup_api_version": "io.tobkiri.setup-state.v4",
+        "operation_id": "defaults.activate",
+        "confirmed": confirmed,
+        "confirmation": _preview()["confirmation"],
+    }
 
-    def test_setup_handler_filters_stale_selected_setup_packs(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
 
-        class _Handler(SetupHandlersMixin):
-            pass
+def _active() -> SimpleNamespace:
+    return SimpleNamespace(
+        resolved=SimpleNamespace(
+            profile={"profile_id": "defaults"},
+            plan={
+                "profile_revision": "profile-revision:test",
+                "plan_digest": "sha256:" + "1" * 64,
+            },
+        ),
+        activation={
+            "activation_id": "activation:test",
+            "security_epoch": 7,
+            "fencing_token": 11,
+            "profile_authority_snapshot_digest": "sha256:" + "4" * 64,
+        },
+    )
 
-        handler = _Handler()
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked:
-            mocked.return_value.list_packs.return_value = {
-                "packs": [
-                    {"pack_id": "defaultspack", "target_pack_id": "defaultspack"},
-                ],
-                "selected_setup_pack_id": "ghost_pack",
-                "selected_setup_pack_ids": ["ghost_pack", "defaultspack"],
-                "active_setup_pack_id": "ghost_pack",
-                "active_target_pack_id": "ghost_target",
-            }
-            result = handler._setup_list_packs()
 
-        self.assertEqual(result["selected_setup_pack_ids"], ["defaultspack"])
-        self.assertEqual(result["selected_setup_pack_id"], "defaultspack")
-        self.assertIsNone(result["active_setup_pack_id"])
-        self.assertIsNone(result["active_target_pack_id"])
-        self.assertTrue(result["packs"][0]["selected"])
+def test_setup_lists_one_typed_finite_v4_transaction() -> None:
+    with patch.object(
+        SetupHandlersMixin,
+        "_setup_listing",
+        return_value=_listing(),
+    ):
+        result = _Handler()._setup_list_packs()
 
-    def test_setup_handler_derives_active_target_from_selected_pack_definition(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
+    assert result["setup_api_version"] == "io.tobkiri.setup-state.v4"
+    assert result["state"] == "review_required"
+    assert result["recommended_default_profile"] == _preview()
+    assert result["required_transaction"] == [
+        "catalog.verify",
+        "profile.resolve",
+        "authority.snapshot",
+        "activation.prepare",
+        "activation.commit",
+        "runtime.capture",
+    ]
 
-        class _Handler(SetupHandlersMixin):
-            pass
 
-        handler = _Handler()
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked:
-            mocked.return_value.list_packs.return_value = {
-                "packs": [
-                    {"pack_id": "alpha", "target_pack_id": "alpha_target"},
-                    {"pack_id": "beta", "target_pack_id": "beta_target"},
-                ],
-                "selected_setup_pack_id": "alpha",
-                "selected_setup_pack_ids": ["alpha"],
-                "active_setup_pack_id": "alpha",
-                "active_target_pack_id": "stale_target",
-            }
-            result = handler._setup_list_packs()
+def test_setup_reports_unavailable_development_shell_without_dropping_request() -> None:
+    with patch.object(
+        SetupHandlersMixin,
+        "_setup_listing",
+        side_effect=ProfileResolutionDenied(
+            "Shell artifact is unavailable for this source/build: shell.tauri.default"
+        ),
+    ):
+        result = _Handler()._setup_list_packs()
 
-        self.assertEqual(result["selected_setup_pack_ids"], ["alpha"])
-        self.assertEqual(result["selected_setup_pack_id"], "alpha")
-        self.assertEqual(result["active_setup_pack_id"], "alpha")
-        self.assertEqual(result["active_target_pack_id"], "alpha_target")
-        self.assertTrue(result["packs"][0]["selected"])
-        self.assertFalse(result["packs"][1]["selected"])
+    assert result == {
+        "error": "Shell artifact is unavailable for this source/build: shell.tauri.default",
+        "status_code": 409,
+        "state": "activation_denied",
+        "write_set": [],
+    }
 
-    def test_setup_handler_accepts_multiple_setup_pack_ids(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
 
-        class _Handler(SetupHandlersMixin):
-            pass
+def test_development_bundle_requires_exact_source_runtime_and_generated_artifacts(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tobkiri_runtime"
+    runtime_root.mkdir()
+    generated_root = (
+        tmp_path
+        / "tobkiri_launcher"
+        / "src-tauri"
+        / "target"
+        / "dev-defaults"
+    )
+    bundle = generated_root / "v4"
+    artifacts = generated_root / "platform-artifacts"
+    bundle.mkdir(parents=True)
+    artifacts.mkdir()
+    monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
+    monkeypatch.setenv("RUMI_APP_DIR", str(runtime_root))
 
-        handler = _Handler()
-        install_result = {
-            "success": True,
-            "active_target_pack_id": "otherpack",
-            "installed_setup_pack_ids": ["alpha", "beta"],
-            "installed_target_pack_ids": ["alpha", "beta"],
-        }
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked, patch(
-            "core_runtime.api.setup_handlers.invoke_pack_function"
-        ) as invoke, patch(
-            "core_runtime.api.setup_handlers.get_container",
-            return_value=self._FakeContainer(),
+    assert profile_capture._development_bundle_root(runtime_root) == bundle
+
+    monkeypatch.setenv("RUMI_APP_DIR", str(tmp_path / "different-runtime"))
+    assert profile_capture._development_bundle_root(runtime_root) is None
+
+
+def test_setup_rejects_tampered_confirmation() -> None:
+    with patch.object(
+        SetupHandlersMixin,
+        "_setup_listing",
+        return_value=_listing(),
+    ):
+        request = _request()
+        request["confirmation"] = {**request["confirmation"], "security_epoch": 8}
+        result = _Handler()._setup_install_pack(request)
+
+    assert result["status_code"] == 409
+    assert result["state"] == "review_required"
+    assert result["write_set"] == []
+
+
+def test_setup_rejects_tampered_or_extra_shell_digest_fields() -> None:
+    with patch.object(
+        SetupHandlersMixin,
+        "_setup_listing",
+        return_value=_listing(),
+    ):
+        for shell_change in (
+            {"executable_artifact_digest": "sha256:" + "0" * 64},
+            {"untrusted_digest": "sha256:" + "f" * 64},
         ):
-            mocked.return_value.install.return_value = install_result
-            packs, payload = self._reviewed_payload(handler, ["alpha", "beta"])
-            mocked.return_value.list_packs.return_value = {"packs": packs}
-            result = handler._setup_install_pack(payload)
+            request = _request()
+            confirmation = request["confirmation"]
+            request["confirmation"] = {
+                **confirmation,
+                "shell": {**confirmation["shell"], **shell_change},
+            }
+            result = _Handler()._setup_install_pack(request)
 
-        mocked.return_value.install.assert_called_once_with(["alpha", "beta"])
-        invoke.assert_not_called()
-        self.assertEqual(
-            result["migration_statuses"],
-            {
-                "alpha": {
-                    "pack_id": "alpha",
-                    "available": False,
-                    "needs_user_migration": False,
-                    "registry_available": False,
-                    "reason": "function_registry_unavailable",
+            assert result["status_code"] == 409
+            assert result["state"] == "review_required"
+            assert result["write_set"] == []
+
+
+def test_setup_requires_explicit_confirmation() -> None:
+    with patch.object(
+        SetupHandlersMixin,
+        "_setup_listing",
+        return_value=_listing(),
+    ):
+        result = _Handler()._setup_install_pack(_request(confirmed=False))
+
+    assert result["status_code"] == 409
+    assert result["state"] == "confirmation_required"
+
+
+def test_setup_completes_canonical_capture_and_requires_cold_restart() -> None:
+    with (
+        patch.object(
+            SetupHandlersMixin,
+            "_setup_listing",
+            return_value=_listing(),
+        ),
+        patch(
+            "core_runtime.bootstrap.profile_capture.capture_bootstrap_profile",
+            return_value=_active(),
+        ) as capture,
+        patch(
+            "core_runtime.bootstrap.profile_capture.activation_audit_receipt",
+            return_value={
+                "reservation_id": "activation-reservation:test",
+                "state": "committed",
+                "activation_id": "activation:test",
+                "fencing_token": 11,
+            },
+        ),
+    ):
+        result = _Handler()._setup_install_pack(_request())
+
+    capture.assert_called_once_with(confirmation=_preview()["confirmation"])
+    assert result == {
+        "setup_api_version": "io.tobkiri.setup-state.v4",
+        "state": "active",
+        "profile_id": "defaults",
+        "profile_revision": "profile-revision:test",
+        "plan_digest": "sha256:" + "1" * 64,
+        "activation_id": "activation:test",
+        "security_epoch": 7,
+        "fencing_token": 11,
+        "authority_snapshot_digest": "sha256:" + "4" * 64,
+        "audit_receipt": {
+            "reservation_id": "activation-reservation:test",
+            "state": "committed",
+            "activation_id": "activation:test",
+            "fencing_token": 11,
+        },
+        "restart_required": True,
+    }
+
+
+def test_setup_keeps_the_control_handler_and_closes_restart_only_session() -> None:
+    """Activation cannot publish a new session into the old HTTP handler."""
+
+    class RestartOnlySession:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    restart_only_session = RestartOnlySession()
+    control_session = object()
+    _Handler._dispatch_session = control_session
+    lifecycle = SimpleNamespace(
+        activate_bootstrap_profile=lambda _confirmation: (_active(), restart_only_session)
+    )
+    _Handler.app_lifecycle_manager = lifecycle
+    try:
+        with (
+            patch.object(
+                SetupHandlersMixin,
+                "_setup_listing",
+                return_value=_listing(),
+            ),
+            patch(
+                "core_runtime.bootstrap.profile_capture.activation_audit_receipt",
+                return_value={
+                    "reservation_id": "activation-reservation:test",
+                    "state": "committed",
+                    "activation_id": "activation:test",
+                    "fencing_token": 11,
                 },
-                "beta": {
-                    "pack_id": "beta",
-                    "available": False,
-                    "needs_user_migration": False,
-                    "registry_available": False,
-                    "reason": "function_registry_unavailable",
-                },
-            },
-        )
-
-    def test_setup_handler_runs_migration_for_active_setup_target_when_supported(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
-
-        class _Handler(SetupHandlersMixin):
-            pass
-
-        handler = _Handler()
-        install_result = {
-            "success": True,
-            "active_target_pack_id": "alpha",
-            "installed_setup_pack_ids": ["alpha"],
-            "installed_target_pack_ids": ["alpha"],
-        }
-        registry = self._FakeFunctionRegistry(
-            {"alpha:get_migration_status", "alpha:run_migration"}
-        )
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked, patch(
-            "core_runtime.api.setup_handlers.invoke_pack_function",
-            side_effect=[
-                {"needs_user_migration": True},
-                {"migrated": True},
-                {"needs_user_migration": False},
-            ],
-        ) as invoke:
-            mocked.return_value.install.return_value = install_result
-            packs, payload = self._reviewed_payload(handler, ["alpha"])
-            mocked.return_value.list_packs.return_value = {"packs": packs}
-            with patch(
-                "core_runtime.api.setup_handlers.get_container",
-                return_value=self._FakeContainer(registry),
-            ):
-                result = handler._setup_install_pack(payload)
-
-        mocked.return_value.install.assert_called_once_with(["alpha"])
-        self.assertEqual(invoke.call_count, 3)
-        self.assertEqual(result["migrations"], {"alpha": {"migrated": True}})
-        self.assertEqual(
-            result["migration_statuses"]["alpha"],
-            {
-                "pack_id": "alpha",
-                "available": True,
-                "needs_user_migration": False,
-                "registry_available": True,
-                "reason": None,
-            },
-        )
-
-    def test_setup_handler_multi_pack_migration_handles_mixed_capabilities(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
-
-        class _Handler(SetupHandlersMixin):
-            pass
-
-        handler = _Handler()
-        install_result = {
-            "success": True,
-            "active_target_pack_id": "beta",
-            "installed_setup_pack_ids": ["beta", "gamma"],
-            "installed_target_pack_ids": ["beta", "gamma"],
-        }
-        registry = self._FakeFunctionRegistry(
-            {"beta:get_migration_status", "beta:run_migration"}
-        )
-
-        def _invoke(pack_id, function_id):
-            if (pack_id, function_id) == ("beta", "get_migration_status"):
-                if not hasattr(_invoke, "seen"):
-                    _invoke.seen = True
-                    return {"needs_user_migration": True}
-                return {"needs_user_migration": False}
-            if (pack_id, function_id) == ("beta", "run_migration"):
-                return {"migrated": True}
-            raise AssertionError(f"unexpected invoke: {(pack_id, function_id)}")
-
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked, patch(
-            "core_runtime.api.setup_handlers.invoke_pack_function",
-            side_effect=_invoke,
-        ) as invoke:
-            mocked.return_value.install.return_value = install_result
-            packs, payload = self._reviewed_payload(handler, ["beta", "gamma"])
-            mocked.return_value.list_packs.return_value = {"packs": packs}
-            with patch(
-                "core_runtime.api.setup_handlers.get_container",
-                return_value=self._FakeContainer(registry),
-            ):
-                result = handler._setup_install_pack(payload)
-
-        mocked.return_value.install.assert_called_once_with(["beta", "gamma"])
-        self.assertEqual(invoke.call_count, 3)
-        self.assertEqual(result["migrations"], {"beta": {"migrated": True}})
-        self.assertEqual(result["migration_statuses"]["beta"]["available"], True)
-        self.assertEqual(result["migration_statuses"]["beta"]["needs_user_migration"], False)
-        self.assertEqual(
-            result["migration_statuses"]["gamma"],
-            {
-                "pack_id": "gamma",
-                "available": False,
-                "needs_user_migration": False,
-                "registry_available": True,
-                "reason": "function_not_registered",
-            },
-        )
-
-    def test_setup_get_migration_status_uses_active_setup_target(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
-
-        class _Handler(SetupHandlersMixin):
-            pass
-
-        handler = _Handler()
-        registry = self._FakeFunctionRegistry({"alpha:get_migration_status"})
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked, patch(
-            "core_runtime.api.setup_handlers.get_container",
-            return_value=self._FakeContainer(registry),
-        ), patch(
-            "core_runtime.api.setup_handlers.invoke_pack_function",
-            return_value={"needs_user_migration": False},
-        ) as invoke:
-            mocked.return_value.get_selection.return_value = {"active_target_pack_id": "alpha"}
-            result = handler._setup_get_migration_status()
-
-        invoke.assert_called_once_with("alpha", "get_migration_status")
-        self.assertEqual(
-            result,
-            {
-                "pack_id": "alpha",
-                "available": True,
-                "needs_user_migration": False,
-                "registry_available": True,
-                "reason": None,
-            },
-        )
-
-    def test_setup_get_migration_status_returns_unavailable_without_active_target(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
-
-        class _Handler(SetupHandlersMixin):
-            pass
-
-        handler = _Handler()
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked:
-            mocked.return_value.get_selection.return_value = {}
-            result = handler._setup_get_migration_status()
-
-        self.assertEqual(
-            result,
-            {
-                "pack_id": None,
-                "available": False,
-                "needs_user_migration": False,
-                "registry_available": False,
-                "reason": "active_target_not_selected",
-            },
-        )
-
-    def test_setup_get_migration_status_distinguishes_registry_unavailable(self):
-        from core_runtime.api.setup_handlers import SetupHandlersMixin
-
-        class _Handler(SetupHandlersMixin):
-            pass
-
-        handler = _Handler()
-        with patch(
-            "core_runtime.api.setup_handlers.get_setup_pack_manager"
-        ) as mocked, patch(
-            "core_runtime.api.setup_handlers.get_container",
-            return_value=self._FakeContainer(None),
+            ),
         ):
-            mocked.return_value.get_selection.return_value = {"active_target_pack_id": "alpha"}
-            result = handler._setup_get_migration_status()
+            result = _Handler()._setup_install_pack(_request())
+        preserved_handler_session = _Handler._dispatch_session
+    finally:
+        del _Handler.app_lifecycle_manager
+        _Handler._dispatch_session = None
 
-        self.assertEqual(
-            result,
-            {
-                "pack_id": "alpha",
-                "available": False,
-                "needs_user_migration": False,
-                "registry_available": False,
-                "reason": "function_registry_unavailable",
-            },
-        )
-
-    def test_core_setup_routes_are_declared(self):
-        ecosystem_path = (
-            Path(__file__).resolve().parent.parent
-            / "core_runtime"
-            / "core_pack"
-            / "core_setup"
-            / "ecosystem.json"
-        )
-        import json
-
-        data = json.loads(ecosystem_path.read_text(encoding="utf-8"))
-        routes = data.get("api_routes", [])
-        self.assertEqual(len(routes), 5)
-        self.assertTrue(any(route.get("path") == "/api/setup/packs" for route in routes))
-        self.assertTrue(
-            any(route.get("path_pattern") == "/api/setup/packs/{id}/grant-all-ok" for route in routes)
-        )
-
-    def test_mutation_routes_are_not_pre_auth(self):
-        import json
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        setup_ecosystem_path = (
-            Path(__file__).resolve().parent.parent
-            / "core_runtime"
-            / "core_pack"
-            / "core_setup"
-            / "ecosystem.json"
-        )
-        defaultspack_ecosystem_path = (
-            Path(__file__).resolve().parent.parent
-            / "ecosystem"
-            / "defaultspack"
-            / "ecosystem.json"
-        )
-        setup_data = json.loads(setup_ecosystem_path.read_text(encoding="utf-8"))
-        defaultspack_data = json.loads(defaultspack_ecosystem_path.read_text(encoding="utf-8"))
-
-        class _PackInfo:
-            def __init__(self, ecosystem):
-                self.ecosystem = ecosystem
-
-        class _Registry:
-            packs = {
-                "core_setup": _PackInfo(setup_data),
-                "defaultspack": _PackInfo(defaultspack_data),
-            }
-
-        PackAPIHandler.load_pre_auth_routes(_Registry())
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        self.assertFalse(handler._is_pre_auth_route("POST", "/api/setup/packs/install"))
-        self.assertFalse(handler._is_pre_auth_route("POST", "/api/defaultspack/pack-requests/request-extension"))
-        self.assertTrue(handler._is_pre_auth_route("GET", "/api/setup/status"))
-
-    def test_control_panel_requires_session_except_bootstrap_exchange(self):
-        import json
-        from core_runtime.pack_api_server import PackAPIHandler
-
-        control_panel_ecosystem_path = (
-            Path(__file__).resolve().parent.parent
-            / "core_runtime"
-            / "core_pack"
-            / "core_control_panel"
-            / "ecosystem.json"
-        )
-        control_panel_data = json.loads(control_panel_ecosystem_path.read_text(encoding="utf-8"))
-
-        self.assertTrue(control_panel_data["web_mount"]["auth_required"])
-        self.assertEqual(
-            control_panel_data["pre_auth_routes"],
-            [
-                {"method": "POST", "path": "/api/panel/auth/bootstrap"},
-                {"method": "POST", "path": "/api/panel/auth/exchange"},
-            ],
-        )
-
-        class _PackInfo:
-            def __init__(self, ecosystem):
-                self.ecosystem = ecosystem
-
-        class _Registry:
-            packs = {
-                "core_control_panel": _PackInfo(control_panel_data),
-            }
-
-        PackAPIHandler.load_pre_auth_routes(_Registry())
-        handler = PackAPIHandler.__new__(PackAPIHandler)
-        self.assertTrue(handler._is_pre_auth_route("POST", "/api/panel/auth/bootstrap"))
-        self.assertTrue(handler._is_pre_auth_route("POST", "/api/panel/auth/exchange"))
-        self.assertFalse(handler._is_pre_auth_route("GET", "/api/panel/dashboard"))
-        self.assertFalse(handler._is_pre_auth_route("POST", "/api/panel/flows"))
-
-    def test_core_setup_web_uses_moved_setup_routes_only(self):
-        web_path = (
-            Path(__file__).resolve().parent.parent
-            / "core_runtime"
-            / "core_pack"
-            / "core_setup"
-            / "web"
-            / "index.html"
-        )
-        source = web_path.read_text(encoding="utf-8")
-        self.assertIn("/api/setup/packs/install", source)
-        self.assertIn("/api/setup/migration/status", source)
-        self.assertNotIn("/api/defaultspack/setup", source)
-        self.assertNotIn(
-            "Checked setup packs are installed together and receive all OK permissions.",
-            source,
-        )
-        self.assertIn(
-            "all OK permissions are granted only to setup packs that explicitly support all OK",
-            source,
-        )
-        self.assertIn("Installs without all OK grants", source)
-        self.assertIn("return_to", source)
-        self.assertIn("active_target_not_selected", source)
-        self.assertIn("no active setup pack selected", source)
-        self.assertIn("payloadError", source)
-        self.assertIn("payloadErrorItem", source)
-        self.assertIn("PANEL_CSRF_STORAGE_KEY", source)
-        self.assertIn('"X-Rumi-CSRF"', source)
-        self.assertIn('credentials: "same-origin"', source)
-        self.assertIn("name.textContent = pack.display_name", source)
-        self.assertIn("description.textContent = pack.description", source)
-        self.assertIn("input.dataset.selectPack = pack.pack_id", source)
-        self.assertIn("document.createTextNode", source)
-        self.assertIn('url.pathname === "/panel"', source)
-        self.assertIn('url.pathname.startsWith("/panel/")', source)
-        self.assertIn("!packs.active_target_pack_id", source)
-        self.assertIn("payload.success === false", source)
-        self.assertNotIn("card.innerHTML", source)
-        self.assertNotIn("${pack.display_name}", source)
-        self.assertNotIn("${pack.description", source)
-        self.assertNotIn('data-select-pack="${pack.pack_id}"', source)
-        self.assertNotIn('url.pathname.startsWith("/panel"))', source)
-        self.assertNotIn("payload.errors.map(String)", source)
-        self.assertNotIn(
-            'migrationEl.textContent = migration.needs_user_migration ? "user.csv migration pending" : "ready"',
-            source,
-        )
-        install_error_pattern = (
-            r'async function installSelectedPacks\(\)[\s\S]*'
-            r'getJson\("/api/setup/packs/install"[\s\S]*'
-            r'catch \(error\) \{[\s\S]*'
-            r'setStatus\("Setup pack install failed"'
-        )
-        self.assertRegex(source, install_error_pattern)
+    assert result["state"] == "active"
+    assert result["restart_required"] is True
+    assert restart_only_session.close_calls == 1
+    assert preserved_handler_session is control_session
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_committed_setup_requests_restart_when_response_write_fails() -> None:
+    """A post-commit transport failure cannot strand the stale control Host."""
+
+    from core_runtime import restart_control
+
+    handler_type = PackAPIHandler.canonical_v4_server_handler(
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="test-bootstrap"),
+        dispatch_session=None,
+        app_lifecycle_manager=None,
+    )
+    handler = object.__new__(handler_type)
+    handler.path = "/api/setup/packs/install"
+    handler._reset_request_state = lambda: None
+    handler._handle_packvm_lifecycle = lambda _method, _path: False
+    handler._handle_contract_request = lambda _method: False
+    handler._is_retired_setup_complete_path = lambda: False
+    handler._setup_pre_auth_allowed = lambda: True
+    handler._parse_object_body = lambda: {}
+    handler._setup_install_pack = lambda _body: {"state": "active"}
+    events: list[str] = []
+
+    def fail_after_commit(_result: object) -> None:
+        events.append("send")
+        raise OSError("simulated post-commit response failure")
+
+    original_request_restart = restart_control.request_kernel_restart
+
+    def record_restart() -> None:
+        events.append("restart")
+        original_request_restart()
+
+    handler._send_mapping_result = fail_after_commit
+    restart_control.clear_kernel_restart_request()
+    try:
+        with patch.object(
+            restart_control,
+            "request_kernel_restart",
+            side_effect=record_restart,
+        ):
+            with pytest.raises(OSError, match="post-commit"):
+                handler.do_POST()
+        assert restart_control.is_kernel_restart_requested() is True
+    finally:
+        restart_control.clear_kernel_restart_request()
+
+    assert events == ["send", "restart"]
+
+
+def test_non_v4_install_shape_is_retired_without_capture() -> None:
+    with patch("core_runtime.bootstrap.profile_capture.capture_bootstrap_profile") as capture:
+        result = _Handler()._setup_install_pack({"setup_pack_ids": ["legacy"]})
+
+    capture.assert_not_called()
+    assert result["status_code"] == 410
+    assert result["state"] == "legacy_setup_retired"
+
+
+def test_second_approval_and_runtime_migration_surfaces_are_retired() -> None:
+    handler = _Handler()
+    for result in (
+        handler._setup_grant_all_ok("legacy"),
+        handler._setup_revoke_all_ok("legacy"),
+        handler._setup_get_migration_status(),
+    ):
+        assert result["status_code"] == 410
+        assert result["state"] == "legacy_setup_retired"
+
+
+def test_real_preview_is_exact_and_integrity_checked() -> None:
+    preview = SetupHandlersMixin._recommended_default_profile_preview()
+    from tests.conformance_support.packaged_profile import load_packaged_profile_catalog
+
+    assert preview["profile_id"] == "defaults"
+    assert preview["base_pack"] == "defaults-basepack"
+    assert preview["shell"]["provider_id"] == "shell.tauri.default"
+    variant = load_packaged_profile_catalog().shells["shell.tauri.default"]["launch"]["variants"][0]
+    assert (
+        preview["confirmation"]["shell"]["executable_artifact_digest"]
+        == (variant["entrypoint_digest"])
+    )
+    assert len(preview["pack_ids"]) == len(set(preview["pack_ids"]))
+    assert preview["conversation_provider"]

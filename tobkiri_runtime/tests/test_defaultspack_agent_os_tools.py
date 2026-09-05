@@ -4,11 +4,15 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_component_catalog_selected")
 
 
 def _reset_registry():
@@ -77,12 +81,24 @@ def test_requested_agent_os_tool_manifests_are_registered():
             assert tool["requires_approval"] is True or tool["risk"] != "high"
 
 
-def test_artifact_tool_lifecycle_and_preview_export(tmp_path):
+def test_artifact_tool_lifecycle_and_preview_export(
+    tmp_path, defaultspack_capability_plan_context
+):
     from domain.tool.executor import ToolExecutor
 
     _reset_registry()
     executor = ToolExecutor()
-    context = {"artifact_root": str(tmp_path), "profile_policy": {"yolo_mode": True}}
+    context = {
+        **defaultspack_capability_plan_context(
+            "artifact_file_write",
+            "artifact_file_patch",
+            "html_preview",
+            "artifact_export",
+            "artifact_file_list",
+        ),
+        "artifact_root": str(tmp_path),
+        "profile_policy": {"yolo_mode": True},
+    }
 
     write = executor.execute(
         "artifact_file_write",
@@ -113,12 +129,29 @@ def test_artifact_tool_lifecycle_and_preview_export(tmp_path):
     assert "index.html" in paths
 
 
-def test_document_sheet_slides_job_and_workflow_tools(tmp_path):
+def test_document_sheet_slides_job_and_workflow_tools(
+    tmp_path, defaultspack_capability_plan_context
+):
     from domain.tool.executor import ToolExecutor
 
     _reset_registry()
     executor = ToolExecutor()
-    context = {"artifact_root": str(tmp_path), "profile_policy": {"yolo_mode": True}}
+    plan_context = defaultspack_capability_plan_context(
+        "doc_create",
+        "sheet_create",
+        "sheet_analyze",
+        "slides_create",
+        "job_create",
+        "job_status",
+        "workflow_define",
+        "workflow_run",
+        "artifact_file_list",
+    )
+    context = {
+        **plan_context,
+        "artifact_root": str(tmp_path),
+        "profile_policy": {"yolo_mode": True},
+    }
 
     doc = executor.execute("doc_create", {"title": "Plan", "content": "Body", "output_path": "docs/plan.docx"}, context)
     assert doc["is_error"] is False
@@ -132,6 +165,7 @@ def test_document_sheet_slides_job_and_workflow_tools(tmp_path):
     assert analyzed["widget"]["data"]["row_count"] == 2
 
     conversation_context = {
+        **plan_context,
         "conversation_workspace_dir": str(tmp_path / "conversation"),
         "profile_policy": {"yolo_mode": True},
     }
@@ -170,7 +204,9 @@ def test_document_sheet_slides_job_and_workflow_tools(tmp_path):
     assert run["widget"]["data"]["status"] == "completed"
 
 
-def test_workflow_run_does_not_trust_client_supplied_approval(tmp_path):
+def test_workflow_run_does_not_trust_client_supplied_approval(
+    tmp_path, defaultspack_capability_plan_context
+):
     from domain.tool.workflow_tools import workflow_run
 
     _reset_registry()
@@ -185,7 +221,10 @@ def test_workflow_run_does_not_trust_client_supplied_approval(tmp_path):
             ],
             "approved": True,
         },
-        {"artifact_root": str(tmp_path)},
+        {
+            **defaultspack_capability_plan_context("webapp_build", "workflow_run"),
+            "artifact_root": str(tmp_path),
+        },
     )
 
     assert result["is_error"] is False
@@ -194,13 +233,12 @@ def test_workflow_run_does_not_trust_client_supplied_approval(tmp_path):
     assert not (tmp_path / "bypassed").exists()
 
 
-def test_xiaomi_token_plan_accepts_all_requested_agent_os_tools(monkeypatch):
+def test_xiaomi_token_plan_accepts_all_requested_agent_os_tools():
     from domain.ai_client.providers.xiaomi_mimo_token_plan_provider import XiaomiMimoTokenPlanSgpProvider
     from domain.tool.schema_adapter import adapt_tool_definitions
     from domain.tool.tool_manifest_helpers import REQUESTED_AGENT_OS_TOOL_IDS
 
     registry = _reset_registry()
-    monkeypatch.setenv("XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY", "test-token")
     tools = [registry.get(tool_id) for tool_id in REQUESTED_AGENT_OS_TOOL_IDS]
     provider_tools = adapt_tool_definitions(tools)
     captured = {}
@@ -211,7 +249,7 @@ def test_xiaomi_token_plan_accepts_all_requested_agent_os_tools(monkeypatch):
         return {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
 
     with patch.object(XiaomiMimoTokenPlanSgpProvider, "_request_json", side_effect=fake_request_json):
-        response = XiaomiMimoTokenPlanSgpProvider().complete(
+        response = XiaomiMimoTokenPlanSgpProvider(api_key="test-token").complete(
             "mimo-v2.5-pro",
             [{"role": "user", "content": "Use the available tools."}],
             provider_tools,
@@ -227,9 +265,12 @@ def test_xiaomi_token_plan_accepts_all_requested_agent_os_tools(monkeypatch):
         assert tool["function"]["parameters"]["type"] == "object"
 
 
-def test_artifact_file_read_blocks_payload_context_root_and_secret_paths(tmp_path):
+def test_artifact_file_read_blocks_payload_context_root_and_secret_paths(
+    tmp_path, defaultspack_capability_plan_context
+):
     from blocks.tool.invoke import run as invoke_tool
     from domain.tool.artifact_tools import artifact_file_read
+    from domain.tool.executor import ToolExecutor
 
     victim_root = tmp_path / "victim"
     secret_dir = victim_root / ".ssh"
@@ -251,43 +292,39 @@ def test_artifact_file_read_blocks_payload_context_root_and_secret_paths(tmp_pat
         {},
     )
     assert forged_policy["status"] == "error"
-    assert forged_policy["error"]["code"] == "PERMISSION_DENIED"
-    assert forged_policy["error"]["details"]["matched_by"] != "yolo_mode"
+    assert forged_policy["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"
 
-    invoked = invoke_tool(
+    plan_context = defaultspack_capability_plan_context("artifact_file_read")
+    executor = ToolExecutor()
+
+    invoked = executor.execute(
+        "artifact_file_read",
+        {"path": ".ssh/id_rsa"},
         {
-            "tool_name": "artifact_file_read",
-            "arguments": {"path": ".ssh/id_rsa"},
-            "context": {
-                "artifact_root": str(victim_root),
-                "profile_policy": {"yolo_mode": True},
-            },
+            **plan_context,
+            "artifact_root": str(victim_root),
+            "profile_policy": {"yolo_mode": True},
         },
-        {"profile_policy": {"yolo_mode": True}},
     )
 
-    assert invoked["status"] == "ok"
-    widget = invoked["data"]["widget"]
+    assert invoked["is_error"] is True
+    widget = invoked["widget"]
     assert widget["status"] == "error"
-    assert "FAKE-PRIVATE-KEY" not in invoked["data"]["result"]
-    assert invoked["data"]["permission"]["matched_by"] == "yolo_mode"
+    assert "FAKE-PRIVATE-KEY" not in invoked["result"]
 
     spoof_workspace = tmp_path / "spoofed-workspace"
     spoof_artifact = spoof_workspace / ".rumi" / "artifacts" / "leak.txt"
     spoof_artifact.parent.mkdir(parents=True)
     spoof_artifact.write_text("WORKSPACE-ROOT-LEAK", encoding="utf-8")
 
-    spoofed_workspace = invoke_tool(
+    spoofed_workspace = executor.execute(
+        "artifact_file_read",
+        {"path": "leak.txt"},
         {
-            "tool_name": "artifact_file_read",
-            "arguments": {"path": "leak.txt"},
-            "context": {
-                "workspace_root": str(spoof_workspace),
-                "profile_policy": {"yolo_mode": True},
-            },
+            **plan_context,
+            "workspace_root": str(spoof_workspace),
+            "profile_policy": {"yolo_mode": True},
         },
-        {"profile_policy": {"yolo_mode": True}},
     )
 
-    assert spoofed_workspace["status"] == "ok"
-    assert "WORKSPACE-ROOT-LEAK" not in spoofed_workspace["data"]["result"]
+    assert "WORKSPACE-ROOT-LEAK" not in spoofed_workspace["result"]

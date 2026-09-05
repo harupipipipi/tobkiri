@@ -1,9 +1,140 @@
 {
+  "connectivity": {
+    "provides": [
+      "rumi.action.prompt.author.v1",
+      "rumi.action.prompt.migrate.v1",
+      "rumi.action.prompt.test.v1",
+      "rumi.action.prompt.version.v1",
+      "rumi.resource.prompt.studio.v1"
+    ],
+    "requires": [
+      "rumi.event.audit.recorded.v1",
+      "rumi.resource.profile.workspace.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Authoritative local prompt authoring, versioning, migration, and isolated UI.",
+  "display_name": "Rumi Prompt Studio",
+  "host_execution": true,
+  "metadata": {
+    "asset_index": {
+      "catalog": [
+        "catalog/prompt_studio_prompt_library.yaml",
+        "catalog/prompt_studio_workflows.yaml",
+        "catalog/prompt_studio_quality_matrix.yaml",
+        "catalog/custom_instruction_migration_map.yaml",
+        "catalog/provider_migration_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/prompt_studio_review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/claude_style_instruction_migration.example.yaml",
+        "examples/chatgpt_custom_instruction_lint.example.yaml",
+        "examples/gemini_gem_prompt_normalization.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/prompt_regression_cases.yaml"
+      ],
+      "ledger": [
+        "ledgers/prompt_studio_evidence_ledger.schema.yaml",
+        "ledgers/prompt_version_ledger.yaml"
+      ],
+      "policy": [
+        "policies/prompt_studio_safety.policy.yaml",
+        "policies/provider_style_boundary.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/prompt_editor.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/prompt_linter.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/prompt_studio_record.schema.json"
+      ],
+      "template": [
+        "templates/prompt_studio_handoff.template.md",
+        "templates/custom_instruction_migration.template.md"
+      ]
+    },
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:652e11404e1505379de22b7a511139a11780ca975d95183abffb1538f013183b",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6"
+    },
+    "declarative_only": false,
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
+    "owner_surfaces": [
+      "prompt_artifact_catalog",
+      "prompt_lint_rubric",
+      "custom_instruction_migration",
+      "fixture_dry_run_contract",
+      "prompt_version_ledger"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "security": {
+      "audit_redaction": true,
+      "capability_scoped": true,
+      "csrf_required": true,
+      "local_only": true,
+      "optimistic_concurrency": true
+    },
+    "storage_namespace": "rumi.prompt_studio"
+  },
   "pack_id": "rumi_prompt_studio_pack",
   "pack_identity": "rumi:ecosystem/rumi_prompt_studio_pack",
-  "display_name": "Rumi Prompt Studio Pack",
-  "version": "0.1.0",
-  "description": "Declarative prompt library, prompt linting, custom instruction migration, and fixture dry-run contract pack.",
+  "provenance": {
+    "build_identity": "rumi_prompt_studio_pack:1.0.0",
+    "content_hash": "sha256:2a9a173e09ccb3f512915d55bc311763325a6a2f611a8a5f53101f57d7768764",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "profile.prompt.author.migrate",
+    "profile.prompt.author.read",
+    "profile.prompt.author.write"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "catalog/prompt_studio_prompt_library.yaml"
+  ],
+  "version": "1.0.0",
   "vocabulary": {
     "types": [
       "catalog",
@@ -17,112 +148,5 @@
       "preset",
       "example"
     ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "connectivity": {
-    "requires": [
-      "defaultspack"
-    ],
-    "provides": []
-  },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": {
-    "allowed_domains": [],
-    "allowed_ports": []
-  },
-  "host_execution": false,
-  "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
-    "optional_integrations": [
-      {
-        "pack_id": "rumi_model_evals_pack",
-        "reason": "Adjacent owner for rumi_model_evals_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_memory_knowledge_pack",
-        "reason": "Adjacent owner for rumi_memory_knowledge_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_api_toolsmith_pack",
-        "reason": "Adjacent owner for rumi_api_toolsmith_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_code_ide_pack",
-        "reason": "Adjacent owner for rumi_code_ide_pack handoff; this pack keeps declarative evidence only."
-      },
-      {
-        "pack_id": "rumi_knowledge_marketplace_pack",
-        "reason": "Adjacent owner for rumi_knowledge_marketplace_pack handoff; this pack keeps declarative evidence only."
-      }
-    ],
-    "owner_surfaces": [
-      "prompt_artifact_catalog",
-      "prompt_lint_rubric",
-      "custom_instruction_migration",
-      "fixture_dry_run_contract",
-      "prompt_version_ledger"
-    ],
-    "asset_index": {
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/prompt_studio_prompt_library.yaml",
-        "catalog/prompt_studio_workflows.yaml",
-        "catalog/prompt_studio_quality_matrix.yaml",
-        "catalog/custom_instruction_migration_map.yaml",
-        "catalog/provider_migration_matrix.yaml"
-      ],
-      "schema": [
-        "schemas/prompt_studio_record.schema.json"
-      ],
-      "policy": [
-        "policies/prompt_studio_safety.policy.yaml",
-        "policies/provider_style_boundary.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/prompt_studio_review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/prompt_studio_evidence_ledger.schema.yaml",
-        "ledgers/prompt_version_ledger.yaml"
-      ],
-      "template": [
-        "templates/prompt_studio_handoff.template.md",
-        "templates/custom_instruction_migration.template.md"
-      ],
-      "profiles": [
-        "profiles/prompt_editor.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/prompt_linter.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/claude_style_instruction_migration.example.yaml",
-        "examples/chatgpt_custom_instruction_lint.example.yaml",
-        "examples/gemini_gem_prompt_normalization.example.yaml"
-      ],
-      "fixtures": [
-        "fixtures/prompt_regression_cases.yaml"
-      ]
-    }
   }
 }

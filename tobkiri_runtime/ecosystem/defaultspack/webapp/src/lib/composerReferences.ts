@@ -1,4 +1,5 @@
 import type { ComposerExtensionItem, ComposerSkillItem } from "../renderers/types";
+import { hasUnescapedMentionSyntax } from "./mentionContract";
 
 export const COMPOSER_REFERENCE_MIME = "application/x-rumi-composer-references+json";
 
@@ -6,6 +7,12 @@ export type ComposerEntityReference = {
   kind: "tool" | "skill" | "file";
   id: string;
   syntax: string;
+};
+
+type ComposerReferenceCatalog = {
+  tools: ComposerExtensionItem[];
+  skills: ComposerSkillItem[];
+  files?: string[];
 };
 
 type SerializedComposerReference = {
@@ -80,21 +87,28 @@ export function serializeComposerReferences(text: string, references: ComposerEn
 
 export function restoreComposerReferences(
   raw: string,
-  catalog: { tools: ComposerExtensionItem[]; skills: ComposerSkillItem[]; files?: string[] },
+  catalog: ComposerReferenceCatalog,
 ): { text: string; references: ComposerEntityReference[] } | null {
   const payload = parsePayload(raw);
   if (!payload) return null;
-  const toolIds = new Set(catalog.tools.filter((item) => !item.disabled).map((item) => item.id));
-  const skillIds = new Set(catalog.skills.map((item) => item.id));
   const fileIds = new Set(catalog.files ?? []);
   const seen = new Set<string>();
   const references: ComposerEntityReference[] = [];
 
   for (const item of payload.references) {
-    const known = item.kind === "tool" ? toolIds.has(item.id) : item.kind === "skill" ? skillIds.has(item.id) : fileIds.has(item.id);
-    if (!known) continue;
     const syntax = payload.text.slice(item.start, item.end);
-    if (syntax !== `@${item.id}`) continue;
+    const knownSyntaxes = item.kind === "tool"
+      ? catalog.tools
+          .filter((entry) => !entry.disabled && entry.id === item.id)
+          .flatMap((entry) => [`@${entry.id}`, `@${entry.label}`])
+      : item.kind === "skill"
+        ? catalog.skills
+            .filter((entry) => entry.id === item.id)
+            .flatMap((entry) => [`@${entry.id}`, `@${entry.label}`, ...(entry.aliases ?? []).map((alias) => `@${alias}`)])
+        : fileIds.has(item.id)
+          ? [`@${item.id}`]
+          : [];
+    if (!knownSyntaxes.includes(syntax)) continue;
     const reference = { kind: item.kind, id: item.id, syntax } satisfies ComposerEntityReference;
     const key = referenceKey(reference);
     if (seen.has(key)) continue;
@@ -102,6 +116,79 @@ export function restoreComposerReferences(
     references.push(reference);
   }
   return { text: payload.text, references };
+}
+
+function normalizedReferenceId(value: string): string {
+  return value.trim().toLowerCase().replace(/[_\s]+/g, "-");
+}
+
+/**
+ * Convert semantic mentions to a portable plain-text representation. Clipboard
+ * consumers that do not understand Rumi's custom MIME still retain entity ids.
+ */
+export function composerReferencesAsMarkdown(
+  text: string,
+  references: ComposerEntityReference[],
+): string {
+  const ranges = findReferenceRanges(text, references);
+  if (ranges.length === 0) return text;
+  let result = "";
+  let cursor = 0;
+  for (const range of ranges) {
+    const reference = references.find((candidate) => (
+      candidate.kind === range.kind
+      && candidate.id === range.id
+      && candidate.syntax === text.slice(range.start, range.end)
+    ));
+    if (!reference) continue;
+    result += text.slice(cursor, range.start);
+    result += `[${reference.syntax}](plugin://${reference.id})`;
+    cursor = range.end;
+  }
+  return `${result}${text.slice(cursor)}`;
+}
+
+/**
+ * Restore Codex-style `[@label](plugin://id@marketplace)` clipboard mentions.
+ * Only entities present in the current trusted catalog become semantic.
+ */
+export function restoreComposerMarkdownReferences(
+  raw: string,
+  catalog: ComposerReferenceCatalog,
+): { text: string; references: ComposerEntityReference[] } | null {
+  if (!raw || raw.length > 1_000_000 || !raw.includes("plugin://")) return null;
+  const pattern = /\[(@[^\]\r\n]{1,160})\]\(plugin:\/\/([^)\s"']{1,240})["']?\)/g;
+  const references: ComposerEntityReference[] = [];
+  let text = "";
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(raw)) !== null) {
+    const syntax = match[1];
+    const target = decodeURIComponent(match[2]).split("@", 1)[0];
+    const normalizedTarget = normalizedReferenceId(target);
+    const tool = catalog.tools.find((entry) => (
+      !entry.disabled
+      && normalizedReferenceId(entry.id) === normalizedTarget
+    ));
+    const skill = catalog.skills.find((entry) => (
+      normalizedReferenceId(entry.id) === normalizedTarget
+    ));
+    const file = (catalog.files ?? []).find((entry) => normalizedReferenceId(entry) === normalizedTarget);
+    const reference = tool
+      ? { kind: "tool" as const, id: tool.id, syntax }
+      : skill
+        ? { kind: "skill" as const, id: skill.id, syntax }
+        : file
+          ? { kind: "file" as const, id: file, syntax }
+          : null;
+    text += raw.slice(cursor, match.index);
+    text += syntax;
+    if (reference) references.push(reference);
+    cursor = match.index + match[0].length;
+  }
+  if (cursor === 0) return null;
+  text += raw.slice(cursor);
+  return { text, references };
 }
 
 export function insertComposerReferencePaste(
@@ -126,7 +213,7 @@ export function mergeComposerReferences(
 ): ComposerEntityReference[] {
   const byKey = new Map<string, ComposerEntityReference>();
   for (const reference of [...current, ...additions]) {
-    if (!input.includes(reference.syntax)) continue;
+    if (!hasUnescapedMentionSyntax(input, reference.syntax)) continue;
     byKey.set(referenceKey(reference), reference);
   }
   return [...byKey.values()];

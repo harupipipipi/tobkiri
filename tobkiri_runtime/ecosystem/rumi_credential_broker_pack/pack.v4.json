@@ -1,0 +1,243 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:12839af5129f60a2aeb6788e50669e7cb8bfbfae7a9ddeadda9b2a6496ae3e87",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:4d3f6daab1c1c4fcaf978196a9b2ad1780a4ae63fc29c14d902487993ebf5bfa",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "kind": "executable",
+      "path": "runtime/process.py"
+    },
+    {
+      "digest": "sha256:16c0a3e4c3c48abba74fdab9cb3296495e543fcaf2954fc67556d2376f1068c9",
+      "kind": "executable",
+      "path": "runtime/service.py"
+    },
+    {
+      "digest": "sha256:200b6ba762871a2f1411d2582606292145380574b8d59501ef8f4f686bf01504",
+      "kind": "executable",
+      "path": "runtime/store.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.credential.manage.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-manage"
+      ],
+      "revision_digest": "sha256:9a3ec12fa73aaa2dadbfb4e70c6b3ddb14800a7275de26ce7bd503a033065c69"
+    },
+    {
+      "contract_id": "tobkiri.action.credential.migrate.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-migrate"
+      ],
+      "revision_digest": "sha256:32d04d1ea9c1f6f87a4041aca6d2db579617e6a49805383df136ad9d0352dd7f"
+    },
+    {
+      "contract_id": "tobkiri.resource.credential.status.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-status"
+      ],
+      "revision_digest": "sha256:7589601c1aaff20819c988c61a2f3e1127497c2fb354440cfc5b756c32cfff65"
+    },
+    {
+      "contract_id": "tobkiri.service.credential.resolve.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-resolve"
+      ],
+      "revision_digest": "sha256:9a564dcb126c266549b505d060242edf09d60e3a77982a873c5d8eeeceacd886"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:9a3ec12fa73aaa2dadbfb4e70c6b3ddb14800a7275de26ce7bd503a033065c69",
+      "id": "rumi_credential_broker_pack.credential-broker.manage",
+      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_credential_broker_pack.credential-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:32d04d1ea9c1f6f87a4041aca6d2db579617e6a49805383df136ad9d0352dd7f",
+      "id": "rumi_credential_broker_pack.credential-broker.migrate",
+      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_credential_broker_pack.credential-migrate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:9a564dcb126c266549b505d060242edf09d60e3a77982a873c5d8eeeceacd886",
+      "id": "rumi_credential_broker_pack.credential-broker.resolve",
+      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_credential_broker_pack.credential-resolve"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:7589601c1aaff20819c988c61a2f3e1127497c2fb354440cfc5b756c32cfff65",
+      "id": "rumi_credential_broker_pack.credential-broker.status",
+      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_credential_broker_pack.credential-status"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:31cff7bf14e5ccc95e350ab8322958ff327355dfb5c920de55f8dcedf9479594",
+    "contract_catalog_digest": "sha256:79138080e8407ec6d10f53ee138436bac4d27d84830f0e222bdd7bc6c6fd3631",
+    "source_identity": "sha256:50603b7c0dc6b50975fc92b1c75b4e739345eb0c81281a079f85155fd0574a54"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.credential.manage.v1",
+      "rumi.action.credential.migrate.v1",
+      "rumi.resource.credential.status.v1",
+      "rumi.service.credential.resolve.v1",
+      "rumi:ecosystem/rumi_credential_broker_pack",
+      "rumi_credential_broker_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.credential.manage.v1",
+      "effect_ceiling": [
+        "capability:credential.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_credential_broker_pack.credential-manage",
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.manage",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.credential.migrate.v1",
+      "effect_ceiling": [
+        "capability:credential.migrate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_credential_broker_pack.credential-migrate",
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.migrate",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.credential.resolve.v1",
+      "effect_ceiling": [
+        "capability:credential.resolve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_credential_broker_pack.credential-resolve",
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.resolve",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.credential.status.v1",
+      "effect_ceiling": [
+        "capability:credential.status.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_credential_broker_pack.credential-status",
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.status",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:31cff7bf14e5ccc95e350ab8322958ff327355dfb5c920de55f8dcedf9479594",
+    "display_name": "Rumi Credential Broker",
+    "id": "rumi_credential_broker_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:50603b7c0dc6b50975fc92b1c75b4e739345eb0c81281a079f85155fd0574a54",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:50603b7c0dc6b50975fc92b1c75b4e739345eb0c81281a079f85155fd0574a54",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_credential_broker_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.credential.manage.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-manage"
+      ],
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.manage"
+    },
+    {
+      "contract_reference": "tobkiri.action.credential.migrate.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-migrate"
+      ],
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.migrate"
+    },
+    {
+      "contract_reference": "tobkiri.service.credential.resolve.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-resolve"
+      ],
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.resolve"
+    },
+    {
+      "contract_reference": "tobkiri.resource.credential.status.v1",
+      "operations": [
+        "rumi_credential_broker_pack.credential-status"
+      ],
+      "owner": "rumi_credential_broker_pack",
+      "provider_id": "rumi_credential_broker_pack.credential-broker.status"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "credential.manage",
+      "credential.migrate",
+      "credential.resolve",
+      "credential.status.read"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

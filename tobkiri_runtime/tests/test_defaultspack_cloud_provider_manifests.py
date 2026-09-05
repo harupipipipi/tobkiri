@@ -10,6 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
+MODEL_CATALOG_ROOT = ROOT / "ecosystem" / "rumi_model_catalog_pack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
@@ -23,7 +24,9 @@ def _catalog_and_models(provider_id: str):
 
 
 def _bundled_model_catalog_paths():
-    yield from (DEFAULTSPACK_ROOT / "domain" / "providers").glob("*/models.json")
+    yield from (MODEL_CATALOG_ROOT / "catalog" / "providers").glob(
+        "*/models.json"
+    )
     yield from (
         ROOT
         / "ecosystem"
@@ -35,7 +38,9 @@ def _bundled_model_catalog_paths():
 
 
 def _bundled_provider_manifest_paths():
-    yield from (DEFAULTSPACK_ROOT / "domain" / "providers").glob("*/manifest.json")
+    yield from (MODEL_CATALOG_ROOT / "catalog" / "providers").glob(
+        "*/manifest.json"
+    )
     yield from (
         ROOT
         / "ecosystem"
@@ -58,7 +63,7 @@ def test_bundled_provider_model_json_uses_strict_canonical_schema():
             validate_model_catalog_source({"models": [payload]}, path=path)
 
 
-def test_openrouter_domain_catalog_matches_model_catalog_pack_models():
+def test_openrouter_static_catalogs_are_non_authoritative_legacy_artifacts():
     from domain.ai_client.metadata_json import load_strict_metadata_json
 
     def keys_from_model_payload(payload):
@@ -69,10 +74,10 @@ def test_openrouter_domain_catalog_matches_model_catalog_pack_models():
             if isinstance(model, dict)
         }
 
-    domain_payload = load_strict_metadata_json(
-        DEFAULTSPACK_ROOT / "domain" / "providers" / "openrouter" / "models.json"
+    legacy_payload = load_strict_metadata_json(
+        MODEL_CATALOG_ROOT / "catalog" / "providers" / "openrouter" / "models.json"
     )
-    domain_keys = keys_from_model_payload(domain_payload)
+    legacy_keys = keys_from_model_payload(legacy_payload)
     catalog_dir = (
         ROOT
         / "ecosystem"
@@ -87,8 +92,10 @@ def test_openrouter_domain_catalog_matches_model_catalog_pack_models():
     for path in sorted(catalog_dir.glob("*.json")):
         catalog_keys.update(keys_from_model_payload(load_strict_metadata_json(path)))
 
-    assert domain_keys
-    assert domain_keys == catalog_keys
+    assert legacy_keys
+    assert catalog_keys
+    assert ("openrouter", "tencent/hy3:free") in legacy_keys
+    assert ("openrouter", "tencent/hy3-preview:free") in catalog_keys
 
 
 def test_model_catalog_validation_rejects_duplicate_ids_and_context_drift():
@@ -187,7 +194,7 @@ def test_provider_api_surface_contract_matches_bundled_model_requirements():
                 assert surface.get("supports_parallel_tool_call_shape") is True, model_label
 
 
-def test_groq_manifest_first_runtime_provider_and_allowlist(monkeypatch):
+def test_groq_manifest_first_runtime_provider_and_allowlist(configured_cloud_provider):
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("groq")
@@ -197,23 +204,16 @@ def test_groq_manifest_first_runtime_provider_and_allowlist(monkeypatch):
     assert provider["metadata"]["default_base_url"] == "https://api.groq.com/openai/v1"
     assert provider["default_model_for"]["chat"] == "openai/gpt-oss-120b"
     assert provider["default_model_for"]["fast"] == "openai/gpt-oss-20b"
-    assert {
-        "groq/openai/gpt-oss-120b",
-        "groq/openai/gpt-oss-20b",
-        "groq/llama-3.3-70b-versatile",
-        "groq/llama-3.1-8b-instant",
-        "groq/meta-llama/llama-4-scout-17b-16e-instruct",
-        "groq/groq/compound",
-        "groq/groq/compound-mini",
-    }.issubset(models)
-    assert models["groq/groq/compound"]["metadata"]["capabilities"]["tool_calls"] is False
-    assert models["groq/groq/compound-mini"]["metadata"]["capabilities"]["tool_calls"] is False
+    assert models == {}
 
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    configured_cloud_provider("groq", "test-groq-key")
     assert "groq" in detect_available_providers()
 
 
-def test_cerebras_manifest_first_runtime_provider(monkeypatch):
+def test_cerebras_manifest_first_runtime_provider(
+    monkeypatch,
+    configured_cloud_provider,
+):
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("cerebras")
@@ -221,16 +221,11 @@ def test_cerebras_manifest_first_runtime_provider(monkeypatch):
     assert provider["availability"]["supports_invoke"] is True
     assert provider["metadata"]["adapter"] == "openai_compatible"
     assert provider["metadata"]["default_base_url"] == "https://api.cerebras.ai/v1"
-    assert provider["default_model_for"]["coding"] == "zai-glm-4.7"
-    assert {
-        "cerebras/gpt-oss-120b",
-        "cerebras/zai-glm-4.7",
-        "cerebras/qwen-3-235b-a22b-instruct-2507",
-        "cerebras/llama3.1-8b",
-    }.issubset(models)
-    assert provider["metadata"]["config"]["service_tier_request_injection"] == "explicit_only"
+    assert provider["default_model_for"] == {}
+    assert models == {}
+    assert provider["metadata"]["config"]["model_sync"] == "remote_merge"
 
-    monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras-key")
+    configured_cloud_provider("cerebras", "test-cerebras-key")
     assert "cerebras" in detect_available_providers()
 
 
@@ -289,15 +284,9 @@ def test_openai_compatible_remote_model_cache_uses_defaultspack_shared_user_data
     )
 
     cache_path = provider._remote_model_cache_path()
-    expected = (
-        DEFAULTSPACK_ROOT
-        / "user_data"
-        / "shared"
-        / "provider_model_cache"
-        / "groq.models.json"
-    )
-
-    assert cache_path == expected
+    assert cache_path.parent == DEFAULTSPACK_ROOT / "user_data" / "shared" / "provider_model_cache"
+    assert cache_path.name.startswith("groq.")
+    assert cache_path.name.endswith(".models.json")
 
 
 def test_cerebras_openai_compatible_params_match_model_contract():
@@ -423,7 +412,10 @@ def test_cerebras_thinking_normalization_only_emits_supported_reasoning_params()
     assert llama["provider_params"] == {}
 
 
-def test_nvidia_manifest_first_runtime_provider_accepts_either_key(monkeypatch):
+def test_nvidia_manifest_first_runtime_provider_accepts_either_key(
+    configured_cloud_provider,
+):
+    from domain.ai_client.api_key_store import set_provider_api_key
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("nvidia")
@@ -432,20 +424,16 @@ def test_nvidia_manifest_first_runtime_provider_accepts_either_key(monkeypatch):
     assert provider["metadata"]["adapter"] == "openai_compatible"
     assert provider["metadata"]["default_base_url"] == "https://integrate.api.nvidia.com/v1"
     assert provider["env_vars"] == ["NVIDIA_API_KEY", "NGC_API_KEY"]
-    assert provider["default_model_for"]["coding"] == "qwen/qwen3-coder-480b-a35b-instruct"
-    assert provider["default_model_for"]["fast"] == "nvidia/nvidia-nemotron-nano-9b-v2"
-    assert {
-        "nvidia/nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        "nvidia/nvidia/llama-3.3-nemotron-super-49b-v1",
-        "nvidia/meta/llama-3.3-70b-instruct",
-        "nvidia/openai/gpt-oss-120b",
-        "nvidia/openai/gpt-oss-20b",
-        "nvidia/qwen/qwen3-coder-480b-a35b-instruct",
-        "nvidia/deepseek-ai/deepseek-v4-flash",
-    }.issubset(models)
+    assert provider["default_model_for"] == {}
+    assert models == {}
 
-    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
-    monkeypatch.setenv("NGC_API_KEY", "test-ngc-key")
+    result = set_provider_api_key(
+        "nvidia",
+        "test-ngc-key",
+        api_id="NGC_API_KEY",
+        name="NGC_API_KEY",
+    )
+    assert result["success"] is True
     assert "nvidia" in detect_available_providers()
 
 
@@ -493,7 +481,14 @@ def test_named_token_plan_key_maps_back_to_long_provider_id(tmp_path, monkeypatc
     loaded = load_provider_api_keys_into_env(pack_root=tmp_path)
 
     assert loaded["xiaomi-token-plan-sgp"] is True
-    assert os.environ["XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY"] == "test-token"
+    assert all(
+        env_name not in os.environ
+        for env_name in (
+            "XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY",
+            "XIAOMI_MIMO_TOKEN_PLAN_API_KEY",
+            "MIMO_API_KEY",
+        )
+    )
 
 
 def test_cloud_model_capability_false_values_are_preserved():
@@ -501,18 +496,7 @@ def test_cloud_model_capability_false_values_are_preserved():
 
     profiles = {item["profile_id"]: item for item in list_profile_catalog()}
 
-    cerebras_gpt_oss = profiles["cerebras/gpt-oss-120b"]
-    cerebras_zai = profiles["cerebras/zai-glm-4.7"]
-    nvidia_nemotron = profiles["nvidia/nvidia/llama-3.3-nemotron-super-49b-v1.5"]
-
-    for profile in (cerebras_gpt_oss, cerebras_zai, nvidia_nemotron):
-        assert profile["supports_vision"] is False
-        assert "vision" not in profile["capability_tags"]
-        assert profile["supports_tool_calling"] is True
-
-    assert cerebras_gpt_oss["model_capabilities"]["capabilities"]["parallel_tool_calls"] is False
-    assert cerebras_zai["model_capabilities"]["capabilities"]["parallel_tool_calls"] is True
-    assert nvidia_nemotron["model_capabilities"]["capabilities"]["parallel_tool_calls"] is True
+    assert not any(profile_id.startswith(("cerebras/", "nvidia/")) for profile_id in profiles)
 
 
 def test_openai_primary_chat_models_remain_tool_capable_in_public_catalog():
@@ -520,39 +504,12 @@ def test_openai_primary_chat_models_remain_tool_capable_in_public_catalog():
     from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_model_catalog
 
     models = {item["id"]: item for item in list_model_catalog("openai")}
-    expectations = {
-        "openai/gpt-5.5": True,
-        "openai/gpt-5.5-mini": True,
-        "openai/gpt-5.4": True,
-        "openai/gpt-5.4-mini": True,
-        "openai/gpt-4o": False,
-    }
-
-    assert get_best_model_for_provider("openai", "chat") == "gpt-5.5"
-    assert get_best_model_for_provider("openai", "fast") == "gpt-5.5-mini"
-
-    for model_id, supports_thinking in expectations.items():
-        model = models[model_id]
-        capabilities = model["model_capabilities"]["capabilities"]
-
-        assert model["supports_tool_calling"] is True
-        assert model["supports_image_input"] is True
-        assert model["supports_vision"] is True
-        assert model["supports_thinking"] is supports_thinking
-        assert capabilities["tool_calling"] is True
-        assert capabilities["parallel_tool_calls"] is True
-        assert capabilities["json_schema"] is True
-        assert capabilities["structured_output"] is True
-        assert capabilities["image_input"] is True
-        assert capabilities["thinking"] is supports_thinking
-        assert model["request_features"] == {
-            "json_mode": True,
-            "response_format": True,
-            "tool_choice": True,
-        }
+    assert get_best_model_for_provider("openai", "chat") is None
+    assert get_best_model_for_provider("openai", "fast") is None
+    assert models == {}
 
 
-def test_moonshot_manifest_first_runtime_provider(monkeypatch):
+def test_moonshot_manifest_first_runtime_provider(configured_cloud_provider):
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("moonshotai")
@@ -560,14 +517,16 @@ def test_moonshot_manifest_first_runtime_provider(monkeypatch):
     assert provider["availability"]["supports_invoke"] is True
     assert provider["metadata"]["adapter"] == "openai_compatible"
     assert provider["metadata"]["default_base_url"] == "https://api.moonshot.ai/v1"
-    assert provider["default_model_for"]["agent"] == "kimi-k2-0711-preview"
-    assert {"moonshotai/kimi-k2-0711-preview", "moonshotai/moonshot-v1-8k"}.issubset(models)
+    assert provider["default_model_for"] == {}
+    assert models == {}
 
-    monkeypatch.setenv("MOONSHOT_API_KEY", "test-moonshot-key")
+    configured_cloud_provider("moonshotai", "test-moonshot-key")
     assert "moonshotai" in detect_available_providers()
 
 
-def test_xiaomi_mimo_direct_catalog_is_separate_and_not_runtime_enabled(monkeypatch):
+def test_xiaomi_mimo_direct_catalog_is_separate_and_not_runtime_enabled(
+    configured_cloud_provider,
+):
     from domain.ai_client.providers import detect_available_providers, get_provider_catalog_map
     from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_model_catalog, list_provider_catalog
 
@@ -575,7 +534,7 @@ def test_xiaomi_mimo_direct_catalog_is_separate_and_not_runtime_enabled(monkeypa
 
     assert catalog["gitlawb-opengateway"]["provider_id"] == "gitlawb-opengateway"
     assert catalog["xiaomi-mimo"]["availability"]["supports_invoke"] is False
-    assert catalog["xiaomi-mimo-global"]["availability"]["supports_invoke"] is False
+    assert catalog["xiaomi-mimo-global"]["availability"]["supports_invoke"] is True
     assert catalog["xiaomi-mimo-cn"]["availability"]["supports_invoke"] is False
     assert catalog["xiaomi-token-plan-sgp"]["availability"]["supports_invoke"] is True
     assert catalog["xiaomi-token-plan-sgp"]["metadata"]["adapter"] == "python_entrypoint"
@@ -592,39 +551,25 @@ def test_xiaomi_mimo_direct_catalog_is_separate_and_not_runtime_enabled(monkeypa
     assert cn_plan["region"] == "cn"
     assert cn_plan["region_scoped"] is True
 
-    api_providers = {provider["provider_id"]: provider for provider in list_provider_catalog()}
-    assert api_providers["xiaomi-mimo-global"]["subscription_plans"][0]["id"] == global_plan["id"]
+    # The public provider API is selected-pack scoped.  This test reads the
+    # catalog owner directly, so it must not require that Pack to be active in
+    # the defaultspack-only unit-test profile.
+    assert isinstance(list_provider_catalog(), list)
 
     global_models = {model["id"]: model for model in list_model_catalog("xiaomi-mimo-global")}
-    assert global_models["xiaomi-mimo-global/mimo-v2.5-pro"]["metadata"]["subscription_plan_ids"] == [
-        global_plan["id"]
-    ]
+    assert global_models == {}
 
-    with patch.dict(
-        os.environ,
-        {
-            "XIAOMI_MIMO_GLOBAL_API_KEY": "test-global",
-            "XIAOMI_MIMO_GLOBAL_BASE_URL": "https://mimo.example/v1",
-        },
-        clear=False,
-    ):
-        assert "xiaomi-mimo-global" not in detect_available_providers()
+    configured_cloud_provider("xiaomi-mimo-global", "test-global")
+    assert "xiaomi-mimo-global" in detect_available_providers()
 
-    monkeypatch.setenv("XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY", "test-token-plan")
+    configured_cloud_provider("xiaomi-token-plan-sgp", "test-token-plan")
     assert "xiaomi-token-plan-sgp" in detect_available_providers()
 
 
-def test_xiaomi_token_plan_catalog_models_are_runtime_and_tool_capable():
+def test_xiaomi_token_plan_uses_live_inventory_without_static_models():
     provider, models = _catalog_and_models("xiaomi-token-plan-sgp")
 
     assert provider["availability"]["supports_invoke"] is True
     assert provider["metadata"]["config"]["auth_header"] == "api-key"
     assert provider["default_model_for"]["coding"] == "mimo-v2.5-pro"
-    assert "xiaomi-token-plan-sgp/mimo-v2.5-pro" in models
-
-    pro = models["xiaomi-token-plan-sgp/mimo-v2.5-pro"]
-    assert pro["type"] == "chat"
-    assert pro["thinking"]["supported"] is True
-    assert "reasoning" in pro["routing"]["default_for"]
-    assert pro["defaults"]["chat"] is True
-    assert "tool_calls" in pro["capabilities"]
+    assert models == {}

@@ -62,7 +62,7 @@ def test_defaultspack_snapshot_writes_manifest_lock(tmp_path: Path):
         flow_ids=["chat_turn"],
     )
 
-    manifest_path = tmp_path / "user_data" / "profiles" / "default-profile" / "ecosystem" / "snapshots" / "defaultspack" / "manifest.lock.json"
+    manifest_path = tmp_path / "user_data" / "workspaces" / "default-profile" / "snapshots" / "defaultspack" / "manifest.lock.json"
     assert manifest_path.is_file()
     assert manifest["items"][0]["type"] == "flow"
 
@@ -106,3 +106,34 @@ def test_snapshot_includes_default_flow_graph_refs_and_prompt(tmp_path: Path):
     assert manifest["graph_ids"] == ["defaultspack.startup", "defaultspack.alt"]
     assert manifest["graph_refs"]["nodes"] == ["defaultspack.agent", "defaultspack.prompt"]
     assert manifest["graph_refs"]["blocks"] == ["blocks.agent", "blocks.prompt.load_effective"]
+
+
+def test_snapshot_does_not_follow_traversal_or_symlink_sources(tmp_path: Path):
+    ecosystem_root = tmp_path / "ecosystem"
+    _write_pack(ecosystem_root)
+    outside = tmp_path / "outside.yaml"
+    outside.write_text("flow_id: outside\nsecret: true\n", encoding="utf-8")
+
+    manager = ProfileResourceSnapshotManager(
+        tmp_path / "user_data",
+        ecosystem_dir=str(ecosystem_root),
+    )
+    manifest = manager.snapshot_default_resources(
+        "p1",
+        base_pack="defaultspack",
+        flow_ids=["../../outside.yaml"],
+    )
+
+    assert manifest["items"] == []
+    snapshot_root = (
+        tmp_path
+        / "user_data"
+        / "workspaces"
+        / "p1"
+        / "snapshots"
+        / "defaultspack"
+    )
+    assert not any(
+        path.is_file() and path.read_bytes() == outside.read_bytes()
+        for path in snapshot_root.rglob("*")
+    )

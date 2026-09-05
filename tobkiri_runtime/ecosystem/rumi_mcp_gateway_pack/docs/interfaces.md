@@ -2,7 +2,8 @@
 
 ## Flows, Functions, Handlers, Routes, Events, Stores
 
-This pack declares no pack-owned flows, modifiers, functions, handlers, HTTP routes, runtime events, or stores.
+This pack provides `rumi.service.mcp.tool.call.v1` for namespace-isolated tool
+calls from the selected MCP executor. It declares no HTTP route or store.
 
 It references these existing runtime interfaces:
 
@@ -38,7 +39,10 @@ This pack must not embed secrets, access tokens, API keys, OAuth client material
 
 ## Network
 
-No network access is required by this pack. It is local metadata only. Actual MCP servers may require network access, but that requirement belongs to the user-approved server descriptor and the defaultspack/runtime approval path.
+The gateway itself declares no fixed network destination. Actual MCP server
+network authority belongs to the reviewed connection descriptor and existing
+connection runtime; the global tool broker and MCP executor preserve approval
+and namespace checks before this adapter is reached.
 
 ## Grants
 
@@ -51,7 +55,9 @@ Installing this pack should not grant MCP execution power by itself. Unknown MCP
 
 ## Defaultspack Overlap
 
-`defaultspack` owns `tool.mcp_*` execution. This pack only adds catalog and routing metadata.
+Until Wave 10, defaultspack remains the finite MCP connection-runtime
+compatibility source. This pack owns the global MCP call adapter and declarative
+catalog; tool invocation authority remains in the global broker/core authority.
 
 - If a user requests MCP connection or listing, route to `defaults.tool.mcp_connect` or `defaults.tool.mcp_list`.
 - If an MCP server is directly supported by another pack, prefer that pack's explicit namespace and documentation.

@@ -1,30 +1,92 @@
 {
-  "pack_id": "rumi_computer_control_pack",
-  "pack_identity": "rumi:ecosystem/rumi_computer_control_pack",
-  "version": "1.0.0",
+  "components": {},
+  "dependencies": {
+    "rumi_default_tools_pack": ">=1.0.0"
+  },
+  "load_order": [],
   "metadata": {
-    "name": "Rumi Computer Control Pack",
-    "description": "Declarative local-first computer and desktop control playbooks for screenshots, keyboard/mouse workflows, foreground app context, terminal observation, sandbox/host boundaries, and evidence-before-action safety.",
+    "asset_index": {
+      "catalog": [
+        "catalog/control_surface_catalog.yaml",
+        "catalog/local_gateway_evidence.json"
+      ],
+      "docs": [
+        "README.md",
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "examples": [
+        "examples/macos_app_navigation.example.yaml",
+        "examples/screenshot_keyboard_mouse.example.yaml",
+        "examples/terminal_sandbox_observation.example.yaml"
+      ],
+      "metadata": [
+        "metadata/overlap_promotion.yaml"
+      ],
+      "policies": [
+        "policies/evidence_first_control.policy.yaml",
+        "policies/sandbox_host_boundary.policy.yaml"
+      ],
+      "presets": [
+        "presets/macos_app_workflow.preset.yaml",
+        "presets/foreground_app_context.preset.yaml",
+        "presets/terminal_observation.preset.yaml",
+        "presets/unrestricted_local_testing_contract.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/macos_desktop_operator.profile.yaml",
+        "profiles/local_testing_observer.profile.yaml",
+        "profiles/terminal_session_monitor.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/desktop_control.system.md",
+        "prompts/evidence_before_action.system.md",
+        "prompts/sandbox_host_boundary.system.md"
+      ],
+      "specs": [
+        "specs/session_observation_spec.json"
+      ]
+    },
     "author": "Rumi AI Team",
-    "license": "MIT",
-    "runtime_type": "declarative_pack",
-    "network_policy": "none_by_default",
-    "required_secrets": [],
-    "executable_code": false,
-    "grant_override": false,
-    "tags": [
-      "computer-control",
-      "desktop",
-      "macos",
-      "screenshots",
-      "keyboard",
-      "mouse",
-      "terminal-observation",
-      "local-first"
-    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:aca616bafa7bc604625f9cb00aaef8dfb91e6d01d781a2393a647bf957b7a076",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:78103daf20e7e622a2685fc36c8eadd88547a381e8a30c17c3dbbdde72a3804a"
+    },
     "dependency_notes": {
       "defaultspack": "Uses defaultspack grants, approvals, audit, prompt/profile conventions, and core tool routing.",
       "rumi_default_tools_pack": "References existing computer/browser/file/terminal tools and does not replace their implementations."
+    },
+    "description": "Declarative local-first computer and desktop control playbooks for screenshots, keyboard/mouse workflows, foreground app context, terminal observation, sandbox/host boundaries, and evidence-before-action safety.",
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:78103daf20e7e622a2685fc36c8eadd88547a381e8a30c17c3dbbdde72a3804a"
+    },
+    "grant_override": false,
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Computer Control Pack",
+    "network_policy": "none_by_default",
+    "network_policy_details": {
+      "allowed_when_explicitly_requested": [
+        "user asks to inspect a remote browser or hosted app",
+        "approved connector or tool requires network for current state",
+        "documentation lookup is explicitly requested"
+      ],
+      "default": "none"
     },
     "optional_integrations": [
       {
@@ -40,59 +102,32 @@
         "reason": "Agent services pack may route multi-agent work; this pack defines single-seat host-control playbooks and handoff evidence."
       }
     ],
-    "asset_index": {
-      "catalog": [
-        "catalog/control_surface_catalog.yaml",
-        "catalog/local_gateway_evidence.json"
-      ],
-      "specs": [
-        "specs/session_observation_spec.json"
-      ],
-      "policies": [
-        "policies/evidence_first_control.policy.yaml",
-        "policies/sandbox_host_boundary.policy.yaml"
-      ],
-      "profiles": [
-        "profiles/macos_desktop_operator.profile.yaml",
-        "profiles/local_testing_observer.profile.yaml",
-        "profiles/terminal_session_monitor.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/desktop_control.system.md",
-        "prompts/evidence_before_action.system.md",
-        "prompts/sandbox_host_boundary.system.md"
-      ],
-      "presets": [
-        "presets/macos_app_workflow.preset.yaml",
-        "presets/foreground_app_context.preset.yaml",
-        "presets/terminal_observation.preset.yaml",
-        "presets/unrestricted_local_testing_contract.preset.yaml"
-      ],
-      "examples": [
-        "examples/macos_app_navigation.example.yaml",
-        "examples/screenshot_keyboard_mouse.example.yaml",
-        "examples/terminal_sandbox_observation.example.yaml"
-      ],
-      "metadata": [
-        "metadata/overlap_promotion.yaml"
-      ],
-      "docs": [
-        "README.md",
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ]
-    },
-    "network_policy_details": {
-      "default": "none",
-      "allowed_when_explicitly_requested": [
-        "user asks to inspect a remote browser or hosted app",
-        "approved connector or tool requires network for current state",
-        "documentation lookup is explicitly requested"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack",
+    "tags": [
+      "computer-control",
+      "desktop",
+      "macos",
+      "screenshots",
+      "keyboard",
+      "mouse",
+      "terminal-observation",
+      "local-first"
+    ]
   },
+  "pack_id": "rumi_computer_control_pack",
+  "pack_identity": "rumi:ecosystem/rumi_computer_control_pack",
+  "provenance": {
+    "build_identity": "rumi_computer_control_pack:1.0.0",
+    "content_hash": "sha256:aca616bafa7bc604625f9cb00aaef8dfb91e6d01d781a2393a647bf957b7a076",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "1.0.0",
   "vocabulary": {
     "types": [
       "computer_control",
@@ -104,13 +139,5 @@
       "catalog",
       "evidence_contract"
     ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0",
-    "rumi_default_tools_pack": ">=1.0.0"
-  },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": []
+  }
 }

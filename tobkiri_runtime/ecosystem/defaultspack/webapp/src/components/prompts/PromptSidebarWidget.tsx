@@ -1,8 +1,9 @@
-import { AlertTriangle, ChevronDown, Edit3, Eye, EyeOff, FileText, RefreshCw, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
+import { AlertTriangle, ChevronDown, Eye, EyeOff, FileText, RefreshCw, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { PromptUsageSegment, PromptUsageSummary } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { ErrorNotice } from "../ErrorNotice";
 import { allPromptUsageSegments, promptSegmentKindLabel, promptSegmentTitle, sourceLine, tokenText, tokenizerLabel, tokenizerNeedsWarning, tokenizerWarningText } from "./promptSegmentView";
 
 type PromptSidebarWidgetProps = {
@@ -15,7 +16,6 @@ type PromptSidebarWidgetProps = {
   togglePromptEdge: (payload: { profile_id?: string; conversation_id?: string; edge_id: string; enabled: boolean; model_profile_id?: string; model?: string }) => Promise<PromptUsageSummary>;
   showChatPromptUsage?: boolean;
   onToggleChatPromptUsage?: (visible: boolean) => void;
-  onOpenStudio?: (promptId?: string) => void;
 };
 
 function segmentTokenCount(segment: PromptUsageSegment): number {
@@ -34,7 +34,7 @@ function canToggleSegment(segment: PromptUsageSegment): boolean {
   return Boolean(String(segment.edge_id ?? "").trim()) && segment.allow_disable !== false;
 }
 
-function isPromptStudioSelectable(segment: PromptUsageSegment): boolean {
+function isAuthoredPromptSegment(segment: PromptUsageSegment): boolean {
   const kind = String(segment.kind || "").replace(/_/g, "-");
   const sourceType = String(segment.source_type || "").replace(/-/g, "_");
   if (kind === "tool-schema" || sourceType === "tool_schema") return false;
@@ -42,12 +42,8 @@ function isPromptStudioSelectable(segment: PromptUsageSegment): boolean {
   return Boolean(String(segment.prompt_id || segment.id || "").trim());
 }
 
-function promptStudioPromptId(segment: PromptUsageSegment): string | undefined {
-  return isPromptStudioSelectable(segment) ? String(segment.prompt_id || segment.id || "").trim() : undefined;
-}
-
 function segmentSortGroup(segment: PromptUsageSegment): number {
-  if (isPromptStudioSelectable(segment)) return 0;
+  if (isAuthoredPromptSegment(segment)) return 0;
   if (String(segment.kind || segment.source_type || "").includes("skill")) return 1;
   return 2;
 }
@@ -66,7 +62,6 @@ export function PromptSidebarWidget({
   togglePromptEdge,
   showChatPromptUsage = true,
   onToggleChatPromptUsage,
-  onOpenStudio,
 }: PromptSidebarWidgetProps) {
   const [summary, setSummary] = useState<PromptUsageSummary | null>(initialUsage);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
@@ -183,21 +178,15 @@ export function PromptSidebarWidget({
             >
               <RefreshCw size={14} className={cn(loading && "animate-spin")} />
             </button>
-            <button
-              type="button"
-              onClick={() => onOpenStudio?.()}
-              className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-cyan-200"
-              aria-label="Open Prompt Studio"
-              title="Prompt Studio"
-            >
-              <Edit3 size={14} />
-            </button>
           </div>
         </div>
         {error && (
-          <div className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-5 text-amber-100">
-            {error}
-          </div>
+          <ErrorNotice
+            className="mt-2 px-2 py-1.5 text-[11px] leading-5"
+            copyLabel="プロンプト概要エラーをコピー"
+            message={error}
+            severity="warning"
+          />
         )}
         {onToggleChatPromptUsage && (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-zinc-800/80 bg-black/20 px-2.5 py-2">
@@ -232,7 +221,6 @@ export function PromptSidebarWidget({
           const id = String(segment.id || segment.prompt_id || promptSegmentTitle(segment));
           const expanded = expandedIds.has(id);
           const edgeId = String(segment.edge_id ?? "").trim();
-          const studioPromptId = promptStudioPromptId(segment);
           const toggleable = canToggleSegment(segment);
           return (
             <div key={`${id}-${segment.status}`} className="rounded-lg border border-zinc-800/80 bg-zinc-950/45">
@@ -249,15 +237,6 @@ export function PromptSidebarWidget({
                   </span>
                   <span className="shrink-0 font-mono text-[10px] text-zinc-500">{segmentTokenCount(segment).toLocaleString()}</span>
                   <ChevronDown size={13} className={cn("shrink-0 text-zinc-600 transition-transform", expanded && "rotate-180")} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOpenStudio?.(studioPromptId)}
-                  className="rounded-md p-1 text-zinc-600 hover:bg-zinc-800 hover:text-cyan-200"
-                  aria-label={studioPromptId ? `Edit ${promptSegmentTitle(segment)} in Prompt Studio` : "Open Prompt Studio"}
-                  title={studioPromptId ? "Edit" : "Open Studio"}
-                >
-                  <Edit3 size={13} />
                 </button>
               </div>
               {expanded && (
@@ -293,13 +272,6 @@ export function PromptSidebarWidget({
                     </pre>
                   )}
                   <div className="mt-2 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onOpenStudio?.(studioPromptId)}
-                      className="rounded-md border border-zinc-800 px-2 py-1 text-[10px] font-medium text-zinc-300 hover:border-cyan-500/40 hover:text-cyan-100"
-                    >
-                      {studioPromptId ? "Edit in Studio" : "Open Studio"}
-                    </button>
                     <button
                       type="button"
                       onClick={() => toggleSegment(segment)}

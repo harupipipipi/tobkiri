@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import time
 import urllib.error
@@ -8,6 +9,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List
 
+from .component_metadata import model_manifests_from_provider_components
 from .openai_compatible_provider import OpenAICompatibleProvider
 from ..oauth_store import get_provider_access_token
 from .profile_catalog import merge_curated_and_profiles, profile_dir_for
@@ -172,17 +174,20 @@ class GoogleProvider(OpenAICompatibleProvider):
             "type": "embedding",
         },
     ]
-    CURATED_MODELS = curated_models
-    KNOWN_MODELS = curated_models
+    CURATED_MODELS: List[Dict[str, Any]] = []
+    KNOWN_MODELS: List[Dict[str, Any]] = []
+    _MODEL_INVENTORY_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
+    _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
     def __init__(self):
+        catalog_models = model_manifests_from_provider_components("google")
         super().__init__(
             provider_id="google",
             display_name="Google",
             api_key_env=["GOOGLE_API_KEY", "GEMINI_API_KEY"],
             base_url_env="GOOGLE_BASE_URL",
             default_base_url=self.BASE_URL,
-            known_models=self.curated_models,
+            known_models=catalog_models,
         )
         self._base_url = self._normalize_google_base_url(self._base_url)
         self.BASE_URL = self._base_url
@@ -233,9 +238,121 @@ class GoogleProvider(OpenAICompatibleProvider):
 
     @classmethod
     def _load_profile_models(cls):
-        return merge_curated_and_profiles("google", cls.curated_models, cls.PROFILE_DIR)
+        catalog_models = model_manifests_from_provider_components("google")
+        return merge_curated_and_profiles("google", catalog_models, cls.PROFILE_DIR)
+
+    def _native_models_base_url(self) -> str:
+        parsed = urllib.parse.urlparse(str(self._base_url or ""))
+        if parsed.netloc != "generativelanguage.googleapis.com":
+            return ""
+        path = parsed.path.rstrip("/")
+        if path.endswith("/openai"):
+            path = path[: -len("/openai")]
+        return urllib.parse.urlunparse(
+            parsed._replace(path=path or "/v1beta", query="", fragment="")
+        ).rstrip("/")
+
+    def _model_inventory_scope(self) -> str:
+        token = self._oauth_access_token() or str(self._api_key or "")
+        return hashlib.sha256(
+            (self._native_models_base_url() + "\0" + token).encode("utf-8")
+        ).hexdigest()
+
+    def _fetch_native_models_page(self, page_token: str = "") -> dict[str, Any]:
+        base = self._native_models_base_url()
+        token = self._oauth_access_token()
+        if not base or not (token or self._api_key):
+            return {}
+        query = {"pageSize": "1000"}
+        if page_token:
+            query["pageToken"] = page_token
+        if not token:
+            query["key"] = str(self._api_key or "")
+        request = urllib.request.Request(
+            base + "/models?" + urllib.parse.urlencode(query),
+            headers={"Authorization": f"Bearer {token}"} if token else {},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, context=self._ssl_ctx, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _native_model_record(raw: Any) -> Dict[str, Any] | None:
+        if not isinstance(raw, dict):
+            return None
+        model_id = str(raw.get("name") or raw.get("baseModelId") or "").strip()
+        if model_id.startswith("models/"):
+            model_id = model_id.split("/", 1)[1]
+        if not model_id:
+            return None
+        actions = raw.get("supportedGenerationMethods") or raw.get("supportedActions") or []
+        actions = {str(item) for item in actions} if isinstance(actions, list) else set()
+        is_embedding = bool(actions & {"embedContent", "batchEmbedContents", "embedText"})
+        is_chat = bool(actions & {"generateContent", "streamGenerateContent", "createInteraction"})
+        model_type = "chat" if is_chat else "embedding" if is_embedding else "chat"
+        return {
+            "id": f"google/{model_id}",
+            "model_id": model_id,
+            "provider_id": "google",
+            "provider": "google",
+            "name": str(raw.get("displayName") or model_id),
+            "display_name": str(raw.get("displayName") or model_id),
+            "type": model_type,
+            "context_window": int(raw.get("inputTokenLimit") or 0),
+            "max_context": int(raw.get("inputTokenLimit") or 0),
+            "capabilities": {
+                "chat": is_chat,
+                "text_input": is_chat,
+                "text_output": is_chat,
+                "streaming": "streamGenerateContent" in actions or is_chat,
+                "embedding": is_embedding,
+                "image_input": "generateContent" in actions,
+                "vision": "generateContent" in actions,
+            },
+            "metadata": {
+                "source": "native_models_endpoint",
+                "capability_source": "native_models_endpoint",
+                "capability_confidence": "provider_reported",
+                "max_output_tokens": int(raw.get("outputTokenLimit") or 0),
+            },
+        }
 
     def list_models(self):
+        scope = self._model_inventory_scope()
+        cached = self._MODEL_INVENTORY_CACHE.get(scope) if scope else None
+        now = time.monotonic()
+        if cached and cached[0] > now:
+            return [dict(model) for model in cached[1]]
+        models: List[Dict[str, Any]] = []
+        page_token = ""
+        seen_tokens = set()
+        for _ in range(100):
+            page = self._fetch_native_models_page(page_token)
+            for raw in page.get("models", []) if isinstance(page.get("models"), list) else []:
+                model = self._native_model_record(raw)
+                if model and all(item["model_id"] != model["model_id"] for item in models):
+                    models.append(model)
+            next_token = str(page.get("nextPageToken") or "").strip()
+            if not next_token or next_token in seen_tokens:
+                break
+            seen_tokens.add(next_token)
+            page_token = next_token
+        if models and scope:
+            self._MODEL_INVENTORY_CACHE[scope] = (
+                now + self._MODEL_INVENTORY_CACHE_TTL_SECONDS,
+                [dict(model) for model in models],
+            )
+            return models
         return self._normalize_known_models(self._load_profile_models())
 
     @staticmethod
@@ -292,7 +409,11 @@ class GoogleProvider(OpenAICompatibleProvider):
 
     @staticmethod
     def _native_thinking_config(params: Dict[str, Any]) -> Dict[str, Any] | None:
-        level = str(params.get("thinking_level") or params.get("reasoning_effort") or "").strip().lower()
+        level = (
+            str(params.get("thinking_level") or params.get("reasoning_effort") or "")
+            .strip()
+            .lower()
+        )
         if level == "xhigh":
             level = "high"
         if level in {"minimal", "low"}:
@@ -320,11 +441,23 @@ class GoogleProvider(OpenAICompatibleProvider):
                 mime_type = header.replace("data:", "", 1) or "image/png"
                 return {"inlineData": {"mimeType": mime_type, "data": data}}
         if block_type in {"audio", "input_audio"}:
-            audio = value.get("input_audio") if isinstance(value.get("input_audio"), dict) else value
-            data = audio.get("data") if isinstance(audio, dict) else None
-            audio_format = str(audio.get("format") or "webm") if isinstance(audio, dict) else "webm"
-            if isinstance(data, str) and data:
-                return {"inlineData": {"mimeType": f"audio/{audio_format}", "data": data}}
+            audio_value = value.get("input_audio")
+            audio: dict[str, object] = (
+                {str(key): item for key, item in audio_value.items()}
+                if isinstance(audio_value, dict)
+                else {
+                    str(key): item for key, item in value.items()
+                }
+            )
+            data_value = audio.get("data")
+            audio_format = str(audio.get("format") or "webm")
+            if isinstance(data_value, str) and data_value:
+                return {
+                    "inlineData": {
+                        "mimeType": f"audio/{audio_format}",
+                        "data": data_value,
+                    }
+                }
         return None
 
     @staticmethod
@@ -399,7 +532,12 @@ class GoogleProvider(OpenAICompatibleProvider):
     ) -> Dict[str, Any] | None:
         if not isinstance(tool_call, dict):
             return None
-        function_def = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
+        function_value = tool_call.get("function")
+        function_def: dict[str, object] = (
+            {str(key): value for key, value in function_value.items()}
+            if isinstance(function_value, dict)
+            else {}
+        )
         name = str(function_def.get("name") or tool_call.get("name") or "").strip()
         if not name:
             return None
@@ -446,7 +584,11 @@ class GoogleProvider(OpenAICompatibleProvider):
             role = str(message.get("role") or "user").lower()
             raw_content = message.get("content", "")
             raw_parts = raw_content if isinstance(raw_content, list) else [raw_content]
-            parts = [] if role == "tool" else [part for part in (cls._native_text_part(item) for item in raw_parts) if part]
+            parts = (
+                []
+                if role == "tool"
+                else [part for part in (cls._native_text_part(item) for item in raw_parts) if part]
+            )
             if role == "assistant":
                 parts.extend(
                     part
@@ -500,7 +642,9 @@ class GoogleProvider(OpenAICompatibleProvider):
         if "type" not in normalized:
             normalized["type"] = "object"
         if isinstance(normalized.get("type"), list):
-            schema_types = [str(item) for item in normalized["type"] if item and str(item) != "null"]
+            schema_types = [
+                str(item) for item in normalized["type"] if item and str(item) != "null"
+            ]
             normalized["type"] = schema_types[0] if schema_types else "object"
             if any(str(item) == "null" for item in schema.get("type", [])):
                 normalized.setdefault("nullable", True)
@@ -527,7 +671,13 @@ class GoogleProvider(OpenAICompatibleProvider):
         function_declarations: List[Dict[str, Any]] = []
         for tool in tools:
             function_def = tool.get("function") if isinstance(tool, dict) else None
-            name = str(function_def.get("name") if isinstance(function_def, dict) else tool.get("name") if isinstance(tool, dict) else "").strip()
+            name = str(
+                function_def.get("name")
+                if isinstance(function_def, dict)
+                else tool.get("name")
+                if isinstance(tool, dict)
+                else ""
+            ).strip()
             normalized = name.lower().replace("-", "_").replace(".", "_")
             if normalized in {"google_search", "googlesearch"}:
                 native_tools.append({"googleSearch": {}})
@@ -560,7 +710,11 @@ class GoogleProvider(OpenAICompatibleProvider):
         thinking_config = self._native_thinking_config(params)
         if thinking_config:
             generation_config["thinkingConfig"] = thinking_config
-        for source, target in (("temperature", "temperature"), ("max_tokens", "maxOutputTokens"), ("top_p", "topP")):
+        for source, target in (
+            ("temperature", "temperature"),
+            ("max_tokens", "maxOutputTokens"),
+            ("top_p", "topP"),
+        ):
             if source in params:
                 generation_config[target] = params[source]
         if generation_config:
@@ -569,14 +723,25 @@ class GoogleProvider(OpenAICompatibleProvider):
         if native_tools:
             body["tools"] = native_tools
         extra_body = params.get("extra_body")
-        google_body = extra_body.get("google") if isinstance(extra_body, dict) and isinstance(extra_body.get("google"), dict) else None
+        google_body = (
+            extra_body.get("google")
+            if isinstance(extra_body, dict) and isinstance(extra_body.get("google"), dict)
+            else None
+        )
         if google_body:
             for key, value in google_body.items():
                 if key == "thinking_config" and isinstance(value, dict):
                     generation_config = dict(body.get("generationConfig", {}))
                     generation_config["thinkingConfig"] = {
-                        "thinkingLevel": value.get("thinking_level") or value.get("thinkingLevel") or value.get("level") or "HIGH",
-                        **({"includeThoughts": value.get("include_thoughts")} if "include_thoughts" in value else {}),
+                        "thinkingLevel": value.get("thinking_level")
+                        or value.get("thinkingLevel")
+                        or value.get("level")
+                        or "HIGH",
+                        **(
+                            {"includeThoughts": value.get("include_thoughts")}
+                            if "include_thoughts" in value
+                            else {}
+                        ),
                     }
                     body["generationConfig"] = generation_config
                 elif key not in {"thinking_config"}:
@@ -587,9 +752,14 @@ class GoogleProvider(OpenAICompatibleProvider):
     def _request_timeout(params: Dict[str, Any] | None = None) -> float:
         params = params if isinstance(params, dict) else {}
         raw = params.get("request_timeout") or params.get("timeout")
-        try:
+        if isinstance(raw, bool):
             value = float(raw)
-        except (TypeError, ValueError):
+        elif isinstance(raw, (int, float, str)):
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                value = 120.0
+        else:
             value = 120.0
         return max(5.0, min(value, 120.0))
 
@@ -604,7 +774,9 @@ class GoogleProvider(OpenAICompatibleProvider):
         self._ensure_runtime_config()
         action = "streamGenerateContent" if stream else "generateContent"
         quoted_model = urllib.parse.quote(str(model), safe="")
-        url = "https://generativelanguage.googleapis.com/v1beta/models/{}:{}".format(quoted_model, action)
+        url = "https://generativelanguage.googleapis.com/v1beta/models/{}:{}".format(
+            quoted_model, action
+        )
         if stream:
             url += "?alt=sse"
         data = json.dumps(body).encode("utf-8")
@@ -615,7 +787,9 @@ class GoogleProvider(OpenAICompatibleProvider):
         elif bearer_token:
             headers["Authorization"] = "Bearer " + bearer_token
         max_attempts = 5
-        request_timeout = self._request_timeout({"request_timeout": timeout} if timeout is not None else None)
+        request_timeout = self._request_timeout(
+            {"request_timeout": timeout} if timeout is not None else None
+        )
         for attempt in range(max_attempts):
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
             try:
@@ -625,8 +799,14 @@ class GoogleProvider(OpenAICompatibleProvider):
                 if exc.code in _TRANSIENT_GOOGLE_HTTP_CODES and attempt < max_attempts - 1:
                     _retry_sleep(0.5 * (attempt + 1))
                     continue
-                transient = " (temporary Google backend error; retry shortly)" if exc.code in _TRANSIENT_GOOGLE_HTTP_CODES else ""
-                raise RuntimeError("Google API error {}{}: {}".format(exc.code, transient, err_body))
+                transient = (
+                    " (temporary Google backend error; retry shortly)"
+                    if exc.code in _TRANSIENT_GOOGLE_HTTP_CODES
+                    else ""
+                )
+                raise RuntimeError(
+                    "Google API error {}{}: {}".format(exc.code, transient, err_body)
+                )
             except urllib.error.URLError as exc:
                 if self._is_transient_google_connection_error(exc) and attempt < max_attempts - 1:
                     _retry_sleep(0.5 * (attempt + 1))
@@ -651,8 +831,11 @@ class GoogleProvider(OpenAICompatibleProvider):
     def _is_transient_google_api_error(exc: Exception) -> bool:
         message = str(exc)
         lowered = message.lower()
-        return bool(re.search(r"(Google API error|OpenAI API error) (429|500|502|503|504)", message)) or any(
-            token in lowered for token in ("internal error encountered",) + _TRANSIENT_GOOGLE_CONNECTION_TOKENS
+        return bool(
+            re.search(r"(Google API error|OpenAI API error) (429|500|502|503|504)", message)
+        ) or any(
+            token in lowered
+            for token in ("internal error encountered",) + _TRANSIENT_GOOGLE_CONNECTION_TOKENS
         )
 
     def _request_json(self, path, body, *, timeout=None):
@@ -716,16 +899,28 @@ class GoogleProvider(OpenAICompatibleProvider):
                 if not isinstance(part, dict):
                     continue
                 text = str(part.get("text") or "")
-                function_call = part.get("functionCall") if isinstance(part.get("functionCall"), dict) else None
+                function_call = (
+                    part.get("functionCall") if isinstance(part.get("functionCall"), dict) else None
+                )
                 if function_call:
-                    call_id = str(function_call.get("id") or function_call.get("name") or f"google_call_{len(tool_uses) + 1}").strip()
-                    name = cls._remap_tool_name(str(function_call.get("name") or ""), reverse_name_map)
-                    tool_uses.append({
-                        "type": "tool_use",
-                        "id": call_id,
-                        "name": name,
-                        "input": json.dumps(function_call.get("args") or {}, ensure_ascii=False),
-                    })
+                    call_id = str(
+                        function_call.get("id")
+                        or function_call.get("name")
+                        or f"google_call_{len(tool_uses) + 1}"
+                    ).strip()
+                    name = cls._remap_tool_name(
+                        str(function_call.get("name") or ""), reverse_name_map
+                    )
+                    tool_uses.append(
+                        {
+                            "type": "tool_use",
+                            "id": call_id,
+                            "name": name,
+                            "input": json.dumps(
+                                function_call.get("args") or {}, ensure_ascii=False
+                            ),
+                        }
+                    )
                     continue
                 if not text:
                     continue
@@ -763,7 +958,9 @@ class GoogleProvider(OpenAICompatibleProvider):
     def _native_stream(self, model, messages, tools, params):
         name_map, reverse_name_map = self._tool_name_maps(tools)
         body = self._native_body(model, messages, tools, dict(params or {}), name_map)
-        resp = self._native_request_json(model, body, stream=True, timeout=self._request_timeout(params))
+        resp = self._native_request_json(
+            model, body, stream=True, timeout=self._request_timeout(params)
+        )
         finish_reason = "stop"
         usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         try:
@@ -772,20 +969,30 @@ class GoogleProvider(OpenAICompatibleProvider):
                     obj = json.loads(payload)
                 except json.JSONDecodeError:
                     continue
-                text, thought, candidate_finish, tool_uses = self._native_extract_parts(obj, reverse_name_map)
+                text, thought, candidate_finish, tool_uses = self._native_extract_parts(
+                    obj, reverse_name_map
+                )
                 if thought:
                     yield {"type": "thinking_delta", "delta": {"type": "text", "text": thought}}
                 if text:
                     yield {"type": "content_delta", "delta": {"type": "text", "text": text}}
                 for tool_use in tool_uses:
-                    yield {"type": "tool_call_start", "id": tool_use.get("id", ""), "name": tool_use.get("name", "")}
+                    yield {
+                        "type": "tool_call_start",
+                        "id": tool_use.get("id", ""),
+                        "name": tool_use.get("name", ""),
+                    }
                     yield {
                         "type": "tool_call_delta",
                         "id": tool_use.get("id", ""),
                         "name": tool_use.get("name", ""),
                         "arguments_chunk": tool_use.get("input", "{}"),
                     }
-                    yield {"type": "tool_call_end", "id": tool_use.get("id", ""), "name": tool_use.get("name", "")}
+                    yield {
+                        "type": "tool_call_end",
+                        "id": tool_use.get("id", ""),
+                        "name": tool_use.get("name", ""),
+                    }
                 if candidate_finish:
                     finish_reason = candidate_finish
                 usage = self._native_usage(obj) or usage
@@ -824,7 +1031,9 @@ class GoogleProvider(OpenAICompatibleProvider):
                 thoughts.append(thought)
             return ""
 
-        visible = re.sub(r"<thought>(.*?)</thought>", collect, str(text or ""), flags=re.DOTALL).strip()
+        visible = re.sub(
+            r"<thought>(.*?)</thought>", collect, str(text or ""), flags=re.DOTALL
+        ).strip()
         return thoughts, visible
 
     def parse_response(self, raw):
@@ -837,7 +1046,12 @@ class GoogleProvider(OpenAICompatibleProvider):
                 block["text"] = visible
         if thinking_parts:
             metadata = dict(parsed.get("metadata") or {})
-            existing = metadata.get("thinking") if isinstance(metadata.get("thinking"), dict) else {}
+            existing_value = metadata.get("thinking")
+            existing: dict[str, object] = (
+                {str(key): value for key, value in existing_value.items()}
+                if isinstance(existing_value, dict)
+                else {}
+            )
             metadata["thinking"] = {
                 **existing,
                 "state": "completed",
@@ -868,13 +1082,21 @@ class GoogleProvider(OpenAICompatibleProvider):
                         tool_calls.append(tool_call)
                         continue
                     mapped_call = dict(tool_call)
-                    function_def = mapped_call.get("function") if isinstance(mapped_call.get("function"), dict) else None
+                    function_def = (
+                        mapped_call.get("function")
+                        if isinstance(mapped_call.get("function"), dict)
+                        else None
+                    )
                     if isinstance(function_def, dict):
                         mapped_function = dict(function_def)
-                        mapped_function["name"] = self._remap_tool_name(mapped_function.get("name", ""), name_map)
+                        mapped_function["name"] = self._remap_tool_name(
+                            mapped_function.get("name", ""), name_map
+                        )
                         mapped_call["function"] = mapped_function
                     elif mapped_call.get("name"):
-                        mapped_call["name"] = self._remap_tool_name(mapped_call.get("name", ""), name_map)
+                        mapped_call["name"] = self._remap_tool_name(
+                            mapped_call.get("name", ""), name_map
+                        )
                     tool_calls.append(mapped_call)
                 current["tool_calls"] = tool_calls
             elif current.get("role") == "tool":
@@ -941,12 +1163,17 @@ class GoogleProvider(OpenAICompatibleProvider):
             return self._native_complete(model, messages, tools, params)
         translated = self._translate_params(params, model)
         name_map, reverse_name_map = self._tool_name_maps(tools)
-        body = {"model": model, "messages": self._build_request_with_tool_name_map(messages, name_map)}
+        body = {
+            "model": model,
+            "messages": self._build_request_with_tool_name_map(messages, name_map),
+        }
         sanitized_tools = self._sanitize_tools(tools, name_map)
         if sanitized_tools:
             body["tools"] = sanitized_tools
         self._copy_chat_params(body, translated)
-        raw = self._request_json("/chat/completions", body, **self._request_timeout_kwargs(translated))
+        raw = self._request_json(
+            "/chat/completions", body, **self._request_timeout_kwargs(translated)
+        )
         return self._parse_response_with_tool_name_map(raw, reverse_name_map)
 
     def stream(self, model, messages, tools, params):
@@ -955,14 +1182,19 @@ class GoogleProvider(OpenAICompatibleProvider):
             return
         translated = self._translate_params(params, model)
         name_map, reverse_name_map = self._tool_name_maps(tools)
-        body = {"model": model, "messages": self._build_request_with_tool_name_map(messages, name_map)}
+        body = {
+            "model": model,
+            "messages": self._build_request_with_tool_name_map(messages, name_map),
+        }
         sanitized_tools = self._sanitize_tools(tools, name_map)
         if sanitized_tools:
             body["tools"] = sanitized_tools
         self._copy_chat_params(body, translated)
         body.setdefault("stream_options", {"include_usage": True})
-        resp = self._request_stream("/chat/completions", body, **self._request_timeout_kwargs(translated))
-        tool_call_state = {}
+        resp = self._request_stream(
+            "/chat/completions", body, **self._request_timeout_kwargs(translated)
+        )
+        tool_call_state: dict[str, dict[str, object]] = {}
         try:
             for payload in self._parse_sse_lines(resp):
                 try:
@@ -983,10 +1215,16 @@ class GoogleProvider(OpenAICompatibleProvider):
                         remapped_tool_calls.append(tool_call)
                         continue
                     mapped_call = dict(tool_call)
-                    function_delta = mapped_call.get("function") if isinstance(mapped_call.get("function"), dict) else None
+                    function_delta = (
+                        mapped_call.get("function")
+                        if isinstance(mapped_call.get("function"), dict)
+                        else None
+                    )
                     if isinstance(function_delta, dict) and function_delta.get("name"):
                         mapped_function = dict(function_delta)
-                        mapped_function["name"] = self._remap_tool_name(mapped_function.get("name", ""), reverse_name_map)
+                        mapped_function["name"] = self._remap_tool_name(
+                            mapped_function.get("name", ""), reverse_name_map
+                        )
                         mapped_call["function"] = mapped_function
                     remapped_tool_calls.append(mapped_call)
                 remapped_delta["tool_calls"] = remapped_tool_calls
@@ -996,7 +1234,11 @@ class GoogleProvider(OpenAICompatibleProvider):
                     for current in tool_call_state.values():
                         if current.get("started") and not current.get("ended"):
                             current["ended"] = True
-                            yield {"type": "tool_call_end", "id": current.get("id", ""), "name": current.get("name", "")}
+                            yield {
+                                "type": "tool_call_end",
+                                "id": current.get("id", ""),
+                                "name": current.get("name", ""),
+                            }
                     usage_raw = obj.get("usage") or {}
                     yield {
                         "type": "stream_end",

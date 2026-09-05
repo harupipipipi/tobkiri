@@ -47,10 +47,14 @@ def test_vercel_ai_gateway_compiler_preserves_gateway_params():
     assert "reasoning_effort" not in compiled.body
 
 
-def test_vercel_ai_gateway_provider_catalog_and_credentials(monkeypatch):
+def test_vercel_ai_gateway_provider_catalog_and_credentials(
+    monkeypatch,
+    tmp_path,
+    provider_model_catalog_selected,
+):
     from domain.ai_client.api_key_store import provider_secret_keys
     from domain.ai_client.capabilities.registry import ProviderCapabilityRegistry
-    from domain.ai_client.providers import detect_available_providers, get_all_known_models, get_provider_catalog_map
+    from domain.ai_client.providers import get_all_known_models, get_provider_catalog_map
 
     monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
     monkeypatch.delenv("VERCEL_AI_GATEWAY_API_KEY", raising=False)
@@ -77,11 +81,18 @@ def test_vercel_ai_gateway_provider_catalog_and_credentials(monkeypatch):
     assert caps.supports_vision is True
     assert caps.supports_reasoning is True
 
-    monkeypatch.setenv("VERCEL_AI_GATEWAY_API_KEY", "test-vercel-key")
-    available = detect_available_providers()
+    from tests.v4_provider_runtime_support import exercise_captured_provider_send
 
-    assert "vercel-ai-gateway" in available
-    assert available["vercel-ai-gateway"].BASE_URL == "https://ai-gateway.vercel.sh/v1"
+    sent = exercise_captured_provider_send(
+        tmp_path,
+        monkeypatch,
+        "vercel-ai-gateway",
+        endpoint="https://ai-gateway.vercel.sh/v1",
+    )
+    assert sent["captured"]["url"] == (
+        "https://ai-gateway.vercel.sh/v1/chat/completions"
+    )
+    assert "credential-canary" not in str(sent["result"])
 
 
 def test_vercel_ai_gateway_legacy_provider_moves_gateway_params_to_body(monkeypatch):

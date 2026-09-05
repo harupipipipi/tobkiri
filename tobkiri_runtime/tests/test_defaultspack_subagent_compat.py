@@ -545,60 +545,19 @@ def test_agent_run_subagent_defaultspack_function_manifest_keeps_long_timeout():
 
 
 def test_agent_run_subagent_direct_function_call_uses_manifest_timeout(monkeypatch):
-    from core_runtime.capability_executor import CapabilityExecutor, CapabilityResponse
-    from core_runtime.function_registry import FunctionRegistry
+    from tempfile import TemporaryDirectory
 
-    manifest = json.loads(
-        (ROOT / "ecosystem" / "defaultspack" / "functions" / "agent_run_subagent" / "manifest.json").read_text(
-            encoding="utf-8"
-        )
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
     )
-    function_dir = ROOT / "ecosystem" / "defaultspack" / "functions" / "agent_run_subagent"
-    registry = FunctionRegistry()
-    assert registry.register(
-        pack_id="defaultspack",
-        function_id="agent_run_subagent",
-        manifest=manifest,
-        function_dir=function_dir,
-    )
-    seen: dict[str, object] = {}
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
 
-    class GrantManager:
-        def check(self, principal_id, permission_id):
-            return SimpleNamespace(allowed=True, reason="Granted", config={})
-
-    class ApprovalManager:
-        def is_pack_approved_and_verified(self, pack_id):
-            return True
-
-    executor = CapabilityExecutor()
-    executor._initialized = True
-    executor._function_registry = registry
-    executor._grant_manager = GrantManager()
-    executor._approval_manager = ApprovalManager()
-    executor._permission_manager = SimpleNamespace()
-    executor._trust_store = SimpleNamespace()
-
-    monkeypatch.setattr(executor, "_check_entry_trust", lambda entry, permission_id: None)
-
-    def fake_execute_handler_subprocess(**kwargs):
-        seen["timeout_seconds"] = kwargs["timeout_seconds"]
-        return CapabilityResponse(success=True, output={"status": "ok", "data": {}})
-
-    monkeypatch.setattr(executor, "_execute_handler_subprocess", fake_execute_handler_subprocess)
-
-    response = executor.execute(
-        "defaultspack",
-        {
-            "type": "function.call",
-            "qualified_name": "defaultspack:agent_run_subagent",
-            "args": {"task": "hello"},
-            "request_id": "req-direct-agent-subagent",
-        },
-    )
-
-    assert response.success is True
-    assert seen["timeout_seconds"] == 300
+    assert_retired_module_absent("core_runtime.capability_executor")
+    assert_retired_module_absent("core_runtime.function_registry")
+    assert_profile_resolver_requires_authority_snapshot()
+    with TemporaryDirectory() as root:
+        assert_payload_mutations_denied(harness(Path(root)))
 
 
 def test_agent_run_subagent_delegate_provider_error_surfaces_safe_text(monkeypatch):
@@ -684,8 +643,11 @@ def test_tool_subagent_compat_returns_structured_result(monkeypatch, tmp_path):
     assert result["data"]["widget"]["type"] == "subagent"
 
 
-def test_subagent_rumi_function_executes_local_controller(monkeypatch):
+def test_subagent_rumi_function_executes_local_controller(
+    monkeypatch, defaultspack_capability_plan_context
+):
     from domain.tool.registry import ToolRegistry
+    from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
     ToolRegistry._instance = None
     tool_def = ToolRegistry().get("subagent")
@@ -712,15 +674,21 @@ def test_subagent_rumi_function_executes_local_controller(monkeypatch):
         fake_run,
     )
 
-    result = ToolExecutor()._execute_rumi_function(
-        tool_def,
-        {"task": "hello from child"},
+    tool_context = mark_tool_server_approval_context(
         {
+            **defaultspack_capability_plan_context("subagent"),
+            "profile_policy": {"yolo_mode": True},
             "conversation_id": "parent-1",
             "principal_id": "rumi_default_tools_pack",
-            "_tool_server_approved": True,
             "capability_executor": FakeCapabilityExecutor(),
-        },
+        }
+    )
+    result = ToolExecutor(
+        subagent_factory=SubagentController,
+    ).execute(
+        "subagent",
+        {"task": "hello from child"},
+        tool_context,
     )
 
     assert result["is_error"] is False
@@ -748,60 +716,19 @@ def test_tool_subagent_defaultspack_function_manifest_keeps_long_timeout():
 
 
 def test_tool_subagent_direct_function_call_uses_manifest_timeout(monkeypatch):
-    from core_runtime.capability_executor import CapabilityExecutor, CapabilityResponse
-    from core_runtime.function_registry import FunctionRegistry
+    from tempfile import TemporaryDirectory
 
-    manifest = json.loads(
-        (ROOT / "ecosystem" / "defaultspack" / "functions" / "tool_subagent" / "manifest.json").read_text(
-            encoding="utf-8"
-        )
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
     )
-    function_dir = ROOT / "ecosystem" / "defaultspack" / "functions" / "tool_subagent"
-    registry = FunctionRegistry()
-    assert registry.register(
-        pack_id="defaultspack",
-        function_id="tool_subagent",
-        manifest=manifest,
-        function_dir=function_dir,
-    )
-    seen: dict[str, object] = {}
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
 
-    class GrantManager:
-        def check(self, principal_id, permission_id):
-            return SimpleNamespace(allowed=True, reason="Granted", config={})
-
-    class ApprovalManager:
-        def is_pack_approved_and_verified(self, pack_id):
-            return True
-
-    executor = CapabilityExecutor()
-    executor._initialized = True
-    executor._function_registry = registry
-    executor._grant_manager = GrantManager()
-    executor._approval_manager = ApprovalManager()
-    executor._permission_manager = SimpleNamespace()
-    executor._trust_store = SimpleNamespace()
-
-    monkeypatch.setattr(executor, "_check_entry_trust", lambda entry, permission_id: None)
-
-    def fake_execute_handler_subprocess(**kwargs):
-        seen["timeout_seconds"] = kwargs["timeout_seconds"]
-        return CapabilityResponse(success=True, output={"status": "ok", "data": {}})
-
-    monkeypatch.setattr(executor, "_execute_handler_subprocess", fake_execute_handler_subprocess)
-
-    response = executor.execute(
-        "defaultspack",
-        {
-            "type": "function.call",
-            "qualified_name": "defaultspack:tool_subagent",
-            "args": {"task": "hello"},
-            "request_id": "req-direct-subagent",
-        },
-    )
-
-    assert response.success is True
-    assert seen["timeout_seconds"] == 240
+    assert_retired_module_absent("core_runtime.capability_executor")
+    assert_retired_module_absent("core_runtime.function_registry")
+    assert_profile_resolver_requires_authority_snapshot()
+    with TemporaryDirectory() as root:
+        assert_payload_mutations_denied(harness(Path(root)))
 
 
 def test_rumi_default_tools_subagent_compat_uses_dispatcher(monkeypatch, tmp_path):
@@ -1236,7 +1163,9 @@ def test_tool_subagent_persists_nested_delegate_assistant_text(monkeypatch, tmp_
     assert assistant["metadata"]["error_code"] == "SUBAGENT_RESPONSE_REPAIRED"
 
 
-def test_tool_subagent_returns_error_and_marks_child_failed_when_dispatch_times_out(monkeypatch, tmp_path):
+def test_tool_subagent_returns_error_and_marks_child_failed_when_dispatch_times_out(
+    monkeypatch, tmp_path, defaultspack_capability_plan_context
+):
     _configure_paths(monkeypatch, tmp_path)
     ChatStore._instance = None
     parent = ChatStore().create_conversation(
@@ -1262,7 +1191,11 @@ def test_tool_subagent_returns_error_and_marks_child_failed_when_dispatch_times_
     result = run_defaultspack_function(
         "tool_subagent",
         {"task": "simple json probe"},
-        {"conversation_id": parent["id"]},
+        {
+            **defaultspack_capability_plan_context("subagent"),
+            "conversation_id": parent["id"],
+        },
+        subagent_factory=SubagentController,
     )
 
     assert result["status"] == "ok"
@@ -1551,11 +1484,16 @@ def test_multi_agent_boundary_documented_and_not_broken():
     assert "multi-agent" in source
 
 
-def test_subagent_alias_does_not_bypass_tool_policy_or_approval():
+def test_subagent_alias_does_not_bypass_tool_policy_or_approval(
+    defaultspack_capability_plan_context,
+):
     result = ToolExecutor().execute(
         "subagent",
         {"task": "hello"},
-        {"profile_policy": {"disabled_tools": ["subagent"]}},
+        {
+            **defaultspack_capability_plan_context("subagent"),
+            "profile_policy": {"disabled_tools": ["subagent"]},
+        },
     )
 
     assert result["is_error"] is True

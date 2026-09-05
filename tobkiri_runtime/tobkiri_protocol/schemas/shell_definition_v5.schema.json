@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/shell-definition.v5.schema.json",
+  "title": "Tobkiri ShellDefinition v5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["shell_api_version", "provider_id", "pack_id", "availability", "artifact_digest", "definition_revision", "contract_id", "presentation", "launch", "local_auth", "provenance"],
+  "properties": {
+    "shell_api_version": {"const": "io.tobkiri.shell.v5"},
+    "provider_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+    "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+    "availability": {"enum": ["build_required", "verified"]},
+    "artifact_digest": {"oneOf": [{"type": "null"}, {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}]},
+    "definition_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "contract_id": {"const": "app.shell.v1"},
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "kind", "technology", "capabilities", "consumes_contribution_contracts"],
+      "properties": {
+        "family": {"enum": ["graphical", "terminal", "headless"]},
+        "kind": {"enum": ["declarative", "isolated_web", "packaged_process", "terminal_stdio", "remote_ui", "headless_service"]},
+        "technology": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "capabilities": {"type": "array", "uniqueItems": true, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"}},
+        "consumes_contribution_contracts": {"type": "array", "uniqueItems": true, "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/contractId"}}
+      }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prebuilt_only", "build_targets", "variants"],
+      "properties": {
+        "prebuilt_only": {"const": true},
+        "build_targets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["artifact_id", "platform", "architecture", "artifact_ref", "entrypoint", "bundle_identity"],
+            "properties": {
+              "artifact_id": {"type": "string", "minLength": 1},
+              "platform": {"enum": ["macos", "windows", "linux"]},
+              "architecture": {"enum": ["arm64", "x86_64"]},
+              "artifact_ref": {"type": "string", "minLength": 1},
+              "entrypoint": {"type": "string", "minLength": 1},
+              "bundle_identity": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "variants": {
+          "type": "array",
+          "minItems": 0,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["platform", "architecture", "artifact_digest", "entrypoint_digest", "relative_path", "entrypoint", "bundle_identity"],
+            "properties": {
+              "platform": {"enum": ["macos", "windows", "linux"]},
+              "architecture": {"enum": ["arm64", "x86_64"]},
+              "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+              "entrypoint_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+              "relative_path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+              "entrypoint": {"type": "string", "minLength": 1},
+              "bundle_identity": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "local_auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "audience"],
+      "properties": {
+        "protocol": {"const": "io.tobkiri.local-auth.v1"},
+        "audience": {"const": "runtime-profile"}
+      }
+    },
+    "provenance": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/provenance"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"availability": {"const": "build_required"}}},
+      "then": {
+        "properties": {
+          "artifact_digest": {"type": "null"},
+          "launch": {"properties": {"variants": {"maxItems": 0}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"availability": {"const": "verified"}}},
+      "then": {
+        "properties": {
+          "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+          "launch": {"properties": {"variants": {"minItems": 1}}}
+        }
+      }
+    }
+  ]
+}

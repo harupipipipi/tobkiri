@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import unquote
+from typing import TYPE_CHECKING
 
-from ._helpers import _log_internal_error, _SAFE_ERROR_MSG
+from .api_response import APIResponse
 
 logger = logging.getLogger(__name__)
 
@@ -76,58 +76,32 @@ class RouteHandlersMixin:
     _exact_routes: dict = {}         # {(method, path): route_info} — 完全一致 O(1)
     _template_routes: list = []      # [(method, compiled_re, param_names, route_info), ...]
 
+    if TYPE_CHECKING:
+        def _run_flow(
+            self,
+            flow_id: str,
+            inputs: dict[str, object],
+            timeout: float,
+        ) -> dict[str, object]: ...
+
+        def _send_response(
+            self,
+            response: APIResponse,
+            status: int = 200,
+            extra_headers: list[tuple[str, str]] | None = None,
+        ) -> None: ...
+
     @classmethod
     def load_pack_routes(cls, registry) -> int:
-        """registryから全Packのルートを読み込み、ルーティングテーブルを構築"""
+        """Reject legacy route authority; v4 routes live in OperationCatalog."""
+        del registry
         cls._pack_routes = {}
         cls._exact_routes = {}
         cls._template_routes = []
-        if registry is None:
-            return 0
-
-        try:
-            all_routes = registry.get_all_routes()
-        except AttributeError:
-            return 0
-
-        count = 0
-        for pack_id, routes in all_routes.items():
-            for route in routes:
-                method = route.get("method", "GET").upper()
-                path = route.get("path", "")
-                if not path:
-                    continue
-                flow_id = route.get("flow_id", "")
-                if not flow_id:
-                    continue
-
-                route_info = {
-                    "pack_id": pack_id,
-                    "flow_id": flow_id,
-                    "description": route.get("description", ""),
-                    "input_mapping": route.get("input_mapping", {}),
-                }
-
-                # テンプレート判定 → 正規表現コンパイル or 完全一致登録
-                compiled = _compile_template_path(path)
-                if compiled is not None:
-                    pattern, param_names = compiled
-                    cls._template_routes.append(
-                        (method, pattern, param_names, route_info)
-                    )
-                else:
-                    cls._exact_routes[(method, path)] = route_info
-
-                # 後方互換: 一覧用の統合 dict も維持
-                cls._pack_routes[(method, path)] = route_info
-                count += 1
-                logger.debug(
-                    "Registered pack route: %s %s -> %s/%s",
-                    method, path, pack_id, flow_id,
-                )
-
-        logger.info("Loaded %d pack routes", count)
-        return count
+        logger.warning(
+            "Legacy Pack routes are disabled; use a captured v4 dispatch session"
+        )
+        return 0
 
     def _match_pack_route(self, path: str, method: str):
         """パスとメソッドがPack独自ルートにマッチするか判定。
@@ -138,38 +112,7 @@ class RouteHandlersMixin:
         1. 完全一致ルートを dict O(1) lookup
         2. テンプレートルートをプリコンパイル済み正規表現で走査
         """
-        method_upper = method.upper()
-
-        # 1. 完全一致（高速パス — O(1)）
-        key = (method_upper, path)
-        exact = self._exact_routes.get(key)
-        if exact is not None:
-            return (exact, {})
-
-        # 2. テンプレートマッチング（正規表現）
-        # 正規化: 先頭スラッシュ付き、末尾スラッシュなし
-        normalized = path.rstrip("/")
-        if not normalized.startswith("/"):
-            normalized = "/" + normalized
-
-        for tmpl_method, pattern, param_names, route_info in self._template_routes:
-            if tmpl_method != method_upper:
-                continue
-            m = pattern.match(normalized)
-            if m is None:
-                continue
-            # パスパラメータを抽出し URL デコード + 安全性チェック
-            path_params: dict[str, str] = {}
-            safe = True
-            for name in param_names:
-                decoded = unquote(m.group(name))
-                if not _is_safe_path_param(decoded):
-                    safe = False
-                    break
-                path_params[name] = decoded
-            if safe:
-                return (route_info, path_params)
-
+        del path, method
         return None
 
     def _handle_pack_route_request(self, path: str, body: dict, method: str, match) -> None:
@@ -213,9 +156,12 @@ class RouteHandlersMixin:
         if result.get("success"):
             self._send_response(APIResponse(True, result))
         else:
-            status_code = result.get("status_code", 500)
+            status_value = result.get("status_code")
+            status_code = status_value if isinstance(status_value, int) else 500
+            error_value = result.get("error")
+            error = error_value if isinstance(error_value, str) else None
             self._send_response(
-                APIResponse(False, error=result.get("error")), status_code,
+                APIResponse(False, error=error), status_code,
             )
 
     def _get_registered_routes(self) -> dict:
@@ -232,13 +178,5 @@ class RouteHandlersMixin:
         return {"routes": routes, "count": len(routes)}
 
     def _reload_pack_routes(self) -> dict:
-        """POST /api/routes/reload — Packルートを再読み込み"""
-        try:
-            from backend_core.ecosystem.registry import get_registry
-            reg = get_registry()
-            count = self.load_pack_routes(reg)
-            logger.info(f"Pack routes reloaded: {count} routes")
-            return {"reloaded": True, "route_count": count}
-        except Exception as e:
-            _log_internal_error("reload_pack_routes", e)
-            return {"reloaded": False, "error": _SAFE_ERROR_MSG}
+        """Reject mutable route reload outside a captured v4 activation."""
+        return {"reloaded": False, "error": "Legacy Pack route reload is disabled"}

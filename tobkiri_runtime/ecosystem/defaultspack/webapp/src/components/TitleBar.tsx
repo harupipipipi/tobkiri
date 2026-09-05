@@ -1,91 +1,42 @@
-import { useState, useEffect } from 'react';
-import { Minus, Square, X, Copy } from 'lucide-react';
-
-let tauriWindow: any = null;
-let tauriReady = false;
-
-// 起動時に一度だけ読み込み
-async function initTauri() {
-  if (tauriReady) return tauriWindow;
-  try {
-    const mod = await import('@tauri-apps/api/window');
-    tauriWindow = mod.getCurrentWindow();
-    tauriReady = true;
-    return tauriWindow;
-  } catch {
-    tauriReady = true;
-    return null;
-  }
-}
-
 type TitleBarProps = {
   appName?: string;
   appIcon?: string;
 };
 
-function displayAppName(value: string | undefined): string {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  const legacyConsoleName = ["rumi", "console"].join(" ");
-  if (!normalized || normalized === "console" || normalized === legacyConsoleName) {
-    return "rumi DP";
+const LEGACY_PRODUCT_NAMES = new Set([
+  "console",
+  "rumi console",
+  "rumi dp",
+  "rumi defaultspack",
+  "rumi defaultspack v2",
+]);
+
+export function displayAppName(value: string | undefined): string {
+  const displayName = String(value ?? "").trim();
+  if (!displayName || LEGACY_PRODUCT_NAMES.has(displayName.toLowerCase())) {
+    return "Tobkiri";
   }
-  return value ?? "rumi DP";
+  return displayName;
 }
 
-export function TitleBar({ appName = "rumi DP", appIcon }: TitleBarProps) {
-  const [isMaximized, setIsMaximized] = useState(false);
-  const [isTauri, setIsTauri] = useState(false);
+export function hasTauriNativeChrome(target: unknown = globalThis): boolean {
+  return Boolean(
+    target
+      && typeof target === "object"
+      && "__TAURI_INTERNALS__" in target,
+  );
+}
 
-  useEffect(() => {
-    initTauri().then(win => {
-      if (win) {
-        setIsTauri(true);
-        win.isMaximized().then((m: boolean) => setIsMaximized(m));
-      }
-    });
-  }, []);
-
-  const handleMinimize = async () => {
-    const win = await initTauri();
-    await win?.minimize();
-  };
-
-  const handleMaximize = async () => {
-    const win = await initTauri();
-    if (!win) return;
-    const maximized = await win.isMaximized();
-    if (maximized) {
-      await win.unmaximize();
-      setIsMaximized(false);
-    } else {
-      await win.maximize();
-      setIsMaximized(true);
-    }
-  };
-
-  const handleClose = async () => {
-    const win = await initTauri();
-    await win?.close();
-  };
-
-  const handleDrag = async (e: React.MouseEvent) => {
-    // ボタン上ではドラッグしない
-    if ((e.target as HTMLElement).closest('button')) return;
-    const win = await initTauri();
-    await win?.startDragging();
-  };
-
-  const handleDoubleClick = async () => {
-    await handleMaximize();
-  };
+export function TitleBar({ appName = "Tobkiri", appIcon }: TitleBarProps) {
+  // Tauri uses the operating system's decorated window. Rendering another web
+  // title bar inside it duplicates the native controls (notably —, □, × on
+  // macOS), so the web chrome is reserved for standalone browser sessions.
+  if (hasTauriNativeChrome()) {
+    return null;
+  }
 
   return (
-    <div
-      onMouseDown={handleDrag}
-      onDoubleClick={handleDoubleClick}
-      className="rumi-ambient h-8 flex items-center justify-between bg-[#09090b] border-b border-zinc-800/60 select-none flex-shrink-0 cursor-default rumi-anim-fade-down"
-    >
-      {/* Left: App icon + name */}
+    <div className="rumi-ambient h-8 flex items-center bg-[#09090b] border-b border-zinc-800/60 select-none flex-shrink-0 cursor-default rumi-anim-fade-down">
       <div className="flex items-center gap-2 px-3 flex-1 pointer-events-none">
         {appIcon ? (
           <img src={appIcon} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
@@ -98,33 +49,6 @@ export function TitleBar({ appName = "rumi DP", appIcon }: TitleBarProps) {
           {displayAppName(appName)}
         </span>
       </div>
-
-      {/* Right: Window controls */}
-      {isTauri && (
-        <div className="flex items-center h-full">
-          <button
-            onClick={handleMinimize}
-            aria-label="Minimize window"
-            className="rumi-luxe-tap h-full px-3 flex items-center justify-center text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-300 transition-all duration-200 ease-out"
-          >
-            <Minus size={12} />
-          </button>
-          <button
-            onClick={handleMaximize}
-            aria-label={isMaximized ? "Restore window" : "Maximize window"}
-            className="rumi-luxe-tap h-full px-3 flex items-center justify-center text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-300 transition-all duration-200 ease-out"
-          >
-            {isMaximized ? <Copy size={10} /> : <Square size={10} />}
-          </button>
-          <button
-            onClick={handleClose}
-            aria-label="Close window"
-            className="rumi-luxe-tap h-full px-3 flex items-center justify-center text-zinc-500 hover:bg-red-600 hover:text-white transition-all duration-200 ease-out"
-          >
-            <X size={12} />
-          </button>
-        </div>
-      )}
     </div>
   );
 }

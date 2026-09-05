@@ -22,6 +22,7 @@ export type TemplateSettingsFieldMetadata = {
   binding?: string;
   catalog_binding?: string;
   renderer_props?: Record<string, unknown>;
+  selector_schema?: Record<string, unknown>;
 };
 
 export type TemplateSettingsField = Omit<SettingsSection["fields"][number], "type" | "renderer"> & TemplateSettingsFieldMetadata;

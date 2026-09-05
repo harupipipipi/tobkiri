@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from core_runtime.authority import AuthorityService
 from core_runtime.host_permissions import get_host_permission_definition
 
 from .models import HostIntent
@@ -19,7 +18,7 @@ def approval_reason(intent: HostIntent) -> str:
 
 
 def check_host_intent_authority(
-    service: AuthorityService,
+    service: Any,
     intent: HostIntent,
     *,
     principal_id: str,

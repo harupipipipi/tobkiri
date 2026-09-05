@@ -1,0 +1,27 @@
+{
+  "artifact_set_digest": "sha256:343eab2a3b11b681bbb1bbfde3f9a51f23eb1994e907f4b0a608b01fdbca7fe4",
+  "artifacts": [
+    {
+      "digest": "sha256:88f1106cca329187311e4dc3d6c86e0f0121f6265dd32406f7b7b6b3bb9d4ede",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:07eda81a7eaf43ac1338c513ebe6112ac137a3513e967c4ea1db6a13e00d81ea",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:e6553579ca1b91915e18f248bd93b8b28ed483daba05510294c1ce4f8ef6e386",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:bed4a9fd79e846dfebfaabe7a2a0c7704aabb25b617fc7837f6695ae8162b158"
+  },
+  "pack_id": "rumi_meeting_intelligence_pack",
+  "source_identity": "sha256:f911340a02d617776953a06282fa38a7e2643ef9c6ae82af362ffafbf82d3764"
+}

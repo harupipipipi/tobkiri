@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from blocks._common import error
-from domain.company.store import CompanyStore
 
 
 def require_dict(input_data: Any) -> dict[str, Any] | None:
@@ -38,8 +37,9 @@ def _int_param(value: Any, default: int) -> int:
     return default
 
 
-def subagent_team_write_denied(company_id: str):
-    company = CompanyStore().get_company(company_id)
+def subagent_team_write_denied_for_company(company: Any):
+    """Apply the subagent-team write policy to a resolved Company record."""
+
     metadata = company.get("metadata") if isinstance(company, dict) and isinstance(company.get("metadata"), dict) else {}
     settings = company.get("settings") if isinstance(company, dict) and isinstance(company.get("settings"), dict) else {}
     nested = settings.get("subagent_team") if isinstance(settings.get("subagent_team"), dict) else {}
@@ -49,6 +49,15 @@ def subagent_team_write_denied(company_id: str):
     ):
         return error("use /api/subagent-team for subagent team writes", "SUBAGENT_TEAM_POLICY_REQUIRED")
     return None
+
+
+def company_runtime_route_sunset(route: str):
+    """Return the stable Wave 10 sunset diagnostic for retired runtime routes."""
+
+    return error(
+        f"{route} is unavailable until its selected Company runtime contract ships",
+        "COMPANY_RUNTIME_ROUTE_SUNSET",
+    )
 
 
 def _metadata_marks_subagent_team(metadata: dict[str, Any]) -> bool:

@@ -1,5 +1,7 @@
 import json
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
@@ -8,6 +10,11 @@ from domain.agent.step import AgentStep
 from domain.agent_runtime.policy import session_key_for
 from domain.agent_runtime.run_store import AgentRunStore
 from domain.agent_runtime.transcript import TranscriptStore
+from domain.agent.placement_catalog import (
+    compatibility_effective_plan,
+    runtime_assignment_for_plan,
+    verify_effective_plan,
+)
 from domain.ai_client.capability_tokens import (
     missing_model_capabilities,
     model_requirements_from_tokens,
@@ -123,6 +130,124 @@ def _text_from_content_blocks(content):
         elif isinstance(block, str) and block.strip():
             parts.append(block.strip())
     return "\n\n".join(parts) if parts else content
+
+
+def _effective_plan_role_instructions(plan):
+    behavior = plan.get("behavior") if isinstance(plan, dict) else {}
+    layers = behavior.get("layers") if isinstance(behavior, dict) else []
+    for layer in reversed(layers if isinstance(layers, list) else []):
+        if not isinstance(layer, dict):
+            continue
+        if layer.get("kind") != "placement_role":
+            continue
+        value = layer.get("value")
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            instructions = value.get("instructions")
+            if isinstance(instructions, str):
+                return instructions
+    return None
+
+
+def _bind_effective_subagent_plan(
+    *,
+    execution_id,
+    context,
+    model,
+    tools,
+    system_prompt,
+):
+    plan = context.get("effective_subagent_plan")
+    if isinstance(plan, dict):
+        verify_effective_plan(plan)
+        expected_hash = str(context.get("effective_plan_hash") or "").strip()
+        if expected_hash and expected_hash != str(plan.get("plan_hash") or ""):
+            raise ValueError("Effective Subagent Plan identity does not match")
+    else:
+        agent_id = str(context.get("agent_id") or "delegate").strip()
+        plan = compatibility_effective_plan(
+            agent_id=agent_id,
+            model=str(model or "default"),
+            tools=tools or [],
+            system_prompt=system_prompt,
+            host_policy=(
+                context.get("profile_policy")
+                if isinstance(context.get("profile_policy"), dict)
+                else {}
+            ),
+        )
+    plan_model = plan.get("model") if isinstance(plan.get("model"), dict) else {}
+    selected_model = str(plan_model.get("model_id") or model or "default")
+    tool_bindings = (
+        plan.get("tool_bindings")
+        if isinstance(plan.get("tool_bindings"), dict)
+        else {}
+    )
+    allowed_tool_ids = {
+        str(value).strip()
+        for value in tool_bindings.get("allow_tool_ids", [])
+        if str(value).strip()
+    }
+    denied_tool_ids = {
+        str(value).strip()
+        for value in tool_bindings.get("deny_tool_ids", [])
+        if str(value).strip()
+    }
+    bounded_tools = []
+    for tool in tools or []:
+        tool_id = tool_name_from_definition(tool)
+        if not tool_id and isinstance(tool, str):
+            tool_id = tool.strip()
+        if not tool_id or tool_id in denied_tool_ids:
+            continue
+        if allowed_tool_ids and tool_id not in allowed_tool_ids:
+            continue
+        bounded_tools.append(tool)
+    placement = (
+        plan.get("placement") if isinstance(plan.get("placement"), dict) else {}
+    )
+    context.update(
+        {
+            "agent_kind": str(plan.get("agent_kind") or "subagent"),
+            "runtime_kind": str(plan.get("runtime_kind") or "agent_run"),
+            "placement_id": str(placement.get("id") or ""),
+            "placement_revision": str(placement.get("revision") or ""),
+            "placement_map_id": str(placement.get("map_id") or ""),
+            "protocol_membership": [
+                value.get("protocol_ref")
+                for value in plan.get("protocol_bindings", [])
+                if isinstance(value, dict) and value.get("protocol_ref")
+            ],
+            "effective_subagent_plan": plan,
+            "effective_plan_hash": str(plan["plan_hash"]),
+            "root_scope_id": str(
+                context.get("root_scope_id")
+                or context.get("root_run_id")
+                or execution_id
+            ),
+        }
+    )
+    context["runtime_assignment"] = runtime_assignment_for_plan(
+        plan,
+        run_id=execution_id,
+        root_scope_id=str(context["root_scope_id"]),
+        parent_run_id=(
+            str(context.get("parent_run_id"))
+            if context.get("parent_run_id")
+            else None
+        ),
+        root_run_id=(
+            str(context.get("root_run_id"))
+            if context.get("root_run_id")
+            else execution_id
+        ),
+    )
+    return (
+        selected_model,
+        bounded_tools,
+        _effective_plan_role_instructions(plan) or system_prompt,
+    )
 
 
 def _route_agent_model(
@@ -522,12 +647,55 @@ class AgentEngine:
         return _truthy(policy_from_context(context).get("yolo_mode"))
 
     def _auto_approve_pending_tool_call(self, execution):
-        if not self._auto_approval_enabled(execution):
-            return None
         if not execution.pending_tool_call:
             return None
-        self._persist_execution(execution, "tool_auto_approved", execution.pending_tool_call)
-        return self.approve(execution.execution_id, source="agent.yolo")
+        if self._auto_approval_enabled(execution):
+            self._persist_execution(
+                execution,
+                "tool_auto_approved",
+                execution.pending_tool_call,
+            )
+            return self.approve(execution.execution_id, source="agent.full_access")
+        context = getattr(execution, "context", {}) or {}
+        from domain.tool.approval_reviewer import (
+            delegated_approval_requested,
+            review_tool_action,
+        )
+
+        if not delegated_approval_requested(context):
+            return None
+        pending = execution.pending_tool_call
+        tool_name = str(pending.get("tool_name") or "")
+        tool_def = next(
+            (
+                item
+                for item in execution.tools
+                if isinstance(item, dict)
+                and self._tool_name_from_definition(item) == tool_name
+            ),
+            {},
+        )
+        review = review_tool_action(
+            tool_name,
+            tool_def,
+            pending.get("tool_args")
+            if isinstance(pending.get("tool_args"), dict)
+            else {},
+            context,
+        )
+        pending["delegated_review"] = review
+        self._persist_execution(execution, "tool_delegated_reviewed", pending)
+        if review.get("decision") == "approve":
+            return self.approve(
+                execution.execution_id,
+                source="agent.approval_reviewer",
+            )
+        if review.get("decision") == "deny":
+            return self.reject(
+                execution.execution_id,
+                str(review.get("reason") or "Denied by delegated reviewer"),
+            )
+        return None
 
     def _authority_approval_result(self, execution, parsed):
         approval = dict(parsed.get("content") if isinstance(parsed.get("content"), dict) else {})
@@ -615,6 +783,42 @@ class AgentEngine:
         execution_id = gen_id("agent_")
         execution_context = dict(context or {}) if isinstance(context, dict) else {}
         execution_context = resolve_runtime_profile_context(execution_context)
+        try:
+            model, tools, system_prompt = _bind_effective_subagent_plan(
+                execution_id=execution_id,
+                context=execution_context,
+                model=model,
+                tools=tools,
+                system_prompt=system_prompt,
+            )
+        except ValueError as exc:
+            execution = AgentExecution(
+                execution_id=execution_id,
+                task=task,
+                tools=[],
+                model=str(model or "default"),
+                system_prompt=system_prompt,
+            )
+            execution.context = execution_context
+            execution.status = "error"
+            execution.error = str(exc)
+            execution.add_step(
+                "error",
+                {
+                    "code": "EFFECTIVE_SUBAGENT_PLAN_INVALID",
+                    "error": str(exc),
+                },
+            )
+            self._persist_execution(
+                execution,
+                "run_failed",
+                {"error": execution.error},
+            )
+            return {
+                "execution_id": execution_id,
+                "status": "error",
+                "result": execution.to_dict(),
+            }
         required_capabilities = normalize_capability_tokens(execution_context.get("required_capabilities"))
         if required_capabilities:
             execution_context["required_capabilities"] = required_capabilities
@@ -817,6 +1021,7 @@ class AgentEngine:
             "role": "tool",
             "content": str(tool_content) if not isinstance(tool_content, str) else tool_content,
             "name": pending["tool_name"],
+            "tool_call_id": str(tool_call_id),
         })
         self._transcripts.append_tool_result(
             execution.context["transcript_id"],
@@ -972,6 +1177,9 @@ class AgentEngine:
                 execution.context["transcript_id"],
                 execution.pending_tool_call,
             )
+            auto_result = self._auto_approve_pending_tool_call(execution)
+            if auto_result is not None:
+                return auto_result
             self._persist_execution(execution, "approval_requested", execution.pending_tool_call)
             return {
                 "execution_id": execution_id,

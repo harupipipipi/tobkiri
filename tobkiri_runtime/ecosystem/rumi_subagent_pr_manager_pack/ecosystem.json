@@ -1,33 +1,78 @@
 {
-  "pack_id": "rumi_subagent_pr_manager_pack",
-  "pack_identity": "rumi:ecosystem/rumi_subagent_pr_manager_pack",
-  "display_name": "Rumi Subagent PR Manager Pack",
-  "version": "0.1.0",
-  "description": "Declarative PM, subagent assignment, branch ledger, and one-pack-one-PR governance pack.",
-  "vocabulary": {
-    "types": [
-      "governance",
-      "catalog",
-      "policy",
-      "profile",
-      "prompt",
-      "preset",
-      "example",
-      "checklist",
-      "ledger",
-      "template"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
+  "dependencies": {},
+  "description": "Declarative PM, subagent assignment, branch ledger, and one-pack-one-PR governance pack.",
+  "display_name": "Rumi Subagent PR Manager Pack",
   "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
+    "asset_index": {
+      "catalog": [
+        "catalog/subagent_pr_workflows.yaml",
+        "catalog/subagent_routing_matrix.yaml",
+        "catalog/pr_acceptance_rubric.yaml"
+      ],
+      "checklist": [
+        "checklists/reviewer_handoff.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/one_pr_per_subagent.example.yaml",
+        "examples/merge_readiness_board.example.yaml",
+        "examples/review_handoff.example.yaml"
+      ],
+      "ledger": [
+        "ledgers/pr_evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/subagent_pr_governance.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/subagent_pr_manager.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/subagent_pr_manager.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "spec": [],
+      "template": [
+        "templates/subagent_assignment_brief.template.yaml"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:6e246a1bdf7a4e6f9b76b96dc522eb51f5cec947323ed6184a156fb74ad90290",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:a3e0bb70ef37124f03c652b6f77edd029d195587724b701ebbd848bf100eb31c"
+    },
     "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:a3e0bb70ef37124f03c652b6f77edd029d195587724b701ebbd848bf100eb31c"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_agent_services_pack",
@@ -57,50 +102,31 @@
       "handoff_checklist",
       "assignment_brief_template"
     ],
-    "asset_index": {
-      "catalog": [
-        "catalog/subagent_pr_workflows.yaml",
-        "catalog/subagent_routing_matrix.yaml",
-        "catalog/pr_acceptance_rubric.yaml"
-      ],
-      "policy": [
-        "policies/subagent_pr_governance.policy.yaml"
-      ],
-      "spec": [],
-      "checklist": [
-        "checklists/reviewer_handoff.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/pr_evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/subagent_assignment_brief.template.yaml"
-      ],
-      "example": [
-        "examples/one_pr_per_subagent.example.yaml",
-        "examples/merge_readiness_board.example.yaml",
-        "examples/review_handoff.example.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "profiles": [
-        "profiles/subagent_pr_manager.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/subagent_pr_manager.system.md"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_subagent_pr_manager_pack",
+  "pack_identity": "rumi:ecosystem/rumi_subagent_pr_manager_pack",
+  "provenance": {
+    "build_identity": "rumi_subagent_pr_manager_pack:0.1.0",
+    "content_hash": "sha256:6e246a1bdf7a4e6f9b76b96dc522eb51f5cec947323ed6184a156fb74ad90290",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "governance",
+      "catalog",
+      "policy",
+      "profile",
+      "prompt",
+      "preset",
+      "example",
+      "checklist",
+      "ledger",
+      "template"
+    ]
   }
 }

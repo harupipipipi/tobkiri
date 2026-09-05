@@ -2,6 +2,7 @@ import { Component, createRef, type ErrorInfo, type ReactNode } from "react";
 
 import { diagnosticFingerprint, reportClientDiagnosticResult, sanitizeDiagnosticDetail } from "../lib/clientDiagnostics";
 import { crashDraftExport, recoverableDraftSnapshot, recordCrash, resetAffectedClientState, type CrashDraftSnapshot } from "../lib/crashRecovery";
+import { ErrorNotice } from "./ErrorNotice";
 
 type Props = { children: ReactNode };
 type DiagnosticStatus = "idle" | "sending" | "recorded" | "not_recorded";
@@ -72,15 +73,31 @@ export class AppErrorBoundary extends Component<Props, State> {
     return `診断の記録状態を確認しています。端末内参照: ${this.state.diagnosticReference}`;
   }
 
+  private errorCopyText(): string {
+    return [
+      "Tobkiri application recovery",
+      "この画面の表示処理が停止しました",
+      this.diagnosticCopy(),
+      this.state.safeDetails || "Render failure",
+    ].join("\n\n");
+  }
+
   render() {
     if (!this.state.failed) return this.props.children;
     const repeated = this.state.crashCount >= 2;
     return (
-      <main role="alert" aria-live="assertive" className="flex min-h-screen items-center justify-center bg-[#09090b] px-6 py-10 text-zinc-100 motion-reduce:scroll-auto">
+      <main className="flex min-h-screen items-center justify-center bg-[#09090b] px-6 py-10 text-zinc-100 motion-reduce:scroll-auto">
         <section className="w-full max-w-2xl rounded-3xl border border-red-500/20 bg-zinc-950 p-7 shadow-2xl">
           <p className="text-xs font-semibold uppercase tracking-wider text-red-300">Application recovery</p>
           <h1 ref={this.headingRef} tabIndex={-1} className="mt-3 text-2xl font-semibold outline-none focus-visible:ring-2 focus-visible:ring-red-300">この画面の表示処理が停止しました</h1>
-          <p className="mt-3 text-sm leading-6 text-zinc-300">未保存の入力は削除せず、利用可能な復帰方法を表示しています。</p>
+          <ErrorNotice
+            className="mt-3 text-sm leading-6"
+            copyLabel="クラッシュ情報をコピー"
+            copyText={this.errorCopyText()}
+            errorIcon="application-recovery"
+            message="未保存の入力は削除せず、利用可能な復帰方法を表示しています。"
+            messageClassName="text-zinc-300"
+          />
           <p role="status" className="mt-3 rounded-xl border border-zinc-800 bg-black/20 p-3 text-sm text-zinc-400">{this.diagnosticCopy()}</p>
           {repeated ? <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">短時間に同じ復帰画面が繰り返されました。再読み込みよりセーフモードを推奨します。</p> : null}
           {this.state.draft ? (

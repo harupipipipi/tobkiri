@@ -1,0 +1,392 @@
+{
+  "schema": "io.tobkiri.legacy-executable-source-input.v1",
+  "source_format": "legacy-entrypoint-map",
+  "operation_id_overrides": [
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "entrypoint_id": "ai-gateway-generate",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate"
+    },
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "entrypoint_id": "ai-gateway-stream",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream"
+    },
+    {
+      "pack_id": "rumi_git_publish_pack",
+      "entrypoint_id": "git-publish",
+      "operation_id": "rumi_git_publish_pack.git-push"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "entrypoint_id": "git-write",
+      "operation_id": "rumi_git_write_pack.git-commit"
+    }
+  ],
+  "function_id_overrides": [
+    {
+      "pack_id": "rumi_git_write_pack",
+      "entrypoint_id": "git-write",
+      "function_id": "rumi_git_write_pack.git-commit.service"
+    }
+  ],
+  "packs": {
+    "defaultspack": {
+      "entries": [
+        {
+          "function_id": "defaultspack.conversation",
+          "operation_ids": ["complete"],
+          "contract_id": "conversation.turn.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/conversation.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "required": ["messages"],
+              "properties": {
+                "model": {"type": "string"},
+                "messages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {"type": "object"}
+                },
+                "tools": {
+                  "type": "array",
+                  "items": {"type": "object"}
+                },
+                "params": {"type": "object"},
+                "context": {"type": "object"},
+                "runtime_context": {"type": "object"},
+                "timezone": {"type": "string"}
+              },
+              "additionalProperties": false
+            },
+            "output": {"type": "object"},
+            "error": {
+              "type": "object",
+              "required": ["code", "message"],
+              "properties": {
+                "code": {"type": "string"},
+                "message": {"type": "string"}
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "rumi_ai_pipeline_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.failover",
+          "operation_ids": [
+            "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+            "rumi_ai_pipeline_pack.ai-failover-decide.stream"
+          ],
+          "contract_id": "rumi.service.ai.failover.decide.v1",
+          "implementation_path": "runtime/pipeline.py"
+        },
+        {
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare",
+          "operation_ids": [
+            "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+            "rumi_ai_pipeline_pack.ai-request-prepare.stream"
+          ],
+          "contract_id": "rumi.service.ai.request.prepare.v1",
+          "implementation_path": "runtime/pipeline.py"
+        }
+      ]
+    },
+    "rumi_ai_routing_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_routing_pack.ai-routing.default",
+          "operation_ids": [
+            "rumi_ai_routing_pack.ai-route.generate",
+            "rumi_ai_routing_pack.ai-route.stream"
+          ],
+          "contract_id": "rumi.service.ai.route.v1",
+          "implementation_path": "runtime/router.py"
+        }
+      ]
+    },
+    "rumi_ai_tool_bridge_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+          "operation_ids": [
+            "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+            "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream"
+          ],
+          "contract_id": "rumi.service.ai.tool_intent.normalize.v1",
+          "implementation_path": "runtime/bridge.py"
+        }
+      ]
+    },
+    "rumi_ai_usage_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_usage_pack.ai-usage.cost",
+          "operation_ids": [
+            "rumi_ai_usage_pack.ai-usage-cost.generate",
+            "rumi_ai_usage_pack.ai-usage-cost.stream"
+          ],
+          "contract_id": "rumi.service.ai.usage.cost.v1",
+          "implementation_path": "runtime/usage.py"
+        }
+      ]
+    },
+    "rumi_file_inspect_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_file_inspect_pack.file-inspect.service",
+          "operation_ids": ["rumi_file_inspect_pack.file-inspect.for-media"],
+          "contract_id": "rumi.service.file.inspect.v1",
+          "implementation_path": "runtime/inspect.py"
+        }
+      ]
+    },
+    "rumi_model_catalog_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
+          "operation_ids": [
+            "rumi_model_catalog_pack.bundled-model-catalog.generate",
+            "rumi_model_catalog_pack.bundled-model-catalog.stream"
+          ],
+          "contract_id": "rumi.resource.ai.model.catalog.v1",
+          "implementation_path": "runtime/catalog.py"
+        }
+      ]
+    },
+    "rumi_model_registry_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "operation_ids": [
+            "rumi_model_registry_pack.model-profile-resource.generate",
+            "rumi_model_registry_pack.model-profile-resource.stream"
+          ],
+          "contract_id": "rumi.resource.ai.model.profile.v1",
+          "implementation_path": "runtime/process.py"
+        }
+      ]
+    },
+    "rumi_provider_registry_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_provider_registry_pack.provider-registry.health",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-registry-health.generate",
+            "rumi_provider_registry_pack.provider-registry-health.stream"
+          ],
+          "contract_id": "rumi.resource.ai.provider.health.v1",
+          "implementation_path": "runtime/health_process.py"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-registry-resource.generate",
+            "rumi_provider_registry_pack.provider-registry-resource.stream"
+          ],
+          "contract_id": "rumi.resource.ai.provider.registry.v1",
+          "implementation_path": "runtime/process.py"
+        }
+      ]
+    },
+    "tobkiri_host_pack_control": {
+      "entries": [
+        {
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_ids": [
+            "profile.change.activate",
+            "profile.change.approve",
+            "profile.change.resolve",
+            "profile.change.review",
+            "profile.catalog.read",
+            "operation.status.read",
+            "profile.read",
+            "settings.read",
+            "topology.contracts.read",
+            "topology.operations.read",
+            "topology.packs.read",
+            "topology.principals.read"
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/catalog.py",
+          "schemas": {
+            "input": {"type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        },
+        {
+          "function_id": "tobkiri.host.pack-control",
+          "operation_ids": [
+            "approval.approve",
+            "approval.candidate",
+            "approval.revoke",
+            "catalog.read",
+            "dashboard.read",
+            "pack.disable",
+            "pack.enable",
+            "pack.install",
+            "pack.status",
+            "profile.reload",
+            "runtime.restart"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/catalog.py",
+          "schemas": {
+            "input": {"type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        }
+      ]
+    },
+    "rumi_shell_execute_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_shell_execute_pack.shell-prepare.service",
+          "operation_ids": ["rumi_shell_execute_pack.shell-prepare"],
+          "contract_id": "tobkiri.service.shell.execute.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/execute.py",
+          "schemas": {
+            "input": {"type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        }
+      ]
+    },
+    "rumi_git_write_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_git_write_pack.git-commit-prepare.service",
+          "operation_ids": ["rumi_git_write_pack.git-commit-prepare"],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-restore-prepare.service",
+          "operation_ids": ["rumi_git_write_pack.git-restore-prepare"],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-restore.service",
+          "operation_ids": ["rumi_git_write_pack.git-restore"],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-apply-patch-prepare.service",
+          "operation_ids": ["rumi_git_write_pack.git-apply-patch-prepare"],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-apply-patch.service",
+          "operation_ids": ["rumi_git_write_pack.git-apply-patch"],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        }
+      ]
+    },
+    "rumi_git_publish_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_git_publish_pack.git-push-prepare.service",
+          "operation_ids": ["rumi_git_publish_pack.git-push-prepare"],
+          "contract_id": "tobkiri.service.git.publish.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/publish.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        }
+      ]
+    },
+    "rumi_host_authority_bridge_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "operation_ids": ["interactive_approval.get", "interactive_approval.list", "interactive_approval.approve", "interactive_approval.deny"],
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/bridge.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "operation_ids": ["interactive_effect.manage"],
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/bridge.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        }
+      ]
+    },
+    "rumi_command_protocol_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_command_protocol_pack.high-risk-command.service",
+          "operation_ids": ["high_risk_command.manage"],
+          "contract_id": "tobkiri.service.command.high-risk.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/high_risk_adapter.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        }
+      ]
+    },
+    "tobkiri_workflow_pack": {
+      "entries": [
+        {
+          "function_id": "tobkiri.workflow.provider",
+          "operation_ids": [
+            "definition.archive",
+            "definition.create",
+            "definition.delete",
+            "definition.get",
+            "definition.list",
+            "definition.publish",
+            "definition.update",
+            "definition.validate",
+            "definition.compile-preview",
+            "operation.palette",
+            "run.cancel",
+            "run.advance",
+            "run.create",
+            "run.get",
+            "run.pause",
+            "run.reconcile-recovery",
+            "run.resume",
+            "run.step.execute",
+            "run.step.resume",
+            "run.step.retry"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/provider.py",
+          "schemas": {
+            "input": {"type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        }
+      ]
+    }
+  }
+}

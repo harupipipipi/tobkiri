@@ -1,0 +1,61 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/__init__.py",
+      "sha256": "sha256:a4772ae69d4ed2171ac32ca418afc9c2245bf3d8dc0100137cc71afb90435472"
+    },
+    {
+      "path": "runtime/cloudflare_diagnostics.py",
+      "sha256": "sha256:e2821f6a9ac90bb9475704d333170412816f14fe30522a5d77c88b3d755f81d2"
+    },
+    {
+      "path": "runtime/cloudflare_sdk.py",
+      "sha256": "sha256:0dad88a9dacf779d6de5c3db705fb9c3512c4705f373e260a9bd1f8ee8ce16ed"
+    },
+    {
+      "path": "runtime/connection_adapters.py",
+      "sha256": "sha256:5f770146d5294ec2edd4c0316f419916b9e62676e8fe8fa117358ddba9fe8ce7"
+    },
+    {
+      "path": "runtime/connection_catalog.py",
+      "sha256": "sha256:e13479854b255e9baca70f2cfd0d11f91bcf128e07296860c04775d804bb8f0c"
+    },
+    {
+      "path": "runtime/registry.py",
+      "sha256": "sha256:825de1b62ebb90906c1c90de4cb0d0a6a50eed220d35d36a4c1c1f194d5d1615"
+    },
+    {
+      "path": "runtime/service.py",
+      "sha256": "sha256:06da1bcfbd044b2d5404ac5590dbfaeb406f64298f656a17561a820be46f73bf"
+    },
+    {
+      "path": "runtime/process.py",
+      "sha256": "sha256:740c36b4d83fd920b1dccf6f3848f942838db624add1fae4e136e122c8fff286"
+    },
+    {
+      "path": "runtime/health_process.py",
+      "sha256": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455"
+    },
+    {
+      "path": "runtime/providers/__init__.py",
+      "sha256": "sha256:0d8297ade46695f86fbeef6129002d1804e6d6616b1b7d0a603b381ddf07707c"
+    },
+    {
+      "path": "runtime/providers/cloudflare.py",
+      "sha256": "sha256:62785bafd19af2ca7cb84536347af7d2a243f4831fe2fe722a6c4975431537fc"
+    },
+    {
+      "path": "runtime/providers/codex.py",
+      "sha256": "sha256:e2b80766a40d3da4cfb36cbfda1d28342688d29cb5779875dc85554001156aed"
+    },
+    {
+      "path": "runtime/providers/github.py",
+      "sha256": "sha256:8e1156ac248945482273c51d8e1e7cc0c6c652a7008a5be6ba97e57746f30a46"
+    },
+    {
+      "path": "runtime/providers/google.py",
+      "sha256": "sha256:2b23d73bbd7046b315b8dd6c66dcda8655510ad84d810f30572d1aae37919133"
+    }
+  ],
+  "version": "rumi.pack-artifacts.v1"
+}

@@ -1,0 +1,27 @@
+{
+  "artifact_set_digest": "sha256:3e513933f30e8e657cb6a5d97a69671a29c9e89d80ec6bbdd00c6663f1ba5378",
+  "artifacts": [
+    {
+      "digest": "sha256:bf0b09cf7963d44292ab2de37f696d9b7caa8302a09ff7f415c9769b2f209842",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:751867fd5199077c5b848f8ad7c3f49031792d5a994b0dd75778c9ffd29f42fb",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:40744e944c4bab0d67e3d87981a59a0af4a9c099f8a256bf902ea708e59b035d",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:ed91ffbe2b80a0bdb571a09ba5529b868388d86894b0b50f3f5f1e8580bae8a9"
+  },
+  "pack_id": "rumi_voice_mobile_pack",
+  "source_identity": "sha256:aae7600fb944aa3e56f8964346a70913c3768badec32b2f15f2e23fed6d1f5a7"
+}

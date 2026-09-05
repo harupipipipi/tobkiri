@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/profile-intent.v1.schema.json",
+  "title": "Tobkiri author-edited Profile intent v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["intent_api_version", "profile_id", "state", "mode", "catalog_revision", "base", "shell", "packs", "requested_edges", "authority_references", "profile_authority_snapshot_digest"],
+  "properties": {
+    "intent_api_version": {"const": "io.tobkiri.profile-intent.v1"},
+    "profile_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+    "state": {"const": "needs_resolution"},
+    "mode": {"enum": ["interactive", "headless"]},
+    "catalog_revision": {"type": "null"},
+    "display_name": {"type": "string", "minLength": 1},
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack_id", "artifact_digest", "definition_revision", "resolution"],
+      "properties": {
+        "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "artifact_digest": {"type": "null"},
+        "definition_revision": {"type": "null"},
+        "resolution": {"const": "verified_exact_artifact_required"}
+      }
+    },
+    "shell": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider_id", "pack_id", "artifact_digest", "executable_artifact_digest", "definition_revision", "contract_id", "platform", "architecture"],
+          "properties": {
+            "provider_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+            "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+            "artifact_digest": {"type": "null"},
+            "executable_artifact_digest": {"type": "null"},
+            "definition_revision": {"type": "null"},
+            "contract_id": {"const": "app.shell.v1"},
+            "platform": {"enum": ["macos", "windows", "linux"]},
+            "architecture": {"enum": ["arm64", "x86_64"]}
+          }
+        }
+      ]
+    },
+    "packs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pack_id", "artifact_digest", "role"],
+        "properties": {
+          "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+          "artifact_digest": {"type": "null"},
+          "role": {"enum": ["backend", "contribution", "provider", "application"]}
+        }
+      }
+    },
+    "content_projections": {
+      "type": "array",
+      "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json#/$defs/intentProjection"},
+      "uniqueItems": true
+    },
+    "requested_edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caller_function_id", "target_provider_id", "contract_id", "operation_id", "requested_scope_template"],
+        "properties": {
+          "caller_function_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+          "target_provider_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+          "contract_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"},
+          "operation_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+          "requested_scope_template": {"$ref": "#/$defs/requestedScopeIntent"},
+          "authority_mode": {"enum": ["profile_grant", "interactive_only"]}
+        }
+      }
+    },
+    "authority_references": {"type": "array", "maxItems": 0},
+    "profile_authority_snapshot_digest": {"type": "null"}
+  },
+  "$defs": {
+    "requestedScopeIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capability": {"const": "operation.invoke"},
+        "dimensions": {
+          "type": "object",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "additionalProperties": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "not": {"const": "*"}}}
+        },
+        "quotas": {
+          "type": "object",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "exact_request_digest": {"type": "null"},
+        "opaque": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "headless"}}, "required": ["mode"]},
+      "then": {"properties": {"shell": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"mode": {"const": "interactive"}}, "required": ["mode"]},
+      "then": {"properties": {"shell": {"type": "object"}}}
+    }
+  ]
+}

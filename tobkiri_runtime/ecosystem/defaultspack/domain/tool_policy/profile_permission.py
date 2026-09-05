@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from domain.tool.schema_adapter import tool_name_from_definition
+from domain.tool.schema_adapter import mapping_or_empty, tool_name_from_definition
 from domain.tool.security import is_sandbox_capability_tool, is_trusted_pack_id, untrusted_tool_security_rejection
 
 from .risk import resolve_tool_risk
@@ -52,7 +52,7 @@ def profile_tool_permission_policy(policy: dict[str, Any] | None) -> dict[str, A
 
 def normalize_tool_permission_policy(raw: dict[str, Any] | None) -> dict[str, Any]:
     source = raw if isinstance(raw, dict) else {}
-    normalized = {
+    normalized: dict[str, Any] = {
         "default_mode": _mode(source.get("default_mode"), DEFAULT_TOOL_PERMISSION_POLICY["default_mode"]),
         "risk_defaults": dict(DEFAULT_TOOL_PERMISSION_POLICY["risk_defaults"]),
         "unknown_tool_mode": _mode(
@@ -177,6 +177,8 @@ def infer_tool_action(tool_name: str, arguments: dict[str, Any] | None) -> str:
             "open": "browser.open_url",
             "open-url": "browser.open_url",
             "open_url": "browser.open_url",
+            "browser-open-url": "browser.open_url",
+            "browser_open_url": "browser.open_url",
             "click": "computer.click",
             "screenshot": "computer.screenshot",
             "state": "computer.context",
@@ -208,7 +210,7 @@ def _mode_for_tool_action(
     risk_level: str,
 ) -> tuple[str, str, str]:
     if tool_rule is not None:
-        actions = tool_rule.get("actions") if isinstance(tool_rule.get("actions"), dict) else {}
+        actions = mapping_or_empty(tool_rule.get("actions"))
         for candidate in action_key_candidates(tool_name, action):
             if candidate in actions:
                 mode = _mode_from_rule(actions[candidate], "inherit")
@@ -218,7 +220,8 @@ def _mode_for_tool_action(
         if mode != "inherit":
             return mode, "tool", tool_name
 
-    risk_mode = _mode(policy.get("risk_defaults", {}).get(risk_level), "inherit")
+    risk_defaults = mapping_or_empty(policy.get("risk_defaults"))
+    risk_mode = _mode(risk_defaults.get(risk_level), "inherit")
     if risk_mode != "inherit":
         return risk_mode, "risk_defaults", risk_level
     return _mode(policy.get("default_mode"), DEFAULT_TOOL_PERMISSION_POLICY["default_mode"]), "default_mode", ""

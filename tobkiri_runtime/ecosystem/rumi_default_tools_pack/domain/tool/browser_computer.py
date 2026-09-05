@@ -7,6 +7,7 @@ import platform
 import re
 import secrets
 import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -16,11 +17,110 @@ import zlib
 import base64
 from pathlib import Path
 from typing import Any
+from time import monotonic as _trace_monotonic
+
+from ..computer.trace import (
+    computer_action_trace,
+    emit_computer_trace,
+    requested_delivery_mode,
+    result_trace_facts,
+    target_trace_facts,
+)
 
 _CLIPBOARD_PREVIEW_CHARS = 500
 _DARWIN_AUTOMATION_TIMEOUT_SECONDS = 2
 _DARWIN_CGEVENT_TIMEOUT_SECONDS = 8
 _DARWIN_SCREENSHOT_TIMEOUT_SECONDS = 10
+_QUARTZ_BRIDGE_MAX_ITEMS = 256
+_QUARTZ_QUERY_SUCCESS_OUTCOMES = frozenset({
+    "success_empty", "success_nonempty", "success_nonempty_truncated",
+})
+_COMPUTER_APPROVAL_PROMPT = (
+    "承認が必要です。foreground/on-screen 操作も利用できます。"
+    "リクエストを承認するか、foreground 作業を選んでください。"
+)
+_BROWSER_TEXT_INPUT_RECOMMENDED_NEXT_ACTIONS = [
+    "computer.type",
+    "computer.key",
+    "computer.click",
+    "computer.screenshot",
+    "computer.observe",
+]
+_BROWSER_TEXT_INPUT_GUIDANCE = (
+    "If the browser page or search field is ready, use computer.type for text input "
+    "and computer.key for Enter or shortcuts; normal approval gates still apply. "
+    "The computer.type text must be the literal user-requested URL, query, or form "
+    "text to enter; do not type the current URL, app name, or window title unless "
+    "that is exactly what the user asked to enter."
+)
+_COMPUTER_TYPE_SUCCESS_RECOMMENDED_NEXT_ACTIONS = [
+    "computer.key",
+    "computer.observe",
+    "computer.screenshot",
+]
+_COMPUTER_TYPE_SUCCESS_GUIDANCE = (
+    "Text input completed. If this was a browser search or address field, continue "
+    "with computer.key using Enter/Return to submit, or use computer.observe or "
+    "computer.screenshot to inspect the page. Do not reopen the same page just to "
+    "submit typed text. For the next text entry, use the user-requested query or "
+    "URL, not the current URL, app name, or window title."
+)
+_COMPUTER_TYPE_SUCCESS_TASK_PROGRESS = {
+    "status": "text_entered",
+    "location": "current_focused_field",
+    "browser_search_or_address_field": "submit_pending",
+}
+_COMPUTER_TYPE_SUCCESS_NEXT_ACTION = {
+    "preferred": {
+        "action": "computer.key",
+        "payload": {"key": "return"},
+        "purpose": "submit the typed query or URL",
+    },
+    "alternatives": [
+        {"action": "computer.observe", "purpose": "confirm the current target state"},
+        {"action": "computer.screenshot", "purpose": "inspect the visible browser field or page"},
+    ],
+}
+_COMPUTER_TYPE_SUCCESS_AVOID_ACTIONS = [
+    {
+        "action": "browser.open_url",
+        "scope": "same setup page",
+        "reason": "Do not reopen the page just to submit text that was already typed.",
+    },
+    {
+        "action": "computer.type",
+        "scope": "current URL, app name, or window title",
+        "reason": "Only type those values when the user explicitly requested that literal text.",
+    },
+]
+_DARWIN_BROWSER_BUNDLE_ID_ALIASES = {
+    "atlas": ("com.openai.atlas",),
+    "chatgpt atlas": ("com.openai.atlas",),
+}
+_SELECTED_WINDOW_IDENTITY_DIAGNOSTIC_CONTRACT = "rumi.mac.selected_window_identity.v1"
+_SELECTED_WINDOW_IDENTITY_PRIVATE_FIELDS = (
+    "_rumi_owner_alias_match",
+    "_rumi_target_process_match",
+    "_rumi_target_bundle_match",
+)
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+_SCREENSHOT_CAPTURE_DRIVERS = {
+    "none",
+    "mac_swift_host",
+    "mac_screencapture_window",
+    "mac_screencapture_rect",
+    "mac_screencapture_display",
+    "windows_native",
+    "linux_native",
+}
+_SCREENSHOT_TARGET_BINDING_SOURCES = {
+    "explicit_window",
+    "explicit_identifiers",
+    "enumerated_match",
+    "persisted_selection",
+    "active_window",
+    "none",
+}
 
 
 def _key_press_count(payload: dict[str, Any]) -> int:
@@ -50,6 +150,10 @@ def _normalize_key_name(key: Any) -> str:
 
 def _running_under_pytest() -> bool:
     return "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def _key_combo_from_payload(payload: dict[str, Any]) -> str:
@@ -99,6 +203,45 @@ class BrowserComputerController:
         return self._computer_seat
 
     def run(self, action: str, payload: dict[str, Any] | None = None, *, yolo_mode: bool = False) -> dict[str, Any]:
+        """Run one action and emit content-free controller boundary facts."""
+        normalized_action = self._normalize_action(action)
+        normalized_payload = dict(payload or {})
+        started = _trace_monotonic()
+        with computer_action_trace(normalized_action):
+            emit_computer_trace(
+                "controller.start",
+                normalized_action,
+                requested_delivery_mode=requested_delivery_mode(normalized_payload),
+                approval_replay=bool(yolo_mode),
+                **target_trace_facts(normalized_payload),
+            )
+            try:
+                result = self._run_action(normalized_action, normalized_payload, yolo_mode=yolo_mode)
+            except Exception:
+                emit_computer_trace(
+                    "controller.result",
+                    normalized_action,
+                    duration_ms=(_trace_monotonic() - started) * 1000,
+                    result_ok=False,
+                    error_code="CONTROLLER_EXCEPTION",
+                )
+                raise
+            if (
+                normalized_action == "computer.key"
+                and isinstance(result, dict)
+                and result.get("executed") is True
+                and not self._seat_key_effect_verified(result)
+            ):
+                self._mark_key_delivery_unverified(result)
+            emit_computer_trace(
+                "controller.result",
+                normalized_action,
+                duration_ms=(_trace_monotonic() - started) * 1000,
+                **result_trace_facts(result),
+            )
+            return result
+
+    def _run_action(self, action: str, payload: dict[str, Any] | None = None, *, yolo_mode: bool = False) -> dict[str, Any]:
         action = self._normalize_action(action)
         payload = payload or {}
         yolo_mode = self._truthy(yolo_mode)
@@ -136,6 +279,8 @@ class BrowserComputerController:
             return self._show_app(payload)
         if action == "computer.select_window":
             return self._select_window(payload)
+        if action == "computer.probe_text_control":
+            return self._probe_semantic_text_control(payload)
         if action == "computer.screenshot":
             return self._screenshot(payload=payload, dry_run=self._truthy(payload.get("dry_run")), yolo_mode=yolo_mode)
         if action in {"computer.ocr", "computer.ax_tree"}:
@@ -216,6 +361,8 @@ class BrowserComputerController:
             "show": "computer.show_app",
             "select_window": "computer.select_window",
             "window": "computer.select_window",
+            "probe_text_control": "computer.probe_text_control",
+            "probe_browser_address": "computer.probe_text_control",
             "windows": "computer.windows",
             "list_windows": "computer.windows",
             "observe": "computer.observe",
@@ -230,6 +377,11 @@ class BrowserComputerController:
     @contextlib.contextmanager
     def _edge_haze(self, action: str, payload: dict[str, Any]):
         metadata: dict[str, Any] = {"attempted": True, "action": action}
+        if str(os.environ.get("RUMI_EDGE_HAZE_DISABLED") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            metadata["started"] = False
+            metadata["disabled"] = True
+            yield metadata
+            return
         manager: Any | None = None
         try:
             from ..computer.mac.edge_haze import ComputerUseEdgeHazeManager
@@ -255,7 +407,10 @@ class BrowserComputerController:
         try:
             yield metadata
         finally:
-            manager.stop()
+            try:
+                manager.stop()
+            except Exception as exc:
+                metadata["stop_error"] = str(exc)
 
     @staticmethod
     def _edge_haze_result(edge_haze: Any) -> dict[str, Any] | None:
@@ -265,10 +420,12 @@ class BrowserComputerController:
             "attempted": bool(edge_haze.get("attempted")),
             "started": bool(edge_haze.get("started")),
         }
-        for key in ("action", "sequence_id", "lease_path"):
+        for key in ("action", "sequence_id", "lease_path", "stop_error"):
             value = edge_haze.get(key)
             if isinstance(value, str) and value:
                 result[key] = value
+        if edge_haze.get("disabled") is True:
+            result["disabled"] = True
         target_window = edge_haze.get("target_window")
         if isinstance(target_window, dict) and target_window:
             result["target_window"] = target_window
@@ -389,6 +546,12 @@ class BrowserComputerController:
         persistent = payload.get("persistent", True) is not False
         target_app = self._app_name_from_payload(payload)
         launch_plan = self._browser_launch_plan(url, profile_id, persistent=persistent)
+        if target_app and platform.system() == "Darwin":
+            launch_plan = {
+                "mode": "target_app",
+                "target_app": target_app,
+                "commands": self._darwin_open_url_commands(url, target_app),
+            }
         if dry_run:
             return {
                 "action": "browser.open_url",
@@ -406,6 +569,7 @@ class BrowserComputerController:
             return self._approval_required("browser.open_url", approval_payload)
         self._ensure_profile(profile_id)
         opened_with_managed_profile = False
+        open_details: dict[str, Any] = {}
         if persistent and launch_plan.get("command") and not target_app:
             command = [str(part) for part in launch_plan["command"]]
             subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -413,8 +577,13 @@ class BrowserComputerController:
             edge_haze = None
         else:
             with self._edge_haze("browser.open_url", payload) as edge_haze:
-                opened = self._open_url_foreground(url, app_name=target_app)
-            if not opened:
+                open_result = self._open_url_result(url, app_name=target_app)
+            open_details = {
+                key: value
+                for key, value in open_result.items()
+                if key not in {"opened", "reason"} and value is not None
+            }
+            if not open_result.get("opened"):
                 return {
                     "action": "browser.open_url",
                     "url": url,
@@ -423,7 +592,8 @@ class BrowserComputerController:
                     "profile_id": profile_id,
                     "persistent": persistent,
                     **({"target_app": target_app} if target_app else {}),
-                    "reason": "Opening the requested URL failed.",
+                    **open_details,
+                    "reason": str(open_result.get("reason") or "Opening the requested URL failed."),
                 }
         sessions = self._read_sessions()
         sessions["last_url"] = url
@@ -433,7 +603,7 @@ class BrowserComputerController:
             sessions.pop(stale_key, None)
         sessions["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         self._write_sessions(sessions)
-        return {
+        result = {
             "action": "browser.open_url",
             "url": url,
             "opened": True,
@@ -441,9 +611,129 @@ class BrowserComputerController:
             "persistent": persistent,
             "managed_profile": opened_with_managed_profile,
             "launch": launch_plan,
+            **open_details,
             **({"edge_haze": metadata} if (metadata := self._edge_haze_result(edge_haze)) else {}),
             **({"target_app": target_app} if target_app else {}),
         }
+        return self._with_browser_text_input_recommendations(result)
+
+    def _open_url_result(self, url: str, *, app_name: str = "") -> dict[str, Any]:
+        if platform.system() == "Darwin" and app_name:
+            return self._darwin_open_url_with_target_app(url, app_name)
+        opened = self._open_url_foreground(url, app_name=app_name)
+        if opened:
+            return {"opened": True}
+        reason = "Opening the requested URL failed."
+        if app_name:
+            reason = f"Opening the requested URL in {app_name} failed."
+        return {"opened": False, "reason": reason}
+
+    def _darwin_open_url_with_target_app(self, url: str, app_name: str) -> dict[str, Any]:
+        app_name = app_name.strip()
+        if not app_name:
+            return {"opened": False, "reason": "No target app was provided for the macOS browser launch."}
+        failures: list[str] = []
+        accepted_state: dict[str, Any] | None = None
+        accepted_command: list[str] | None = None
+        for command in self._darwin_open_url_commands(url, app_name):
+            try:
+                completed = subprocess.run(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=_DARWIN_AUTOMATION_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                failures.append(f"{' '.join(command)} timed out")
+                continue
+            except FileNotFoundError:
+                return {"opened": False, "reason": "The macOS open command is not available."}
+            except Exception as exc:
+                failures.append(f"{' '.join(command)} failed: {exc}")
+                continue
+            if completed.returncode != 0:
+                detail = str(completed.stderr or completed.stdout or "").strip()
+                failures.append(f"{' '.join(command)} failed{': ' + detail if detail else ''}")
+                continue
+
+            if self._darwin_targeted_open_accepts_command_success(app_name):
+                state = self._darwin_target_app_state(app_name)
+                return {
+                    "opened": True,
+                    "launch_command": command,
+                    "command_accepted": True,
+                    "window_verified": bool(state.get("available")),
+                    **state,
+                }
+
+            state = self._wait_for_darwin_target_app(app_name)
+            if state.get("available"):
+                return {"opened": True, "launch_command": command, **state}
+            activated = self._activate_app_name(app_name)
+            if activated:
+                state = self._wait_for_darwin_target_app(app_name, timeout=0.5)
+                if state.get("available"):
+                    return {"opened": True, "activated": True, "launch_command": command, **state}
+            accepted_state = state
+            accepted_command = command
+
+        if accepted_state is not None:
+            if accepted_state.get("running_app"):
+                return {
+                    "opened": False,
+                    "reason": f"macOS accepted the open request and {app_name} is running, but no usable window became available.",
+                    "launch_command": accepted_command,
+                    "running_app": accepted_state.get("running_app"),
+                }
+            return {
+                "opened": False,
+                "reason": f"macOS accepted the open request, but {app_name} did not become available.",
+                "launch_command": accepted_command,
+            }
+        reason = f"macOS could not open the requested URL in {app_name}."
+        if failures:
+            reason = f"{reason} {'; '.join(failures)}"
+        return {"opened": False, "reason": reason}
+
+    @staticmethod
+    def _darwin_targeted_open_accepts_command_success(app_name: str) -> bool:
+        if not _truthy_env("RUMI_COMPUTER_USE_DEBUG_FOREGROUND"):
+            return False
+        key = app_name.strip().lower()
+        return key in _DARWIN_BROWSER_BUNDLE_ID_ALIASES
+
+    @staticmethod
+    def _darwin_open_url_commands(url: str, app_name: str) -> list[list[str]]:
+        key = app_name.strip().lower()
+        commands = [["open", "-b", bundle_id, url] for bundle_id in _DARWIN_BROWSER_BUNDLE_ID_ALIASES.get(key, ())]
+        commands.append(["open", "-a", app_name, url])
+        return commands
+
+    def _wait_for_darwin_target_app(
+        self,
+        app_name: str,
+        *,
+        timeout: float = _DARWIN_AUTOMATION_TIMEOUT_SECONDS,
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            state = self._darwin_target_app_state(app_name)
+            if state.get("available") or time.monotonic() >= deadline:
+                return state
+            time.sleep(0.1)
+
+    def _darwin_target_app_state(self, app_name: str) -> dict[str, Any]:
+        active_window = self._active_window_for_app(app_name)
+        if active_window is not None:
+            return {"available": True, "active_window": active_window}
+        running_app = next(
+            (item for item in self._running_apps() if self._app_matches_filter(item, app_name)),
+            None,
+        )
+        if running_app is not None:
+            return {"available": False, "running_app": running_app}
+        return {"available": False}
 
     @staticmethod
     def _open_url_foreground(url: str, *, app_name: str = "") -> bool:
@@ -611,25 +901,103 @@ class BrowserComputerController:
             return self._approval_required("computer.screenshot", approval_payload)
         self._artifact_root.mkdir(parents=True, exist_ok=True)
         path = self._artifact_root / f"screenshot-{int(time.time() * 1000)}.png"
-        capture = self._capture_or_reuse_screenshot(path, payload)
+        target_binding_source = self._screenshot_target_binding_source(payload)
+        target_required = target_binding_source != "none"
+        try:
+            capture = self._capture_or_reuse_screenshot(path, payload)
+        except Exception:
+            return self._screenshot_failure(
+                "SCREENSHOT_CAPTURE_FAILED",
+                failure_stage="native_capture",
+                screenshot_supported=platform.system() in {"Darwin", "Windows", "Linux"},
+                target_resolved=not target_required,
+                capture_attempted=True,
+                capture_driver=self._screenshot_capture_driver(platform.system(), None, payload),
+                target_binding_source=target_binding_source,
+            )
         system = capture.get("platform", platform.system())
+        if target_binding_source == "none" and isinstance(capture.get("target_window"), dict):
+            target_binding_source = "persisted_selection"
+            target_required = True
+        capture_driver = self._screenshot_capture_driver(system, capture, payload)
+        target_resolved = not target_required or isinstance(capture.get("target_window"), dict)
         if not capture.get("supported", True):
-            result = {
-                "action": "computer.screenshot",
-                "supported": False,
-                "platform": system,
-                "reason": capture.get("reason") or "Screenshots are supported on macOS and Windows.",
-            }
-            for key in ("target_filter", "recovery"):
-                if capture.get(key) is not None:
-                    result[key] = capture.get(key)
-            return result
+            target_unavailable = capture.get("target_filter") is not None or (target_required and not target_resolved)
+            platform_supported = system in {"Darwin", "Windows", "Linux"}
+            return self._screenshot_failure(
+                "SCREENSHOT_TARGET_UNAVAILABLE"
+                if target_unavailable
+                else "SCREENSHOT_PLATFORM_UNSUPPORTED"
+                if not platform_supported
+                else "SCREENSHOT_CAPTURE_FAILED",
+                failure_stage="target_resolution" if target_unavailable else "native_capture",
+                screenshot_supported=platform_supported,
+                target_resolved=target_resolved,
+                capture_attempted=not target_unavailable and platform_supported,
+                capture_driver="none" if target_unavailable else capture_driver,
+                target_binding_source=target_binding_source,
+            )
+        if target_required and not target_resolved:
+            return self._screenshot_failure(
+                "SCREENSHOT_TARGET_UNAVAILABLE",
+                failure_stage="target_resolution",
+                screenshot_supported=True,
+                target_resolved=False,
+                capture_attempted=False,
+                capture_driver="none",
+                target_binding_source=target_binding_source,
+            )
         crop_result = self._apply_screenshot_crop(path, payload, capture)
         crop_reference = crop_result.get("crop_reference") if crop_result else None
         action_target = crop_result.get("action_target") if crop_result else capture.get("action_coordinate_system")
         if crop_result and isinstance(crop_result.get("path"), Path):
             path = crop_result["path"]
-        model_path = self._model_screenshot_copy(path)
+        artifact_contract = self._screenshot_artifact_contract(path)
+        if not artifact_contract["artifact_file_created"]:
+            return self._screenshot_failure(
+                "SCREENSHOT_ARTIFACT_OUTSIDE_ROOT"
+                if not artifact_contract["artifact_root_match"]
+                else "SCREENSHOT_ARTIFACT_NOT_CREATED",
+                failure_stage="artifact_validation",
+                screenshot_supported=True,
+                target_resolved=target_resolved,
+                capture_attempted=True,
+                capture_succeeded=True,
+                capture_driver=capture_driver,
+                target_binding_source=target_binding_source,
+                **artifact_contract,
+            )
+        try:
+            model_path = self._model_screenshot_copy(path)
+        except Exception:
+            return self._screenshot_failure(
+                "SCREENSHOT_MODEL_ARTIFACT_NOT_CREATED",
+                failure_stage="model_copy",
+                screenshot_supported=True,
+                target_resolved=target_resolved,
+                capture_attempted=True,
+                capture_succeeded=True,
+                capture_driver=capture_driver,
+                target_binding_source=target_binding_source,
+                **artifact_contract,
+            )
+        model_contract = self._screenshot_artifact_contract(model_path, model=True)
+        if not model_contract["model_file_created"]:
+            failed_contract = dict(artifact_contract)
+            failed_contract.update(model_contract)
+            return self._screenshot_failure(
+                "SCREENSHOT_ARTIFACT_OUTSIDE_ROOT"
+                if not model_contract["artifact_root_match"]
+                else "SCREENSHOT_MODEL_ARTIFACT_NOT_CREATED",
+                failure_stage="model_copy",
+                screenshot_supported=True,
+                target_resolved=target_resolved,
+                capture_attempted=True,
+                capture_succeeded=True,
+                capture_driver=capture_driver,
+                target_binding_source=target_binding_source,
+                **failed_contract,
+            )
         data_url = self._image_data_url(model_path)
         result = self._screenshot_result(
             path,
@@ -638,6 +1006,23 @@ class BrowserComputerController:
             capture_target=capture.get("target_window"),
             action_target=action_target,
             crop_reference=crop_reference,
+        )
+        result.update(
+            {
+                "screenshot_path": str(path),
+                "screenshot_supported": True,
+                "target_resolved": target_resolved,
+                "capture_attempted": True,
+                "capture_succeeded": True,
+                "artifact_path_present": True,
+                "model_path_present": True,
+                "artifact_file_created": True,
+                "model_file_created": True,
+                "artifact_root_match": True,
+                "screenshot_contract_valid": True,
+                "capture_driver": capture_driver,
+                "target_binding_source": target_binding_source,
+            }
         )
         if data_url:
             result["data_url"] = data_url
@@ -653,6 +1038,108 @@ class BrowserComputerController:
             }
         except Exception:
             pass
+        return result
+
+    def _screenshot_artifact_contract(self, path: Path, *, model: bool = False) -> dict[str, bool]:
+        path_present_key = "model_path_present" if model else "artifact_path_present"
+        file_created_key = "model_file_created" if model else "artifact_file_created"
+        facts = {
+            path_present_key: bool(str(path)),
+            file_created_key: False,
+            "artifact_root_match": False,
+            "artifact_symlink": False,
+            "artifact_regular_file": False,
+            "artifact_nonempty": False,
+        }
+        try:
+            facts["artifact_symlink"] = path.is_symlink()
+            root = self._artifact_root.expanduser().resolve()
+            resolved = path.expanduser().resolve()
+            facts["artifact_root_match"] = resolved.is_relative_to(root)
+            details = path.lstat()
+            facts["artifact_regular_file"] = stat.S_ISREG(details.st_mode) and not facts["artifact_symlink"]
+            facts["artifact_nonempty"] = details.st_size > 0
+            facts[file_created_key] = bool(
+                facts["artifact_root_match"]
+                and facts["artifact_regular_file"]
+                and facts["artifact_nonempty"]
+            )
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return facts
+
+    @staticmethod
+    def _screenshot_target_binding_source(payload: dict[str, Any]) -> str:
+        target = str(payload.get("target") or payload.get("capture_target") or "").strip().lower()
+        if isinstance(payload.get("window"), dict):
+            return "explicit_window"
+        if any(payload.get(key) not in (None, "") for key in ("pid", "window_id", "hwnd")):
+            return "explicit_identifiers"
+        if any(str(payload.get(key) or "").strip() for key in ("app", "application", "title", "window_title", "title_contains")):
+            return "enumerated_match"
+        if target in {"active_window", "front_window"}:
+            return "active_window"
+        if target in {"selected_window", "window", "app"} or not target:
+            return "persisted_selection" if target else "none"
+        return "none"
+
+    @staticmethod
+    def _screenshot_capture_driver(system: str, capture: dict[str, Any] | None, payload: dict[str, Any]) -> str:
+        reported = str((capture or {}).get("driver") or "")
+        if reported in _SCREENSHOT_CAPTURE_DRIVERS:
+            return reported
+        if system == "Darwin":
+            target = (capture or {}).get("target_window")
+            if isinstance(target, dict):
+                if target.get("capture_rect"):
+                    return "mac_screencapture_rect"
+                if target.get("window_id") not in (None, ""):
+                    return "mac_screencapture_window"
+                return "mac_screencapture_rect"
+            return "mac_screencapture_display"
+        if system == "Windows":
+            return "windows_native"
+        if system == "Linux":
+            return "linux_native"
+        return "none"
+
+    @staticmethod
+    def _screenshot_failure(
+        error_code: str,
+        *,
+        failure_stage: str,
+        screenshot_supported: bool,
+        target_resolved: bool,
+        capture_attempted: bool,
+        capture_driver: str,
+        target_binding_source: str,
+        capture_succeeded: bool = False,
+        **artifact_facts: Any,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "action": "computer.screenshot",
+            "is_error": True,
+            "supported": screenshot_supported,
+            "error_code": error_code,
+            "screenshot_supported": screenshot_supported,
+            "target_resolved": target_resolved,
+            "capture_attempted": capture_attempted,
+            "capture_succeeded": capture_succeeded,
+            "artifact_path_present": bool(artifact_facts.get("artifact_path_present")),
+            "model_path_present": bool(artifact_facts.get("model_path_present")),
+            "artifact_file_created": bool(artifact_facts.get("artifact_file_created")),
+            "model_file_created": bool(artifact_facts.get("model_file_created")),
+            "artifact_root_match": bool(artifact_facts.get("artifact_root_match")),
+            "screenshot_contract_valid": False,
+            "artifact_symlink": bool(artifact_facts.get("artifact_symlink")),
+            "artifact_regular_file": bool(artifact_facts.get("artifact_regular_file")),
+            "artifact_nonempty": bool(artifact_facts.get("artifact_nonempty")),
+            "capture_driver": capture_driver if capture_driver in _SCREENSHOT_CAPTURE_DRIVERS else "none",
+            "target_binding_source": (
+                target_binding_source if target_binding_source in _SCREENSHOT_TARGET_BINDING_SOURCES else "none"
+            ),
+            "failure_stage": failure_stage,
+        }
         return result
 
     def _screenshot_result(
@@ -737,7 +1224,46 @@ class BrowserComputerController:
             "coordinate_source": "attached_image",
             "notes": "For image-based clicking, prefer normalized_x and normalized_y with coordinate_space=normalized_1000. Values are clamped to 0-1000 relative to the attached image; the harness converts them to action pixels. point:[y,x] and normalized_point remain legacy-compatible for normalized_1000 only.",
         }
+        self._with_browser_text_input_recommendations(result)
         self._remember_last_screenshot(result)
+        return result
+
+    @staticmethod
+    def _with_browser_text_input_recommendations(result: dict[str, Any]) -> dict[str, Any]:
+        existing = result.get("recommended_next_actions")
+        recommendations = list(existing) if isinstance(existing, list) else []
+        for action in _BROWSER_TEXT_INPUT_RECOMMENDED_NEXT_ACTIONS:
+            if action not in recommendations:
+                recommendations.append(action)
+        result["recommended_next_actions"] = recommendations
+        result.setdefault("input_guidance", _BROWSER_TEXT_INPUT_GUIDANCE)
+        return result
+
+    @staticmethod
+    def _with_computer_type_success_guidance(result: dict[str, Any]) -> dict[str, Any]:
+        existing = result.get("recommended_next_actions")
+        recommendations = list(existing) if isinstance(existing, list) else []
+        for action in _COMPUTER_TYPE_SUCCESS_RECOMMENDED_NEXT_ACTIONS:
+            if action not in recommendations:
+                recommendations.append(action)
+        result["recommended_next_actions"] = recommendations
+        result["input_guidance"] = _COMPUTER_TYPE_SUCCESS_GUIDANCE
+        result.setdefault("task_progress", dict(_COMPUTER_TYPE_SUCCESS_TASK_PROGRESS))
+        preferred_next_action = dict(_COMPUTER_TYPE_SUCCESS_NEXT_ACTION["preferred"])
+        preferred_next_action["payload"] = dict(preferred_next_action["payload"])
+        result.setdefault(
+            "next_action",
+            {
+                "preferred": preferred_next_action,
+                "alternatives": [
+                    dict(item) for item in _COMPUTER_TYPE_SUCCESS_NEXT_ACTION["alternatives"]
+                ],
+            },
+        )
+        result.setdefault(
+            "avoid_actions",
+            [dict(item) for item in _COMPUTER_TYPE_SUCCESS_AVOID_ACTIONS],
+        )
         return result
 
     @staticmethod
@@ -1002,6 +1528,7 @@ class BrowserComputerController:
                 variants.add(re.sub(r"[^a-z0-9]+", " ", base).strip())
 
         alias_groups = (
+            {"chatgpt atlas", "chatgptatlas", "atlas", "openai atlas", "openaiatlas"},
             {"google chrome", "googlechrome", "chrome", "chrome.exe"},
             {"microsoft edge", "microsoftedge", "ms edge", "edge", "msedge", "msedge.exe"},
             {"mozilla firefox", "mozillafirefox", "firefox", "firefox.exe"},
@@ -1021,7 +1548,7 @@ class BrowserComputerController:
             return False
         if need & hay:
             return True
-        return any(left in right or right in left for left in need for right in hay)
+        return any(left in right for left in need for right in hay)
 
     @classmethod
     def _app_matches_filter(cls, app: dict[str, Any], needle: str) -> bool:
@@ -1535,6 +2062,12 @@ class BrowserComputerController:
             "surface_id": payload.get("surface_id"),
             "observation_revision": payload.get("observation_revision"),
         }
+        if isinstance(window, dict):
+            target["window_bounds"] = {
+                key: window[key]
+                for key in ("x", "y", "width", "height")
+                if window.get(key) is not None
+            }
         if resolution_error:
             target["_target_resolution_error"] = resolution_error
         return target
@@ -1610,6 +2143,7 @@ class BrowserComputerController:
                 "window_title": target_record.get("title"),
             }
             meta["recommended_next_actions"] = ["computer.screenshot", "computer.click", "computer.observe"]
+            self._with_browser_text_input_recommendations(meta)
         return meta
 
     def _computer_seat_observe(self, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
@@ -1626,6 +2160,8 @@ class BrowserComputerController:
             target = self._computer_seat_target(payload)
             result = svc.observe(target)
             result["action"] = "computer.observe"
+            if isinstance(result, dict):
+                self._with_browser_text_input_recommendations(result)
             return result
         except Exception as e:
             return {"action": "computer.observe", "error": str(e)}
@@ -2098,9 +2634,542 @@ class BrowserComputerController:
                 ):
                     return None
                 return result
+            if self._seat_result_is_terminal_type_failure(action, result):
+                return result
             return None
         except Exception:
             return None
+
+    @staticmethod
+    def _semantic_text_control_selector(payload: dict[str, Any]) -> dict[str, Any] | None:
+        intent = str(payload.get("target_control") or payload.get("control_intent") or "").strip().lower()
+        if intent not in {"browser_address", "browser_address_field"}:
+            return None
+        return {
+            "roles": ["AXTextField", "AXComboBox", "AXTextArea"],
+            "relative_region": {"min_x": 0.08, "max_x": 0.94, "min_y": 0.0, "max_y": 0.22},
+            "require_enabled": True,
+            "require_settable": True,
+            "preference": "widest",
+            "require_background": True,
+            "forbidden_ancestor_roles": ["AXWebArea"],
+        }
+
+    def _try_semantic_background_text_control(
+        self,
+        action_payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        selector = self._semantic_text_control_selector(action_payload)
+        if selector is None:
+            return None
+        target = self._computer_seat_target(action_payload)
+        target_error = str(target.get("_target_resolution_error") or "")
+        if target_error:
+            return {
+                "action": "computer.type", "executed": False, "is_error": True,
+                "background": True, "reason": target_error,
+                "error_code": "TYPE_EXACT_WINDOW_NOT_FOUND",
+            }
+        bounds = target.get("window_bounds")
+        if not target.get("pid") or not target.get("window_id") or not isinstance(bounds, dict) or len(bounds) != 4:
+            return {
+                "action": "computer.type", "executed": False, "is_error": True,
+                "background": True,
+                "reason": "Verified semantic text replacement requires an exact PID, window id, and window geometry.",
+                "error_code": "TYPE_EXACT_WINDOW_REQUIRED",
+            }
+        try:
+            result = self._get_computer_seat().set_text_control(
+                target,
+                text=str(action_payload.get("text") or ""),
+                selector=selector,
+            )
+        except Exception:
+            result = None
+        if isinstance(result, dict) and result.get("executed") and self._seat_result_is_background_safe(result):
+            return self._background_action_success("computer.type", action_payload, result, platform.system())
+        diagnostics = self._safe_semantic_text_diagnostics(result)
+        return {
+            "action": "computer.type", "executed": False, "is_error": True,
+            "background": True,
+            "driver": result.get("driver", "computer_seat") if isinstance(result, dict) else "computer_seat",
+            "input_dispatched": diagnostics.get("input_dispatched") is True,
+            "completion_verified": False,
+            "diagnostics": diagnostics,
+            "error_code": str(diagnostics.get("error_code") or "TYPE_SEMANTIC_BACKGROUND_FAILED"),
+            "reason": "Verified background semantic text replacement failed; foreground replay was rejected.",
+        }
+
+    def _probe_semantic_text_control(self, action_payload: dict[str, Any]) -> dict[str, Any]:
+        """Resolve one semantic browser control without approval, text, or fallback."""
+        selector = self._semantic_text_control_selector(action_payload)
+        if selector is None:
+            return self._semantic_probe_protocol_failure("TYPE_SEMANTIC_SELECTOR_INVALID")
+        target = self._computer_seat_target(action_payload)
+        target_error = str(target.get("_target_resolution_error") or "")
+        if target_error:
+            return self._semantic_probe_protocol_failure("TYPE_EXACT_WINDOW_NOT_FOUND")
+        bounds = target.get("window_bounds")
+        if not target.get("pid") or not target.get("window_id") or not isinstance(bounds, dict) or len(bounds) != 4:
+            return self._semantic_probe_protocol_failure("TYPE_EXACT_WINDOW_REQUIRED")
+        try:
+            seat_result = self._get_computer_seat().probe_text_control(target, selector=selector)
+        except Exception:
+            seat_result = None
+        diagnostics = self._safe_semantic_text_diagnostics(seat_result)
+        protocol_complete = bool(
+            isinstance(seat_result, dict)
+            and seat_result.get("executed") is True
+            and diagnostics.get("probe_completed") is True
+            and isinstance(diagnostics.get("semantic_control_ready"), bool)
+            and diagnostics.get("input_dispatched") is False
+            and diagnostics.get("mutation_attempted") is False
+            and diagnostics.get("semantic_discovery_stage")
+        )
+        if not protocol_complete:
+            return self._semantic_probe_protocol_failure(
+                str(diagnostics.get("error_code") or "TYPE_DIAGNOSTICS_INVALID")
+            )
+        ready = diagnostics.get("semantic_control_ready") is True
+        return {
+            "action": "computer.probe_text_control",
+            "executed": True,
+            "probe_completed": True,
+            "semantic_control_ready": ready,
+            "input_dispatched": False,
+            "mutation_attempted": False,
+            "background": True,
+            "foreground": False,
+            "requires_foreground": False,
+            "uses_physical_input": False,
+            "can_parallel_user_work": True,
+            "diagnostics": diagnostics,
+            **({"error_code": diagnostics["error_code"]} if diagnostics.get("error_code") else {}),
+        }
+
+    @staticmethod
+    def _semantic_probe_protocol_failure(error_code: str) -> dict[str, Any]:
+        if error_code == "TYPE_SEMANTIC_AX_SUBTREE_PERSISTENTLY_STALE":
+            # Accept an old native helper response, but never emit its broad
+            # subtree taxonomy from this current pack.
+            error_code = "TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE"
+        allowed_code = (
+            error_code
+            if error_code in {
+                "TYPE_SEMANTIC_SELECTOR_INVALID", "TYPE_EXACT_WINDOW_REQUIRED",
+                "TYPE_EXACT_WINDOW_NOT_FOUND", "TYPE_DIAGNOSTICS_INVALID",
+                "TYPE_ACCESSIBILITY_NOT_TRUSTED", "TYPE_ACCESSIBILITY_API_UNAVAILABLE",
+                "TYPE_SEMANTIC_PROTOCOL_INVALID", "TYPE_BACKGROUND_PRECONDITION_FAILED",
+                "TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE",
+                # Compatibility-only for older native helpers.
+                "TYPE_SEMANTIC_AX_SUBTREE_PERSISTENTLY_STALE",
+                "TYPE_SEMANTIC_PROBE_UNAVAILABLE", "TYPE_SEMANTIC_PROBE_FAILED",
+                "TYPE_SEMANTIC_PROBE_UNSAFE_RESULT",
+            }
+            else "TYPE_DIAGNOSTICS_INVALID"
+        )
+        return {
+            "action": "computer.probe_text_control",
+            "executed": False,
+            "probe_completed": False,
+            "semantic_control_ready": False,
+            "input_dispatched": False,
+            "mutation_attempted": False,
+            "background": True,
+            "foreground": False,
+            "requires_foreground": False,
+            "uses_physical_input": False,
+            "is_error": True,
+            "error_code": allowed_code,
+            "reason": "Semantic text-control probe protocol failed.",
+            "diagnostics": {
+                "probe_completed": False,
+                "semantic_control_ready": False,
+                "input_dispatched": False,
+                "mutation_attempted": False,
+                "error_code": allowed_code,
+            },
+        }
+
+    @staticmethod
+    def _safe_semantic_text_diagnostics(result: Any) -> dict[str, Any]:
+        raw = BrowserComputerController._type_diagnostics(result)
+        safe: dict[str, Any] = {}
+        for key in (
+            "completion_verified", "input_dispatched", "target_window_stable",
+            "semantic_control_resolved", "semantic_control_role_allowed",
+            "semantic_control_settable", "focus_attempted", "focus_succeeded",
+            "focused_control_matches", "selection_verified",
+            "value_readback_attempted", "value_readback_matched", "mutation_observed",
+            "semantic_counts_truncated", "saw_ax_text_field", "saw_ax_combo_box",
+            "saw_ax_text_area", "saw_ax_search_field_subrole",
+            "saw_ax_web_area_ancestor", "saw_unlisted_text_capable_role",
+            "window_frame_match", "child_frame_valid", "child_center_inside_window",
+            "relative_region_evaluable", "relative_region_matched",
+            "probe_completed", "semantic_control_ready", "mutation_attempted",
+            "semantic_window_scan_complete", "semantic_window_scan_truncated",
+            "semantic_window_depth_truncated", "semantic_app_scan_performed",
+            "semantic_app_scan_complete", "semantic_app_scan_truncated",
+            "saw_unlisted_container_class", "saw_unlisted_static_value_class",
+            "saw_unlisted_action_control_class", "saw_unlisted_web_root_class",
+            "saw_unlisted_other_class",
+            "semantic_children_failure_on_window_root", "semantic_children_failure_under_toolbar",
+            "semantic_children_attribute_advertised", "semantic_children_count_known",
+            "semantic_children_count_nonzero", "semantic_children_branch_proven_empty",
+            "semantic_actionable_branch_scope_complete", "semantic_actionable_candidates_complete",
+            "semantic_actionable_scan_complete", "semantic_stale_node_self_eligible",
+            "semantic_stale_recovery_eligible", "semantic_stale_recovery_attempted",
+            "semantic_stale_recovery_window_rebound", "semantic_stale_recovery_window_stable",
+            "semantic_stale_recovery_second_pass_complete", "semantic_stale_recovery_succeeded",
+            "semantic_stale_parent_refresh_attempted", "semantic_stale_parent_refresh_succeeded",
+            "semantic_stale_recovery_final_scan_complete",
+            "semantic_stale_additional_read_budget_exhausted",
+            "exact_binding_input_valid", "exact_running_app_present",
+            "exact_quartz_query_completed", "exact_quartz_record_present",
+            "exact_quartz_owner_matches", "exact_quartz_layer_allowed", "exact_quartz_visible",
+            "exact_quartz_frame_matches", "exact_ax_windows_attribute_available",
+            "exact_ax_windows_payload_valid", "exact_ax_windows_read_completed",
+            "exact_ax_match_present", "exact_ax_match_unique", "exact_window_resolved",
+            "exact_resolution_retry_attempted", "exact_resolution_retry_recovered",
+            "native_frontmost_check_completed", "native_target_non_frontmost_before",
+            "native_target_non_frontmost_after", "native_frontmost_unchanged",
+            "semantic_actionable_counts_truncated", "semantic_app_diagnostic_counts_truncated",
+            "semantic_unlisted_relation_scan_complete",
+            "semantic_exposure_probe_performed", "semantic_exposure_probe_complete",
+            "semantic_exposure_probe_truncated", "semantic_alt_contents_advertised",
+            "semantic_exposure_global_node_limit_hit", "semantic_exposure_global_read_limit_hit",
+            "semantic_exposure_count_saturated",
+            "semantic_alt_visible_children_advertised", "semantic_alt_navigation_order_advertised",
+            "semantic_alt_shared_text_advertised", "semantic_alt_focused_element_present",
+            "semantic_alt_focused_element_exact_owned", "semantic_alt_focused_element_non_web",
+            "semantic_alt_focused_element_allowed_role", "semantic_alt_search_predicate_advertised",
+            "semantic_alt_text_marker_relation_advertised", "semantic_alt_allowed_role_found",
+            "semantic_alt_full_eligibility_found",
+            "semantic_navigation_order_count_stable", "semantic_navigation_order_complete",
+        ):
+            if isinstance(raw.get(key), bool):
+                safe[key] = raw[key]
+        count_caps = {
+            "semantic_nodes_visited_count": 255,
+            "semantic_role_match_count": 64,
+            "semantic_window_owned_count": 64,
+            "semantic_non_web_content_count": 64,
+            "semantic_frame_valid_count": 64,
+            "semantic_region_match_count": 64,
+            "semantic_enabled_count": 64,
+            "semantic_value_present_count": 64,
+            "semantic_value_readable_count": 64,
+            "semantic_value_settable_count": 64,
+            "semantic_selected_text_settable_count": 64,
+            "semantic_selected_range_settable_count": 64,
+            "semantic_focus_settable_count": 64,
+            "semantic_final_candidate_count": 8,
+            "semantic_preinvalidation_candidate_count": 8,
+            "semantic_window_nodes_visited_count": 255,
+            "semantic_window_duplicate_nodes_skipped_count": 255,
+            "semantic_window_max_depth_reached": 20,
+            "semantic_app_nodes_visited_count": 255,
+            "semantic_forbidden_root_count": 64,
+            "semantic_forbidden_subtree_pruned_count": 64,
+            "semantic_other_window_pruned_count": 64,
+            "semantic_children_read_failure_count": 64,
+            "semantic_children_read_success_count": 64,
+            "semantic_children_empty_count": 64,
+            "semantic_children_unsupported_count": 64,
+            "semantic_children_no_value_count": 64,
+            "semantic_children_cannot_complete_count": 64,
+            "semantic_children_invalid_element_count": 64,
+            "semantic_children_global_failure_count": 64,
+            "semantic_children_protocol_failure_count": 64,
+            "semantic_children_unknown_branch_count": 64,
+            "semantic_unresolved_selector_branch_count": 64,
+            "semantic_children_proven_empty_after_failure_count": 64,
+            "semantic_children_retry_attempted_count": 64,
+            "semantic_children_retry_recovered_count": 64,
+            "semantic_stale_parent_refresh_count": 1,
+            "semantic_stale_parent_refresh_read_count": 2,
+            "semantic_stale_additional_ax_read_count": 64,
+            "semantic_discovery_pass_count": 3,
+            "semantic_stale_recovery_restart_count": 2,
+            "semantic_first_pass_stale_count": 64,
+            "semantic_second_pass_stale_count": 64,
+            "semantic_first_pass_unknown_branch_count": 64,
+            "semantic_second_pass_unknown_branch_count": 64,
+            "semantic_first_pass_nodes_visited_count": 255,
+            "semantic_second_pass_nodes_visited_count": 255,
+            "semantic_second_pass_final_candidate_count": 8,
+            "semantic_third_pass_stale_count": 64,
+            "semantic_third_pass_unknown_branch_count": 64,
+            "semantic_third_pass_nodes_visited_count": 255,
+            "semantic_third_pass_final_candidate_count": 8,
+            "semantic_navigation_order_fallback_attempted_count": 8,
+            "semantic_navigation_order_fallback_succeeded_count": 8,
+            "semantic_navigation_order_recovered_invalid_count": 8,
+            "semantic_navigation_order_page_read_count": 16,
+            "semantic_window_allowed_role_count": 64,
+            "semantic_app_owned_allowed_role_count": 64,
+            "semantic_allowed_ax_text_field_count": 8,
+            "semantic_allowed_ax_combo_box_count": 8,
+            "semantic_allowed_ax_text_area_count": 8,
+            "semantic_allowed_frame_inside_window_count": 8,
+            "semantic_allowed_region_x_match_count": 8,
+            "semantic_allowed_region_y_match_count": 8,
+            "semantic_unlisted_text_capable_count": 64,
+            "semantic_unlisted_window_owned_count": 64,
+            "semantic_unlisted_non_web_count": 64,
+            "semantic_unlisted_frame_valid_count": 64,
+            "semantic_unlisted_region_match_count": 64,
+            "semantic_unlisted_enabled_count": 64,
+            "semantic_unlisted_value_readable_count": 64,
+            "semantic_unlisted_mutation_ready_count": 64,
+            "semantic_unlisted_value_settable_count": 64,
+            "semantic_unlisted_selected_text_settable_count": 64,
+            "semantic_unlisted_selected_range_settable_count": 64,
+            "semantic_unlisted_focus_settable_count": 64,
+            "semantic_unlisted_attribute_capability_known_count": 64,
+            "semantic_unlisted_under_toolbar_count": 64,
+            "semantic_unlisted_related_allowed_role_count": 64,
+            "exact_resolution_attempt_count": 2, "exact_quartz_record_match_count": 2,
+            "exact_ax_window_count": 16, "exact_ax_frame_valid_count": 16,
+            "exact_ax_frame_match_count": 8,
+            "semantic_exposure_nodes_visited_count": 64,
+            "semantic_exposure_edge_reads_count": 128,
+            "semantic_exposure_edge_read_failure_count": 16,
+            "semantic_exposure_exact_owned_count": 64,
+            "semantic_exposure_non_web_count": 64,
+            "semantic_exposure_allowed_role_count": 8,
+            "semantic_exposure_full_eligibility_count": 8,
+            "semantic_exposure_shared_text_relation_count": 8,
+            "semantic_exposure_parameterized_capability_count": 8,
+            "semantic_exposure_page_control_count": 8,
+            "semantic_exposure_incomplete_cause_count": 8,
+            "semantic_exposure_edge_fanout_truncated_count": 16,
+            "semantic_exposure_depth_limit_new_target_count": 16,
+            "semantic_exposure_depth_limit_queued_target_count": 16,
+            "semantic_exposure_queue_remainder_count": 64,
+            "semantic_exposure_payload_missing_count": 16,
+            "semantic_exposure_payload_invalid_count": 16,
+            "semantic_exposure_payload_mixed_count": 16,
+            "semantic_exposure_attribute_inventory_unknown_count": 16,
+            "semantic_exposure_parameterized_inventory_unknown_count": 5,
+            "semantic_exposure_edge_incomplete_without_failure_count": 16,
+            "semantic_exposure_node_ownership_rejected_count": 64,
+            "semantic_exposure_edge_target_ownership_rejected_count": 64,
+        }
+        counts_truncated = safe.get("semantic_counts_truncated") is True
+        for key, cap in count_caps.items():
+            value = raw.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                safe[key] = max(0, min(cap, value))
+                counts_truncated = counts_truncated or value < 0 or value > cap
+        if any(key in safe for key in count_caps):
+            safe["semantic_counts_truncated"] = counts_truncated
+        error_code = str(raw.get("error_code") or "")
+        if error_code == "TYPE_SEMANTIC_AX_SUBTREE_PERSISTENTLY_STALE":
+            error_code = "TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE"
+        if error_code in {
+            "TEXT_REQUIRED", "TYPE_ACCESSIBILITY_NOT_TRUSTED", "TYPE_ACCESSIBILITY_API_UNAVAILABLE",
+            "TYPE_SEMANTIC_PROTOCOL_INVALID", "TYPE_EXACT_WINDOW_REQUIRED",
+            "TYPE_EXACT_WINDOW_NOT_FOUND", "TYPE_BACKGROUND_PRECONDITION_FAILED",
+            "TYPE_SEMANTIC_SELECTOR_INVALID", "TYPE_SEMANTIC_CONTROL_NOT_FOUND",
+            "TYPE_SEMANTIC_CONTROL_DISABLED", "TYPE_SEMANTIC_VALUE_UNREADABLE",
+            "TYPE_SEMANTIC_CONTROL_NOT_SETTABLE", "TYPE_SEMANTIC_CONTROL_AMBIGUOUS",
+            "TYPE_SEMANTIC_WINDOW_OWNERSHIP_UNVERIFIED", "TYPE_SEMANTIC_COORDINATE_MISMATCH",
+            "TYPE_SEMANTIC_DISCOVERY_INCOMPLETE",
+            "TYPE_SEMANTIC_AX_BRANCH_REPEATEDLY_STALE",
+            # Compatibility-only for older native helpers.
+            "TYPE_SEMANTIC_AX_SUBTREE_PERSISTENTLY_STALE",
+            "TYPE_SEMANTIC_ROLE_CLASS_UNRESOLVED",
+            "TYPE_SEMANTIC_PROBE_UNAVAILABLE", "TYPE_SEMANTIC_PROBE_FAILED",
+            "TYPE_SEMANTIC_PROBE_UNSAFE_RESULT",
+            "TYPE_EXACT_WINDOW_INPUT_INVALID", "TYPE_EXACT_WINDOW_APP_NOT_RUNNING",
+            "TYPE_EXACT_WINDOW_QUARTZ_RECORD_NOT_FOUND", "TYPE_EXACT_WINDOW_QUARTZ_RECORD_INVALID",
+            "TYPE_EXACT_WINDOW_FRAME_MISMATCH", "TYPE_EXACT_WINDOW_AX_WINDOWS_UNAVAILABLE",
+            "TYPE_EXACT_WINDOW_AX_MATCH_NOT_FOUND", "TYPE_EXACT_WINDOW_AX_MATCH_AMBIGUOUS",
+            "TYPE_SELECTION_INVALID",
+            "TYPE_COMPLETION_NOT_VERIFIED", "TYPE_TARGET_DRIFTED",
+        }:
+            safe["error_code"] = error_code
+        strategy = str(raw.get("input_strategy") or "")
+        if strategy in {"none", "semantic_ax_selected_text", "semantic_ax_value"}:
+            safe["input_strategy"] = strategy
+        failure_stage = str(raw.get("failure_stage") or "")
+        if failure_stage in {
+            "accessibility_permission", "exact_window_binding", "exact_window_resolution",
+            "selector_validation", "background_precondition", "semantic_control_resolution",
+            "semantic_control_validation", "selection_verification", "same_element_readback",
+        }:
+            safe["failure_stage"] = failure_stage
+        for key, allowed in {
+            "semantic_scan_scope": {"exact_window_descendants", "application_tree_owned", "none"},
+            "semantic_discovery_stage": {
+                "no_nodes", "scan_incomplete", "role_absent", "window_ownership_unverified", "web_content_excluded",
+                "frame_unavailable", "region_excluded", "disabled", "value_unreadable",
+                "not_settable", "ambiguous", "ready",
+            },
+            "semantic_coordinate_status": {
+                "window_frame_matched", "child_frames_unavailable", "child_frames_outside_window",
+                "relative_region_miss", "consistent", "unavailable",
+            },
+            "semantic_ownership_proof": {
+                "window_descendant", "ax_window_attribute", "top_level_ui_element",
+                "ancestor_chain", "none",
+            },
+            "semantic_traversal_order": {"breadth_first"},
+            "semantic_unlisted_role_class": {
+                "unlisted_container", "unlisted_static_value", "unlisted_action_control",
+                "unlisted_web_root", "unlisted_other", "multiple", "none",
+            },
+            "semantic_app_diagnostic_stage": {"not_performed", "complete", "scan_incomplete"},
+            "semantic_app_diagnostic_scope": {"application_tree_owned", "none"},
+            "semantic_app_diagnostic_ownership_proof": {
+                "ax_window_attribute", "top_level_ui_element", "ancestor_chain", "multiple", "none",
+            },
+            "semantic_unlisted_relation_kind": {
+                "title_relation", "linked_relation", "parent_child", "none", "multiple",
+            },
+            "semantic_allowed_role_class": {
+                "ax_text_field", "ax_combo_box", "ax_text_area", "multiple", "none",
+            },
+            "semantic_allowed_region_miss_axis": {
+                "none", "x", "y", "both", "outside_window", "frame_unavailable", "multiple",
+            },
+            "semantic_allowed_center_y_band": {
+                "top_0_22", "upper_22_35", "middle_35_65", "lower_65_100",
+                "outside_window", "frame_unavailable", "multiple", "none",
+            },
+            "semantic_allowed_width_band": {
+                "narrow_lt_40", "wide_40_80", "near_full_80_100",
+                "outside_window", "frame_unavailable", "multiple", "none",
+            },
+            "semantic_allowed_height_band": {
+                "shallow_0_15", "medium_15_40", "tall_40_100",
+                "outside_window", "frame_unavailable", "multiple", "none",
+            },
+            "semantic_children_failure_class": {
+                "none", "cannot_complete", "stale_element", "global_api", "protocol",
+                "generic", "multiple",
+            },
+            "semantic_children_incomplete_branch_class": {
+                "window_root", "container", "static_value", "action_control", "other",
+                "multiple", "none",
+            },
+            "semantic_children_ax_error_class": {
+                "none", "no_value", "attribute_unsupported", "cannot_complete",
+                "invalid_element", "api_disabled", "not_implemented", "illegal_argument",
+                "payload_type_invalid", "generic", "multiple",
+            },
+            "semantic_children_structural_empty_proof": {
+                "none", "count_zero", "attribute_not_advertised", "multiple",
+            },
+            "semantic_navigation_order_fallback_outcome": {
+                "not_attempted", "complete_empty", "complete_children", "unavailable",
+                "incomplete", "protocol_invalid", "multiple",
+            },
+            "semantic_navigation_order_failure_class": {
+                "none", "not_advertised", "count_unavailable", "count_over_limit",
+                "page_ax_failure", "payload_invalid", "count_changed", "duplicate",
+                "self_cycle", "parent_unavailable", "parent_mismatch", "multiple",
+            },
+            "semantic_navigation_order_ax_error_class": {
+                "none", "no_value", "attribute_unsupported", "cannot_complete",
+                "invalid_element", "api_disabled", "not_implemented", "illegal_argument",
+                "generic", "multiple",
+            },
+            "semantic_navigation_order_cardinality_class": {
+                "zero", "one", "two_to_eight", "nine_to_64", "sixty_five_to_255",
+                "over_limit", "unknown", "multiple",
+            },
+            "semantic_navigation_order_parent_proof": {
+                "not_checked", "empty", "all_direct", "unavailable", "mismatch", "multiple",
+            },
+            "semantic_stale_branch_scope": {
+                "none", "structurally_empty", "forbidden_web", "candidate_node",
+                "selector_relevant_unknown", "window_root", "multiple", "unknown",
+            },
+            "accessibility_trust_preflight": {"granted", "denied"},
+            "semantic_stale_node_class": {
+                "none", "container", "text_control", "static_value", "action_control",
+                "other", "multiple",
+            },
+            "semantic_stale_recovery_outcome": {
+                "not_needed", "recovered_clean", "recovery_not_eligible",
+                "exact_window_rebind_failed", "exact_window_changed", "frontmost_changed",
+                # Older helpers can remain observable during the rollout.
+                "second_pass_stale", "second_pass_incomplete",
+                "parent_refresh_not_eligible", "parent_refresh_failed",
+                "parent_refresh_budget_exhausted", "recovered_after_parent_refresh",
+                "final_pass_stale", "final_pass_incomplete",
+            },
+            "semantic_stale_reference_refresh_class": {
+                "not_attempted", "same_stale_reference_returned",
+                "stale_reference_absent_nonempty", "branch_now_empty", "unknown",
+            },
+            "semantic_stale_branch_comparison": {
+                "not_applicable", "same_class_and_depth", "different_class_or_depth",
+                "multiple", "unknown",
+            },
+            "semantic_second_third_stale_reference_class": {
+                "same_parent_same_reference", "same_parent_new_reference",
+                "new_parent_same_reference", "new_parent_new_reference", "not_comparable",
+            },
+            "exact_resolution_stage": {
+                "input_validation", "running_application", "quartz_record", "quartz_frame",
+                "ax_window_enumeration", "ax_window_match", "background_validation", "ready",
+            },
+            "exact_resolution_outcome": {
+                "input_invalid", "application_not_running", "quartz_record_missing",
+                "quartz_record_invalid", "quartz_frame_mismatch", "ax_windows_unavailable",
+                "ax_match_absent", "ax_match_ambiguous", "frontmost_changed", "ready", "recovered",
+            },
+            "ax_windows_outcome": {
+                "success", "no_value", "unsupported", "cannot_complete",
+                "invalid_application_element", "global_failure", "protocol_invalid",
+            },
+            "semantic_exposure_stage": {
+                "incomplete", "alternate_structural_role_found", "relationship_role_found",
+                "focused_page_control", "capability_advertised_only", "only_unlisted_proxy",
+                "complete_no_fixed_exposure",
+            },
+            "semantic_exposure_source": {
+                "contents", "visible_children", "navigation_order", "shared_text",
+                "focused_element", "multiple", "none",
+            },
+            "semantic_parameterized_capability_class": {
+                "search_predicate", "text_marker_relation", "multiple", "none",
+            },
+            "semantic_exposure_incomplete_cause": {
+                "none", "edge_fanout", "depth_limit", "global_node_limit",
+                "global_read_limit", "queue_remainder", "focus_cardinality",
+                "payload_invalid", "attribute_inventory_unknown",
+                "parameterized_inventory_unknown", "edge_incomplete_without_failure",
+                "counter_saturation", "multiple",
+            },
+            "semantic_exposure_fanout_source": {
+                "contents", "visible_children", "navigation_order", "shared_text",
+                "title_relation", "serves_as_title", "linked", "parent", "multiple", "none",
+            },
+            "semantic_exposure_depth_limit_source": {
+                "contents", "visible_children", "navigation_order", "shared_text",
+                "title_relation", "serves_as_title", "linked", "parent", "multiple", "none",
+            },
+            "semantic_exposure_focus_cardinality": {"none", "one", "multiple", "unknown"},
+            "semantic_exposure_count_saturation_class": {
+                "none", "incomplete_cause_count", "edge_fanout",
+                "depth_limit_new_target", "depth_limit_queued_target", "queue_remainder",
+                "payload_missing", "payload_invalid", "payload_mixed",
+                "attribute_inventory_unknown", "parameterized_inventory_unknown",
+                "edge_incomplete_without_failure", "node_ownership_rejected",
+                "edge_target_ownership_rejected", "nodes_visited", "edge_reads",
+                "edge_read_failures", "exact_owned", "non_web", "allowed_role",
+                "full_eligibility", "shared_text_relation", "parameterized_capability",
+                "page_control", "multiple",
+            },
+        }.items():
+            value = str(raw.get(key) or "")
+            if value in allowed:
+                safe[key] = value
+        return safe
 
     def _desktop_action(self, action: str, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
         dry_run = self._truthy(payload.get("dry_run"))
@@ -2130,7 +3199,9 @@ class BrowserComputerController:
         approval_payload = self._desktop_approval_payload(action, payload, action_payload, virtual_only=virtual_only)
         if not (yolo_mode or self._consume_approval(payload, action, approval_payload)):
             return self._approval_required(action, approval_payload)
-        remember_pointer = not self._background_requested(payload)
+        foreground_fallback_requested = self._foreground_fallback_requested(action_payload)
+        background_only = self._background_requested(action_payload) and not foreground_fallback_requested
+        remember_pointer = not background_only
         if action == "computer.drag":
             action_payload, click_marker, drag_marker = self._resolve_drag_points(payload, remember_cursor=remember_pointer)
         elif action in {"computer.move", "computer.click"}:
@@ -2140,7 +3211,12 @@ class BrowserComputerController:
                 remember_cursor=remember_pointer,
             )
         virtual_only = self._pointer_action_is_virtual_only(action, payload)
-        background_only = self._background_requested(action_payload)
+        if action == "computer.type" and self._semantic_text_control_selector(action_payload) is not None:
+            with self._edge_haze(action, action_payload) as edge_haze:
+                semantic_result = self._try_semantic_background_text_control(action_payload)
+            assert semantic_result is not None
+            self._attach_edge_haze_result(semantic_result, edge_haze)
+            return semantic_result
         if background_only:
             with self._edge_haze(action, action_payload) as edge_haze:
                 seat_result = self._try_computer_seat_action(action, action_payload, background_safe_only=True)
@@ -2164,7 +3240,7 @@ class BrowserComputerController:
                         if drag_marker:
                             result["drag_marker"] = drag_marker
                     return result
-            return self._background_visible_window_required(action, action_payload, system)
+            return self._background_visible_window_required(action, action_payload, system, seat_result=seat_result)
         if action in {"computer.move", "computer.click", "computer.drag"} and virtual_only:
             pointer = self._set_ai_cursor(action_payload)
             pointer_overlay = self._publish_virtual_pointer(pointer, action=action, payload=action_payload)
@@ -2214,6 +3290,14 @@ class BrowserComputerController:
                     result["is_error"] = True
                     result["reason"] = "Background key sequence partially executed; refusing foreground replay."
                     return result
+            if seat_result is not None:
+                return self._background_visible_window_required(
+                    action,
+                    action_payload,
+                    system,
+                    implicit=True,
+                    seat_result=seat_result,
+                )
         if action in {"computer.type", "computer.key", "computer.scroll"} and action_payload.get("focus") is False:
             return {
                 "action": action,
@@ -2241,6 +3325,12 @@ class BrowserComputerController:
             result["driver"] = seat_result.get("driver", "computer_seat")
             result["is_fallback"] = seat_result.get("is_fallback", False)
             self._attach_edge_haze_result(result, edge_haze)
+            if action == "computer.type" and isinstance(seat_result.get("data"), dict):
+                seat_data = seat_result["data"]
+                if "completion_verified" in seat_data:
+                    result["completion_verified"] = seat_data.get("completion_verified") is True
+                if seat_data.get("completion_check"):
+                    result["completion_check"] = str(seat_data["completion_check"])
             if action in {"computer.move", "computer.click"}:
                 result["target"] = {"x": int(action_payload.get("x", 0)), "y": int(action_payload.get("y", 0))}
                 if click_marker:
@@ -2264,6 +3354,34 @@ class BrowserComputerController:
                     drag_marker=drag_marker,
                 )
                 result.update(screenshot)
+            if action == "computer.type" and self._seat_type_completion_verified(seat_result):
+                self._with_computer_type_success_guidance(result)
+            elif action == "computer.type":
+                self._mark_type_delivery_unverified(result, seat_result)
+            return result
+        if self._seat_result_is_terminal_type_failure(action, seat_result):
+            notes = seat_result.get("notes") if isinstance(seat_result, dict) else None
+            reason = (
+                str(notes[0])
+                if isinstance(notes, list) and notes
+                else "Native text input was dispatched, but full completion was not verified."
+            )
+            result = {
+                "action": action,
+                "executed": False,
+                "is_error": True,
+                "platform": system,
+                "driver": seat_result.get("driver", "computer_seat"),
+                "input_dispatched": self._type_diagnostics(seat_result).get("input_dispatched") is True,
+                "completion_verified": False,
+                "diagnostics": self._type_diagnostics(seat_result),
+                "reason": reason,
+                "recovery": {
+                    "kind": "type_completion_unverified",
+                    "note": "Inspect the focused field before deciding whether another text action is safe.",
+                },
+            }
+            self._attach_edge_haze_result(result, edge_haze)
             return result
         # --- Legacy platform-specific fallback ---
         with self._edge_haze(action, action_payload) as edge_haze:
@@ -2316,13 +3434,46 @@ class BrowserComputerController:
                 drag_marker=drag_marker,
             )
             result.update(screenshot)
+        if action == "computer.type":
+            self._with_computer_type_success_guidance(result)
         return result
+
+    @staticmethod
+    def _seat_result_has_dispatched_type_input(action: str, result: Any) -> bool:
+        if action != "computer.type" or not isinstance(result, dict):
+            return False
+        data = result.get("data")
+        return isinstance(data, dict) and data.get("input_dispatched") is True
+
+    @staticmethod
+    def _type_diagnostics(result: Any) -> dict[str, Any]:
+        if not isinstance(result, dict):
+            return {}
+        data = result.get("data")
+        if not isinstance(data, dict):
+            return {}
+        diagnostics = data.get("diagnostics")
+        return dict(diagnostics) if isinstance(diagnostics, dict) else dict(data)
+
+    @classmethod
+    def _seat_result_is_terminal_type_failure(cls, action: str, result: Any) -> bool:
+        if action != "computer.type" or not isinstance(result, dict) or result.get("executed"):
+            return False
+        diagnostics = cls._type_diagnostics(result)
+        return (
+            diagnostics.get("input_dispatched") is True
+            or diagnostics.get("direct_ax_attempted") is True
+            or bool(diagnostics.get("failure_stage"))
+            or bool(diagnostics.get("error_code"))
+        )
 
     @staticmethod
     def _should_try_background_seat_before_focus(action: str, payload: dict[str, Any]) -> bool:
         if action not in {"computer.type", "computer.key", "computer.scroll"}:
             return False
         if payload.get("physical") is True:
+            return False
+        if BrowserComputerController._foreground_fallback_requested(payload):
             return False
         return True
 
@@ -2346,8 +3497,11 @@ class BrowserComputerController:
         }
         if seat_result.get("notes"):
             result["notes"] = seat_result.get("notes")
-        if seat_result.get("data"):
+        if seat_result.get("data") and action != "computer.type":
             result["target"] = seat_result.get("data")
+        ax_candidate = BrowserComputerController._safe_ax_candidate_diagnostics(seat_result)
+        if ax_candidate:
+            result["ax_candidate"] = ax_candidate
         if action == "computer.key":
             requested_count = int(seat_result.get("requested_count") or _key_press_count(action_payload))
             executed_count = int(seat_result.get("executed_count") or seat_result.get("count") or requested_count)
@@ -2358,6 +3512,11 @@ class BrowserComputerController:
                 result["partial_success"] = True
         if action == "computer.scroll":
             result["amount"] = int(action_payload.get("amount", action_payload.get("clicks", 1)))
+        if action == "computer.type" and BrowserComputerController._seat_type_completion_verified(seat_result):
+            result["completion_verified"] = True
+            BrowserComputerController._with_computer_type_success_guidance(result)
+        elif action == "computer.type":
+            BrowserComputerController._mark_type_delivery_unverified(result, seat_result)
         return result
 
     @staticmethod
@@ -2380,6 +3539,8 @@ class BrowserComputerController:
             return True
         if driver in {"mac_accessibility", "mac_cgevent_pid"}:
             return True
+        if driver == "mac_swift_host" and str(seat_result.get("action") or "") == "set_text_control":
+            return BrowserComputerController._seat_type_completion_verified(seat_result)
         return False
 
     @staticmethod
@@ -2390,40 +3551,179 @@ class BrowserComputerController:
         if confidence in {"experimental", "best_effort", "posted_only", "posted only"}:
             return False
         driver = str(seat_result.get("driver") or "").strip()
+        if str(seat_result.get("action") or "") == "type_text":
+            return BrowserComputerController._seat_type_completion_verified(seat_result)
+        if str(seat_result.get("action") or "") == "set_text_control":
+            return BrowserComputerController._seat_type_completion_verified(seat_result)
+        if str(seat_result.get("action") or "") == "key":
+            return BrowserComputerController._seat_key_effect_verified(seat_result)
         return driver in {"browser_cdp", "browser_companion", "mac_accessibility", "windows_uia"}
+
+    @staticmethod
+    def _seat_type_completion_verified(seat_result: Any) -> bool:
+        if not isinstance(seat_result, dict):
+            return False
+        if seat_result.get("completion_verified") is True:
+            return True
+        data = seat_result.get("data")
+        if not isinstance(data, dict):
+            return False
+        if data.get("completion_verified") is True:
+            return True
+        diagnostics = data.get("diagnostics")
+        return isinstance(diagnostics, dict) and diagnostics.get("completion_verified") is True
+
+    @staticmethod
+    def _seat_key_effect_verified(seat_result: Any) -> bool:
+        if not isinstance(seat_result, dict):
+            return False
+        if seat_result.get("completion_verified") is True or seat_result.get("postcondition_verified") is True:
+            return True
+        data = seat_result.get("data")
+        if not isinstance(data, dict):
+            return False
+        return data.get("completion_verified") is True or data.get("postcondition_verified") is True
+
+    @staticmethod
+    def _mark_type_delivery_unverified(result: dict[str, Any], seat_result: Any) -> None:
+        result.update(
+            {
+                "executed": True,
+                "delivered": True,
+                "input_dispatched": True,
+                "completion_verified": False,
+                "effect_observed": False,
+                "postcondition_verified": False,
+                "outcome": "posted_unverified",
+                "verification_required": "screenshot",
+                "is_error": True,
+                "error_code": "TYPE_COMPLETION_NOT_VERIFIED",
+            }
+        )
+        ax_candidate = BrowserComputerController._safe_ax_candidate_diagnostics(seat_result)
+        if ax_candidate:
+            result["ax_candidate"] = ax_candidate
+
+    @staticmethod
+    def _mark_key_delivery_unverified(result: dict[str, Any]) -> None:
+        result.update(
+            {
+                "executed": True,
+                "delivered": True,
+                "input_dispatched": True,
+                "completion_verified": False,
+                "effect_observed": False,
+                "postcondition_verified": False,
+                "outcome": "posted_unverified",
+                "verification_required": "focus_state",
+                "is_error": True,
+                "error_code": "KEY_EFFECT_NOT_VERIFIED",
+            }
+        )
+
+    @staticmethod
+    def _safe_ax_candidate_diagnostics(seat_result: Any) -> dict[str, Any]:
+        if not isinstance(seat_result, dict):
+            return {}
+        data = seat_result.get("data")
+        if not isinstance(data, dict):
+            return {}
+        candidate = data.get("ax_candidate")
+        if not isinstance(candidate, dict):
+            return {}
+        safe: dict[str, Any] = {}
+        for key in (
+            "driver_registered",
+            "driver_available",
+            "background_type_capable",
+            "pyobjc_ax_import_available",
+            "ax_process_trusted",
+            "ax_set_value_unsafe_app",
+            "target_app_present",
+            "target_bundle_present",
+            "target_pid_present",
+            "target_window_present",
+            "attempted",
+        ):
+            if isinstance(candidate.get(key), bool):
+                safe[key] = candidate[key]
+        result_code = str(candidate.get("result_code") or "")
+        if result_code in {
+            "AX_DRIVER_NOT_REGISTERED",
+            "AX_DRIVER_UNAVAILABLE",
+            "AX_CAPABILITY_UNAVAILABLE",
+            "AX_BACKGROUND_TYPE_UNSUPPORTED",
+            "AX_DRIVER_ELIGIBLE",
+            "AX_IMPORT_UNAVAILABLE",
+            "AX_NOT_TRUSTED",
+            "AX_SET_VALUE_UNSAFE_APP",
+            "AX_TARGET_MISSING",
+            "AX_ELIGIBLE",
+            "AX_DIAGNOSTICS_UNAVAILABLE",
+            "AX_TYPE_VERIFIED",
+            "AX_TYPE_POSTED_UNVERIFIED",
+            "AX_TYPE_NOT_EXECUTED",
+            "AX_DRIVER_ERROR",
+        }:
+            safe["result_code"] = result_code
+        return safe
 
     @staticmethod
     def _background_visible_window_required(
         action: str,
         action_payload: dict[str, Any],
         system: str,
+        *,
+        implicit: bool = False,
+        seat_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         app = BrowserComputerController._app_name_from_payload(action_payload)
         visible_target_required = bool(app or action_payload.get("window_id") or action_payload.get("hwnd"))
-        recovery_kind = (
-            "visible_window_required"
-            if visible_target_required
-            else "foreground_fallback_available"
-        )
+        if implicit:
+            recovery_kind = "foreground_confirmation_required"
+        elif visible_target_required:
+            recovery_kind = "visible_window_required"
+        else:
+            recovery_kind = "foreground_fallback_available"
         note = (
-            "Show or focus the target app/window, then retry without background."
+            "Show or focus the target app/window if needed, then confirm foreground execution."
             if visible_target_required
-            else "Retry with fallback='foreground' or physical=true only after explicit approval."
+            else "Retry with fallback='foreground' only after explicit user confirmation and approval."
         )
-        return {
+        prompt = "backgroundで実行できません。foregroundで作業しますか？"
+        reason = (
+            "Background mode is the default for this safe action, but no approved background driver could execute it."
+            if implicit
+            else "Requested background mode could not run safely for this target; use visible windows instead."
+        )
+        retry_payload = dict(action_payload or {})
+        retry_payload.pop("background", None)
+        retry_payload["fallback"] = "foreground"
+        notes = seat_result.get("notes") if isinstance(seat_result, dict) else None
+        result = {
             "action": action,
             "executed": False,
             "is_error": True,
             "platform": system,
             "background": True,
-            "reason": "Background input is disabled for this target. Use visible windows and foreground approval instead.",
+            "reason": reason,
+            "message": prompt,
+            "user_prompt": prompt,
             "recovery": {
                 "kind": recovery_kind,
                 "requires_approval": True,
                 "note": note,
+                "prompt": prompt,
+                "retry_payload": retry_payload,
             },
+            **({"notes": notes} if notes else {}),
             **({"target_app": app} if app else {}),
         }
+        if action == "computer.type" and isinstance(seat_result, dict) and seat_result.get("executed") is True:
+            BrowserComputerController._mark_type_delivery_unverified(result, seat_result)
+        if action == "computer.key" and isinstance(seat_result, dict) and seat_result.get("executed") is True:
+            BrowserComputerController._mark_key_delivery_unverified(result)
+        return result
 
     def _clipboard_read(self, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
         include_content = self._truthy(payload.get("include_content")) or self._truthy(payload.get("full_content"))
@@ -2571,6 +3871,19 @@ class BrowserComputerController:
         return mode in {"background", "browser_background", "chromium_background", "chrome_background", "chrome_background_dom", "background_dom"}
 
     @staticmethod
+    def _foreground_fallback_requested(payload: dict[str, Any]) -> bool:
+        if payload.get("foreground") is True:
+            return True
+        mode = str(
+            payload.get("fallback")
+            or payload.get("mode")
+            or payload.get("method")
+            or payload.get("driver")
+            or ""
+        ).strip().lower()
+        return mode in {"foreground", "foreground_input", "visible", "visible_foreground"}
+
+    @staticmethod
     def _app_name_from_payload(payload: dict[str, Any]) -> str:
         return str(
             payload.get("app")
@@ -2592,6 +3905,15 @@ class BrowserComputerController:
             active = self._active_window()
             if active and self._window_records_match(active, selected):
                 return True
+            # Browser chrome can expose an address-bar or transient chrome
+            # surface as the active AX window while the owning page remains
+            # the selected content window. Do not refocus the content window
+            # here: doing so would discard the address-bar focus established
+            # by the immediately preceding shortcut. The helper below is
+            # deliberately same-PID and shape constrained.
+            action = self._foreground_input_action_from_payload(payload)
+            if self._app_only_foreground_input_matches_chrome_surface(action, payload, active, selected):
+                return True
             self._focus_window(selected)
             return True
         if app or title:
@@ -2603,6 +3925,16 @@ class BrowserComputerController:
         if app and self._activate_app_name(filters.get("app", "")):
             return True
         return False
+
+    @staticmethod
+    def _foreground_input_action_from_payload(payload: dict[str, Any]) -> str:
+        if "text" in payload:
+            return "computer.type"
+        if any(key in payload for key in ("key", "key_combo", "modifiers", "modifier")):
+            return "computer.key"
+        if any(key in payload for key in ("direction", "amount", "clicks", "delta_x", "delta_y")):
+            return "computer.scroll"
+        return ""
 
     def _foreground_action_focus_error(self, action: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         if action not in {"computer.type", "computer.key", "computer.scroll", "computer.click", "computer.drag"}:
@@ -2642,7 +3974,11 @@ class BrowserComputerController:
             title=filters.get("title", "").lower(),
         ):
             return None
-        return {
+        if self._app_only_foreground_input_matches_chrome_surface(action, payload, active, target):
+            return None
+        if self._app_only_physical_click_matches_chrome_surface(action, payload, active, target):
+            return None
+        result = {
             "action": action,
             "executed": False,
             "is_error": True,
@@ -2655,6 +3991,111 @@ class BrowserComputerController:
                 "note": "Bring the selected app/window to the foreground, then retry the foreground input action.",
             },
         }
+        if action == "computer.type":
+            result["diagnostics"] = {
+                "error_code": "TYPE_FOREGROUND_TARGET_NOT_VERIFIED",
+                "input_strategy": "none",
+                "completion_verified": False,
+                "input_dispatched": False,
+                "dispatched_units": 0,
+                "target_pid_stable": False,
+                "focused_element_stable": False,
+                "failure_stage": "foreground_target_verification",
+                "direct_ax_attempted": False,
+                "mutation_observed": False,
+            }
+        return result
+
+    def _app_only_foreground_input_matches_chrome_surface(
+        self,
+        action: str,
+        payload: dict[str, Any],
+        active: dict[str, Any] | None,
+        target: dict[str, Any],
+    ) -> bool:
+        if action not in {"computer.type", "computer.key", "computer.scroll"}:
+            return False
+        return self._app_only_payload_matches_same_app_chrome_surface(payload, active, target)
+
+    def _app_only_physical_click_matches_chrome_surface(
+        self,
+        action: str,
+        payload: dict[str, Any],
+        active: dict[str, Any] | None,
+        target: dict[str, Any],
+    ) -> bool:
+        if action != "computer.click" or payload.get("physical") is not True:
+            return False
+        if not self._app_only_payload_matches_same_app_chrome_surface(payload, active, target):
+            return False
+        return self._action_point_inside_window(payload, target)
+
+    def _app_only_payload_matches_same_app_chrome_surface(
+        self,
+        payload: dict[str, Any],
+        active: dict[str, Any] | None,
+        target: dict[str, Any],
+    ) -> bool:
+        if not active:
+            return False
+        filters = self._window_filter(payload)
+        if not filters.get("app") or filters.get("title"):
+            return False
+        if isinstance(payload.get("window"), dict):
+            return False
+        if self._optional_int(payload.get("pid")) is not None:
+            return False
+        if self._window_id_int(payload.get("window_id")) or self._window_id_int(payload.get("hwnd")):
+            return False
+        if not self._same_app_window(active, target):
+            return False
+        active_pid = self._optional_int(active.get("pid"))
+        target_pid = self._optional_int(target.get("pid"))
+        if active_pid is None or target_pid is None or active_pid != target_pid:
+            return False
+        # macOS can report a browser chrome/accessibility surface as the active
+        # window while the content window remains the selected target. For an
+        # app-only keyboard action, same-app foreground is the safety boundary.
+        active_title = str(active.get("title") or "").strip()
+        if active_title:
+            return False
+        try:
+            active_height = int(active.get("height") or 0)
+            target_height = int(target.get("height") or 0)
+        except (TypeError, ValueError):
+            return False
+        try:
+            active_width = int(active.get("width") or 0)
+            active_x = int(active.get("x") or 0)
+            active_y = int(active.get("y") or 0)
+            target_width = int(target.get("width") or 0)
+            target_x = int(target.get("x") or 0)
+            target_y = int(target.get("y") or 0)
+        except (TypeError, ValueError):
+            return False
+        if active_height <= 0 or active_width <= 0:
+            return False
+        if target_height > 0 and active_height >= target_height:
+            return False
+        # Full-width, shallow untitled surfaces are browser toolbars/address
+        # bars already covered by the original contract.
+        if active_height <= 96:
+            return True
+        # ChatGPT Atlas exposes its translation chrome as an untitled 346x113
+        # auxiliary AX window. Accept only this tightly bounded, same-PID,
+        # in-window chrome class; ordinary dialogs and other content windows
+        # remain rejected.
+        target_app = str(target.get("app") or "").strip().lower()
+        if target_app != "chatgpt atlas" or active_width > 480 or active_height > 160:
+            return False
+        if target_width <= 0 or target_height <= 0:
+            return False
+        return (
+            active_x >= target_x
+            and active_y >= target_y
+            and active_x + active_width <= target_x + target_width
+            and active_y + active_height <= target_y + target_height
+        )
 
     @classmethod
     def _same_app_window(cls, active: dict[str, Any], target: dict[str, Any]) -> bool:
@@ -3706,42 +5147,190 @@ class BrowserComputerController:
         return None
 
     def _select_window(self, payload: dict[str, Any]) -> dict[str, Any]:
-        windows = self._list_windows()
         target = str(payload.get("target") or "").strip().lower()
         filters = self._window_filter(payload)
         app = filters.get("app", "").lower()
         title = filters.get("title", "").lower()
+        require_exact_binding = payload.get("require_exact_binding") is True
+        focus_requested = payload.get("focus", True) is not False
+        inventory_facts: dict[str, Any] = {
+            "selection_requested_alias_valid": bool(self._app_alias_tokens(app)),
+            "selection_requested_bundle_alias_available": any(
+                self._app_alias_tokens(app) & self._app_alias_tokens(key)
+                for key in _DARWIN_BROWSER_BUNDLE_ID_ALIASES
+            ),
+            "selection_activation_policy": "invalid_requested" if focus_requested else "not_requested",
+        }
+        selected_identity_observation: Any = None
+        use_inventory_diagnostics = bool(
+            require_exact_binding
+            and (
+                "_darwin_window_inventory_observation" in self.__dict__
+                or (
+                    platform.system() == "Darwin"
+                    and "_list_windows" not in self.__dict__
+                )
+            )
+        )
+        if use_inventory_diagnostics:
+            observation = self._darwin_window_inventory_observation(app)
+            windows = list(observation.get("windows") or [])
+            if isinstance(observation.get("facts"), dict):
+                inventory_facts.update(observation["facts"])
+            selected_identity_observation = observation.get("_selected_identity_observation")
+            if isinstance(selected_identity_observation, dict):
+                inventory_facts.update(
+                    self._selected_window_identity_facts(selected_identity_observation, None)
+                )
+        else:
+            windows = self._list_windows()
         has_filter = bool(app or title or isinstance(payload.get("window"), dict))
-        selected = None
+        if require_exact_binding and focus_requested:
+            if has_filter:
+                self._clear_target_window()
+            return {
+                "action": "computer.select_window",
+                "selected": False,
+                "is_error": True,
+                "error_code": "SELECT_WINDOW_EXACT_BINDING_INCOMPLETE",
+                **inventory_facts,
+                **self._selection_binding_facts(
+                    None, requested_app=app, matched_app=False, matched_window=False,
+                    selected=False, exact_binding_required=True,
+                    focus_requested=True, focus_attempted=False,
+                    failure_stage="activation_policy",
+                ),
+            }
+        normalized_windows: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for item in windows:
+            normalized = self._normalize_window_record(item)
+            if normalized is not None:
+                normalized_windows.append((normalized, item))
+        selection_matched_app = any(
+            isinstance(item, dict)
+            and self._app_name_matches(app, str(item.get("app") or item.get("process") or ""))
+            for item in windows
+        ) if app else bool(windows)
+        inventory_facts["selection_window_owner_alias_matched"] = bool(selection_matched_app)
+        selected: Any = None
         if isinstance(payload.get("window"), dict):
-            selected = self._normalize_window_record(payload.get("window"))
+            selected = payload.get("window")
         if selected is None and target in {"selected", "selected_window", "window", "app"}:
             selected = self._computer_state().get("target_window")
         if selected is None and (target in {"active", "active_window", "front", "front_window"} or (not target and not has_filter)):
             selected = next((item for item in windows if item.get("active")), None) or self._active_window()
         if selected is None:
             candidates: list[dict[str, Any]] = []
-            for item in windows:
-                window = self._normalize_window_record(item)
-                if not window or not self._is_usable_target_window(window):
+            candidate_sources: dict[int, dict[str, Any]] = {}
+            for window, raw_window in normalized_windows:
+                if not self._is_usable_target_window(window):
                     continue
                 if not self._window_matches_filter(window, app=app, title=title):
                     continue
                 candidates.append(window)
-            selected = self._best_window_candidate(candidates, app=app, title=title)
+                candidate_sources[id(window)] = raw_window
+            best_candidate = self._best_window_candidate(candidates, app=app, title=title)
+            if best_candidate is not None:
+                selected = candidate_sources.get(id(best_candidate), best_candidate)
+        normalized_selected = self._normalize_window_record(selected)
+        if isinstance(selected_identity_observation, dict):
+            inventory_facts.update(
+                self._selected_window_identity_facts(
+                    selected_identity_observation, normalized_selected
+                )
+            )
+        if app and isinstance(selected, dict):
+            selection_matched_app = selection_matched_app or self._app_name_matches(
+                app, str(selected.get("app") or selected.get("process") or "")
+            )
+        inventory_facts["selection_window_owner_alias_matched"] = bool(selection_matched_app)
+        selection_matched_window = bool(
+            normalized_selected
+            and self._is_usable_target_window(normalized_selected)
+            and self._window_matches_filter(normalized_selected, app=app, title=title)
+        )
         if selected is None:
             if has_filter:
                 self._clear_target_window()
+            if require_exact_binding:
+                error_code = (
+                    "SELECT_WINDOW_TARGET_WINDOW_NOT_OBSERVED"
+                    if app and not selection_matched_app
+                    else "SELECT_WINDOW_USABLE_WINDOW_NOT_FOUND"
+                )
+                failure_stage = "window_observation" if error_code == "SELECT_WINDOW_TARGET_WINDOW_NOT_OBSERVED" else "window_match"
+                return {
+                    "action": "computer.select_window",
+                    "selected": False,
+                    "is_error": True,
+                    "error_code": error_code,
+                    **inventory_facts,
+                    **self._selection_binding_facts(
+                        None,
+                        requested_app=app,
+                        matched_app=selection_matched_app,
+                        matched_window=False,
+                        selected=False,
+                        exact_binding_required=True,
+                        focus_requested=focus_requested,
+                        focus_attempted=False,
+                        failure_stage=failure_stage,
+                    ),
+                }
             return {"action": "computer.select_window", "selected": False, "windows": windows}
-        selected = self._normalize_window_record(selected)
-        if selected is None or not self._is_usable_target_window(selected):
+        if normalized_selected is None or not self._is_usable_target_window(normalized_selected):
             if has_filter:
                 self._clear_target_window()
+            if require_exact_binding:
+                return {
+                    "action": "computer.select_window",
+                    "selected": False,
+                    "is_error": True,
+                    "error_code": "SELECT_WINDOW_USABLE_WINDOW_NOT_FOUND",
+                    **inventory_facts,
+                    **self._selection_binding_facts(
+                        selected,
+                        requested_app=app,
+                        matched_app=selection_matched_app,
+                        matched_window=False,
+                        selected=False,
+                        exact_binding_required=True,
+                        focus_requested=focus_requested,
+                        focus_attempted=False,
+                        failure_stage="window_match",
+                    ),
+                }
             return {"action": "computer.select_window", "selected": False, "windows": windows}
+        if require_exact_binding and not self._exact_window_binding_present(selected, requested_app=app):
+            if has_filter:
+                self._clear_target_window()
+            return {
+                "action": "computer.select_window",
+                "selected": False,
+                "is_error": True,
+                "error_code": "SELECT_WINDOW_EXACT_BINDING_INCOMPLETE",
+                **inventory_facts,
+                **self._selection_binding_facts(
+                    selected,
+                    requested_app=app,
+                    matched_app=selection_matched_app,
+                    matched_window=selection_matched_window,
+                    selected=False,
+                    exact_binding_required=True,
+                    focus_requested=focus_requested,
+                    focus_attempted=False,
+                    failure_stage="exact_binding",
+                ),
+            }
+        selected = normalized_selected
+        if require_exact_binding and inventory_facts.get("selection_inventory_instrumentation_consistent") is True:
+            inventory_facts["selection_inventory_diagnostic_stage"] = "complete"
+            inventory_facts["selection_inventory_diagnostic_outcome"] = "exact_window_ready"
+            inventory_facts["selection_inventory_cause_count"] = 0
         state = self._computer_state()
         state["target_window"] = selected
         self._write_computer_state(state)
-        if payload.get("focus", True) is not False:
+        if focus_requested:
             self._focus_window(selected)
         return {
             "action": "computer.select_window",
@@ -3750,7 +5339,99 @@ class BrowserComputerController:
             "windows": windows,
             "coordinate_space": "screenshot_image",
             "computer_seat": self._computer_seat_metadata_for_target(selected),
+            **inventory_facts,
+            **self._selection_binding_facts(
+                selected,
+                requested_app=app,
+                matched_app=selection_matched_app,
+                matched_window=True,
+                selected=True,
+                exact_binding_required=require_exact_binding,
+                focus_requested=focus_requested,
+                focus_attempted=focus_requested,
+                failure_stage="none",
+            ),
         }
+
+    @classmethod
+    def _selection_binding_facts(
+        cls,
+        value: Any,
+        *,
+        requested_app: str,
+        matched_app: bool,
+        matched_window: bool,
+        selected: bool,
+        exact_binding_required: bool,
+        focus_requested: bool,
+        focus_attempted: bool,
+        failure_stage: str,
+    ) -> dict[str, Any]:
+        target = value if isinstance(value, dict) else {}
+        geometry_values = [target.get(key) for key in ("x", "y", "width", "height")]
+        geometry_complete = all(item is not None for item in geometry_values)
+        geometry_integral = geometry_complete and all(
+            cls._integral_window_number(item, positive=key in {"width", "height"}) is not None
+            for key, item in zip(("x", "y", "width", "height"), geometry_values)
+        )
+        app_verified = bool(
+            requested_app
+            and cls._app_name_matches(requested_app, str(target.get("app") or target.get("process") or ""))
+        )
+        pid_present = cls._integral_window_number(target.get("pid"), positive=True) is not None
+        window_id_present = cls._integral_window_number(
+            target.get("window_id") if target.get("window_id") is not None else target.get("id"),
+            positive=True,
+        ) is not None
+        exact_present = bool(
+            app_verified
+            and pid_present
+            and window_id_present
+            and geometry_complete
+            and geometry_integral
+        )
+        return {
+            "selection_matched_app": bool(matched_app),
+            "selection_matched_window": bool(matched_window),
+            "selection_selected": bool(selected),
+            "selection_exact_binding_required": bool(exact_binding_required),
+            "selection_exact_binding_present": exact_present,
+            "selection_app_verified": app_verified,
+            "selection_pid_present": pid_present,
+            "selection_window_id_present": window_id_present,
+            "selection_geometry_complete": geometry_complete,
+            "selection_geometry_integral": geometry_integral,
+            "selection_focus_requested": bool(focus_requested),
+            "selection_focus_attempted": bool(focus_attempted),
+            "selection_failure_stage": failure_stage,
+        }
+
+    @classmethod
+    def _exact_window_binding_present(cls, value: Any, *, requested_app: str) -> bool:
+        facts = cls._selection_binding_facts(
+            value,
+            requested_app=requested_app,
+            matched_app=True,
+            matched_window=True,
+            selected=True,
+            exact_binding_required=True,
+            focus_requested=False,
+            focus_attempted=False,
+            failure_stage="none",
+        )
+        return facts["selection_exact_binding_present"] is True
+
+    @staticmethod
+    def _integral_window_number(value: Any, *, positive: bool) -> int | None:
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not number.is_integer() or (positive and number <= 0):
+            return None
+        return int(number)
 
     def _list_windows(self) -> list[dict[str, Any]]:
         system = platform.system()
@@ -3922,6 +5603,1153 @@ class BrowserComputerController:
             return None
         return {"x": x, "y": y, "width": width, "height": height}
 
+    @classmethod
+    def _selection_source_facts(
+        cls,
+        source: str,
+        windows: list[dict[str, Any]],
+        *,
+        app: str,
+        observed: bool,
+        contract_valid: bool,
+        total_count: int | None = None,
+        target_pids: set[int] | None = None,
+        bundle_pids: set[int] | None = None,
+        pid_match_available: bool = False,
+        bundle_match_available: bool = False,
+        on_screen_only: bool,
+        layer_zero: bool,
+    ) -> dict[str, Any]:
+        usable = [item for item in windows if cls._is_usable_target_window(item)]
+        target_pids = target_pids or set()
+        bundle_pids = bundle_pids or set()
+        name_matches = sum(
+            1 for item in usable
+            if cls._app_name_matches(app, str(item.get("app") or item.get("process") or ""))
+        )
+        pid_matches = sum(
+            1 for item in usable
+            if cls._integral_window_number(item.get("pid"), positive=True) in target_pids
+        ) if pid_match_available else 0
+        bundle_matches = sum(
+            1 for item in usable
+            if cls._integral_window_number(item.get("pid"), positive=True) in bundle_pids
+        ) if bundle_match_available else 0
+        prefix = f"selection_{source}_"
+        return {
+            f"{prefix}inventory_observed": bool(observed),
+            f"{prefix}inventory_contract_valid": bool(contract_valid),
+            f"{prefix}window_total_count": min(64, max(0, total_count if total_count is not None else len(windows))),
+            f"{prefix}usable_window_count": min(64, len(usable)),
+            f"{prefix}target_name_match_count": min(8, name_matches),
+            f"{prefix}target_pid_match_count": min(8, pid_matches),
+            f"{prefix}target_bundle_match_count": min(8, bundle_matches),
+            f"{prefix}pid_match_available": bool(pid_match_available),
+            f"{prefix}bundle_match_available": bool(bundle_match_available),
+            f"{prefix}on_screen_only_filter_applied": bool(on_screen_only),
+            f"{prefix}layer_zero_filter_applied": bool(layer_zero),
+        }
+
+    @classmethod
+    def _selected_window_identity_inventory(
+        cls, result: Any,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Consume helper-local identity flags without retaining them in records.
+
+        This is an inventory diagnostic, never an ownership or selection
+        predicate. The private mapping is used only for an exact selected
+        (pid, window_id) correlation and never enters state or public output.
+        """
+        marker_valid = (
+            isinstance(result, dict)
+            and result.get("selected_window_identity_diagnostic_contract")
+            == _SELECTED_WINDOW_IDENTITY_DIAGNOSTIC_CONTRACT
+        )
+        raw_windows = result.get("windows") if isinstance(result, dict) else None
+        contract_valid = marker_valid and isinstance(raw_windows, list)
+        records: dict[tuple[int, int], tuple[bool, bool, bool]] = {}
+        public_windows: list[dict[str, Any]] = []
+        if not isinstance(raw_windows, list):
+            return public_windows, {"contract_valid": False, "records": records}
+        for item in raw_windows:
+            if not isinstance(item, dict):
+                contract_valid = False
+                continue
+            # Drop every helper-private annotation before a record can be
+            # selected, persisted, returned, or handed to another source.
+            public = {
+                key: value for key, value in item.items()
+                if not str(key).startswith("_rumi_")
+            }
+            public_windows.append(public)
+            pid = cls._integral_window_number(item.get("pid"), positive=True)
+            window_id = cls._integral_window_number(
+                item.get("window_id") if item.get("window_id") is not None else item.get("id"),
+                positive=True,
+            )
+            flags = tuple(item.get(key) for key in _SELECTED_WINDOW_IDENTITY_PRIVATE_FIELDS)
+            if (
+                pid is None
+                or window_id is None
+                or len(flags) != 3
+                or any(not isinstance(value, bool) for value in flags)
+            ):
+                contract_valid = False
+                continue
+            owner_alias_match, target_process_match, target_bundle_match = flags
+            if target_bundle_match and not target_process_match:
+                contract_valid = False
+                continue
+            binding = (pid, window_id)
+            if binding in records:
+                contract_valid = False
+                continue
+            records[binding] = (
+                owner_alias_match, target_process_match, target_bundle_match,
+            )
+        return public_windows, {"contract_valid": contract_valid, "records": records}
+
+    @classmethod
+    def _selected_window_identity_facts(
+        cls, observation: Any, selected: Any,
+    ) -> dict[str, Any]:
+        """Produce only closed selected-record facts without changing selection."""
+        contract_valid = bool(
+            isinstance(observation, dict) and observation.get("contract_valid") is True
+        )
+        facts: dict[str, Any] = {
+            "selection_selected_identity_contract_valid": contract_valid,
+            "selection_selected_identity_available": False,
+            "selection_selected_owner_alias_match": False,
+            "selection_selected_target_process_match": False,
+            "selection_selected_target_bundle_match": False,
+            "selection_selected_identity_class": "unavailable",
+        }
+        if not contract_valid or not isinstance(selected, dict):
+            return facts
+        pid = cls._integral_window_number(selected.get("pid"), positive=True)
+        window_id = cls._integral_window_number(
+            selected.get("window_id") if selected.get("window_id") is not None else selected.get("id"),
+            positive=True,
+        )
+        records = observation.get("records") if isinstance(observation.get("records"), dict) else {}
+        values = records.get((pid, window_id)) if pid is not None and window_id is not None else None
+        if (
+            not isinstance(values, tuple)
+            or len(values) != 3
+            or any(not isinstance(value, bool) for value in values)
+        ):
+            return facts
+        owner_alias_match, target_process_match, target_bundle_match = values
+        # A bundle assertion without the target process violates the native
+        # contract. Fail closed without altering the selection result.
+        if target_bundle_match and not target_process_match:
+            return facts
+        facts.update({
+            "selection_selected_identity_available": True,
+            "selection_selected_owner_alias_match": owner_alias_match,
+            "selection_selected_target_process_match": target_process_match,
+            "selection_selected_target_bundle_match": target_bundle_match,
+            "selection_selected_identity_class": (
+                "bundle_process_match" if target_bundle_match
+                else "process_match" if target_process_match
+                else "owner_name_only" if owner_alias_match
+                else "no_match"
+            ),
+        })
+        return facts
+
+    def _darwin_swift_inventory_observation(
+        self, *, app: str, aliases: set[str], bundle_aliases: set[str]
+    ) -> dict[str, Any]:
+        helper_defaults = {
+            "selection_swift_helper_available": False,
+            "selection_swift_helper_invoked": False,
+            "selection_swift_helper_response_contract": "not_invoked",
+            "selection_swift_helper_binary_class": "unavailable",
+            "selection_swift_helper_contract_version_class": "missing",
+            "selection_swift_helper_compile_attempted": False,
+            "selection_swift_helper_compile_succeeded": False,
+            "selection_swift_helper_persistence_class": "unavailable",
+            "selection_swift_helper_path_stability": "unavailable",
+            "selection_swift_helper_signature_stability": "unavailable",
+        }
+        result: dict[str, Any] = {}
+        helper_facts = dict(helper_defaults)
+        try:
+            from ..computer.mac.swift_host import MacSwiftComputerHost
+
+            host = MacSwiftComputerHost()
+            result, observed_facts = host.run_with_facts(
+                "computer.windows",
+                {
+                    "inventory_diagnostics": True,
+                    "target_aliases": sorted(aliases),
+                    "target_bundle_aliases": sorted(bundle_aliases),
+                },
+            )
+            if isinstance(observed_facts, dict):
+                helper_facts.update(observed_facts)
+        except Exception:
+            helper_facts["selection_swift_helper_response_contract"] = "process_failure"
+        windows, selected_identity_observation = self._selected_window_identity_inventory(result)
+        native_facts = result.get("inventory_diagnostics") if isinstance(result.get("inventory_diagnostics"), dict) else {}
+        # The v3 topology probe deliberately keeps process identities inside
+        # the native helper.  Selection still consumes the unchanged on-screen
+        # window records; these empty sets only make secondary diagnostics
+        # conservative rather than turning an off-screen correlation into an
+        # actionable ownership claim.
+        target_pids: set[int] = set()
+        bundle_pids: set[int] = set()
+        contract_valid = bool(
+            helper_facts.get("selection_swift_helper_response_contract") == "valid_success"
+            and helper_facts.get("selection_swift_helper_contract_version_class") == "expected"
+            and native_facts.get("selection_swift_inventory_contract_valid") is True
+        )
+        facts = self._selection_source_facts(
+            "swift", windows, app=app,
+            observed=helper_facts.get("selection_swift_helper_invoked") is True,
+            contract_valid=contract_valid,
+            total_count=self._integral_window_number(native_facts.get("selection_swift_window_total_count"), positive=False),
+            target_pids=target_pids, bundle_pids=bundle_pids,
+            pid_match_available=native_facts.get("selection_swift_pid_match_available") is True,
+            bundle_match_available=native_facts.get("selection_swift_bundle_match_available") is True,
+            on_screen_only=True, layer_zero=True,
+        )
+        for key in (
+            "selection_native_snapshot_atomic", "selection_nsworkspace_observation_completed",
+            "selection_nsworkspace_target_process_present", "selection_nsworkspace_localized_name_match",
+            "selection_nsworkspace_bundle_id_match", "selection_target_pid_match_available",
+            "selection_target_bundle_match_available",
+        ):
+            facts[key] = native_facts.get(key) is True
+        facts["selection_nsworkspace_target_process_match_count"] = min(
+            4, self._integral_window_number(
+                native_facts.get("selection_nsworkspace_target_process_match_count"), positive=False
+            ) or 0,
+        )
+        native_bool_fields = (
+            "selection_swift_permission_check_colocated",
+            "selection_permission_request_api_invoked",
+            "selection_swift_target_pid_set_constructed_privately",
+            "selection_swift_on_screen_omission_confirmed",
+            "selection_swift_all_windows_nonactionable",
+            "selection_swift_visibility_probe_performed",
+            "selection_swift_visibility_probe_complete",
+            "selection_swift_visibility_probe_truncated",
+            "selection_swift_target_hidden_present",
+            "selection_swift_target_unhidden_present",
+            "selection_swift_target_ax_windows_read_complete",
+        )
+        for key in native_bool_fields:
+            if isinstance(native_facts.get(key), bool):
+                facts[key] = native_facts[key]
+        native_enum_domains = {
+            "selection_swift_execution_component": {"viewer_app", "isolated_python_runtime", "swift_helper", "system_events_child", "other", "unknown"},
+            "selection_swift_helper_signing_class": {"signed_stable", "ad_hoc", "unsigned", "unavailable", "unknown"},
+            "selection_codex_permission_comparison": {"not_observable"},
+            "selection_swift_ax_trust": {"trusted", "not_trusted", "unavailable"},
+            "selection_swift_ax_target_probe_outcome": {
+                "success", "skipped_not_trusted", "api_disabled", "invalid_ui_element",
+                "cannot_complete", "attribute_unsupported", "no_value", "illegal_argument",
+                "failure", "unavailable", "unknown",
+            },
+            "selection_swift_screen_capture_preflight": {"granted", "denied", "unavailable"},
+            "selection_swift_cg_on_screen_query_outcome": {"success_nonempty", "success_nonempty_truncated", "success_empty", "nil_or_unavailable", "invalid_payload"},
+            "selection_swift_cg_all_windows_query_outcome": {"success_nonempty", "success_nonempty_truncated", "success_empty", "nil_or_unavailable", "invalid_payload"},
+            "selection_swift_visibility_class": {
+                "on_screen_nonfrontmost", "on_screen_frontmost", "app_hidden",
+                "all_ax_windows_minimized", "offscreen_same_pid_frame_correlated",
+                "offscreen_cross_pid_frame_correlated", "off_display_geometry",
+                "multiple_process_ambiguous", "ax_windows_unavailable", "mixed",
+                "indeterminate",
+            },
+            "selection_swift_visibility_incomplete_cause": {
+                "none", "target_process_cap", "ax_window_cap", "cg_record_cap",
+                "ax_read_failure", "protocol_invalid", "multiple_candidates",
+            },
+        }
+        for key, allowed in native_enum_domains.items():
+            if native_facts.get(key) in allowed:
+                facts[key] = native_facts[key]
+        native_count_caps = {
+            "selection_swift_owner_name_present_count": 64,
+            "selection_swift_window_name_present_count": 64,
+            "selection_swift_raw_target_pid_match_count": 8,
+            "selection_swift_raw_target_bundle_match_count": 8,
+            "selection_swift_all_windows_target_pid_match_count": 8,
+            "selection_swift_target_rejected_not_on_screen_count": 8,
+            "selection_swift_target_rejected_nonzero_layer_count": 8,
+            "selection_swift_target_rejected_invalid_identity_count": 8,
+            "selection_swift_target_rejected_nonpositive_geometry_count": 8,
+            "selection_swift_rejected_target_pid_mismatch_count": 64,
+            "selection_swift_rejected_target_bundle_mismatch_count": 8,
+            "selection_swift_visibility_target_process_count": 4,
+            "selection_swift_visibility_candidate_process_count": 4,
+            "selection_swift_target_ax_window_count": 16,
+            "selection_swift_ax_minimized_count": 16,
+            "selection_swift_ax_nonminimized_count": 16,
+            "selection_swift_ax_frame_valid_count": 16,
+            "selection_swift_ax_display_intersection_count": 16,
+            "selection_swift_ax_same_pid_cg_frame_match_count": 16,
+            "selection_swift_ax_cross_pid_cg_frame_match_count": 16,
+            "selection_swift_target_cg_offscreen_layer_zero_geometry_count": 16,
+        }
+        for key, cap in native_count_caps.items():
+            value = native_facts.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                facts[key] = max(0, min(cap, value))
+        return {
+            "windows": windows,
+            "facts": {**helper_facts, **facts},
+            "target_pids": target_pids,
+            "bundle_pids": bundle_pids,
+            # This is controller-local and consumed before _select_window
+            # returns. It contains no public window record annotations.
+            "_selected_identity_observation": selected_identity_observation,
+        }
+
+    def _darwin_quartz_permission_observation(
+        self, *, app: str, aliases: set[str], target_pids: set[int], bundle_pids: set[int]
+    ) -> dict[str, Any]:
+        defaults: dict[str, Any] = {
+            "selection_quartz_execution_component": "isolated_python_runtime",
+            "selection_quartz_permission_check_colocated": True,
+            "selection_permission_request_api_invoked": False,
+            "selection_quartz_ax_trust": "unavailable",
+            "selection_quartz_ax_target_probe_outcome": "unavailable",
+            "selection_quartz_screen_capture_preflight": "unavailable",
+            "selection_quartz_cg_on_screen_query_outcome": "nil_or_unavailable",
+            "selection_quartz_cg_all_windows_query_outcome": "nil_or_unavailable",
+            "selection_quartz_cg_all_windows_records_aggregated_count": 0,
+            "selection_quartz_owner_name_present_count": 0,
+            "selection_quartz_window_name_present_count": 0,
+            "selection_quartz_target_pid_set_constructed_privately": bool(target_pids),
+            "selection_quartz_raw_target_pid_match_count": 0,
+            "selection_quartz_raw_target_bundle_match_count": 0,
+            "selection_quartz_all_windows_target_pid_match_count": 0,
+            "selection_quartz_target_rejected_not_on_screen_count": 0,
+            "selection_quartz_target_rejected_nonzero_layer_count": 0,
+            "selection_quartz_target_rejected_invalid_identity_count": 0,
+            "selection_quartz_target_rejected_nonpositive_geometry_count": 0,
+            "selection_quartz_rejected_target_pid_mismatch_count": 0,
+            "selection_quartz_rejected_target_bundle_mismatch_count": 0,
+            "selection_quartz_on_screen_omission_confirmed": False,
+            "selection_quartz_all_windows_nonactionable": True,
+        }
+        prelude = "\n".join([
+            f"TARGET_ALIASES = set({json.dumps(sorted(aliases))})",
+            f"TARGET_PIDS = set({json.dumps(sorted(target_pids))})",
+            f"BUNDLE_PIDS = set({json.dumps(sorted(bundle_pids))})",
+            f"MAX_BRIDGED_RECORDS = {_QUARTZ_BRIDGE_MAX_ITEMS}",
+        ])
+        code = prelude + r'''
+import json
+import re
+import Quartz
+
+def norm(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+TARGET_ALIASES = {norm(value) for value in TARGET_ALIASES if norm(value)}
+
+def has_mapping_capability(value):
+    return any(callable(getattr(value, name, None)) for name in (
+        "get", "objectForKey_", "__getitem__",
+    ))
+
+def mapping_get(value, key, default=None):
+    getter = getattr(value, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except TypeError:
+            try:
+                result = getter(key)
+                return default if result is None else result
+            except Exception:
+                pass
+        except Exception:
+            pass
+    object_for_key = getattr(value, "objectForKey_", None)
+    if callable(object_for_key):
+        try:
+            result = object_for_key(key)
+            return default if result is None else result
+        except Exception:
+            pass
+    get_item = getattr(value, "__getitem__", None)
+    if callable(get_item):
+        try:
+            return get_item(key)
+        except Exception:
+            pass
+    return default
+
+def bounded_iterable(value):
+    if isinstance(value, (str, bytes, bytearray)):
+        return None, False
+
+    def validated(records, truncated, canary=None):
+        inspected = records if canary is None else [*records, canary]
+        if any(not has_mapping_capability(item) for item in inspected):
+            return None, False
+        return records, truncated
+
+    def as_size(value):
+        if isinstance(value, bool):
+            return None
+        try:
+            size = int(value)
+        except Exception:
+            return None
+        return size if size >= 0 else None
+
+    def bounded_indexed(size, item_at_index):
+        try:
+            records = [item_at_index(index) for index in range(min(size, MAX_BRIDGED_RECORDS))]
+        except Exception:
+            return None, False
+        return validated(records, size > MAX_BRIDGED_RECORDS)
+
+    # PyObjC collections commonly expose a reliable Python length, even when
+    # they are not normal Python lists.  Use it to bound the aggregation
+    # without probing beyond the public collection size.
+    try:
+        length = as_size(len(value))
+    except Exception:
+        length = None
+    get_item = getattr(value, "__getitem__", None)
+    if length is not None and callable(get_item):
+        return bounded_indexed(length, get_item)
+
+    # NSArray-style bridges may omit Python iteration/len but provide the
+    # Objective-C count/objectAtIndex_ pair.  This has the same bounded,
+    # aggregate-only contract as the Python sequence path.
+    count = getattr(value, "count", None)
+    item_at_index = getattr(value, "objectAtIndex_", None)
+    if callable(count) and callable(item_at_index):
+        try:
+            length = as_size(count())
+        except Exception:
+            length = None
+        if length is None:
+            return None, False
+        return bounded_indexed(length, item_at_index)
+
+    # Generic iterables have no reliable size.  Aggregate at most the cap and
+    # inspect exactly one additional canary.  A malformed inspected record or
+    # canary is invalid_payload; a valid canary means valid-but-truncated.
+    try:
+        iterator = iter(value)
+    except Exception:
+        return None, False
+    records = []
+    if length is not None:
+        try:
+            for _ in range(min(length, MAX_BRIDGED_RECORDS)):
+                records.append(next(iterator))
+        except (StopIteration, Exception):
+            return None, False
+        return validated(records, length > MAX_BRIDGED_RECORDS)
+    for _ in range(MAX_BRIDGED_RECORDS):
+        try:
+            records.append(next(iterator))
+        except StopIteration:
+            return validated(records, False)
+        except Exception:
+            return None, False
+    try:
+        canary = next(iterator)
+    except StopIteration:
+        return validated(records, False)
+    except Exception:
+        return None, False
+    return validated(records, True, canary)
+
+def number(value):
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+def decimal(value):
+    try:
+        return float(value or 0)
+    except Exception:
+        return 0.0
+
+def query(options):
+    try:
+        value = Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID)
+    except Exception:
+        return [], "nil_or_unavailable"
+    if value is None:
+        return [], "nil_or_unavailable"
+    records, truncated = bounded_iterable(value)
+    if records is None:
+        return [], "invalid_payload"
+    if not records:
+        return records, "success_empty"
+    return records, "success_nonempty_truncated" if truncated else "success_nonempty"
+
+facts = {
+    "selection_quartz_execution_component": "isolated_python_runtime",
+    "selection_quartz_permission_check_colocated": True,
+    "selection_permission_request_api_invoked": False,
+    "selection_quartz_all_windows_nonactionable": True,
+    "selection_quartz_target_pid_set_constructed_privately": bool(TARGET_PIDS),
+}
+try:
+    facts["selection_quartz_screen_capture_preflight"] = (
+        "granted" if Quartz.CGPreflightScreenCaptureAccess() else "denied"
+    )
+except Exception:
+    facts["selection_quartz_screen_capture_preflight"] = "unavailable"
+
+try:
+    from ApplicationServices import (
+        AXIsProcessTrusted, AXUIElementCreateApplication, AXUIElementCopyAttributeValue,
+    )
+    trusted = bool(AXIsProcessTrusted())
+    facts["selection_quartz_ax_trust"] = "trusted" if trusted else "not_trusted"
+    if not trusted:
+        facts["selection_quartz_ax_target_probe_outcome"] = "skipped_not_trusted"
+    elif not TARGET_PIDS:
+        facts["selection_quartz_ax_target_probe_outcome"] = "unavailable"
+    else:
+        result = AXUIElementCopyAttributeValue(
+            AXUIElementCreateApplication(sorted(TARGET_PIDS)[0]), "AXRole", None
+        )
+        error = int(result[0]) if isinstance(result, tuple) and result else 0
+        mapping = {
+            0: "success", -25201: "illegal_argument", -25202: "invalid_ui_element",
+            -25203: "invalid_ui_element", -25204: "cannot_complete",
+            -25205: "attribute_unsupported", -25211: "api_disabled", -25212: "no_value",
+        }
+        facts["selection_quartz_ax_target_probe_outcome"] = mapping.get(error, "failure")
+except Exception:
+    facts["selection_quartz_ax_trust"] = "unavailable"
+    facts["selection_quartz_ax_target_probe_outcome"] = "unavailable"
+
+on_records, on_outcome = query(
+    Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
+)
+all_records, all_outcome = query(
+    Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements
+)
+facts["selection_quartz_cg_on_screen_query_outcome"] = on_outcome
+facts["selection_quartz_cg_all_windows_query_outcome"] = all_outcome
+facts["selection_quartz_cg_all_windows_records_aggregated_count"] = len(all_records)
+facts["selection_quartz_owner_name_present_count"] = sum(
+    1 for item in on_records if str(mapping_get(item, "kCGWindowOwnerName") or "")
+)
+facts["selection_quartz_window_name_present_count"] = sum(
+    1 for item in on_records if str(mapping_get(item, "kCGWindowName") or "")
+)
+counts = {
+    "raw_pid": 0, "raw_bundle": 0, "all_pid": 0, "not_screen": 0,
+    "layer": 0, "identity": 0, "geometry": 0, "pid_mismatch": 0,
+    "bundle_mismatch": 0,
+}
+for item in on_records:
+    pid = number(mapping_get(item, "kCGWindowOwnerPID"))
+    wid = number(mapping_get(item, "kCGWindowNumber"))
+    owner_match = norm(mapping_get(item, "kCGWindowOwnerName")) in TARGET_ALIASES
+    pid_match = pid in TARGET_PIDS
+    target = owner_match or pid_match
+    if pid_match: counts["raw_pid"] += 1
+    if pid in BUNDLE_PIDS: counts["raw_bundle"] += 1
+    if pid > 0 and wid > 0 and pid not in TARGET_PIDS: counts["pid_mismatch"] += 1
+    if owner_match and BUNDLE_PIDS and pid not in BUNDLE_PIDS: counts["bundle_mismatch"] += 1
+    if target and (pid <= 0 or wid <= 0): counts["identity"] += 1
+    if target and number(mapping_get(item, "kCGWindowLayer")) != 0: counts["layer"] += 1
+    bounds = mapping_get(item, "kCGWindowBounds")
+    if target and (
+        not has_mapping_capability(bounds)
+        or decimal(mapping_get(bounds, "Width")) <= 0
+        or decimal(mapping_get(bounds, "Height")) <= 0
+    ): counts["geometry"] += 1
+for item in all_records:
+    pid = number(mapping_get(item, "kCGWindowOwnerPID"))
+    if pid in TARGET_PIDS:
+        counts["all_pid"] += 1
+        if not bool(mapping_get(item, "kCGWindowIsOnscreen", False)): counts["not_screen"] += 1
+
+field_map = {
+    "raw_pid": "selection_quartz_raw_target_pid_match_count",
+    "raw_bundle": "selection_quartz_raw_target_bundle_match_count",
+    "all_pid": "selection_quartz_all_windows_target_pid_match_count",
+    "not_screen": "selection_quartz_target_rejected_not_on_screen_count",
+    "layer": "selection_quartz_target_rejected_nonzero_layer_count",
+    "identity": "selection_quartz_target_rejected_invalid_identity_count",
+    "geometry": "selection_quartz_target_rejected_nonpositive_geometry_count",
+    "pid_mismatch": "selection_quartz_rejected_target_pid_mismatch_count",
+    "bundle_mismatch": "selection_quartz_rejected_target_bundle_mismatch_count",
+}
+for key, field in field_map.items(): facts[field] = counts[key]
+facts["selection_quartz_on_screen_omission_confirmed"] = (
+    counts["raw_pid"] == 0 and counts["all_pid"] > 0
+)
+print(json.dumps(facts))
+'''
+        try:
+            completed = subprocess.run(
+                _current_python_snippet_command(code), check=True,
+                capture_output=True, text=True,
+                timeout=_DARWIN_AUTOMATION_TIMEOUT_SECONDS,
+            )
+            observed = json.loads(completed.stdout or "{}")
+        except Exception:
+            return defaults
+        if not isinstance(observed, dict):
+            return defaults
+        safe = dict(defaults)
+        for key, default in defaults.items():
+            value = observed.get(key)
+            if isinstance(default, bool) and isinstance(value, bool):
+                safe[key] = value
+            elif isinstance(default, int) and not isinstance(default, bool) and isinstance(value, int) and not isinstance(value, bool):
+                cap = (
+                    _QUARTZ_BRIDGE_MAX_ITEMS if key.endswith("records_aggregated_count")
+                    else 64 if "present_count" in key or "pid_mismatch_count" in key
+                    else 8
+                )
+                safe[key] = min(cap, max(0, value))
+            elif isinstance(default, str) and isinstance(value, str):
+                if (
+                    key.endswith("_query_outcome")
+                    and value not in {
+                        "success_empty", "success_nonempty", "success_nonempty_truncated",
+                        "nil_or_unavailable", "invalid_payload",
+                    }
+                ):
+                    continue
+                safe[key] = value
+        return safe
+
+    @staticmethod
+    def _darwin_system_events_permission_defaults() -> dict[str, Any]:
+        return {
+            "selection_system_events_execution_component": "system_events_child",
+            "selection_system_events_permission_check_colocated": True,
+            "selection_permission_request_api_invoked": False,
+            "selection_system_events_automation_preflight": "unknown",
+            "selection_system_events_execution_outcome": "unknown",
+        }
+
+    def _darwin_system_events_automation_preflight(self) -> dict[str, Any]:
+        """Check Automation consent without executing AppleScript or prompting."""
+        defaults = self._darwin_system_events_permission_defaults()
+        code = r'''
+import ctypes
+import json
+
+facts = {
+    "selection_system_events_execution_component": "system_events_child",
+    "selection_system_events_permission_check_colocated": True,
+    "selection_permission_request_api_invoked": False,
+    "selection_system_events_automation_preflight": "unknown",
+    "selection_system_events_execution_outcome": "unknown",
+}
+try:
+    framework = ctypes.CDLL(
+        "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices"
+    )
+    class AEDesc(ctypes.Structure):
+        _fields_ = [("descriptorType", ctypes.c_uint32), ("dataHandle", ctypes.c_void_p)]
+    create = framework.AECreateDesc
+    create.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_ssize_t, ctypes.POINTER(AEDesc)]
+    create.restype = ctypes.c_int32
+    determine = framework.AEDeterminePermissionToAutomateTarget
+    determine.argtypes = [ctypes.POINTER(AEDesc), ctypes.c_uint32, ctypes.c_uint32, ctypes.c_bool]
+    determine.restype = ctypes.c_int32
+    dispose = framework.AEDisposeDesc
+    target = b"com.apple.systemevents"
+    desc = AEDesc()
+    status = create(0x62756E64, target, len(target), ctypes.byref(desc))
+    if status != 0:
+        facts["selection_system_events_automation_preflight"] = "target_unavailable"
+        facts["selection_system_events_execution_outcome"] = "not_authorized"
+    else:
+        permission = determine(ctypes.byref(desc), 0x2A2A2A2A, 0x2A2A2A2A, False)
+        dispose(ctypes.byref(desc))
+        if permission == 0:
+            facts["selection_system_events_automation_preflight"] = "authorized"
+        elif permission == -1744:
+            facts["selection_system_events_automation_preflight"] = "would_require_consent"
+            facts["selection_system_events_execution_outcome"] = "automation_denied"
+        elif permission == -1743:
+            facts["selection_system_events_automation_preflight"] = "denied"
+            facts["selection_system_events_execution_outcome"] = "automation_denied"
+        else:
+            facts["selection_system_events_automation_preflight"] = "target_unavailable"
+            facts["selection_system_events_execution_outcome"] = "not_authorized"
+except Exception:
+    facts["selection_system_events_automation_preflight"] = "api_unavailable"
+    facts["selection_system_events_execution_outcome"] = "launch_failure"
+print(json.dumps(facts))
+'''
+        try:
+            completed = subprocess.run(
+                _current_python_snippet_command(code), check=True,
+                capture_output=True, text=True,
+                timeout=_DARWIN_AUTOMATION_TIMEOUT_SECONDS,
+            )
+            observed = json.loads(completed.stdout or "{}")
+        except subprocess.TimeoutExpired:
+            return {**defaults, "selection_system_events_execution_outcome": "timeout"}
+        except FileNotFoundError:
+            return {**defaults, "selection_system_events_execution_outcome": "launch_failure"}
+        except Exception:
+            return {**defaults, "selection_system_events_execution_outcome": "script_failure"}
+        if not isinstance(observed, dict):
+            return {**defaults, "selection_system_events_execution_outcome": "invalid_output"}
+        facts = dict(defaults)
+        for key, default in defaults.items():
+            value = observed.get(key)
+            if isinstance(value, type(default)):
+                facts[key] = value
+        return facts
+
+    def _darwin_system_events_enumeration(self) -> dict[str, Any]:
+        """Enumerate only after the nonprompting preflight says it is authorized."""
+        script = r'''
+tell application "System Events"
+  set output to ""
+  repeat with proc in (application processes whose background only is false)
+    set procName to name of proc
+    set procPid to unix id of proc
+    set procFront to frontmost of proc
+    repeat with win in windows of proc
+      try
+        set winName to name of win
+        set winPos to position of win
+        set winSize to size of win
+        set output to output & procName & tab & winName & tab & (item 1 of winPos) & tab & (item 2 of winPos) & tab & (item 1 of winSize) & tab & (item 2 of winSize) & tab & procFront & tab & procPid & linefeed
+      end try
+    end repeat
+  end repeat
+  return output
+end tell
+'''
+        code = "SCRIPT = " + json.dumps(script) + r'''
+import json
+
+facts = {
+    "selection_system_events_execution_outcome": "unknown",
+}
+output = ""
+try:
+    from AppKit import NSAppleScript
+    result, error = NSAppleScript.alloc().initWithSource_(SCRIPT).executeAndReturnError_(None)
+    if error:
+        number = int(error.get("NSAppleScriptErrorNumber", 0) or 0)
+        message = str(error.get("NSAppleScriptErrorMessage", "") or "").lower()
+        if number == -1743:
+            facts["selection_system_events_execution_outcome"] = "automation_denied"
+        elif "assistive" in message or "accessibility" in message or number == -25211:
+            facts["selection_system_events_execution_outcome"] = "accessibility_denied"
+        else:
+            facts["selection_system_events_execution_outcome"] = "script_failure"
+    elif result is None:
+        facts["selection_system_events_execution_outcome"] = "invalid_output"
+    else:
+        output = str(result.stringValue() or "")
+        facts["selection_system_events_execution_outcome"] = "success"
+except ImportError:
+    facts["selection_system_events_execution_outcome"] = "launch_failure"
+except Exception:
+    facts["selection_system_events_execution_outcome"] = "script_failure"
+print(json.dumps({"facts": facts, "output": output}))
+'''
+        try:
+            completed = subprocess.run(
+                _current_python_snippet_command(code), check=True,
+                capture_output=True, text=True,
+                timeout=_DARWIN_AUTOMATION_TIMEOUT_SECONDS,
+            )
+            decoded = json.loads(completed.stdout or "{}")
+        except subprocess.TimeoutExpired:
+            return {"output": "", "execution_outcome": "timeout"}
+        except FileNotFoundError:
+            return {"output": "", "execution_outcome": "launch_failure"}
+        except Exception:
+            return {"output": "", "execution_outcome": "script_failure"}
+        if not isinstance(decoded, dict) or not isinstance(decoded.get("facts"), dict):
+            return {"output": "", "execution_outcome": "invalid_output"}
+        outcome = decoded["facts"].get("selection_system_events_execution_outcome")
+        if not isinstance(outcome, str):
+            outcome = "invalid_output"
+        output = decoded.get("output")
+        return {
+            "output": output if isinstance(output, str) else "",
+            "execution_outcome": outcome if isinstance(output, str) else "invalid_output",
+        }
+
+    def _darwin_system_events_permission_observation(
+        self, *, app: str, enumerate_windows: bool = True
+    ) -> dict[str, Any]:
+        """Keep System Events diagnostic-only unless it is the fallback source."""
+        del app  # The query is intentionally process-wide, matching the legacy fallback.
+        facts = self._darwin_system_events_automation_preflight()
+        if not enumerate_windows:
+            facts["selection_system_events_execution_outcome"] = "skipped_non_authoritative"
+            return {"windows": [], "facts": facts}
+        if facts.get("selection_system_events_automation_preflight") != "authorized":
+            return {"windows": [], "facts": facts}
+        enumeration = self._darwin_system_events_enumeration()
+        facts["selection_system_events_execution_outcome"] = str(
+            enumeration.get("execution_outcome") or "invalid_output"
+        )
+        if facts["selection_system_events_execution_outcome"] != "success":
+            return {"windows": [], "facts": facts}
+        output = enumeration.get("output")
+        if not isinstance(output, str):
+            facts["selection_system_events_execution_outcome"] = "invalid_output"
+            return {"windows": [], "facts": facts}
+        windows: list[dict[str, Any]] = []
+        invalid = False
+        for line in output.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 8:
+                invalid = True
+                continue
+            try:
+                window = {
+                    "app": parts[0], "title": parts[1],
+                    "x": int(float(parts[2])), "y": int(float(parts[3])),
+                    "width": int(float(parts[4])), "height": int(float(parts[5])),
+                    "active": parts[6].strip().lower() == "true", "pid": int(parts[7]),
+                }
+            except Exception:
+                invalid = True
+                continue
+            if window["width"] > 0 and window["height"] > 0:
+                windows.append(window)
+        if invalid and not windows:
+            facts["selection_system_events_execution_outcome"] = "invalid_output"
+        return {"windows": windows, "facts": facts}
+
+    @staticmethod
+    def _selection_permission_outcome(facts: dict[str, Any]) -> str:
+        """Global cross-source diagnostic only; it never controls source selection."""
+        if facts.get("selection_permission_request_api_invoked") is True:
+            return "forbidden_action_required"
+        query_values = [
+            facts.get(f"selection_{source}_{query}_query_outcome")
+            for source in ("swift", "quartz")
+            for query in ("cg_on_screen", "cg_all_windows")
+        ]
+        if any(value in {"invalid_payload", "nil_or_unavailable", None} for value in query_values):
+            return "instrumentation_inconsistent"
+        failures: list[str] = []
+        if any(facts.get(f"selection_{source}_ax_trust") == "not_trusted" for source in ("swift", "quartz")):
+            failures.append("accessibility_denied")
+        if any(facts.get(f"selection_{source}_screen_capture_preflight") == "denied" for source in ("swift", "quartz")):
+            failures.append("screen_capture_denied")
+        if (
+            facts.get("selection_system_events_automation_preflight") in {"denied", "would_require_consent"}
+            or facts.get("selection_system_events_execution_outcome")
+            in {"not_authorized", "accessibility_denied", "automation_denied"}
+        ):
+            failures.append("system_events_denied")
+        failures = list(dict.fromkeys(failures))
+        if len(failures) > 1:
+            return "multiple"
+        if failures:
+            return failures[0]
+        if any(facts.get(f"selection_{source}_on_screen_omission_confirmed") is True for source in ("swift", "quartz")):
+            return "on_screen_filter_exclusion"
+        if any(int(facts.get(f"selection_{source}_target_rejected_nonzero_layer_count") or 0) > 0 for source in ("swift", "quartz")):
+            return "layer_filter_exclusion"
+        if any(int(facts.get(f"selection_{source}_target_rejected_nonpositive_geometry_count") or 0) > 0 for source in ("swift", "quartz")):
+            return "geometry_filter_exclusion"
+        if any(int(facts.get(f"selection_{source}_rejected_target_bundle_mismatch_count") or 0) > 0 for source in ("swift", "quartz")):
+            return "identity_correlation_failure"
+        permissions_ok = (
+            all(facts.get(f"selection_{source}_ax_trust") == "trusted" for source in ("swift", "quartz"))
+            and all(facts.get(f"selection_{source}_screen_capture_preflight") == "granted" for source in ("swift", "quartz"))
+            and facts.get("selection_system_events_automation_preflight") == "authorized"
+            and facts.get("selection_system_events_execution_outcome") == "success"
+        )
+        all_target_count = sum(
+            int(facts.get(f"selection_{source}_all_windows_target_pid_match_count") or 0)
+            for source in ("swift", "quartz")
+        )
+        if permissions_ok:
+            if all_target_count > 0:
+                return "permissions_ok"
+            if any(
+                facts.get(f"selection_{source}_cg_all_windows_query_outcome")
+                == "success_nonempty_truncated"
+                for source in ("swift", "quartz")
+            ):
+                return "permissions_ok_target_unknown"
+            return "permissions_ok_no_target"
+        return "unknown"
+
+    @staticmethod
+    def _selection_source_permission_outcome(facts: dict[str, Any], source: str) -> str:
+        """Reduce permissions for one source without attributing another source's state."""
+        if facts.get("selection_permission_request_api_invoked") is True:
+            return "forbidden_action_required"
+        if source not in {"swift", "quartz", "system_events"}:
+            return "not_applicable"
+        if source == "system_events":
+            preflight = facts.get("selection_system_events_automation_preflight")
+            execution = facts.get("selection_system_events_execution_outcome")
+            if preflight in {"denied", "would_require_consent"} or execution in {
+                "not_authorized", "accessibility_denied", "automation_denied",
+            }:
+                return "system_events_denied"
+            if execution == "skipped_non_authoritative":
+                return "skipped_non_authoritative"
+            if preflight != "authorized" or execution != "success":
+                return "unknown"
+            target_count = sum(
+                BrowserComputerController._selection_fact_count(
+                    facts.get(f"selection_system_events_target_{kind}_match_count")
+                )
+                for kind in ("name", "pid", "bundle")
+            )
+            return "permissions_ok" if target_count else "permissions_ok_no_target"
+
+        query_values = [
+            facts.get(f"selection_{source}_{query}_query_outcome")
+            for query in ("cg_on_screen", "cg_all_windows")
+        ]
+        if any(value in {"invalid_payload", "nil_or_unavailable", None} for value in query_values):
+            return "instrumentation_inconsistent"
+        if facts.get(f"selection_{source}_ax_trust") == "not_trusted":
+            return "accessibility_denied"
+        if facts.get(f"selection_{source}_screen_capture_preflight") == "denied":
+            return "screen_capture_denied"
+        if facts.get(f"selection_{source}_on_screen_omission_confirmed") is True:
+            return "on_screen_filter_exclusion"
+        if BrowserComputerController._selection_fact_count(
+            facts.get(f"selection_{source}_target_rejected_nonzero_layer_count")
+        ) > 0:
+            return "layer_filter_exclusion"
+        if BrowserComputerController._selection_fact_count(
+            facts.get(f"selection_{source}_target_rejected_nonpositive_geometry_count")
+        ) > 0:
+            return "geometry_filter_exclusion"
+        if BrowserComputerController._selection_fact_count(
+            facts.get(f"selection_{source}_rejected_target_bundle_mismatch_count")
+        ) > 0:
+            return "identity_correlation_failure"
+        permissions_ok = (
+            facts.get(f"selection_{source}_ax_trust") == "trusted"
+            and facts.get(f"selection_{source}_screen_capture_preflight") == "granted"
+            and all(value in _QUARTZ_QUERY_SUCCESS_OUTCOMES for value in query_values)
+        )
+        if not permissions_ok:
+            return "unknown"
+        all_target_count = BrowserComputerController._selection_fact_count(
+            facts.get(f"selection_{source}_all_windows_target_pid_match_count")
+        )
+        if all_target_count > 0:
+            return "permissions_ok"
+        if facts.get(f"selection_{source}_cg_all_windows_query_outcome") == "success_nonempty_truncated":
+            return "permissions_ok_target_unknown"
+        return "permissions_ok_no_target"
+
+    @staticmethod
+    def _selection_fact_count(value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @classmethod
+    def _selection_secondary_permission_outcome(
+        cls, facts: dict[str, Any], sources: list[str]
+    ) -> str:
+        if not sources:
+            return "not_applicable"
+        outcomes = [cls._selection_source_permission_outcome(facts, source) for source in sources]
+        if len(outcomes) == 1:
+            return outcomes[0]
+        benign = {
+            "permissions_ok", "permissions_ok_no_target", "permissions_ok_target_unknown",
+            "skipped_non_authoritative", "not_applicable",
+        }
+        failures = list(dict.fromkeys(outcome for outcome in outcomes if outcome not in benign))
+        if len(failures) > 1:
+            return "multiple"
+        if failures:
+            return failures[0]
+        if "permissions_ok" in outcomes:
+            return "permissions_ok"
+        if "permissions_ok_target_unknown" in outcomes:
+            return "permissions_ok_target_unknown"
+        if "permissions_ok_no_target" in outcomes:
+            return "permissions_ok_no_target"
+        if "skipped_non_authoritative" in outcomes:
+            return "skipped_non_authoritative"
+        return "unknown"
+
+    def _darwin_window_inventory_observation(self, app: str) -> dict[str, Any]:
+        aliases = self._app_alias_tokens(app)
+        bundle_aliases: set[str] = set()
+        for key, values in _DARWIN_BROWSER_BUNDLE_ID_ALIASES.items():
+            if aliases & self._app_alias_tokens(key):
+                bundle_aliases.update(str(value).lower() for value in values)
+        swift = self._darwin_swift_inventory_observation(
+            app=app, aliases=aliases, bundle_aliases=bundle_aliases
+        )
+        target_pids = set(swift.get("target_pids") or set())
+        bundle_pids = set(swift.get("bundle_pids") or set())
+        quartz_windows = self._darwin_windows_quartz()
+        quartz_permission_facts = self._darwin_quartz_permission_observation(
+            app=app, aliases=aliases, target_pids=target_pids, bundle_pids=bundle_pids
+        )
+        swift_windows = list(swift.get("windows") or [])
+        system_observation = self._darwin_system_events_permission_observation(
+            app=app,
+            enumerate_windows=not bool(swift_windows or quartz_windows),
+        )
+        system_windows = list(system_observation.get("windows") or [])
+        if swift_windows:
+            source, windows = "swift_host", swift_windows
+        elif quartz_windows:
+            source, windows = "quartz", quartz_windows
+        elif system_windows:
+            source, windows = "system_events", system_windows
+        else:
+            source, windows = "none", []
+        swift_facts = dict(swift.get("facts") or {})
+        pid_available = swift_facts.get("selection_target_pid_match_available") is True
+        bundle_available = swift_facts.get("selection_target_bundle_match_available") is True
+        quartz_facts = self._selection_source_facts(
+            "quartz", quartz_windows, app=app,
+            observed=quartz_permission_facts.get("selection_quartz_cg_on_screen_query_outcome") in _QUARTZ_QUERY_SUCCESS_OUTCOMES,
+            contract_valid=all(
+                quartz_permission_facts.get(key) in _QUARTZ_QUERY_SUCCESS_OUTCOMES
+                for key in (
+                    "selection_quartz_cg_on_screen_query_outcome",
+                    "selection_quartz_cg_all_windows_query_outcome",
+                )
+            ),
+            target_pids=target_pids, bundle_pids=bundle_pids,
+            pid_match_available=pid_available, bundle_match_available=bundle_available,
+            on_screen_only=True, layer_zero=True,
+        )
+        system_facts = self._selection_source_facts(
+            "system_events", system_windows, app=app,
+            observed=dict(system_observation.get("facts") or {}).get("selection_system_events_execution_outcome") == "success",
+            contract_valid=dict(system_observation.get("facts") or {}).get("selection_system_events_execution_outcome") == "success",
+            target_pids=target_pids, bundle_pids=bundle_pids,
+            pid_match_available=pid_available, bundle_match_available=bundle_available,
+            on_screen_only=False, layer_zero=False,
+        )
+        facts = {
+            **swift_facts, **quartz_facts, **system_facts,
+            **quartz_permission_facts, **dict(system_observation.get("facts") or {}),
+        }
+        source_prefix = {"swift_host": "swift", "quartz": "quartz", "system_events": "system_events"}.get(source)
+        later_prefixes = (
+            ["quartz", "system_events"] if source == "swift_host"
+            else ["system_events"] if source == "quartz" else []
+        )
+        facts["selection_permission_diagnostic_outcome"] = self._selection_permission_outcome(facts)
+        facts["selection_authoritative_permission_source"] = source
+        facts["selection_authoritative_permission_outcome"] = self._selection_source_permission_outcome(
+            facts, source_prefix or ""
+        )
+        facts["selection_secondary_permission_outcome"] = self._selection_secondary_permission_outcome(
+            facts, later_prefixes
+        )
+        facts["selection_permission_fact_stability"] = "unknown"
+        facts["selection_permission_fact_change_count"] = 0
+        primary_target_count = 0
+        if source_prefix:
+            primary_target_count = sum(
+                int(facts.get(f"selection_{source_prefix}_target_{kind}_match_count") or 0)
+                for kind in ("name", "pid", "bundle")
+            )
+        later_target = any(
+            int(facts.get(f"selection_{prefix}_target_{kind}_match_count") or 0) > 0
+            for prefix in later_prefixes for kind in ("name", "pid", "bundle")
+        )
+        compared = all(
+            facts.get(f"selection_{prefix}_inventory_observed") is True
+            for prefix in ("swift", "quartz", "system_events")
+        )
+        consistent = all(
+            int(facts.get(f"selection_{prefix}_usable_window_count") or 0)
+            <= int(facts.get(f"selection_{prefix}_window_total_count") or 0)
+            for prefix in ("swift", "quartz", "system_events")
+        ) and (
+            facts.get("selection_swift_helper_response_contract") in {"valid_success", "valid_error"}
+            and facts.get("selection_swift_helper_contract_version_class") == "expected"
+            and facts.get("selection_swift_inventory_contract_valid") is True
+        )
+        facts.update({
+            "selection_requested_alias_valid": bool(aliases),
+            "selection_requested_bundle_alias_available": bool(bundle_aliases),
+            "selection_inventory_source_used": source,
+            "selection_primary_source_nonempty": bool(windows),
+            "selection_later_sources_suppressed_by_selection_policy": source in {"swift_host", "quartz"},
+            "selection_diagnostic_sources_compared": compared,
+            "selection_primary_source_target_match_absent": primary_target_count == 0,
+            "selection_later_source_target_match_present": later_target,
+            "selection_primary_source_suppressed_target_observation": primary_target_count == 0 and later_target,
+            "selection_inventory_instrumentation_consistent": consistent,
+        })
+        causes: list[str] = []
+        helper_contract = facts.get("selection_swift_helper_response_contract")
+        helper_version = facts.get("selection_swift_helper_contract_version_class")
+        helper_issue = False
+        if helper_contract not in {"valid_success", "valid_error"}:
+            causes.append("helper_unavailable" if helper_contract == "not_invoked" else "helper_contract_invalid")
+            helper_issue = True
+        elif helper_version != "expected":
+            causes.append("helper_contract_invalid")
+            helper_issue = True
+        if not consistent:
+            causes.append("instrumentation_inconsistent")
+        process_present = facts.get("selection_nsworkspace_target_process_present") is True
+        all_target_count = sum(
+            int(facts.get(f"selection_{prefix}_target_{kind}_match_count") or 0)
+            for prefix in ("swift", "quartz", "system_events") for kind in ("name", "pid", "bundle")
+        )
+        if not helper_issue:
+            if process_present and all_target_count == 0:
+                causes.append("process_present_no_window")
+            elif not process_present and all_target_count == 0:
+                causes.append("process_absent")
+            if primary_target_count == 0 and later_target:
+                causes.append("primary_source_divergence")
+            if source_prefix and int(facts.get(f"selection_{source_prefix}_target_name_match_count") or 0) == 0 and any(
+                int(facts.get(f"selection_{source_prefix}_target_{kind}_match_count") or 0) > 0
+                for kind in ("pid", "bundle")
+            ):
+                causes.append("owner_name_mismatch")
+        unique_causes = list(dict.fromkeys(causes))
+        outcome = unique_causes[0] if len(unique_causes) == 1 else "multiple" if unique_causes else "unknown"
+        stage = (
+            "helper_resolution" if helper_issue
+            else "source_comparison" if not consistent
+            else "complete"
+        )
+        facts.update({
+            "selection_inventory_diagnostic_stage": stage,
+            "selection_inventory_diagnostic_outcome": outcome,
+            "selection_inventory_cause_count": min(4, len(unique_causes)),
+        })
+        selected_identity_observation = swift.get("_selected_identity_observation")
+        if source != "swift_host" or not isinstance(selected_identity_observation, dict):
+            selected_identity_observation = None
+        return {
+            "windows": windows,
+            "facts": facts,
+            # The native-only mapping is retained only for a Swift-authoritative
+            # inventory and consumed before _select_window returns.
+            "_selected_identity_observation": selected_identity_observation,
+        }
+
     def _darwin_windows(self) -> list[dict[str, Any]]:
         swift_windows = self._darwin_swift_windows()
         if swift_windows:
@@ -3929,18 +6757,22 @@ class BrowserComputerController:
         quartz_windows = self._darwin_windows_quartz()
         if quartz_windows:
             return quartz_windows
+        return self._darwin_windows_system_events()
+
+    def _darwin_windows_system_events(self) -> list[dict[str, Any]]:
         script = r'''
 tell application "System Events"
   set output to ""
   repeat with proc in (application processes whose background only is false)
     set procName to name of proc
+    set procPid to unix id of proc
     set procFront to frontmost of proc
     repeat with win in windows of proc
       try
         set winName to name of win
         set winPos to position of win
         set winSize to size of win
-        set output to output & procName & tab & winName & tab & (item 1 of winPos) & tab & (item 2 of winPos) & tab & (item 1 of winSize) & tab & (item 2 of winSize) & tab & procFront & linefeed
+        set output to output & procName & tab & winName & tab & (item 1 of winPos) & tab & (item 2 of winPos) & tab & (item 1 of winSize) & tab & (item 2 of winSize) & tab & procFront & tab & procPid & linefeed
       end try
     end repeat
   end repeat
@@ -3972,6 +6804,8 @@ end tell
                     "height": int(float(parts[5])),
                     "active": parts[6].strip().lower() == "true",
                 }
+                if len(parts) >= 8:
+                    window["pid"] = int(parts[7])
             except Exception:
                 continue
             if window["width"] > 0 and window["height"] > 0:
@@ -4222,29 +7056,113 @@ return "not_found"
         return False
 
     def _darwin_windows_quartz(self) -> list[dict[str, Any]]:
-        code = r"""
+        code = "MAX_BRIDGED_RECORDS = " + str(_QUARTZ_BRIDGE_MAX_ITEMS) + r"""
 import json
 import Quartz
 
+def has_mapping_capability(value):
+    return any(callable(getattr(value, name, None)) for name in (
+        "get", "objectForKey_", "__getitem__",
+    ))
+
+def mapping_get(value, key, default=None):
+    getter = getattr(value, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except TypeError:
+            try:
+                result = getter(key)
+                return default if result is None else result
+            except Exception:
+                pass
+        except Exception:
+            pass
+    object_for_key = getattr(value, "objectForKey_", None)
+    if callable(object_for_key):
+        try:
+            result = object_for_key(key)
+            return default if result is None else result
+        except Exception:
+            pass
+    get_item = getattr(value, "__getitem__", None)
+    if callable(get_item):
+        try:
+            return get_item(key)
+        except Exception:
+            pass
+    return default
+
+def bounded_iterable(value):
+    if isinstance(value, (str, bytes, bytearray)):
+        return None
+    try:
+        iterator = iter(value)
+    except Exception:
+        count = getattr(value, "count", None)
+        item_at_index = getattr(value, "objectAtIndex_", None)
+        if not callable(count) or not callable(item_at_index):
+            return None
+        try:
+            size = max(0, int(count()))
+            if size > MAX_BRIDGED_RECORDS:
+                return None
+            return [item_at_index(index) for index in range(size)]
+        except Exception:
+            return None
+    records = []
+    for _ in range(MAX_BRIDGED_RECORDS):
+        try:
+            records.append(next(iterator))
+        except StopIteration:
+            return records
+        except Exception:
+            return None
+    try:
+        next(iterator)
+    except StopIteration:
+        return records
+    except Exception:
+        return None
+    return None
+
+def number(value):
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+def decimal(value):
+    try:
+        return float(value or 0)
+    except Exception:
+        return 0.0
+
 options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
-items = Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID) or []
+items = Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID)
+items = bounded_iterable(items)
+if items is None or any(not has_mapping_capability(item) for item in items):
+    raise ValueError("Quartz window bridge contract invalid")
 raw = []
 for item in items:
-    if int(item.get("kCGWindowLayer", 0) or 0) != 0:
+    if number(mapping_get(item, "kCGWindowLayer")) != 0:
         continue
-    bounds = item.get("kCGWindowBounds") or {}
-    width = int(round(float(bounds.get("Width", 0) or 0)))
-    height = int(round(float(bounds.get("Height", 0) or 0)))
+    bounds = mapping_get(item, "kCGWindowBounds")
+    if not has_mapping_capability(bounds):
+        continue
+    width = int(round(decimal(mapping_get(bounds, "Width"))))
+    height = int(round(decimal(mapping_get(bounds, "Height"))))
     if width <= 0 or height <= 0:
         continue
     raw.append({
-        "app": str(item.get("kCGWindowOwnerName") or ""),
-        "title": str(item.get("kCGWindowName") or ""),
-        "x": int(round(float(bounds.get("X", 0) or 0))),
-        "y": int(round(float(bounds.get("Y", 0) or 0))),
+        "app": str(mapping_get(item, "kCGWindowOwnerName") or ""),
+        "pid": number(mapping_get(item, "kCGWindowOwnerPID")),
+        "title": str(mapping_get(item, "kCGWindowName") or ""),
+        "x": int(round(decimal(mapping_get(bounds, "X")))),
+        "y": int(round(decimal(mapping_get(bounds, "Y")))),
         "width": width,
         "height": height,
-        "window_id": int(item.get("kCGWindowNumber", 0) or 0),
+        "window_id": number(mapping_get(item, "kCGWindowNumber")),
     })
 
 def overlap(a1, a2, b1, b2):
@@ -5401,11 +8319,21 @@ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
             return False
 
     def _approval_required(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+        prompt = _COMPUTER_APPROVAL_PROMPT
         response = {
             "action": action,
             "requires_approval": True,
             "approval_expires_in_seconds": 300,
             "approval_hint": "Approve the pending request in a trusted Rumi UI, then retry with the signed approval token.",
+            "message": prompt,
+            "user_prompt": prompt,
+            "recovery": {
+                "kind": "approval_required",
+                "requires_approval": True,
+                "prompt": prompt,
+                "note": "foreground/on-screen operation is available after approval; approve the request or choose foreground work.",
+                "recommended_next_actions": ["approve_request", "choose_foreground_work"],
+            },
             "payload": payload,
         }
         warning = self._approval_warning(action, payload)

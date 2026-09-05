@@ -1,10 +1,11 @@
-import { AlertTriangle, Box, Calculator, Check, ChevronRight, Clock, Copy, ExternalLink, FileText, GitBranch, Globe2, Image as ImageIcon, Loader2, Monitor, Terminal, Wrench } from "lucide-react";
+import { Box, Calculator, ChevronRight, CircleAlert, Clock, Copy, ExternalLink, FileText, GitBranch, Globe2, Image as ImageIcon, Loader2, Monitor, RefreshCw, Terminal, Wrench, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { ArtifactPreviewDialog, type ArtifactPreviewDialogItem } from "../components/ArtifactPreviewDialog";
+import { ErrorCopyAction, ErrorNotice, copyTextWithFallback } from "../components/ErrorNotice";
 import { PromptUsageDisclosure } from "../components/prompts/PromptUsageDisclosure";
 import { cn } from "../lib/cn";
 import { elapsedDurationLabel, formatCompactDuration, timestampMs } from "../lib/duration";
@@ -83,9 +84,125 @@ type MessageToolActivityState = {
   summary: ToolActivityTraySummary;
 };
 
+type TaskDurationState = {
+  label: string;
+  running: boolean;
+};
+
 function activityEventValue(event: ChatActivityEvent, key: string): unknown {
   const data = isRecord(event.data) ? event.data : {};
   return event[key] ?? data[key];
+}
+
+function firstTimestamp(values: unknown[]): number | null {
+  let first: number | null = null;
+  for (const value of values) {
+    const timestamp = timestampMs(value);
+    if (timestamp === null) continue;
+    first = first === null ? timestamp : Math.min(first, timestamp);
+  }
+  return first;
+}
+
+function lastTimestamp(values: unknown[]): number | null {
+  let last: number | null = null;
+  for (const value of values) {
+    const timestamp = timestampMs(value);
+    if (timestamp === null) continue;
+    last = last === null ? timestamp : Math.max(last, timestamp);
+  }
+  return last;
+}
+
+function humanTaskDuration(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return hours > 0 ? `${days}日${hours}時間` : `${days}日`;
+  if (hours > 0) return minutes > 0 ? `${hours}時間${minutes}分` : `${hours}時間`;
+  if (minutes > 0) return seconds > 0 ? `${minutes}分${seconds}秒` : `${minutes}分`;
+  return `${seconds}秒`;
+}
+
+function humanTaskDurationLabel(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const durationMs = compactDurationMs(text);
+  return durationMs === null ? text : humanTaskDuration(durationMs);
+}
+
+function taskDurationTimestamps(
+  message: ChatMessagesRendererProps["messages"][number],
+  items: RunActivityItem[],
+): { completedAt: number | null; startedAt: number | null } {
+  const metadata = messageMetadataRecord(message);
+  const startValues: unknown[] = [
+    metadata.thinking_started_at,
+    metadata.thinkingStartedAt,
+    metadata.request_started_at,
+    metadata.requestStartedAt,
+    metadata.started_at,
+    metadata.startedAt,
+    message.createdAt,
+  ];
+  const completedValues: unknown[] = [
+    metadata.completed_at,
+    metadata.completedAt,
+    metadata.finished_at,
+    metadata.finishedAt,
+  ];
+
+  for (const event of message.events ?? []) {
+    startValues.push(
+      activityEventValue(event, "started_at"),
+      activityEventValue(event, "startedAt"),
+      event.timestamp,
+    );
+    completedValues.push(
+      activityEventValue(event, "completed_at"),
+      activityEventValue(event, "completedAt"),
+      activityEventValue(event, "finished_at"),
+      activityEventValue(event, "finishedAt"),
+      event.timestamp,
+    );
+  }
+
+  for (const log of message.toolLogs ?? []) {
+    startValues.push(log.started_at, log.startedAt);
+    completedValues.push(log.completed_at, log.completedAt, log.finished_at, log.finishedAt, log.timestamp);
+  }
+
+  for (const item of items) {
+    startValues.push(item.startedAt, item.timestamp);
+    completedValues.push(item.completedAt, item.timestamp);
+  }
+
+  return {
+    completedAt: lastTimestamp(completedValues),
+    startedAt: firstTimestamp(startValues),
+  };
+}
+
+export function taskDurationForMessage(
+  message: ChatMessagesRendererProps["messages"][number],
+  items: RunActivityItem[] = [],
+  now = Date.now(),
+  running = isAwaitingStreamFinalMessage(message),
+): TaskDurationState | null {
+  const { completedAt, startedAt } = taskDurationTimestamps(message, items);
+  const metadataDuration = humanTaskDurationLabel(message.metadata?.thinkingDuration);
+  const duration = running && startedAt !== null
+    ? humanTaskDuration(now - startedAt)
+    : metadataDuration || (startedAt !== null && completedAt !== null && completedAt >= startedAt
+      ? humanTaskDuration(completedAt - startedAt)
+      : "");
+  if (!duration) return null;
+  return {
+    label: `${running ? "実行中" : "実行時間"} ${duration}`,
+    running,
+  };
 }
 
 function attemptGeneration(value: unknown): number | string | undefined {
@@ -392,8 +509,8 @@ function UntrustedImageBlock({
   }, [loadedSrc]);
 
   const copyUrl = () => {
-    if (!rawUrl || typeof navigator === "undefined" || !navigator.clipboard) return;
-    void navigator.clipboard.writeText(rawUrl).then(() => setCopied(true), () => setCopied(false));
+    if (!rawUrl) return;
+    void copyTextWithFallback(rawUrl).then(setCopied, () => setCopied(false));
   };
   const openPreview = () => onOpenImagePreview?.({
     src: loadedSrc,
@@ -435,10 +552,16 @@ function UntrustedImageBlock({
         <span>{alt}</span>
       </div>
       {policy.disposition === "blocked" ? (
-        <div role="alert" className="rounded-md border border-amber-900/70 bg-amber-950/30 p-3 text-xs text-amber-200">
-          <p>Image blocked for safety.</p>
-          <p className="mt-1 break-all text-amber-300/80">Source: {policy.sourceLabel} ({policy.reason})</p>
-        </div>
+        <ErrorNotice
+          className="rounded-md border-amber-900/70 bg-amber-950/30 p-3 text-xs text-amber-200"
+          copyLabel="画像ブロックの詳細をコピー"
+          errorIcon="blocked-image"
+          message={`Source: ${policy.sourceLabel} (${policy.reason})`}
+          messageClassName="mt-1 break-all text-amber-300/80"
+          severity="warning"
+          title="Image blocked for safety."
+          titleClassName="text-amber-200"
+        />
       ) : !consented ? (
         <div className="rounded-md border border-zinc-700 bg-zinc-950/50 p-3 text-xs text-zinc-300">
           <p>Remote image hidden. Loading it will contact this source.</p>
@@ -448,10 +571,15 @@ function UntrustedImageBlock({
           </button>
         </div>
       ) : failed ? (
-        <div role="alert" className="rounded-md border border-red-900/70 bg-red-950/30 p-3 text-xs text-red-200">
-          Image could not be loaded from {policy.sourceLabel}.
-          {!trusted ? <button type="button" className="ml-2 underline" onClick={revokeRemote}>Revoke access</button> : null}
-        </div>
+        <ErrorNotice
+          className="rounded-md border-red-900/70 bg-red-950/30 p-3 text-xs text-red-200"
+          copyLabel="画像読み込みエラーをコピー"
+          errorIcon="image-load"
+          message={`Image could not be loaded from ${policy.sourceLabel}.`}
+          messageClassName="text-red-200"
+        >
+          {!trusted ? <button type="button" className="mt-2 underline" onClick={revokeRemote}>Revoke access</button> : null}
+        </ErrorNotice>
       ) : (
         <button type="button" className="block max-w-full cursor-zoom-in rounded-lg border border-zinc-800 bg-black/30 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500" onClick={openPreview}>
           <img
@@ -669,34 +797,7 @@ export function formatMessageTimestamp(value: unknown): string {
 }
 
 async function writeClipboardText(text: string): Promise<void> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-  } catch {
-    // Fall through to the textarea fallback for in-app browsers that expose but deny Clipboard API.
-  }
-
-  if (typeof document !== "undefined" && document.body) {
-    const textarea = document.createElement("textarea");
-    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    textarea.value = text;
-    textarea.setAttribute("readonly", "true");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    textarea.style.top = "0";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    const copied = document.execCommand("copy");
-    textarea.remove();
-    activeElement?.focus({ preventScroll: true });
-    if (copied) {
-      return;
-    }
-  }
+  if (await copyTextWithFallback(text)) return;
 
   await chatMessageResources.writeClipboard(text);
 }
@@ -710,56 +811,37 @@ function MessageActionBar({
 
   const text = messageCopyText(message);
   const timestampLabel = formatMessageTimestamp(message.createdAt);
-  const actions: Array<{
-    id: string;
-    label: string;
-    icon: typeof Copy;
-    run: () => Promise<void> | void;
-  }> = [
-    {
-      id: "copy",
-      label: copyState === "failed" ? "コピー失敗" : copyState === "copied" ? "コピー済み" : "コピー",
-      icon: copyState === "failed" ? AlertTriangle : copyState === "copied" ? Check : Copy,
-      run: async () => {
-        if (!text) return;
-        try {
-          await writeClipboardText(text);
-          setCopyState("copied");
-        } catch {
-          setCopyState("failed");
-        }
-        window.setTimeout(() => setCopyState("idle"), 1800);
-      },
-    },
-  ];
+
+  const copyMessage = async () => {
+    if (!text) return;
+    try {
+      await writeClipboardText(text);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    window.setTimeout(() => setCopyState("idle"), 1800);
+  };
 
   return (
-    <div className="rumi-message-actions mt-1.5 flex min-h-6 items-center justify-start gap-1 opacity-80 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
-      {actions.map((action) => {
-        const Icon = action.icon;
-        return (
-          <button
-            key={action.id}
-            type="button"
-            aria-label={action.label}
-            title={action.label}
-            onClick={() => {
-              void action.run();
-            }}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800/85 hover:text-zinc-100 focus-visible:bg-zinc-800/85 focus-visible:text-zinc-100 focus-visible:outline-none"
-          >
-            <Icon
-              size={14}
-              className={cn(
-                copyState === "copied" && "rumi-copy-icon-pop text-emerald-300",
-                copyState === "failed" && "rumi-copy-icon-pop text-red-300",
-              )}
-            />
-          </button>
-        );
-      })}
+    <div className="rumi-message-actions mt-1.5 flex min-h-8 items-center justify-start gap-1 opacity-85 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+      <button
+        aria-label="コピー"
+        className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800/85 hover:text-zinc-100 focus-visible:bg-zinc-800/85 focus-visible:text-zinc-100",
+          copyState === "copied" && "rumi-copy-icon-pop text-emerald-300",
+          copyState === "failed" && "rumi-copy-icon-pop text-red-300",
+        )}
+        data-copy-action="message"
+        onClick={() => void copyMessage()}
+        title="コピー"
+        type="button"
+      >
+        <Copy aria-hidden="true" data-copy-icon="message" size={14} />
+      </button>
+      <span className="sr-only" aria-live="polite">{copyState === "copied" ? "メッセージをコピーしました" : copyState === "failed" ? "メッセージをコピーできませんでした" : ""}</span>
       {timestampLabel && (
-        <span className="ml-1 shrink-0 font-mono text-[10px] leading-none text-zinc-600 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+        <span className="ml-1 shrink-0 font-mono text-[10px] leading-none text-zinc-600 opacity-50 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
           {timestampLabel}
         </span>
       )}
@@ -768,6 +850,48 @@ function MessageActionBar({
 }
 
 function WidgetCard({ widget }: { widget: Record<string, unknown> }) {
+  if (String(widget.type ?? "") === "repository_evidence") {
+    const statistics = isRecord(widget.statistics) ? widget.statistics : {};
+    const reasons = isRecord(widget.excluded_reason_counts)
+      ? widget.excluded_reason_counts
+      : {};
+    const excludedCount = Number(statistics.files_excluded ?? 0);
+    const selectedCount = Number(statistics.files_selected ?? 0);
+    const reasonEntries = Object.entries(reasons)
+      .filter(([, value]) => Number.isFinite(Number(value)))
+      .sort(([left], [right]) => left.localeCompare(right));
+    return (
+      <section
+        className="mt-2 w-[min(520px,100%)] rounded-lg border border-cyan-500/25 bg-cyan-500/10 p-3"
+        aria-label="Repository evidence statistics"
+        data-testid="repository-evidence-widget"
+      >
+        <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-cyan-300">
+          Repository evidence
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="rounded-md border border-cyan-400/15 bg-zinc-950/35 px-2.5 py-2">
+            <div className="text-[10px] text-zinc-500">Selected</div>
+            <div className="font-mono text-lg text-zinc-100">{selectedCount}</div>
+          </div>
+          <div className="rounded-md border border-cyan-400/15 bg-zinc-950/35 px-2.5 py-2">
+            <div className="text-[10px] text-zinc-500">Excluded</div>
+            <div className="font-mono text-lg text-zinc-100">{excludedCount}</div>
+          </div>
+        </div>
+        {reasonEntries.length > 0 && (
+          <dl className="mt-2 grid gap-1 text-[11px]">
+            {reasonEntries.map(([reason, value]) => (
+              <div key={reason} className="flex items-center justify-between gap-3">
+                <dt className="min-w-0 truncate text-zinc-400">{reason}</dt>
+                <dd className="shrink-0 font-mono text-zinc-200">{Number(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
+    );
+  }
   if (String(widget.kind ?? "") === "conversation_handoff") {
     const title = String(widget.title ?? "移動先");
     const conversationId = String(widget.conversation_id ?? "");
@@ -1008,7 +1132,7 @@ function RumiActivityLoading({
   const statusLabel = status || phase.detail || phase.label;
   return (
     <div
-      className={cn("rumi-activity-loading flex items-center gap-4 px-2 py-2 text-zinc-300", compact ? "w-fit" : "w-[min(640px,calc(100vw-48px))]")}
+      className={cn("rumi-activity-loading flex max-w-full items-center gap-3 px-2 py-2 text-zinc-300", compact ? "w-fit" : "w-[min(680px,calc(100vw-48px))]")}
       role="status"
       aria-live="polite"
       aria-label={statusLabel}
@@ -1016,8 +1140,8 @@ function RumiActivityLoading({
       <div className="rumi-loading-bars" aria-hidden="true">
         <span />
       </div>
-      <div className="min-w-0 flex items-baseline gap-3">
-        <span className="truncate text-[16px] font-medium text-zinc-200">{statusLabel}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="min-w-[10rem] flex-1 break-words text-[15px] font-medium leading-5 text-zinc-200">{statusLabel}</span>
         {elapsed && <span aria-hidden="true" className="shrink-0 font-mono text-[12px] leading-none text-zinc-500">{elapsed}</span>}
       </div>
     </div>
@@ -1363,18 +1487,6 @@ function isToolActivityItem(item: RunActivityItem): item is ToolActivityItem {
   return item.kind === "tool";
 }
 
-function visibleTimelineItems(items: RunActivityItem[]): { items: RunActivityItem[]; hiddenCount: number } {
-  if (items.length <= 10) return { items, hiddenCount: 0 };
-  const tailIds = new Set(items.slice(-10).map((item) => item.id));
-  const forcedIds = new Set(
-    items
-      .filter((item) => item.status === "failed" || item.status === "blocked" || item.status === "waiting_approval" || item.status === "running")
-      .map((item) => item.id),
-  );
-  const visible = items.filter((item) => tailIds.has(item.id) || forcedIds.has(item.id));
-  return { items: visible, hiddenCount: Math.max(0, items.length - visible.length) };
-}
-
 function ToolActivityTimelineRow({
   item,
   onOpenToolPreview,
@@ -1387,24 +1499,41 @@ function ToolActivityTimelineRow({
   const artifactPreviewId = isToolActivityItem(item) ? item.artifacts?.find((artifact) => artifact.url)?.path : undefined;
   const previewId = toolActivityPreviewId(item, previewableCallIds) ?? artifactPreviewId;
   const hasPreview = Boolean(previewId);
-  const statusLabel = item.status === "failed" || item.status === "blocked"
+  const hasError = item.status === "failed" || item.status === "blocked";
+  const itemLabel = item.title || item.detail || (isToolActivityItem(item) ? item.toolName : item.folderLabel);
+  const statusLabel = hasError
     ? "エラー"
     : item.status === "waiting_approval"
       ? "承認待ち"
       : "";
   const statusLine = [statusLabel, item.detail].filter(Boolean).join(" · ");
+  const errorCopyText = [
+    "ツール実行エラー",
+    itemLabel,
+    item.detail && item.detail !== itemLabel ? item.detail : "",
+    item.nextStep ? `次: ${item.nextStep}` : "",
+  ].filter(Boolean).join("\n");
+  const errorIconId = `tool-activity-${item.status}`;
   const Icon = toolActivityIcon(item.folder);
   const body = (
     <>
-      <span className={cn("mt-[3px] flex h-4 w-4 shrink-0 items-center justify-center font-mono text-[11px] leading-none", activityStatusTone(item.status))}>
-        {activityStatusMarker(item.status)}
-      </span>
+      {hasError ? (
+        <CircleAlert
+          aria-hidden="true"
+          className="mt-[3px] h-4 w-4 shrink-0 text-red-300"
+          data-error-icon={errorIconId}
+        />
+      ) : (
+        <span className={cn("mt-[3px] flex h-4 w-4 shrink-0 items-center justify-center font-mono text-[11px] leading-none", activityStatusTone(item.status))}>
+          {activityStatusMarker(item.status)}
+        </span>
+      )}
       <span className="mt-[5px] flex h-3 w-3 shrink-0 items-center justify-center text-zinc-500" title={item.folderLabel}>
         <Icon size={12} />
       </span>
       <span className="min-w-0 max-w-full flex-1 overflow-hidden">
         <span className="flex min-w-0 max-w-full items-baseline gap-2 text-[12px] leading-4 text-zinc-300">
-          <span className="min-w-0 flex-1 truncate">{item.title || item.detail || (isToolActivityItem(item) ? item.toolName : item.folderLabel)}</span>
+          <span className="min-w-0 flex-1 truncate">{itemLabel}</span>
           {item.durationLabel && <span className="shrink-0 font-mono text-[10px] text-zinc-600">{item.durationLabel}</span>}
         </span>
         {statusLine && (
@@ -1419,7 +1548,7 @@ function ToolActivityTimelineRow({
       {hasPreview && <ChevronRight size={12} className="mt-[5px] shrink-0 text-zinc-600" />}
     </>
   );
-  return hasPreview ? (
+  const row = hasPreview ? (
     <button
       type="button"
       className={cn("group/tool flex min-h-7 w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded px-1.5 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-600 sm:min-h-8", activityRowTone(item.status))}
@@ -1432,6 +1561,22 @@ function ToolActivityTimelineRow({
   ) : (
     <div className={cn("flex min-h-7 w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded px-1.5 py-1 sm:min-h-8", activityRowTone(item.status))}>
       {body}
+    </div>
+  );
+  if (!hasError) return row;
+  return (
+    <div
+      aria-label="ツール実行エラー"
+      className="flex min-w-0 items-start gap-1"
+      data-error-notice={errorIconId}
+      role="group"
+    >
+      {row}
+      <ErrorCopyAction
+        className="mt-0.5 h-6 w-6"
+        copyText={errorCopyText}
+        label="ツール実行エラーをコピー"
+      />
     </div>
   );
 }
@@ -1451,12 +1596,10 @@ function ToolActivityPanel({
   message: ChatMessagesRendererProps["messages"][number];
   onOpenToolPreview?: (previewId: string) => void;
 }) {
-  const [showAll, setShowAll] = useState(false);
   if (items.length === 0) return null;
   const previewableCallIds = previewableToolActivityKeys(message.events ?? []);
-  const timeline = showAll ? { items, hiddenCount: 0 } : visibleTimelineItems(items);
   return (
-    <section className="rumi-tool-activity mb-3 grid w-full max-w-[640px] gap-1 rounded-md border border-zinc-800/70 bg-zinc-950/45 px-2 py-1.5 text-zinc-300">
+    <section className="rumi-tool-activity mb-3 grid w-full max-w-[640px] gap-1 rounded-md border border-zinc-800/70 bg-zinc-950/45 px-2 py-1.5 text-zinc-300" aria-label="ツール履歴">
       <button
         type="button"
         aria-expanded={isOpen}
@@ -1467,6 +1610,7 @@ function ToolActivityPanel({
         <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", summary.failedCount > 0 ? "bg-red-400" : summary.runningCount > 0 ? "animate-pulse bg-blue-300" : "bg-zinc-600")} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">ツール履歴</span>
             <span className="min-w-0 truncate text-[12px] font-medium leading-4 text-zinc-300">{summary.visibleTitle || summary.label}</span>
             <span className="shrink-0 text-[10px] leading-4 text-zinc-500">{summary.label}</span>
           </span>
@@ -1478,17 +1622,8 @@ function ToolActivityPanel({
         <ChevronRight size={12} className={cn("shrink-0 text-zinc-600 transition-transform", isOpen && "rotate-90")} />
       </button>
       {isOpen && (
-        <div className="rumi-tool-activity-timeline grid min-w-0 gap-0.5 border-t border-zinc-800/65 pt-1">
-          {timeline.hiddenCount > 0 && (
-            <button
-              type="button"
-              className="mb-0.5 w-fit rounded px-1.5 py-0.5 text-[10px] text-zinc-500 transition-colors hover:bg-zinc-900/50 hover:text-zinc-300"
-              onClick={() => setShowAll(true)}
-            >
-              前の {timeline.hiddenCount} 件を表示
-            </button>
-          )}
-          {timeline.items.map((item) => (
+        <div className="rumi-tool-activity-timeline grid min-w-0 gap-0.5 border-t border-zinc-800/65 pt-1" aria-label="ツール履歴の詳細">
+          {items.map((item) => (
             <ToolActivityTimelineRow
               key={item.id}
               item={item}
@@ -1553,12 +1688,16 @@ export function ChatMessagesRenderer({
   pendingToolStartedAt = {},
   messages,
   messagesEndRef,
+  messagesScrollRef,
+  onMessagesScroll,
   unknownBlockStrategy,
   showActivityInMessages,
   showWidgets,
   showPromptUsageInMessages = true,
   onOpenToolPreview,
   onLoadPromptTrace,
+  onRetry,
+  onDismissError,
 }: ChatMessagesRendererProps) {
   const [imagePreview, setImagePreview] = useState<ImagePreviewRequest | null>(null);
   const [openToolActivityByMessageId, setOpenToolActivityByMessageId] = useState<Record<string, boolean | undefined>>({});
@@ -1569,11 +1708,43 @@ export function ChatMessagesRenderer({
   const inlinePendingMessageId = isGenerating && !hasAuthorityPendingMessage && lastVisibleMessage?.role === "agent"
     ? lastVisibleMessage.id
     : null;
-  const activityNow = useActivityNow(hasRunningToolActivity);
+  const activityNow = useActivityNow(hasRunningToolActivity || Boolean(inlinePendingMessageId));
 
   return (
     <>
-      {error && <div className="mx-4 mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">{error}</div>}
+      {error && (
+        <ErrorNotice
+          className="rumi-chat-error mx-4 mt-3 rounded-xl border-red-400/25 bg-red-500/[0.09] px-3.5 py-3 text-red-100"
+          copyLabel="チャットエラーをコピー"
+          errorIcon="chat"
+          message={error}
+          messageClassName="mt-1 whitespace-pre-wrap text-[12px] leading-5 text-red-100/80"
+          title="処理を完了できませんでした"
+          titleClassName="text-[12px] text-red-100"
+          trailing={onDismissError ? (
+            <button
+              aria-label="エラーを閉じる"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-red-200/70 hover:bg-red-100/10 hover:text-red-50"
+              onClick={onDismissError}
+              title="閉じる"
+              type="button"
+            >
+              <X aria-hidden="true" size={15} />
+            </button>
+          ) : undefined}
+        >
+          {onRetry ? (
+            <button
+              className="mt-2.5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-200/25 bg-red-100/[0.06] px-3 text-[12px] font-semibold text-red-50 hover:bg-red-100/[0.11]"
+              onClick={onRetry}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={13} />
+              再試行
+            </button>
+          ) : null}
+        </ErrorNotice>
+      )}
 
       {!isMessagesRegionVisible ? null : isLoading ? (
         <div className="flex-1 flex items-center justify-center">
@@ -1582,8 +1753,12 @@ export function ChatMessagesRenderer({
       ) : isNewConversation ? (
         <div className="flex-1" />
       ) : (
-        <div className="flex-1 overflow-x-hidden overflow-y-auto px-5 py-3 md:px-8 lg:px-10 xl:px-12">
-          <div className="mx-auto w-full max-w-6xl min-w-0 space-y-4">
+        <div
+          ref={messagesScrollRef}
+          onScroll={onMessagesScroll}
+          className="rumi-messages-scroll flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 lg:px-8"
+        >
+          <div className="mx-auto w-full max-w-[980px] min-w-0 space-y-5">
             {visibleMessages.map((message) => {
               const toolActivity = showActivityInMessages && message.role === "agent"
                 ? toolActivityStateForMessage(message, activityNow)
@@ -1593,6 +1768,15 @@ export function ChatMessagesRenderer({
                 ? openToolActivityByMessageId[message.id] ?? toolActivity.hasRunningItems
                 : false;
               const isAuthorityPending = isAuthorityWaitingMessage(message);
+              // Persisted conversations can retain a stale `thinking.state=streaming`
+              // after the request has completed. Only the active tail response should
+              // keep advancing its timer; historical messages use their recorded end.
+              const isTaskRunning = message.role === "agent"
+                && isGenerating
+                && inlinePendingMessageId === message.id;
+              const taskDuration = message.role === "agent"
+                ? taskDurationForMessage(message, toolActivity?.items, activityNow, isTaskRunning)
+                : null;
               const toggleToolActivity = () => {
                 if (!toolActivity) return;
                 setOpenToolActivityByMessageId((current) => {
@@ -1602,18 +1786,15 @@ export function ChatMessagesRenderer({
               };
 
               return (
-              <div key={message.id} className={cn("rumi-message-row group/message flex min-w-0 gap-3 select-text", message.role === "user" ? "flex-row-reverse lg:pr-6 xl:pr-8 2xl:pr-10" : "lg:pl-8 xl:pl-12 2xl:pl-16")}>
-                <div className={cn("flex min-w-0 flex-col pt-1", message.role === "user" ? "max-w-[82%] items-end lg:max-w-[70%] 2xl:max-w-[64%]" : "flex-1 items-start")}>
+              <div key={message.id} className={cn("rumi-message-row group/message flex min-w-0 gap-3 select-text", message.role === "user" ? "flex-row-reverse sm:pr-2 lg:pr-5" : "sm:pl-1")}>
+                <div className={cn("flex min-w-0 flex-col pt-1", message.role === "user" ? "max-w-[88%] items-end sm:max-w-[78%] lg:max-w-[70%]" : "flex-1 items-start")}>
                   {message.role === "agent" && (
                     <div className="mb-1.5 flex max-w-full min-w-0 flex-nowrap items-center gap-2 overflow-hidden">
                       <span className="shrink-0 text-xs font-semibold tracking-wide text-zinc-300">Assistant</span>
-                      {message.metadata?.executionTime && (
-                        <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-zinc-500">
-                          <Clock size={10} /> {message.metadata.executionTime}
+                      {taskDuration && (
+                        <span className="flex shrink-0 items-center gap-1 text-[10px] text-zinc-500" aria-label={taskDuration.label}>
+                          <Clock size={10} aria-hidden="true" /> {taskDuration.label}
                         </span>
-                      )}
-                      {message.metadata?.thinkingDuration && (
-                        <span className="shrink-0 font-mono text-[10px] text-zinc-600">thinking {message.metadata.thinkingDuration}</span>
                       )}
                     </div>
                   )}
@@ -1666,22 +1847,27 @@ export function ChatMessagesRenderer({
                             ))
                           : shouldShowEmptyResponseWarning(message, hasToolActivity)
                             ? (
-                                <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-100">
-                                  <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-300" />
-                                  <span>レスポンス本文が空でした。stream が途中で閉じたか、thinking のみで終了した可能性があります。</span>
-                                </div>
+                                <ErrorNotice
+                                  className="rounded-lg border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-100"
+                                  copyLabel="空の応答エラーをコピー"
+                                  errorIcon="empty-response"
+                                  message="レスポンス本文が空でした。stream が途中で閉じたか、thinking のみで終了した可能性があります。"
+                                  messageClassName="text-amber-100"
+                                  severity="warning"
+                                />
                               )
                             : <MessageMarkdown text={messageDisplayText(message, message.rawText)} />}
                       </div>
 
                       {message.role === "agent" && message.metadata?.interrupted && (
-                        <div
-                          className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-100"
-                          role="status"
-                        >
-                          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-300" />
-                          <span>応答は途中で中断されました。表示内容は中断前までに届いたものです。</span>
-                        </div>
+                        <ErrorNotice
+                          className="mt-3 rounded-lg border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-100"
+                          copyLabel="中断した応答の詳細をコピー"
+                          errorIcon="interrupted-response"
+                          message="応答は途中で中断されました。表示内容は中断前までに届いたものです。"
+                          messageClassName="text-amber-100"
+                          severity="warning"
+                        />
                       )}
 
                       {showWidgets && message.widget && <WidgetCard widget={message.widget} />}
@@ -1717,7 +1903,7 @@ export function ChatMessagesRenderer({
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} className="h-1" />
+            <div ref={messagesEndRef} className="h-2 scroll-mb-4" aria-hidden="true" />
           </div>
         </div>
       )}

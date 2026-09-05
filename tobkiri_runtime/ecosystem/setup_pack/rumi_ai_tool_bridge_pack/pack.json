@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_ai_tool_bridge_pack",
+  "display_name": "Rumi AI Tool Bridge Pack",
+  "description": "Normalize provider tool calls into non-authoritative operation descriptors.",
+  "target_pack_id": "rumi_ai_tool_bridge_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "depends_on": [],
+  "required_permissions": ["ai.tool_intent.normalize"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.ai_tool_bridge", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Cannot approve, grant authority, or execute tools.", "Malformed provider intents fail closed."]
+}
+

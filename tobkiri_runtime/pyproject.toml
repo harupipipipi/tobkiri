@@ -8,9 +8,16 @@ version = "1.10.0"
 description = "Tobkiri runtime package"
 requires-python = ">=3.10"
 dependencies = [
-  "cryptography>=42.0.0",
+  "cryptography==50.0.0",
+  "jsonschema>=4.26.0",
+  "packaging>=24.0",
   "PyYAML>=6.0.2",
+  "typing-extensions>=4.4",
 ]
+
+[project.scripts]
+tobkiri = "tobkiri.cli:main"
+tobkiri-cli = "tobkiri.cli_shell:main"
 
 [project.optional-dependencies]
 dev = [
@@ -34,7 +41,10 @@ py-modules = ["app"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core_runtime*", "backend_core*", "rumi_setup*", "tobkiri*", "rumi_ai*"]
+include = ["core_runtime*", "backend_core*", "ecosystem*", "tobkiri*", "rumi_ai*", "tobkiri_protocol*"]
+
+[tool.setuptools.package-data]
+tobkiri_protocol = ["schemas/*.json", "fixtures/*.json", "fixtures/*.yaml"]
 
 [tool.ruff]
 line-length = 100
@@ -48,4 +58,5 @@ indent-style = "space"
 python_version = "3.10"
 ignore_missing_imports = true
 check_untyped_defs = true
+explicit_package_bases = true
 files = ["core_runtime", "app.py"]

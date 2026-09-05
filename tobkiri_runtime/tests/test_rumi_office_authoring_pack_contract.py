@@ -8,7 +8,6 @@ import pytest
 import yaml
 
 from backend_core.ecosystem.spec.schema.validator import validate_ecosystem
-from core_runtime.setup_pack import SetupPackManager
 from ecosystem.setup_pack.pack_selector import PackSelector
 
 pytestmark = pytest.mark.contract
@@ -16,6 +15,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_office_authoring_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 REQUIRED_ASSETS = [
@@ -282,6 +282,13 @@ FORBIDDEN_DIRS = {
     "webapp",
 }
 FORBIDDEN_EXTENSIONS = {".py", ".sh", ".js", ".ts", ".tsx", ".ipynb", ".sql"}
+PACK_METADATA_FILES = {
+    "ecosystem.json",
+    "rumi.pack.v3.json",
+    "artifact-manifest.json",
+    "executables.v4.json",
+    "frontend/contributions/office-authoring.json",
+}
 
 
 def read_json(path: Path) -> dict:
@@ -297,12 +304,16 @@ def test_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["runtime"]["type"] == "declarative_pack"
     assert ecosystem["components"] == {}
     assert ecosystem["load_order"] == []
     assert ecosystem["required_secrets"] == []
-    assert ecosystem["required_network"] == []
+    assert ecosystem["required_network"] == {
+        "allowed_domains": [],
+        "allowed_ports": [],
+    }
     assert ecosystem["host_execution"] is False
     metadata = ecosystem["metadata"]
     assert metadata["runtime_type"] in {"declarative_pack", "declarative_setup_pack"}
@@ -310,22 +321,24 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert metadata["executable_code"] is False
     assert metadata["declarative_only"] is True
     assert metadata["output_effect"] == "draft_and_handoff_only"
-    assert metadata["defaultspack_promotion_eligible"] is False
+    assert metadata["base_pack_promotion_eligible"] is False
     assert set(metadata["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(metadata["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
 
     actual = {
         path.relative_to(PACK_DIR).as_posix()
         for path in PACK_DIR.rglob("*")
-        if path.is_file() and path.name != "ecosystem.json"
+        if path.is_file()
+        and path.relative_to(PACK_DIR).as_posix() not in PACK_METADATA_FILES
     }
+    actual -= V4_AUTHORITY_ARTIFACTS
     indexed = {item for values in metadata["asset_index"].values() for item in values}
     assert actual == indexed == set(REQUIRED_ASSETS)
     asset_index = read_yaml(PACK_DIR / "asset_index.yaml")["asset_index"]
     indexed_file_assets = {item for values in asset_index["categories"].values() for item in values}
     assert indexed_file_assets == actual
     assert asset_index["invariants"]["external_actions_are_handoffs"] is True
-    assert asset_index["invariants"]["defaultspack_promotion_eligible"] is False
+    assert asset_index["invariants"]["base_pack_promotion_eligible"] is False
     assert asset_index["invariants"]["declarative_only"] is True
 
 
@@ -354,28 +367,32 @@ def test_setup_pack_discoverable_and_overlap_scoped() -> None:
         assert candidate.overlap_policy[key] == value
     assert any(value.startswith("owned_by_") for value in candidate.overlap_policy.values())
     assert any("handoff" in value for value in candidate.overlap_policy.values())
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["status"] == "verified"
     assert candidate.marketplace["category"] == "office-authoring"
     assert candidate.signing["verified"] is True
 
 
-def test_setup_pack_manager_installs_pack_with_declared_dependencies(tmp_path: Path) -> None:
-    manager = SetupPackManager(
-        root=ROOT / "ecosystem" / "setup_pack",
-        selection_file=tmp_path / "setup_pack_selection.json",
-        ecosystem_dir=ROOT / "ecosystem",
-    )
-    result = manager.install(PACK_ID)
-    assert result["success"] is True
-    assert result["installed_setup_pack_ids"] == ["defaultspack", PACK_ID]
-    assert result["installed_target_pack_ids"] == ["defaultspack", PACK_ID]
-    assert result["active_setup_pack_id"] == "defaultspack"
-    assert result["active_target_pack_id"] == "defaultspack"
-    assert result["granted_all_ok_target_pack_ids"] == ["defaultspack"]
-    assert result["skipped_all_ok_setup_pack_ids"] == [PACK_ID]
+def test_pack_v4_contract_carries_setup_dependencies() -> None:
+    setup = read_json(SETUP_PACK_JSON)
+    manifest = read_json(PACK_DIR / "pack.v4.json")
+    setup_dependencies = {
+        item["pack_id"]: item["version"] for item in setup["depends_on"]
+    }
+
+    assert manifest["pack"]["id"] == PACK_ID
+    # Setup selection depends on Defaults, while the generated v4 runtime
+    # manifest is declarative and carries no runtime Pack dependency.  These
+    # are separate authorities and must not be conflated.
+    assert setup_dependencies == {"defaultspack": ">=2.0.0"}
+    assert manifest["requirements"]["pack_dependencies"] == {}
+    assert manifest["requirements"]["network"] == {
+        "allowed_domains": [],
+        "allowed_ports": [],
+    }
+    assert manifest["requirements"]["secrets"] == []
 
 
 def test_schema_workflow_quality_policy_contracts() -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-import json
+import os
+import platform
+import shutil
 import struct
 import zlib
 from html import escape
@@ -11,6 +13,10 @@ from domain.ui_compiler import CandidateBundle, RenderMatrix, RenderSnapshot, UI
 
 from .candidate_generator import read_candidate_manifest
 from .project_writer import write_json, write_text
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
+
+_BROWSER_TIMEOUT_MS = 10_000
+_BROWSER_SANDBOX_MODE = "enabled"
 
 
 class RenderMatrixRunner:
@@ -93,6 +99,7 @@ class RenderMatrixRunner:
         browser_render: bool,
     ) -> list[RenderSnapshot]:
         snapshots: list[RenderSnapshot] = []
+        browser_executable_path = _browser_executable_path() if browser_render else ""
         visible_actions = int(manifest.get("visibleActionCount") or min(2, int(manifest.get("visibleActionBudget") or 2)))
         for viewport in viewports:
             for scenario in scenarios:
@@ -118,24 +125,31 @@ class RenderMatrixRunner:
                             metrics=metrics,
                         ),
                     )
-                    if browser_render and _capture_with_browser(
-                        html_path=html_path,
-                        image_path=image_path,
-                        dom_path=dom_path,
-                        console_path=console_path,
-                        viewport=viewport,
-                        text_scale=text_scale,
-                        subject_id=subject_id,
-                        candidate_id=candidate_id,
-                        metrics=metrics,
-                    ):
+                    captured_with_browser = False
+                    if browser_render:
+                        captured_with_browser = _capture_with_browser(
+                            html_path=html_path,
+                            image_path=image_path,
+                            dom_path=dom_path,
+                            console_path=console_path,
+                            viewport=viewport,
+                            text_scale=text_scale,
+                            subject_id=subject_id,
+                            candidate_id=candidate_id,
+                            metrics=metrics,
+                            executable_path=browser_executable_path,
+                        )
+                    if captured_with_browser:
                         pass
                     else:
                         metrics["renderer"] = "synthetic"
                         metrics["browserRenderRequested"] = bool(browser_render)
                         if browser_render:
                             metrics["browserRenderFallback"] = True
-                            metrics["browserRenderFallbackReason"] = "browser renderer unavailable or capture failed"
+                            metrics.setdefault(
+                                "browserRenderFallbackReason",
+                                "browser renderer unavailable or capture failed",
+                            )
                         _write_png(image_path, width=min(max(viewport, 120), 720), height=180, seed=subject_id + candidate_id)
                         write_json(
                             dom_path,
@@ -223,7 +237,7 @@ def _metrics(
         "consoleErrors": 0,
         "primaryClipped": bool(manifest.get("forcePrimaryClipped")) or (scenario == "long" and bool(manifest.get("longTextClipped"))),
         "touchTargetMin": int(manifest.get("touchTargetMin") or 36),
-        "requiredStates": list(manifest.get("requiredStates") if isinstance(manifest.get("requiredStates"), list) else []),
+        "requiredStates": list_or_empty(manifest.get("requiredStates")),
         "visibleTextBlocks": visible_text_blocks,
         "visibleCharacters": visible_characters,
         "averageLineLength": int(manifest.get("averageLineLength") or min(84, max(28, visible_characters // max(visible_text_blocks, 1)))),
@@ -239,7 +253,6 @@ def _metrics(
         "cardCount": int(manifest.get("cardCount") or max(0, int(manifest.get("surfaceDepth") or 1) - 1)),
         "cardNestingDepth": int(manifest.get("cardNestingDepth") or int(manifest.get("surfaceDepth") or 1)),
         "radiusUniformity": float(manifest.get("radiusUniformity") or 0.45),
-        "shadowCount": int(manifest.get("shadowCount") or 0),
         "mobileBehavior": mobile_strategy,
         "desktopColumns": int(manifest.get("desktopColumns") or (2 if viewport >= 768 else 1)),
         "mobileDisclosureUsed": bool(manifest.get("mobileDisclosureUsed") or (viewport <= 390 and mobile_strategy in {"route", "sheet", "drawer", "stack"})),
@@ -306,55 +319,109 @@ def _capture_with_browser(
     subject_id: str,
     candidate_id: str,
     metrics: dict[str, Any],
+    executable_path: str = "",
 ) -> bool:
-    executable_path = _browser_executable_path()
+    _set_browser_runtime_metrics(metrics, executable_path)
     if not executable_path:
+        metrics["browserRenderFallbackReason"] = "local Chromium executable not found"
         return False
     try:
         from playwright.sync_api import sync_playwright
     except Exception:
+        metrics["browserRenderFallbackReason"] = "optional Playwright Python package unavailable"
         return False
     image_path.parent.mkdir(parents=True, exist_ok=True)
     console_errors: list[str] = []
+    browser_version = ""
+    browser = None
+    context = None
+    cleanup_errors: list[str] = []
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True, executable_path=executable_path)
-            page = browser.new_page(viewport={"width": int(viewport), "height": 260}, device_scale_factor=1)
-            page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
-            page.goto(html_path.resolve().as_uri(), wait_until="load")
-            page.evaluate("(scale) => { document.documentElement.style.fontSize = `${16 * scale}px`; }", float(text_scale))
-            dom = page.evaluate(
-                """() => {
-                    const root = document.querySelector('[data-subject]');
-                    const actions = Array.from(document.querySelectorAll('button'));
-                    const rect = root ? root.getBoundingClientRect() : null;
-                    return {
-                        document: {
-                            scrollWidth: document.documentElement.scrollWidth,
-                            clientWidth: document.documentElement.clientWidth,
-                            scrollHeight: document.documentElement.scrollHeight,
-                            clientHeight: document.documentElement.clientHeight
-                        },
-                        root: rect ? {
-                            x: rect.x, y: rect.y, width: rect.width, height: rect.height
-                        } : null,
-                        actions: actions.map((item) => {
-                            const box = item.getBoundingClientRect();
-                            return { text: item.textContent, x: box.x, y: box.y, width: box.width, height: box.height };
-                        })
-                    };
-                }"""
+            browser = playwright.chromium.launch(
+                headless=True,
+                executable_path=executable_path,
+                timeout=_BROWSER_TIMEOUT_MS,
+                chromium_sandbox=True,
             )
-            page.screenshot(path=str(image_path), full_page=True)
-            browser.close()
+            try:
+                browser_version = str(browser.version or "")
+                context = browser.new_context(
+                    viewport={"width": int(viewport), "height": 260},
+                    device_scale_factor=1,
+                )
+                page = context.new_page()
+                page.set_default_timeout(_BROWSER_TIMEOUT_MS)
+                page.set_default_navigation_timeout(_BROWSER_TIMEOUT_MS)
+                page.on(
+                    "console",
+                    lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
+                )
+                page.goto(
+                    html_path.resolve().as_uri(),
+                    wait_until="load",
+                    timeout=_BROWSER_TIMEOUT_MS,
+                )
+                page.evaluate(
+                    "(scale) => { document.documentElement.style.fontSize = `${16 * scale}px`; }",
+                    float(text_scale),
+                )
+                dom = page.evaluate(
+                    """() => {
+                        const root = document.querySelector('[data-subject]');
+                        const actions = Array.from(document.querySelectorAll('button'));
+                        const rect = root ? root.getBoundingClientRect() : null;
+                        return {
+                            document: {
+                                scrollWidth: document.documentElement.scrollWidth,
+                                clientWidth: document.documentElement.clientWidth,
+                                scrollHeight: document.documentElement.scrollHeight,
+                                clientHeight: document.documentElement.clientHeight
+                            },
+                            root: rect ? {
+                                x: rect.x, y: rect.y, width: rect.width, height: rect.height
+                            } : null,
+                            actions: actions.map((item) => {
+                                const box = item.getBoundingClientRect();
+                                return { text: item.textContent, x: box.x, y: box.y, width: box.width, height: box.height };
+                            })
+                        };
+                    }"""
+                )
+                page.screenshot(
+                    path=str(image_path),
+                    full_page=True,
+                    timeout=_BROWSER_TIMEOUT_MS,
+                )
+            finally:
+                if context is not None:
+                    try:
+                        context.close()
+                    except Exception as exc:
+                        cleanup_errors.append(f"context cleanup: {type(exc).__name__}: {exc}")
+                    context = None
+                if browser is not None:
+                    try:
+                        browser.close()
+                    except Exception as exc:
+                        cleanup_errors.append(f"browser cleanup: {type(exc).__name__}: {exc}")
+                    browser = None
+                metrics["browserCleanup"] = (
+                    "cleanup-error" if cleanup_errors else "context-and-browser-closed"
+                )
+        if cleanup_errors:
+            raise RuntimeError("; ".join(cleanup_errors))
     except Exception as exc:
+        metrics["browserRenderFallbackReason"] = "browser launch or capture failed"
+        metrics["browserRenderError"] = f"{type(exc).__name__}: {exc}"
         write_json(console_path, {"renderer": "playwright", "errors": [str(exc)]})
         return False
     browser_metrics = dict(metrics)
     browser_metrics["renderer"] = "playwright"
     browser_metrics["browserRenderRequested"] = True
     browser_metrics["browserRenderFallback"] = False
-    document = dom.get("document") if isinstance(dom, dict) and isinstance(dom.get("document"), dict) else {}
+    browser_metrics["browserVersion"] = browser_version
+    document = mapping_or_empty(dom.get("document") if isinstance(dom, dict) else None)
     browser_metrics["scrollWidth"] = int(document.get("scrollWidth") or browser_metrics.get("scrollWidth") or 0)
     browser_metrics["contentWidth"] = int(document.get("clientWidth") or browser_metrics.get("contentWidth") or 0)
     browser_metrics["horizontalOverflow"] = browser_metrics["scrollWidth"] > browser_metrics["contentWidth"]
@@ -375,15 +442,121 @@ def _capture_with_browser(
 
 
 def _browser_executable_path() -> str:
-    candidates = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    ]
-    for candidate in candidates:
-        if Path(candidate).is_file():
-            return candidate
-    return ""
+    """Find a local Chromium executable without downloading or starting a browser."""
+
+    for candidate in _system_browser_candidates():
+        executable_path = _validated_executable_path(candidate)
+        if executable_path:
+            return executable_path
+    return _playwright_browser_executable_path()
+
+
+def _system_browser_candidates() -> list[str]:
+    """Return deterministic system browser candidates for the current platform."""
+
+    system = platform.system().lower()
+    candidates: list[str] = []
+    path_names: tuple[str, ...]
+    if system == "darwin":
+        app_bundles = (
+            ("Google Chrome.app", "Google Chrome"),
+            ("Chromium.app", "Chromium"),
+            ("Microsoft Edge.app", "Microsoft Edge"),
+        )
+        for applications_root in (Path("/Applications"), Path.home() / "Applications"):
+            for bundle, executable in app_bundles:
+                candidates.append(str(applications_root / bundle / "Contents" / "MacOS" / executable))
+        path_names = ("google-chrome", "chromium", "microsoft-edge")
+    elif system == "windows":
+        windows_roots = (
+            os.environ.get("PROGRAMFILES"),
+            os.environ.get("PROGRAMFILES(X86)"),
+            os.environ.get("PROGRAMW6432"),
+            os.environ.get("LOCALAPPDATA"),
+            str(Path.home() / "AppData" / "Local"),
+        )
+        application_paths = (
+            ("Google", "Chrome", "Application", "chrome.exe"),
+            ("Chromium", "Application", "chrome.exe"),
+            ("Microsoft", "Edge", "Application", "msedge.exe"),
+        )
+        for root in windows_roots:
+            if not root:
+                continue
+            for application_path in application_paths:
+                candidates.append(str(Path(root).joinpath(*application_path)))
+        path_names = ("chrome.exe", "chromium.exe", "msedge.exe")
+    else:
+        candidates.extend(
+            (
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                "/usr/bin/microsoft-edge",
+                "/usr/bin/microsoft-edge-stable",
+                "/snap/bin/chromium",
+            )
+        )
+        path_names = (
+            "google-chrome",
+            "google-chrome-stable",
+            "chromium",
+            "chromium-browser",
+            "microsoft-edge",
+            "microsoft-edge-stable",
+        )
+    candidates.extend(path for name in path_names if (path := shutil.which(name)))
+    return candidates
+
+
+def _validated_executable_path(candidate: str) -> str:
+    """Return a resolved executable file path, or an empty string if unavailable."""
+
+    try:
+        path = Path(candidate).expanduser()
+        if not path.is_file():
+            return ""
+        if platform.system().lower() != "windows" and not os.access(path, os.X_OK):
+            return ""
+        return str(path.resolve())
+    except (OSError, RuntimeError, TypeError):
+        return ""
+
+
+def _playwright_browser_executable_path() -> str:
+    """Find an already-installed Playwright Chromium binary without network access."""
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return ""
+    try:
+        with sync_playwright() as playwright:
+            return _validated_executable_path(str(playwright.chromium.executable_path))
+    except Exception:
+        return ""
+
+
+def _browser_executable_source(executable_path: str) -> str:
+    """Describe whether a browser path came from the system or a Playwright cache."""
+
+    normalized = executable_path.replace("\\", "/").lower()
+    if "playwright" in normalized or "ms-playwright" in normalized:
+        return "playwright-cache"
+    return "system"
+
+
+def _set_browser_runtime_metrics(metrics: dict[str, Any], executable_path: str) -> None:
+    """Record browser discovery and launch policy for an auditable render snapshot."""
+
+    metrics["browserExecutablePath"] = executable_path or None
+    metrics["browserExecutableSource"] = (
+        _browser_executable_source(executable_path) if executable_path else "unavailable"
+    )
+    metrics["browserTimeoutMs"] = _BROWSER_TIMEOUT_MS
+    metrics["browserSandbox"] = _BROWSER_SANDBOX_MODE
+    metrics["browserCleanup"] = "not-started"
 
 
 def _write_png(path: Path, *, width: int, height: int, seed: str) -> None:

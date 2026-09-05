@@ -15,6 +15,7 @@ import pytest
 
 from core_runtime.desktop_app_manager import DesktopAppManager
 import core_runtime.desktop_app_manager as desktop_app_manager
+from tests.conformance_support.host_contract import host_contract
 
 
 @pytest.fixture
@@ -41,6 +42,29 @@ def sample_meta():
     }
 
 
+def test_register_app_stores_metadata_under_rumi_user_data(tmp_path, monkeypatch):
+    """Launcher-managed registrations must not write into the app bundle."""
+    repo_dir = tmp_path / "bundle" / "tobkiri_runtime"
+    user_data = tmp_path / "Library" / "Application Support" / "Tobkiri"
+    pack_shell = tmp_path / "pack-shell"
+    pack_shell.write_text("#!/bin/sh\n", encoding="utf-8")
+    pack_shell.chmod(0o755)
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_PACK_SHELL_PATH", str(pack_shell))
+    manager = DesktopAppManager(repo_dir=str(repo_dir))
+
+    with mock.patch.object(manager, "_create_shortcut", return_value="/tmp/Test.app"):
+        result = manager.register_app(
+            "defaultspack",
+            {"command": "python desktop_app.py"},
+            str(repo_dir / "ecosystem" / "defaultspack"),
+        )
+
+    assert result["success"] is True
+    assert (user_data / "apps" / "defaultspack.json").is_file()
+    assert not (repo_dir / "user_data" / "apps" / "defaultspack.json").exists()
+
+
 class TestLaunchAppArguments:
     """Verify that launch_app() constructs the correct Popen arguments."""
 
@@ -59,8 +83,16 @@ class TestLaunchAppArguments:
 
         manager._load_meta = mock.MagicMock(return_value=sample_meta)
 
-        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "secret-token-xyz"}):
-            result = manager.launch_app("test-pack-001")
+        from core_runtime.host_contract import bind_host_contract
+
+        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "ambient-token"}):
+            with bind_host_contract(
+                host_contract(
+                    profile_id="default",
+                    values={"desktop_api_token": "secret-token-xyz"},
+                )
+            ):
+                result = manager.launch_app("test-pack-001")
 
         assert result["success"] is True
         assert result["status"] == "launched"
@@ -90,15 +122,23 @@ class TestLaunchAppArguments:
 
         manager._load_meta = mock.MagicMock(return_value=sample_meta)
 
-        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "secret-token-xyz"}):
-            result = manager.launch_app("test-pack-001")
+        from core_runtime.host_contract import bind_host_contract
+
+        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "ambient-token"}):
+            with bind_host_contract(
+                host_contract(
+                    profile_id="default",
+                    values={"desktop_api_token": "secret-token-xyz"},
+                )
+            ):
+                result = manager.launch_app("test-pack-001")
 
         assert result["success"] is True
         call_kwargs = mock_popen.call_args[1]
         env = call_kwargs.get("env")
         assert env is not None
         assert env.get("RUMI_API_TOKEN") == "secret-token-xyz"
-        assert env.get("RUMI_DEFAULTSPACK_LOCAL_TOKEN") == "secret-token-xyz"
+        assert "RUMI_DEFAULTSPACK_LOCAL_TOKEN" not in env
 
     @mock.patch("subprocess.Popen")
     @mock.patch("os.path.isfile", return_value=True)
@@ -223,7 +263,7 @@ class TestLaunchAppArguments:
         assert cmd_list == [desktop_app_manager._runtime_python_for_app(), "app.py"]
         env = mock_popen.call_args.kwargs["env"]
         assert env["RUMI_API_TOKEN"] == "issued-token"
-        assert env["RUMI_DEFAULTSPACK_LOCAL_TOKEN"] == "issued-token"
+        assert "RUMI_DEFAULTSPACK_LOCAL_TOKEN" not in env
         assert env["RUMI_TOKEN"] == "issued-token"
         assert env["AUTOPACK_PORT"] == "9999"
         assert str(Path(sys.executable).resolve().parent) in env["PATH"]
@@ -296,8 +336,16 @@ class TestLaunchAppArguments:
 
         manager._load_meta = mock.MagicMock(return_value=sample_meta)
 
-        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "secret-token-xyz"}):
-            result = manager.launch_app("test-pack-001")
+        from core_runtime.host_contract import bind_host_contract
+
+        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "ambient-token"}):
+            with bind_host_contract(
+                host_contract(
+                    profile_id="default",
+                    values={"desktop_api_token": "secret-token-xyz"},
+                )
+            ):
+                result = manager.launch_app("test-pack-001")
 
         assert result["success"] is True
         call_kwargs = mock_popen.call_args[1]

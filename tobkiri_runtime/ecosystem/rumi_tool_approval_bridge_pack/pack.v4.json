@@ -1,0 +1,114 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:88918bdd21600394571e98289986158b4fc5407cd902273e815dfb192c0c82dd",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:03ff0d15044227dd93e47aeb4640ff6633375b66fd284d20ab0ded3dff21e8df",
+      "kind": "executable",
+      "path": "runtime/bridge.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.authorize.v1",
+      "operations": [
+        "rumi_tool_approval_bridge_pack.tool-authorize"
+      ],
+      "revision_digest": "sha256:1c5d87db10ba43552b1b615cb4e644f9b12127eebcf3d1bf4ef8cbe995155630"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:1c5d87db10ba43552b1b615cb4e644f9b12127eebcf3d1bf4ef8cbe995155630",
+      "id": "rumi_tool_approval_bridge_pack.tool-approval.authorize",
+      "implementation_digest": "sha256:03ff0d15044227dd93e47aeb4640ff6633375b66fd284d20ab0ded3dff21e8df",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_approval_bridge_pack.tool-authorize"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:28111b11791cc3bb072dba54bb5ddf943d8c0e39a610919a21e5085f0bf79793",
+    "contract_catalog_digest": "sha256:d0391e6a25f0472998f48638f4b19f2d0f366d43efa005afb11499233df6c2dd",
+    "source_identity": "sha256:875d534c9a41b2844e4bd78cba38740dd66f9d108ab238649d8d1123989bf00a"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.authorize.v1",
+      "rumi:ecosystem/rumi_tool_approval_bridge_pack",
+      "rumi_tool_approval_bridge_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.authorize.v1",
+      "effect_ceiling": [
+        "capability:tool.authority.consume",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_tool_approval_bridge_pack.tool-authorize",
+      "owner": "rumi_tool_approval_bridge_pack",
+      "provider_id": "rumi_tool_approval_bridge_pack.tool-approval.authorize",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:28111b11791cc3bb072dba54bb5ddf943d8c0e39a610919a21e5085f0bf79793",
+    "display_name": "Rumi Tool Approval Bridge",
+    "id": "rumi_tool_approval_bridge_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:875d534c9a41b2844e4bd78cba38740dd66f9d108ab238649d8d1123989bf00a",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:875d534c9a41b2844e4bd78cba38740dd66f9d108ab238649d8d1123989bf00a",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_approval_bridge_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.authorize.v1",
+      "operations": [
+        "rumi_tool_approval_bridge_pack.tool-authorize"
+      ],
+      "owner": "rumi_tool_approval_bridge_pack",
+      "provider_id": "rumi_tool_approval_bridge_pack.tool-approval.authorize"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.authority.consume"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

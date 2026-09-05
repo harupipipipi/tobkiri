@@ -1,0 +1,66 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.memory.manage.v1",
+      "rumi.action.memory.migrate.v1",
+      "rumi.resource.memory.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Single-write authoritative memory storage.",
+  "display_name": "Rumi Memory Store",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:e6c41be1578ca92be19f9dbe4658903bcb9e0ba737c11f31f836e0ee3bc1d6f1",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "memory"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "dual_write": false,
+      "local_first": true
+    }
+  },
+  "pack_id": "rumi_memory_store_pack",
+  "pack_identity": "rumi:ecosystem/rumi_memory_store_pack",
+  "provenance": {
+    "build_identity": "rumi_memory_store_pack:1.0.0",
+    "content_hash": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "memory.manage",
+    "memory.migrate",
+    "memory.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

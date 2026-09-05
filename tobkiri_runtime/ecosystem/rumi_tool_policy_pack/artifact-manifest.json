@@ -1,0 +1,9 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/policy.py",
+      "sha256": "sha256:cedb382aae5182ab28ecd1ac7cac4b8e48e3708ba06c96848afb4fdb75c1c8f1"
+    }
+  ],
+  "version": "rumi.pack-artifacts.v1"
+}

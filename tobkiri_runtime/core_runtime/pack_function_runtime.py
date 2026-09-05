@@ -17,6 +17,7 @@ from .paths import (
     ECOSYSTEM_DIR,
     is_path_within,
 )
+from .approval_manager import get_approval_manager
 from .pack_function_policy import (
     permission_id_for_entry,
 )
@@ -33,9 +34,6 @@ def _is_pack_approved_and_verified(pack_id: str) -> tuple[bool, Optional[str]]:
     if isinstance(result, tuple):
         return bool(result[0]), result[1] if len(result) > 1 else None
     return bool(result), None
-
-
-TRUSTED_IN_PROCESS_PACK_IDS = frozenset({"defaultspack", "rumi_default_tools_pack"})
 
 
 def _pack_function_policy_module():
@@ -97,23 +95,19 @@ def is_pack_function_in_process_allowed(
             normalized_pack_id,
         )
 
-    if normalized_pack_id not in TRUSTED_IN_PROCESS_PACK_IDS:
-        return False
-
     if pack_root is None:
         pack_root = Path(ECOSYSTEM_DIR) / normalized_pack_id
         if not pack_root.is_dir():
             return False
-    if _is_pack_root_under(pack_root, Path(ECOSYSTEM_DIR), normalized_pack_id):
-        return True
-
     try:
-        resolved = pack_root.resolve()
-    except OSError:
-        resolved = pack_root
-    if resolved.name != normalized_pack_id or resolved.parent.name != "ecosystem":
+        return bool(
+            get_approval_manager().is_pack_in_process_allowed(
+                normalized_pack_id,
+                pack_root,
+            )
+        )
+    except Exception:
         return False
-    return resolved.parent.parent.name == "app"
 
 
 def invoke_pack_function(

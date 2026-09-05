@@ -1,0 +1,204 @@
+#cloud-config
+# Per-domain agent-config.json and agent-ed25519.pem are injected into CIDATA
+# by the Host provisioner. This immutable template contains no key material.
+# It enables the guest agent only after every TOBKIRIAGENT/CIDATA input binds.
+write_files:
+  - path: /usr/local/sbin/tobkiri-packvm-bootstrap
+    owner: root:root
+    permissions: '0700'
+    content: |
+      #!/bin/sh
+      set -eu
+      umask 077
+      agent_mount=/run/tobkiri-packvm-seed-agent
+      config_mount=/run/tobkiri-packvm-seed-config
+      install_dir=/usr/local/lib/tobkiri-packvm
+      runtime_dir=/run/tobkiri-packvm
+      phase() { printf '%s\n' "TOBKIRI_BOOTSTRAP:$1" > /dev/hvc0 2>/dev/null || true; }
+      trap 'status=$?; phase "bootstrap-exit-${status}"; umount "$agent_mount" 2>/dev/null || true; umount "$config_mount" 2>/dev/null || true' EXIT
+      phase start
+      install -d -m 0700 "$agent_mount" "$config_mount" "$runtime_dir"
+      mount -o ro /dev/disk/by-label/TOBKIRIAGENT "$agent_mount"
+      mount -o ro /dev/disk/by-label/CIDATA "$config_mount"
+      phase seeds-mounted
+      python3 - "$agent_mount" "$config_mount" "$install_dir" "$runtime_dir" <<'PY'
+      import hashlib
+      import importlib.util
+      import json
+      import os
+      from pathlib import Path
+      import stat
+      import sys
+
+      agent, config, install_dir, runtime_dir = map(Path, sys.argv[1:])
+      def phase(code: str) -> None:
+          try:
+              descriptor = os.open("/dev/hvc0", os.O_WRONLY | os.O_CLOEXEC)
+              try:
+                  os.write(
+                      descriptor,
+                      b"TOBKIRI_BOOTSTRAP:" + code.encode("ascii") + bytes((10,)),
+                  )
+              finally:
+                  os.close(descriptor)
+          except OSError:
+              pass
+      def regular(path: Path) -> os.stat_result:
+          value = path.lstat()
+          if path.is_symlink() or not stat.S_ISREG(value.st_mode) or value.st_nlink != 1:
+              raise SystemExit(f"unsafe PackVM seed file: {path.name}")
+          return value
+      def copy_private(source: Path, target: Path, mode: int) -> None:
+          regular(source)
+          data = source.read_bytes()
+          descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+          try:
+              offset = 0
+              while offset < len(data):
+                  written = os.write(descriptor, data[offset:])
+                  if written <= 0:
+                      raise OSError("PackVM seed write failed")
+                  offset += written
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
+      def write_new(path: Path, data: bytes, mode: int) -> None:
+          descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+          try:
+              offset = 0
+              while offset < len(data):
+                  written = os.write(descriptor, data[offset:])
+                  if written <= 0:
+                      raise OSError("PackVM service write failed")
+                  offset += written
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
+      service_path = agent / "guest_service_template.v1.json"
+      runner_path = agent / "runner.py"
+      bwrap_descriptor_path = agent / "bubblewrap_descriptor.v1.json"
+      bwrap_path = agent / "bubblewrap_arm64.deb"
+      agent_config = config / "agent-config.json"
+      agent_key = config / "agent-ed25519.pem"
+      artifact_seed = config / "artifact-seed.v1.bin"
+      for source in (service_path, runner_path, bwrap_descriptor_path, bwrap_path, agent_config, agent_key, artifact_seed):
+          regular(source)
+      service = json.loads(service_path.read_bytes())
+      if set(service) != {"schema", "protocol", "guest_runner_sha256", "service_unit"}:
+          raise SystemExit("invalid PackVM guest service template")
+      if (
+          service["schema"] != "io.tobkiri.packvm-vz-guest-service-template.v1"
+          or service["protocol"] != "io.tobkiri.macos-vz-supervisor.v1"
+          or not isinstance(service["service_unit"], str)
+          or not isinstance(service["guest_runner_sha256"], str)
+      ):
+          raise SystemExit("unsupported PackVM guest service template")
+      if service["guest_runner_sha256"] != "sha256:" + hashlib.sha256(runner_path.read_bytes()).hexdigest():
+          raise SystemExit("PackVM guest runner digest mismatch")
+      bwrap = json.loads(bwrap_descriptor_path.read_bytes())
+      if set(bwrap) != {"schema", "package", "version", "architecture", "source"}:
+          raise SystemExit("invalid PackVM bubblewrap descriptor")
+      if (
+          bwrap["schema"] != "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1"
+          or bwrap["package"] != "bubblewrap"
+          or bwrap["version"] != "0.11.0-2+deb13u1"
+          or bwrap["architecture"] != "arm64"
+      ):
+          raise SystemExit("unsupported PackVM bubblewrap descriptor")
+      source = bwrap["source"]
+      if not isinstance(source, dict) or set(source) != {"url", "size_bytes", "sha256"}:
+          raise SystemExit("invalid PackVM bubblewrap source")
+      if (
+          not isinstance(source["url"], str)
+          or not source["url"].startswith("https://")
+          or not isinstance(source["size_bytes"], int)
+          or isinstance(source["size_bytes"], bool)
+          or source["size_bytes"] <= 0
+          or not isinstance(source["sha256"], str)
+      ):
+          raise SystemExit("invalid PackVM bubblewrap source")
+      if source["sha256"] != "sha256:" + hashlib.sha256(bwrap_path.read_bytes()).hexdigest():
+          raise SystemExit("PackVM bubblewrap digest mismatch")
+      if source["size_bytes"] != bwrap_path.stat().st_size:
+          raise SystemExit("PackVM bubblewrap size mismatch")
+      config_value = json.loads(agent_config.read_bytes())
+      if (
+          set(config_value) != {"version", "domain_id", "binding_digests", "private_key_path", "artifact_seed"}
+          or config_value["version"] != 1
+          or not isinstance(config_value["artifact_seed"], dict)
+      ):
+          raise SystemExit("invalid PackVM agent config")
+      if config_value["private_key_path"] != "/run/tobkiri-packvm/agent-ed25519.pem":
+          raise SystemExit("PackVM agent key path mismatch")
+      install_dir.mkdir(mode=0o700, exist_ok=False)
+      phase("install-dir-ready")
+      # The service runs this root-owned runner, but each Pack child receives
+      # it as a separate read-only bind after bwrap drops to PACK_UID.  The
+      # runner is code-only (the key/configuration remain 0600 elsewhere),
+      # so it must be executable and readable by that unprivileged child.
+      copy_private(runner_path, install_dir / "packvm_guest_runner.py", 0o755)
+      copy_private(agent_config, runtime_dir / "agent-config.json", 0o600)
+      copy_private(agent_key, runtime_dir / "agent-ed25519.pem", 0o600)
+      phase("runner-import-begin")
+      runner_spec = importlib.util.spec_from_file_location(
+          "_tobkiri_packvm_seed_runner", install_dir / "packvm_guest_runner.py"
+      )
+      if runner_spec is None or runner_spec.loader is None:
+          raise SystemExit("PackVM guest runner seed loader is invalid")
+      runner_module = importlib.util.module_from_spec(runner_spec)
+      sys.modules[runner_spec.name] = runner_module
+      try:
+          runner_spec.loader.exec_module(runner_module)
+          phase("runner-imported")
+          phase("seed-materialize-begin")
+          try:
+              seed_identity = runner_module.materialize_seed_artifact(
+                  artifact_seed,
+                  config_value["artifact_seed"],
+                  config_value["binding_digests"],
+              )
+          except OSError:
+              phase("seed-materialize-oserror")
+              raise
+          except MemoryError:
+              phase("seed-materialize-memory-rejected")
+              raise
+          except ValueError as error:
+              message = str(error)
+              if "free space" in message or "storage quota" in message:
+                  phase("seed-materialize-capacity-rejected")
+              else:
+                  phase("seed-materialize-validation-rejected")
+              raise
+          except BaseException:
+              phase("seed-materialize-unexpected-rejected")
+              raise
+          phase("seed-materialized")
+      finally:
+          if sys.modules.get(runner_spec.name) is runner_module:
+              sys.modules.pop(runner_spec.name, None)
+      if not isinstance(seed_identity, str) or not seed_identity.startswith("sha256:"):
+          raise SystemExit("PackVM artifact seed materialization failed")
+      write_new(
+          Path("/etc/systemd/system/tobkiri-packvm-guest.service"),
+          service["service_unit"].encode("utf-8"),
+          0o644,
+      )
+      phase("service-written")
+      PY
+      phase artifact-materialized
+      # Run the pinned package's triggers before auditing dpkg state. Suppressing
+      # them leaves a pending trigger, which `dpkg --audit` correctly rejects.
+      dpkg -i "$agent_mount/bubblewrap_arm64.deb"
+      if [ -n "$(dpkg --audit)" ]; then
+        phase dpkg-audit-failed
+        exit 1
+      fi
+      phase dependencies-ready
+      systemctl daemon-reload
+      systemctl enable tobkiri-packvm-guest.service
+      phase service-enabled
+      systemctl start tobkiri-packvm-guest.service
+      phase service-started
+runcmd:
+  - [ /usr/local/sbin/tobkiri-packvm-bootstrap ]

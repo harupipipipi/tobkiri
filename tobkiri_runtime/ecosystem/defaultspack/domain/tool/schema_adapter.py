@@ -5,6 +5,11 @@ import json
 from typing import Any, Dict, Iterable, List, Optional, Set
 from urllib.parse import unquote
 
+from domain.capability.tool_scope import normalize_tool_scope
+from domain.tool.security import requires_approval_for_security
+from .normalizers import list_or_empty as list_or_empty
+from .normalizers import mapping_or_empty as mapping_or_empty
+
 
 _APPROVAL_REQUIRED_NAME_PARTS = ("write", "create", "update", "delete", "patch", "commit", "push")
 _DEFAULT_PARAMETERS_SCHEMA = {"type": "object", "properties": {}, "required": []}
@@ -59,6 +64,8 @@ def adapt_tool_definition(tool: Any) -> Any:
     if not name:
         return tool
     schema_value = tool.get("schema")
+    if not isinstance(schema_value, dict):
+        schema_value = tool.get("input_schema")
     schema: Dict[str, Any] = schema_value if isinstance(schema_value, dict) else {}
     schema_parameters = schema.get("parameters")
     parameters = schema_parameters if isinstance(schema_parameters, dict) else schema
@@ -96,20 +103,16 @@ def provider_tool_parameters(parameters: Any) -> Dict[str, Any]:
     """Return a provider-safe JSON Schema object for function parameters."""
     if not isinstance(parameters, dict) or not parameters:
         return copy.deepcopy(_DEFAULT_PARAMETERS_SCHEMA)
-    try:
-        sanitized = sanitize_provider_tool_schema(parameters)
-    except ToolSchemaError:
-        return copy.deepcopy(_DEFAULT_PARAMETERS_SCHEMA)
-    return sanitized if sanitized else {}
+    return sanitize_provider_tool_schema(parameters)
 
 
 def sanitize_provider_tool_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize tool JSON Schema for model/provider function-calling payloads.
 
     This mirrors the useful shape of Codex's tool-schema adapter: keep the
-    argument surface, preserve local refs that can still resolve, prune dead
-    definition tables, and lower malformed schema fragments into permissive
-    schemas instead of passing provider-hostile payloads through unchanged.
+    argument surface, preserve local refs that can still resolve, and prune
+    dead definition tables. Semantic loss fails closed instead of silently
+    turning a Tool into an empty-argument function.
     """
     if not isinstance(schema, dict):
         raise ToolSchemaError("tool schema must be a JSON object")
@@ -361,8 +364,9 @@ def _compact_large_tool_schema(schema: Dict[str, Any]) -> None:
             break
         transform(schema)
     if not _compact_schema_fits_budget(schema):
-        schema.clear()
-        schema.update(copy.deepcopy(_DEFAULT_PARAMETERS_SCHEMA))
+        raise ToolSchemaError(
+            "tool schema exceeds the provider budget after safe compaction"
+        )
 
 
 def _compact_schema_fits_budget(schema: Dict[str, Any]) -> bool:
@@ -493,6 +497,21 @@ def runtime_profile_enforced_tool_names(
 ) -> Optional[Set[str]]:
     if not runtime_profile:
         return None
+    explicit_scope = _runtime_profile_tool_scope(runtime_profile)
+    if explicit_scope is not None:
+        scope = normalize_tool_scope(explicit_scope)
+        if scope.mode == "inherit":
+            return None
+        if scope.mode == "none":
+            return set()
+        return set(scope.ids)
+    refs = _runtime_profile_tool_refs(runtime_profile, agent_id)
+    if not refs:
+        # A missing field inherits. An explicitly present empty list means
+        # none; treating it as inherit would silently widen authority.
+        if _runtime_profile_has_explicit_empty_tool_refs(runtime_profile, agent_id):
+            return set()
+        return None
     return _runtime_profile_tool_names(runtime_profile, agent_id, tools)
 
 
@@ -579,12 +598,8 @@ def _normalize_policy_tool_list_from_first_present(
 
 
 def tool_requires_approval_by_policy(tool: Any, policy: Optional[Dict[str, Any]]) -> bool:
-    if isinstance(policy, dict) and (
-        _truthy_policy_value(policy.get("yolo_mode"))
-        or _truthy_policy_value(policy.get("full_access"))
-        or str(policy.get("action_approval_mode") or "").strip().lower() == "full"
-    ):
-        return False
+    if isinstance(tool, dict) and requires_approval_for_security(tool):
+        return True
     if _is_write_like_tool_name(tool_name_from_definition(tool)):
         return True
     if _tool_metadata_value(tool, "write_action") is True or _tool_metadata_value(tool, "action_type") in {
@@ -596,8 +611,17 @@ def tool_requires_approval_by_policy(tool: Any, policy: Optional[Dict[str, Any]]
         "patch",
         "commit",
         "push",
+        "send",
+        "publish",
+        "credential",
     }:
         return True
+    if isinstance(policy, dict) and (
+        _truthy_policy_value(policy.get("yolo_mode"))
+        or _truthy_policy_value(policy.get("full_access"))
+        or str(policy.get("action_approval_mode") or "").strip().lower() == "full"
+    ):
+        return False
     if not isinstance(policy, dict) or policy.get("write_actions_require_approval") is not True:
         return False
     return _tool_metadata_value(tool, "write_action") is True or _tool_metadata_value(tool, "action_type") in {
@@ -694,6 +718,15 @@ def _runtime_profile_tool_names(
     return names
 
 
+def _runtime_profile_tool_scope(runtime_profile: Dict[str, Any]) -> Any:
+    if "tool_scope" in runtime_profile:
+        return runtime_profile.get("tool_scope")
+    defaultspack = runtime_profile.get("defaultspack")
+    if isinstance(defaultspack, dict) and "tool_scope" in defaultspack:
+        return defaultspack.get("tool_scope")
+    return None
+
+
 def _bundle_record_has_concrete_tool_list(record: Dict[str, Any]) -> bool:
     return any(isinstance(record.get(key), list) for key in ("tools", "tool_ids", "tool_names", "definitions"))
 
@@ -719,6 +752,27 @@ def _runtime_profile_tool_refs(
     if not isinstance(tools, list):
         return set()
     return {str(tool) for tool in tools if tool}
+
+
+def _runtime_profile_has_explicit_empty_tool_refs(
+    runtime_profile: Optional[Dict[str, Any]],
+    agent_id: Optional[str],
+) -> bool:
+    if not isinstance(runtime_profile, dict):
+        return False
+    defaultspack = runtime_profile.get("defaultspack")
+    agents = defaultspack.get("agents") if isinstance(defaultspack, dict) else None
+    if not isinstance(agents, dict):
+        return False
+    selected = agents.get(agent_id) if agent_id else None
+    if not isinstance(selected, dict) and len(agents) == 1:
+        selected = next(iter(agents.values()))
+    return (
+        isinstance(selected, dict)
+        and "tools" in selected
+        and isinstance(selected.get("tools"), list)
+        and not selected["tools"]
+    )
 
 
 def _tool_names_from_bundle_record(record: Dict[str, Any]) -> Set[str]:

@@ -1,0 +1,166 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.git.read.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "git-read.service",
+        "required_capabilities": [
+          "git.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
+      "contract_id": "rumi.service.git.read.v1",
+      "id": "git-read",
+      "loader": "python",
+      "module": "ecosystem.rumi_git_read_pack.runtime.read",
+      "symbol": "create_git_read_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.git_read.boundary": {
+      "network": false,
+      "output_bytes_max": 524288,
+      "publish": false,
+      "repository_root": "inside_workspace",
+      "shell": false,
+      "write": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.git.read.v1"
+          ],
+          "requires": [
+            "rumi.resource.workspace.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Finite read-only Git inspection under a workspace mount.",
+        "display_name": "Rumi Git Read",
+        "host_execution": true,
+        "metadata": {
+          "authority": "read",
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:2bcbb019fac7f2b21d2fa67b7bd79f392e7c10d60a1bb39664aef6b8387dab9f",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:ee42e6c72d3d42830180139999c7d9a7ed0cc992c95af86450b28ac0c0d25b31"
+          },
+          "mutation": false,
+          "network": false,
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "tool_or_ui_registry_imports": false
+        },
+        "pack_id": "rumi_git_read_pack",
+        "pack_identity": "rumi:ecosystem/rumi_git_read_pack",
+        "provenance": {
+          "build_identity": "rumi_git_read_pack:1.0.0",
+          "content_hash": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "git.read",
+          "workspace.metadata.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_git_read_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_git_read_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:ee42e6c72d3d42830180139999c7d9a7ed0cc992c95af86450b28ac0c0d25b31"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.coding.git_ops.status",
+      "defaultspack.domain.coding.git_ops.diff",
+      "defaultspack.blocks.coding.git_status",
+      "defaultspack.blocks.coding.git_diff"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior read adapter; no Git state migration exists.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Finite read-only Git inspection under a workspace mount.",
+    "display_name": "Rumi Git Read",
+    "id": "rumi.git_read",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "git.read"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "workspace.metadata.read"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_git_read_pack:1.0.0",
+    "content_hash": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

@@ -1,0 +1,150 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.tool.result.normalize.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "caller",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-result.normalize",
+        "required_capabilities": [
+          "tool.result.normalize"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:03f6e939e91980acd639db595709ec032bc901b84394dedd31e28c1275c40cf0",
+      "contract_id": "rumi.service.tool.result.normalize.v1",
+      "id": "tool-result-normalize",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_result_pack.runtime.normalizer",
+      "symbol": "create_normalize_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.result.normalize.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Provider-neutral redacted tool result normalization.",
+        "display_name": "Rumi Tool Result",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:2508caf9e6b43831e6870ec1c4599ba05b3d439293d8867ea90fc034d447190a",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:fe75fdcff49286a2af7fbd0cc5f0b65ca8d86d9fc92ec3fc8a74696a20ade31f"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_result_schema"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "execution": false,
+            "secret_fields": "redacted"
+          }
+        },
+        "pack_id": "rumi_tool_result_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_result_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_result_pack:1.0.0",
+          "content_hash": "sha256:1721b2382f411ca698d69093ec321a22f480a0edad5c1992702ab76a0ac6757f",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.result.normalize"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_result_pack"
+    },
+    "rumi.tool_result.boundary": {
+      "audit_owner": false,
+      "execution": false,
+      "secret_fields": "redacted"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_result_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:fe75fdcff49286a2af7fbd0cc5f0b65ca8d86d9fc92ec3fc8a74696a20ade31f"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.tool.protocol",
+      "defaultspack.domain.tool.executor.result"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior result normalizer.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Provider-neutral redacted tool result normalization.",
+    "display_name": "Rumi Tool Result",
+    "id": "rumi.tool_result",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.result.normalize"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_result_pack:1.0.0",
+    "content_hash": "sha256:1721b2382f411ca698d69093ec321a22f480a0edad5c1992702ab76a0ac6757f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

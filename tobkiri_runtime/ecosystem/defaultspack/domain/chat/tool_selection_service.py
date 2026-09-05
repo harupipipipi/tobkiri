@@ -5,6 +5,8 @@ from typing import Any
 
 from blocks._common import gen_id
 from domain.ai_client.model_search import search_models
+from domain.capability.activity_registry import ActivityRegistry
+from domain.capability.settings import normalize_capability_settings
 from domain.chat.tool_embedding_index import ToolEmbeddingIndex
 from domain.chat.tool_recommender import recommend_tool_ids
 from domain.chat.tool_selection_orchestrator import ToolSelectionOrchestrator
@@ -62,13 +64,51 @@ class ToolSelectionService:
             mode = conversation_mode
         if mode not in {"auto", "review", "manual", "none"}:
             mode = "auto"
+        capability_settings = normalize_capability_settings(self._settings)
+        if not capability_settings["capabilities"]["enabled"]:
+            return self._decision(
+                mode="none",
+                strategy="master_gate",
+                stage="capabilities_disabled",
+                selected=[],
+                eligible=[],
+                candidates=[],
+                started=started,
+                metrics={"capability_master_enabled": False},
+            )
         strategy = str(getattr(selection, "strategy", "") or self._tool_settings.get("selection_strategy") or "hybrid").strip().lower()
         if strategy not in TOOL_SELECTION_STRATEGIES:
             strategy = "hybrid"
+        if strategy in {"all_schemas", "all_with_hints", "catalog_ai"} and not _developer_capability(context):
+            raise PermissionError(
+                "{} requires the developer capability".format(strategy)
+            )
         conversation_include = normalize_tool_targets(conversation_preferences.get("include"))
         conversation_exclude = normalize_tool_targets(conversation_preferences.get("exclude"))
         include = _merge_targets(conversation_include, selection_include)
         exclude = _merge_targets(conversation_exclude, selection_exclude)
+        verified_explicit_tool_ids = {
+            str(item).strip()
+            for item in context.get("verified_explicit_tool_ids", [])
+            if str(item or "").strip()
+        }
+        unverified_low_level_targets = [
+            target
+            for target in [*include, *exclude]
+            if target.kind in {"tool", "skill"}
+            and not (
+                target in include
+                and target.kind == "tool"
+                and target.id in verified_explicit_tool_ids
+            )
+        ]
+        if (
+            not _developer_capability(context)
+            and unverified_low_level_targets
+        ):
+            raise PermissionError(
+                "raw Tool and Skill targets require the developer capability"
+            )
         if mode == "none":
             return self._decision(
                 mode=mode,
@@ -80,6 +120,38 @@ class ToolSelectionService:
                 started=started,
             )
 
+        activity_registry = ActivityRegistry()
+        mentioned_activities = activity_registry.resolve_mentions(user_text)
+        structured_activity_ids = [
+            target.id for target in include if target.kind == "activity"
+        ]
+        explicit_activity_ids = _unique_ids(
+            [
+                *structured_activity_ids,
+                *(item.activity_id for item in mentioned_activities),
+            ]
+        )
+        activity_ids = list(explicit_activity_ids)
+        if not activity_ids and mode in {"auto", "review"}:
+            activity_ids = [
+                item.activity_id
+                for item in activity_registry.infer(user_text, limit=3)
+            ]
+        activity_expansion = activity_registry.expand(activity_ids, tools)
+        activity_candidate_ids = (
+            set(activity_expansion["tool_ids"])
+            if explicit_activity_ids
+            else set()
+        )
+        if activity_ids:
+            context["capability_activity_ids"] = list(activity_ids)
+            context["required_skills"] = list(
+                activity_expansion["required_skills"]
+            )
+            context["safety_skills"] = list(activity_expansion["safety_skills"])
+            if "computer" in activity_ids:
+                context["user_requested_computer_use"] = True
+
         catalog = ToolServiceCatalog(tools)
         resolver = ToolPermissionResolver(self._settings)
         permission_allowed, permission_entries = resolver.filter_blocked(tools, context=context)
@@ -90,9 +162,26 @@ class ToolSelectionService:
             for tool in permission_allowed
             if self._static_eligible(tool, user_text=user_text, context=context, explicit_tool_ids=explicit_ids, explicit_service_ids=explicit_service_ids, catalog=catalog)
         ]
+        if activity_candidate_ids:
+            eligible = [
+                tool
+                for tool in eligible
+                if _tool_id(tool) in activity_candidate_ids
+                or _tool_id(tool) in explicit_ids
+            ]
         eligible = self._apply_excludes(eligible, exclude, catalog)
-        included, unknown_targets = self._expand_targets(include, eligible, catalog)
-        included = self._apply_excludes(included, exclude, catalog)
+        low_level_include = [
+            target for target in include if target.kind in {"tool", "service"}
+        ]
+        low_level_exclude = [
+            target for target in exclude if target.kind in {"tool", "service"}
+        ]
+        included, unknown_targets = self._expand_targets(
+            low_level_include, eligible, catalog
+        )
+        included = self._apply_excludes(
+            included, low_level_exclude, catalog
+        )
 
         if mode == "manual":
             selected = included
@@ -162,9 +251,6 @@ class ToolSelectionService:
                 cache_hit=bool(hints.get("cache_hit")),
             )
 
-        semantic = self._semantic_candidates(user_text, eligible, context=context)
-        semantic_ids = list(semantic.get("tool_ids") or [])
-        semantic_candidates = self._tools_by_ids(eligible, semantic_ids)
         if strategy == "lexical":
             lexical_ids = recommend_tool_ids(user_text, eligible, limit=self._final_limit(), threshold=0.0)
             candidates = self._tools_by_ids(eligible, lexical_ids)
@@ -180,6 +266,9 @@ class ToolSelectionService:
                 unknown_targets=unknown_targets,
                 permission_entries=permission_entries,
             )
+        semantic = self._semantic_candidates(user_text, eligible, context=context)
+        semantic_ids = list(semantic.get("tool_ids") or [])
+        semantic_candidates = self._tools_by_ids(eligible, semantic_ids)
         if strategy == "semantic":
             selected = self._stable_merge(included, semantic_candidates)[: self._final_limit()]
             return self._decision(
@@ -320,6 +409,14 @@ class ToolSelectionService:
         configured = str(self._tool_settings.get("embedding_model") or "").strip()
         if configured:
             return configured
+        # Provider discovery walks every model and OAuth connection manifest.
+        # Doing that synchronously on each chat turn delays the first SSE event
+        # and can deadlock against managed-runtime workspace synchronization.
+        # Keep automatic discovery available as an explicit opt-in; the normal
+        # hot path uses the deterministic lexical prefilter and still lets the
+        # utility model make the final AI selection.
+        if not bool(self._tool_settings.get("auto_discover_embedding_model", False)):
+            return ""
         try:
             result = search_models({"type": "embedding", "configured_only": True, "max_results": 1})
         except Exception:
@@ -517,3 +614,21 @@ def _merge_targets(*groups: list[ToolTarget]) -> list[ToolTarget]:
             seen.add(key)
             merged.append(target)
     return merged
+
+
+def _unique_ids(values: Any) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if item and item not in result:
+            result.append(item)
+    return result
+
+
+def _developer_capability(context: dict[str, Any]) -> bool:
+    if context.get("developer_mode") is True:
+        return True
+    capabilities = context.get("principal_capabilities")
+    if isinstance(capabilities, (list, tuple, set)):
+        return "developer" in {str(item) for item in capabilities}
+    return False

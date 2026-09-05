@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'generated/command_protocol_models.dart' as protocol;
 import 'models.dart';
 
 enum ModuleAction {
@@ -88,6 +89,118 @@ class RumiApiClient {
   Future<MigrationStatus> migrationStatus() async {
     final data = await _request('GET', '/api/defaultspack/migration/status');
     return MigrationStatus.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>> commandCatalog() async {
+    return asMap(await _request('GET', '/api/command-protocol/v1/catalog'));
+  }
+
+  Future<Map<String, dynamic>> invokeCommand(
+    String commandRef, {
+    Map<String, Object?> args = const {},
+    String? conversationId,
+    String? invocationId,
+    String mode = 'chat',
+    String? profileId,
+    String? catalogRevision,
+    int? expectedRevision,
+    String? idempotencyKey,
+    int? clientSequence,
+  }) async {
+    final request = protocol.CommandInvocationRequest(
+      commandRef: commandRef,
+      args: args,
+      invocationId:
+          invocationId ?? 'mobile-${DateTime.now().microsecondsSinceEpoch}',
+      mode: protocol.CommandMode.values.byName(mode),
+      conversationId: conversationId,
+      profileId: profileId,
+      catalogRevision: catalogRevision,
+      expectedRevision: expectedRevision,
+      idempotencyKey: idempotencyKey,
+      clientSequence: clientSequence,
+    );
+    return asMap(await _request(
+      'POST',
+      '/api/command-protocol/v1/invoke',
+      body: request.toJson(),
+    ));
+  }
+
+  Future<Map<String, dynamic>> resumeCommand(
+    String commandRef,
+    String approvalToken, {
+    Map<String, Object?> args = const {},
+    String? conversationId,
+    String? invocationId,
+    String mode = 'chat',
+    String? profileId,
+    String? catalogRevision,
+    int? expectedRevision,
+    String? idempotencyKey,
+    int? clientSequence,
+  }) async {
+    final request = protocol.CommandInvocationRequest(
+      commandRef: commandRef,
+      args: args,
+      invocationId:
+          invocationId ?? 'mobile-${DateTime.now().microsecondsSinceEpoch}',
+      mode: protocol.CommandMode.values.byName(mode),
+      conversationId: conversationId,
+      profileId: profileId,
+      catalogRevision: catalogRevision,
+      expectedRevision: expectedRevision,
+      idempotencyKey: idempotencyKey,
+      clientSequence: clientSequence,
+      approvalToken: approvalToken,
+    );
+    return asMap(await _request(
+      'POST',
+      '/api/command-protocol/v1/resume',
+      body: request.toJson(),
+    ));
+  }
+
+  Future<Map<String, dynamic>> commandInvocationEvents(
+    String invocationId, {
+    int afterSequence = 0,
+    int limit = 500,
+    String? profileId,
+    String? conversationId,
+  }) async {
+    return asMap(await _request(
+      'POST',
+      '/api/command-protocol/v1/invocations/events/query',
+      body: <String, Object?>{
+        'invocation_id': invocationId,
+        'after_sequence': afterSequence,
+        'limit': limit,
+        if (profileId != null) 'profile_id': profileId,
+        if (conversationId != null) 'conversation_id': conversationId,
+      },
+    ));
+  }
+
+  Future<Map<String, dynamic>> commandOfflineQueue(
+    String action, {
+    String? commandRef,
+    Map<String, Object?> args = const {},
+    String? idempotencyKey,
+    int? expectedRevision,
+    int? limit,
+  }) async {
+    return asMap(await _request(
+      'POST',
+      '/api/command-protocol/v1/offline',
+      body: <String, Object?>{
+        'action': action,
+        if (commandRef != null) 'command_ref': commandRef,
+        if (args.isNotEmpty) 'args': args,
+        if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
+        if (expectedRevision != null) 'expected_revision': expectedRevision,
+        if (limit != null) 'limit': limit,
+      },
+    ));
   }
 
   Future<List<PackRequest>> listPackRequests() async {

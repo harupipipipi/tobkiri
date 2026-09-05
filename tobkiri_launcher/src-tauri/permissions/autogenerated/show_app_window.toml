@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-app-window"
+description = "Enables the show_app_window command without any pre-configured scope."
+commands.allow = ["show_app_window"]
+
+[[permission]]
+identifier = "deny-show-app-window"
+description = "Denies the show_app_window command without any pre-configured scope."
+commands.deny = ["show_app_window"]

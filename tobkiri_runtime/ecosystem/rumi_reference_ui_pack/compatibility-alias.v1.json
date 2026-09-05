@@ -1,0 +1,12 @@
+{
+  "artifact_root": "profile_projections/reference-ui",
+  "compatibility_release": "v1.10.3",
+  "content_digest": "sha256:3d3833445d38a98076c31b379c5a066097a8d29e45e188f5badf8b3d2d5afa16",
+  "legacy_pack_id": "rumi_reference_ui_pack",
+  "projection_id": "tobkiri.ui-projection.reference.v1",
+  "read_only": true,
+  "remove_no_earlier_than_release": "v1.10.4",
+  "runtime_authority": false,
+  "schema": "io.tobkiri.profile-projection-compatibility-alias.v1",
+  "sunset_at": "2026-10-31"
+}

@@ -14,6 +14,7 @@ import {
   type CustomGroupInfo,
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
+import { filterProjects, newProjectId, projectTaskContext } from "../features/projects/projectStorage";
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
   const chats: ChatItem[] = [
@@ -202,6 +203,30 @@ test("loadCustomGroups migrates legacy and snake_case workspace records", () => 
   }
 });
 
+test("Project helpers preserve group ids while exposing project context", () => {
+  assert.equal(newProjectId(123), "group-123");
+  assert.deepEqual(projectTaskContext({
+    id: "group-main",
+    title: "Main",
+    workspaceId: "ws-main",
+    workspaceLabel: "Main repo",
+    workspaceRoot: "/repo/main",
+    rumiDataPath: "/repo/main/.rumiDP",
+  }), {
+    groupId: "group-main",
+    workspaceId: "ws-main",
+    workspaceLabel: "Main repo",
+    workspaceRoot: "/repo/main",
+    rumiDataPath: "/repo/main/.rumiDP",
+  });
+  const projects = [
+    { id: "group-main", title: "Main", workspaceRoot: "/repo/main" },
+    { id: "group-docs", title: "Writing", workspaceLabel: "Documentation" },
+  ];
+  assert.deepEqual(filterProjects(projects, "documentation").map((project) => project.id), ["group-docs"]);
+  assert.deepEqual(filterProjects(projects, "/repo").map((project) => project.id), ["group-main"]);
+});
+
 test("history calendar summary counts visible chat buckets and highlights", () => {
   const chats: ChatItem[] = [
     { id: "today", title: "Today", date: "Today", type: "chat", isPinned: true },
@@ -284,6 +309,21 @@ test("HistoryBoard places Desktops directly below Kanban in full layout", () => 
   assert.match(html, /aria-current="page"/);
 });
 
+test("HistoryBoard replaces New Group with an accessible Projects creation header", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    activeChatId: null,
+    chatItems: [],
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+
+  assert.match(html, />Projects</);
+  assert.match(html, /aria-label="New Project"/);
+  assert.match(html, /class="[^"]*h-8 w-8[^"]*"[^>]*aria-label="New Project"/);
+  assert.doesNotMatch(html, /New Group/);
+});
+
 test("HistoryBoard places Desktops directly below Kanban in compact rail", () => {
   const html = renderToStaticMarkup(createElement(HistoryBoard, {
     activeChatId: null,
@@ -305,4 +345,36 @@ test("HistoryBoard places Desktops directly below Kanban in compact rail", () =>
   assert.ok(kanbanIndex > calendarIndex);
   assert.ok(desktopsIndex > kanbanIndex);
   assert.match(html, /aria-current="page"/);
+});
+
+test("HistoryBoard ignores stored SVG markup and renders host icon IDs", () => {
+  const chatItems: ChatItem[] = [{
+    id: "custom-icon-chat",
+    title: "Custom icon chat",
+    date: "Today",
+    type: "chat",
+    metadata: {
+      icon_id: "database",
+      icon_svg: '<svg onload="globalThis.pwned=true"></svg>',
+    },
+  }];
+  const baseProps = {
+    activeChatId: null,
+    chatItems,
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  };
+
+  const fullHtml = renderToStaticMarkup(createElement(HistoryBoard, baseProps));
+  const compactHtml = renderToStaticMarkup(createElement(HistoryBoard, { ...baseProps, isCompact: true }));
+
+  for (const html of [fullHtml, compactHtml]) {
+    assert.match(html, /data-history-chat-icon="true"/);
+    assert.match(html, /data-history-chat-icon-id="database"/);
+    assert.match(html, /data-history-chat-icon-size="14"/);
+    assert.match(html, /style="width:14px;height:14px;flex-basis:14px"/);
+    assert.doesNotMatch(html, /onload=/);
+    assert.doesNotMatch(html, /globalThis\.pwned/);
+  }
 });

@@ -1,0 +1,66 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:6e20ffadc2e21193b83a8477014b68906c6c019362f0696927fadae49e5bbc54",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:35aff0d1500e37bc0c5100022c92a8ad4c74c96bd6e8c1b4379eb24f197341ae",
+    "contract_catalog_digest": "sha256:2293ae31444e2113268ba5600e8a4b91e39ca589e21bb82b47c1988b7d061902",
+    "source_identity": "sha256:a09089fcf9d75186fdec0a7f7fef5228469e5ab3b81dfdaa25ac0807a69b84f7"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/search_home_pack",
+      "search_home_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:35aff0d1500e37bc0c5100022c92a8ad4c74c96bd6e8c1b4379eb24f197341ae",
+    "display_name": "search_home_pack",
+    "id": "search_home_pack",
+    "kind": "application",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:a09089fcf9d75186fdec0a7f7fef5228469e5ab3b81dfdaa25ac0807a69b84f7",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:a09089fcf9d75186fdec0a7f7fef5228469e5ab3b81dfdaa25ac0807a69b84f7",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/search_home_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

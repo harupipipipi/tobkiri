@@ -1,0 +1,10 @@
+{
+  "schema_version": "rumi.artifact-manifest.v1",
+  "artifacts": [
+    {
+      "path": "runtime/adapter.py",
+      "sha256": "0fd8053263f22aefba603ba378966177239a6fe72a817b6ce6addc42e6176fe0",
+      "role": "runtime"
+    }
+  ]
+}

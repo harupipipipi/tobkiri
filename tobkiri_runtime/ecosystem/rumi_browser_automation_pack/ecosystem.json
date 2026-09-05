@@ -1,20 +1,33 @@
 {
-  "pack_id": "rumi_browser_automation_pack",
-  "pack_identity": "rumi:ecosystem/rumi_browser_automation_pack",
-  "display_name": "Rumi Browser Automation Pack",
-  "version": "0.1.0",
-  "runtime": {
-    "type": "declarative_pack"
+  "components": {},
+  "dependencies": {
+    "rumi_default_tools_pack": ">=1.0.0"
   },
+  "display_name": "Rumi Browser Automation Pack",
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:a0bfff7e5e1a5a375a2f883505a76e916bd18b49deea5769608619637afe7899",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:4a280a06aacec0701103507bdc9451bd5109a914007f5682b632241d5b4e6b84"
+    },
     "executable_code": false,
-    "owner_surfaces": [
-      "browser_playbooks",
-      "browser_evidence",
-      "visual_regression_steps"
-    ],
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:4a280a06aacec0701103507bdc9451bd5109a914007f5682b632241d5b4e6b84"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_browser_element_pack",
@@ -24,8 +37,28 @@
         "pack_id": "rumi_agent_services_pack",
         "reason": "Expose browser operator workflows to service directors."
       }
-    ]
+    ],
+    "owner_surfaces": [
+      "browser_playbooks",
+      "browser_evidence",
+      "visual_regression_steps"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
   },
+  "pack_id": "rumi_browser_automation_pack",
+  "pack_identity": "rumi:ecosystem/rumi_browser_automation_pack",
+  "provenance": {
+    "build_identity": "rumi_browser_automation_pack:0.1.0",
+    "content_hash": "sha256:a0bfff7e5e1a5a375a2f883505a76e916bd18b49deea5769608619637afe7899",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "0.1.0",
   "vocabulary": {
     "types": [
       "catalog",
@@ -36,11 +69,5 @@
       "example",
       "documentation"
     ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0",
-    "rumi_default_tools_pack": ">=1.0.0"
-  },
-  "components": {},
-  "load_order": []
+  }
 }

@@ -1,5 +1,0 @@
-example_id: rumi_pack_suite.promote_pack
-request: Decide whether the reference sidebar and panel manifests should move into defaultspack.
-review:
-  candidate_pack: rumi_reference_ui_pack
-  required_evidence: [ui_contract, pack_install_smoke, overlap_policy]

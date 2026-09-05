@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
+import sys
 import tarfile
 from collections.abc import Sequence
 
@@ -23,9 +25,9 @@ from ecosystem.defaultspack.backend.sandbox.models import (
     WorkspaceBinding,
 )
 from ecosystem.defaultspack.backend.sandbox.errors import SandboxContractError
-from ecosystem.defaultspack.backend.sandbox.provider_registry import ProviderRegistry
 from ecosystem.defaultspack.backend.sandbox.providers.base import NullProgressSink
 from ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu import (
+    BwrapHostProvider,
     DEFAULT_DISPLAY,
     DEFAULT_WSL_RUNTIME_NAME,
     GuestCommandResult,
@@ -34,6 +36,14 @@ from ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu import (
     WSL_ROOTFS_ENV,
     WindowsWslProvider,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_lima_state(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv(
+        "RUMI_SANDBOX_LIMA_STATE",
+        str(tmp_path / "lima-runtime.json"),
+    )
 
 
 class FakeManagedUbuntuCli:
@@ -74,7 +84,43 @@ class FakeManagedUbuntuCli:
         if cmd[1:] == ["--version"]:
             return GuestCommandResult(returncode=0, stdout="limactl version 1.0\n")
         if cmd[1:3] == ["list", "--format"]:
-            return GuestCommandResult(returncode=0, stdout=f"{self.runtime_name}\n" if self.guest_exists else "")
+            return GuestCommandResult(
+                returncode=0, stdout=f"{self.runtime_name}\n" if self.guest_exists else ""
+            )
+        if cmd[1:3] == ["list", self.runtime_name] and cmd[3:] == ["--format", "json"]:
+            if not self.guest_exists:
+                return GuestCommandResult(returncode=1, stderr="instance not found")
+            return GuestCommandResult(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "name": self.runtime_name,
+                        "status": "Running",
+                        "vmType": "vz",
+                        "arch": "aarch64",
+                        "config": {
+                            "vmType": "vz",
+                            "mounts": [],
+                            "networks": [],
+                            "containerd": {"system": False, "user": False},
+                            "ssh": {
+                                "forwardAgent": False,
+                                "forwardX11": False,
+                                "forwardX11Trusted": False,
+                            },
+                            "propagateProxyEnv": False,
+                            "hostResolver": {"enabled": False},
+                            "portForwards": [
+                                {
+                                    "guestIP": "0.0.0.0",
+                                    "guestPortRange": [1, 65535],
+                                    "ignore": True,
+                                }
+                            ],
+                        },
+                    }
+                ),
+            )
         if cmd[1:4] == ["start", "--name", self.runtime_name]:
             self.guest_exists = True
             self.deps_installed = True
@@ -97,7 +143,9 @@ class FakeManagedUbuntuCli:
         if cmd[1:] == ["-l", "-q"]:
             if self.wsl_list_stdout is not None:
                 return GuestCommandResult(returncode=0, stdout=self.wsl_list_stdout)
-            return GuestCommandResult(returncode=0, stdout=f"{self.runtime_name}\n" if self.guest_exists else "")
+            return GuestCommandResult(
+                returncode=0, stdout=f"{self.runtime_name}\n" if self.guest_exists else ""
+            )
         if len(cmd) >= 7 and cmd[1:3] == ["--import", self.runtime_name]:
             self.guest_exists = True
             self.imported_install_dir = cmd[3]
@@ -114,6 +162,8 @@ class FakeManagedUbuntuCli:
         return GuestCommandResult(returncode=1, stderr=f"unexpected wsl command: {cmd}")
 
     def _guest(self, argv: list[str], input_text: str | None) -> GuestCommandResult:
+        if argv[:1] == ["bwrap"] and "--" in argv:
+            return self._guest(argv[argv.index("--") + 1 :], input_text)
         if argv[:5] == ["unshare", "--user", "--map-root-user", "--net", "--"]:
             return self._guest(argv[5:], input_text)
         if argv[:2] == ["env", "-i"]:
@@ -156,7 +206,9 @@ class FakeManagedUbuntuCli:
             if "command -v" in script:
                 if self.deps_installed:
                     return GuestCommandResult(returncode=0)
-                return GuestCommandResult(returncode=0, stdout="Xvfb\nopenbox\nxdotool\nimport\npython3\n")
+                return GuestCommandResult(
+                    returncode=0, stdout="Xvfb\nopenbox\nxdotool\nimport\npython3\n"
+                )
             if "kill -0" in script:
                 return GuestCommandResult(returncode=0 if self.desktop_running else 1)
             return GuestCommandResult(returncode=0)
@@ -164,7 +216,10 @@ class FakeManagedUbuntuCli:
             return GuestCommandResult(returncode=0)
         if argv[:2] == ["python3", "-c"]:
             if len(argv) > 2 and "socket.create_connection" in argv[2]:
-                return GuestCommandResult(returncode=self.port_probe_returncode, stderr="connection refused" if self.port_probe_returncode else "")
+                return GuestCommandResult(
+                    returncode=self.port_probe_returncode,
+                    stderr="connection refused" if self.port_probe_returncode else "",
+                )
             assert input_text
             return GuestCommandResult(returncode=0)
         if argv[:3] == ["env", "DISPLAY=:98", "bash"]:
@@ -193,8 +248,14 @@ class FakeManagedUbuntuCli:
 
 
 def test_managed_provider_without_launcher_does_not_advertise_capabilities(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.shutil.which", lambda _name: None)
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.resolve_limactl_path",
+        lambda: None,
+    )
     provider = MacLimaProvider()
 
     status = provider.doctor(RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES))
@@ -203,17 +264,42 @@ def test_managed_provider_without_launcher_does_not_advertise_capabilities(monke
     assert status.ready is False
     assert status.capabilities == frozenset()
     assert "command:limactl" in status.missing_requirements
-    assert "Install limactl first" in str(status.user_action)
+    assert "brew install lima" in str(status.user_action)
+
+
+def test_bwrap_doctor_versions_launcher_through_bounded_host_runner(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Linux",
+    )
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.shutil.which",
+        lambda command: sys.executable if command == "bwrap" else None,
+    )
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu._unprivileged_userns_available",
+        lambda: True,
+    )
+
+    status = BwrapHostProvider().doctor(RuntimeRequirements())
+
+    assert status.version is not None
+    assert status.version.startswith("Python ")
 
 
 def test_managed_provider_does_not_advertise_host_port_forwarding(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     fake.guest_exists = True
     fake.deps_installed = True
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
 
-    status = provider.doctor(RuntimeRequirements(required_capabilities=frozenset({"sandbox.port_forward"})))
+    status = provider.doctor(
+        RuntimeRequirements(required_capabilities=frozenset({"sandbox.port_forward"}))
+    )
 
     assert status.available is True
     assert status.installed is True
@@ -235,7 +321,9 @@ def _template(
     network_approval_required: bool = True,
     packages: tuple[PackageSpec, ...] = (),
 ) -> ResolvedSandboxTemplate:
-    requirements = MANAGED_UBUNTU_CAPABILITIES if desktop else frozenset({"sandbox.exec", "sandbox.files"})
+    requirements = (
+        MANAGED_UBUNTU_CAPABILITIES if desktop else frozenset({"sandbox.exec", "sandbox.files"})
+    )
     return ResolvedSandboxTemplate(
         template_id="desktop.ubuntu" if desktop else "coding.python",
         template_version="1",
@@ -246,7 +334,13 @@ def _template(
         filesystem=FilesystemPolicy(),
         network=NetworkPolicy(mode=network_mode, approval_required=network_approval_required),
         secrets=SecretsPolicy(),
-        resources=ResourceLimits(memory_mb=memory_mb, cpu_count=cpu_count, pids=pids, output_bytes=output_bytes, timeout_ms=timeout_ms),
+        resources=ResourceLimits(
+            memory_mb=memory_mb,
+            cpu_count=cpu_count,
+            pids=pids,
+            output_bytes=output_bytes,
+            timeout_ms=timeout_ms,
+        ),
         lifecycle=LifecyclePolicy(),
         allowed_operations=requirements,
         source_template_ids=("test",),
@@ -265,7 +359,8 @@ def _create_spec(
         name="Managed Ubuntu",
         template=template,
         provider_id="auto",
-        workspace_binding=workspace_binding or WorkspaceBinding(workspace_id="workspace-1", mode="read_only"),
+        workspace_binding=workspace_binding
+        or WorkspaceBinding(workspace_id="workspace-1", mode="read_only"),
         metadata={
             "startup": startup or {"starter": "terminal"},
             "desktop_provisioning": provisioning or {},
@@ -291,22 +386,37 @@ def _workspace_seed_member(payload: str, member_name: str) -> bytes:
 
 
 def test_mac_lima_provider_ensure_and_guest_desktop_flow(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
     before = provider.doctor(requirements)
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     after = provider.doctor(requirements)
-    instance = provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False)))
+    instance = provider.create(
+        _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+    )
     started = provider.start(instance)
     agent = provider.connect_agent(started)
-    executed = agent.exec(started.sandbox_id, {"argv": ["echo", "hello"], "cwd": ".", "client_request_id": "exec-1"})
-    patched = agent.apply_file_patch(started.sandbox_id, {"path": "src/app.py", "content": "print('hello')\n"})
+    executed = agent.exec(
+        started.sandbox_id, {"argv": ["echo", "hello"], "cwd": ".", "client_request_id": "exec-1"}
+    )
+    patched = agent.apply_file_patch(
+        started.sandbox_id, {"path": "src/app.py", "content": "print('hello')\n"}
+    )
     exposed = agent.expose_port(started.sandbox_id, {"port": 3000, "protocol": "http"})
     frame = agent.capture_frame(started.sandbox_id, started.sandbox_id)
-    click = agent.desktop_input(started.sandbox_id, started.sandbox_id, {"action": "click", "client_action_id": "click-1", "x": 1, "y": 2})
+    click = agent.desktop_input(
+        started.sandbox_id,
+        started.sandbox_id,
+        {"action": "click", "client_action_id": "click-1", "x": 1, "y": 2},
+    )
 
     assert before.ready is False
     assert "managed_guest" in before.missing_requirements
@@ -319,20 +429,30 @@ def test_mac_lima_provider_ensure_and_guest_desktop_flow(monkeypatch) -> None:
     assert exposed["code"] == "SANDBOX_PORT_FORWARD_UNAVAILABLE"
     assert exposed["target_url"] == "http://127.0.0.1:3000"
     assert exposed["forwarding"] == "unavailable"
-    assert any("socket.create_connection" in " ".join(command) for command, _input, _timeout in fake.calls)
+    assert any(
+        "socket.create_connection" in " ".join(command) for command, _input, _timeout in fake.calls
+    )
     assert frame["data"] == b"png"
     assert click["ok"] is True
-    install_script = next(script for script in fake.guest_scripts if "$RUMI_SUDO apt-get install -y xvfb" in script)
+    install_script = next(
+        script for script in fake.guest_scripts if "$RUMI_SUDO apt-get install -y xvfb" in script
+    )
     assert "id -u" in install_script
     assert "RUMI_SUDO='sudo'" in install_script
     assert "sudo apt-get" not in install_script
     assert any("xterm -title 'Rumi Desktop'" in script for script in fake.guest_scripts)
-    assert fake.command_containing("shell", "rumi-managed-runtime", "--", "echo", "hello")[-2:] == ["echo", "hello"]
-    assert started.opaque_state["guest_workspace"].startswith("/workspace/mac_lima-")
+    assert fake.command_containing("shell", "rumi-managed-runtime", "--", "echo", "hello")[-2:] == [
+        "echo",
+        "hello",
+    ]
+    assert started.opaque_state["guest_workspace"].startswith("/var/lib/rumi/workspaces/mac_lima-")
 
 
 def test_managed_ubuntu_guest_agent_rejects_exec_cwd_before_guest_command(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     provider.ensure(
@@ -343,20 +463,30 @@ def test_managed_ubuntu_guest_agent_rejects_exec_cwd_before_guest_command(monkey
         NullProgressSink(),
     )
     started = provider.start(
-        provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False)))
+        provider.create(
+            _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+        )
     )
     agent = provider.connect_agent(started)
     fake.calls.clear()
 
     with pytest.raises(SandboxContractError) as exc:
-        agent.exec(started.sandbox_id, {"argv": ["pwd"], "cwd": "../outside", "client_request_id": "exec-cwd"})
+        agent.exec(
+            started.sandbox_id,
+            {"argv": ["pwd"], "cwd": "../outside", "client_request_id": "exec-cwd"},
+        )
 
     assert exc.value.code == "INVALID_EXEC_REQUEST"
     assert fake.calls == []
 
 
-def test_managed_ubuntu_guest_agent_rejects_file_patch_path_before_guest_command(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+def test_managed_ubuntu_guest_agent_rejects_file_patch_path_before_guest_command(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     provider.ensure(
@@ -367,28 +497,49 @@ def test_managed_ubuntu_guest_agent_rejects_file_patch_path_before_guest_command
         NullProgressSink(),
     )
     started = provider.start(
-        provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False)))
+        provider.create(
+            _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+        )
     )
     agent = provider.connect_agent(started)
     fake.calls.clear()
 
     with pytest.raises(SandboxContractError) as exc:
-        agent.apply_file_patch(started.sandbox_id, {"path": "/tmp/outside.py", "content": "print('outside')"})
+        agent.apply_file_patch(
+            started.sandbox_id, {"path": "/tmp/outside.py", "content": "print('outside')"}
+        )
 
     assert exc.value.code == "INVALID_EXEC_REQUEST"
     assert fake.calls == []
 
 
 def test_managed_ubuntu_desktops_get_distinct_guest_displays(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
-    first = provider.start(provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False))))
-    second = provider.start(provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False))))
-    desktop_scripts = [script for script in fake.guest_scripts if "DISPLAY_ID=" in script and "Xvfb" in script and "openbox" in script]
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
+    first = provider.start(
+        provider.create(
+            _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+        )
+    )
+    second = provider.start(
+        provider.create(
+            _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+        )
+    )
+    desktop_scripts = [
+        script
+        for script in fake.guest_scripts
+        if "DISPLAY_ID=" in script and "Xvfb" in script and "openbox" in script
+    ]
 
     assert ensured.ok is True
     assert first.opaque_state["display"] == DEFAULT_DISPLAY
@@ -401,14 +552,19 @@ def test_managed_ubuntu_desktops_get_distinct_guest_displays(monkeypatch) -> Non
 
 
 def test_managed_ubuntu_desktop_create_skips_guest_occupied_displays(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     fake = FakeManagedUbuntuCli(mode="wsl", runtime_name=DEFAULT_WSL_RUNTIME_NAME)
     fake.guest_exists = True
     fake.deps_installed = True
     fake.guest_displays_in_use.update({":98", ":99"})
     provider = WindowsWslProvider(command_path="C:/Windows/System32/wsl.exe", runner=fake)
 
-    instance = provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False)))
+    instance = provider.create(
+        _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+    )
     started = provider.start(instance)
     desktop_script = next(script for script in fake.guest_scripts if "DISPLAY_ID=':100'" in script)
 
@@ -421,7 +577,10 @@ def test_managed_ubuntu_desktop_create_skips_guest_occupied_displays(monkeypatch
 
 
 def test_windows_wsl_desktop_start_fails_when_xvfb_does_not_survive(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     fake = FakeManagedUbuntuCli(mode="wsl", runtime_name=DEFAULT_WSL_RUNTIME_NAME)
     fake.guest_exists = True
     fake.deps_installed = True
@@ -433,7 +592,9 @@ def test_windows_wsl_desktop_start_fails_when_xvfb_does_not_survive(monkeypatch)
         ),
     )
     provider = WindowsWslProvider(command_path="C:/Windows/System32/wsl.exe", runner=fake)
-    instance = provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False)))
+    instance = provider.create(
+        _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+    )
 
     with pytest.raises(SandboxContractError) as exc:
         provider.start(instance)
@@ -453,7 +614,10 @@ def test_windows_wsl_desktop_start_fails_when_xvfb_does_not_survive(monkeypatch)
 
 
 def test_windows_wsl_provider_ensure_imports_rumi_owned_distribution(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     rootfs = tmp_path / "rumi-ubuntu-rootfs.tar"
     rootfs.write_bytes(b"rootfs")
     install_dir = tmp_path / "RumiUbuntu"
@@ -464,14 +628,21 @@ def test_windows_wsl_provider_ensure_imports_rumi_owned_distribution(monkeypatch
         rootfs_path=str(rootfs),
         install_dir=str(install_dir),
     )
-    requirements = RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"}))
+    requirements = RuntimeRequirements(
+        required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+    )
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="windows_wsl", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="windows_wsl", requirements=requirements),
+        NullProgressSink(),
+    )
     status = provider.doctor(requirements)
     instance = provider.create(_create_spec(_template(desktop=False)))
     started = provider.start(instance)
     agent = provider.connect_agent(started)
-    executed = agent.exec(started.sandbox_id, {"argv": ["echo", "hello"], "cwd": ".", "client_request_id": "exec-1"})
+    executed = agent.exec(
+        started.sandbox_id, {"argv": ["echo", "hello"], "cwd": ".", "client_request_id": "exec-1"}
+    )
 
     assert ensured.ok is True
     assert status.ready is True
@@ -480,15 +651,27 @@ def test_windows_wsl_provider_ensure_imports_rumi_owned_distribution(monkeypatch
     assert fake.imported_rootfs_path == str(rootfs)
     assert fake.imported_install_dir == str(install_dir)
     assert executed["stdout"] == "hello\n"
-    assert fake.command_containing("--import", DEFAULT_WSL_RUNTIME_NAME, str(install_dir), str(rootfs), "--version", "2")
-    assert fake.command_containing("-d", DEFAULT_WSL_RUNTIME_NAME, "--", "echo", "hello")[-2:] == ["echo", "hello"]
-    assert started.opaque_state["guest_workspace"].startswith("/workspace/windows_wsl-")
-    install_script = next(script for script in fake.guest_scripts if "$RUMI_SUDO apt-get install -y xvfb" in script)
+    assert fake.command_containing(
+        "--import", DEFAULT_WSL_RUNTIME_NAME, str(install_dir), str(rootfs), "--version", "2"
+    )
+    assert fake.command_containing("-d", DEFAULT_WSL_RUNTIME_NAME, "--", "echo", "hello")[-2:] == [
+        "echo",
+        "hello",
+    ]
+    assert started.opaque_state["guest_workspace"].startswith(
+        "/var/lib/rumi/workspaces/windows_wsl-"
+    )
+    install_script = next(
+        script for script in fake.guest_scripts if "$RUMI_SUDO apt-get install -y xvfb" in script
+    )
     assert "\\$RUMI_SUDO" not in install_script
 
 
 def test_windows_wsl_guest_shell_preserves_guest_variable_expansion(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     fake = FakeManagedUbuntuCli(mode="wsl", runtime_name=DEFAULT_WSL_RUNTIME_NAME)
     provider = WindowsWslProvider(command_path="C:/Windows/System32/wsl.exe", runner=fake)
     script = (
@@ -515,32 +698,46 @@ def test_windows_wsl_guest_shell_preserves_guest_variable_expansion(monkeypatch)
 
 
 def test_managed_ubuntu_exec_defaults_to_instance_workspace_and_clean_env(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
 
     provider.ensure(
         EnsureRuntimeRequest(
             provider_id="mac_lima",
-            requirements=RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})),
+            requirements=RuntimeRequirements(
+                required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+            ),
         ),
         NullProgressSink(),
     )
     started = provider.start(provider.create(_create_spec(_template(desktop=False))))
     agent = provider.connect_agent(started)
 
-    pwd = agent.exec(started.sandbox_id, {"argv": ["pwd"], "cwd": ".", "client_request_id": "exec-pwd"})
+    pwd = agent.exec(
+        started.sandbox_id, {"argv": ["pwd"], "cwd": ".", "client_request_id": "exec-pwd"}
+    )
     env = agent.exec(
         started.sandbox_id,
-        {"argv": ["printenv", "RUMI_TEST"], "cwd": ".", "env": {"RUMI_TEST": "from-request"}, "client_request_id": "exec-env"},
+        {
+            "argv": ["printenv", "RUMI_TEST"],
+            "cwd": ".",
+            "env": {"RUMI_TEST": "from-request"},
+            "client_request_id": "exec-env",
+        },
     )
     ambient = agent.exec(
         started.sandbox_id,
         {"argv": ["printenv", "HOST_SECRET"], "cwd": ".", "client_request_id": "exec-ambient"},
     )
-    exec_call = next(call for call in fake.calls if "exec-env" not in str(call) and "printenv" in call[0])
+    exec_call = next(
+        call for call in fake.calls if "exec-env" not in str(call) and "printenv" in call[0]
+    )
 
-    assert pwd["stdout"] == f"{started.opaque_state['guest_workspace']}\n"
+    assert pwd["stdout"] == "/workspace\n"
     assert pwd["resolved_cwd"] == started.opaque_state["guest_workspace"]
     assert env["stdout"] == "from-request\n"
     assert ambient["exit_code"] == 1
@@ -549,18 +746,23 @@ def test_managed_ubuntu_exec_defaults_to_instance_workspace_and_clean_env(monkey
     assert "rumi-exec" in exec_call[0]
     assert f"/tmp/rumi-managed-runtime/{started.provider_instance_id}" in exec_call[0]
     assert f"RUMI_SANDBOX_INSTANCE={started.provider_instance_id}" in exec_call[0]
-    assert f"RUMI_SANDBOX_WORKSPACE={started.opaque_state['guest_workspace']}" in exec_call[0]
+    assert "RUMI_SANDBOX_WORKSPACE=/workspace" in exec_call[0]
     assert all(not part.startswith("HOST_SECRET=") for part in exec_call[0])
 
 
 def test_managed_ubuntu_exec_rejects_reserved_env_override(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     provider.ensure(
         EnsureRuntimeRequest(
             provider_id="mac_lima",
-            requirements=RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})),
+            requirements=RuntimeRequirements(
+                required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+            ),
         ),
         NullProgressSink(),
     )
@@ -583,13 +785,18 @@ def test_managed_ubuntu_exec_rejects_reserved_env_override(monkeypatch) -> None:
 
 
 def test_managed_ubuntu_non_desktop_reconcile_keeps_instance_ready_for_cleanup(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     provider.ensure(
         EnsureRuntimeRequest(
             provider_id="mac_lima",
-            requirements=RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})),
+            requirements=RuntimeRequirements(
+                required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+            ),
         ),
         NullProgressSink(),
     )
@@ -606,8 +813,13 @@ def test_managed_ubuntu_non_desktop_reconcile_keeps_instance_ready_for_cleanup(m
     assert 'kill -"$signal" -- "-$pid"' in stop_script
 
 
-def test_managed_ubuntu_instances_bind_agent_operations_to_distinct_workspaces(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+def test_managed_ubuntu_instances_bind_agent_operations_to_distinct_workspaces(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     root_a = tmp_path / "workspace-a"
     root_b = tmp_path / "workspace-b"
     root_a.mkdir()
@@ -619,7 +831,9 @@ def test_managed_ubuntu_instances_bind_agent_operations_to_distinct_workspaces(m
     provider.ensure(
         EnsureRuntimeRequest(
             provider_id="mac_lima",
-            requirements=RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})),
+            requirements=RuntimeRequirements(
+                required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+            ),
         ),
         NullProgressSink(),
     )
@@ -628,7 +842,9 @@ def test_managed_ubuntu_instances_bind_agent_operations_to_distinct_workspaces(m
         provider.create(
             _create_spec(
                 _template(desktop=False),
-                workspace_binding=WorkspaceBinding(workspace_id="workspace-a", mode="overlay", root=str(root_a)),
+                workspace_binding=WorkspaceBinding(
+                    workspace_id="workspace-a", mode="overlay", root=str(root_a)
+                ),
             )
         )
     )
@@ -636,29 +852,56 @@ def test_managed_ubuntu_instances_bind_agent_operations_to_distinct_workspaces(m
         provider.create(
             _create_spec(
                 _template(desktop=False),
-                workspace_binding=WorkspaceBinding(workspace_id="workspace-b", mode="overlay", root=str(root_b)),
+                workspace_binding=WorkspaceBinding(
+                    workspace_id="workspace-b", mode="overlay", root=str(root_b)
+                ),
             )
         )
     )
     first_agent = provider.connect_agent(first)
     second_agent = provider.connect_agent(second)
-    first_agent.apply_file_patch(first.sandbox_id, {"path": "src/app.py", "content": "print('a')\n"})
-    second_agent.apply_file_patch(second.sandbox_id, {"path": "src/app.py", "content": "print('b')\n"})
-    python_writes = [call for call in fake.calls if len(call[0]) > 2 and call[0][-3:-1] == ["-c", "import base64, pathlib, sys\npath = pathlib.Path(sys.argv[1])\npath.write_bytes(base64.b64decode(sys.stdin.read().encode('ascii')))\n"]]
+    first_agent.apply_file_patch(
+        first.sandbox_id, {"path": "src/app.py", "content": "print('a')\n"}
+    )
+    second_agent.apply_file_patch(
+        second.sandbox_id, {"path": "src/app.py", "content": "print('b')\n"}
+    )
+    python_writes = [
+        call
+        for call in fake.calls
+        if len(call[0]) > 2
+        and call[0][-3:-1]
+        == [
+            "-c",
+            "import base64, pathlib, sys\npath = pathlib.Path(sys.argv[1])\npath.write_bytes(base64.b64decode(sys.stdin.read().encode('ascii')))\n",
+        ]
+    ]
 
     assert first.opaque_state["guest_workspace"] != second.opaque_state["guest_workspace"]
-    assert first.opaque_state["guest_workspace"].startswith("/workspace/mac_lima-")
-    assert second.opaque_state["guest_workspace"].startswith("/workspace/mac_lima-")
-    seed_scripts = [script for script in fake.guest_scripts if "RUMI_WORKSPACE_SEED_MODE=overlay" in script]
+    assert first.opaque_state["guest_workspace"].startswith("/var/lib/rumi/workspaces/mac_lima-")
+    assert second.opaque_state["guest_workspace"].startswith("/var/lib/rumi/workspaces/mac_lima-")
+    seed_scripts = [
+        script for script in fake.guest_scripts if "RUMI_WORKSPACE_SEED_MODE=overlay" in script
+    ]
     assert len(seed_scripts) >= 2
     assert str(first.opaque_state["guest_workspace"]) in seed_scripts[-2]
     assert str(second.opaque_state["guest_workspace"]) in seed_scripts[-1]
-    assert any(str(first.opaque_state["guest_workspace"]) + "/src/app.py" in " ".join(call[0]) for call in python_writes)
-    assert any(str(second.opaque_state["guest_workspace"]) + "/src/app.py" in " ".join(call[0]) for call in python_writes)
+    assert any(
+        str(first.opaque_state["guest_workspace"]) in call[0] and "/workspace/src/app.py" in call[0]
+        for call in python_writes
+    )
+    assert any(
+        str(second.opaque_state["guest_workspace"]) in call[0]
+        and "/workspace/src/app.py" in call[0]
+        for call in python_writes
+    )
 
 
 def test_windows_wsl_provider_does_not_claim_existing_user_ubuntu_distribution(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     fake = FakeManagedUbuntuCli(mode="wsl", runtime_name="Ubuntu")
     fake.guest_exists = True
     provider = WindowsWslProvider(command_path="C:/Windows/System32/wsl.exe", runner=fake)
@@ -670,7 +913,10 @@ def test_windows_wsl_provider_does_not_claim_existing_user_ubuntu_distribution(m
 
 
 def test_windows_wsl_provider_detects_nul_separated_rumi_distribution(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     fake = FakeManagedUbuntuCli(mode="wsl", runtime_name=DEFAULT_WSL_RUNTIME_NAME)
     fake.guest_exists = True
     fake.deps_installed = True
@@ -687,8 +933,13 @@ def test_windows_wsl_provider_detects_nul_separated_rumi_distribution(monkeypatc
     assert not any("--import" in command for command, _input_text, _timeout in fake.calls)
 
 
-def test_windows_wsl_provider_downloads_rumi_rootfs_when_not_configured(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+def test_windows_wsl_provider_downloads_rumi_rootfs_when_not_configured(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     monkeypatch.delenv(WSL_ROOTFS_ENV, raising=False)
     monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
     install_dir = tmp_path / "RumiUbuntu"
@@ -726,14 +977,22 @@ def test_windows_wsl_provider_downloads_rumi_rootfs_when_not_configured(monkeypa
     assert fake.guest_exists is True
     assert fake.deps_installed is True
     assert len(downloaded) == 1
-    assert downloaded[0][0] == "https://cloud-images.ubuntu.com/wsl/releases/22.04/current/ubuntu-jammy-wsl-amd64-wsl.rootfs.tar.gz"
-    assert downloaded[0][1].startswith(str(cache_dir / "ubuntu-jammy-wsl-amd64-wsl.rootfs.tar.gz.tmp-"))
+    assert (
+        downloaded[0][0]
+        == "https://cloud-images.ubuntu.com/wsl/releases/22.04/current/ubuntu-jammy-wsl-amd64-wsl.rootfs.tar.gz"
+    )
+    assert downloaded[0][1].startswith(
+        str(cache_dir / "ubuntu-jammy-wsl-amd64-wsl.rootfs.tar.gz.tmp-")
+    )
     assert fake.imported_rootfs_path == str(cache_dir / "ubuntu-jammy-wsl-amd64-wsl.rootfs.tar.gz")
     assert fake.imported_install_dir == str(install_dir)
 
 
 def test_windows_wsl_provider_replaces_corrupt_cached_rootfs(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     monkeypatch.delenv(WSL_ROOTFS_ENV, raising=False)
     monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
     cache_dir = tmp_path / "rootfs-cache"
@@ -777,7 +1036,10 @@ def test_windows_wsl_provider_replaces_corrupt_cached_rootfs(monkeypatch, tmp_pa
 
 
 def test_windows_wsl_provider_uses_verified_cached_rootfs_offline(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Windows",
+    )
     monkeypatch.delenv(WSL_ROOTFS_ENV, raising=False)
     monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
     cache_dir = tmp_path / "rootfs-cache"
@@ -817,16 +1079,37 @@ def test_windows_wsl_provider_uses_verified_cached_rootfs_offline(monkeypatch, t
 
 
 def test_managed_ubuntu_exec_enforces_template_output_and_timeout_limits(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
-    requirements = RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"}))
+    requirements = RuntimeRequirements(
+        required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+    )
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
-    instance = provider.create(_create_spec(_template(desktop=False, output_bytes=5, timeout_ms=2_000, memory_mb=64, cpu_count=2, pids=32)))
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
+    instance = provider.create(
+        _create_spec(
+            _template(
+                desktop=False, output_bytes=5, timeout_ms=2_000, memory_mb=64, cpu_count=2, pids=32
+            )
+        )
+    )
     started = provider.start(instance)
     agent = provider.connect_agent(started)
-    executed = agent.exec(started.sandbox_id, {"argv": ["emit-long"], "cwd": ".", "client_request_id": "exec-long", "timeout_ms": 600_000})
+    executed = agent.exec(
+        started.sandbox_id,
+        {
+            "argv": ["emit-long"],
+            "cwd": ".",
+            "client_request_id": "exec-long",
+            "timeout_ms": 600_000,
+        },
+    )
     exec_call = next(call for call in fake.calls if "emit-long" in call[0])
 
     assert ensured.ok is True
@@ -835,7 +1118,8 @@ def test_managed_ubuntu_exec_enforces_template_output_and_timeout_limits(monkeyp
     assert executed["stdout_truncated"] is True
     assert executed["stderr_truncated"] is True
     assert exec_call[2] == 2
-    assert "unshare" in exec_call[0]
+    assert "bwrap" in exec_call[0]
+    assert "--unshare-net" in exec_call[0]
     assert any("ulimit -v" in part for part in exec_call[0])
     assert any("ulimit -u" in part for part in exec_call[0])
     assert any("taskset -c" in part for part in exec_call[0])
@@ -846,12 +1130,17 @@ def test_managed_ubuntu_exec_enforces_template_output_and_timeout_limits(monkeyp
 
 
 def test_managed_ubuntu_desktop_browser_url_starter_is_projected_to_guest(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(
         _create_spec(
             _template(network_mode="host_shared", network_approval_required=False),
@@ -859,36 +1148,57 @@ def test_managed_ubuntu_desktop_browser_url_starter_is_projected_to_guest(monkey
         )
     )
     started = provider.start(instance)
-    start_script = next(script for script in fake.guest_scripts if "BROWSER_URL=" in script)
+    start_script = next(
+        script for script in fake.guest_scripts if "BROWSER_URL_ORIGINAL=" in script
+    )
 
     assert ensured.ok is True
     assert started.state == "ready"
     assert "BROWSER_URL_ORIGINAL=https://example.com" in start_script
-    assert 'BROWSER_URL="$(python3 - "$BROWSER_URL_ORIGINAL" "$RUMI_HOST_LOOPBACK_ALIAS"' in start_script
-    assert "BROWSER_CANDIDATES='google-chrome-stable google-chrome chromium chromium-browser firefox'" in start_script
+    assert (
+        'BROWSER_URL="$(python3 - "$BROWSER_URL_ORIGINAL" "$RUMI_HOST_LOOPBACK_ALIAS"'
+        in start_script
+    )
+    assert (
+        "BROWSER_CANDIDATES='google-chrome-stable google-chrome chromium chromium-browser firefox'"
+        in start_script
+    )
     assert 'BROWSER_CANDIDATES="$BROWSER_CANDIDATES xdg-open"' in start_script
     assert "run_detached()" in start_script
     assert "setsid -f sh -c" in start_script
     assert "/etc/machine-id" in start_script
-    assert '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir=' in start_script
+    assert (
+        '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir='
+        in start_script
+    )
     assert "starter-browser.log" in start_script
 
 
 def test_managed_ubuntu_desktop_browser_url_starter_rewrites_host_loopback(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(
         _create_spec(
             _template(network_mode="host_shared", network_approval_required=False),
-            startup={"starter": "browser_url", "browser_url": "http://127.0.0.1:8766/chat?chat=qa-loop"},
+            startup={
+                "starter": "browser_url",
+                "browser_url": "http://127.0.0.1:8766/chat?chat=qa-loop",
+            },
         )
     )
     started = provider.start(instance)
-    start_script = next(script for script in fake.guest_scripts if "BROWSER_URL_ORIGINAL=" in script)
+    start_script = next(
+        script for script in fake.guest_scripts if "BROWSER_URL_ORIGINAL=" in script
+    )
 
     assert ensured.ok is True
     assert started.state == "ready"
@@ -898,37 +1208,55 @@ def test_managed_ubuntu_desktop_browser_url_starter_rewrites_host_loopback(monke
     assert "host in {'127.0.0.1', 'localhost'}" in start_script
     assert "netloc = f'{host_alias}:{parsed.port}'" in start_script
     assert "BROWSER_URL=http://127.0.0.1:8766/chat" not in start_script
-    assert '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir=' in start_script
+    assert (
+        '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir='
+        in start_script
+    )
 
 
 def test_managed_ubuntu_desktop_browser_starter_opens_browser_without_url(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(_create_spec(_template(), startup={"starter": "browser"}))
     started = provider.start(instance)
-    start_script = next(script for script in fake.guest_scripts if "BROWSER_URL=" in script)
+    start_script = next(
+        script for script in fake.guest_scripts if "BROWSER_URL_ORIGINAL=" in script
+    )
 
     assert ensured.ok is True
     assert started.state == "ready"
-    assert "BROWSER_URL=''" in start_script
+    assert "BROWSER_URL_ORIGINAL=''" in start_script
     assert 'BROWSER_CANDIDATES="$BROWSER_CANDIDATES xdg-open"' in start_script
     assert 'elif [ -n "$BROWSER_URL" ]; then' in start_script
     assert "run_detached" in start_script
-    assert '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir=' in start_script
+    assert (
+        '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir='
+        in start_script
+    )
     assert "starter-browser.pid" in start_script
 
 
 def test_managed_ubuntu_stop_cleans_desktop_starter_processes(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(
         _create_spec(
             _template(network_mode="host_shared", network_approval_required=False),
@@ -951,13 +1279,22 @@ def test_managed_ubuntu_stop_cleans_desktop_starter_processes(monkeypatch) -> No
 
 
 def test_managed_ubuntu_browser_url_starter_respects_network_policy(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
-    instance = provider.create(_create_spec(_template(), startup={"starter": "browser_url", "browser_url": "https://example.com"}))
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
+    instance = provider.create(
+        _create_spec(
+            _template(), startup={"starter": "browser_url", "browser_url": "https://example.com"}
+        )
+    )
     started = provider.start(instance)
     start_script = next(script for script in fake.guest_scripts if "starter-browser.log" in script)
 
@@ -965,16 +1302,24 @@ def test_managed_ubuntu_browser_url_starter_respects_network_policy(monkeypatch)
     assert started.state == "ready"
     assert "RUMI_NETWORK_DISABLED='1'" in start_script
     assert "browser_url starter skipped by sandbox network policy" in start_script
-    assert "google-chrome-stable google-chrome chromium chromium-browser firefox xdg-open" not in start_script
+    assert (
+        "google-chrome-stable google-chrome chromium chromium-browser firefox xdg-open"
+        not in start_script
+    )
 
 
 def test_managed_ubuntu_browser_url_starter_runs_after_approved_create(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(
         _create_spec(
             _template(),
@@ -991,16 +1336,24 @@ def test_managed_ubuntu_browser_url_starter_runs_after_approved_create(monkeypat
     assert "RUMI_NETWORK_DISABLED='0'" in start_script
     assert "browser_url starter skipped by sandbox network policy" not in start_script
     assert "google-chrome-stable google-chrome chromium chromium-browser firefox" in start_script
-    assert '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir=' in start_script
+    assert (
+        '"$BROWSER_BIN" --no-sandbox --no-first-run --disable-dev-shm-usage --user-data-dir='
+        in start_script
+    )
 
 
 def test_managed_ubuntu_port_exposure_respects_network_policy(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(_create_spec(_template()))
     started = provider.start(instance)
     agent = provider.connect_agent(started)
@@ -1021,14 +1374,21 @@ def test_managed_ubuntu_port_exposure_respects_network_policy(monkeypatch) -> No
 
 
 def test_managed_ubuntu_port_exposure_requires_listening_guest_service(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     fake.port_probe_returncode = 1
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
-    instance = provider.create(_create_spec(_template(network_mode="host_shared", network_approval_required=False)))
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
+    instance = provider.create(
+        _create_spec(_template(network_mode="host_shared", network_approval_required=False))
+    )
     started = provider.start(instance)
     agent = provider.connect_agent(started)
     exposed = agent.expose_port(started.sandbox_id, {"port": 3000, "protocol": "http"})
@@ -1041,7 +1401,10 @@ def test_managed_ubuntu_port_exposure_requires_listening_guest_service(monkeypat
 
 
 def test_managed_ubuntu_desktop_provisioning_installs_declared_apps_and_mcp(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
@@ -1051,7 +1414,9 @@ def test_managed_ubuntu_desktop_provisioning_installs_declared_apps_and_mcp(monk
         "mcp_servers": ["playwright"],
     }
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(_create_spec(_template(), provisioning=provisioning))
     started = provider.start(instance)
     provision_script = next(script for script in fake.guest_scripts if "PROVISION_MARKER" in script)
@@ -1072,7 +1437,10 @@ def test_managed_ubuntu_desktop_provisioning_installs_declared_apps_and_mcp(monk
 
 
 def test_managed_ubuntu_template_packages_are_guest_provisioned(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
@@ -1084,7 +1452,9 @@ def test_managed_ubuntu_template_packages_are_guest_provisioned(monkeypatch) -> 
         )
     )
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(_create_spec(template))
     started = provider.start(instance)
     provision_script = next(script for script in fake.guest_scripts if "PROVISION_MARKER" in script)
@@ -1099,17 +1469,28 @@ def test_managed_ubuntu_template_packages_are_guest_provisioned(monkeypatch) -> 
 
 
 def test_managed_ubuntu_browser_template_uses_launchable_chrome_package(monkeypatch) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
     requirements = RuntimeRequirements(required_capabilities=MANAGED_UBUNTU_CAPABILITIES)
-    template = _template(packages=(PackageSpec(name="chromium", version="managed", source="guest"),))
+    template = _template(
+        packages=(PackageSpec(name="chromium", version="managed", source="guest"),)
+    )
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(_create_spec(template))
     started = provider.start(instance)
     provision_script = next(script for script in fake.guest_scripts if "PROVISION_MARKER" in script)
-    install_line = next(line for line in provision_script.splitlines() if "apt-get install -y $RUMI_APT_PACKAGES" in line)
+    install_line = next(
+        line
+        for line in provision_script.splitlines()
+        if "apt-get install -y $RUMI_APT_PACKAGES" in line
+    )
 
     assert ensured.ok is True
     assert started.state == "ready"
@@ -1119,20 +1500,29 @@ def test_managed_ubuntu_browser_template_uses_launchable_chrome_package(monkeypa
 
 
 def test_managed_ubuntu_seeds_trusted_workspace_read_only(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     workspace_root = tmp_path / "workspace"
     (workspace_root / "src").mkdir(parents=True)
     app_path = workspace_root / "src" / "app.py"
     app_path.write_text("print('seeded')\n", encoding="utf-8")
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
-    requirements = RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"}))
+    requirements = RuntimeRequirements(
+        required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+    )
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(
         _create_spec(
             _template(desktop=False),
-            workspace_binding=WorkspaceBinding(workspace_id="workspace-1", mode="read_only", root=str(workspace_root)),
+            workspace_binding=WorkspaceBinding(
+                workspace_id="workspace-1", mode="read_only", root=str(workspace_root)
+            ),
         )
     )
     started = provider.start(instance)
@@ -1140,26 +1530,38 @@ def test_managed_ubuntu_seeds_trusted_workspace_read_only(monkeypatch, tmp_path)
 
     assert ensured.ok is True
     assert started.state == "ready"
-    assert f"find {started.opaque_state['guest_workspace']} -mindepth 1 -maxdepth 1 ! -name .rumi" in seed_script
+    assert (
+        f"find {started.opaque_state['guest_workspace']} -mindepth 1 -maxdepth 1 ! -name .rumi"
+        in seed_script
+    )
     assert "& ~0o222" in seed_script
     assert _workspace_seed_member(payload, "src/app.py") == app_path.read_bytes()
 
 
 def test_managed_ubuntu_seeds_trusted_workspace_overlay(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system", lambda: "Darwin")
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.backend.sandbox.providers.managed_ubuntu.platform.system",
+        lambda: "Darwin",
+    )
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
     package_path = workspace_root / "package.json"
     package_path.write_text('{"scripts":{"test":"true"}}\n', encoding="utf-8")
     fake = FakeManagedUbuntuCli(mode="lima", runtime_name="rumi-managed-runtime")
     provider = MacLimaProvider(command_path="/usr/bin/limactl", runner=fake)
-    requirements = RuntimeRequirements(required_capabilities=frozenset({"sandbox.exec", "sandbox.files"}))
+    requirements = RuntimeRequirements(
+        required_capabilities=frozenset({"sandbox.exec", "sandbox.files"})
+    )
 
-    ensured = provider.ensure(EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink())
+    ensured = provider.ensure(
+        EnsureRuntimeRequest(provider_id="mac_lima", requirements=requirements), NullProgressSink()
+    )
     instance = provider.create(
         _create_spec(
             _template(desktop=False),
-            workspace_binding=WorkspaceBinding(workspace_id="workspace-1", mode="overlay", root=str(workspace_root)),
+            workspace_binding=WorkspaceBinding(
+                workspace_id="workspace-1", mode="overlay", root=str(workspace_root)
+            ),
         )
     )
     started = provider.start(instance)

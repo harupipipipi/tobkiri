@@ -3,7 +3,7 @@
 
 運用者向けのガイドです。設計の全体像は [architecture.md](architecture.md)、Pack 開発は [pack-development.md](pack-development.md) を参照してください。
 
-> 互換性のため、このブランチ内の runtime ディレクトリ名は `rumi_ai_1_10/`、
+> 正規 runtime ディレクトリは `tobkiri_runtime/` です。互換性のため、
 > CLI は `rumi_ai` のままです。これは内部互換名であり、公開製品名は Tobkiri です。
 
 ---

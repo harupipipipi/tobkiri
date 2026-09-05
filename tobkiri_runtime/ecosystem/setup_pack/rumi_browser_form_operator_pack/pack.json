@@ -21,7 +21,7 @@
     "post_submit_delivery": "handoff_to_rumi_connector_gateway_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Browser Form Operator is a high-risk declarative review pack for staged form actions; it must not be promoted into defaultspack until semantic DOM, explicit approval, and receipt evidence are proven by runtime owners.",
     "criteria": [

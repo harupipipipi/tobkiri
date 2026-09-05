@@ -11,7 +11,5 @@
       "http://localhost:8766/*"
     ]
   },
-  "permissions": [
-    "core:default"
-  ]
+  "permissions": ["core:default"]
 }

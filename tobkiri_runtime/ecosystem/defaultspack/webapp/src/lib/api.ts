@@ -1,4 +1,5 @@
 import type { ToolPreviewItem } from "../components/ToolPreview";
+import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
 import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
 
@@ -396,12 +397,54 @@ export type AuthorityApprovalDecision = {
   related_approvals?: AuthorityApprovalDecision[];
 };
 
+/**
+ * The only approval state that the interactive-approval Pack may return to a
+ * web surface.  Authority material intentionally is not representable here:
+ * the Host consumes the one-shot grant itself when it resumes the effect.
+ */
+export type InteractiveApprovalRequest = {
+  request_id: string;
+  request_snapshot_digest: string;
+  state: string;
+  expires_at: number;
+  typed_confirmation_required: boolean;
+  typed_confirmation_digest: string | null;
+  redacted_metadata: Record<string, string>;
+};
+
+/** A redacted list projection from the interactive-approval Pack. */
+export type InteractiveApprovalRequestsResponse = {
+  approvals: InteractiveApprovalRequest[];
+};
+
+/**
+ * The redacted client projection from the high-risk command Host adapter.
+ *
+ * ``invocation_id`` is an opaque client correlation value. In particular,
+ * effect identity, prepared plans, authority tokens, and command arguments
+ * are intentionally not representable after prepare.
+ */
+export type HighRiskCommandInvocation = {
+  invocation_id: string;
+  approval_request_id: string | null;
+  state: string;
+  expires_at: number | null;
+  redacted_metadata: Record<string, string>;
+};
+
+export type HighRiskCommandInvocationsResponse = {
+  invocations: HighRiskCommandInvocation[];
+};
+
 export type AuthorityUiOperator = {
   version: number;
   kind: "ui_operator";
   origin: string;
   window_label: string;
   request_id: string;
+  decision?: "approve" | "deny";
+  request_snapshot_digest?: string;
+  typed_confirmation_digest?: string | null;
   issued_at: number;
   expires_at: number;
   nonce: string;
@@ -627,6 +670,14 @@ export type CompanyAgent = {
   aliases?: string[];
   system_prompt?: string;
   status?: string;
+  agent_kind?: "main" | "subagent";
+  runtime_kind?: "agent_run" | "utility_model_call" | "human_task" | "remote_agent" | "composite_team";
+  subagent_role?: string;
+  placement_id?: string;
+  placement_revision?: string;
+  placement_map_id?: string;
+  effective_plan_hash?: string;
+  protocol_membership?: string[];
   metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
@@ -1280,7 +1331,9 @@ export type ToolLogEntry = {
 };
 
 export function conversationArtifactFileUrl(conversationId: string, path: string): string {
-  return `/api/chat/conversations/${encodeURIComponent(conversationId)}/artifact-file?path=${encodeURIComponent(path)}`;
+  return defaultspackContractUrl(
+    defaultspackContractRoute(`api/chat/conversations/${encodeURIComponent(conversationId)}/artifact-file?path=${encodeURIComponent(path)}`),
+  );
 }
 
 export type ModelProfile = {
@@ -1296,6 +1349,8 @@ export type ModelProfile = {
   supports_thinking?: boolean;
   supports_vision?: boolean;
   supports_image_input?: boolean;
+  supports_audio?: boolean;
+  supports_audio_input?: boolean;
   supports_tool_calling?: boolean;
   supports_fast?: boolean;
   thinking_levels?: string[];
@@ -1330,6 +1385,7 @@ export type ModelCandidate = {
 };
 
 export type ModelAvailabilityAfterKeySave =
+  | { status: "saved" }
   | { status: "models_available"; profiles: ModelProfile[]; selected_profile_id: string }
   | { status: "route_required"; provider_id: string; api_id: string; candidate_models: ModelCandidate[]; reason: string };
 
@@ -1494,7 +1550,7 @@ export type ConversationSearchOptions = {
   offset?: number;
 };
 
-export type SidebarCategory = "tool" | "widget" | "system" | "integration" | "capability";
+export type SidebarCategory = "activity" | "tool" | "widget" | "system" | "integration" | "capability";
 
 export type SidebarFieldOption = {
   value: string | number | boolean;
@@ -1503,6 +1559,9 @@ export type SidebarFieldOption = {
   provider_display_name?: string;
   model_id?: string;
   qualified_model_id?: string;
+  requires_api_key?: boolean;
+  api_key_required?: boolean;
+  api_key_configured?: boolean;
   configured?: boolean;
   local?: boolean;
   supports_vision?: boolean;
@@ -1522,7 +1581,7 @@ export type SidebarFieldOption = {
 export type SidebarField = {
   id: string;
   label: string;
-  type: "text" | "textarea" | "number" | "toggle" | "select" | "color" | "readonly" | "secret" | "api_keys" | "external_tokens" | "public_url" | "model_api_routes" | "continuity";
+  type: "text" | "textarea" | "number" | "toggle" | "select" | "color" | "readonly" | "secret" | "api_keys" | "api_key_setup" | "external_tokens" | "public_url" | "model_api_routes" | "continuity";
   default?: unknown;
   required?: boolean;
   help?: string;
@@ -1532,7 +1591,9 @@ export type SidebarField = {
   provider_id?: string;
   configured_field?: string;
   advanced?: boolean;
+  control_center_section?: string;
   api_keys?: Array<Record<string, unknown>>;
+  selector_schema?: Record<string, unknown>;
 };
 
 export type ContinuityNode = {
@@ -1744,6 +1805,8 @@ export type ComposerCommandArg = {
   required?: boolean;
   values?: string[];
   greedy?: boolean;
+  label?: string;
+  placeholder?: string;
 };
 
 export type ComposerCommandExecution =
@@ -1771,6 +1834,10 @@ export type ComposerCommandItem = {
   source?: string;
   template_id?: string;
   piece_id?: string;
+  canonical_id?: string;
+  protocol_presentation?: ResolvedCommandProtocolCommand["presentation"];
+  protocol_execution?: ResolvedCommandProtocolCommand["execution"];
+  availability?: ResolvedCommandProtocolCommand["availability"];
 };
 
 export type ComposerCommandExecuteResult = {
@@ -1783,6 +1850,97 @@ export type ComposerCommandExecuteResult = {
   message?: string;
   candidates?: ModelCommandCandidate[];
   selected_model?: string | ModelCommandCandidate | null;
+  operation_id?: string;
+  operation_status?: "pending" | "succeeded" | "failed";
+  client_sequence?: number;
+  state_changes?: CommandStateSnapshot[];
+  approval_request_id?: string;
+  approval_kind?: "authority" | "coding";
+};
+
+export type CommandStateSnapshot = {
+  state_ref: string;
+  value: unknown;
+  revision: number;
+  freshness?: "authoritative" | "stale";
+};
+
+export type ResolvedCommandProtocolCommand = {
+  canonical_id: string;
+  pack_id: string;
+  pack_generation: number;
+  command_version: string;
+  identity: { id: string; name: string; aliases?: string[] };
+  presentation: {
+    label: { fallback: string };
+    description?: { fallback: string };
+    category: string;
+    visibility: string;
+    icon?: string;
+    input: { kind: "search_select" | "select" | "toggle" | "action" | "form"; [key: string]: unknown };
+    mounts?: Array<{
+      slot_ref: string;
+      display: "persistent" | "command";
+      order?: number;
+      [key: string]: unknown;
+    }>;
+  };
+  execution: {
+    kind: "state_mutation" | "host_operation" | "pack_operation";
+    [key: string]: unknown;
+  };
+  authorization: {
+    risk: ComposerCommandRisk;
+    permissions: string[];
+    approval_required: boolean;
+    approval_policy: "never" | "required";
+    executor_policy_ref: string;
+  };
+  constraints: { modes: ComposerCommandMode[] };
+  availability: { status: "available" | "unavailable"; reason?: string; reason_code?: string };
+};
+
+export type ResolvedCommandCatalog = {
+  api_version: "tobkiri.commands/v1";
+  kind: "ResolvedCommandCatalog";
+  catalog_revision: string;
+  rollout?: {
+    feature_flag: "command_protocol_v1";
+    phase: "enforced";
+    legacy_execution_enabled: false;
+  };
+  commands: ResolvedCommandProtocolCommand[];
+  states?: Array<Record<string, unknown>>;
+  datasources?: Array<Record<string, unknown>>;
+  state_snapshots: CommandStateSnapshot[];
+  diagnostics?: Array<Record<string, unknown>>;
+};
+
+export type CommandProtocolInvocationResult = {
+  api_version: "tobkiri.commands/v1";
+  operation_id: string;
+  status: "succeeded" | "failed" | "approval_required" | "cancelled";
+  command_ref: string;
+  client_sequence?: number;
+  state_changes: CommandStateSnapshot[];
+  message?: string;
+  approval?: {
+    required: boolean;
+    kind?: "authority" | "coding";
+    request_id?: string;
+    expires_at?: number;
+    permission_ids?: string[];
+    details?: {
+      approved_arguments?: Record<string, unknown>;
+      args?: Record<string, unknown>;
+      conversation_id?: string | null;
+      mode?: ComposerCommandMode;
+      operation_ref?: string;
+      [key: string]: unknown;
+    };
+  } | null;
+  error?: { code?: string; message?: string };
+  legacy_result?: ComposerCommandExecuteResult;
 };
 
 export type TemplateComposerFieldOption = {
@@ -1801,12 +1959,20 @@ export type TemplateComposerField = {
   options?: TemplateComposerFieldOption[];
 };
 
+export type TemplateComposerPosition = "center" | "bottom" | "inline";
+
+export type TemplateComposerLayout = {
+  home?: { position?: TemplateComposerPosition };
+  conversation?: { position?: TemplateComposerPosition };
+};
+
 export type TemplateComposerInput = {
   id: string;
   label?: string;
   description?: string;
   placeholder?: string;
   help?: string;
+  layout?: TemplateComposerLayout;
   accepted_modalities?: string[];
   feature_flags?: Record<string, boolean | string | number | null | undefined>;
   fields?: TemplateComposerField[];
@@ -1916,6 +2082,7 @@ export type SkillCatalogItem = {
 };
 
 export type UICatalog = {
+  dynamic_host?: import("../host/frontendContracts").FrontendCatalog | null;
   app?: {
     id: string;
     name: string;
@@ -2051,6 +2218,130 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function hasNonEmptyString(record: Record<string, unknown>, key: string): boolean {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isSidebarFieldShape(value: unknown): boolean {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && hasNonEmptyString(record, "id")
+    && hasNonEmptyString(record, "label")
+    && hasNonEmptyString(record, "type")
+  );
+}
+
+function isSettingsSectionShape(value: unknown): boolean {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && hasNonEmptyString(record, "id")
+    && hasNonEmptyString(record, "label")
+    && Array.isArray(record.fields)
+    && record.fields.every(isSidebarFieldShape)
+  );
+}
+
+function isRecordOfRecords(value: unknown): boolean {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && Object.values(record).every((item) => objectRecord(item) !== null)
+  );
+}
+
+/** Validate the required Pack v4 UI catalog shape before ChatApp consumes it. */
+export function isUICatalog(value: unknown): value is UICatalog {
+  const record = objectRecord(value);
+  if (!record) return false;
+
+  const app = record.app === undefined ? null : objectRecord(record.app);
+  const sidebar = objectRecord(record.sidebar);
+  const settings = objectRecord(record.settings);
+  const chatRendering = objectRecord(record.chat_rendering);
+  const extensionPoints = record.extension_points;
+  if (
+    (record.app !== undefined && (!app || !hasNonEmptyString(app, "id") || !hasNonEmptyString(app, "name")))
+    || !sidebar
+    || !Array.isArray(sidebar.filters)
+    || !sidebar.filters.every((filter) => {
+      const item = objectRecord(filter);
+      return Boolean(item && hasNonEmptyString(item, "id") && hasNonEmptyString(item, "label"));
+    })
+    || !Array.isArray(sidebar.items)
+    || !sidebar.items.every((item) => {
+      const sidebarItem = objectRecord(item);
+      return Boolean(
+        sidebarItem
+        && hasNonEmptyString(sidebarItem, "id")
+        && hasNonEmptyString(sidebarItem, "label")
+        && hasNonEmptyString(sidebarItem, "category")
+      );
+    })
+    || !settings
+    || !Array.isArray(settings.sections)
+    || !settings.sections.every(isSettingsSectionShape)
+    || !isRecordOfRecords(settings.values)
+    || !chatRendering
+    || !Array.isArray(chatRendering.renderers)
+    || !chatRendering.renderers.every((renderer) => {
+      const item = objectRecord(renderer);
+      return Boolean(item && hasNonEmptyString(item, "id") && hasNonEmptyString(item, "component"));
+    })
+    || !Array.isArray(extensionPoints)
+    || !extensionPoints.every((extensionPoint) => {
+      const item = objectRecord(extensionPoint);
+      return Boolean(
+        item
+        && hasNonEmptyString(item, "id")
+        && hasNonEmptyString(item, "path")
+        && hasNonEmptyString(item, "description")
+      );
+    })
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+/** Validate the Pack v4 settings response used during startup. */
+export function isUiSettingsResponse(
+  value: unknown,
+): value is { sections: SettingsSection[]; values: Record<string, Record<string, unknown>> } {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && Array.isArray(record.sections)
+    && record.sections.every(isSettingsSectionShape)
+    && isRecordOfRecords(record.values)
+  );
+}
+
+/** Validate the model profile list before Profile controls receive it. */
+export function isModelProfilesResponse(
+  value: unknown,
+): value is { profiles: ModelProfile[]; count: number } {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && Array.isArray(record.profiles)
+    && record.profiles.every((profile) => {
+      const item = objectRecord(profile);
+      return Boolean(
+        item
+        && hasNonEmptyString(item, "profile_id")
+        && hasNonEmptyString(item, "display_name")
+      );
+    })
+    && typeof record.count === "number"
+    && Number.isInteger(record.count)
+    && record.count >= 0
+  );
+}
+
 function nonEmptyString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -2072,6 +2363,24 @@ export function composerCommandResultMessage(result: ComposerCommandExecuteResul
   return null;
 }
 
+export type ComposerCommandFeedbackTone = "success" | "info" | "warning" | "error";
+
+export function composerCommandFeedbackTone(
+  result: ComposerCommandExecuteResult,
+): ComposerCommandFeedbackTone {
+  if (result.operation_status === "failed") return "error";
+  if (result.requires_approval) return "warning";
+
+  const deepthinkState = result.state_changes?.find(
+    (snapshot) => snapshot.state_ref === "defaultspack:models.deepthink_enabled",
+  );
+  if (deepthinkState) {
+    return deepthinkState.value === true ? "warning" : "success";
+  }
+
+  return "success";
+}
+
 type ApiOk<T> = {
   status: "ok";
   data: T;
@@ -2086,6 +2395,27 @@ type ApiError = {
 };
 
 type ApiEnvelope<T> = ApiOk<T> | ApiError;
+
+function isApiOkEnvelope(value: unknown): value is ApiOk<unknown> {
+  const record = objectRecord(value);
+  return Boolean(
+    record
+    && record.status === "ok"
+    && Object.prototype.hasOwnProperty.call(record, "data")
+  );
+}
+
+function isApiErrorEnvelope(value: unknown): value is ApiError {
+  const record = objectRecord(value);
+  const error = record ? objectRecord(record.error) : null;
+  return Boolean(
+    record
+    && record.status === "error"
+    && error
+    && hasNonEmptyString(error, "code")
+    && hasNonEmptyString(error, "message")
+  );
+}
 
 export type ToolSelectionMode = "auto" | "review" | "manual" | "none";
 export type ToolSelectionScope = "turn" | "conversation";
@@ -2417,13 +2747,159 @@ export function defaultspackUrlWithLocalAuth(pathOrUrl: string): string {
   return defaultspackUrlWithLocalAuthToken(pathOrUrl, getDefaultspackLocalAuthToken());
 }
 
-export function defaultspackApiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+/**
+ * A Host-owned frontend route operation.  Callers provide an API-map key
+ * without a leading slash (for example ``api/ui/catalog``); the browser only
+ * ever requests the canonical contract endpoint below.  The Host decodes the
+ * opaque operation and applies the ordinary route/authentication boundary.
+ */
+export type DefaultspackContractRoute = {
+  readonly kind: "defaultspack-contract-route";
+  readonly apiPath: string;
+};
+
+export const DEFAULTSPACK_CONTRACT_ENDPOINT = "/api/contracts/defaultspack/";
+
+export function defaultspackContractRoute(apiPath: string): DefaultspackContractRoute {
+  const normalized = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  const segments = normalized.split("/");
+  if (segments[1] !== "api" || normalized.startsWith(DEFAULTSPACK_CONTRACT_ENDPOINT)) {
+    throw new Error("invalid defaultspack contract route");
+  }
+  return { kind: "defaultspack-contract-route", apiPath: normalized };
+}
+
+/** Return a route key for configuration values that are not HTTP calls. */
+export function defaultspackCanonicalRouteKey(apiPath: string): string {
+  return defaultspackContractRoute(apiPath).apiPath;
+}
+
+export function isDefaultspackRouteKey(value: string): boolean {
+  const segments = String(value || "").split("/");
+  return segments[0] === "" && segments[1] === "api" && segments.length > 2;
+}
+
+export function defaultspackContractUrl(
+  route: DefaultspackContractRoute,
+  method = "GET",
+): string {
+  const operation = `${method.toUpperCase()} ${route.apiPath}`;
+  return `${DEFAULTSPACK_CONTRACT_ENDPOINT}${encodeURIComponent(operation)}`;
+}
+
+function isDefaultspackContractRoute(
+  input: RequestInfo | URL | DefaultspackContractRoute,
+): input is DefaultspackContractRoute {
+  return typeof input === "object"
+    && input !== null
+    && "kind" in input
+    && (input as DefaultspackContractRoute).kind === "defaultspack-contract-route";
+}
+
+export function defaultspackApiFetch(
+  input: RequestInfo | URL | DefaultspackContractRoute,
+  init: RequestInit = {},
+): Promise<Response> {
   const method = (init.method ?? "GET").toUpperCase();
-  return fetch(input, {
+  const requestInput = isDefaultspackContractRoute(input)
+    ? defaultspackContractUrl(input, method)
+    : input;
+  const headers = defaultspackApiHeaders(method, init.headers);
+  if (isDefaultspackContractRoute(input)) {
+    headers.set("X-Tobkiri-Request-ID", crypto.randomUUID());
+  }
+  return fetch(requestInput, {
     ...init,
     method,
-    headers: defaultspackApiHeaders(method, init.headers),
+    headers,
   });
+}
+
+export async function* streamCommandInvocationEvents(
+  invocationId: string,
+  options: { afterSequence?: number; signal?: AbortSignal; waitSeconds?: number } = {},
+): AsyncGenerator<Record<string, unknown>> {
+  let lastSequence = options.afterSequence ?? 0;
+  let consecutiveFailures = 0;
+  while (!options.signal?.aborted) {
+    try {
+      const params = new URLSearchParams({
+        after_sequence: String(lastSequence),
+        wait_seconds: String(options.waitSeconds ?? 30),
+      });
+      const response = await defaultspackApiFetch(
+        defaultspackContractRoute(`api/command-protocol/v1/invocations/${encodeURIComponent(invocationId)}/events?${params}`),
+        {
+          headers: {
+            Accept: "text/event-stream",
+            ...(lastSequence > 0 ? { "Last-Event-ID": String(lastSequence) } : {}),
+          },
+          signal: options.signal,
+        },
+      );
+      if (!response.ok || !response.body) {
+        const failure = new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
+        if (response.status < 500 && response.status !== 429) {
+          throw Object.assign(failure, { retryableCommandStream: false });
+        }
+        throw Object.assign(failure, { retryableCommandStream: true });
+      }
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          consecutiveFailures = 0;
+          buffer += value ?? "";
+          const frames = buffer.replace(/\r\n/g, "\n").split("\n\n");
+          buffer = frames.pop() ?? "";
+          for (const frame of frames) {
+            const data = frame
+              .split("\n")
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).trimStart())
+              .join("\n");
+            if (!data) continue;
+            const event = JSON.parse(data) as Record<string, unknown>;
+            const sequence = Number(event.sequence ?? 0);
+            if (sequence && sequence !== lastSequence + 1) {
+              throw new Error(`command event sequence gap: expected ${lastSequence + 1}, got ${sequence}`);
+            }
+            if (sequence) lastSequence = sequence;
+            yield event;
+            if (["completed", "failed", "cancelled", "conflicted", "expired"].includes(String(event.type))) {
+              return;
+            }
+          }
+          if (done) break;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (streamError) {
+      if (options.signal?.aborted) return;
+      const message = streamError instanceof Error ? streamError.message : "";
+      const retryableFlag = streamError instanceof Error
+        ? (streamError as Error & { retryableCommandStream?: boolean }).retryableCommandStream
+        : undefined;
+      const protocolFailure = message.includes("sequence gap")
+        || streamError instanceof SyntaxError
+        || retryableFlag === false;
+      if (protocolFailure) throw streamError;
+      consecutiveFailures += 1;
+      const delayMs = Math.min(5000, 250 * (2 ** Math.min(consecutiveFailures, 5)));
+      await new Promise<void>((resolve, reject) => {
+        const timeout = globalThis.setTimeout(resolve, delayMs);
+        options.signal?.addEventListener("abort", () => {
+          globalThis.clearTimeout(timeout);
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      }).catch((abortError) => {
+        if (options.signal?.aborted) return;
+        throw abortError;
+      });
+    }
+  }
 }
 
 function truncateApiErrorDetail(value: string, limit = 700): string {
@@ -2469,21 +2945,40 @@ export function explainDefaultspackApiError(
   const label = status ? `HTTP ${status}${statusText ? ` ${statusText}` : ""}` : "defaultspack API error";
   const code = error?.code ? ` (${error.code})` : "";
   const detail = error?.message ? truncateApiErrorDetail(error.message) : "";
+  const recoveryHint = /local auth token (?:required|is not configured)/i.test(error?.message ?? "")
+    ? "この画面がTobkiri Launcherのローカル認証を引き継げていません。APIキーの誤りではありません。LauncherからTobkiriを開き直してください。"
+    : defaultspackApiStatusHint(status, error?.code);
   return [
     `${label}${code}`,
-    defaultspackApiStatusHint(status, error?.code),
+    recoveryHint,
     detail ? `詳細: ${detail}` : "",
   ].filter(Boolean).join("\n");
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+type DefaultspackApiPath = string | DefaultspackContractRoute;
+
+type ResponseShapeGuard<T> = (value: unknown) => value is T;
+
+function apiPathLabel(path: DefaultspackApiPath): string {
+  return typeof path === "string" ? path : path.apiPath;
+}
+
+function invalidApiContractResponse(path: DefaultspackApiPath, detail: string): Error {
+  return new Error(`invalid Pack v4 response for ${apiPathLabel(path)}: ${detail}`);
+}
+
+async function request<T>(
+  path: DefaultspackApiPath,
+  init?: RequestInit,
+  responseShape?: ResponseShapeGuard<T>,
+): Promise<T> {
   const response = await defaultspackApiFetch(path, {
     ...init,
   });
 
-  let payload: ApiEnvelope<T>;
+  let payload: unknown;
   try {
-    payload = (await response.json()) as ApiEnvelope<T>;
+    payload = await response.json();
   } catch {
     if (!response.ok) {
       throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
@@ -2491,15 +2986,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error("defaultspack API returned an invalid JSON response");
   }
 
-  if (!response.ok || payload.status === "error") {
+  if (isApiErrorEnvelope(payload)) {
     throw new Error(explainDefaultspackApiError(
       response.status,
-      payload.status === "error" ? payload.error : undefined,
+      payload.error,
       response.statusText,
     ));
   }
+  if (!isApiOkEnvelope(payload)) {
+    if (!response.ok) {
+      throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
+    }
+    throw invalidApiContractResponse(path, "missing status/data envelope");
+  }
+  if (!response.ok) {
+    throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
+  }
+  if (responseShape && !responseShape(payload.data)) {
+    throw invalidApiContractResponse(path, "data does not match the endpoint schema");
+  }
 
-  return payload.data;
+  return payload.data as T;
 }
 
 function encodeQueryValue(value: unknown): string | null {
@@ -2511,7 +3018,7 @@ function encodeQueryValue(value: unknown): string | null {
   return String(value);
 }
 
-function withQuery(path: string, params?: Record<string, unknown>): string {
+function withQuery(path: DefaultspackApiPath, params?: Record<string, unknown>): DefaultspackApiPath {
   if (!params) return path;
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -2519,36 +3026,38 @@ function withQuery(path: string, params?: Record<string, unknown>): string {
     if (encoded !== null) query.set(key, encoded);
   }
   const suffix = query.toString();
-  return suffix ? `${path}?${suffix}` : path;
+  if (!suffix) return path;
+  if (typeof path === "string") return `${path}?${suffix}`;
+  return defaultspackContractRoute(`${path.apiPath}?${suffix}`);
 }
 
 export async function createRemoteTask(input: RemoteTaskCreateRequest): Promise<RemoteTaskSnapshot> {
-  return request<RemoteTaskSnapshot>("/api/remote/tasks", {
+  return request<RemoteTaskSnapshot>(defaultspackContractRoute("api/remote/tasks"), {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
 export async function getRemoteTask(taskId: string): Promise<RemoteTaskSnapshot> {
-  return request<RemoteTaskSnapshot>(`/api/remote/tasks/${encodeURIComponent(taskId)}`, { cache: "no-store" });
+  return request<RemoteTaskSnapshot>(defaultspackContractRoute(`api/remote/tasks/${encodeURIComponent(taskId)}`), { cache: "no-store" });
 }
 
 export async function listRemoteTaskEvents(taskId: string, after?: string): Promise<RemoteTaskEventsResponse> {
   return request<RemoteTaskEventsResponse>(
-    withQuery(`/api/remote/tasks/${encodeURIComponent(taskId)}/events`, { after }),
+    withQuery(defaultspackContractRoute(`api/remote/tasks/${encodeURIComponent(taskId)}/events`), { after }),
     { cache: "no-store" },
   );
 }
 
 export async function cancelRemoteTask(taskId: string, reason?: string): Promise<RemoteTaskSnapshot> {
-  return request<RemoteTaskSnapshot>(`/api/remote/tasks/${encodeURIComponent(taskId)}/cancel`, {
+  return request<RemoteTaskSnapshot>(defaultspackContractRoute(`api/remote/tasks/${encodeURIComponent(taskId)}/cancel`), {
     method: "POST",
     body: JSON.stringify(reason ? { reason } : {}),
   });
 }
 
 export async function getRemoteHostStatus(): Promise<Record<string, unknown>> {
-  return request<Record<string, unknown>>("/api/remote/host/status", { cache: "no-store" });
+  return request<Record<string, unknown>>(defaultspackContractRoute("api/remote/host/status"), { cache: "no-store" });
 }
 
 export function arrayFromRecord<T>(value: Record<string, T> | T[] | undefined | null): T[] {
@@ -2713,15 +3222,55 @@ export type CodexConnectionActionResponse = Partial<CodexConnectionStatusRespons
   probe?: Record<string, unknown>;
 };
 
+async function nativeCodingApprovalOperator(
+  requestId: string,
+  decision: "approve" | "deny",
+): Promise<Record<string, unknown>> {
+  const listing = await request<{
+    requests?: CodingApprovalRequest[];
+    pending?: CodingApprovalRequest[];
+  }>(
+    withQuery(defaultspackContractRoute("api/coding/approvals"), { include_expired: true, limit: 500 }),
+    { cache: "no-store" },
+  );
+  const approval = [...(listing.requests ?? []), ...(listing.pending ?? [])].find(
+    (candidate) => candidate.request_id === requestId,
+  );
+  const expectedDigest = String(approval?.args_hash ?? "").trim();
+  if (!/^[a-f0-9]{64}$/i.test(expectedDigest)) {
+    throw new Error("The coding approval snapshot is unavailable.");
+  }
+  const tauri = (
+    globalThis as typeof globalThis & {
+      __TAURI__?: {
+        core?: {
+          invoke?: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<Record<string, unknown>>;
+        };
+      };
+    }
+  ).__TAURI__;
+  if (typeof tauri?.core?.invoke !== "function") {
+    throw new Error("Coding approval requires the focused Tobkiri Launcher window.");
+  }
+  return tauri.core.invoke("coding_approval_operator", {
+    requestId,
+    expectedDigest,
+    decision,
+  });
+}
+
 export const api = {
   listConversations(options?: ConversationListOptions) {
     return request<{ conversations: Conversation[]; total: number }>(
-      withQuery("/api/chat/conversations", options),
+      withQuery(defaultspackContractRoute("api/chat/conversations"), options),
     );
   },
 
   searchConversations(query: string, options?: ConversationSearchOptions) {
-    return request<{ results: ConversationSearchResult[]; total: number; query: string }>("/api/chat/search", {
+    return request<{ results: ConversationSearchResult[]; total: number; query: string }>(defaultspackContractRoute("api/chat/search"), {
       method: "POST",
       body: JSON.stringify({
         query,
@@ -2737,7 +3286,7 @@ export const api = {
   },
 
   getConversation(id: string) {
-    return request<Conversation>(`/api/chat/conversations/${id}`);
+    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`));
   },
 
   createConversation(options?: {
@@ -2750,21 +3299,21 @@ export const api = {
     group_id?: string | null;
     metadata?: Record<string, unknown>;
   }) {
-    return request<Conversation>("/api/chat/conversations", {
+    return request<Conversation>(defaultspackContractRoute("api/chat/conversations"), {
       method: "POST",
       body: JSON.stringify(options ?? {}),
     });
   },
 
   updateConversation(id: string, updates: Partial<Conversation>) {
-    return request<Conversation>(`/api/chat/conversations/${id}`, {
+    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
       method: "PUT",
       body: JSON.stringify({ updates }),
     });
   },
 
   deleteConversation(id: string) {
-    return request<{ deleted: boolean }>(`/api/chat/conversations/${id}`, {
+    return request<{ deleted: boolean }>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
       method: "DELETE",
     });
   },
@@ -2778,23 +3327,23 @@ export const api = {
       active_segments?: PromptUsageSegment[];
       disabled_segments?: PromptUsageSegment[];
       token_estimate?: PromptUsageSummary["token_estimate"];
-    }>(withQuery("/api/prompts/active", params));
+    }>(withQuery(defaultspackContractRoute("api/prompts/active"), params));
   },
 
   listPromptTraces(params?: { profile_id?: string; conversation_id?: string; limit?: number }) {
     return request<{ profile_id: string; traces: PromptTraceSummary[]; count: number }>(
-      withQuery("/api/prompts/traces", params),
+      withQuery(defaultspackContractRoute("api/prompts/traces"), params),
     );
   },
 
   getPromptTrace(traceId: string, params?: { profile_id?: string; include_text?: boolean }) {
     return request<PromptTraceDetail>(
-      withQuery(`/api/prompts/traces/${encodeURIComponent(traceId)}`, params),
+      withQuery(defaultspackContractRoute(`api/prompts/traces/${encodeURIComponent(traceId)}`), params),
     );
   },
 
   getPromptStudio(params?: { profile_id?: string; prompt_id?: string; conversation_id?: string; model_profile_id?: string; model?: string }) {
-    return request<PromptStudioData>(withQuery("/api/prompts/editor", params));
+    return request<PromptStudioData>(withQuery(defaultspackContractRoute("api/prompts/editor"), params));
   },
 
   testPromptStudio(payload: {
@@ -2809,7 +3358,7 @@ export const api = {
     request_context?: Record<string, unknown>;
     template_policy?: Record<string, unknown>;
   }) {
-    return request<PromptStudioTestResult>("/api/prompts/test", {
+    return request<PromptStudioTestResult>(defaultspackContractRoute("api/prompts/test"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -2827,56 +3376,56 @@ export const api = {
     expected_exists?: boolean;
     reason?: string;
   }) {
-    return request<Record<string, unknown>>("/api/prompts/editor/save", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/prompts/editor/save"), {
       method: "POST",
       body: JSON.stringify({ action: "save", ...payload }),
     });
   },
 
   createPromptOverride(payload: { profile_id?: string; prompt_id: string; body?: string; expected_body_hash?: string; expected_exists?: boolean; reason?: string }) {
-    return request<Record<string, unknown>>("/api/prompts/override", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/prompts/override"), {
       method: "POST",
       body: JSON.stringify({ action: "override", ...payload }),
     });
   },
 
   togglePromptEdge(payload: { profile_id?: string; edge_id: string; enabled: boolean; conversation_id?: string; model_profile_id?: string; model?: string }) {
-    return request<PromptToggleResponse>("/api/prompts/toggle", {
+    return request<PromptToggleResponse>(defaultspackContractRoute("api/prompts/toggle"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   previewPromptToggle(payload: { profile_id?: string; edge_id: string; enabled: boolean; conversation_id?: string; model_profile_id?: string; model?: string }) {
-    return request<PromptToggleResponse>("/api/prompts/preview-toggle", {
+    return request<PromptToggleResponse>(defaultspackContractRoute("api/prompts/preview-toggle"), {
       method: "POST",
       body: JSON.stringify({ preview: true, ...payload }),
     });
   },
 
   diffPrompt(payload: { profile_id?: string; prompt_id: string; base?: string; draft?: string }) {
-    return request<{ profile_id: string; prompt_id: string; diff: string; changed: boolean }>("/api/prompts/diff", {
+    return request<{ profile_id: string; prompt_id: string; diff: string; changed: boolean }>(defaultspackContractRoute("api/prompts/diff"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   lintPrompt(payload: { prompt?: string; text?: string; body?: string; token_budget?: number }) {
-    return request<Record<string, unknown>>("/api/prompts/lint", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/prompts/lint"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   compactPrompt(payload: { prompt?: string; text?: string; body?: string; target_chars?: number }) {
-    return request<Record<string, unknown>>("/api/prompts/compact", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/prompts/compact"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   rollbackPrompt(payload: { profile_id?: string; prompt_id: string; version_id: string; expected_body_hash?: string; expected_exists?: boolean }) {
-    return request<Record<string, unknown>>(`/api/prompts/${encodeURIComponent(payload.prompt_id)}/rollback`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/prompts/${encodeURIComponent(payload.prompt_id)}/rollback`), {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -2888,7 +3437,7 @@ export const api = {
     options?: SendMessageOptions,
   ) {
     return request<ChatMessage>(
-      `/api/chat/conversations/${conversationId}/messages`,
+      defaultspackContractRoute(`api/chat/conversations/${conversationId}/messages`),
       {
         method: "POST",
         body: JSON.stringify(messageRequestBody(text, options)),
@@ -2902,7 +3451,7 @@ export const api = {
     options?: SendMessageOptions,
     handlers?: ChatStreamHandlers,
   ) {
-    const response = await defaultspackApiFetch(`/api/chat/conversations/${conversationId}/stream`, {
+    const response = await defaultspackApiFetch(defaultspackContractRoute(`api/chat/conversations/${conversationId}/stream`), {
       method: "POST",
       body: JSON.stringify(messageRequestBody(text, options)),
       signal: handlers?.signal,
@@ -2930,7 +3479,7 @@ export const api = {
 
   stopMessage(conversationId: string) {
     return request<{ success: boolean; conversation_id: string; cancelled: boolean }>(
-      `/api/chat/conversations/${conversationId}/stop`,
+      defaultspackContractRoute(`api/chat/conversations/${conversationId}/stop`),
       {
         method: "POST",
         body: JSON.stringify({}),
@@ -2939,46 +3488,133 @@ export const api = {
   },
 
   listModelProfiles() {
-    return request<{ profiles: ModelProfile[]; count: number }>("/api/ai/profiles", {
+    return request<{ profiles: ModelProfile[]; count: number }>(defaultspackContractRoute("api/ai/profiles"), {
       cache: "no-store",
-    });
+    }, isModelProfilesResponse);
   },
 
   searchModels(filters: Record<string, unknown>) {
-    return request<ModelSearchResponse>("/api/ai/models/search", {
+    return request<ModelSearchResponse>(defaultspackContractRoute("api/ai/models/search"), {
       method: "POST",
       body: JSON.stringify(filters),
     });
   },
 
   conversationSteer(payload: Record<string, unknown>) {
-    return request<ConversationSteerResponse>("/api/chat/steer", {
+    return request<ConversationSteerResponse>(defaultspackContractRoute("api/chat/steer"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   health() {
-    return request<{ status: string; pack: string; ts: string }>("/api/health");
+    return request<{ status: string; pack: string; ts: string }>(defaultspackContractRoute("api/health"));
   },
 
   uiCatalog() {
-    return request<UICatalog>("/api/ui/catalog");
+    return request<UICatalog>(
+      defaultspackContractRoute("api/ui/catalog?include_skills=true"),
+      undefined,
+      isUICatalog,
+    );
   },
 
-  uiSettings() {
+  uiSettings(options: { full?: boolean } = {}) {
+    const query = options.full ? "?full=true" : "";
     return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>> }>(
-      "/api/ui/settings",
+      defaultspackContractRoute(`api/ui/settings${query}`),
       { cache: "no-store" },
+      isUiSettingsResponse,
     );
   },
 
   uiCommands() {
-    return request<{ commands: ComposerCommandItem[] }>("/api/ui/commands");
+    return request<{ commands: ComposerCommandItem[] }>(defaultspackContractRoute("api/ui/commands"));
+  },
+
+  commandProtocolCatalog() {
+    return request<ResolvedCommandCatalog>(defaultspackContractRoute("api/command-protocol/v1/catalog"), {
+      cache: "no-store",
+    });
+  },
+
+  async resolvedUiCommands() {
+    const protocol = await request<ResolvedCommandCatalog>(
+      defaultspackContractRoute("api/command-protocol/v1/catalog"),
+      { cache: "no-store" },
+    );
+    return {
+      commands: protocol.commands.map((command) => {
+        const input = command.presentation.input;
+        const fields = Array.isArray(input.fields)
+          ? input.fields.filter((item): item is Record<string, unknown> => (
+              Boolean(item) && typeof item === "object"
+            ))
+          : [];
+        const argument = typeof input.argument === "string" ? input.argument : null;
+        const args: ComposerCommandArg[] = fields.map((field) => ({
+          name: String(field.argument ?? ""),
+          type: (field.control === "checkbox" ? "boolean" : "string") as ComposerCommandArg["type"],
+          required: field.required === true,
+        })).filter((field) => field.name);
+        if (argument && !args.some((item) => item.name === argument)) {
+          args.push({
+            name: argument,
+            type: input.kind === "toggle" ? "boolean" : "string",
+            required: false,
+          });
+        }
+        const operationRef = String(command.execution.operation_ref ?? "");
+        const execution: ComposerCommandExecution = command.execution.kind === "host_operation"
+          ? { type: "frontend", action: operationRef.replace(/^host:/, "") }
+          : command.execution.kind === "state_mutation"
+            ? { type: "settings_patch", section: "protocol", field: String(command.execution.state_ref ?? "") }
+            : { type: "rumi_function", qualified_name: operationRef };
+        return {
+          id: command.identity.id,
+          name: command.identity.name,
+          aliases: command.identity.aliases,
+          label: command.presentation.label.fallback,
+          description: command.presentation.description?.fallback,
+          category: command.presentation.category as ComposerCommandCategory,
+          visibility: command.presentation.visibility as ComposerCommandVisibility,
+          modes: command.constraints?.modes as ComposerCommandMode[] | undefined,
+          risk: command.authorization?.risk as ComposerCommandRisk,
+          args,
+          execution,
+          canonical_id: command.canonical_id,
+          protocol_presentation: command.presentation,
+          protocol_execution: command.execution,
+          availability: command.availability,
+        };
+      }),
+      protocol,
+    };
+  },
+
+  queryCommandStates(stateRefs: string[]) {
+    return request<{ api_version: string; states: CommandStateSnapshot[] }>(
+      defaultspackContractRoute("api/command-protocol/v1/states/query"),
+      { method: "POST", body: JSON.stringify({ state_refs: stateRefs }) },
+    );
+  },
+
+  queryCommandDatasource(payload: {
+    datasource_ref: string;
+    query?: string;
+    cursor?: string | null;
+    limit?: number;
+    selected_values?: string[];
+    request_id?: string;
+  }, options: { signal?: AbortSignal } = {}) {
+    return request<Record<string, unknown>>(
+      defaultspackContractRoute("api/command-protocol/v1/datasources/query"),
+      { method: "POST", body: JSON.stringify(payload), signal: options.signal },
+    );
   },
 
   toolCatalog() {
-    return request<ToolCatalogResponse>("/api/tools/catalog", { cache: "no-store" });
+    return request<ToolCatalogResponse>(defaultspackContractRoute("api/tools/catalog"), { cache: "no-store" });
   },
 
   previewToolSelection(payload: {
@@ -2989,14 +3625,14 @@ export const api = {
     tool_selection?: ToolSelectionRequest;
     model?: string | null;
   }) {
-    return request<ToolSelectionPreviewResponse>("/api/tools/selection/preview", {
+    return request<ToolSelectionPreviewResponse>(defaultspackContractRoute("api/tools/selection/preview"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   rebuildToolEmbeddingIndex(payload: { model?: string | null }) {
-    return request<Record<string, unknown>>("/api/tools/embedding-index/rebuild", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/tools/embedding-index/rebuild"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -3004,43 +3640,213 @@ export const api = {
 
   getConversationToolPreferences(conversationId: string) {
     return request<{ conversation_id: string; preferences: Record<string, unknown> }>(
-      `/api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`,
+      defaultspackContractRoute(`api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`),
       { cache: "no-store" },
     );
   },
 
   updateConversationToolPreferences(conversationId: string, preferences: Record<string, unknown>) {
     return request<{ conversation_id: string; preferences: Record<string, unknown> }>(
-      `/api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`,
+      defaultspackContractRoute(`api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`),
       { method: "PUT", body: JSON.stringify({ preferences }) },
     );
   },
 
-  executeUiCommand(payload: {
+  async executeResolvedUiCommand(payload: {
     command: string;
     args?: Record<string, unknown>;
     conversation_id?: string | null;
     mode?: ComposerCommandMode;
+    invocation_id?: string;
+    idempotency_key?: string;
+    client_sequence?: number;
+    expected_revision?: number;
+  } & Partial<Omit<CommandInvocationRequest, "command_ref" | "args" | "conversation_id">>): Promise<ComposerCommandExecuteResult> {
+    const result = await request<CommandProtocolInvocationResult>(
+      defaultspackContractRoute("api/command-protocol/v1/invoke"),
+      {
+        method: "POST",
+        body: JSON.stringify({ ...payload, command_ref: payload.command }),
+      },
+    );
+    if (result.status === "failed") {
+      throw new Error(result.error?.message || "command protocol invocation failed");
+    }
+    const legacy = result.legacy_result ?? {
+      command: {
+        id: payload.command,
+        name: payload.command,
+        label: payload.command,
+      } as ComposerCommandItem,
+      executed: false,
+      requires_approval: result.status === "approval_required",
+    };
+    return {
+      ...legacy,
+      operation_id: result.operation_id,
+      operation_status: result.status === "succeeded" ? "succeeded" : "pending",
+      client_sequence: result.client_sequence,
+      state_changes: result.state_changes,
+      requires_approval: result.status === "approval_required" || legacy.requires_approval,
+      approval_request_id: result.approval?.request_id ?? legacy.approval_request_id,
+      approval_kind: result.approval?.kind ?? "coding",
+      message: result.message ?? legacy.message,
+    };
+  },
+
+  prepareHighRiskCommand(payload: {
+    invocation_id: string;
+    command_ref: "terminal" | "commit" | "push" | "patch" | "restore";
+    arguments: Record<string, unknown>;
+    presentation: { title: string; summary: string };
   }) {
-    return request<ComposerCommandExecuteResult>("/api/ui/commands/execute", {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "prepare", ...payload }),
+      },
+    );
+  },
+
+  listHighRiskCommands() {
+    return request<HighRiskCommandInvocationsResponse>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "list_pending" }),
+        cache: "no-store",
+      },
+    );
+  },
+
+  highRiskCommandStatus(invocationId: string) {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "status", invocation_id: invocationId }),
+        cache: "no-store",
+      },
+    );
+  },
+
+  resumeHighRiskCommand(invocationId: string) {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "resume", invocation_id: invocationId }),
+      },
+    );
+  },
+
+  cancelHighRiskCommand(invocationId: string) {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "cancel", invocation_id: invocationId }),
+      },
+    );
+  },
+
+  resumeResolvedUiCommand(payload: {
+    command: string;
+    approval_token?: string;
+    args?: Record<string, unknown>;
+    conversation_id?: string | null;
+    mode?: ComposerCommandMode;
+    invocation_id?: string;
+  } & Partial<Omit<CommandInvocationRequest, "command_ref" | "args" | "approval_token" | "conversation_id">>) {
+    return request<CommandProtocolInvocationResult>(
+      defaultspackContractRoute("api/command-protocol/v1/resume"),
+      {
+        method: "POST",
+        body: JSON.stringify({ ...payload, command_ref: payload.command }),
+      },
+    );
+  },
+
+  cancelResolvedUiCommand(payload: {
+    invocation_id: string;
+    command_ref: string;
+    conversation_id?: string | null;
+    mode?: ComposerCommandMode;
+    action: "deny" | "cancel" | "expire";
+    reason?: string;
+  }) {
+    return request<CommandProtocolInvocationResult>(
+      defaultspackContractRoute("api/command-protocol/v1/resume"),
+      { method: "POST", body: JSON.stringify(payload) },
+    );
+  },
+
+  queryCommandInvocationEvents(payload: {
+    invocation_id: string;
+    after_sequence?: number;
+    limit?: number;
+  }) {
+    return request<{
+      api_version: string;
+      events: Array<Record<string, unknown>>;
+      snapshot: Record<string, unknown>;
+    }>(defaultspackContractRoute("api/command-protocol/v1/invocations/events/query"), {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  pendingCommandApprovals() {
+    return request<{
+      api_version: string;
+      pending_approvals: Array<{
+        invocation_id: string;
+        approval_request_id: string;
+        result?: CommandProtocolInvocationResult | null;
+      }>;
+    }>(defaultspackContractRoute("api/command-protocol/v1/invocations/events/query"), {
+      method: "POST",
+      body: JSON.stringify({ action: "pending_approvals" }),
+    });
+  },
+
+  streamCommandInvocationEvents,
+
+  commandOfflineQueue(payload: {
+    action: "enqueue" | "pending" | "replay";
+    command_ref?: string;
+    args?: Record<string, unknown>;
+    idempotency_key?: string;
+    expected_revision?: number;
+    limit?: number;
+  }) {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/command-protocol/v1/offline"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   updateUiSettings(values: Record<string, Record<string, unknown>>) {
-    return request<{ values: Record<string, Record<string, unknown>> }>("/api/ui/settings", {
+    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
       method: "PUT",
       body: JSON.stringify({ values }),
     });
   },
 
+  updateUiSettingsPatches(patches: Array<{ section: string; field: string; value: unknown }>) {
+    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
+      method: "PUT",
+      body: JSON.stringify({ patches }),
+    });
+  },
+
   listContinuityNodes() {
-    return request<{ nodes: ContinuityNode[]; local_node: ContinuityNode }>("/api/continuity/nodes", { cache: "no-store" });
+    return request<{ nodes: ContinuityNode[]; local_node: ContinuityNode }>(defaultspackContractRoute("api/continuity/nodes"), { cache: "no-store" });
   },
 
   startContinuityPairing(payload?: { display_name?: string }) {
-    return request<ContinuityPairingStartResponse>("/api/continuity/pairing/start", {
+    return request<ContinuityPairingStartResponse>(defaultspackContractRoute("api/continuity/pairing/start"), {
       method: "POST",
       body: JSON.stringify(payload ?? {}),
     });
@@ -3054,21 +3860,21 @@ export const api = {
     simulate_local_destination?: boolean;
     destination_kind?: string;
   }) {
-    return request<{ node: ContinuityNode }>("/api/continuity/pairing/accept", {
+    return request<{ node: ContinuityNode }>(defaultspackContractRoute("api/continuity/pairing/accept"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   removeContinuityNode(nodeId: string) {
-    return request<{ removed: boolean; node_id: string }>(`/api/continuity/nodes/${encodeURIComponent(nodeId)}`, {
+    return request<{ removed: boolean; node_id: string }>(defaultspackContractRoute(`api/continuity/nodes/${encodeURIComponent(nodeId)}`), {
       method: "DELETE",
     });
   },
 
   probeContinuityNode(nodeId: string, payload?: Record<string, unknown>) {
     return request<{ node: ContinuityNode; checks: Array<Record<string, unknown>>; ok: boolean }>(
-      `/api/continuity/nodes/${encodeURIComponent(nodeId)}/probe`,
+      defaultspackContractRoute(`api/continuity/nodes/${encodeURIComponent(nodeId)}/probe`),
       {
         method: "POST",
         body: JSON.stringify(payload ?? {}),
@@ -3077,11 +3883,11 @@ export const api = {
   },
 
   listContinuityProviderRoutes() {
-    return request<{ routes: ContinuityProviderRoute[] }>("/api/continuity/provider-routes", { cache: "no-store" });
+    return request<{ routes: ContinuityProviderRoute[] }>(defaultspackContractRoute("api/continuity/provider-routes"), { cache: "no-store" });
   },
 
   probeContinuityProviderRoute(routeId: string, payload?: { destination_node_id?: string; node_id?: string }) {
-    return request<ContinuityPreflightResult>(`/api/continuity/provider-routes/${encodeURIComponent(routeId)}/probe`, {
+    return request<ContinuityPreflightResult>(defaultspackContractRoute(`api/continuity/provider-routes/${encodeURIComponent(routeId)}/probe`), {
       method: "POST",
       body: JSON.stringify({ ...(payload ?? {}), route_id: routeId }),
     });
@@ -3089,7 +3895,7 @@ export const api = {
 
   setContinuityProviderFallbacks(routeId: string, fallbackRouteIds: string[]) {
     return request<{ route_id: string; fallback_route_ids: string[] }>(
-      `/api/continuity/provider-routes/${encodeURIComponent(routeId)}/set-fallbacks`,
+      defaultspackContractRoute(`api/continuity/provider-routes/${encodeURIComponent(routeId)}/set-fallbacks`),
       {
         method: "POST",
         body: JSON.stringify({ route_id: routeId, fallback_route_ids: fallbackRouteIds }),
@@ -3098,41 +3904,41 @@ export const api = {
   },
 
   listContinuityProviderExtensions() {
-    return request<{ extensions: Array<Record<string, unknown>> }>("/api/continuity/provider-extensions", { cache: "no-store" });
+    return request<{ extensions: Array<Record<string, unknown>> }>(defaultspackContractRoute("api/continuity/provider-extensions"), { cache: "no-store" });
   },
 
   planContinuityHandoff(payload: ContinuityHandoffRequest) {
-    return request<{ plan: ContinuityHandoffPlan }>("/api/continuity/plans", {
+    return request<{ plan: ContinuityHandoffPlan }>(defaultspackContractRoute("api/continuity/plans"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   listContinuityHandoffs() {
-    return request<{ operations: ContinuityHandoffOperation[] }>("/api/continuity/handoffs", { cache: "no-store" });
+    return request<{ operations: ContinuityHandoffOperation[] }>(defaultspackContractRoute("api/continuity/handoffs"), { cache: "no-store" });
   },
 
   getContinuityHandoff(operationId: string) {
-    return request<{ operation: ContinuityHandoffOperation }>(`/api/continuity/handoffs/${encodeURIComponent(operationId)}`, {
+    return request<{ operation: ContinuityHandoffOperation }>(defaultspackContractRoute(`api/continuity/handoffs/${encodeURIComponent(operationId)}`), {
       cache: "no-store",
     });
   },
 
   cancelContinuityHandoff(operationId: string) {
-    return request<{ operation: ContinuityHandoffOperation }>(`/api/continuity/handoffs/${encodeURIComponent(operationId)}/cancel`, {
+    return request<{ operation: ContinuityHandoffOperation }>(defaultspackContractRoute(`api/continuity/handoffs/${encodeURIComponent(operationId)}/cancel`), {
       method: "POST",
     });
   },
 
   createContinuityCheckpoint(payload: ContinuityHandoffRequest) {
-    return request<{ operation: ContinuityHandoffOperation; checkpoint: Record<string, unknown> }>("/api/continuity/checkpoints", {
+    return request<{ operation: ContinuityHandoffOperation; checkpoint: Record<string, unknown> }>(defaultspackContractRoute("api/continuity/checkpoints"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   writeClipboard(content: string) {
-    return request<{ written: boolean }>("/api/ui/clipboard", {
+    return request<{ written: boolean }>(defaultspackContractRoute("api/ui/clipboard"), {
       method: "POST",
       body: JSON.stringify({ content }),
     });
@@ -3147,7 +3953,7 @@ export const api = {
     conversation_id?: string;
     detail?: unknown;
   }) {
-    return request<{ recorded: boolean; diagnostic_id?: string }>("/api/ui/client-events", {
+    return request<{ recorded: boolean; diagnostic_id?: string }>(defaultspackContractRoute("api/ui/client-events"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -3163,7 +3969,7 @@ export const api = {
     quotaLabel?: string;
     kind?: string;
   }) {
-    return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean; kind?: string; model_availability?: ModelAvailabilityAfterKeySave }>("/api/ai/provider-key", {
+    return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean; kind?: string; model_availability?: ModelAvailabilityAfterKeySave }>(defaultspackContractRoute("api/ai/provider-key"), {
       method: "POST",
       body: JSON.stringify({
         provider_id: providerId,
@@ -3181,7 +3987,7 @@ export const api = {
   },
 
   registerCustomProvider(providerId: string, options?: { label?: string; kind?: string }) {
-    return request<{ provider_id: string; label?: string; kind?: string; builtin?: boolean }>("/api/ai/provider-key", {
+    return request<{ provider_id: string; label?: string; kind?: string; builtin?: boolean }>(defaultspackContractRoute("api/ai/provider-key"), {
       method: "POST",
       body: JSON.stringify({
         action: "register_provider",
@@ -3193,7 +3999,7 @@ export const api = {
   },
 
   deleteCustomProvider(providerId: string) {
-    return request<{ provider_id: string; deleted?: boolean }>("/api/ai/provider-key", {
+    return request<{ provider_id: string; deleted?: boolean }>(defaultspackContractRoute("api/ai/provider-key"), {
       method: "POST",
       body: JSON.stringify({
         action: "delete_provider",
@@ -3203,7 +4009,7 @@ export const api = {
   },
 
   renameProviderApiKey(providerId: string, apiId: string, name: string) {
-    return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean }>("/api/ai/provider-key", {
+    return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean }>(defaultspackContractRoute("api/ai/provider-key"), {
       method: "POST",
       body: JSON.stringify({
         action: "rename",
@@ -3216,7 +4022,7 @@ export const api = {
   },
 
   deleteProviderApiKey(providerId: string, apiId: string) {
-    return request<{ provider_id: string; api_id?: string; configured: boolean; cleared?: boolean }>("/api/ai/provider-key", {
+    return request<{ provider_id: string; api_id?: string; configured: boolean; cleared?: boolean }>(defaultspackContractRoute("api/ai/provider-key"), {
       method: "POST",
       body: JSON.stringify({
         action: "delete",
@@ -3231,11 +4037,11 @@ export const api = {
     if (providerId) params.set("provider_id", providerId);
     if (options.activeDiagnostics) params.set("active_diagnostics", "true");
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request<{ provider?: Record<string, unknown>; providers?: Record<string, Record<string, unknown>> }>(`/api/ai/oauth${suffix}`, { cache: "no-store" });
+    return request<{ provider?: Record<string, unknown>; providers?: Record<string, Record<string, unknown>> }>(defaultspackContractRoute(`api/ai/oauth${suffix}`), { cache: "no-store" });
   },
 
   runProviderOAuthDiagnostics(providerId: string) {
-    return request<{ provider_id: string; provider?: Record<string, unknown> }>("/api/ai/oauth", {
+    return request<{ provider_id: string; provider?: Record<string, unknown> }>(defaultspackContractRoute("api/ai/oauth"), {
       method: "POST",
       body: JSON.stringify({
         action: "cloudflare_diagnostics",
@@ -3245,7 +4051,7 @@ export const api = {
   },
 
   saveProviderOAuthClientConfig(providerId: string, clientConfig: string) {
-    return request<{ provider_id: string; client_configured: boolean; client_label?: string }>("/api/ai/oauth", {
+    return request<{ provider_id: string; client_configured: boolean; client_label?: string }>(defaultspackContractRoute("api/ai/oauth"), {
       method: "POST",
       body: JSON.stringify({
         action: "save_client",
@@ -3266,7 +4072,7 @@ export const api = {
       rejected_capabilities?: string[];
       expires_at?: string;
       status?: string;
-    }>("/api/connections/import", {
+    }>(defaultspackContractRoute("api/connections/import"), {
       method: "POST",
       body: JSON.stringify({
         provider_id: providerId,
@@ -3286,7 +4092,7 @@ export const api = {
       rejected_capabilities?: string[];
       expires_at?: string;
       status?: string;
-    }>("/api/connections/import", {
+    }>(defaultspackContractRoute("api/connections/import"), {
       method: "POST",
       body: JSON.stringify({
         provider_id: providerId,
@@ -3296,7 +4102,7 @@ export const api = {
   },
 
   startProviderOAuth(providerId: string, options: { scopeMode?: string; services?: string[] } = {}) {
-    return request<{ provider_id: string; authorize_url: string; redirect_uri: string; scope_mode?: string; services?: string[]; scopes: string[] }>("/api/ai/oauth", {
+    return request<{ provider_id: string; authorize_url: string; redirect_uri: string; scope_mode?: string; services?: string[]; scopes: string[] }>(defaultspackContractRoute("api/ai/oauth"), {
       method: "POST",
       body: JSON.stringify({
         action: "start",
@@ -3308,7 +4114,7 @@ export const api = {
   },
 
   disconnectProviderOAuth(providerId: string) {
-    return request<{ provider_id: string; connected: boolean }>("/api/ai/oauth", {
+    return request<{ provider_id: string; connected: boolean }>(defaultspackContractRoute("api/ai/oauth"), {
       method: "POST",
       body: JSON.stringify({
         action: "disconnect",
@@ -3318,7 +4124,7 @@ export const api = {
   },
 
   clearProviderOAuthClientConfig(providerId: string) {
-    return request<{ provider_id: string; client_configured: boolean; connected: boolean }>("/api/ai/oauth", {
+    return request<{ provider_id: string; client_configured: boolean; connected: boolean }>(defaultspackContractRoute("api/ai/oauth"), {
       method: "POST",
       body: JSON.stringify({
         action: "clear_client",
@@ -3328,11 +4134,11 @@ export const api = {
   },
 
   getCodexConnectionStatus() {
-    return request<CodexConnectionStatusResponse>("/api/connections/codex", { cache: "no-store" });
+    return request<CodexConnectionStatusResponse>(defaultspackContractRoute("api/connections/codex"), { cache: "no-store" });
   },
 
   saveCodexAccessToken(accessToken: string) {
-    return request<CodexConnectionActionResponse>("/api/connections/codex", {
+    return request<CodexConnectionActionResponse>(defaultspackContractRoute("api/connections/codex"), {
       method: "POST",
       body: JSON.stringify({
         action: "save_token",
@@ -3342,7 +4148,7 @@ export const api = {
   },
 
   clearCodexAccessToken() {
-    return request<CodexConnectionActionResponse>("/api/connections/codex", {
+    return request<CodexConnectionActionResponse>(defaultspackContractRoute("api/connections/codex"), {
       method: "POST",
       body: JSON.stringify({
         action: "clear_token",
@@ -3351,7 +4157,7 @@ export const api = {
   },
 
   saveCodexAppServerConfig(config: CodexAppServerConfig) {
-    return request<CodexConnectionActionResponse>("/api/connections/codex", {
+    return request<CodexConnectionActionResponse>(defaultspackContractRoute("api/connections/codex"), {
       method: "POST",
       body: JSON.stringify({
         action: "save_app_server",
@@ -3371,7 +4177,7 @@ export const api = {
   },
 
   clearCodexAppServerConfig() {
-    return request<CodexConnectionActionResponse>("/api/connections/codex", {
+    return request<CodexConnectionActionResponse>(defaultspackContractRoute("api/connections/codex"), {
       method: "POST",
       body: JSON.stringify({
         action: "clear_app_server",
@@ -3380,7 +4186,7 @@ export const api = {
   },
 
   probeCodexAppServer() {
-    return request<CodexConnectionActionResponse>("/api/connections/codex", {
+    return request<CodexConnectionActionResponse>(defaultspackContractRoute("api/connections/codex"), {
       method: "POST",
       body: JSON.stringify({
         action: "probe_app_server",
@@ -3389,7 +4195,7 @@ export const api = {
   },
 
   saveExternalToken(providerId: string, value: string, options?: { tokenId?: string; name?: string; kind?: string }) {
-    return request<{ provider_id: string; token_id?: string; name?: string; kind?: string; configured: boolean }>("/api/external/tokens", {
+    return request<{ provider_id: string; token_id?: string; name?: string; kind?: string; configured: boolean }>(defaultspackContractRoute("api/external/tokens"), {
       method: "POST",
       body: JSON.stringify({
         provider_id: providerId,
@@ -3402,7 +4208,7 @@ export const api = {
   },
 
   renameExternalToken(providerId: string, tokenId: string, name: string) {
-    return request<{ provider_id: string; token_id?: string; name?: string; configured: boolean }>("/api/external/tokens", {
+    return request<{ provider_id: string; token_id?: string; name?: string; configured: boolean }>(defaultspackContractRoute("api/external/tokens"), {
       method: "POST",
       body: JSON.stringify({
         action: "rename",
@@ -3415,7 +4221,7 @@ export const api = {
   },
 
   deleteExternalToken(providerId: string, tokenId: string) {
-    return request<{ provider_id: string; token_id?: string; configured: boolean; cleared?: boolean }>("/api/external/tokens", {
+    return request<{ provider_id: string; token_id?: string; configured: boolean; cleared?: boolean }>(defaultspackContractRoute("api/external/tokens"), {
       method: "POST",
       body: JSON.stringify({
         action: "delete",
@@ -3426,31 +4232,31 @@ export const api = {
   },
 
   listPublicUrlProviders() {
-    return request<{ providers: Array<Record<string, unknown>>; default_local_url?: string }>("/api/webhooks/public-urls");
+    return request<{ providers: Array<Record<string, unknown>>; default_local_url?: string }>(defaultspackContractRoute("api/webhooks/public-urls"));
   },
 
   createPublicUrl(payload: { provider_id?: string; provider?: string; local_url?: string; route_path?: string; ttl_seconds?: number }) {
-    return request<Record<string, unknown>>("/api/webhooks/public-urls", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/webhooks/public-urls"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   closePublicUrl(urlId: string) {
-    return request<Record<string, unknown>>(`/api/webhooks/public-urls/${encodeURIComponent(urlId)}`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/webhooks/public-urls/${encodeURIComponent(urlId)}`), {
       method: "DELETE",
     });
   },
 
   conversationPreview(conversationId: string) {
     return request<{ conversation_id: string; previews: ToolPreviewItem[]; summary: Record<string, number> }>(
-      `/api/ui/conversations/${conversationId}/preview`,
+      defaultspackContractRoute(`api/ui/conversations/${conversationId}/preview`),
     );
   },
 
   exportConversation(conversationId: string, format = "markdown") {
     return request<{ conversation_id: string; content: string; format: "markdown" | "json" }>(
-      `/api/chat/conversations/${conversationId}/export`,
+      defaultspackContractRoute(`api/chat/conversations/${conversationId}/export`),
       {
         method: "POST",
         body: JSON.stringify({ format }),
@@ -3459,25 +4265,25 @@ export const api = {
   },
 
   listArtifacts() {
-    return request<Record<string, unknown>>("/api/artifacts");
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/artifacts"));
   },
 
   webSearch(query: string, allowNetwork = false) {
-    return request<Record<string, unknown>>("/api/research/web-search", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/research/web-search"), {
       method: "POST",
       body: JSON.stringify({ query, allow_network: allowNetwork, limit: 5 }),
     });
   },
 
   redditSearch(query: string, allowNetwork = false) {
-    return request<Record<string, unknown>>("/api/research/reddit-search", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/research/reddit-search"), {
       method: "POST",
       body: JSON.stringify({ query, allow_network: allowNetwork, limit: 5 }),
     });
   },
 
   browserComputer(action: string, payload?: Record<string, unknown>) {
-    return request<Record<string, unknown>>("/api/tools/browser-computer", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/tools/browser-computer"), {
       method: "POST",
       body: JSON.stringify({ action, payload: payload ?? {} }),
     });
@@ -3486,12 +4292,12 @@ export const api = {
   approveBrowserComputerAction(toolName: string, action: string, payload?: Record<string, unknown>) {
     const normalizedAction = normalizeBrowserComputerApprovalAction(toolName, action);
     if (usesBrowserComputerApprovalEndpoint(toolName)) {
-      return request<Record<string, unknown>>("/api/tools/browser-computer", {
+      return request<Record<string, unknown>>(defaultspackContractRoute("api/tools/browser-computer"), {
         method: "POST",
         body: JSON.stringify({ action: normalizedAction, payload: payload ?? {} }),
       });
     }
-    return request<Record<string, unknown>>("/api/tools/invoke", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/tools/invoke"), {
       method: "POST",
       body: JSON.stringify({
         tool_name: toolName,
@@ -3501,7 +4307,7 @@ export const api = {
   },
 
   invokeTool(toolName: string, argumentsPayload?: Record<string, unknown>, context?: Record<string, unknown>) {
-    return request<Record<string, unknown>>("/api/tools/invoke", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/tools/invoke"), {
       method: "POST",
       body: JSON.stringify({
         tool_name: toolName,
@@ -3513,42 +4319,42 @@ export const api = {
 
   getBrowserScreenshots(conversationId: string, runId: string) {
     return request<{ screenshots: BrowserScreenshot[]; omitted_count?: number }>(
-      `/api/chat/conversations/${conversationId}/run-results/${runId}/browser-screenshots`,
+      defaultspackContractRoute(`api/chat/conversations/${conversationId}/run-results/${runId}/browser-screenshots`),
     );
   },
 
   listSchedules() {
-    return request<Record<string, unknown>>("/api/agent/schedules");
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/agent/schedules"));
   },
 
   createSchedule(payload: Record<string, unknown>) {
-    return request<Record<string, unknown>>("/api/agent/schedules", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/agent/schedules"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   updateSchedule(scheduleId: string, payload: Record<string, unknown>) {
-    return request<Record<string, unknown>>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/agent/schedules/${encodeURIComponent(scheduleId)}`), {
       method: "PUT",
       body: JSON.stringify(payload),
     });
   },
 
   deleteSchedule(scheduleId: string) {
-    return request<Record<string, unknown>>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/agent/schedules/${encodeURIComponent(scheduleId)}`), {
       method: "DELETE",
     });
   },
 
   getScheduleHistory(scheduleId: string) {
-    return request<Record<string, unknown>>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}/history`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/agent/schedules/${encodeURIComponent(scheduleId)}/history`), {
       cache: "no-store",
     });
   },
 
   getOperationsCompanyStatus() {
-    return request<OperationsCompanyStatus>("/api/agent/company/status");
+    return request<OperationsCompanyStatus>(defaultspackContractRoute("api/agent/company/status"));
   },
 
   bootstrapOperationsCompany(options?: {
@@ -3556,14 +4362,14 @@ export const api = {
     heartbeat_minutes?: number;
     model?: string;
   }) {
-    return request<OperationsCompanyStatus>("/api/agent/company/bootstrap", {
+    return request<OperationsCompanyStatus>(defaultspackContractRoute("api/agent/company/bootstrap"), {
       method: "POST",
       body: JSON.stringify(options ?? {}),
     });
   },
 
   getMimoCodingCompanyStatus() {
-    return request<MimoCodingCompanyStatus>("/api/agent/mimo-company/status");
+    return request<MimoCodingCompanyStatus>(defaultspackContractRoute("api/agent/mimo-company/status"));
   },
 
   bootstrapMimoCodingCompany(options?: {
@@ -3585,7 +4391,7 @@ export const api = {
     seed_tasks?: boolean;
     seed_knowledge?: boolean;
   }) {
-    return request<MimoCodingCompanyStatus>("/api/agent/mimo-company/bootstrap", {
+    return request<MimoCodingCompanyStatus>(defaultspackContractRoute("api/agent/mimo-company/bootstrap"), {
       method: "POST",
       body: JSON.stringify(options ?? {}),
     });
@@ -3593,13 +4399,13 @@ export const api = {
 
   listCompanies(options?: { limit?: number; offset?: number }) {
     return request<{ companies: CompanyRecord[]; total: number }>(
-      withQuery("/api/company", options),
+      withQuery(defaultspackContractRoute("api/company"), options),
       { cache: "no-store" },
     );
   },
 
   getCompany(companyId: string) {
-    return request<CompanyRecord>(`/api/company/${encodeURIComponent(companyId)}`, { cache: "no-store" });
+    return request<CompanyRecord>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}`), { cache: "no-store" });
   },
 
   createCompany(payload: {
@@ -3610,21 +4416,21 @@ export const api = {
     settings?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }) {
-    return request<CompanyRecord>("/api/company", {
+    return request<CompanyRecord>(defaultspackContractRoute("api/company"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   updateCompany(companyId: string, updates: Partial<CompanyRecord>) {
-    return request<CompanyRecord>(`/api/company/${encodeURIComponent(companyId)}`, {
+    return request<CompanyRecord>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}`), {
       method: "PUT",
       body: JSON.stringify({ company_id: companyId, updates }),
     });
   },
 
   deleteCompany(companyId: string) {
-    return request<{ deleted: boolean; company_id: string }>(`/api/company/${encodeURIComponent(companyId)}`, {
+    return request<{ deleted: boolean; company_id: string }>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}`), {
       method: "DELETE",
     });
   },
@@ -3638,7 +4444,7 @@ export const api = {
           bootstrap: options?.bootstrap,
         };
     return request<CompanyStatusResponse>(
-      withQuery("/api/company/status", query),
+      withQuery(defaultspackContractRoute("api/company/status"), query),
       { cache: "no-store" },
     );
   },
@@ -3654,7 +4460,7 @@ export const api = {
   getRemoteHostStatus,
 
   bootstrapCompanyWorkspace(metadata?: Record<string, unknown>, options?: { conversationId?: string | null; scope?: "conversation" | "default" }) {
-    return request<{ bootstrapped: boolean; company: CompanyRecord }>("/api/company/bootstrap", {
+    return request<{ bootstrapped: boolean; company: CompanyRecord }>(defaultspackContractRoute("api/company/bootstrap"), {
       method: "POST",
       body: JSON.stringify({
         ...(metadata ? { metadata } : {}),
@@ -3666,13 +4472,13 @@ export const api = {
 
   getCompanySettings(companyId: string) {
     return request<{ settings: Record<string, unknown> }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/settings`, { company_id: companyId }),
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/settings`), { company_id: companyId }),
       { cache: "no-store" },
     );
   },
 
   updateCompanySettings(companyId: string, settings: Record<string, unknown>, replace = false) {
-    return request<{ settings: Record<string, unknown> }>(`/api/company/${encodeURIComponent(companyId)}/settings`, {
+    return request<{ settings: Record<string, unknown> }>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/settings`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "update", settings, replace }),
     });
@@ -3680,13 +4486,13 @@ export const api = {
 
   listCompanyAgents(companyId: string) {
     return request<{ agents: CompanyAgent[]; total: number }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/agents`, { company_id: companyId }),
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/agents`), { company_id: companyId }),
       { cache: "no-store" },
     );
   },
 
   upsertCompanyAgent(companyId: string, agent: Partial<CompanyAgent>) {
-    return request<CompanyAgent>(`/api/company/${encodeURIComponent(companyId)}/agents`, {
+    return request<CompanyAgent>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/agents`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "upsert", agent }),
     });
@@ -3694,13 +4500,13 @@ export const api = {
 
   listCompanyChannels(companyId: string) {
     return request<{ channels: CompanyChannel[]; total: number }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/channels`, { company_id: companyId }),
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/channels`), { company_id: companyId }),
       { cache: "no-store" },
     );
   },
 
   upsertCompanyChannel(companyId: string, channel: Partial<CompanyChannel>) {
-    return request<CompanyChannel>(`/api/company/${encodeURIComponent(companyId)}/channels`, {
+    return request<CompanyChannel>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/channels`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "upsert", channel }),
     });
@@ -3716,7 +4522,7 @@ export const api = {
     order?: "asc" | "desc" | string;
   }) {
     return request<{ messages: CompanyMessage[]; total: number }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/messages`, { company_id: companyId, ...options }),
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/messages`), { company_id: companyId, ...options }),
       { cache: "no-store" },
     );
   },
@@ -3729,7 +4535,7 @@ export const api = {
     task_ids?: string[];
     metadata?: Record<string, unknown>;
   }) {
-    return request<CompanyMessage>(`/api/company/${encodeURIComponent(companyId)}/messages`, {
+    return request<CompanyMessage>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/messages`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "create", ...payload }),
     });
@@ -3737,7 +4543,7 @@ export const api = {
 
   listCompanyTasks(companyId: string, options?: { status?: string; target_agent_id?: string; limit?: number; offset?: number }) {
     return request<{ tasks: CompanyTask[]; total: number }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/tasks`, { company_id: companyId, ...options }),
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/tasks`), { company_id: companyId, ...options }),
       { cache: "no-store" },
     );
   },
@@ -3749,14 +4555,14 @@ export const api = {
     source?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return request<CompanyTask>(`/api/company/${encodeURIComponent(companyId)}/tasks`, {
+    return request<CompanyTask>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/tasks`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "create", ...payload }),
     });
   },
 
   updateCompanyTask(companyId: string, taskId: string, updates: Partial<CompanyTask>) {
-    return request<CompanyTask>(`/api/company/${encodeURIComponent(companyId)}/tasks`, {
+    return request<CompanyTask>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/tasks`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "update", task_id: taskId, updates }),
     });
@@ -3764,13 +4570,13 @@ export const api = {
 
   deleteCompanyTask(companyId: string, taskId: string) {
     return request<{ deleted: boolean; task_id: string }>(
-      `/api/company/${encodeURIComponent(companyId)}/tasks/${encodeURIComponent(taskId)}`,
+      defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/tasks/${encodeURIComponent(taskId)}`),
       { method: "DELETE" },
     );
   },
 
   dispatchCompanyTask(companyId: string, taskId: string, policy?: Record<string, unknown>) {
-    return request<Record<string, unknown>>(`/api/company/${encodeURIComponent(companyId)}/dispatch`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/dispatch`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, task_id: taskId, policy }),
     });
@@ -3778,128 +4584,14 @@ export const api = {
 
   listCompanyRuns(companyId: string, options?: { agent_id?: string; task_id?: string; status?: string; limit?: number; offset?: number }) {
     return request<{ runs: CompanyRunLink[]; total: number }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/runs`, { company_id: companyId, ...options }),
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/runs`), { company_id: companyId, ...options }),
       { cache: "no-store" },
     );
-  },
-
-  kanbanGetOrCreateBoard(scope: KanbanBoardScope) {
-    return request<KanbanBoardResponse>(
-      withQuery("/api/kanban/boards", {
-        scope_type: scope.type,
-        scope_id: scope.id,
-        bootstrap: true,
-      }),
-      { cache: "no-store" },
-    );
-  },
-
-  kanbanGetBoard(boardId: string) {
-    return request<KanbanBoardResponse>(
-      `/api/kanban/boards/${encodeURIComponent(boardId)}`,
-      { cache: "no-store" },
-    );
-  },
-
-  kanbanCreateCard(boardId: string, payload: Partial<KanbanCard>) {
-    return request<KanbanCard>(`/api/kanban/boards/${encodeURIComponent(boardId)}/cards`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-
-  kanbanUpdateCard(cardId: string, updates: Partial<KanbanCard>) {
-    return request<KanbanCard>(`/api/kanban/cards/${encodeURIComponent(cardId)}`, {
-      method: "PUT",
-      body: JSON.stringify({ updates }),
-    });
-  },
-
-  kanbanMoveCard(cardId: string, payload: KanbanMovePayload) {
-    return request<KanbanBoardResponse>(`/api/kanban/cards/${encodeURIComponent(cardId)}/move`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-
-  kanbanDeleteCard(cardId: string) {
-    return request<{ deleted: boolean; card_id?: string }>(`/api/kanban/cards/${encodeURIComponent(cardId)}`, {
-      method: "DELETE",
-    });
-  },
-
-  kanbanCreateColumn(boardId: string, payload: Partial<KanbanColumn>) {
-    return request<KanbanColumn>(`/api/kanban/boards/${encodeURIComponent(boardId)}/columns`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-
-  kanbanUpdateColumn(columnId: string, updates: Partial<KanbanColumn>) {
-    return request<KanbanColumn>(`/api/kanban/columns/${encodeURIComponent(columnId)}`, {
-      method: "PUT",
-      body: JSON.stringify({ updates }),
-    });
-  },
-
-  kanbanDeleteColumn(columnId: string) {
-    return request<{ deleted: boolean; column_id?: string }>(`/api/kanban/columns/${encodeURIComponent(columnId)}`, {
-      method: "DELETE",
-    });
-  },
-
-  kanbanStartAgent(cardId: string, payload?: Record<string, unknown>) {
-    return request<KanbanCard>(`/api/kanban/cards/${encodeURIComponent(cardId)}/agent/start`, {
-      method: "POST",
-      body: JSON.stringify(payload ?? {}),
-    });
-  },
-
-  kanbanGetAgentStatus(cardId: string) {
-    return request<KanbanCard>(
-      `/api/kanban/cards/${encodeURIComponent(cardId)}/agent/status`,
-      { cache: "no-store" },
-    );
-  },
-
-  kanbanMarkAgentReady(cardId: string, payload?: Record<string, unknown>) {
-    return request<KanbanCard>(`/api/kanban/cards/${encodeURIComponent(cardId)}/agent/ready`, {
-      method: "POST",
-      body: JSON.stringify(payload ?? {}),
-    });
-  },
-
-  kanbanApplyAgent(cardId: string, payload?: Record<string, unknown>) {
-    return request<KanbanCard>(`/api/kanban/cards/${encodeURIComponent(cardId)}/agent/apply`, {
-      method: "POST",
-      body: JSON.stringify(payload ?? {}),
-    });
-  },
-
-  kanbanDismissAgent(cardId: string, payload?: Record<string, unknown>) {
-    return request<KanbanCard>(`/api/kanban/cards/${encodeURIComponent(cardId)}/agent/dismiss`, {
-      method: "POST",
-      body: JSON.stringify(payload ?? {}),
-    });
-  },
-
-  kanbanSyncRuns(boardId: string) {
-    return request<KanbanBoardResponse>(`/api/kanban/boards/${encodeURIComponent(boardId)}/sync-runs`, {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-  },
-
-  kanbanImportConversation(boardId: string, payload: KanbanImportConversationPayload) {
-    return request<KanbanBoardResponse>(`/api/kanban/boards/${encodeURIComponent(boardId)}/import-conversation`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
   },
 
   listCompanyAgentInbox(companyId: string, agentId: string, options?: { status?: string; kind?: string; limit?: number }) {
     return request<{ inbox: CompanyInboxItem[]; total: number }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/agents/${encodeURIComponent(agentId)}/inbox`, {
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/agents/${encodeURIComponent(agentId)}/inbox`), {
         company_id: companyId,
         agent_id: agentId,
         ...options,
@@ -3910,13 +4602,13 @@ export const api = {
 
   listCompanyInboundRoutes(companyId: string) {
     return request<{ routes: CompanyInboundRoute[]; total: number }>(
-      withQuery(`/api/company/${encodeURIComponent(companyId)}/inbound-routes`, { company_id: companyId }),
+      withQuery(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/inbound-routes`), { company_id: companyId }),
       { cache: "no-store" },
     );
   },
 
   bootstrapSubagentTeamWorkspace(metadata?: Record<string, unknown>, options?: { conversationId?: string | null; scope?: "conversation" | "default" }) {
-    return request<{ bootstrapped: boolean; company: CompanyRecord }>("/api/subagent-team/bootstrap", {
+    return request<{ bootstrapped: boolean; company: CompanyRecord }>(defaultspackContractRoute("api/subagent-team/bootstrap"), {
       method: "POST",
       body: JSON.stringify({
         ...(metadata ? { metadata } : {}),
@@ -3931,7 +4623,7 @@ export const api = {
     conversationId?: string | null;
     metadata: Record<string, unknown>;
   }) {
-    return request<CompanyRecord>("/api/subagent-team/workspace/metadata", {
+    return request<CompanyRecord>(defaultspackContractRoute("api/subagent-team/workspace/metadata"), {
       method: "POST",
       body: JSON.stringify({
         company_id: options.companyId,
@@ -3952,7 +4644,7 @@ export const api = {
     client_message_id?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return request<CompanyMessage>("/api/subagent-team/messages", {
+    return request<CompanyMessage>(defaultspackContractRoute("api/subagent-team/messages"), {
       method: "POST",
       body: JSON.stringify({
         company_id: payload.companyId,
@@ -3970,7 +4662,7 @@ export const api = {
 
   getSubagentTeamRichSettings(options?: { companyId?: string | null; conversationId?: string | null }) {
     return request<SubagentTeamRichSettingsResponse>(
-      withQuery("/api/subagent-team/rich", {
+      withQuery(defaultspackContractRoute("api/subagent-team/rich"), {
         company_id: options?.companyId,
         conversation_id: options?.conversationId,
       }),
@@ -3983,7 +4675,7 @@ export const api = {
     conversationId?: string | null;
   }) {
     const { companyId, conversationId, ...settings } = payload;
-    return request<SubagentTeamRichSettingsResponse>("/api/subagent-team/rich", {
+    return request<SubagentTeamRichSettingsResponse>(defaultspackContractRoute("api/subagent-team/rich"), {
       method: "POST",
       body: JSON.stringify({
         company_id: companyId,
@@ -3995,7 +4687,7 @@ export const api = {
 
   getSubagentTeamCreatorSettings(options?: { companyId?: string | null; conversationId?: string | null }) {
     return request<SubagentTeamCreatorSettingsResponse>(
-      withQuery("/api/subagent-team/creator/settings", {
+      withQuery(defaultspackContractRoute("api/subagent-team/creator/settings"), {
         company_id: options?.companyId,
         conversation_id: options?.conversationId,
       }),
@@ -4008,7 +4700,7 @@ export const api = {
     conversationId?: string | null;
   }) {
     const { companyId, conversationId, ...settings } = payload;
-    return request<SubagentTeamCreatorSettingsResponse>("/api/subagent-team/creator/settings", {
+    return request<SubagentTeamCreatorSettingsResponse>(defaultspackContractRoute("api/subagent-team/creator/settings"), {
       method: "PATCH",
       body: JSON.stringify({
         company_id: companyId,
@@ -4026,7 +4718,7 @@ export const api = {
     agent_id?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return request<SubagentTeamCreatorTestResponse>("/api/subagent-team/creator/test", {
+    return request<SubagentTeamCreatorTestResponse>(defaultspackContractRoute("api/subagent-team/creator/test"), {
       method: "POST",
       body: JSON.stringify({
         company_id: payload?.companyId,
@@ -4041,7 +4733,7 @@ export const api = {
 
   getSubagentTeamCreatorDecisionPreview(options?: { companyId?: string | null; conversationId?: string | null; channelId?: string | null }) {
     return request<SubagentTeamDecisionPreviewResponse>(
-      withQuery("/api/subagent-team/creator/decision-preview", {
+      withQuery(defaultspackContractRoute("api/subagent-team/creator/decision-preview"), {
         company_id: options?.companyId,
         conversation_id: options?.conversationId,
         channel_id: options?.channelId,
@@ -4058,7 +4750,7 @@ export const api = {
     includeGit?: boolean;
   }) {
     return request<SubagentTeamFileTreeResponse>(
-      withQuery("/api/subagent-team/file-tree", {
+      withQuery(defaultspackContractRoute("api/subagent-team/file-tree"), {
         company_id: options?.companyId,
         conversation_id: options?.conversationId,
         directory: options?.directory,
@@ -4075,7 +4767,7 @@ export const api = {
     conversationId?: string | null;
   }) {
     return request<SubagentTeamFileTreeOpenResponse>(
-      withQuery("/api/subagent-team/file-tree/open", {
+      withQuery(defaultspackContractRoute("api/subagent-team/file-tree/open"), {
         node_id: options.nodeId,
         company_id: options.companyId,
         conversation_id: options.conversationId,
@@ -4085,57 +4777,57 @@ export const api = {
   },
 
   upsertCompanyInboundRoute(companyId: string, route: Partial<CompanyInboundRoute>) {
-    return request<CompanyInboundRoute>(`/api/company/${encodeURIComponent(companyId)}/inbound-routes`, {
+    return request<CompanyInboundRoute>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/inbound-routes`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "upsert", route }),
     });
   },
 
   deleteCompanyInboundRoute(companyId: string, routeId: string) {
-    return request<{ deleted: boolean; route_id: string }>(`/api/company/${encodeURIComponent(companyId)}/inbound-routes`, {
+    return request<{ deleted: boolean; route_id: string }>(defaultspackContractRoute(`api/company/${encodeURIComponent(companyId)}/inbound-routes`), {
       method: "POST",
       body: JSON.stringify({ company_id: companyId, action: "delete", route_id: routeId }),
     });
   },
 
   triggerSchedule(scheduleId: string) {
-    return request<Record<string, unknown>>(`/api/agent/schedules/${scheduleId}/trigger`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/agent/schedules/${scheduleId}/trigger`), {
       method: "POST",
       body: JSON.stringify({}),
     });
   },
 
   pauseSchedule(scheduleId: string) {
-    return request<Record<string, unknown>>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}/pause`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/agent/schedules/${encodeURIComponent(scheduleId)}/pause`), {
       method: "POST",
       body: JSON.stringify({}),
     });
   },
 
   resumeSchedule(scheduleId: string) {
-    return request<Record<string, unknown>>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}/resume`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/agent/schedules/${encodeURIComponent(scheduleId)}/resume`), {
       method: "POST",
       body: JSON.stringify({}),
     });
   },
 
   listChannels() {
-    return request<Record<string, unknown>>("/api/chat/channels");
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/chat/channels"));
   },
 
   getP2PStatus() {
-    return request<P2PStatusResponse>("/api/p2p/status", { cache: "no-store" });
+    return request<P2PStatusResponse>(defaultspackContractRoute("api/p2p/status"), { cache: "no-store" });
   },
 
   getP2PIdentity(label?: string) {
     return request<{ identity: P2PIdentity; p2p: P2PSettings }>(
-      withQuery("/api/p2p/identity", { label }),
+      withQuery(defaultspackContractRoute("api/p2p/identity"), { label }),
       { cache: "no-store" },
     );
   },
 
   listP2PPeers() {
-    return request<{ peers: P2PPeer[] }>("/api/p2p/peers", { cache: "no-store" });
+    return request<{ peers: P2PPeer[] }>(defaultspackContractRoute("api/p2p/peers"), { cache: "no-store" });
   },
 
   approveP2PPeer(payload: {
@@ -4148,14 +4840,14 @@ export const api = {
     label?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return request<{ peer: P2PPeer }>("/api/p2p/peers", {
+    return request<{ peer: P2PPeer }>(defaultspackContractRoute("api/p2p/peers"), {
       method: "POST",
       body: JSON.stringify({ action: "approve", ...payload }),
     });
   },
 
   blockP2PPeer(peerId: string, reason?: string) {
-    return request<{ peer: P2PPeer }>("/api/p2p/peers", {
+    return request<{ peer: P2PPeer }>(defaultspackContractRoute("api/p2p/peers"), {
       method: "POST",
       body: JSON.stringify({ action: "block", peer_id: peerId, reason }),
     });
@@ -4169,7 +4861,7 @@ export const api = {
     capabilities?: string[];
     allowed_company_ids?: string[];
   }) {
-    return request<{ pairing: P2PPairing }>("/api/p2p/pairing/start", {
+    return request<{ pairing: P2PPairing }>(defaultspackContractRoute("api/p2p/pairing/start"), {
       method: "POST",
       body: JSON.stringify(payload ?? {}),
     });
@@ -4185,75 +4877,75 @@ export const api = {
     capabilities?: string[];
     allowed_company_ids?: string[];
   }) {
-    return request<{ ok: boolean; pairing: P2PPairing; peer?: P2PPeer; hmac_secret?: string }>("/api/p2p/pairing/accept", {
+    return request<{ ok: boolean; pairing: P2PPairing; peer?: P2PPeer; hmac_secret?: string }>(defaultspackContractRoute("api/p2p/pairing/accept"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   rejectP2PPairing(code: string, reason?: string) {
-    return request<{ ok: boolean; pairing: P2PPairing }>("/api/p2p/pairing/reject", {
+    return request<{ ok: boolean; pairing: P2PPairing }>(defaultspackContractRoute("api/p2p/pairing/reject"), {
       method: "POST",
       body: JSON.stringify({ code, reason }),
     });
   },
 
   listMobileDevices() {
-    return request<MobileDevicesResponse>("/api/mobile/v1/devices", { cache: "no-store" });
+    return request<MobileDevicesResponse>(defaultspackContractRoute("api/mobile/v1/devices"), { cache: "no-store" });
   },
 
   createCredentialTransfer(payload: { device_id: string; provider_id: string; api_id: string; provider_label?: string }) {
-    return request<{ transfer: CredentialTransfer }>("/api/mobile/v1/credential-transfers", {
+    return request<{ transfer: CredentialTransfer }>(defaultspackContractRoute("api/mobile/v1/credential-transfers"), {
       method: "POST", body: JSON.stringify(payload),
     });
   },
 
   confirmCredentialTransfer(transferId: string, payload: { device_id: string; provider_id: string; api_id: string; user_confirmed: true }) {
-    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/confirm`, {
+    return request<{ transfer: CredentialTransfer }>(defaultspackContractRoute(`api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/confirm`), {
       method: "POST", body: JSON.stringify(payload),
     });
   },
 
   getCredentialTransferStatus(transferId: string) {
-    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/status`, { cache: "no-store" });
+    return request<{ transfer: CredentialTransfer }>(defaultspackContractRoute(`api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/status`), { cache: "no-store" });
   },
 
   cancelCredentialTransfer(transferId: string) {
-    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/cancel`, {
+    return request<{ transfer: CredentialTransfer }>(defaultspackContractRoute(`api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/cancel`), {
       method: "POST", body: JSON.stringify({ reason: "cancelled by PC user" }),
     });
   },
 
   revokeCredentialTransfer(transferId: string) {
-    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/revoke`, {
+    return request<{ transfer: CredentialTransfer }>(defaultspackContractRoute(`api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/revoke`), {
       method: "POST", body: JSON.stringify({ reason: "revoked by PC user" }),
     });
   },
 
   getMobilePairingStatus(pairingId: string) {
     return request<MobilePairingStatus>(
-      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/status`,
+      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/status`),
       { cache: "no-store" },
     );
   },
 
   getMobilePairingReview(pairingId: string) {
     return request<MobilePairingReview>(
-      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/review`,
+      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/review`),
       { cache: "no-store" },
     );
   },
 
   approveMobilePairing(pairingId: string, payload: MobilePairingApprovePayload) {
     return request<{ pairing?: MobilePairingStatus }>(
-      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/approve`,
+      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/approve`),
       { method: "POST", body: JSON.stringify(payload) },
     );
   },
 
   rejectMobilePairing(pairingId: string, reason?: string) {
     return request<{ pairing?: MobilePairingStatus }>(
-      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/reject`,
+      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/reject`),
       { method: "POST", body: JSON.stringify({ reason }) },
     );
   },
@@ -4266,50 +4958,50 @@ export const api = {
     metadata?: Record<string, unknown>;
     ttl_seconds?: number;
   }) {
-    return request<{ envelope: Record<string, unknown>; peer: P2PPeer }>("/api/p2p/messages/send", {
+    return request<{ envelope: Record<string, unknown>; peer: P2PPeer }>(defaultspackContractRoute("api/p2p/messages/send"), {
       method: "POST",
       body: JSON.stringify({ peer_id: peerId, ...payload }),
     });
   },
 
   createShare(payload: Record<string, unknown>) {
-    return request<Record<string, unknown>>("/api/share", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/share"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   getShare(token: string) {
-    return request<ConversationShareRecord>(`/api/share/${encodeURIComponent(token)}`, { cache: "no-store" });
+    return request<ConversationShareRecord>(defaultspackContractRoute(`api/share/${encodeURIComponent(token)}`), { cache: "no-store" });
   },
 
   importShare(token: string, sourceUrl?: string, importMode: "read_only" | "continue_copy" = "continue_copy") {
     return request<{ conversation: Conversation; conversation_id: string; import_mode: string; audit?: Record<string, unknown> }>(
-      `/api/share/${encodeURIComponent(token)}/import`,
+      defaultspackContractRoute(`api/share/${encodeURIComponent(token)}/import`),
       { method: "POST", body: JSON.stringify({ source_url: sourceUrl, import_mode: importMode }) },
     );
   },
 
   revokeShare(token: string) {
-    return request<{ revoked: boolean }>(`/api/share/${encodeURIComponent(token)}`, { method: "DELETE" });
+    return request<{ revoked: boolean }>(defaultspackContractRoute(`api/share/${encodeURIComponent(token)}`), { method: "DELETE" });
   },
 
   exportShare(token: string) {
     return request<{ conversation: ConversationShareBundle["conversation"]; audit?: Record<string, unknown> }>(
-      `/api/share/${encodeURIComponent(token)}/export`, { method: "POST", body: "{}" },
+      defaultspackContractRoute(`api/share/${encodeURIComponent(token)}/export`), { method: "POST", body: "{}" },
     );
   },
 
   importConversationBundle(bundle: Record<string, unknown>, sourceUrl?: string) {
     return request<{ conversation: Conversation; conversation_id: string }>(
-      "/api/packs/defaultspack/chat/conversations/import",
+      defaultspackContractRoute("api/packs/defaultspack/chat/conversations/import"),
       { method: "POST", body: JSON.stringify({ bundle, source_url: sourceUrl }) },
     );
   },
 
   compactConversation(conversationId: string, options?: CompactConversationOptions) {
     return request<CompactConversationResult>(
-      `/api/chat/conversations/${encodeURIComponent(conversationId)}/compact`,
+      defaultspackContractRoute(`api/chat/conversations/${encodeURIComponent(conversationId)}/compact`),
       {
         method: "POST",
         body: JSON.stringify({ conversation_id: conversationId, ...(options ?? {}) }),
@@ -4319,7 +5011,7 @@ export const api = {
 
   autoCompactConversation(conversationId: string, options?: CompactConversationOptions & { mode?: "suggest" | "apply" }) {
     return request<CompactConversationResult>(
-      `/api/chat/conversations/${encodeURIComponent(conversationId)}/auto-compact`,
+      defaultspackContractRoute(`api/chat/conversations/${encodeURIComponent(conversationId)}/auto-compact`),
       {
         method: "POST",
         body: JSON.stringify({ conversation_id: conversationId, mode: options?.mode ?? "suggest", ...(options ?? {}) }),
@@ -4329,13 +5021,13 @@ export const api = {
 
   getCodingContext(options?: { directory?: string; workspace_id?: string | null }) {
     return request<CodingContextResponse>(
-      withQuery("/api/coding/context", { directory: options?.directory, workspace_id: options?.workspace_id }),
+      withQuery(defaultspackContractRoute("api/coding/context"), { directory: options?.directory, workspace_id: options?.workspace_id }),
     );
   },
 
   listWorkspaceFiles(directory?: string, options?: { workspace_id?: string | null }) {
     return request<{ files: CodingContextEntry[] }>(
-      withQuery("/api/coding/files", { directory, workspace_id: options?.workspace_id }),
+      withQuery(defaultspackContractRoute("api/coding/files"), { directory, workspace_id: options?.workspace_id }),
     );
   },
 
@@ -4347,7 +5039,7 @@ export const api = {
       encoding?: string;
       workspace_id?: string | null;
       workspace_root?: string | null;
-    }>("/api/coding/files/read", {
+    }>(defaultspackContractRoute("api/coding/files/read"), {
       method: "POST",
       body: JSON.stringify({ path, workspace_id: options?.workspace_id }),
     });
@@ -4355,24 +5047,24 @@ export const api = {
 
   getGitBranch(options?: { workspace_id?: string | null }) {
     return request<CodingBranchResponse>(
-      withQuery("/api/coding/git/branch", { workspace_id: options?.workspace_id }),
+      withQuery(defaultspackContractRoute("api/coding/git/branch"), { workspace_id: options?.workspace_id }),
     );
   },
 
   switchGitBranch(branch: string, create = false, options?: { workspace_id?: string | null }) {
-    return request<CodingBranchResponse>("/api/coding/git/branch", {
+    return request<CodingBranchResponse>(defaultspackContractRoute("api/coding/git/branch"), {
       method: "POST",
       body: JSON.stringify({ action: "switch", branch, create, workspace_id: options?.workspace_id }),
     });
   },
 
   listCodingWorkspaces() {
-    return request<CodingWorkspacesResponse>("/api/coding/workspaces", { cache: "no-store" });
+    return request<CodingWorkspacesResponse>(defaultspackContractRoute("api/coding/workspaces"), { cache: "no-store" });
   },
 
   getCodingWorkspace(workspaceId: string) {
     return request<{ workspace: CodingWorkspaceRecord }>(
-      withQuery("/api/coding/workspaces/get", { workspace_id: workspaceId }),
+      withQuery(defaultspackContractRoute("api/coding/workspaces/get"), { workspace_id: workspaceId }),
       { cache: "no-store" },
     );
   },
@@ -4385,42 +5077,42 @@ export const api = {
     trusted?: boolean;
     metadata?: Record<string, unknown>;
   }) {
-    return request<{ workspace: CodingWorkspaceRecord }>("/api/coding/workspaces", {
+    return request<{ workspace: CodingWorkspaceRecord }>(defaultspackContractRoute("api/coding/workspaces"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   updateCodingWorkspace(workspaceId: string, updates: Partial<CodingWorkspaceRecord> & { workspace_root?: string }) {
-    return request<{ workspace: CodingWorkspaceRecord }>("/api/coding/workspaces/update", {
+    return request<{ workspace: CodingWorkspaceRecord }>(defaultspackContractRoute("api/coding/workspaces/update"), {
       method: "POST",
       body: JSON.stringify({ workspace_id: workspaceId, ...updates }),
     });
   },
 
   selectCodingWorkspace(workspaceId: string) {
-    return request<{ workspace: CodingWorkspaceRecord; selected_workspace_id: string }>("/api/coding/workspaces/select", {
+    return request<{ workspace: CodingWorkspaceRecord; selected_workspace_id: string }>(defaultspackContractRoute("api/coding/workspaces/select"), {
       method: "POST",
       body: JSON.stringify({ workspace_id: workspaceId }),
     });
   },
 
   trustCodingWorkspace(workspaceId: string) {
-    return request<{ workspace: CodingWorkspaceRecord }>("/api/coding/workspaces/trust", {
+    return request<{ workspace: CodingWorkspaceRecord }>(defaultspackContractRoute("api/coding/workspaces/trust"), {
       method: "POST",
       body: JSON.stringify({ workspace_id: workspaceId }),
     });
   },
 
   selectDirectory(prompt?: string) {
-    return request<DirectorySelectionResponse>("/api/ui/select-directory", {
+    return request<DirectorySelectionResponse>(defaultspackContractRoute("api/ui/select-directory"), {
       method: "POST",
       body: JSON.stringify({ prompt }),
     });
   },
 
   prepareChatGroupStorage(rootPath: string) {
-    return request<ChatGroupStorageResponse>("/api/chat/group-storage", {
+    return request<ChatGroupStorageResponse>(defaultspackContractRoute("api/chat/group-storage"), {
       method: "POST",
       body: JSON.stringify({ root_path: rootPath }),
     });
@@ -4428,14 +5120,14 @@ export const api = {
 
   getGitStatus(options?: { workspace_id?: string | null }) {
     return request<CodingGitStatus & { workspace_id?: string | null; workspace_root?: string | null }>(
-      withQuery("/api/coding/git/status", { workspace_id: options?.workspace_id }),
+      withQuery(defaultspackContractRoute("api/coding/git/status"), { workspace_id: options?.workspace_id }),
       { cache: "no-store" },
     );
   },
 
   getGitDiff(options?: { workspace_id?: string | null; ref?: string | null }) {
     return request<CodingDiffResponse>(
-      withQuery("/api/coding/git/diff", { workspace_id: options?.workspace_id, ref: options?.ref }),
+      withQuery(defaultspackContractRoute("api/coding/git/diff"), { workspace_id: options?.workspace_id, ref: options?.ref }),
       { cache: "no-store" },
     );
   },
@@ -4446,7 +5138,7 @@ export const api = {
     timeout?: number;
     approval_token?: string;
   }) {
-    return request<CodingTerminalResponse>("/api/coding/terminal/exec", {
+    return request<CodingTerminalResponse>(defaultspackContractRoute("api/coding/terminal/exec"), {
       method: "POST",
       body: JSON.stringify({ command, ...(options ?? {}) }),
     });
@@ -4454,7 +5146,7 @@ export const api = {
 
   listCodingApprovals(options?: { status?: string; include_expired?: boolean; limit?: number }) {
     return request<{ requests: CodingApprovalRequest[]; pending: CodingApprovalRequest[]; count: number }>(
-      withQuery("/api/coding/approvals", {
+      withQuery(defaultspackContractRoute("api/coding/approvals"), {
         status: options?.status,
         include_expired: options?.include_expired,
         limit: options?.limit,
@@ -4463,30 +5155,32 @@ export const api = {
     );
   },
 
-  approveCodingApproval(requestId: string) {
-    return request<CodingApprovalDecision>("/api/coding/approvals/approve", {
+  async approveCodingApproval(requestId: string) {
+    const uiOperator = await nativeCodingApprovalOperator(requestId, "approve");
+    return request<CodingApprovalDecision>(defaultspackContractRoute("api/coding/approvals/approve"), {
       method: "POST",
-      body: JSON.stringify({ approval_request_id: requestId }),
+      body: JSON.stringify({ approval_request_id: requestId, ui_operator: uiOperator }),
     });
   },
 
-  denyCodingApproval(requestId: string, reason?: string) {
-    return request<Record<string, unknown>>("/api/coding/approvals/deny", {
+  async denyCodingApproval(requestId: string, reason?: string) {
+    const uiOperator = await nativeCodingApprovalOperator(requestId, "deny");
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/coding/approvals/deny"), {
       method: "POST",
-      body: JSON.stringify({ approval_request_id: requestId, reason }),
+      body: JSON.stringify({ approval_request_id: requestId, reason, ui_operator: uiOperator }),
     });
   },
 
   listAuthorityRequests(options?: { status?: "all" | "pending" | "approved" | "denied" | "expired" | string }) {
     return request<AuthorityRequestsResponse>(
-      withQuery("/api/authority/requests", { status: options?.status ?? "all" }),
+      withQuery(defaultspackContractRoute("api/authority/requests"), { status: options?.status ?? "all" }),
       { cache: "no-store" },
     );
   },
 
   getAuthorityRequest(requestId: string) {
     return request<AuthorityRequest>(
-      `/api/authority/requests/${encodeURIComponent(requestId)}`,
+      defaultspackContractRoute(`api/authority/requests/${encodeURIComponent(requestId)}`),
       { cache: "no-store" },
     );
   },
@@ -4519,7 +5213,7 @@ export const api = {
       ui_operator?: AuthorityUiOperator;
     },
   ) {
-    return request<AuthorityApprovalDecision>(`/api/authority/requests/${encodeURIComponent(requestId)}/approve`, {
+    return request<AuthorityApprovalDecision>(defaultspackContractRoute(`api/authority/requests/${encodeURIComponent(requestId)}/approve`), {
       method: "POST",
       body: JSON.stringify({
         scope: options?.scope ?? "once",
@@ -4539,7 +5233,7 @@ export const api = {
     const options = typeof reasonOrOptions === "object" && reasonOrOptions !== null
       ? reasonOrOptions
       : { reason: reasonOrOptions, persist };
-    return request<Record<string, unknown>>(`/api/authority/requests/${encodeURIComponent(requestId)}/deny`, {
+    return request<Record<string, unknown>>(defaultspackContractRoute(`api/authority/requests/${encodeURIComponent(requestId)}/deny`), {
       method: "POST",
       body: JSON.stringify({
         reason: options.reason,
@@ -4549,9 +5243,63 @@ export const api = {
     });
   },
 
+  listInteractiveApprovals() {
+    return request<InteractiveApprovalRequestsResponse>(
+      defaultspackContractRoute("api/interactive-approval/v1/list"),
+      { cache: "no-store" },
+    );
+  },
+
+  getInteractiveApproval(requestId: string) {
+    return request<InteractiveApprovalRequest>(
+      defaultspackContractRoute("api/interactive-approval/v1/get"),
+      {
+        method: "POST",
+        body: JSON.stringify({ request_id: requestId }),
+        cache: "no-store",
+      },
+    );
+  },
+
+  approveInteractiveApproval(
+    requestId: string,
+    options: {
+      confirmation_text: string;
+      ui_operator: AuthorityUiOperator;
+    },
+  ) {
+    return request<InteractiveApprovalRequest>(
+      defaultspackContractRoute("api/interactive-approval/v1/approve"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: requestId,
+          confirmation_text: options.confirmation_text,
+          ui_operator: options.ui_operator,
+        }),
+      },
+    );
+  },
+
+  denyInteractiveApproval(
+    requestId: string,
+    options: { ui_operator: AuthorityUiOperator },
+  ) {
+    return request<InteractiveApprovalRequest>(
+      defaultspackContractRoute("api/interactive-approval/v1/deny"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: requestId,
+          ui_operator: options.ui_operator,
+        }),
+      },
+    );
+  },
+
   listCodingCheckpoints(options?: { workspace_id?: string | null; limit?: number }) {
     return request<{ checkpoints: CodingCheckpoint[]; workspace_id?: string | null; workspace_root?: string | null }>(
-      withQuery("/api/coding/checkpoints", { workspace_id: options?.workspace_id, limit: options?.limit }),
+      withQuery(defaultspackContractRoute("api/coding/checkpoints"), { workspace_id: options?.workspace_id, limit: options?.limit }),
       { cache: "no-store" },
     );
   },
@@ -4563,7 +5311,7 @@ export const api = {
     metadata?: Record<string, unknown>;
   }) {
     return request<{ checkpoint: CodingCheckpoint; workspace_id?: string | null; workspace_root?: string | null }>(
-      "/api/coding/checkpoints",
+      defaultspackContractRoute("api/coding/checkpoints"),
       {
         method: "POST",
         body: JSON.stringify(payload ?? {}),
@@ -4573,7 +5321,7 @@ export const api = {
 
   listRumiLogs(options?: { workspace_id?: string | null; limit?: number; kind?: string | string[] | null }) {
     return request<RumiLogResponse>(
-      withQuery("/api/coding/rumi-log", {
+      withQuery(defaultspackContractRoute("api/coding/rumi-log"), {
         workspace_id: options?.workspace_id,
         limit: options?.limit,
         kind: options?.kind,
@@ -4600,14 +5348,14 @@ export const api = {
     task_status?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return request<RumiLogResponse>("/api/coding/rumi-log", {
+    return request<RumiLogResponse>(defaultspackContractRoute("api/coding/rumi-log"), {
       method: "POST",
       body: JSON.stringify({ action: "append", ...payload }),
     });
   },
 
   seedRumiLogPlan(payload?: { workspace_id?: string | null }) {
-    return request<RumiLogResponse>("/api/coding/rumi-log", {
+    return request<RumiLogResponse>(defaultspackContractRoute("api/coding/rumi-log"), {
       method: "POST",
       body: JSON.stringify({ action: "seed_local_plan", ...(payload ?? {}) }),
     });
@@ -4618,7 +5366,7 @@ export const api = {
     paths?: string[];
     approval_token?: string;
   }) {
-    return request<Record<string, unknown>>("/api/coding/files/restore", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/coding/files/restore"), {
       method: "POST",
       body: JSON.stringify({ snapshot_id: snapshotId, ...(options ?? {}) }),
     });
@@ -4626,17 +5374,17 @@ export const api = {
 
   listBrowserArtifacts(options?: { session_id?: string; limit?: number }) {
     return request<{ artifacts: BrowserArtifact[]; count: number }>(
-      withQuery("/api/browser/artifacts", { session_id: options?.session_id, limit: options?.limit }),
+      withQuery(defaultspackContractRoute("api/browser/artifacts"), { session_id: options?.session_id, limit: options?.limit }),
       { cache: "no-store" },
     );
   },
 
   listMcpServers() {
-    return request<{ servers: McpServerRecord[]; count: number }>("/api/tools/mcp", { cache: "no-store" });
+    return request<{ servers: McpServerRecord[]; count: number }>(defaultspackContractRoute("api/tools/mcp"), { cache: "no-store" });
   },
 
   registerMcpServer(server: Partial<McpServerRecord> & { server_id?: string; name?: string; config?: Record<string, unknown> }) {
-    return request<{ server: McpServerRecord }>("/api/tools/mcp", {
+    return request<{ server: McpServerRecord }>(defaultspackContractRoute("api/tools/mcp"), {
       method: "POST",
       body: JSON.stringify({ server }),
     });
@@ -4649,7 +5397,7 @@ export const api = {
     approval_token?: string;
     workspace_id?: string | null;
   }) {
-    return request<McpConnectResponse>("/api/tools/mcp/connect", {
+    return request<McpConnectResponse>(defaultspackContractRoute("api/tools/mcp/connect"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -4661,7 +5409,7 @@ export const api = {
     confirm?: boolean;
     approval_token?: string;
   }) {
-    return request<Record<string, unknown>>("/api/tools/mcp", {
+    return request<Record<string, unknown>>(defaultspackContractRoute("api/tools/mcp"), {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -4674,7 +5422,7 @@ export const api = {
     metadata?: Record<string, unknown>;
   }) {
     return request<{ session: CodingAgentSession; merge_report?: Record<string, unknown> }>(
-      "/api/coding/agent/sessions",
+      defaultspackContractRoute("api/coding/agent/sessions"),
       {
         method: "POST",
         body: JSON.stringify(payload),
@@ -4684,14 +5432,14 @@ export const api = {
 
   getCodingAgentSessionStatus(sessionId: string) {
     return request<CodingAgentSession>(
-      withQuery("/api/coding/agent/sessions/status", { session_id: sessionId }),
+      withQuery(defaultspackContractRoute("api/coding/agent/sessions/status"), { session_id: sessionId }),
       { cache: "no-store" },
     );
   },
 
   getCodingAgentMergeReport(sessionId: string) {
     return request<{ session_id: string; merge_report: Record<string, unknown> }>(
-      withQuery("/api/coding/agent/sessions/merge-report", { session_id: sessionId }),
+      withQuery(defaultspackContractRoute("api/coding/agent/sessions/merge-report"), { session_id: sessionId }),
       { cache: "no-store" },
     );
   },

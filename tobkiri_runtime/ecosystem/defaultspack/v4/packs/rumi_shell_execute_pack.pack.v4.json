@@ -1,0 +1,165 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:b78584bdcd26c3ef9195da7cca10d883f3443a3dd7d6d452e91415bc1b9e43aa",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+      "kind": "executable",
+      "path": "runtime/execute.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.shell.execute.v1",
+      "operations": [
+        "rumi_shell_execute_pack.shell-prepare",
+        "rumi_shell_execute_pack.shell-execute"
+      ],
+      "revision_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
+      "id": "rumi_shell_execute_pack.shell-execute.service",
+      "implementation_digest": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_shell_execute_pack.shell-execute"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
+      "id": "rumi_shell_execute_pack.shell-prepare.service",
+      "implementation_digest": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_shell_execute_pack.shell-prepare"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:83702422ade2adc0814aa3c70e6810564f8dda333500c0e2ae446e3163134e25",
+    "artifact_set_digest": "sha256:badac9cdb3925ad12eae6b6ce08a0a0ade3ade67624318cec7ac7d4dbb4d9f7d",
+    "contract_catalog_digest": "sha256:4bc5009f7b9bce931ecfe88955cf201a44aa6ea375daaa9615186f40d67f1ba8"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.shell.execute.v1",
+      "rumi:ecosystem/rumi_shell_execute_pack",
+      "rumi_shell_execute_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_shell_execute_pack.shell-execute",
+      "owner": "rumi_shell_execute_pack",
+      "contract_reference": "tobkiri.service.shell.execute.v1",
+      "provider_id": "rumi_shell_execute_pack.shell-execute.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_shell_execute_pack.shell-prepare",
+      "owner": "rumi_shell_execute_pack",
+      "contract_reference": "tobkiri.service.shell.execute.v1",
+      "provider_id": "rumi_shell_execute_pack.shell-prepare.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:afc4be167b207b364b6f7b5907264bb735def147c56aab45613657d8d4e97116",
+    "display_name": "Rumi Shell Execute",
+    "id": "rumi_shell_execute_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_shell_execute_pack/pack.v4.json",
+    "source_digest": "sha256:83702422ade2adc0814aa3c70e6810564f8dda333500c0e2ae446e3163134e25",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:a75b2947305f9f2ec0514bafca59b5ff155068233834959eaac0471828848b52",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:ecf1b8fe8c3e7c77ce5ca0c372e4ca44193fc0a2f9251fbc551564f22d0536e0",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_shell_execute_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:83702422ade2adc0814aa3c70e6810564f8dda333500c0e2ae446e3163134e25"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_shell_execute_pack.shell-execute.service",
+      "owner": "rumi_shell_execute_pack",
+      "contract_reference": "tobkiri.service.shell.execute.v1",
+      "operations": [
+        "rumi_shell_execute_pack.shell-execute"
+      ]
+    },
+    {
+      "provider_id": "rumi_shell_execute_pack.shell-prepare.service",
+      "owner": "rumi_shell_execute_pack",
+      "contract_reference": "tobkiri.service.shell.execute.v1",
+      "operations": [
+        "rumi_shell_execute_pack.shell-prepare"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "shell.execute",
+      "shell.inspect",
+      "workspace.metadata.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.shell.inspect.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_shell_policy_pack": ">=1.0.0,<2.0.0",
+      "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

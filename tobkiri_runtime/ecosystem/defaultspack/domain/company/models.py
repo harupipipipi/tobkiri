@@ -5,14 +5,22 @@ import time
 import uuid
 from typing import Any
 
+from domain.agent.placement_catalog import (
+    DEFAULT_MODEL as PLACEMENT_DEFAULT_MODEL,
+    DEFAULT_PLACEMENT_MAP_ID,
+    legacy_agent_specs,
+)
+
 
 SCHEMA_VERSION = 1
 DEFAULT_COMPANY_ID = "operations-company"
-DEFAULT_COMPANY_NAME = "Rumi Operations Company"
-DEFAULT_COMPANY_DESCRIPTION = "Persistent team workspace for coordinated AI roles."
+DEFAULT_COMPANY_NAME = "Tobkiri Operations Team"
+DEFAULT_COMPANY_DESCRIPTION = (
+    "Placement-backed Team workspace coordinated by the Main Agent."
+)
 DEFAULT_CONVERSATION_GROUP_ID = "company:operations-company"
 DEFAULT_CHANNEL_ID = "ops-company"
-DEFAULT_MODEL = "stub/default"
+DEFAULT_MODEL = PLACEMENT_DEFAULT_MODEL
 
 
 def gen_id(prefix: str = "") -> str:
@@ -32,7 +40,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 
-DEFAULT_AGENT_SPECS: list[dict[str, Any]] = [
+_LEGACY_DEFAULT_AGENT_SPECS: list[dict[str, Any]] = [
     {
         "agent_id": "client_manager",
         "role_key": "client_manager",
@@ -184,9 +192,53 @@ DEFAULT_AGENT_SPECS: list[dict[str, Any]] = [
     },
 ]
 
+# Compatibility consumers retain ``DEFAULT_AGENT_SPECS``, but its canonical
+# values now come from Subagent Definitions and the default Placement Map.
+DEFAULT_AGENT_SPECS: list[dict[str, Any]] = legacy_agent_specs()
+
 
 def default_agents() -> list[dict[str, Any]]:
     return [normalize_agent(agent) for agent in DEFAULT_AGENT_SPECS]
+
+
+def apply_builtin_placement_projection(
+    agents: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Migrate known legacy members without discarding user model choices."""
+
+    projected = {
+        agent["agent_id"]: normalize_agent(agent)
+        for agent in DEFAULT_AGENT_SPECS
+    }
+    result = copy.deepcopy(agents)
+    for agent_id, canonical in projected.items():
+        current = result.get(agent_id)
+        if not isinstance(current, dict):
+            result[agent_id] = canonical
+            continue
+        preserved = {
+            key: current.get(key)
+            for key in ("model", "status", "created_at")
+            if current.get(key) not in (None, "")
+        }
+        current_metadata = (
+            current.get("metadata")
+            if isinstance(current.get("metadata"), dict)
+            else {}
+        )
+        result[agent_id] = normalize_agent(
+            {
+                **current,
+                **canonical,
+                **preserved,
+                "metadata": {
+                    **current_metadata,
+                    **canonical.get("metadata", {}),
+                    "migrated_to_placement": True,
+                },
+            }
+        )
+    return result
 
 
 def default_channel(now: str | None = None) -> dict[str, Any]:
@@ -221,6 +273,34 @@ def normalize_agent(agent: dict[str, Any]) -> dict[str, Any]:
     item["allowed_tools"] = list(item.get("allowed_tools") or [])
     item["context_limit"] = int(item.get("context_limit") or 64000)
     item["aliases"] = [str(alias).strip().lstrip("@") for alias in item.get("aliases", []) if str(alias).strip()]
+    item["agent_kind"] = str(
+        item.get("agent_kind")
+        or ("main" if agent_id == "client_manager" else "subagent")
+    )
+    if item["agent_kind"] not in {"main", "subagent"}:
+        item["agent_kind"] = "subagent"
+    item["runtime_kind"] = str(
+        item.get("runtime_kind") or "agent_run"
+    )
+    item["subagent_role"] = str(
+        item.get("subagent_role") or item["role_key"] or "custom"
+    )
+    item["placement_id"] = str(
+        item.get("placement_id")
+        or (
+            agent_id
+            if agent_id in {value["agent_id"] for value in DEFAULT_AGENT_SPECS}
+            else f"{agent_id}-subagent"
+        )
+    )
+    item["placement_map_id"] = str(
+        item.get("placement_map_id") or DEFAULT_PLACEMENT_MAP_ID
+    )
+    item["protocol_membership"] = [
+        str(value)
+        for value in item.get("protocol_membership", [])
+        if str(value).strip()
+    ]
     item.setdefault("status", "idle")
     item.setdefault("metadata", {})
     item.setdefault("created_at", timestamp())
@@ -255,6 +335,13 @@ def normalize_company(company: dict[str, Any]) -> dict[str, Any]:
         }
     else:
         item["agents"] = {}
+    if item["id"] == DEFAULT_COMPANY_ID:
+        item["agents"] = apply_builtin_placement_projection(item["agents"])
+        item["metadata"] = {
+            **item["metadata"],
+            "placement_map_id": "default-operations",
+            "canonical_agent_model": "main-subagent-placement",
+        }
     if not isinstance(item["channels"], dict):
         item["channels"] = {}
     if not isinstance(item["messages"], dict):

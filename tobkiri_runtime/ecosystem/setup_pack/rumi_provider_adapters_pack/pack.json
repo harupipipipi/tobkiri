@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_provider_adapters_pack",
+  "display_name": "Rumi Provider Adapters Pack",
+  "description": "Provider-neutral protocol execution using registry-selected endpoints and scoped credentials.",
+  "target_pack_id": "rumi_provider_adapters_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "high",
+  "supports_all_ok": false,
+  "depends_on": ["rumi_provider_registry_pack", "rumi_credential_broker_pack"],
+  "required_permissions": ["ai.provider.generate", "ai.provider.stream", "ai.provider.embedding", "ai.provider.image"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.provider_adapters", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["No environment secret injection.", "Only registry-selected endpoints are called.", "Credentials are resolved through caller-bound handles."]
+}
+

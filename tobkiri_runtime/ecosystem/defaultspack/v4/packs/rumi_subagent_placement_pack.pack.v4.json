@@ -1,0 +1,334 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:1d5c46998fe774e8e62d0987dd9c0aa1abb674c47c62bbaced5a78653e7e5940",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9",
+      "kind": "executable",
+      "path": "runtime/compiler.py"
+    },
+    {
+      "digest": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227",
+      "kind": "executable",
+      "path": "runtime/topology.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.subagent.placement.compile.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-compiler"
+      ],
+      "revision_digest": "sha256:fa8e324fbf3d343bf6ba0993ae1c33c1d60c00b841a91f122631ba4802eeca8c"
+    },
+    {
+      "contract_id": "tobkiri.service.subagent.placement.patch.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-patch"
+      ],
+      "revision_digest": "sha256:9014240b6e54d160eb0fe65ac8011b92aeb60d250f5586b260277534b59cc664"
+    },
+    {
+      "contract_id": "tobkiri.service.subagent.placement.stage.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-core-stage"
+      ],
+      "revision_digest": "sha256:9838253ef8ea929a23fb62599989ba10f2cec5a386de92ce6ae470927ce30aab"
+    },
+    {
+      "contract_id": "tobkiri.service.subagent.protocol.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-protocols"
+      ],
+      "revision_digest": "sha256:3455347724726799cb884a186d29e3435e8d67d90bf60aad263fab7ca1ce09a7"
+    },
+    {
+      "contract_id": "tobkiri.service.subagent.runtime.assignment.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-assignment"
+      ],
+      "revision_digest": "sha256:3ad4f81123132b1bd31d3af7fcfc659b3f8280ac3bc98391811707a148632e3d"
+    },
+    {
+      "contract_id": "tobkiri.service.subagent.topology.compile.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-topology"
+      ],
+      "revision_digest": "sha256:8f1b901213cce8edaa9ce321aad9e16a890452a35148407f6dcf89a78230d793"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:3ad4f81123132b1bd31d3af7fcfc659b3f8280ac3bc98391811707a148632e3d",
+      "id": "rumi_subagent_placement_pack.subagent-placement.assignment",
+      "implementation_digest": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-assignment"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:3455347724726799cb884a186d29e3435e8d67d90bf60aad263fab7ca1ce09a7",
+      "id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols",
+      "implementation_digest": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-protocols"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:fa8e324fbf3d343bf6ba0993ae1c33c1d60c00b841a91f122631ba4802eeca8c",
+      "id": "rumi_subagent_placement_pack.subagent-placement.compiler",
+      "implementation_digest": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-compiler"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:9838253ef8ea929a23fb62599989ba10f2cec5a386de92ce6ae470927ce30aab",
+      "id": "rumi_subagent_placement_pack.subagent-placement.core-stage",
+      "implementation_digest": "sha256:e9eb41aacc4a25834a846926bc35ac423dcb77a811a32215c3232951d0a74bc9",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-core-stage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:9014240b6e54d160eb0fe65ac8011b92aeb60d250f5586b260277534b59cc664",
+      "id": "rumi_subagent_placement_pack.subagent-placement.patch",
+      "implementation_digest": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-patch"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:8f1b901213cce8edaa9ce321aad9e16a890452a35148407f6dcf89a78230d793",
+      "id": "rumi_subagent_placement_pack.subagent-placement.topology",
+      "implementation_digest": "sha256:ff18e35ef82970ccea62c2296b8b9ffabd1a0a1819818216571d6ffb5fd70227",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-topology"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:8c3a955044bdb6753c5503a86b9b98b7f0dfe08db858ef13734910fb599ff066",
+    "artifact_set_digest": "sha256:83eeed1e3313572775185fad70b518fec9b9ac7365beb76b49f25d4397d5c296",
+    "contract_catalog_digest": "sha256:afc5c704c3d8640be4bf41ee19950e5a9fc101d0a3b4038ccad2d0cf2efa5872"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.subagent.placement.compile.v1",
+      "rumi.service.subagent.placement.patch.v1",
+      "rumi.service.subagent.placement.stage.v1",
+      "rumi.service.subagent.protocol.v1",
+      "rumi.service.subagent.runtime.assignment.v1",
+      "rumi.service.subagent.topology.compile.v1",
+      "rumi:ecosystem/rumi_subagent_placement_pack",
+      "rumi_subagent_placement_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2028-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_subagent_placement_pack.subagent-placement-assignment",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.runtime.assignment.v1",
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.assignment",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_subagent_placement_pack.subagent-placement-protocols",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.protocol.v1",
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_subagent_placement_pack.subagent-placement-compiler",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.compile.v1",
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.compiler",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_subagent_placement_pack.subagent-placement-core-stage",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.stage.v1",
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.core-stage",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_subagent_placement_pack.subagent-placement-patch",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.patch.v1",
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.patch",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_subagent_placement_pack.subagent-placement-topology",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.topology.compile.v1",
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.topology",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:31ec471fe94ea6537bf0083d6f940a5a5620d61b8ecd8b54d7fea0b3f3e25a5e",
+    "display_name": "Tobkiri Subagent Placement",
+    "id": "rumi_subagent_placement_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_subagent_placement_pack/pack.v4.json",
+    "source_digest": "sha256:8c3a955044bdb6753c5503a86b9b98b7f0dfe08db858ef13734910fb599ff066",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:1cc910b9085ecb6acad829efd6a09b2f9ad6170d9ca011c2efdb1dbcd59190f5",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:1463badff749cc3017434968c9eac5c4245e4c838b29128a5d57b7c611cc4ea5",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_subagent_placement_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:8c3a955044bdb6753c5503a86b9b98b7f0dfe08db858ef13734910fb599ff066"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.assignment",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.runtime.assignment.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-assignment"
+      ]
+    },
+    {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.protocol.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-protocols"
+      ]
+    },
+    {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.compiler",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.compile.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-compiler"
+      ]
+    },
+    {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.core-stage",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.stage.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-core-stage"
+      ]
+    },
+    {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.patch",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.patch.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-patch"
+      ]
+    },
+    {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.topology",
+      "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.topology.compile.v1",
+      "operations": [
+        "rumi_subagent_placement_pack.subagent-placement-topology"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "host.authority.consume",
+      "subagent.catalog.read",
+      "subagent.placement.compile",
+      "subagent.placement.patch",
+      "subagent.placement.read",
+      "subagent.runtime.assign",
+      "subagent.topology.compile"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.resource.subagent.catalog.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.resource.subagent.placement.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "chain",
+        "contract_id": "tobkiri.service.subagent.placement.stage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.subagent.protocol.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

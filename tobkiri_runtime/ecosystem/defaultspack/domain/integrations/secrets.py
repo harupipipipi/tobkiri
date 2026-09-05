@@ -28,9 +28,13 @@ def _pack_root() -> Path:
 
 
 def _secrets_dir(pack_root: Path | None = None) -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
-    if override:
-        return Path(override)
+    if pack_root is None:
+        configured_override = os.getenv("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
+        if configured_override:
+            return Path(configured_override).expanduser()
+        configured_user_data = os.getenv("RUMI_USER_DATA", "").strip()
+        if configured_user_data:
+            return Path(configured_user_data).expanduser() / "secrets"
     return (pack_root or _pack_root()) / "user_data" / "secrets"
 
 
@@ -64,9 +68,6 @@ def get_integration_secret(provider_id: str, key: str, *, pack_root: Path | None
     normalized_key = str(key or "").strip()
     if normalized_key not in integration_secret_keys(normalized_provider):
         return ""
-    env_value = os.environ.get(normalized_key, "").strip()
-    if env_value:
-        return env_value
     value = ""
     if (_secrets_dir(pack_root) / f"{normalized_key}.json").exists():
         value = _get_store(pack_root)._internal_read_value(

@@ -66,7 +66,7 @@ def test_manual_service_include_and_tool_exclude():
             include=[_target("service", "github")],
             exclude=[_target("tool", "github.create_issue")],
         ),
-        context={},
+        context={"principal_capabilities": ["developer"]},
     )
 
     assert decision.mode == "manual"
@@ -81,7 +81,7 @@ def test_none_mode_selects_no_tools():
         "webで検索して",
         _tools(),
         selection=_selection(mode="none"),
-        context={},
+        context={"principal_capabilities": ["developer"]},
     )
 
     assert decision.selected_tools == []
@@ -105,7 +105,7 @@ def test_block_permission_removes_candidate_but_confirm_remains_selectable():
         "GitHub issueを作成して",
         _tools(),
         selection=_selection(mode="auto", strategy="all_schemas"),
-        context={},
+        context={"principal_capabilities": ["developer"]},
     )
     selected_ids = [tool["tool_id"] for tool in decision.selected_tools]
 
@@ -122,13 +122,16 @@ def test_computer_tool_requires_explicit_intent():
         "検索して要約して",
         _tools(),
         selection=_selection(mode="auto", strategy="all_schemas"),
-        context={},
+        context={"principal_capabilities": ["developer"]},
     )
     with_intent = service.select(
         "Chromeを開いて画面操作して",
         _tools(),
         selection=_selection(mode="auto", strategy="all_schemas"),
-        context={"user_requested_computer_use": True},
+        context={
+            "user_requested_computer_use": True,
+            "principal_capabilities": ["developer"],
+        },
     )
 
     assert "computer_use" not in [tool["tool_id"] for tool in without_intent.selected_tools]
@@ -160,7 +163,7 @@ def test_unknown_connection_status_fails_closed():
         "search",
         tools,
         selection=_selection(mode="auto", strategy="all_schemas"),
-        context={},
+        context={"principal_capabilities": ["developer"]},
     )
 
     assert [tool["tool_id"] for tool in decision.selected_tools] == ["web_search"]
@@ -174,6 +177,7 @@ def test_conversation_preferences_apply_when_turn_has_no_override():
         _tools(),
         selection=_selection(),
         context={
+            "principal_capabilities": ["developer"],
             "conversation_tool_preferences": {
                 "mode": "manual",
                 "include": [{"kind": "service", "id": "github"}],

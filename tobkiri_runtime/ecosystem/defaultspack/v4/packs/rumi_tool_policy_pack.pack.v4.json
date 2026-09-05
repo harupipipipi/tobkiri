@@ -1,0 +1,120 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:63e5a7021c34ba23517d558596707ea920248d6a9494f8584b5c3006001b8f73",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:cedb382aae5182ab28ecd1ac7cac4b8e48e3708ba06c96848afb4fdb75c1c8f1",
+      "kind": "executable",
+      "path": "runtime/policy.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.policy.evaluate.v1",
+      "operations": [
+        "rumi_tool_policy_pack.tool-policy-evaluate"
+      ],
+      "revision_digest": "sha256:8069c169627bafd13bc42ce9e21bd6048d944492cce60cd739717cfedb43c780"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:8069c169627bafd13bc42ce9e21bd6048d944492cce60cd739717cfedb43c780",
+      "id": "rumi_tool_policy_pack.tool-policy.evaluate",
+      "implementation_digest": "sha256:cedb382aae5182ab28ecd1ac7cac4b8e48e3708ba06c96848afb4fdb75c1c8f1",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_policy_pack.tool-policy-evaluate"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:37959e22040389f76db4043abdf0f1975b6f6c221b4c8a81e327893d4dcaf013",
+    "artifact_set_digest": "sha256:4caddae2c68188e4959fdbc7e5eb43d315cbff8adac35700a64f3f248780f1e6",
+    "contract_catalog_digest": "sha256:7df56386eaec18f11deba07343324dad1f42b0eea7f84da8add4ca1cf12f1dfe"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.policy.evaluate.v1",
+      "rumi:ecosystem/rumi_tool_policy_pack",
+      "rumi_tool_policy_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_policy_pack.tool-policy-evaluate",
+      "owner": "rumi_tool_policy_pack",
+      "contract_reference": "tobkiri.service.tool.policy.evaluate.v1",
+      "provider_id": "rumi_tool_policy_pack.tool-policy.evaluate",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:da2d0697b8feb3db9c7abd4c6aa7cb4e3ad62aaadc496740cc19ba4df56920fe",
+    "display_name": "Rumi Tool Policy",
+    "id": "rumi_tool_policy_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_policy_pack/pack.v4.json",
+    "source_digest": "sha256:37959e22040389f76db4043abdf0f1975b6f6c221b4c8a81e327893d4dcaf013",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:ff5487e8a006305cac4974fbb829dac64a340e2c7fed65e5cdd791ab52b416c3",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:b66aa21577354cd069f15969344bced48deefe95be83329f8cb40c6098828cc2",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_tool_policy_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:37959e22040389f76db4043abdf0f1975b6f6c221b4c8a81e327893d4dcaf013"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_policy_pack.tool-policy.evaluate",
+      "owner": "rumi_tool_policy_pack",
+      "contract_reference": "tobkiri.service.tool.policy.evaluate.v1",
+      "operations": [
+        "rumi_tool_policy_pack.tool-policy-evaluate"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.policy.evaluate"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

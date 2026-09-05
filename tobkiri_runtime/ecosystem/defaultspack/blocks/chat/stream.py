@@ -5,7 +5,8 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error
-from domain.ai_client.client import AIClient
+from domain.ai_client.gateway import AIClient
+from domain.ai_client.gateway_contract_client import ContractLLMGateway
 from domain.chat.run_request import validate_chat_run_input
 from domain.chat.idempotency import IdempotencyConflictError, reserve_chat_operation
 from domain.chat.store import ChatStore
@@ -28,7 +29,11 @@ def _engine_events(input_data, context):
     try:
         engine_context = dict(context or {}) if isinstance(context, dict) else {}
         engine_context.setdefault("run_source", "blocks.chat.stream")
-        for event in ChatRunEngine(client=AIClient()).stream(input_data, engine_context, stream_mode=True):
+        for event in ChatRunEngine(gateway=ContractLLMGateway()).stream(
+            input_data,
+            engine_context,
+            stream_mode=True,
+        ):
             legacy = to_legacy_chat_stream_event(event)
             if legacy is not None:
                 yield legacy

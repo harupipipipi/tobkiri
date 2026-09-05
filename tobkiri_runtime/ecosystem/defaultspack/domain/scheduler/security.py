@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from domain.runtime_config import scheduler_config, tool_policy_config
+from domain.runtime_config import (
+    scheduler_config,
+    scheduler_jobs_path_override,
+    tool_policy_config,
+)
 
 
 class SchedulerPolicyError(PermissionError):
@@ -15,10 +19,11 @@ def scheduler_enabled() -> bool:
 
 
 def resolve_jobs_path() -> Path | None:
-    raw = str(scheduler_config().get("jobs_path") or "").strip()
+    """Resolve an explicitly configured scheduler jobs file, if any."""
+    raw = scheduler_jobs_path_override()
     if not raw:
         return None
-    path = Path(raw)
+    path = Path(raw).expanduser()
     if path.is_absolute():
         return path
     return Path(__file__).resolve().parents[2] / path

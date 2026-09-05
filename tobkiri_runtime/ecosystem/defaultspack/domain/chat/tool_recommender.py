@@ -7,6 +7,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from domain.frontend_settings import frontend_settings_path
+
 
 TOOL_ASSIST_DEFAULT_MODE = "auto"
 TOOL_ASSIST_AUTO_MODE = "auto"
@@ -135,8 +137,7 @@ def search_tools(
 
 
 def _read_frontend_settings(pack_root: Path | None = None) -> dict[str, Any]:
-    root = pack_root or Path(__file__).resolve().parents[2]
-    path = root / "user_data" / "shared" / "frontend_settings.json"
+    path = frontend_settings_path(pack_root)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

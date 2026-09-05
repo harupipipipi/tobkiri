@@ -1,0 +1,82 @@
+{
+  "setup_api_version": "io.tobkiri.setup-state.v4",
+  "state": "review_required",
+  "denial_diagnostic": null,
+  "packs": [
+    {"pack_id": "defaultspack", "display_name": "Tobkiri Defaults"}
+  ],
+  "recommended_default_profile": {
+    "available": true,
+    "profile_id": "defaults",
+    "name": "Tobkiri Defaults",
+    "base_pack": "defaults-basepack",
+    "shell": {
+      "provider_id": "shell.tauri.default",
+      "contract_id": "app.shell.v1"
+    },
+    "pack_ids": ["defaultspack"],
+    "packs": [
+      {"pack_id": "defaultspack", "display_name": "Tobkiri Defaults"}
+    ],
+    "conversation_provider": "defaultspack.conversation",
+    "confirmation": {
+      "confirmation_api_version": "io.tobkiri.defaults-confirmation.v1",
+      "operation_id": "defaults.activate",
+      "profile_id": "defaults",
+      "catalog_revision": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "profile_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "plan_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "authority_snapshot_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "security_epoch": 1,
+      "base": {
+        "pack_id": "defaults-basepack",
+        "artifact_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "definition_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "shell": {
+        "provider_id": "shell.tauri.default",
+        "pack_id": "shell.tauri.default",
+        "artifact_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "executable_artifact_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "contract_id": "app.shell.v1",
+        "definition_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      },
+      "bindings": [
+        {
+          "caller_function_id": "shell.tauri.default",
+          "pack_id": "defaultspack",
+          "artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "function_principal": {
+            "parent_artifact_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "function_implementation_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "function_id": "defaultspack.conversation",
+            "contract_revision_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "operation_id": "complete"
+          },
+          "contract_id": "conversation.turn.v1",
+          "operation_id": "complete",
+          "domain_kind": "pack_vm",
+          "executable_catalog_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "variant_id": "defaultspack.conversation.macos-arm64",
+          "platform": "macos",
+          "architecture": "arm64",
+          "runtime_abi": "python3.13",
+          "backend": "lima.packvm",
+          "execution_kind": "pack_vm",
+          "authority_reference": "authority-ref:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "requested_scope_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "adapter_digests": []
+        }
+      ],
+      "confirmation_digest": "sha256:12d855e6a199214a92b361be4a1f5f022b7323f999eadb5d20ad82ea9f98bed5"
+    }
+  },
+  "required_transaction": [
+    "catalog.verify",
+    "profile.resolve",
+    "authority.snapshot",
+    "activation.prepare",
+    "activation.commit",
+    "runtime.capture"
+  ]
+}

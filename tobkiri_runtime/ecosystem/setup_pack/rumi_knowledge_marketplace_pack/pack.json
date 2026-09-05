@@ -20,7 +20,7 @@
     "learned_skills": "handoff_to_rumi_memory_knowledge_pack",
     "connector_cards": "handoff_to_rumi_connector_gateway_pack"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Marketplace curation stays optional because install review, provenance ledgers, and blacklist decisions are advanced governance flows beyond defaultspack's baseline grants.",
     "criteria": [

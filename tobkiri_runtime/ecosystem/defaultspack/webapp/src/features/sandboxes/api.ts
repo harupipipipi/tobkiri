@@ -1,4 +1,9 @@
-import { defaultspackApiFetch, explainDefaultspackApiError } from "../../lib/api";
+import {
+  defaultspackApiFetch,
+  defaultspackContractRoute,
+  explainDefaultspackApiError,
+  type DefaultspackContractRoute,
+} from "../../lib/api";
 import { normalizeDesktopProvisioningStatus, normalizeDesktopStatus, normalizeSandboxState } from "./types";
 import type {
   CreateDesktopRequest,
@@ -35,7 +40,7 @@ function requestId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: DefaultspackContractRoute, init?: RequestInit): Promise<T> {
   const response = await defaultspackApiFetch(path, init);
   let payload: ApiEnvelope<T>;
   try {
@@ -173,7 +178,7 @@ function unwrapDesktopListPayload(payload: unknown): DesktopListPayload {
 }
 
 async function requestDesktopList(): Promise<{ desktops: DesktopInstance[] }> {
-  const response = await defaultspackApiFetch("/api/desktops", { cache: "no-store" });
+  const response = await defaultspackApiFetch(defaultspackContractRoute("api/desktops"), { cache: "no-store" });
   let payload: unknown;
   try {
     payload = await response.json();
@@ -227,7 +232,7 @@ export async function fetchDesktopFrame(
   if (options.quality) query.set("quality", options.quality);
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  const response = await defaultspackApiFetch(`/api/desktops/${encodeId(seatId)}/frame${suffix}`, {
+  const response = await defaultspackApiFetch(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/frame${suffix}`), {
     method: "GET",
     headers: {
       Accept: "image/webp,image/jpeg,image/png",
@@ -260,18 +265,18 @@ export async function fetchDesktopFrame(
 
 export const sandboxesApi = {
   listRuntimeProviders() {
-    return request<RuntimeProvidersResponse>("/api/runtime/providers", { cache: "no-store" });
+    return request<RuntimeProvidersResponse>(defaultspackContractRoute("api/runtime/providers"), { cache: "no-store" });
   },
 
   runRuntimeDoctor() {
-    return request<RuntimeDoctorResult>("/api/runtime/doctor", {
+    return request<RuntimeDoctorResult>(defaultspackContractRoute("api/runtime/doctor"), {
       method: "POST",
       body: JSON.stringify({ request_id: requestId("doctor") }),
     });
   },
 
   ensureRuntime(providerId?: string | null) {
-    return request<RuntimeOperation>("/api/runtime/ensure", {
+    return request<RuntimeOperation>(defaultspackContractRoute("api/runtime/ensure"), {
       method: "POST",
       body: JSON.stringify({
         request_id: requestId("ensure"),
@@ -281,22 +286,22 @@ export const sandboxesApi = {
   },
 
   getRuntimeOperation(operationId: string) {
-    return request<RuntimeOperation>(`/api/runtime/operations/${encodeId(operationId)}`, { cache: "no-store" });
+    return request<RuntimeOperation>(defaultspackContractRoute(`api/runtime/operations/${encodeId(operationId)}`), { cache: "no-store" });
   },
 
   cancelRuntimeOperation(operationId: string) {
-    return request<RuntimeOperation>(`/api/runtime/operations/${encodeId(operationId)}/cancel`, {
+    return request<RuntimeOperation>(defaultspackContractRoute(`api/runtime/operations/${encodeId(operationId)}/cancel`), {
       method: "POST",
       body: JSON.stringify({ request_id: requestId("runtime-cancel") }),
     });
   },
 
   listSandboxTemplates() {
-    return request<{ templates: SandboxTemplate[] }>("/api/sandbox/templates", { cache: "no-store" });
+    return request<{ templates: SandboxTemplate[] }>(defaultspackContractRoute("api/sandbox/templates"), { cache: "no-store" });
   },
 
   listSandboxes() {
-    return request<{ sandboxes: SandboxInstance[] }>("/api/sandboxes", { cache: "no-store" })
+    return request<{ sandboxes: SandboxInstance[] }>(defaultspackContractRoute("api/sandboxes"), { cache: "no-store" })
       .then((payload) => ({ sandboxes: payload.sandboxes.map(normalizeSandboxInstance) }));
   },
 
@@ -305,7 +310,7 @@ export const sandboxesApi = {
   },
 
   createDesktop(payload: CreateDesktopRequest) {
-    return request<DesktopInstance>("/api/desktops", {
+    return request<DesktopInstance>(defaultspackContractRoute("api/desktops"), {
       method: "POST",
       body: JSON.stringify({
         ...payload,
@@ -315,7 +320,7 @@ export const sandboxesApi = {
   },
 
   startDesktop(seatId: string, accessKey?: string | null) {
-    return request<DesktopInstance>(`/api/desktops/${encodeId(seatId)}/start`, {
+    return request<DesktopInstance>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/start`), {
       method: "POST",
       body: JSON.stringify({
         desktop_session_credential: accessKey || undefined,
@@ -325,7 +330,7 @@ export const sandboxesApi = {
   },
 
   stopDesktop(seatId: string, accessKey?: string | null) {
-    return request<DesktopInstance>(`/api/desktops/${encodeId(seatId)}/stop`, {
+    return request<DesktopInstance>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/stop`), {
       method: "POST",
       body: JSON.stringify({
         desktop_session_credential: accessKey || undefined,
@@ -336,7 +341,7 @@ export const sandboxesApi = {
   },
 
   restartDesktop(seatId: string, accessKey?: string | null) {
-    return request<DesktopInstance>(`/api/desktops/${encodeId(seatId)}/restart`, {
+    return request<DesktopInstance>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/restart`), {
       method: "POST",
       body: JSON.stringify({
         desktop_session_credential: accessKey || undefined,
@@ -350,7 +355,7 @@ export const sandboxesApi = {
       confirm_destructive: "true",
       request_id: requestId("desktop-delete"),
     });
-    return request<{ deleted: boolean; seat_id: string }>(`/api/desktops/${encodeId(seatId)}?${query.toString()}`, {
+    return request<{ deleted: boolean; seat_id: string }>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}?${query.toString()}`), {
       method: "DELETE",
       headers: {
         ...(accessKey ? { "X-Rumi-Desktop-Session-Credential": accessKey } : {}),
@@ -367,7 +372,7 @@ export const sandboxesApi = {
       access_key?: string;
     },
   ) {
-    return request<DesktopInstance>(`/api/desktops/${encodeId(seatId)}/rules`, {
+    return request<DesktopInstance>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/rules`), {
       method: "POST",
       body: JSON.stringify({
         ...payload,
@@ -377,7 +382,7 @@ export const sandboxesApi = {
   },
 
   requestDesktopAccess(seatId: string, reason?: string) {
-    return request<DesktopAccessRequest>(`/api/desktops/${encodeId(seatId)}/access-requests`, {
+    return request<DesktopAccessRequest>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/access-requests`), {
       method: "POST",
       body: JSON.stringify({
         reason,
@@ -387,7 +392,7 @@ export const sandboxesApi = {
   },
 
   issueDesktopExchange(seatId: string, operations: string[]) {
-    return request<{ exchange_code: string }>(`/api/desktops/${encodeId(seatId)}/access-exchanges`, {
+    return request<{ exchange_code: string }>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/access-exchanges`), {
       method: "POST",
       body: JSON.stringify({ operations, request_id: requestId("desktop-exchange-issue") }),
     });
@@ -395,7 +400,7 @@ export const sandboxesApi = {
 
   redeemDesktopExchange(exchangeCode: string) {
     return request<{ session_credential: string; credential_id: string; expires_at: number }>(
-      "/api/desktop-access/exchange",
+      defaultspackContractRoute("api/desktop-access/exchange"),
       {
         method: "POST",
         body: JSON.stringify({
@@ -408,21 +413,21 @@ export const sandboxesApi = {
 
   listDesktopGrants(seatId: string) {
     return request<{ grants: Array<Record<string, unknown>> }>(
-      `/api/desktops/${encodeId(seatId)}/access-grants`,
+      defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/access-grants`),
       { cache: "no-store" },
     );
   },
 
   revokeDesktopGrant(seatId: string, grantId: string) {
     return request<{ revoked: boolean }>(
-      `/api/desktops/${encodeId(seatId)}/access-grants/${encodeId(grantId)}`,
+      defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/access-grants/${encodeId(grantId)}`),
       { method: "DELETE" },
     );
   },
 
   grantDesktopAccess(seatId: string, accessRequestId: string, approved = true) {
     return request<DesktopAccessRequest>(
-      `/api/desktops/${encodeId(seatId)}/access-requests/${encodeId(accessRequestId)}/grant`,
+      defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/access-requests/${encodeId(accessRequestId)}/grant`),
       {
         method: "POST",
         body: JSON.stringify({
@@ -436,7 +441,7 @@ export const sandboxesApi = {
   fetchDesktopFrame,
 
   acquireDesktopControl(seatId: string, accessKey?: string | null) {
-    return request<DesktopControlLeaseGrant>(`/api/desktops/${encodeId(seatId)}/control/acquire`, {
+    return request<DesktopControlLeaseGrant>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/control/acquire`), {
       method: "POST",
       body: JSON.stringify({
         desktop_session_credential: accessKey || undefined,
@@ -446,7 +451,7 @@ export const sandboxesApi = {
   },
 
   renewDesktopControl(seatId: string, leaseToken: string, accessKey?: string | null) {
-    return request<DesktopControlLeaseRenewal>(`/api/desktops/${encodeId(seatId)}/control/renew`, {
+    return request<DesktopControlLeaseRenewal>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/control/renew`), {
       method: "POST",
       body: JSON.stringify({
         desktop_session_credential: accessKey || undefined,
@@ -457,7 +462,7 @@ export const sandboxesApi = {
   },
 
   releaseDesktopControl(seatId: string, leaseToken: string, accessKey?: string | null) {
-    return request<{ released: boolean; seat_id: string }>(`/api/desktops/${encodeId(seatId)}/control/release`, {
+    return request<{ released: boolean; seat_id: string }>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/control/release`), {
       method: "POST",
       body: JSON.stringify({
         desktop_session_credential: accessKey || undefined,
@@ -468,7 +473,7 @@ export const sandboxesApi = {
   },
 
   sendDesktopInput(seatId: string, payload: DesktopInputRequest) {
-    return request<{ accepted: boolean; seat_id: string }>(`/api/desktops/${encodeId(seatId)}/input`, {
+    return request<{ accepted: boolean; seat_id: string }>(defaultspackContractRoute(`api/desktops/${encodeId(seatId)}/input`), {
       method: "POST",
       body: JSON.stringify({
         ...payload,

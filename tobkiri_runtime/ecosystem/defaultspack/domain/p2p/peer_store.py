@@ -59,7 +59,11 @@ class PeerRecord:
             capabilities=_string_list(value.get("capabilities")),
             allowed_company_ids=_string_list(value.get("allowed_company_ids")),
             label=str(value.get("label") or ""),
-            metadata=dict(value.get("metadata") if isinstance(value.get("metadata"), dict) else {}),
+            metadata=(
+                dict(value["metadata"])
+                if isinstance(value.get("metadata"), dict)
+                else {}
+            ),
             created_at=int(value.get("created_at") or _now_ms()),
             updated_at=int(value.get("updated_at") or _now_ms()),
         )

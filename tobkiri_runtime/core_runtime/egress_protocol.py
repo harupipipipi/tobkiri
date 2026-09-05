@@ -151,18 +151,18 @@ def _log_network_event(
     domain: str,
     port: int,
     allowed: bool,
-    reason: str = None,
-    method: str = None,
-    url: str = None,
-    final_url: str = None,
+    reason: str | None = None,
+    method: str | None = None,
+    url: str | None = None,
+    final_url: str | None = None,
     latency_ms: float = 0,
-    status_code: int = None,
-    error_type: str = None,
+    status_code: int | None = None,
+    error_type: str | None = None,
     redirect_hops: int = 0,
     bytes_read: int = 0,
-    blocked_reason: str = None,
-    max_response_bytes: int = None,
-    check_type: str = None
+    blocked_reason: str | None = None,
+    max_response_bytes: int | None = None,
+    check_type: str | None = None
 ) -> None:
     """監査ログにネットワークイベントを記録"""
     if audit_logger is None:

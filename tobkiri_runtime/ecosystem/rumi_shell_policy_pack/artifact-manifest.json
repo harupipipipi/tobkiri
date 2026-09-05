@@ -1,0 +1,1 @@
+{"schema_version":"rumi.artifact-manifest.v1","artifacts":[{"path":"runtime/policy.py","sha256":"416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed","role":"runtime"}]}

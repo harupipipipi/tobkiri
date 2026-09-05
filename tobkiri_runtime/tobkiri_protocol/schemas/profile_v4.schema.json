@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/profile.v4.schema.json",
+  "title": "Tobkiri Profile v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile_api_version", "profile_id", "state", "mode", "catalog_revision", "base", "shell", "packs", "requested_edges", "authority_references", "profile_authority_snapshot_digest", "provenance"],
+  "properties": {
+    "profile_api_version": {"const": "io.tobkiri.profile.v4"},
+    "profile_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "state": {"enum": ["needs_resolution", "resolved", "retired"]},
+    "mode": {"enum": ["interactive", "headless"]},
+    "catalog_revision": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "display_name": {"type": "string"},
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack_id", "artifact_digest", "definition_revision"],
+      "properties": {
+        "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+        "artifact_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "definition_revision": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "resolution": {"enum": ["verified_exact_artifact_required", "verified"]}
+      }
+    },
+    "shell": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["provider_id", "pack_id", "artifact_digest", "definition_revision", "contract_id", "platform", "architecture"],
+      "properties": {
+        "provider_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+        "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+        "artifact_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "definition_revision": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "contract_id": {"const": "app.shell.v1"},
+        "platform": {"enum": ["macos", "windows", "linux"]},
+        "architecture": {"enum": ["arm64", "x86_64"]}
+      }
+    },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pack_id", "artifact_digest"],
+        "properties": {
+          "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "artifact_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+          "role": {"enum": ["backend", "contribution", "provider", "application"]}
+        }
+      }
+    },
+    "content_projections": {
+      "type": "array",
+      "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json#/$defs/resolvedProjection"},
+      "uniqueItems": true
+    },
+    "requested_edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caller_function_id", "target_provider_id", "contract_id", "operation_id", "requested_scope_template"],
+        "properties": {
+          "caller_function_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "target_provider_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "contract_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"},
+          "operation_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+          "requested_scope_template": {"type": "object"},
+          "authority_reference": {"type": ["string", "null"], "pattern": "^authority-ref:[a-z0-9][a-z0-9._-]{7,127}$"}
+        }
+      }
+    },
+    "authority_references": {"type": "array", "items": {"type": "string", "pattern": "^authority-ref:[a-z0-9][a-z0-9._-]{7,127}$"}, "uniqueItems": true},
+    "profile_authority_snapshot_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "legacy_migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_digest", "legacy_version", "classification", "requires_review", "dropped_fields", "legacy_ids"],
+      "properties": {
+        "source_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "legacy_version": {"type": "string", "minLength": 1},
+        "classification": {"enum": ["legacy_profile", "legacy_opaque_packaged_process", "legacy_unresolved"]},
+        "requires_review": {"const": true},
+        "dropped_fields": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "legacy_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "command_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "provenance": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/provenance"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "resolved"}}},
+      "then": {
+        "properties": {
+          "catalog_revision": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "base": {"properties": {"artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "definition_revision": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {"const": "resolved"},
+          "mode": {"const": "interactive"}
+        },
+        "required": ["state", "mode"]
+      },
+      "then": {
+        "properties": {
+          "shell": {
+            "type": "object",
+            "properties": {
+              "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+              "definition_revision": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"mode": {"const": "headless"}}, "required": ["mode"]},
+      "then": {"properties": {"shell": {"type": "null"}}}
+    }
+  ]
+}

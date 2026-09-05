@@ -1,0 +1,11 @@
+{
+  "legacy_id": "defaults.echo",
+  "target_contract": "rumi.service.example.echo.v1",
+  "target_revision": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "owner": "core_runtime.interface_registry",
+  "projection": "legacy_to_v3_read_only",
+  "removal_wave": 10,
+  "sunset_at": "2027-12-31",
+  "rollback": "Remove the projection; the legacy registry remains authoritative."
+}
+

@@ -1,34 +1,78 @@
 {
-  "pack_id": "rumi_browser_form_operator_pack",
-  "pack_identity": "rumi:ecosystem/rumi_browser_form_operator_pack",
-  "display_name": "Rumi Browser Form Operator Pack",
-  "version": "0.1.0",
-  "description": "Declarative browser form recognition, field mapping, action staging, risk review, and submission safety pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "spec",
-      "policy",
-      "evidence",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative browser form recognition, field mapping, action staging, risk review, and submission safety pack.",
+  "display_name": "Rumi Browser Form Operator Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalogs": [
+        "catalog/form_action_recipes.yaml"
+      ],
+      "checklists": [
+        "specs/submission_review_checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "evidence_ledgers": [
+        "evidence/submission_receipt_evidence.schema.yaml"
+      ],
+      "examples": [
+        "examples/contact_form_fill.example.yaml",
+        "examples/checkout_review.example.yaml",
+        "examples/multi_step_application.example.yaml"
+      ],
+      "policies": [
+        "policies/form_action_safety.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/browser_form_operator.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/browser_form_operator.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "specs": [
+        "specs/form_taxonomy.yaml",
+        "specs/field_risk_classification.yaml",
+        "specs/semantic_dom_dependency.yaml",
+        "specs/submission_review_checklist.yaml"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:d65476080c8046a98f5f91934284f7e474c65e094e43480d2776a80342aaa8fc",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:dea449eba1b5948a07c02cc5f34fa58f6a794e20d1b5edc8897386fdd92a500f"
+    },
     "executable_code": false,
-    "registers_tools": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:dea449eba1b5948a07c02cc5f34fa58f6a794e20d1b5edc8897386fdd92a500f"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_browser_element_pack",
@@ -57,50 +101,32 @@
       "pre_submit_review",
       "submission_receipt_evidence"
     ],
-    "asset_index": {
-      "catalogs": [
-        "catalog/form_action_recipes.yaml"
-      ],
-      "specs": [
-        "specs/form_taxonomy.yaml",
-        "specs/field_risk_classification.yaml",
-        "specs/semantic_dom_dependency.yaml",
-        "specs/submission_review_checklist.yaml"
-      ],
-      "policies": [
-        "policies/form_action_safety.policy.yaml"
-      ],
-      "checklists": [
-        "specs/submission_review_checklist.yaml"
-      ],
-      "evidence_ledgers": [
-        "evidence/submission_receipt_evidence.schema.yaml"
-      ],
-      "examples": [
-        "examples/contact_form_fill.example.yaml",
-        "examples/checkout_review.example.yaml",
-        "examples/multi_step_application.example.yaml"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "profiles": [
-        "profiles/browser_form_operator.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/browser_form_operator.system.md"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "registers_tools": false,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_browser_form_operator_pack",
+  "pack_identity": "rumi:ecosystem/rumi_browser_form_operator_pack",
+  "provenance": {
+    "build_identity": "rumi_browser_form_operator_pack:0.1.0",
+    "content_hash": "sha256:d65476080c8046a98f5f91934284f7e474c65e094e43480d2776a80342aaa8fc",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "spec",
+      "policy",
+      "evidence",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

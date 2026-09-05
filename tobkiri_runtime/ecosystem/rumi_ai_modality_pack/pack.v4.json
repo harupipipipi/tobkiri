@@ -1,0 +1,258 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:bcfa22596365cadbef35d237b3789fb88c8c25b78330cd406b0e10321dc3e4c5",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:0e236ee3ad7bc63ebf89a1c14a7f19ee6d1311234f4d32fe8515cf726ce429ee",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "kind": "executable",
+      "path": "runtime/gateway.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.audio.speech.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-speech"
+      ],
+      "revision_digest": "sha256:ee2fe18ae7876df3b2dd53ef2ff0f6e5ceb3348cacf1d70394db8682487490c7"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.audio.transcribe.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-transcribe"
+      ],
+      "revision_digest": "sha256:9af22695e671d346b5be8177457a1c99d6e8d21ea49cd87595fe24bc41b772d4"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.embedding.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-embedding"
+      ],
+      "revision_digest": "sha256:b166d234070e8597ca0855a841c1b8ab520e279b8bbb940f9708b8628ed35f0b"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.image.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-image"
+      ],
+      "revision_digest": "sha256:bc6ecd852106afe38fe5b5857137651e05ab83c8db7b3bb839ddaa7353db8311"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:b166d234070e8597ca0855a841c1b8ab520e279b8bbb940f9708b8628ed35f0b",
+      "id": "rumi_ai_modality_pack.ai-modality.embedding",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_modality_pack.ai-embedding"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:bc6ecd852106afe38fe5b5857137651e05ab83c8db7b3bb839ddaa7353db8311",
+      "id": "rumi_ai_modality_pack.ai-modality.image",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_modality_pack.ai-image"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:ee2fe18ae7876df3b2dd53ef2ff0f6e5ceb3348cacf1d70394db8682487490c7",
+      "id": "rumi_ai_modality_pack.ai-modality.speech",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_modality_pack.ai-speech"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:9af22695e671d346b5be8177457a1c99d6e8d21ea49cd87595fe24bc41b772d4",
+      "id": "rumi_ai_modality_pack.ai-modality.transcribe",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_modality_pack.ai-transcribe"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:04c491c29a78619201cdcfd81facf1c87dae15e540e88969c1116cbf9a662872",
+    "contract_catalog_digest": "sha256:d895342a171f5ebd5784fc81669792f74ff45956a659fb550e315881611a6215",
+    "source_identity": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.ai.audio.speech.v1",
+      "rumi.service.ai.audio.transcribe.v1",
+      "rumi.service.ai.embedding.v1",
+      "rumi.service.ai.image.v1",
+      "rumi:ecosystem/rumi_ai_modality_pack",
+      "rumi_ai_modality_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.embedding.v1",
+      "effect_ceiling": [
+        "capability:ai.embedding",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_modality_pack.ai-embedding",
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.embedding",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.image.v1",
+      "effect_ceiling": [
+        "capability:ai.image",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_modality_pack.ai-image",
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.image",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.audio.speech.v1",
+      "effect_ceiling": [
+        "capability:ai.audio.speech",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_modality_pack.ai-speech",
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.speech",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.audio.transcribe.v1",
+      "effect_ceiling": [
+        "capability:ai.audio.transcribe",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_modality_pack.ai-transcribe",
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.transcribe",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:04c491c29a78619201cdcfd81facf1c87dae15e540e88969c1116cbf9a662872",
+    "display_name": "Rumi AI Modality",
+    "id": "rumi_ai_modality_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:a9c8e2e2908043cccc62fc15e1fc4f9dc094bb96a20c69ed81fd4baa5250c6b4",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_modality_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.embedding.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-embedding"
+      ],
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.embedding"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.image.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-image"
+      ],
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.image"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.audio.speech.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-speech"
+      ],
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.speech"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.audio.transcribe.v1",
+      "operations": [
+        "rumi_ai_modality_pack.ai-transcribe"
+      ],
+      "owner": "rumi_ai_modality_pack",
+      "provider_id": "rumi_ai_modality_pack.ai-modality.transcribe"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.audio.speech",
+      "ai.audio.transcribe",
+      "ai.embedding",
+      "ai.image"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.ai.provider.audio.speech.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.ai.provider.audio.transcribe.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.ai.provider.embedding.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.ai.provider.image.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

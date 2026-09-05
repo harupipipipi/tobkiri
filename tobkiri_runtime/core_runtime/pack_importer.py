@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .validation import check_path_within, is_safe_staging_id
+from .pack_boundary import finite_children
 
 
 STAGING_ROOT = "user_data/pack_staging"
@@ -360,7 +361,7 @@ class PackImporter:
         warnings: List[str] = []
         build_commands: List[Dict[str, Any]] = []
 
-        top_dirs = [d for d in payload_dir.iterdir() if d.is_dir()]
+        top_dirs = list(finite_children(payload_dir, directories_only=True))
         if len(top_dirs) != 1:
             raise ValueError(
                 f"Expected exactly one top-level directory in payload, "
@@ -375,7 +376,7 @@ class PackImporter:
             Returns True if validation passed, False otherwise.
             """
             valid, err, data = self._validate_ecosystem_json(eco_path)
-            if not valid:
+            if not valid or data is None:
                 warnings.append(
                     f"Pack '{pack_id}' skipped: {err}"
                 )
@@ -401,7 +402,7 @@ class PackImporter:
         packs_dir = top_dir / "packs"
         if packs_dir.is_dir():
             pack_ids = []
-            for d in sorted(packs_dir.iterdir()):
+            for d in finite_children(packs_dir, directories_only=True):
                 if d.is_dir() and (d / "ecosystem.json").exists():
                     if _check_and_collect(d / "ecosystem.json", d.name):
                         pack_ids.append(d.name)
@@ -413,7 +414,7 @@ class PackImporter:
                 return [top_dir.name], False, warnings, build_commands
             # validation failed -> warning already recorded, fall through
 
-        for d in sorted(top_dir.iterdir()):
+        for d in finite_children(top_dir, directories_only=True):
             if d.is_dir() and (d / "ecosystem.json").exists():
                 if _check_and_collect(d / "ecosystem.json", top_dir.name):
                     return [top_dir.name], False, warnings, build_commands
@@ -439,10 +440,10 @@ class PackImporter:
             return None
 
     def list_stagings(self) -> List[Dict[str, Any]]:
-        results = []
+        results: List[Dict[str, Any]] = []
         if not self._staging_root.exists():
             return results
-        for d in sorted(self._staging_root.iterdir()):
+        for d in finite_children(self._staging_root, directories_only=True):
             if d.is_dir() and is_safe_staging_id(d.name):
                 meta = self.get_staging_meta(d.name)
                 if meta:
@@ -467,7 +468,7 @@ class PackImporter:
                 event_type=event_type,
                 success=success,
                 details=details,
-                error=details.get("error"),
+                error=str(details.get("error") or ""),
             )
         except Exception:
             pass
@@ -486,7 +487,7 @@ def get_pack_importer() -> PackImporter:
     return _global_importer
 
 
-def reset_pack_importer(staging_root: str = None) -> PackImporter:
+def reset_pack_importer(staging_root: str | None = None) -> PackImporter:
     global _global_importer
     with _importer_lock:
         _global_importer = PackImporter(staging_root)

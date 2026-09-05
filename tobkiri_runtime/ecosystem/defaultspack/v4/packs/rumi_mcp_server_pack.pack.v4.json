@@ -1,0 +1,168 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:1d78feddf0f7bc9e30122d0ee26992c320d67c3f93058ab335afe9d035d24ac3",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "kind": "executable",
+      "path": "runtime/server.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.mcp.server.tool.catalog.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-catalog"
+      ],
+      "revision_digest": "sha256:d701b53e247cb24460af3af06e6273f52ebd309a90b3061294f4b44ee3e4d5d4"
+    },
+    {
+      "contract_id": "tobkiri.service.mcp.server.tool.call.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-call"
+      ],
+      "revision_digest": "sha256:21fabd1a5491db586598a37a68b97e308506b4bbb3a3af267069676f84848059"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:21fabd1a5491db586598a37a68b97e308506b4bbb3a3af267069676f84848059",
+      "id": "rumi_mcp_server_pack.mcp-server.call",
+      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-call"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:d701b53e247cb24460af3af06e6273f52ebd309a90b3061294f4b44ee3e4d5d4",
+      "id": "rumi_mcp_server_pack.mcp-server.catalog",
+      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-catalog"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:8579e25d68292f6817b4f242b0051d6222cf31f3602d453484bbf10ac5177607",
+    "artifact_set_digest": "sha256:c6c73b14341b842e9cdf28b190555f024f3a223a1cf80be2fbe35e6b13000c0b",
+    "contract_catalog_digest": "sha256:35ccf55c1846edaad684aad985bcb2ddfac722a7cc0675dfffefcd3b1656cf2f"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.resource.mcp.server.tool.catalog.v1",
+      "rumi.service.mcp.server.tool.call.v1",
+      "rumi:ecosystem/rumi_mcp_server_pack",
+      "rumi_mcp_server_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_mcp_server_pack.mcp-server-tool-call",
+      "owner": "rumi_mcp_server_pack",
+      "contract_reference": "tobkiri.service.mcp.server.tool.call.v1",
+      "provider_id": "rumi_mcp_server_pack.mcp-server.call",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_mcp_server_pack.mcp-server-tool-catalog",
+      "owner": "rumi_mcp_server_pack",
+      "contract_reference": "tobkiri.resource.mcp.server.tool.catalog.v1",
+      "provider_id": "rumi_mcp_server_pack.mcp-server.catalog",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:cf7e9d782f5a42f460c185cd2c2a410f13215b35124c4d6df5e78ec5f3c148a4",
+    "display_name": "Rumi MCP Server",
+    "id": "rumi_mcp_server_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_mcp_server_pack/pack.v4.json",
+    "source_digest": "sha256:8579e25d68292f6817b4f242b0051d6222cf31f3602d453484bbf10ac5177607",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:2476fd9257a3d361ccd53b107721cf6afe041d944351b91069f83a819919e727",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:d61c8f64ddae0e9983092f06eceb77082d913a5cc0e895fdd6c9899949ec4f34",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_mcp_server_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:8579e25d68292f6817b4f242b0051d6222cf31f3602d453484bbf10ac5177607"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_mcp_server_pack.mcp-server.call",
+      "owner": "rumi_mcp_server_pack",
+      "contract_reference": "tobkiri.service.mcp.server.tool.call.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-call"
+      ]
+    },
+    {
+      "provider_id": "rumi_mcp_server_pack.mcp-server.catalog",
+      "owner": "rumi_mcp_server_pack",
+      "contract_reference": "tobkiri.resource.mcp.server.tool.catalog.v1",
+      "operations": [
+        "rumi_mcp_server_pack.mcp-server-tool-catalog"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "mcp.server.catalog.read",
+      "mcp.server.tool.call"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.tool.invoke.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

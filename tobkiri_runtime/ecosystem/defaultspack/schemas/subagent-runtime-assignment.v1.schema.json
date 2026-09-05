@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/subagent-runtime-assignment/v1.json",
+  "title": "Tobkiri Subagent Runtime Assignment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "assignment_id",
+    "run_id",
+    "instance_id",
+    "agent_kind",
+    "runtime_kind",
+    "placement_id",
+    "placement_revision",
+    "placement_map_id",
+    "effective_plan_hash",
+    "root_scope_id",
+    "root_run_id",
+    "protocol_membership",
+    "state",
+    "assignment_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "tobkiri.subagent-runtime-assignment/v1"
+    },
+    "assignment_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "instance_id": {"type": "string", "minLength": 1},
+    "agent_kind": {"enum": ["main", "subagent"]},
+    "runtime_kind": {
+      "enum": [
+        "agent_run",
+        "utility_model_call",
+        "human_task",
+        "remote_agent",
+        "composite_team"
+      ]
+    },
+    "placement_id": {"type": "string", "minLength": 1},
+    "placement_revision": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "placement_map_id": {"type": "string", "minLength": 1},
+    "effective_plan_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "root_scope_id": {"type": "string", "minLength": 1},
+    "parent_run_id": {"type": ["string", "null"]},
+    "root_run_id": {"type": "string", "minLength": 1},
+    "protocol_membership": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "state": {
+      "enum": [
+        "assigned",
+        "starting",
+        "running",
+        "stopped",
+        "failed"
+      ]
+    },
+    "assignment_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

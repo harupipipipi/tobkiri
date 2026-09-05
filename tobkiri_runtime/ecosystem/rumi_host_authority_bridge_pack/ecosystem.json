@@ -1,0 +1,62 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.host.authorize.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Core-authority one-shot token and service receipt binding.",
+  "display_name": "Rumi Host Authority Bridge",
+  "host_execution": true,
+  "metadata": {
+    "authority_owner": "core_runtime.authority",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:98850e08f8143c98c4b19b9211249776a7e8151a22d95a595c4eeea6c1acfc06",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:6b20a5968c5bb3c3450faeef99ba73241bc8befb9b9932ad49e14ae89a969af0"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:6b20a5968c5bb3c3450faeef99ba73241bc8befb9b9932ad49e14ae89a969af0"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "receipt": {
+      "replay": "redeem_once",
+      "ttl_seconds": 30
+    },
+    "self_approval": false
+  },
+  "pack_id": "rumi_host_authority_bridge_pack",
+  "pack_identity": "rumi:ecosystem/rumi_host_authority_bridge_pack",
+  "provenance": {
+    "build_identity": "rumi_host_authority_bridge_pack:1.0.0",
+    "content_hash": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "host",
+      "authority",
+      "service"
+    ]
+  }
+}

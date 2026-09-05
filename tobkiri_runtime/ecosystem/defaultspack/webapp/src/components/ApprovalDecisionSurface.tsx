@@ -43,7 +43,7 @@ export function ApprovalDecisionSurface({ approval, onApprove, onDeny, onOpenTru
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200"><ShieldAlert size={15} /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300">Rumi が許可を求めています</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300">Tobkiri が許可を求めています</p>
           <h2 id={headingId} className="mt-1 break-words text-sm font-semibold leading-5 text-zinc-100">{approval.title}</h2>
           <p className="mt-1 break-words text-xs leading-5 text-zinc-300">{approval.consequence}</p>
         </div>

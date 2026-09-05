@@ -25,14 +25,12 @@ from __future__ import annotations
 
 import heapq
 import logging
-import re
 from typing import Any, Dict, List
 
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import InvalidVersion, Version
+
 logger = logging.getLogger(__name__)
-
-_VERSION_PART_RE = re.compile(r"\d+")
-_VERSION_CONSTRAINT_RE = re.compile(r"^(>=|<=|==|>|<)?\s*([0-9][0-9A-Za-z.+-]*)$")
-
 
 # ---------------------------------------------------------------------------
 # Exception classes (interface unchanged)
@@ -50,6 +48,11 @@ class CircularDependencyError(DependencyError):
 
 class MissingDependencyError(DependencyError):
     """依存先が見つからない"""
+    pass
+
+
+class VersionMismatchError(DependencyError):
+    """依存先のバージョンが制約を満たさない"""
     pass
 
 
@@ -97,7 +100,11 @@ def extract_dependency_specs(pack_info: Dict[str, Any]) -> List[Dict[str, str]]:
                 spec.setdefault("pack_id", pid)
                 _add(spec)
             else:
-                _add(str(pid))
+                _add(
+                    {"pack_id": pid, "version": raw_spec}
+                    if isinstance(raw_spec, str) and raw_spec.strip()
+                    else str(pid)
+                )
 
     raw_dependencies = pack_info.get("dependencies")
     if isinstance(raw_dependencies, dict):
@@ -107,69 +114,34 @@ def extract_dependency_specs(pack_info: Dict[str, Any]) -> List[Dict[str, str]]:
                 spec.setdefault("pack_id", pid)
                 _add(spec)
             else:
-                _add(str(pid))
+                _add(
+                    {"pack_id": pid, "version": raw_spec}
+                    if isinstance(raw_spec, str) and raw_spec.strip()
+                    else str(pid)
+                )
     elif isinstance(raw_dependencies, list):
         for dep in raw_dependencies:
             _add(dep)
 
-    raw_conn = pack_info.get("connectivity")
-    if isinstance(raw_conn, dict):
-        raw_requires = raw_conn.get("requires")
-        if isinstance(raw_requires, list):
-            for pid in raw_requires:
-                if isinstance(pid, str):
-                    _add(pid)
-
     return result
 
 
-def _parse_version(value: Any) -> tuple[int, ...] | None:
-    parts = [int(part) for part in _VERSION_PART_RE.findall(str(value or ""))]
-    return tuple(parts) if parts else None
-
-
-def _compare_versions(left: tuple[int, ...], right: tuple[int, ...]) -> int:
-    max_len = max(len(left), len(right))
-    left_padded = left + (0,) * (max_len - len(left))
-    right_padded = right + (0,) * (max_len - len(right))
-    if left_padded < right_padded:
-        return -1
-    if left_padded > right_padded:
-        return 1
-    return 0
-
-
 def _version_satisfies(actual: Any, constraint: str) -> bool:
-    actual_version = _parse_version(actual)
-    if actual_version is None:
+    """Return whether a valid PEP 440 version satisfies ``constraint``.
+
+    Dependency constraints are policy input.  Invalid versions or specifiers
+    therefore fail closed instead of being coerced by a hand-written parser.
+    """
+    try:
+        actual_version = Version(str(actual or "").strip())
+        specifier = SpecifierSet(str(constraint or "").strip())
+    except (InvalidSpecifier, InvalidVersion):
         return False
-    for raw_part in str(constraint or "").split(","):
-        part = raw_part.strip()
-        if not part:
-            continue
-        match = _VERSION_CONSTRAINT_RE.match(part)
-        if not match:
-            return False
-        op = match.group(1) or "=="
-        required = _parse_version(match.group(2))
-        if required is None:
-            return False
-        cmp = _compare_versions(actual_version, required)
-        if op == "==" and cmp != 0:
-            return False
-        if op == ">=" and cmp < 0:
-            return False
-        if op == ">" and cmp <= 0:
-            return False
-        if op == "<=" and cmp > 0:
-            return False
-        if op == "<" and cmp >= 0:
-            return False
-    return True
+    return actual_version in specifier
 
 
 def version_satisfies(actual: Any, constraint: str) -> bool:
-    """Return whether ``actual`` satisfies a simple comma-separated version constraint."""
+    """Return whether ``actual`` satisfies a PEP 440 ``SpecifierSet``."""
     return _version_satisfies(actual, constraint)
 
 
@@ -177,7 +149,7 @@ def extract_dependencies(pack_info: Dict[str, Any]) -> List[str]:
     """
     単一 pack の manifest / ecosystem dict から依存 pack_id を抽出する。
 
-    3 つのソースを統合し、重複を排除してユニークなリストで返す。
+    明示的な pack 依存を統合し、重複を排除してユニークなリストで返す。
 
     Sources:
         1. ``depends_on`` — 明示的依存。
@@ -186,8 +158,10 @@ def extract_dependencies(pack_info: Dict[str, Any]) -> List[str]:
         2. ``dependencies`` — ecosystem.json の dependencies フィールド。
            - dict の場合: キーを pack_id として扱う。
            - list の場合: 要素をそのまま pack_id として扱う。
-        3. ``connectivity.requires`` — pack レベルの connectivity.requires。
-           - list の場合: 要素をそのまま pack_id として扱う。
+    ``connectivity.requires`` は Pack ID ではなくグローバル契約 ID です。
+    契約プロバイダの解決は capability/profile resolver が行うため、ここで
+    pack dependency に混ぜると ``rumi.action.*`` を存在しない Pack として
+    解釈してしまいます。
 
     Args:
         pack_info: pack の manifest / ecosystem dict
@@ -279,17 +253,19 @@ def resolve_load_order(
 
     Args:
         packs: ``{pack_id: pack_manifest}`` の辞書。
-        strict: True なら依存先不在で MissingDependencyError を raise。
-                False なら warning ログしてスキップ。
-        soft_circular: True なら循環検出時にエラーログ + アルファベット順で末尾追加。
-                       False (デフォルト) なら CircularDependencyError を raise。
+        strict: True なら依存先不在またはバージョン不一致で raise。
+                False なら依存先不在を warning ログしてスキップし、
+                バージョン制約は順序計算に影響させない。
+        soft_circular: 互換シグネチャ。循環は常に fail closed するため、
+                       True を指定しても循環 Pack をロードしない。
 
     Returns:
         ロード順の pack_id リスト
 
     Raises:
-        CircularDependencyError: soft_circular=False で循環依存がある場合
+        CircularDependencyError: 循環依存がある場合
         MissingDependencyError: strict=True で依存先がない場合
+        VersionMismatchError: strict=True で依存先のバージョンが不一致の場合
     """
     all_pack_ids = set(packs.keys())
     if not all_pack_ids:
@@ -304,7 +280,13 @@ def resolve_load_order(
 
     for pid, manifest in packs.items():
         # pack-level dependencies (3 sources)
-        deps: set = set(extract_dependencies(manifest))
+        dependency_specs = extract_dependency_specs(manifest)
+        deps: set = {spec["pack_id"] for spec in dependency_specs}
+        version_constraints = {
+            spec["pack_id"]: spec["version"]
+            for spec in dependency_specs
+            if spec.get("version")
+        }
 
         # component-level requires → type_to_packs resolution
         comp_deps = _collect_component_requires(pid, manifest, type_to_packs)
@@ -327,6 +309,19 @@ def resolve_load_order(
                     dep_id,
                 )
                 continue
+            constraint = version_constraints.get(dep_id)
+            if strict and constraint and not _version_satisfies(
+                packs[dep_id].get("version"), constraint
+            ):
+                raise VersionMismatchError(
+                    "Pack '{}' requires '{}' version '{}', but installed "
+                    "version is '{}'".format(
+                        pid,
+                        dep_id,
+                        constraint,
+                        packs[dep_id].get("version"),
+                    )
+                )
             graph[dep_id].append(pid)
             in_degree[pid] += 1
 
@@ -346,18 +341,14 @@ def resolve_load_order(
     if len(result) != len(all_pack_ids):
         remaining = sorted(all_pack_ids - set(result))
         if soft_circular:
-            logger.error(
-                "Circular dependency detected among packs: %s  "
-                "Loading cyclic packs in alphabetical order at end of load_order.",
-                remaining,
+            logger.warning(
+                "soft_circular is ignored: dependency cycles always fail closed"
             )
-            result.extend(remaining)
-        else:
-            raise CircularDependencyError(
-                "Circular dependency detected among: {{{}}}".format(
-                    ", ".join("'{}'".format(p) for p in remaining)
-                )
+        raise CircularDependencyError(
+            "Circular dependency detected among: {{{}}}".format(
+                ", ".join("'{}'".format(p) for p in remaining)
             )
+        )
 
     return result
 
@@ -376,6 +367,7 @@ def validate_dependencies(
         - missing: 依存先が packs に存在しない
         - self_dependency: 自分自身に依存している
         - circular: 循環依存が存在する
+        - version_mismatch: 依存先のバージョンが制約を満たさない
 
     Args:
         packs: ``{pack_id: pack_manifest}`` の辞書
@@ -386,6 +378,7 @@ def validate_dependencies(
             - ``{"type": "missing", "pack_id": ..., "depends_on": ...}``
             - ``{"type": "self_dependency", "pack_id": ...}``
             - ``{"type": "circular", "packs": [...]}``
+            - ``{"type": "version_mismatch", "pack_id": ..., ...}``
     """
     issues: List[Dict[str, Any]] = []
     all_pack_ids = set(packs.keys())
@@ -546,11 +539,3 @@ def validate_rule_dependencies(
                     })
 
     return issues
-
-
-# --- バージョン制約（将来対応 TODO） ---
-# depends_on に {"pack_id": "xxx", "version": ">=1.0.0"} がある場合、
-# バージョン比較を行う関数をここに追加する。
-# 現在は存在チェックのみ。
-# Phase 2 で registry.py が dependency_resolver.py を呼ぶようにリファクタする際に
-# バージョン制約対応も検討する。

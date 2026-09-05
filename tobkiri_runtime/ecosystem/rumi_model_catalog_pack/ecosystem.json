@@ -1,16 +1,78 @@
 {
+  "connectivity": {
+    "provides": [
+      "rumi.resource.ai.model.catalog.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Immutable verified provider and model descriptors without execution code.",
+  "display_name": "Rumi Model Catalog",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:be922c2970c8cf6c6a281993563c2a72141f810ca394b92a62b57f759c674087",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:210368b33f1550d1108a98c0664b415693d7e4f5048542ba298db774ad8fe479"
+    },
+    "catalog_revision": "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:210368b33f1550d1108a98c0664b415693d7e4f5048542ba298db774ad8fe479"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "provider_descriptors",
+      "model_descriptors"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "contains_credentials": false,
+      "declarative_only": false,
+      "execution_adapter_owner": false,
+      "imports_provider_code": false,
+      "live_inventory": {
+        "credential_forwarding": false,
+        "endpoint": "https://openrouter.ai/api/v1/models",
+        "fallback": "last_known_good_then_static",
+        "provider": "openrouter",
+        "timeout_seconds_max": 5
+      }
+    }
+  },
   "pack_id": "rumi_model_catalog_pack",
   "pack_identity": "rumi:ecosystem/rumi_model_catalog_pack",
-  "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Model Catalog Pack",
-    "description": "Concrete provider and model catalog data for the AI client loader.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
+  "provenance": {
+    "build_identity": "rumi_model_catalog_pack:2.0.0",
+    "content_hash": "sha256:f03dac719fd2a4d4d534e2224de64c81c0755113927250291e263ef3c51dccb4",
+    "signature": null,
+    "trust_class": "local"
   },
+  "required_capabilities": [
+    "ai.model.catalog.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "catalog/providers+extensions/llm/providers"
+  ],
+  "version": "2.0.0",
   "vocabulary": {
-    "types": ["ai_client"]
-  },
-  "components": {},
-  "load_order": []
+    "types": [
+      "service"
+    ]
+  }
 }

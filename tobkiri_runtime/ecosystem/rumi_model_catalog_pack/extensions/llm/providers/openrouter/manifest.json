@@ -13,21 +13,11 @@
   "catalog_only": false,
   "supports_invoke": true,
   "default_base_url": "https://openrouter.ai/api/v1",
-  "default_model": "cohere/north-mini-code:free",
-  "default_model_for": {
-    "chat": "cohere/north-mini-code:free",
-    "fast": "cohere/north-mini-code:free",
-    "cheap": "cohere/north-mini-code:free",
-    "general": "anthropic/claude-sonnet-5",
-    "reasoning": "deepseek/deepseek-r1-0528",
-    "coding": "qwen/qwen3-coder-next",
-    "agent": "moonshotai/kimi-k2.7-code",
-    "vision": "google/gemini-2.5-pro",
-    "legacy": "tencent/hy3-preview:free"
-  },
+  "default_model": "",
+  "default_model_for": {},
   "config": {
     "api_compatibility": "openai",
-    "model_sync": "bundled_catalog_allowlist",
+    "model_sync": "live_inventory_with_lkg_fallback",
     "model_list_path": "/models"
   },
   "catalog_features": [

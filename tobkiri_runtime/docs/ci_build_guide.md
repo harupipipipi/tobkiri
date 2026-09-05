@@ -99,15 +99,24 @@ for j in jobs:
   3. Build panel frontend and defaultspack frontend
   4. Build `pack-shell` for the target platform
   5. Prepare `tobkiri_launcher/src-tauri/gen/app` from `tobkiri_runtime`
-  6. Build (`cargo tauri build --target $target`)
+  6. Build (`python -B scripts/run_tauri_build.py build --target $target`)
   7. Upload release artifacts (`softprops/action-gh-release`)
 
 `tobkiri_launcher/src-tauri/gen/app` は Git 管理しない。CI では
 `.github/scripts/prepare_tauri_resources.py` が runtime tools を stage し、Tauri
 の `build.rs` も同じ除外ルールで `gen/app` を再生成する。生成対象には
-`app.py`, `core_runtime/`, `ecosystem/defaultspack/`, build 済み panel/defaultspack UI,
+`app.py`, `core_runtime/`, canonical `ecosystem/defaultspack/`, build 済み panel/defaultspack UI,
 `bundled/uv`, `bundled/pack-shell` が入る。`.venv`, `node_modules`,
 `user_data`, `__pycache__`, `.rumi_snapshots`, `tests/` は配布物から除外する。
+
+resource staging の preflight は Defaultspack v4 のみを authority とする。
+`pack.v4.json`, `contracts.v4.json`, `artifact-index.v4.json`,
+`executables.v4.json`, `v4/bundle.lock.json`, `v4/defaults.profile.v4.json` を
+必須入力とし、bundle lock・artifact catalog の declared implementation
+digest と staged bytes を strict に照合する。欠落、改変、hash drift、unlisted
+file、path traversal、symlink は fail closed になる。旧 `ecosystem.json` と
+`rumi.pack.v3.json` は staged resource に含めないため、これらを復活させて
+package authority として扱ってはならない。
 
 PR 上で配布物を確認したい場合は、手動実行もできる
 `.github/workflows/desktop-installers.yml` を使う。Windows NSIS, macOS DMG, Linux

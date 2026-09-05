@@ -1,0 +1,71 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.browser.host.v1",
+      "rumi.resource.browser.host.v1"
+    ],
+    "requires": [
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Typed browser observe/control requests mediated by core Authority and the Viewer host broker.",
+  "display_name": "Rumi Browser Host Service",
+  "host_execution": true,
+  "metadata": {
+    "authority_split": [
+      "observe",
+      "control"
+    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:50ee7dbc13da91c9ed3e867204f5e0a06bed040e7e878931cd7e5701df1f423e",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
+    },
+    "executor_owner": "rumi_viewer_host_broker",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
+    },
+    "manifest_authority": "v4-authoritative",
+    "operation_descriptor_owner": true,
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "runner": "runtime/runner.py invoked only by Viewer helper after token validation",
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_browser_host_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_browser_host_service_pack",
+  "provenance": {
+    "build_identity": "rumi_browser_host_service_pack:1.0.0",
+    "content_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "browser.host.control",
+    "browser.host.observe",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "host",
+      "browser",
+      "service"
+    ]
+  }
+}

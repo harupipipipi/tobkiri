@@ -1,45 +1,39 @@
-import { api, type AuthorityApprovalDecision, type AuthorityRequest, type AuthorityRequestsResponse, type AuthorityUiOperator } from "../../../lib/api";
-import type { AuthorityApprovalScope } from "../../../lib/authorityApproval";
+import {
+  api,
+  type AuthorityUiOperator,
+  type InteractiveApprovalRequest,
+  type InteractiveApprovalRequestsResponse,
+} from "../../../lib/api";
 
-export const authorityApprovalResources = {
-  listAuthorityRequests(options?: { status?: string }) {
-    return api.listAuthorityRequests(options) as Promise<AuthorityRequestsResponse>;
+/**
+ * The dedicated approval window talks only to the V4 interactive-approval
+ * contract. The Host owns effect execution after a decision.
+ */
+export const interactiveApprovalResources = {
+  list() {
+    return api.listInteractiveApprovals() as Promise<InteractiveApprovalRequestsResponse>;
   },
 
-  getAuthorityRequest(requestId: string) {
-    return api.getAuthorityRequest(requestId) as Promise<AuthorityRequest>;
+  get(requestId: string) {
+    return api.getInteractiveApproval(requestId) as Promise<InteractiveApprovalRequest>;
   },
 
-  approveAuthorityApproval(
+  approve(
     requestId: string,
     options: {
-      scope: AuthorityApprovalScope;
-      config: Record<string, unknown>;
-      related_permissions?: string[];
+      confirmation_text: string;
       ui_operator: AuthorityUiOperator;
     },
   ) {
-    return api.approveAuthorityApproval(requestId, options) as Promise<AuthorityApprovalDecision>;
+    return api.approveInteractiveApproval(requestId, options) as Promise<InteractiveApprovalRequest>;
   },
 
-  denyAuthorityApproval(
-    requestId: string,
-    options: {
-      reason: string;
-      persist: boolean;
-      ui_operator: AuthorityUiOperator;
-    },
-  ) {
-    return api.denyAuthorityApproval(requestId, options);
-  },
-
-  sendAuthorityResume(
-    conversationId: string,
-    text: string,
-    metadata: Record<string, unknown>,
-  ) {
-    return api.sendMessage(conversationId, text, { metadata });
+  deny(requestId: string, options: { ui_operator: AuthorityUiOperator }) {
+    return api.denyInteractiveApproval(requestId, options) as Promise<InteractiveApprovalRequest>;
   },
 };
 
-export type { AuthorityApprovalDecision, AuthorityRequest, AuthorityRequestsResponse, AuthorityUiOperator };
+export type {
+  InteractiveApprovalRequest,
+  InteractiveApprovalRequestsResponse,
+};

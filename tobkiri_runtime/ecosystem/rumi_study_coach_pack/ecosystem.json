@@ -1,61 +1,107 @@
 {
-  "pack_id": "rumi_study_coach_pack",
-  "pack_identity": "rumi:ecosystem/rumi_study_coach_pack",
-  "display_name": "Rumi Study Coach Pack",
-  "version": "0.1.0",
-  "description": "Declarative local-note study coaching, diagnostic assessment, quiz generation, spaced review, and progress reporting pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "fixture",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
+  "components": {},
   "connectivity": {
+    "provides": [],
     "requires": [
       "defaultspack"
-    ],
-    "provides": []
+    ]
   },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": {
-    "allowed_domains": [],
-    "allowed_ports": []
-  },
+  "dependencies": {},
+  "description": "Declarative local-note study coaching, diagnostic assessment, quiz generation, spaced review, and progress reporting pack.",
+  "display_name": "Rumi Study Coach Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_setup_pack",
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
+    "asset_index": {
+      "catalog": [
+        "catalog/workflows.yaml",
+        "catalog/quality_matrix.yaml",
+        "catalog/taxonomy.yaml",
+        "catalog/handoff_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/biology_uncertainty_report.example.yaml",
+        "examples/history_exam_plan.example.yaml",
+        "examples/language_vocab_review.example.yaml",
+        "examples/math_notes_quiz.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/contract_fixture.yaml",
+        "fixtures/negative_cases.yaml"
+      ],
+      "index": [
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/safety.policy.yaml",
+        "policies/handoff.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/study_coach.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/socratic_tutor.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/diagnostic_assessment.schema.json",
+        "schemas/learner_profile.schema.json",
+        "schemas/practice_session.schema.json",
+        "schemas/progress_report.schema.json",
+        "schemas/review_queue.schema.json",
+        "schemas/study_goal.schema.json",
+        "schemas/study_plan.schema.json"
+      ],
+      "template": [
+        "templates/handoff.template.md",
+        "templates/review_report.template.md",
+        "templates/artifact_card.template.md"
+      ]
+    },
+    "base_pack_promotion_eligible": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:a7837f556d5c492c64105a8988efbf22f7917dad9d5018c277a55afdb7433714",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:8751721c92a4501658039951b619748efd2bcd389917ab7b16c51f563e2f2138"
+    },
     "consumes_existing_sources_only": true,
-    "output_effect": "draft_and_handoff_only",
-    "defaultspack_promotion_eligible": false,
-    "owner_surfaces": [
-      "learner_profile",
-      "study_goal_contract",
-      "diagnostic_assessment",
-      "study_plan",
-      "practice_session",
-      "quiz_item_contract",
-      "spaced_review_queue",
-      "progress_report",
-      "evidence_bound_explanation"
-    ],
+    "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:8751721c92a4501658039951b619748efd2bcd389917ab7b16c51f563e2f2138"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "non_owner_surfaces": [
       "document parsing",
       "web research",
@@ -87,70 +133,50 @@
         "reason": "Export study sheets, slides, or flashcard tables through the workspace owner."
       }
     ],
-    "asset_index": {
-      "index": [
-        "asset_index.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/workflows.yaml",
-        "catalog/quality_matrix.yaml",
-        "catalog/taxonomy.yaml",
-        "catalog/handoff_matrix.yaml"
-      ],
-      "schema": [
-        "schemas/diagnostic_assessment.schema.json",
-        "schemas/learner_profile.schema.json",
-        "schemas/practice_session.schema.json",
-        "schemas/progress_report.schema.json",
-        "schemas/review_queue.schema.json",
-        "schemas/study_goal.schema.json",
-        "schemas/study_plan.schema.json"
-      ],
-      "policy": [
-        "policies/safety.policy.yaml",
-        "policies/handoff.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/handoff.template.md",
-        "templates/review_report.template.md",
-        "templates/artifact_card.template.md"
-      ],
-      "fixtures": [
-        "fixtures/contract_fixture.yaml",
-        "fixtures/negative_cases.yaml"
-      ],
-      "profiles": [
-        "profiles/study_coach.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/socratic_tutor.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/biology_uncertainty_report.example.yaml",
-        "examples/history_exam_plan.example.yaml",
-        "examples/language_vocab_review.example.yaml",
-        "examples/math_notes_quiz.example.yaml"
-      ]
-    }
+    "output_effect": "draft_and_handoff_only",
+    "owner_surfaces": [
+      "learner_profile",
+      "study_goal_contract",
+      "diagnostic_assessment",
+      "study_plan",
+      "practice_session",
+      "quiz_item_contract",
+      "spaced_review_queue",
+      "progress_report",
+      "evidence_bound_explanation"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_setup_pack"
+  },
+  "pack_id": "rumi_study_coach_pack",
+  "pack_identity": "rumi:ecosystem/rumi_study_coach_pack",
+  "provenance": {
+    "build_identity": "rumi_study_coach_pack:0.1.0",
+    "content_hash": "sha256:a7837f556d5c492c64105a8988efbf22f7917dad9d5018c277a55afdb7433714",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "fixture",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

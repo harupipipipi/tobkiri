@@ -80,7 +80,7 @@ def test_seat_executed_fallback_does_not_rerun_legacy(controller, monkeypatch):
 
     outcome = controller.run(
         "computer.type",
-        {"text": "hello", "include_screenshot": False},
+        {"text": "hello", "fallback": "foreground", "include_screenshot": False},
         yolo_mode=True,
     )
 
@@ -90,6 +90,7 @@ def test_seat_executed_fallback_does_not_rerun_legacy(controller, monkeypatch):
 
 
 def test_type_tries_background_safe_seat_before_focus(controller, monkeypatch):
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
     svc = MagicMock()
     svc.background_action.return_value = asdict(
         ActionResult(
@@ -100,6 +101,7 @@ def test_type_tries_background_safe_seat_before_focus(controller, monkeypatch):
             can_parallel_user_work=True,
             requires_foreground=False,
             uses_physical_input=False,
+            data={"completion_verified": True},
         )
     )
     svc.doctor.return_value = {"platform": "darwin", "driver_chain_order": [], "available_drivers": [], "unavailable_drivers": []}
@@ -125,6 +127,18 @@ def test_type_tries_background_safe_seat_before_focus(controller, monkeypatch):
     assert outcome["background"] is True
     assert outcome["driver"] == "mac_accessibility"
     svc.background_action.assert_called_once()
+
+
+def test_observe_recommends_type_and_key_when_browser_ready(controller):
+    svc = MagicMock()
+    svc.observe.return_value = {"observed": True, "target": {"app": "Vivaldi"}}
+    controller._computer_seat = svc
+
+    outcome = controller.run("computer.observe", {"app": "Vivaldi"}, yolo_mode=True)
+
+    assert outcome["action"] == "computer.observe"
+    assert outcome["recommended_next_actions"][:2] == ["computer.type", "computer.key"]
+    assert "normal approval gates still apply" in outcome["input_guidance"]
 
 
 def test_explicit_background_key_uses_background_safe_seat(controller, monkeypatch):
@@ -311,7 +325,7 @@ def test_background_safe_only_requires_background_api(controller):
     svc.click.assert_not_called()
 
 
-def test_implicit_background_rejects_experimental_and_uses_foreground(controller, monkeypatch):
+def test_implicit_background_rejects_experimental_and_prompts_for_foreground(controller, monkeypatch):
     monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
     svc = MagicMock()
     def background_action(action, target, payload, *, verified_only=False):
@@ -338,8 +352,11 @@ def test_implicit_background_rejects_experimental_and_uses_foreground(controller
         "_list_windows",
         lambda: [{"app": "Vivaldi", "title": "Google", "x": 0, "y": 0, "width": 800, "height": 600, "pid": 123}],
     )
-    focused = {"value": False}
-    monkeypatch.setattr(controller, "_focus_action_target", lambda payload: focused.update(value=True) or True)
+    monkeypatch.setattr(
+        controller,
+        "_focus_action_target",
+        lambda payload: (_ for _ in ()).throw(AssertionError("implicit background miss must not focus")),
+    )
     monkeypatch.setattr(controller, "_foreground_action_focus_error", lambda action, payload: None)
     monkeypatch.setattr(controller, "_apple_script", lambda action, payload: "return")
     monkeypatch.setattr(
@@ -353,13 +370,15 @@ def test_implicit_background_rejects_experimental_and_uses_foreground(controller
         yolo_mode=True,
     )
 
-    assert focused["value"] is True
-    assert outcome["executed"] is True
-    assert outcome["driver"] == "foreground_input"
+    assert outcome["executed"] is False
+    assert outcome["is_error"] is True
+    assert outcome["recovery"]["kind"] == "foreground_confirmation_required"
+    assert outcome["message"] == "backgroundで実行できません。foregroundで作業しますか？"
+    assert outcome["recovery"]["retry_payload"]["fallback"] == "foreground"
     svc.background_action.assert_called_once()
 
 
-def test_windows_implicit_background_rejects_postmessage_and_uses_foreground_key(controller, monkeypatch):
+def test_windows_implicit_background_rejects_postmessage_and_prompts_for_foreground(controller, monkeypatch):
     monkeypatch.setattr(browser_computer.platform, "system", lambda: "Windows")
     svc = MagicMock()
 
@@ -382,9 +401,12 @@ def test_windows_implicit_background_rejects_postmessage_and_uses_foreground_key
     svc.key.return_value = asdict(ActionResult(action="key", driver="none", executed=False))
     svc.doctor.return_value = {"platform": "win32", "driver_chain_order": [], "available_drivers": [], "unavailable_drivers": []}
     controller._computer_seat = svc
-    focused = {"value": False}
     foreground = {"value": False}
-    monkeypatch.setattr(controller, "_focus_action_target", lambda payload: focused.update(value=True) or True)
+    monkeypatch.setattr(
+        controller,
+        "_focus_action_target",
+        lambda payload: (_ for _ in ()).throw(AssertionError("implicit background miss must not focus")),
+    )
     monkeypatch.setattr(controller, "_foreground_action_focus_error", lambda action, payload: None)
     monkeypatch.setattr(controller, "_windows_desktop_action", lambda action, payload: foreground.update(value=True))
 
@@ -394,11 +416,11 @@ def test_windows_implicit_background_rejects_postmessage_and_uses_foreground_key
         yolo_mode=True,
     )
 
-    assert focused["value"] is True
-    assert foreground["value"] is True
-    assert outcome["executed"] is True
-    assert outcome["driver"] == "foreground_input"
-    assert outcome.get("background") is not True
+    assert foreground["value"] is False
+    assert outcome["executed"] is False
+    assert outcome["is_error"] is True
+    assert outcome["recovery"]["kind"] == "foreground_confirmation_required"
+    assert outcome["user_prompt"] == "backgroundで実行できません。foregroundで作業しますか？"
 
 
 def test_windows_explicit_background_allows_postmessage_key(controller, monkeypatch):
@@ -435,6 +457,32 @@ def test_windows_explicit_background_allows_postmessage_key(controller, monkeypa
     assert outcome["background"] is True
     assert outcome["driver"] == "windows_postmessage"
     svc.background_action.assert_called_once()
+
+
+def test_foreground_fallback_opt_in_runs_foreground_after_prompt(controller, monkeypatch):
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Windows")
+    svc = MagicMock()
+    svc.background_action.side_effect = AssertionError("fallback=foreground must skip background")
+    svc.key.return_value = asdict(ActionResult(action="key", driver="none", executed=False))
+    svc.doctor.return_value = {"platform": "win32", "driver_chain_order": [], "available_drivers": [], "unavailable_drivers": []}
+    controller._computer_seat = svc
+    focused = {"value": False}
+    foreground = {"value": False}
+    monkeypatch.setattr(controller, "_focus_action_target", lambda payload: focused.update(value=True) or True)
+    monkeypatch.setattr(controller, "_foreground_action_focus_error", lambda action, payload: None)
+    monkeypatch.setattr(controller, "_windows_desktop_action", lambda action, payload: foreground.update(value=True))
+
+    outcome = controller.run(
+        "computer.key",
+        {"key_combo": "return", "fallback": "foreground", "include_screenshot": False},
+        yolo_mode=True,
+    )
+
+    assert focused["value"] is True
+    assert foreground["value"] is True
+    assert outcome["executed"] is True
+    assert outcome["driver"] == "foreground_input"
+    assert outcome.get("background") is not True
 
 
 def test_background_key_partial_success_does_not_replay_foreground(controller, monkeypatch):

@@ -3,40 +3,18 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok, error, gen_id
-from domain.ai_client.gateway import LLMGateway
-from domain.ai_client.client import AuthorityApprovalRequired
+from core_runtime.authority.principal import build_principal_id
+from domain.ai_client.gateway_contract_client import ContractLLMGateway
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.dev.inspector import Inspector
 from domain.prompt.manager import get_manager
 from domain.temporal_context import add_temporal_context_message, current_datetime_context
 
 
-def _authority_context_from_runtime(context, input_data):
-    if not isinstance(context, dict):
-        context = {}
-    if not isinstance(input_data, dict):
-        input_data = {}
-    authority = context.get("authority") if isinstance(context.get("authority"), dict) else {}
-    result = dict(authority)
-    trusted_profile_id = str(result.get("profile_id") or context.get("profile_id") or "").strip()
-    profile_id = trusted_profile_id or str(input_data.get("profile_id") or "").strip()
-    if profile_id:
-        result["profile_id"] = profile_id
-    for key in ("conversation_id", "node_id", "graph_id"):
-        value = str(result.get(key) or context.get(key) or input_data.get(key) or "").strip()
-        if value:
-            result[key] = value
-    principal_id = str(
-        result.get("principal_id")
-        or context.get("principal_id")
-        or context.get("authority_principal_id")
-        or ""
-    ).strip()
-    if not principal_id and trusted_profile_id:
-        principal_id = "profile:" + trusted_profile_id
-    if principal_id:
-        result["principal_id"] = principal_id
-    return {key: value for key, value in result.items() if value not in ("", None)}
+# Keep the historical import path while making the implementation explicitly
+# contract-backed.  Tests and older blocks patch this symbol at the module
+# boundary; the object underneath is no longer a direct provider gateway.
+LLMGateway = ContractLLMGateway
 
 
 def run(input_data, context):
@@ -69,19 +47,25 @@ def run(input_data, context):
         temporal_context=temporal_context,
     )
     request_id = gen_id()
+    authority_context = _authority_context(input_data, context)
 
     try:
-        request = {"model": model, "messages": messages, "tools": tools, "params": params}
-        if "_authority_context" not in params:
-            authority_context = _authority_context_from_runtime(context, input_data)
-            if authority_context:
-                request["authority_context"] = authority_context
-        result = LLMGateway().complete(request)
-    except AuthorityApprovalRequired as e:
-        return error(
-            str(e) or "authority approval required",
-            "AUTHORITY_APPROVAL_REQUIRED",
-            details=_authority_approval_details(e),
+        result = LLMGateway().complete(
+            {
+                "request_id": request_id,
+                "model": model,
+                "messages": messages,
+                "model_reference": model,
+                "tools": tools,
+                "parameters": params,
+                "params": params,
+                "authority_context": authority_context,
+                "requirements": {
+                    "preferred_model_id": model,
+                    "tool_calling": bool(tools),
+                    "request_surface": "legacy.ai_complete",
+                },
+            }
         )
     except RuntimeError as e:
         return error(str(e), "PROVIDER_ERROR")
@@ -130,23 +114,21 @@ def run(input_data, context):
     return ok(result)
 
 
-def _authority_approval_details(exc):
-    decision = getattr(exc, "decision", None)
-    if decision is None:
-        return {
-            "status": "authority_approval_required",
-            "approval_required": True,
-            "requires_approval": True,
-            "finish_reason": "authority_approval_required",
-        }
-    if callable(getattr(decision, "to_approval_event", None)):
-        details = dict(decision.to_approval_event())
-    elif callable(getattr(decision, "to_dict", None)):
-        details = dict(decision.to_dict())
-    else:
-        details = {}
-    details.setdefault("status", "authority_approval_required")
-    details.setdefault("approval_required", True)
-    details.setdefault("requires_approval", True)
-    details.setdefault("finish_reason", "authority_approval_required")
-    return details
+def _authority_context(input_data, context):
+    """Build the finite authority projection for the contract request."""
+    payload = input_data if isinstance(input_data, dict) else {}
+    runtime = context if isinstance(context, dict) else {}
+    verified_profile_id = str(runtime.get("profile_id") or "").strip()
+    payload_profile_id = str(payload.get("profile_id") or "").strip()
+    profile_id = verified_profile_id or payload_profile_id
+    authority = {}
+    if profile_id:
+        authority["profile_id"] = profile_id
+    conversation_id = str(payload.get("conversation_id") or "").strip()
+    if conversation_id:
+        authority["conversation_id"] = conversation_id
+    if verified_profile_id:
+        authority["principal_id"] = build_principal_id(
+            profile_id=verified_profile_id,
+        )
+    return authority

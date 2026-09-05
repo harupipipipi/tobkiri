@@ -35,13 +35,12 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple
+
+from .ipc_auth import IpcAuthManager, perform_server_auth
 
 MAX_REQUEST_SIZE = 4 * 1024 * 1024
 MAX_RESPONSE_SIZE = 1 * 1024 * 1024
-
-# BUG-5-1: IPC 認証 (Windows TCP フォールバック)
-from .ipc_auth import IpcAuthManager, perform_server_auth
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +216,36 @@ def _write_length_prefixed(sock: socket.socket, data: bytes) -> None:
 # UDS ハンドラー / サーバー
 # ============================================================
 
+class _CapabilityExecutionResponse(Protocol):
+    success: bool
+    output: Any
+    error: Optional[str]
+    latency_ms: float
+
+    def to_dict(self) -> Dict[str, Any]: ...
+
+
+class _CapabilityExecutorPort(Protocol):
+    def initialize(self) -> bool: ...
+
+    def execute(
+        self,
+        principal_id: str,
+        request_data: Dict[str, Any],
+    ) -> _CapabilityExecutionResponse: ...
+
+
+class _ManagedServer(Protocol):
+    @property
+    def server_address(self) -> object: ...
+
+    def serve_forever(self) -> None: ...
+
+    def shutdown(self) -> None: ...
+
+    def server_close(self) -> None: ...
+
+
 class _PrincipalHandler(socketserver.BaseRequestHandler):
     """
     単一接続のハンドラー
@@ -224,7 +253,9 @@ class _PrincipalHandler(socketserver.BaseRequestHandler):
     principal_id はサーバー属性から取得（ソケット由来）。
     """
 
-    def handle(self):
+    def handle(self) -> None:
+        if not isinstance(self.server, _ThreadedUnixServer):
+            return
         principal_id = self.server.principal_id
         executor = self.server.capability_executor
         try:
@@ -267,32 +298,29 @@ class _PrincipalHandler(socketserver.BaseRequestHandler):
             logger.debug("Failed to write capability proxy response", exc_info=True)
 
 
-if not _IS_WINDOWS:
-    class _ThreadedUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
-        """スレッド対応 Unix ドメインソケットサーバー"""
-        daemon_threads = True
-        allow_reuse_address = True
+class _ThreadedUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    """Threaded Unix-domain server used only on supported platforms."""
 
-        def __init__(self, socket_path: str, handler_class, principal_id: str, capability_executor):
-            self.principal_id = principal_id
-            self.capability_executor = capability_executor
-            # 既存ソケットファイルを削除
-            sock_path = Path(socket_path)
-            if sock_path.exists():
-                sock_path.unlink()
-            super().__init__(socket_path, handler_class)
-            # ソケットファイルにパーミッション適用（best-effort）
-            _apply_socket_permissions(Path(socket_path))
-else:
-    class _ThreadedUnixServer:
-        """Windows stub - Unix domain sockets not available."""
-        daemon_threads = True
+    daemon_threads = True
+    allow_reuse_address = True
 
-        def __init__(self, *args, **kwargs):
-            raise NotImplementedError(
-                "Unix domain sockets are not supported on Windows. "
-                "Capability proxy requires Linux/macOS."
-            )
+    def __init__(
+        self,
+        socket_path: str,
+        handler_class: type[socketserver.BaseRequestHandler],
+        principal_id: str,
+        capability_executor: _CapabilityExecutorPort,
+    ) -> None:
+        self.principal_id = principal_id
+        self.capability_executor = capability_executor
+        sock_path = Path(socket_path)
+        if sock_path.exists():
+            sock_path.unlink()
+        super().__init__(socket_path, handler_class)
+        _apply_socket_permissions(sock_path)
+
+
+if _IS_WINDOWS:
 
     # BUG-5-1: Windows TCP フォールバック
     import socketserver as _ss_tcp
@@ -342,6 +370,8 @@ else:
                     logger.debug("Failed to write TCP capability protocol error response", exc_info=True)
                 return
 
+            if executor is None:
+                return
             response = executor.execute(pack_id, request_data)
             resp_dict = response.to_dict()
             resp_bytes = json.dumps(resp_dict, ensure_ascii=False, default=str).encode("utf-8")
@@ -398,10 +428,10 @@ class HostCapabilityProxyServer:
 
     def __init__(self):
         self._lock = threading.RLock()
-        self._servers: Dict[str, _ThreadedUnixServer] = {}
+        self._servers: Dict[str, _ManagedServer] = {}
         self._threads: Dict[str, threading.Thread] = {}
         self._base_dir: Optional[Path] = None
-        self._executor = None
+        self._executor: Optional[_CapabilityExecutorPort] = None
         self._initialized = False
         # BUG-5-1: IPC auth manager
         self._ipc_auth: Optional[IpcAuthManager] = IpcAuthManager() if _IS_WINDOWS else None
@@ -501,7 +531,10 @@ class HostCapabilityProxyServer:
             # 既に起動中ならパスを返す
             if principal_id in self._servers:
                 server = self._servers[principal_id]
-                sock_path = Path(server.server_address)
+                sock_path = self._socket_path(server)
+                if sock_path is None:
+                    self._stop_server(principal_id)
+                    return False, "Capability proxy socket address is invalid", None
                 if sock_path.exists():
                     return True, None, sock_path
                 else:
@@ -510,6 +543,8 @@ class HostCapabilityProxyServer:
 
             # ソケットパスを生成（sha256ベースで衝突回避）
             sock_name = _principal_socket_name(principal_id)
+            if self._base_dir is None or self._executor is None:
+                return False, "Capability proxy is not initialized", None
             sock_path = self._base_dir / sock_name
 
             try:
@@ -648,8 +683,13 @@ class HostCapabilityProxyServer:
         with self._lock:
             server = self._servers.get(principal_id)
             if server:
-                return Path(server.server_address)
+                return self._socket_path(server)
             return None
+
+    @staticmethod
+    def _socket_path(server: _ManagedServer) -> Optional[Path]:
+        address = server.server_address
+        return Path(address) if isinstance(address, str) else None
 
     def list_active_principals(self) -> List[str]:
         """アクティブな principal 一覧"""

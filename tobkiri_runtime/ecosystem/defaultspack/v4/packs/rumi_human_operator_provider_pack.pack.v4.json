@@ -1,0 +1,159 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:acf6d2e8275309e0e6c9d69517b96472c3ef15268c6264a37662aee2f469a686",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3d5ca8fc3ff8340313594db6c30ef9c5c46f320cf4358492a12177df7cba56bd",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "kind": "executable",
+      "path": "runtime/provider.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.provider.generate.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-generate"
+      ],
+      "revision_digest": "sha256:2752e838befb3d8468a520a0a58cbebbe222790e57c27a2a0004c9bbdc316d26"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.provider.stream.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-stream"
+      ],
+      "revision_digest": "sha256:c10fe2d694c5e1d04d5cd2e83ae543e21aa059cf5d16fe20d23076a921292e51"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:2752e838befb3d8468a520a0a58cbebbe222790e57c27a2a0004c9bbdc316d26",
+      "id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
+      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-generate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c10fe2d694c5e1d04d5cd2e83ae543e21aa059cf5d16fe20d23076a921292e51",
+      "id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
+      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-stream"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:bfef0ea0fde023fd2f683e0539b7dd046d4a3a39708ce266c5dee266ce00dfe2",
+    "artifact_set_digest": "sha256:092ea2aa14d2377d9f04d9675fbe817d2c748d165d81cb187a8a9498caaa9ad3",
+    "contract_catalog_digest": "sha256:c5e023a8128d97eed792ab2230fd16b8c24fe2d797ec614e18bab2b50ac3961a"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.ai.provider.generate.v1",
+      "rumi.service.ai.provider.stream.v1",
+      "rumi:ecosystem/rumi_human_operator_provider_pack",
+      "rumi_human_operator_provider_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_human_operator_provider_pack.human-generate",
+      "owner": "rumi_human_operator_provider_pack",
+      "contract_reference": "tobkiri.service.ai.provider.generate.v1",
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_human_operator_provider_pack.human-stream",
+      "owner": "rumi_human_operator_provider_pack",
+      "contract_reference": "tobkiri.service.ai.provider.stream.v1",
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:19592680cd61d225b3d6164edefb4e9f4014df25d898da806ceebc0b34da3cbb",
+    "display_name": "Rumi Human Operator Provider",
+    "id": "rumi_human_operator_provider_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_human_operator_provider_pack/pack.v4.json",
+    "source_digest": "sha256:bfef0ea0fde023fd2f683e0539b7dd046d4a3a39708ce266c5dee266ce00dfe2",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:81cd4b4947c97393fcccff4ceace4b588992d4240312e1fb0605aa8de1ca80a9",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:0eb10e636e7d681bd276f03c841a08d2e55d9e40a79698c19c008385ffeeb4fa",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_human_operator_provider_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:bfef0ea0fde023fd2f683e0539b7dd046d4a3a39708ce266c5dee266ce00dfe2"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
+      "owner": "rumi_human_operator_provider_pack",
+      "contract_reference": "tobkiri.service.ai.provider.generate.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-generate"
+      ]
+    },
+    {
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
+      "owner": "rumi_human_operator_provider_pack",
+      "contract_reference": "tobkiri.service.ai.provider.stream.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-stream"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.provider.human_handoff"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

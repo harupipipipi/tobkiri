@@ -7,13 +7,11 @@ import subprocess
 import shutil
 import time
 import uuid
-import base64
-import json
-import os
+from typing import Any
 
 # Docker SDK の有無を検出
 _docker_available = False
-_docker_client = None
+_docker_client: Any = None
 try:
     import docker
     _docker_client = docker.from_env()
@@ -54,7 +52,7 @@ def _run_cmd(args, timeout=30):
 # ---------------------------------------------------------------------------
 # インメモリ コンテナ管理
 # ---------------------------------------------------------------------------
-_containers = {}
+_containers: dict[str, "ContainerInfo"] = {}
 
 
 class DockerUnavailableError(RuntimeError):
@@ -86,6 +84,7 @@ class ContainerInfo:
         self.image = image
         self.status = status
         self.config = config
+        self._docker_id: str | None = None
         self.created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     def to_dict(self):

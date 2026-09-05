@@ -1,8 +1,7 @@
 """defaults.coding.file_read — ファイル読み取りブロック"""
 
 from blocks._common import ok, error
-from blocks.coding._workspace import resolve_workspace, with_workspace, workspace_error_response
-from domain.coding.file_ops import FileOps
+from domain.coding.contract_adapter import FILE_INSPECT, invoke_coding_contract, workspace_id
 
 
 def _output_budget(input_data):
@@ -73,28 +72,19 @@ def run(input_data, context=None):
         return error(budget_error, code="INVALID_INPUT")
 
     try:
-        workspace = resolve_workspace(input_data, context, allow_cwd_fallback=True)
-        ops = FileOps(workspace.root_path)
-        if start_line is not None or end_line is not None:
-            window = ops.read_file_lines(path, start_line=start_line, end_line=end_line)
-            payload = {
+        selected_workspace_id = workspace_id(input_data)
+        payload = invoke_coding_contract(
+            FILE_INSPECT,
+            "read",
+            {
+                "workspace_id": selected_workspace_id,
                 "path": path,
-                "content": window["content"],
-                "size": len(window["content"].encode("utf-8")),
+                "start_line": start_line,
+                "end_line": end_line,
+                "max_bytes": 4 * 1024 * 1024,
                 "encoding": "utf-8",
-                "start_line": window["start_line"],
-                "end_line": window["end_line"],
-                "total_lines": window["total_lines"],
-                "truncated": window["truncated"],
-            }
-        else:
-            content = ops.read_file(path)
-            payload = {
-                "path": path,
-                "content": content,
-                "size": len(content.encode("utf-8")),
-                "encoding": "utf-8",
-            }
+            },
+        )
         original_content = str(payload.get("content") or "")
         clipped, clipped_for_budget, omitted_chars = _clip_content(original_content, max_chars)
         if clipped_for_budget:
@@ -109,7 +99,8 @@ def run(input_data, context=None):
                 len(clipped),
                 len(original_content),
             )
-        return ok(with_workspace(payload, workspace))
+        payload["workspace_id"] = selected_workspace_id
+        return ok(payload)
     except FileNotFoundError as e:
         return error(str(e), code="FILE_NOT_FOUND")
     except PermissionError as e:
@@ -117,7 +108,4 @@ def run(input_data, context=None):
     except ValueError as e:
         return error(str(e), code="PATH_TRAVERSAL")
     except Exception as e:
-        workspace_error = workspace_error_response(e, error)
-        if workspace_error:
-            return workspace_error
         return error(str(e), code="READ_ERROR")

@@ -1,0 +1,120 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:66740154a6a4dc1a9b0fc51c92aae4251c007ff3e0f7a61fae9764250d292b05",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed",
+      "kind": "executable",
+      "path": "runtime/policy.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.shell.inspect.v1",
+      "operations": [
+        "rumi_shell_policy_pack.shell-inspect"
+      ],
+      "revision_digest": "sha256:186479de12112205be50ff0f0cc3a9e6ffb80e5b225bf84ebd30d539a12efe7b"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:186479de12112205be50ff0f0cc3a9e6ffb80e5b225bf84ebd30d539a12efe7b",
+      "id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "implementation_digest": "sha256:416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_shell_policy_pack.shell-inspect"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:0f88d0b214566eb6feb40fae65f67c1337fde6a629908cb176a0758eb65587fd",
+    "artifact_set_digest": "sha256:efeb919c55558b8a2fbbf61ca16eb16ab49193dc4bcdeaf9d5878add03c30010",
+    "contract_catalog_digest": "sha256:500236e970038cde856c7640b323c59077a5047afbe936247fd8991c22672e9a"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [
+      "rumi.service.shell.inspect.v1",
+      "rumi:ecosystem/rumi_shell_policy_pack",
+      "rumi_shell_policy_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_shell_policy_pack.shell-inspect",
+      "owner": "rumi_shell_policy_pack",
+      "contract_reference": "tobkiri.service.shell.inspect.v1",
+      "provider_id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:5a1d4d491b35ff437f1a831c3993d05b9bca1ef445e330276e63075a874c1be0",
+    "display_name": "Rumi Shell Policy",
+    "id": "rumi_shell_policy_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_shell_policy_pack/pack.v4.json",
+    "source_digest": "sha256:0f88d0b214566eb6feb40fae65f67c1337fde6a629908cb176a0758eb65587fd",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:013383347a5b9f36dc14300d801bc961bf95d309f8eb4c5e61384a7cfa0c3094",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:427de283855a8b52f53dc16e9853ed91b812bbd243b07bd4b54135cd6d73b6cd",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_shell_policy_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:0f88d0b214566eb6feb40fae65f67c1337fde6a629908cb176a0758eb65587fd"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "owner": "rumi_shell_policy_pack",
+      "contract_reference": "tobkiri.service.shell.inspect.v1",
+      "operations": [
+        "rumi_shell_policy_pack.shell-inspect"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "shell.inspect"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "workspace_brokered"
+  }
+}

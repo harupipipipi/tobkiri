@@ -114,8 +114,11 @@ def test_chat_tool_inference_uses_the_same_safe_boundaries(monkeypatch) -> None:
 
         def list_tools(self):
             return [
-                {"tool_id": "web_search"},
-                {"tool_id": "mcp.server"},
+                {"tool_id": "web_search", "display_name": "Web Search"},
+                {
+                    "tool_id": "mcp.server",
+                    "display_name": "MCP Server",
+                },
             ]
 
     monkeypatch.setattr(run_request, "ToolRegistry", _Registry)
@@ -132,4 +135,7 @@ def test_chat_tool_inference_uses_the_same_safe_boundaries(monkeypatch) -> None:
     assert run_request._tool_mention_ids_from_text("お願い@mcp.server") == [
         "mcp.server"
     ]
+    assert run_request._tool_mention_ids_from_text(
+        "お願い@Web Search で調べて"
+    ) == ["web_search"]
     assert run_request._tool_mention_ids_from_text("お願い@unknown.example") == []

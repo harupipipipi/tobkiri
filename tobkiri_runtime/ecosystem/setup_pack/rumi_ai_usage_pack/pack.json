@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_ai_usage_pack",
+  "display_name": "Rumi AI Usage Pack",
+  "description": "Replaceable token estimation and normalized usage-cost calculation.",
+  "target_pack_id": "rumi_ai_usage_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "low",
+  "supports_all_ok": true,
+  "depends_on": [],
+  "required_permissions": ["ai.tokenize", "ai.usage.cost"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.ai_usage", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["No network or secrets.", "Unknown usage and cost are preserved as unknown."]
+}
+

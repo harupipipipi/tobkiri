@@ -93,10 +93,24 @@ export async function openHostPermissionsWindow(permissionId: string): Promise<b
   return openHostPermissionSettings(permissionId);
 }
 
-export async function getAuthorityApprovalContext(requestId: string): Promise<AuthorityApprovalContext> {
+export type InteractiveApprovalOperatorBinding = {
+  decision: "approve" | "deny";
+  requestSnapshotDigest: string;
+  typedConfirmationDigest: string | null;
+};
+
+export async function getAuthorityApprovalContext(
+  requestId: string,
+  binding?: InteractiveApprovalOperatorBinding,
+): Promise<AuthorityApprovalContext> {
   const invoke = await loadTauriInvoke();
   if (!invoke) {
     throw new Error("承認コンテキストは Tobkiri Launcher の専用ウィンドウでのみ利用できます。");
   }
-  return invoke<AuthorityApprovalContext>("authority_approval_context", { requestId });
+  return invoke<AuthorityApprovalContext>("authority_approval_context", {
+    requestId,
+    decision: binding?.decision ?? null,
+    requestSnapshotDigest: binding?.requestSnapshotDigest ?? null,
+    typedConfirmationDigest: binding?.typedConfirmationDigest ?? null,
+  });
 }

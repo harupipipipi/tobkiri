@@ -21,6 +21,7 @@ from domain.external.response import RumiResponse
 from domain.external.response_planner import ResponsePlanner
 from domain.external.source_store import ExternalSourceStore
 from domain.external.targeting import origin_from_external_event
+from domain.frontend_settings import frontend_settings_path
 from domain.integrations.http_client import post_json
 from domain.integrations.secrets import get_integration_secret, load_integration_secrets_into_env
 from domain.integrations.line.addressing import decide_line_addressing
@@ -270,8 +271,7 @@ def _frontend_external_output_settings() -> dict[str, Any]:
 
 
 def _frontend_settings_path() -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", "").strip()
-    return Path(override) if override else Path(__file__).resolve().parents[3] / "user_data" / "shared" / "frontend_settings.json"
+    return frontend_settings_path()
 
 
 def _policy_denied_result(external_event, decision) -> Dict[str, Any]:

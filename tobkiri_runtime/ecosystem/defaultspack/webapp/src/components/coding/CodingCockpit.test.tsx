@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { ApprovalQueue } from "./ApprovalQueue";
 import { CheckpointPanel } from "./CheckpointPanel";
+import { ChangeReviewChecksTab } from "./ChangeReviewChecksTab";
 import { CodingCockpit } from "./CodingCockpit";
 import { DiffPanel } from "./DiffPanel";
 import { TERMINAL_HISTORY_POLICY, TerminalPanel } from "./TerminalPanel";
@@ -112,6 +113,27 @@ test("checkpoint panel renders refresh and restore-review controls for supplied 
   assert.match(html, /Review restore snapshot-1/);
   assert.match(html, /Restore diff/);
   assert.match(html, /-before/);
+});
+
+test("failed review checks keep their failure icon and expose a separate copy action", () => {
+  const html = renderToStaticMarkup(
+    createElement(ChangeReviewChecksTab, {
+      review: {
+        id: "review-1",
+        status: "open",
+        checks: [{ id: "check-1", command: "python -m pytest", status: "failed", stderr_tail: "AssertionError" }],
+      },
+      actionBusy: null,
+      checkCommand: "",
+      onCheckCommandChange: () => undefined,
+      onReloadChecks: () => undefined,
+      onRunCheck: () => undefined,
+    }),
+  );
+
+  assert.match(html, /AssertionError/);
+  assert.match(html, /aria-label="失敗したチェックをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
 });
 
 test("terminal panel starts empty and accepts no initial history", () => {

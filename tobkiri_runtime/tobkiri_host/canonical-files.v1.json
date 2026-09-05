@@ -1,0 +1,32 @@
+{
+  "schema": "io.tobkiri.host-file-inventory.v1",
+  "files": [
+    "README.md",
+    "__init__.py",
+    "admission.py",
+    "artifact_compiler.py",
+    "artifact_materialization.py",
+    "authority_v4.py",
+    "backends.py",
+    "broker.py",
+    "canonical-files.v1.json",
+    "composition.py",
+    "contracts.py",
+    "credential_store.py",
+    "effects.py",
+    "errors.py",
+    "extension_sdk.py",
+    "interactive_effects.py",
+    "macos_vz_supervisor.py",
+    "materialization.py",
+    "models.py",
+    "platform_backends.py",
+    "ports.py",
+    "resources.py",
+    "runtime.py",
+    "shells.py",
+    "tauri_roles.py",
+    "triggers.py",
+    "workspace_mutation.py"
+  ]
+}

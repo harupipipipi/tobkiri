@@ -8,6 +8,12 @@ import {
   workspaceTabDisplayTitle,
   workspaceTabOption,
 } from "./WorkspaceTabs";
+import {
+  initialActiveWorkspaceTabIdForPathname,
+  initialWorkspaceTabsForPathname,
+  workspaceKindForPathname,
+  workspaceUrlForKind,
+} from "../lib/workspaceRouting";
 
 test("workspace tab options keep the extensible launch catalog", () => {
   assert.deepEqual(
@@ -34,4 +40,14 @@ test("createWorkspaceTab uses option labels and supports deterministic overrides
 
 test("workspaceTabDisplayTitle falls back to the kind label", () => {
   assert.equal(workspaceTabDisplayTitle(createWorkspaceTab("tools", { title: "  " }, 1_000)), "Tools");
+});
+
+
+test("workspace routing preserves every enabled workspace kind", () => {
+  for (const kind of ["calendar", "kanban", "desktops", "subagents", "canvas", "tools"] as const) {
+    assert.equal(workspaceKindForPathname(`/${kind}`), kind);
+    assert.equal(workspaceUrlForKind(kind, "https://example.test/chat?chat=old#anchor"), `/${kind}#anchor`);
+    assert.equal(initialWorkspaceTabsForPathname(`/${kind}`, 42).at(-1)?.kind, kind);
+    assert.equal(initialActiveWorkspaceTabIdForPathname(`/${kind}`), `workspace-tab-route-${kind}`);
+  }
 });

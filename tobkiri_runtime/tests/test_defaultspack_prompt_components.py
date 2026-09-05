@@ -33,6 +33,15 @@ def test_prompt_resolver_reads_component_backed_prompts():
 
 
 def test_prompt_resolver_reads_pack_backed_prompt_when_source_pack_is_known(monkeypatch):
+    selected = frozenset({"defaultspack", "rumi_operations_company_pack"})
+    monkeypatch.setattr(
+        "core_runtime.resolved_profile_scope.effective_pack_ids",
+        lambda: selected,
+    )
+    monkeypatch.setattr(
+        "domain.capability.catalog.effective_pack_ids",
+        lambda: selected,
+    )
     monkeypatch.setattr(
         "domain.prompt.resolver.prompt_pack_is_trusted",
         lambda pack_id: str(pack_id) in {"defaultspack", "rumi_operations_company_pack"},
@@ -48,10 +57,33 @@ def test_prompt_resolver_reads_pack_backed_prompt_when_source_pack_is_known(monk
     assert "MiMo Coding Company" in content
 
 
-def test_prompt_manager_lists_component_prompts_and_preserves_custom_persistence(tmp_path, monkeypatch):
+def test_prompt_manager_lists_component_prompts_and_preserves_owner_persistence(monkeypatch):
     import domain.prompt.manager as manager_module  # noqa: E402
 
-    monkeypatch.setattr(manager_module, "_PROMPTS_DIR", str(tmp_path))
+    records = {}
+
+    def fake_authored_prompts(profile_id):
+        assert profile_id == "test-profile"
+        return [dict(record) for record in records.values()]
+
+    def fake_write_authored_prompt(profile_id, operation, payload):
+        assert profile_id == "test-profile"
+        assert operation == "save"
+        prompt = {
+            "prompt_id": payload["prompt_id"],
+            "body": payload["body"],
+            "description": payload.get("description", ""),
+            "variables": payload.get("variables", []),
+            "metadata": payload.get("metadata", {}),
+            "body_hash": "sha256:test-body",
+        }
+        records[prompt["prompt_id"]] = prompt
+        return {"prompt": prompt}
+
+    monkeypatch.setattr(manager_module, "authored_prompts", fake_authored_prompts)
+    monkeypatch.setattr(manager_module, "write_authored_prompt", fake_write_authored_prompt)
+    monkeypatch.setattr("core_runtime.profile_paths.active_profile_id", lambda: "test-profile")
+
     manager = PromptManager()
     created = manager.create_prompt({"name": "custom_component_test", "content": "Hello {{ name }}"})
 

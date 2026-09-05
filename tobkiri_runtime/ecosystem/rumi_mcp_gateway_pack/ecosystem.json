@@ -1,37 +1,32 @@
 {
-  "pack_id": "rumi_mcp_gateway_pack",
-  "pack_identity": "rumi:ecosystem/rumi_mcp_gateway_pack",
-  "version": "1.0.0",
+  "components": {},
+  "connectivity": {
+    "provides": [
+      "rumi.service.mcp.tool.call.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Namespace-isolated approved MCP tool-call adapter and declarative gateway catalog.",
+  "display_name": "Rumi MCP Gateway",
+  "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "name": "Rumi MCP Gateway Pack",
-    "description": "Optional declarative catalog and gateway profile for unsupported MCP server discovery, namespace routing, templates, registry metadata, and safety policy.",
-    "author": "Rumi AI Team",
-    "license": "MIT",
-    "tags": [
-      "mcp",
-      "gateway",
-      "connector-discovery",
-      "tool-routing",
-      "local-first"
-    ],
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_connector_code": false,
-    "dependency_notes": {
-      "defaultspack": "Uses defaultspack MCP connect/list, registry, approval, and tool execution as the executable boundary."
-    },
-    "optional_integrations": [
-      {
-        "pack_id": "rumi_default_tools_pack",
-        "version": ">=1.0.0",
-        "reason": "Can be used by tool catalog surfaces, but this pack does not require or duplicate concrete tools."
-      }
-    ],
     "asset_index": {
       "catalogs": [
         "catalog/connector_catalog.yaml",
         "catalog/namespace_routes.yaml",
         "catalog/marketplace_registry.yaml"
+      ],
+      "docs": [
+        "README.md",
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "examples": [
+        "examples/register_unknown_server.example.yaml"
       ],
       "policies": [
         "policies/unsupported_server_safety.yaml"
@@ -45,19 +40,76 @@
       ],
       "resource_templates": [
         "templates/resources/mcp_server_card.resource.template.yaml"
-      ],
-      "examples": [
-        "examples/register_unknown_server.example.yaml"
-      ],
-      "docs": [
-        "README.md",
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
       ]
-    }
+    },
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda"
+    },
+    "dependency_notes": {
+      "defaultspack": "Finite connection-runtime compatibility source until Wave 10; approval and invocation are globally brokered."
+    },
+    "description": "Namespace-isolated MCP tool-call adapter plus declarative discovery, routing, template, registry, and safety metadata.",
+    "executable_connector_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi MCP Gateway Pack",
+    "network_policy": "none_by_default",
+    "optional_integrations": [
+      {
+        "pack_id": "rumi_default_tools_pack",
+        "reason": "Can be used by tool catalog surfaces, but this pack does not require or duplicate concrete tools.",
+        "version": ">=1.0.0"
+      }
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "tags": [
+      "mcp",
+      "gateway",
+      "connector-discovery",
+      "tool-routing",
+      "local-first"
+    ]
   },
+  "pack_id": "rumi_mcp_gateway_pack",
+  "pack_identity": "rumi:ecosystem/rumi_mcp_gateway_pack",
+  "provenance": {
+    "build_identity": "rumi_mcp_gateway_pack:1.1.0",
+    "content_hash": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "mcp.invoke",
+    "mcp.tool.call"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "mcp-connector-catalog"
+  ],
+  "version": "1.1.0",
   "vocabulary": {
     "types": [
       "mcp_gateway",
@@ -69,10 +121,5 @@
       "resource_template",
       "policy"
     ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "components": {},
-  "load_order": []
+  }
 }

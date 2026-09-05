@@ -1,52 +1,101 @@
 {
-  "pack_id": "rumi_telephony_delegate_pack",
-  "pack_identity": "rumi:ecosystem/rumi_telephony_delegate_pack",
-  "display_name": "Rumi Telephony Delegate Pack",
-  "version": "0.1.0",
-  "description": "Declarative provider-neutral call task, dial approval, consent script, transcript redaction, escalation, and never-call policy pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "fixture",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative provider-neutral call task, dial approval, consent script, transcript redaction, escalation, and never-call policy pack.",
+  "display_name": "Rumi Telephony Delegate Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_setup_pack",
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
+    "asset_index": {
+      "catalog": [
+        "catalog/workflows.yaml",
+        "catalog/quality_matrix.yaml",
+        "catalog/taxonomy.yaml",
+        "catalog/handoff_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/appointment_reschedule_script.example.yaml",
+        "examples/customer_callback_mock.example.yaml",
+        "examples/never_call_blocked_case.example.yaml",
+        "examples/transcript_redaction_case.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/contract_fixture.yaml",
+        "fixtures/negative_cases.yaml"
+      ],
+      "index": [
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/safety.policy.yaml",
+        "policies/handoff.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/telephony_delegate_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/call_script_reviewer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/call_session.schema.json",
+        "schemas/call_task.schema.json",
+        "schemas/dial_approval.schema.json",
+        "schemas/escalation_record.schema.json",
+        "schemas/never_call_entry.schema.json",
+        "schemas/pre_call_script.schema.json",
+        "schemas/transcript_redaction.schema.json"
+      ],
+      "template": [
+        "templates/handoff.template.md",
+        "templates/review_report.template.md",
+        "templates/artifact_card.template.md"
+      ]
+    },
+    "base_pack_promotion_eligible": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:69c822841d21f08b412311f65a02b95c5d128a68a7b9630178f5a055215372be",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:c12d134bcc7c29656c44237fc17c509d35f08d44d4fd87235e3ed6e2e5b76d74"
+    },
     "consumes_existing_sources_only": true,
-    "output_effect": "draft_and_handoff_only",
-    "defaultspack_promotion_eligible": false,
-    "owner_surfaces": [
-      "call_task_contract",
-      "pre_call_script",
-      "dial_approval_gate",
-      "consent_disclosure_script",
-      "call_session_state",
-      "takeover_escalation",
-      "transcript_redaction_contract",
-      "never_call_list",
-      "mock_dial_readiness"
-    ],
+    "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:c12d134bcc7c29656c44237fc17c509d35f08d44d4fd87235e3ed6e2e5b76d74"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "non_owner_surfaces": [
       "actual dialing",
       "ASR/TTS runtime",
@@ -62,78 +111,55 @@
         "reason": "Provide provider and tooling handoffs for dialing, ASR/TTS-adjacent runtime, transcript/media handling, and contact or calendar lookup outside this pack."
       },
       {
-        "pack_id": "rumi_local_agent_pack",
-        "reason": "Consume redacted transcript packets for recap, note-taking, and other local-first follow-up artifacts."
+        "pack_id": "rumi_meeting_intelligence_pack",
+        "reason": "Consume reviewed, redacted transcript packets for meeting recap and follow-up artifacts."
       },
       {
         "pack_id": "rumi_operations_company_pack",
         "reason": "Own approval-aware escalation, real-world action risk review, and downstream business workflow execution after human approval."
       }
     ],
-    "asset_index": {
-      "index": [
-        "asset_index.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/workflows.yaml",
-        "catalog/quality_matrix.yaml",
-        "catalog/taxonomy.yaml",
-        "catalog/handoff_matrix.yaml"
-      ],
-      "schema": [
-        "schemas/call_session.schema.json",
-        "schemas/call_task.schema.json",
-        "schemas/dial_approval.schema.json",
-        "schemas/escalation_record.schema.json",
-        "schemas/never_call_entry.schema.json",
-        "schemas/pre_call_script.schema.json",
-        "schemas/transcript_redaction.schema.json"
-      ],
-      "policy": [
-        "policies/safety.policy.yaml",
-        "policies/handoff.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/handoff.template.md",
-        "templates/review_report.template.md",
-        "templates/artifact_card.template.md"
-      ],
-      "fixtures": [
-        "fixtures/contract_fixture.yaml",
-        "fixtures/negative_cases.yaml"
-      ],
-      "profiles": [
-        "profiles/telephony_delegate_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/call_script_reviewer.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/appointment_reschedule_script.example.yaml",
-        "examples/customer_callback_mock.example.yaml",
-        "examples/never_call_blocked_case.example.yaml",
-        "examples/transcript_redaction_case.example.yaml"
-      ]
-    }
+    "output_effect": "draft_and_handoff_only",
+    "owner_surfaces": [
+      "call_task_contract",
+      "pre_call_script",
+      "dial_approval_gate",
+      "consent_disclosure_script",
+      "call_session_state",
+      "takeover_escalation",
+      "transcript_redaction_contract",
+      "never_call_list",
+      "mock_dial_readiness"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_setup_pack"
+  },
+  "pack_id": "rumi_telephony_delegate_pack",
+  "pack_identity": "rumi:ecosystem/rumi_telephony_delegate_pack",
+  "provenance": {
+    "build_identity": "rumi_telephony_delegate_pack:0.1.0",
+    "content_hash": "sha256:69c822841d21f08b412311f65a02b95c5d128a68a7b9630178f5a055215372be",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "fixture",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

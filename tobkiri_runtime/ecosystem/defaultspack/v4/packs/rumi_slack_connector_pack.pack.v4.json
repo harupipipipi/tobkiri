@@ -1,0 +1,174 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:e67b988954f5ebaed9bffff1ac7440faafc1e3731aa9ee66c788659a36595815",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "kind": "executable",
+      "path": "runtime/adapter.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.connector.adapter.v1",
+      "operations": [
+        "rumi_slack_connector_pack.slack-adapter"
+      ],
+      "revision_digest": "sha256:362a1de06940172d240027b87097478d5fae8625e7736df79dfb48218fe8d8c0"
+    },
+    {
+      "contract_id": "tobkiri.service.connector.oauth.provider.v1",
+      "operations": [
+        "rumi_slack_connector_pack.slack-oauth-provider"
+      ],
+      "revision_digest": "sha256:fd2fee7c6509a7b989307a14d4b792d24a0297a7de284ee77047cfb176d63448"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:fd2fee7c6509a7b989307a14d4b792d24a0297a7de284ee77047cfb176d63448",
+      "id": "rumi_slack_connector_pack.connector-oauth.slack",
+      "implementation_digest": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_slack_connector_pack.slack-oauth-provider"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:362a1de06940172d240027b87097478d5fae8625e7736df79dfb48218fe8d8c0",
+      "id": "rumi_slack_connector_pack.connector.slack",
+      "implementation_digest": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_slack_connector_pack.slack-adapter"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:a03ae981cc8c9d9207dec4d9d84f35e8fc42a4e50089e77fde0a885607d0d2e8",
+    "artifact_set_digest": "sha256:ec9714c28a245952ccca0bc9ec50cc316cafe26eb96accb70b6c4836ab21b558",
+    "contract_catalog_digest": "sha256:d2563f3ce7c378eaad786378c62f195f088dfa2b2dc411da946897f14b2eaca2"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.connector.adapter.v1",
+      "rumi.service.connector.oauth.provider.v1",
+      "rumi:ecosystem/rumi_slack_connector_pack",
+      "rumi_slack_connector_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_slack_connector_pack.slack-oauth-provider",
+      "owner": "rumi_slack_connector_pack",
+      "contract_reference": "tobkiri.service.connector.oauth.provider.v1",
+      "provider_id": "rumi_slack_connector_pack.connector-oauth.slack",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_slack_connector_pack.slack-adapter",
+      "owner": "rumi_slack_connector_pack",
+      "contract_reference": "tobkiri.service.connector.adapter.v1",
+      "provider_id": "rumi_slack_connector_pack.connector.slack",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:5945ccc4d51e973b0b2faa84af978049bc828131cbc7c8890d5bb81b44a93285",
+    "display_name": "Rumi Slack Connector",
+    "id": "rumi_slack_connector_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_slack_connector_pack/pack.v4.json",
+    "source_digest": "sha256:a03ae981cc8c9d9207dec4d9d84f35e8fc42a4e50089e77fde0a885607d0d2e8",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:1b4a8fb49ff6da35e44654b9797d1f75d2103528afa8119cdf4c642c8e62812d",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:7e96a3525a97ec942186ffc780449896d80b143be0f989a9b10b3f4ae2531bff",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_slack_connector_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:a03ae981cc8c9d9207dec4d9d84f35e8fc42a4e50089e77fde0a885607d0d2e8"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_slack_connector_pack.connector-oauth.slack",
+      "owner": "rumi_slack_connector_pack",
+      "contract_reference": "tobkiri.service.connector.oauth.provider.v1",
+      "operations": [
+        "rumi_slack_connector_pack.slack-oauth-provider"
+      ]
+    },
+    {
+      "provider_id": "rumi_slack_connector_pack.connector.slack",
+      "owner": "rumi_slack_connector_pack",
+      "contract_reference": "tobkiri.service.connector.adapter.v1",
+      "operations": [
+        "rumi_slack_connector_pack.slack-adapter"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "connector.adapter.verify",
+      "connector.delivery.execute",
+      "connector.oauth.exchange",
+      "credential.resolve",
+      "host.authority.consume"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.credential.resolve.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

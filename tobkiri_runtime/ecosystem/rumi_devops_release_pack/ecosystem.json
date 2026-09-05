@@ -1,84 +1,119 @@
 {
+  "components": {},
+  "dependencies": {
+    "rumi_default_tools_pack": ">=1.0.0"
+  },
+  "load_order": [],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:a292e8f063e2743c727943a418e14621829e6f73a9465bd0b1b17a7287072b7a",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:0ed995ccc091d65fcaed1184eef362ec7e000a82c8dfe7a441c1f7a82809ff8e"
+    },
+    "description": "Declarative local-first DevOps and release operations pack for CI triage, release evidence, runbooks, rollback plans, GitHub Actions, and Cloudflare Workers-aware operations.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:0ed995ccc091d65fcaed1184eef362ec7e000a82c8dfe7a441c1f7a82809ff8e"
+    },
+    "legacy_annotations": {
+      "assets": {
+        "catalog": [
+          "catalog/release_gate_catalog.yaml",
+          "catalog/devops_operations_catalog.json"
+        ],
+        "docs": [
+          "README.md",
+          "docs/README.md",
+          "docs/architecture.md",
+          "docs/interfaces.md",
+          "docs/operations.md"
+        ],
+        "examples": [
+          "examples/ci_failure_triage.example.yaml",
+          "examples/release_notes_evidence.example.yaml",
+          "examples/rollback_plan.example.yaml"
+        ],
+        "metadata": [
+          "metadata/overlap_promotion.yaml"
+        ],
+        "presets": [
+          "presets/github_actions_triage.preset.yaml",
+          "presets/cloudflare_workers_release.preset.yaml",
+          "presets/local_first_release_gate.preset.yaml",
+          "presets/incident_rollback.preset.yaml"
+        ],
+        "profiles": [
+          "profiles/ci_triage.profile.yaml",
+          "profiles/release_manager.profile.yaml",
+          "profiles/rollback_planner.profile.yaml"
+        ],
+        "prompts": [
+          "prompts/ci_triage.system.md",
+          "prompts/release_evidence.system.md",
+          "prompts/rollback_runbook.system.md"
+        ]
+      },
+      "network_policy": {
+        "allowed_when_explicitly_requested": [
+          "user asks to inspect remote CI or deployment state",
+          "user provides an approved authenticated connector or local log export",
+          "release runbook requires current platform documentation"
+        ],
+        "default": "none"
+      },
+      "optional_integrations": [
+        {
+          "pack_id": "rumi_code_ide_pack",
+          "reason": "Code pack owns source edits; this pack owns operational gates, release evidence, runbooks, and rollback plans."
+        },
+        {
+          "pack_id": "rumi_agent_services_pack",
+          "reason": "Agent services pack owns service agent topology; this pack owns release and incident evidence around those services."
+        }
+      ],
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi DevOps Release Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "tags": [
+      "devops",
+      "release",
+      "ci",
+      "runbook",
+      "rollback",
+      "github-actions",
+      "cloudflare-workers"
+    ]
+  },
   "pack_id": "rumi_devops_release_pack",
   "pack_identity": "rumi:ecosystem/rumi_devops_release_pack",
+  "provenance": {
+    "build_identity": "rumi_devops_release_pack:1.0.0",
+    "content_hash": "sha256:a292e8f063e2743c727943a418e14621829e6f73a9465bd0b1b17a7287072b7a",
+    "signature": null,
+    "trust_class": "local"
+  },
   "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi DevOps Release Pack",
-    "description": "Declarative local-first DevOps and release operations pack for CI triage, release evidence, runbooks, rollback plans, GitHub Actions, and Cloudflare Workers-aware operations.",
-    "author": "Rumi AI Team",
-    "license": "MIT",
-    "tags": ["devops", "release", "ci", "runbook", "rollback", "github-actions", "cloudflare-workers"]
-  },
   "vocabulary": {
-    "types": ["agent", "profile", "prompt", "operations", "release", "audit", "project"]
-  },
-  "depends_on": [
-    {
-      "pack_id": "defaultspack",
-      "version": ">=2.0.0",
-      "reason": "Uses defaultspack agent, prompt, audit, local file, terminal, and profile conventions."
-    },
-    {
-      "pack_id": "rumi_default_tools_pack",
-      "version": ">=1.0.0",
-      "reason": "References existing file, git, terminal, browser companion, and web research tool families without redefining them."
-    }
-  ],
-  "optional_integrations": [
-    {
-      "pack_id": "rumi_code_ide_pack",
-      "reason": "Code pack owns source edits; this pack owns operational gates, release evidence, runbooks, and rollback plans."
-    },
-    {
-      "pack_id": "rumi_agent_services_pack",
-      "reason": "Agent services pack owns service agent topology; this pack owns release and incident evidence around those services."
-    }
-  ],
-  "assets": {
-    "catalog": [
-      "catalog/release_gate_catalog.yaml",
-      "catalog/devops_operations_catalog.json"
-    ],
-    "profiles": [
-      "profiles/ci_triage.profile.yaml",
-      "profiles/release_manager.profile.yaml",
-      "profiles/rollback_planner.profile.yaml"
-    ],
-    "prompts": [
-      "prompts/ci_triage.system.md",
-      "prompts/release_evidence.system.md",
-      "prompts/rollback_runbook.system.md"
-    ],
-    "presets": [
-      "presets/github_actions_triage.preset.yaml",
-      "presets/cloudflare_workers_release.preset.yaml",
-      "presets/local_first_release_gate.preset.yaml",
-      "presets/incident_rollback.preset.yaml"
-    ],
-    "examples": [
-      "examples/ci_failure_triage.example.yaml",
-      "examples/release_notes_evidence.example.yaml",
-      "examples/rollback_plan.example.yaml"
-    ],
-    "metadata": [
-      "metadata/overlap_promotion.yaml"
-    ],
-    "docs": [
-      "README.md",
-      "docs/README.md",
-      "docs/architecture.md",
-      "docs/interfaces.md",
-      "docs/operations.md"
+    "types": [
+      "agent",
+      "profile",
+      "prompt",
+      "operations",
+      "release",
+      "audit",
+      "project"
     ]
-  },
-  "network_policy": {
-    "default": "none",
-    "allowed_when_explicitly_requested": [
-      "user asks to inspect remote CI or deployment state",
-      "user provides an approved authenticated connector or local log export",
-      "release runbook requires current platform documentation"
-    ]
-  },
-  "components": {},
-  "load_order": []
+  }
 }

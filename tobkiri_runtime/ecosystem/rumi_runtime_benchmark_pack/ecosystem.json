@@ -1,44 +1,83 @@
 {
-  "pack_id": "rumi_runtime_benchmark_pack",
-  "pack_identity": "rumi:ecosystem/rumi_runtime_benchmark_pack",
-  "display_name": "Rumi Runtime Benchmark Pack",
-  "description": "Declarative runtime benchmark, latency, cost, reproducibility, sampling, environment-capture, and tool-loop measurement pack.",
-  "version": "0.1.0",
-  "license": "MIT",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "spec",
-      "policy",
-      "coordination",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
+  "dependencies": {},
+  "description": "Declarative runtime benchmark, latency, cost, reproducibility, sampling, environment-capture, and tool-loop measurement pack.",
+  "display_name": "Rumi Runtime Benchmark Pack",
+  "license": "MIT",
   "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
   "metadata": {
-    "runtime_type": "declarative_pack",
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalog": [
+        "catalog/runtime_benchmark_matrix.yaml",
+        "catalog/environment_capture_schema.json",
+        "catalog/latency_cost_sampling_matrix.yaml",
+        "catalog/reproducibility_ledger.yaml",
+        "catalog/release_gate_thresholds.yaml"
+      ],
+      "coordination": [
+        "coordination/subagent_benchmark_review_roster.yaml"
+      ],
+      "docs": [
+        "README.md",
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "examples": [
+        "examples/latency_cost_snapshot.example.yaml",
+        "examples/runtime_comparison.example.yaml",
+        "examples/tool_loop_replay.example.yaml",
+        "examples/environment_capture_review.example.yaml",
+        "examples/sampling_latency_cost_review.example.yaml"
+      ],
+      "policies": [
+        "policies/benchmark_reproducibility.policy.yaml",
+        "policies/environment_capture.policy.yaml",
+        "policies/warm_cold_start.policy.yaml",
+        "policies/sample_size_confidence.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/runtime_benchmark_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/runtime_benchmark_reviewer.system.md",
+        "prompts/reproducible_latency_cost_reviewer.system.md"
+      ],
+      "schemas": [
+        "schemas/metric_record.schema.json"
+      ],
+      "specs": [
+        "specs/environment_descriptor.yaml"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:ee691a3427da4f76f3b0104f9bf260eefa6bebdd42d7e9c9dea98e2bda52120d",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:74ff7300a9b456d46d7f57c747a8a269275d420000e1942e365711518bc21b1e"
+    },
     "executable_code": false,
-    "required_secrets": [],
-    "owner_surfaces": [
-      "latency_measurement",
-      "cost_snapshot",
-      "tool_loop_reproducibility",
-      "runtime_comparison",
-      "sampling_plan",
-      "environment_capture",
-      "multi_pass_specialist_review"
-    ],
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:74ff7300a9b456d46d7f57c747a8a269275d420000e1942e365711518bc21b1e"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_model_evals_pack",
@@ -57,55 +96,42 @@
         "reason": "DevOps release pack owns release-gate and deployment evidence reporting."
       }
     ],
-    "asset_index": {
-      "catalog": [
-        "catalog/runtime_benchmark_matrix.yaml",
-        "catalog/environment_capture_schema.json",
-        "catalog/latency_cost_sampling_matrix.yaml",
-        "catalog/reproducibility_ledger.yaml",
-        "catalog/release_gate_thresholds.yaml"
-      ],
-      "schemas": [
-        "schemas/metric_record.schema.json"
-      ],
-      "specs": [
-        "specs/environment_descriptor.yaml"
-      ],
-      "policies": [
-        "policies/benchmark_reproducibility.policy.yaml",
-        "policies/environment_capture.policy.yaml",
-        "policies/warm_cold_start.policy.yaml",
-        "policies/sample_size_confidence.policy.yaml"
-      ],
-      "coordination": [
-        "coordination/subagent_benchmark_review_roster.yaml"
-      ],
-      "profiles": [
-        "profiles/runtime_benchmark_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/runtime_benchmark_reviewer.system.md",
-        "prompts/reproducible_latency_cost_reviewer.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "examples": [
-        "examples/latency_cost_snapshot.example.yaml",
-        "examples/runtime_comparison.example.yaml",
-        "examples/tool_loop_replay.example.yaml",
-        "examples/environment_capture_review.example.yaml",
-        "examples/sampling_latency_cost_review.example.yaml"
-      ],
-      "docs": [
-        "README.md",
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ]
-    }
+    "owner_surfaces": [
+      "latency_measurement",
+      "cost_snapshot",
+      "tool_loop_reproducibility",
+      "runtime_comparison",
+      "sampling_plan",
+      "environment_capture",
+      "multi_pass_specialist_review"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack"
+  },
+  "pack_id": "rumi_runtime_benchmark_pack",
+  "pack_identity": "rumi:ecosystem/rumi_runtime_benchmark_pack",
+  "provenance": {
+    "build_identity": "rumi_runtime_benchmark_pack:0.1.0",
+    "content_hash": "sha256:ee691a3427da4f76f3b0104f9bf260eefa6bebdd42d7e9c9dea98e2bda52120d",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "spec",
+      "policy",
+      "coordination",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

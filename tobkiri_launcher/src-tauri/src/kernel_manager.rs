@@ -9,8 +9,8 @@
 use std::fs;
 #[cfg(unix)]
 use std::io::ErrorKind;
-use std::path::Path;
-use std::process::{Child, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -29,12 +29,89 @@ const MAX_AUTO_RESTARTS: u32 = 3;
 /// Seconds to wait after SIGTERM before sending SIGKILL.
 const KILL_TIMEOUT_SECS: u64 = 5;
 
-fn python_runtime_env_vars() -> [(&'static str, &'static str); 3] {
+fn python_runtime_env_vars() -> [(&'static str, &'static str); 4] {
     [
         ("PYTHONUTF8", "1"),
         ("PYTHONIOENCODING", "utf-8"),
         ("PYTHONUNBUFFERED", "1"),
+        ("PYTHONDONTWRITEBYTECODE", "1"),
     ]
+}
+
+fn kernel_working_dir(config: &AppConfig) -> &Path {
+    if config.is_dev_workspace() {
+        &config.rumi_home
+    } else {
+        config
+            .user_data_dir
+            .parent()
+            .unwrap_or(&config.user_data_dir)
+    }
+}
+
+fn require_development_venv(config: &AppConfig) -> Result<()> {
+    if !config.is_dev_workspace() {
+        return Ok(());
+    }
+    let venv_python = config.venv_python();
+    if !venv_python.exists() {
+        bail!(
+            "venv Python not found at {} -- run environment setup first",
+            venv_python.display()
+        );
+    }
+    Ok(())
+}
+
+/// Resolve the durable active Application authority, if one has been
+/// completely committed.  A Host-contract file is never used as the source
+/// of this decision: it is only a projection of the independently verified
+/// Profile authority.
+fn verified_active_application_authority(
+    config: &AppConfig,
+) -> Result<Option<crate::defaultspack_authority::ApplicationAuthority>> {
+    if !crate::defaultspack_authority::has_verified_active_profile(config)
+        .context("failed to inspect durable active Profile authority")?
+    {
+        return Ok(None);
+    }
+    let authority = crate::defaultspack_authority::resolve(config)
+        .context("failed to resolve durable active Application authority")?;
+    Ok(Some(authority))
+}
+
+fn write_kernel_host_contract(config: &AppConfig, bootstrap_secret: &str) -> Result<PathBuf> {
+    match verified_active_application_authority(config)? {
+        Some(authority) => {
+            let identity = authority
+                .execution_identity()
+                .context("durable active Application execution identity is invalid")?;
+            let contributions =
+                crate::host_contract_contributions::collect_for_verified_application(&authority)
+                    .context("failed to collect verified active Host contract contributions")?;
+            crate::host_contract::write_contract(
+                config,
+                &identity,
+                [
+                    ("panel_bootstrap_secret", bootstrap_secret.to_owned()),
+                    (
+                        "system_pack_descriptors",
+                        contributions.system_pack_descriptors,
+                    ),
+                    (
+                        "update_target_descriptors",
+                        contributions.update_target_descriptors,
+                    ),
+                ],
+            )
+            .context("failed to publish the durable active Host contract")
+        }
+        None => crate::host_contract::write_bootstrap_contract(
+            config,
+            [("panel_bootstrap_secret", bootstrap_secret.to_owned())],
+        )
+        .context("failed to publish the bootstrap-only Host contract"),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,17 +123,17 @@ pub(crate) struct PortListener {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListenerIdentity {
-    MatchingWorkingDirectory,
-    MatchingEntrypointPath,
-    MatchingVenvPython,
+    WorkingDirectory,
+    EntrypointPath,
+    VenvPython,
 }
 
 impl ListenerIdentity {
     fn description(self) -> &'static str {
         match self {
-            Self::MatchingWorkingDirectory => "matched the configured RUMI_HOME working directory",
-            Self::MatchingEntrypointPath => "matched the configured Kernel entrypoint path",
-            Self::MatchingVenvPython => "matched the configured venv Python path",
+            Self::WorkingDirectory => "matched the configured RUMI_HOME working directory",
+            Self::EntrypointPath => "matched the configured Kernel entrypoint path",
+            Self::VenvPython => "matched the configured venv Python path",
         }
     }
 }
@@ -72,13 +149,16 @@ impl PortListener {
 
 /// Manages a single Kernel child process.
 pub struct KernelManager {
-    child: Option<Child>,
+    child: Option<crate::python_env::PythonChild>,
     config: AppConfig,
     panel_bootstrap_secret: String,
     /// Stores the exit code from the most recent child exit.
     last_exit_code: Option<i32>,
     /// Counter for consecutive non-42 restarts.
     restart_count: u32,
+    /// Monotonically increasing successful-start generation used to fence
+    /// background work from a Kernel process that has since restarted.
+    launch_generation: u64,
 }
 
 impl KernelManager {
@@ -89,12 +169,15 @@ impl KernelManager {
             panel_bootstrap_secret,
             last_exit_code: None,
             restart_count: 0,
+            launch_generation: 0,
         }
     }
 
     /// Start the Kernel process.
     ///
-    /// Runs `{venv}/bin/python -m app` with cwd = `rumi_home`.
+    /// Runs the sealed runtime module with isolated Python. Bundled builds use
+    /// the writable app data root as cwd and an explicit verified resource
+    /// root, preventing ambient imports and writes inside the app bundle.
     /// Stdout and stderr are redirected to `{log_dir}/kernel.log`.
     pub fn start(&mut self) -> Result<()> {
         if self.is_running() {
@@ -106,20 +189,18 @@ impl KernelManager {
             warn!("{message}");
         }
 
-        let venv_python = self.config.venv_python();
-
-        if !venv_python.exists() {
-            bail!(
-                "venv Python not found at {} -- run environment setup first",
-                venv_python.display()
-            );
-        }
+        require_development_venv(&self.config)?;
         if !self.config.rumi_home.exists() {
             bail!(
                 "Kernel directory not found: {}",
                 self.config.rumi_home.display()
             );
         }
+        // Packaged outer-runtime and sealed-environment verification is
+        // intentionally centralized in `spawn_packaged_role`. It binds the
+        // full outer manifest to the sealed snapshot immediately before
+        // execution; hashing `app_dir` here would repeat that work without
+        // improving the fail-closed launch boundary.
 
         fs::create_dir_all(&self.config.log_dir)?;
         let log_file = fs::File::create(self.config.log_dir.join("kernel.log"))
@@ -128,78 +209,99 @@ impl KernelManager {
             .try_clone()
             .context("failed to clone log file handle")?;
 
+        let working_dir = kernel_working_dir(&self.config);
+        fs::create_dir_all(working_dir)?;
         info!(
-            "Starting Kernel: {} -m app (cwd={})",
-            venv_python.display(),
-            self.config.rumi_home.display()
+            "Starting Kernel from {} (cwd={})",
+            if self.config.is_dev_workspace() {
+                self.config.venv_python().display().to_string()
+            } else {
+                "build-bound sealed Python snapshot".to_string()
+            },
+            working_dir.display()
         );
 
         let dev_environment = cfg!(debug_assertions) || self.config.is_dev_workspace();
-        let auto_approve_local = dev_environment
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
+        let host_contract_path =
+            write_kernel_host_contract(&self.config, &self.panel_bootstrap_secret)?;
+        let next_launch_generation = self.next_launch_generation()?;
 
-        let pack_shell_path = if self.config.is_dev_workspace() {
-            Some(
-                self.config
-                    .ensure_pack_shell_path()
-                    .context("failed to prepare pack-shell for dev Defaultspack launches")?,
-            )
-        } else {
-            self.config.pack_shell_path()
-        };
-        if let Some(ref path) = pack_shell_path {
-            info!("Kernel will use pack-shell at {}", path.display());
-        } else {
-            warn!("pack-shell was not found; Defaultspack desktop launch will be unavailable");
-        }
-
-        let mut command = process_utils::command(&venv_python);
-        command
-            .args(["-m", "app"])
-            .current_dir(&self.config.rumi_home)
-            .env("RUMI_HOME", &self.config.rumi_home)
-            .env("RUMI_APP_DIR", &self.config.app_dir)
-            .env("RUMI_USER_DATA", &self.config.user_data_dir)
-            .env("RUMI_LOG_DIR", &self.config.log_dir)
-            .env("RUMI_PORT", self.config.kernel_port.to_string())
-            .env("RUMI_PANEL_BOOTSTRAP_SECRET", &self.panel_bootstrap_secret)
-            .env(
-                "RUMI_VIEWER_HOST_BROKER_CONNECTION",
-                self.config.host_broker_connection_path(),
-            )
-            .env("RUMI_MACOS_PERMISSION_HOST", "tobkiri_launcher")
-            .envs(python_runtime_env_vars())
-            .env(
-                "RUMI_ENVIRONMENT",
-                if dev_environment {
-                    "development"
-                } else {
-                    "production"
-                },
-            )
-            .env(
-                "RUMI_AUTO_APPROVE_LOCAL",
-                if auto_approve_local { "true" } else { "false" },
-            )
-            .stdout(Stdio::from(log_file))
-            .stderr(Stdio::from(log_stderr));
-
-        if let Some(ref path) = pack_shell_path {
-            command.env("RUMI_PACK_SHELL_PATH", path);
-        }
-
-        let child = command.spawn().context("failed to spawn Kernel process")?;
+        let child = crate::python_env::spawn_python_role(
+            &self.config,
+            crate::python_env::PythonRole::Kernel,
+            crate::python_env::RoleArguments::default(),
+            |command| {
+                if self.config.is_dev_workspace() {
+                    command.env("RUMI_APP_DIR", &self.config.app_dir);
+                }
+                command
+                    .current_dir(working_dir)
+                    .env_remove("PYTHONPATH")
+                    .env("RUMI_HOME", &self.config.rumi_home)
+                    .env("RUMI_USER_DATA", &self.config.user_data_dir)
+                    .env(
+                        "RUMI_DEFAULTSPACK_SECRETS_DIR",
+                        self.config.user_data_dir.join("secrets"),
+                    )
+                    .env(
+                        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+                        self.config
+                            .user_data_dir
+                            .join("defaultspack")
+                            .join("shared")
+                            .join("frontend_settings.json"),
+                    )
+                    .env("RUMI_LOG_DIR", &self.config.log_dir)
+                    .env("RUMI_PORT", self.config.kernel_port.to_string())
+                    .env(crate::host_contract::CONTRACT_ENV, &host_contract_path)
+                    .env(
+                        "RUMI_VIEWER_HOST_BROKER_CONNECTION",
+                        self.config.host_broker_connection_path(),
+                    )
+                    .env("RUMI_MACOS_PERMISSION_HOST", "tobkiri_launcher")
+                    .envs(python_runtime_env_vars())
+                    .env(
+                        "RUMI_ENVIRONMENT",
+                        if dev_environment {
+                            "development"
+                        } else {
+                            "production"
+                        },
+                    )
+                    .stdout(Stdio::from(log_file))
+                    .stderr(Stdio::from(log_stderr));
+                Ok(())
+            },
+        )
+        .context("failed to verify and spawn Kernel process")?;
 
         info!("Kernel started (pid {})", child.id());
         self.child = Some(child);
+        self.launch_generation = next_launch_generation;
         self.last_exit_code = None;
         Ok(())
     }
 
+    fn next_launch_generation(&self) -> Result<u64> {
+        self.launch_generation
+            .checked_add(1)
+            .context("Kernel launch generation overflow")
+    }
+
+    /// Return the start generation captured by asynchronous Launcher work.
+    pub(crate) fn launch_generation(&self) -> u64 {
+        self.launch_generation
+    }
+
+    /// Return whether a captured generation still names this Kernel.  The
+    /// zero generation is reserved for an authenticated Kernel that predates
+    /// this Launcher process and therefore has no managed child handle.
+    pub(crate) fn is_current_launch_generation(&mut self, generation: u64) -> bool {
+        self.launch_generation == generation && (generation == 0 || self.is_running())
+    }
+
     pub fn current_pid(&self) -> Option<u32> {
-        self.child.as_ref().map(Child::id)
+        self.child.as_ref().map(|child| child.id())
     }
 
     pub fn recover_port_conflict(&mut self) -> Result<Option<String>> {
@@ -337,7 +439,7 @@ impl KernelManager {
     }
 
     #[cfg(unix)]
-    fn unix_stop(child: &mut Child) -> Result<()> {
+    fn unix_stop(child: &mut crate::python_env::PythonChild) -> Result<()> {
         use std::thread;
         use std::time::Duration;
 
@@ -525,18 +627,18 @@ fn identify_owned_listener(
         .as_deref()
         .is_some_and(|cwd| observed_path_matches(cwd, &config.rumi_home))
     {
-        return Some(ListenerIdentity::MatchingWorkingDirectory);
+        return Some(ListenerIdentity::WorkingDirectory);
     }
 
     let entrypoint = config.rumi_home.join("app.py");
     if command_mentions_path(&listener.command, &entrypoint)
         || command_mentions_path(&listener.command, &config.rumi_home)
     {
-        return Some(ListenerIdentity::MatchingEntrypointPath);
+        return Some(ListenerIdentity::EntrypointPath);
     }
 
     if command_mentions_path(&listener.command, &config.venv_python()) {
-        return Some(ListenerIdentity::MatchingVenvPython);
+        return Some(ListenerIdentity::VenvPython);
     }
 
     None
@@ -582,7 +684,7 @@ pub(crate) fn terminate_external_listener(pid: u32, port: u16) -> Result<()> {
             .args(["-TERM", &pid_str])
             .status();
         wait_for_port_to_clear(port, pid, Duration::from_secs(KILL_TIMEOUT_SECS))?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(windows)]
@@ -662,12 +764,7 @@ impl Drop for KernelManager {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        ENV_LOCK.get_or_init(|| Mutex::new(()))
-    }
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn test_config() -> AppConfig {
         AppConfig::detect_for_tauri(
@@ -675,6 +772,19 @@ mod tests {
             PathBuf::from("/tmp/test_appdata"),
         )
         .unwrap()
+    }
+
+    fn temporary_packaged_config(label: &str) -> (PathBuf, AppConfig) {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri-{label}-{unique}"));
+        let resource_dir = root.join("resources");
+        fs::create_dir_all(resource_dir.join("app")).unwrap();
+        let config = AppConfig::detect_for_tauri(resource_dir, root.join("appdata")).unwrap();
+        assert!(!config.is_dev_workspace());
+        (root, config)
     }
 
     #[test]
@@ -711,6 +821,25 @@ mod tests {
     }
 
     #[test]
+    fn successful_start_generation_rejects_stale_guardian_work() {
+        let config = test_config();
+        let mut km = KernelManager::new(&config, "test-bootstrap".into());
+
+        assert_eq!(km.launch_generation(), 0);
+        assert!(km.is_current_launch_generation(0));
+
+        let first_generation = km.next_launch_generation().unwrap();
+        km.launch_generation = first_generation;
+        let restarted_generation = km.next_launch_generation().unwrap();
+        km.launch_generation = restarted_generation;
+
+        assert_eq!(first_generation, 1);
+        assert_eq!(restarted_generation, 2);
+        assert_ne!(first_generation, restarted_generation);
+        assert!(!km.is_current_launch_generation(first_generation));
+    }
+
+    #[test]
     fn clean_exit_does_not_request_restart_without_child() {
         let config = test_config();
         let mut km = KernelManager::new(&config, "test-bootstrap".into());
@@ -722,46 +851,98 @@ mod tests {
     }
 
     #[test]
-    fn explicit_auto_approve_opt_in_is_required() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
-
-        let dev_environment = true;
-        let auto_approve_local = dev_environment
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!auto_approve_local);
-    }
-
-    #[test]
-    fn explicit_auto_approve_opt_in_only_applies_in_dev() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::set_var("RUMI_AUTO_APPROVE_LOCAL", "true");
-
-        let production_auto_approve = false
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-        let development_auto_approve = true
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!production_auto_approve);
-        assert!(development_auto_approve);
-
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
-    }
-
-    #[test]
     fn python_runtime_env_forces_utf8_output() {
         let envs = python_runtime_env_vars();
 
         assert!(envs.contains(&("PYTHONUTF8", "1")));
         assert!(envs.contains(&("PYTHONIOENCODING", "utf-8")));
         assert!(envs.contains(&("PYTHONUNBUFFERED", "1")));
+        assert!(envs.contains(&("PYTHONDONTWRITEBYTECODE", "1")));
+    }
+
+    #[test]
+    fn bundled_kernel_uses_writable_app_data_as_working_directory() {
+        let config = test_config();
+
+        assert_eq!(kernel_working_dir(&config), Path::new("/tmp/test_appdata"));
+    }
+
+    #[test]
+    fn bundled_kernel_does_not_require_legacy_writable_venv() {
+        let config = test_config();
+
+        assert!(!config.is_dev_workspace());
+        assert!(!config.venv_python().exists());
+        require_development_venv(&config).unwrap();
+    }
+
+    #[test]
+    fn packaged_kernel_defers_outer_verification_to_authoritative_role_spawn() {
+        let (root, mut config) = temporary_packaged_config("kernel-spawn-authority");
+        config.kernel_port = 0;
+        fs::write(
+            config
+                .app_dir
+                .join(crate::runtime_resource_integrity::MANIFEST_NAME),
+            b"not a resource manifest",
+        )
+        .unwrap();
+
+        let error = KernelManager::new(&config, "test-bootstrap".into())
+            .start()
+            .unwrap_err()
+            .to_string();
+
+        // A preflight `runtime_resource_integrity::verify` would fail on the
+        // malformed outer manifest before role spawn. The only failure path is
+        // now the authoritative packaged role spawn, which still fails closed.
+        assert!(error.contains("failed to verify and spawn Kernel process"));
+        assert!(!error.contains("packaged runtime integrity verification failed"));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn no_active_profile_publishes_only_a_distinct_bootstrap_contract() {
+        let (root, config) = temporary_packaged_config("kernel-bootstrap-contract");
+
+        write_kernel_host_contract(&config, "bootstrap-secret").unwrap();
+
+        let contract: serde_json::Value = serde_json::from_slice(
+            &fs::read(crate::host_contract::contract_path(&config)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(contract["profile_id"], "defaults");
+        assert_ne!(
+            contract["profile_revision"],
+            serde_json::Value::String(format!("sha256:{}", "0".repeat(64))),
+            "bootstrap must not use the former all-zero digest"
+        );
+        assert_ne!(contract["profile_revision"], contract["plan_digest"]);
+        assert_eq!(
+            contract["values"]["panel_bootstrap_secret"],
+            "bootstrap-secret"
+        );
+        assert!(contract["values"].get("system_pack_descriptors").is_none());
+        assert!(crate::host_contract::read_identity(&config).is_none());
+        assert!(crate::host_contract::read_value(&config, "panel_bootstrap_secret").is_none());
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap() {
+        let (root, config) = temporary_packaged_config("kernel-corrupt-active-contract");
+        let profiles = config.user_data_dir.join("profiles");
+        fs::create_dir_all(&profiles).unwrap();
+        fs::write(profiles.join("active.json"), br#"{"not":"an authority"}"#).unwrap();
+
+        let error = write_kernel_host_contract(&config, "bootstrap-secret").unwrap_err();
+
+        assert!(format!("{error:#}").contains("active Profile pointer"));
+        assert!(
+            !crate::host_contract::contract_path(&config).exists(),
+            "a corrupt active authority must not be replaced with a bootstrap contract"
+        );
+        fs::remove_dir_all(root).ok();
     }
 
     #[test]
@@ -775,7 +956,7 @@ mod tests {
 
         assert_eq!(
             identify_owned_listener(&listener, &config),
-            Some(ListenerIdentity::MatchingWorkingDirectory),
+            Some(ListenerIdentity::WorkingDirectory),
         );
     }
 
@@ -790,7 +971,7 @@ mod tests {
 
         assert_eq!(
             identify_owned_listener(&listener, &config),
-            Some(ListenerIdentity::MatchingVenvPython),
+            Some(ListenerIdentity::VenvPython),
         );
     }
 
@@ -808,7 +989,7 @@ mod tests {
 
         assert_eq!(
             identify_owned_listener(&listener, &config),
-            Some(ListenerIdentity::MatchingEntrypointPath),
+            Some(ListenerIdentity::EntrypointPath),
         );
     }
 

@@ -1,0 +1,125 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:d073dfc3e85321636aa9b9a726eb138f6e0bc4add074670e78192c12c00d39b1",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3a1ca8334510d8fdbbf41437f444ea32c6345fccdc1ca8ad298d470dbf8a4bd7",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54",
+      "kind": "executable",
+      "path": "runtime/normalizer.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+      "operations": [
+        "rumi_ai_stream_pack.ai-stream-normalize"
+      ],
+      "revision_digest": "sha256:88929a94dedfbbc04a8ca78a3c88c01bcb2703a480402e8ad0afbfea8b62d6ad"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:88929a94dedfbbc04a8ca78a3c88c01bcb2703a480402e8ad0afbfea8b62d6ad",
+      "id": "rumi_ai_stream_pack.ai-stream.normalize",
+      "implementation_digest": "sha256:ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_stream_pack.ai-stream-normalize"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:1ef0bdb9b50d1b8f86b4c54c0917e28e15b80112ccf62cdbcc8050c8db98b0a9",
+    "artifact_set_digest": "sha256:5c56e2ffc6e93993162aa032cefa63ef6e76fe031c0f5a25d442197a70d2b709",
+    "contract_catalog_digest": "sha256:681bd5426fcbdb2c4d2b331cc6d1653a7bec2a0349a5e449232a56e7703807bc"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.ai.stream.normalize.v1",
+      "rumi:ecosystem/rumi_ai_stream_pack",
+      "rumi_ai_stream_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+      "owner": "rumi_ai_stream_pack",
+      "contract_reference": "tobkiri.service.ai.stream.normalize.v1",
+      "provider_id": "rumi_ai_stream_pack.ai-stream.normalize",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:3ca59b33d68fb652c31ca6c2521b7d16274aab144bd0a7675a6dcbda72a3cda1",
+    "display_name": "Rumi AI Stream",
+    "id": "rumi_ai_stream_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_ai_stream_pack/pack.v4.json",
+    "source_digest": "sha256:1ef0bdb9b50d1b8f86b4c54c0917e28e15b80112ccf62cdbcc8050c8db98b0a9",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:63dc0ae52fd55ba49a9e27c68deb6827396a843b222d414a84912d3a6c49d160",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:d32de4bc3109d4920dd5084e87851f9fd9129ed4299c9131de5d3d41798bbb50",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_ai_stream_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:1ef0bdb9b50d1b8f86b4c54c0917e28e15b80112ccf62cdbcc8050c8db98b0a9"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_ai_stream_pack.ai-stream.normalize",
+      "owner": "rumi_ai_stream_pack",
+      "contract_reference": "tobkiri.service.ai.stream.normalize.v1",
+      "operations": [
+        "rumi_ai_stream_pack.ai-stream-normalize"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.stream.normalize"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

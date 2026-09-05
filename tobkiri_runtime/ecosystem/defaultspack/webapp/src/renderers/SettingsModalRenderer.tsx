@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { AlertTriangle, Check, ChevronDown, Copy, Loader2, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCircle, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
+import { ErrorNotice } from "../components/ErrorNotice";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
 import { AppsSettingsPanel } from "../components/AppsSettingsPanel";
 import { CredentialTransferModal } from "../components/CredentialTransferModal";
@@ -16,8 +17,16 @@ import { settingsFieldSearchText, settingsSectionSearchText } from "../lib/setti
 import { reviewConnectionDraft, reviewOAuthDestination, type CredentialImportReview, type OAuthDestinationReview } from "../lib/oauthConnectionReview";
 import { settingsApiResources } from "../features/settings/resources/settingsApiResources";
 import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../features/settings/resources/useModelAvailability";
+import { providerBrandAsset } from "../features/connections/providerBrandAssets";
 import { ContinuitySettingsField } from "../features/continuity/ContinuitySettingsField";
-import type { SettingsModalRendererProps } from "./types";
+import {
+  ModelSearchPicker,
+  modelProviderOptions,
+  parseModelProviderQuery,
+  parseModelSelectorSchema,
+  type ModelSelectorSchema,
+} from "../features/models";
+import type { SettingsModalRendererProps, SettingsSaveState } from "./types";
 import type { DesktopPermissionStatus, DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import {
   buildCodexAppServerPrelude,
@@ -39,6 +48,9 @@ import {
   type SettingsFieldRendererProps,
 } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
+import { ModelRoutingOverview } from "./settings/ModelRoutingOverview";
+import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
+import { buildSettingsProfileWorkspace } from "./settings/settingsProfileModel";
 
 const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
   ...builtinSettingsFieldRendererEntries,
@@ -65,6 +77,19 @@ const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
   },
 ]);
 
+export function settingsCloseRequiresConfirmation(saveState: SettingsSaveState): boolean {
+  // Setting changes are persisted by App.tsx's parent-owned save queue, so
+  // unmounting this modal does not cancel an in-flight save. Blocking close
+  // while that queue is running makes a normal change-then-close interaction
+  // look broken. Only stop the user when a save has actually failed and there
+  // are still dirty values that may need attention.
+  return saveState.status === "error" && (saveState.dirtyKeys?.length ?? 0) > 0;
+}
+
+export function toggleSettingsRowSelection(currentKey: string, clickedKey: string): string {
+  return currentKey === clickedKey ? "" : clickedKey;
+}
+
 type PendingOAuthReview = OAuthDestinationReview & {
   popup: Window | null;
   scopes: string[];
@@ -86,7 +111,7 @@ function MobilePairingReviewField({ sectionId, field, value, onChange }: Setting
           placeholder="pair-…"
           autoComplete="off"
           spellCheck={false}
-          className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 font-mono text-sm outline-none focus:border-zinc-500"
+          className="mt-2 h-10 w-full rounded-md border border-white/[0.09] bg-white/[0.04] px-3 font-mono text-sm outline-none focus:border-indigo-400/50"
         />
       </label>
       <p className="text-xs leading-5 text-zinc-500">PCで作成したpairing IDを入力すると、authoritative requestを再取得して安全に確認します。</p>
@@ -101,6 +126,17 @@ function formatReadonlyValue(value: unknown, fallback: unknown): string {
   if (typeof resolved === "boolean") return resolved ? "保存済み" : "未設定";
   if (resolved && typeof resolved === "object") return JSON.stringify(resolved, null, 2);
   return String(resolved);
+}
+
+function formFieldString(value: unknown, fallback: unknown = ""): string {
+  const resolved = value ?? fallback ?? "";
+  if (typeof resolved === "string") return resolved;
+  if (typeof resolved === "number" || typeof resolved === "boolean") return String(resolved);
+  try {
+    return JSON.stringify(resolved, null, 2);
+  } catch {
+    return "";
+  }
 }
 
 function colorFieldValue(value: unknown, fallback: unknown): string {
@@ -174,7 +210,7 @@ function permissionBadgeClass(permission: DesktopPermissionStatus): string {
 function SystemInfoPanel({ info }: { info?: DesktopSystemInfo | null }) {
   if (!info) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm leading-6 text-zinc-400">
+      <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm leading-6 text-zinc-400">
         Tobkiri Launcher の権限状態を取得できませんでした。Tobkiri Launcherを起動し、Accessibility / Screen Recording / Input Monitoring を許可してください。
       </div>
     );
@@ -190,13 +226,13 @@ function SystemInfoPanel({ info }: { info?: DesktopSystemInfo | null }) {
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
         {versionRows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2.5">
+          <div key={label} className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2.5">
             <span className="text-xs text-zinc-500">{label}</span>
             <span className="font-mono text-xs text-zinc-200">{value || "unknown"}</span>
           </div>
         ))}
       </div>
-      <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+      <section className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-4">
         <div>
           <h4 className="text-sm font-medium text-zinc-100">Permission Host</h4>
           <p className="mt-1 text-xs leading-5 text-zinc-500">
@@ -205,9 +241,9 @@ function SystemInfoPanel({ info }: { info?: DesktopSystemInfo | null }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px] text-zinc-400">
-          <span className="rounded-full border border-zinc-800 bg-zinc-900/70 px-2.5 py-1">画面を見る</span>
-          <span className="rounded-full border border-zinc-800 bg-zinc-900/70 px-2.5 py-1">クリック・キーボード操作</span>
-          <span className="rounded-full border border-zinc-800 bg-zinc-900/70 px-2.5 py-1">ブラウザ操作</span>
+          <span className="rounded-full border border-white/[0.07] bg-white/[0.045] px-2.5 py-1">画面を見る</span>
+          <span className="rounded-full border border-white/[0.07] bg-white/[0.045] px-2.5 py-1">クリック・キーボード操作</span>
+          <span className="rounded-full border border-white/[0.07] bg-white/[0.045] px-2.5 py-1">ブラウザ操作</span>
         </div>
       </section>
       {unverified ? (
@@ -222,7 +258,7 @@ function SystemInfoPanel({ info }: { info?: DesktopSystemInfo | null }) {
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           {info.permissions.map((permission) => (
-            <div key={permission.id} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <div key={permission.id} className="rounded-lg border border-white/[0.07] bg-white/[0.035] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-zinc-100">{permission.label}</div>
@@ -233,7 +269,7 @@ function SystemInfoPanel({ info }: { info?: DesktopSystemInfo | null }) {
                 </span>
               </div>
               {permission.settings_hint && (
-                <p className="mt-3 rounded-md border border-zinc-800 bg-zinc-900/50 px-2.5 py-2 text-[11px] text-zinc-500">
+                <p className="mt-3 rounded-md border border-white/[0.07] bg-white/[0.04] px-2.5 py-2 text-[11px] text-zinc-500">
                   {permission.settings_hint}
                 </p>
               )}
@@ -313,6 +349,107 @@ function oauthProviderRows(providers: Array<Record<string, unknown>>): Array<Rec
   });
 }
 
+const profileReferenceLabelKeys = ["display_name", "displayName", "label", "name", "title"];
+const profileReferenceIdKeys = [
+  "profile_id",
+  "profileId",
+  "active_profile_id",
+  "activeProfileId",
+  "selected_profile_id",
+  "selectedProfileId",
+  "model_profile_id",
+  "modelProfileId",
+  "qualified_model_id",
+  "qualifiedModelId",
+  "id",
+  "key",
+  "value",
+  "preferred_model",
+  "preferredModel",
+  "model_id",
+  "modelId",
+];
+const profileReferenceSettingKeys = [
+  "active_profile",
+  "active_profile_id",
+  "selected_profile_id",
+  "profile_id",
+  "default_profile",
+  "default_profile_id",
+  "preferred_model",
+];
+
+function profileReferenceScalar(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+function profileReferenceRecordValue(record: Record<string, unknown>, keys: readonly string[]): string {
+  for (const key of keys) {
+    try {
+      const normalized = profileReferenceScalar(record[key]);
+      if (normalized) return normalized;
+    } catch {
+      // Treat malformed runtime objects as unavailable instead of coercing them.
+    }
+  }
+  return "";
+}
+
+function profileReferenceValue(value: unknown, preferLabel: boolean): string {
+  const scalar = profileReferenceScalar(value);
+  if (scalar) return scalar;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const record = value as Record<string, unknown>;
+  const primaryKeys = preferLabel ? profileReferenceLabelKeys : profileReferenceIdKeys;
+  const fallbackKeys = preferLabel ? profileReferenceIdKeys : profileReferenceLabelKeys;
+  return profileReferenceRecordValue(record, primaryKeys) || profileReferenceRecordValue(record, fallbackKeys);
+}
+
+function profileReferenceId(value: unknown): string {
+  return profileReferenceValue(value, false);
+}
+
+function profileReferenceLabel(value: unknown): string {
+  return profileReferenceValue(value, true);
+}
+
+function normalizeProfileReferenceSettings(settingsValues: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
+  let normalizedSettingsValues = settingsValues;
+  for (const sectionId of ["profiles", "profile", "adaptive", "models"]) {
+    const sectionValues = settingsValues[sectionId];
+    if (!sectionValues) continue;
+    let normalizedSectionValues = sectionValues;
+    for (const key of profileReferenceSettingKeys) {
+      const value = sectionValues[key];
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const normalized = profileReferenceId(value);
+      if (!normalized) continue;
+      if (normalizedSectionValues === sectionValues) normalizedSectionValues = { ...sectionValues };
+      normalizedSectionValues[key] = normalized;
+    }
+    if (normalizedSectionValues !== sectionValues) {
+      if (normalizedSettingsValues === settingsValues) normalizedSettingsValues = { ...settingsValues };
+      normalizedSettingsValues[sectionId] = normalizedSectionValues;
+    }
+  }
+  return normalizedSettingsValues;
+}
+
+function normalizeProfileReferenceCatalog(catalog: SettingsModalRendererProps["catalog"]): SettingsModalRendererProps["catalog"] {
+  if (!catalog) return catalog;
+  const normalizedValues = normalizeProfileReferenceSettings(catalog.settings.values);
+  if (normalizedValues === catalog.settings.values) return catalog;
+  return {
+    ...catalog,
+    settings: {
+      ...catalog.settings,
+      values: normalizedValues,
+    },
+  };
+}
+
 function activeSettingsProfileLabel(
   settingsValues: Record<string, Record<string, unknown>>,
   catalog: SettingsModalRendererProps["catalog"],
@@ -327,7 +464,7 @@ function activeSettingsProfileLabel(
     settingsValues.models?.preferred_model,
     catalog?.settings?.values?.profiles?.active_profile,
     catalog?.settings?.values?.models?.preferred_model,
-  ].map((value) => String(value ?? "").trim()).filter(Boolean);
+  ].map(profileReferenceLabel).filter(Boolean);
   return candidates[0] ?? "No active profile reported";
 }
 
@@ -461,7 +598,7 @@ function CustomSelect({
       {open && (
         <>
           <button type="button" aria-label="close select" className="fixed inset-0 rumi-layer-panel cursor-default" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-[calc(100%+6px)] rumi-layer-local-popover max-h-56 w-[min(360px,calc(100vw-32px))] max-w-[calc(100vw-32px)] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 p-1 shadow-2xl">
+          <div className="absolute left-0 top-[calc(100%+6px)] rumi-layer-local-popover max-h-56 w-[min(360px,calc(100vw-32px))] max-w-[calc(100vw-32px)] overflow-y-auto rumi-popover p-1">
             {options.map((option) => (
               <button
                 key={option.value}
@@ -657,11 +794,13 @@ function SettingsModelSearchSelect({
   options,
   onChange,
   placeholder = "モデルを検索",
+  selectorSchema,
 }: {
   value: string;
   options: SettingsModelOption[];
   onChange: (value: string) => void;
   placeholder?: string;
+  selectorSchema?: ModelSelectorSchema;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -670,29 +809,33 @@ function SettingsModelSearchSelect({
   const [error, setError] = useState("");
   const searchRequestSeq = useRef(0);
   const trimmedQuery = query.trim();
-  const remoteOptions = useMemo(
-    () => remoteResults.map(modelSearchItemToOption),
-    [remoteResults],
+  const resolvedSelectorSchema = selectorSchema ?? parseModelSelectorSchema(undefined);
+  const providerState = parseModelProviderQuery(
+    query,
+    modelProviderOptions(options),
+    resolvedSelectorSchema.layout.provider_trigger,
   );
-  const selected = options.find((option) => option.value === value || option.qualified_model_id === value)
-    ?? remoteOptions.find((option) => option.value === value || option.qualified_model_id === value)
-    ?? (value ? { value, label: value } : null);
 
   useEffect(() => {
     if (!open) return;
     searchRequestSeq.current += 1;
     const requestSeq = searchRequestSeq.current;
-    if (!trimmedQuery) {
-      setRemoteResults([]);
+    let disposed = false;
+    setRemoteResults([]);
+    if (providerState.active) {
       setBusy(false);
       setError("");
       return;
     }
-    let disposed = false;
+    setBusy(Boolean(trimmedQuery));
+    setError("");
     const timer = window.setTimeout(() => {
-      setBusy(true);
-      setError("");
-      settingsApiResources.searchModels({ query: trimmedQuery, max_results: 30 })
+      if (!trimmedQuery) return;
+      settingsApiResources.searchModels({
+        query: providerState.providerId ? providerState.modelQuery : trimmedQuery,
+        max_results: 30,
+        ...(providerState.providerId ? { provider_id: providerState.providerId } : {}),
+      })
         .then((result) => {
           if (disposed || requestSeq !== searchRequestSeq.current) return;
           setRemoteResults(result.models ?? []);
@@ -710,101 +853,30 @@ function SettingsModelSearchSelect({
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [open, trimmedQuery]);
-
-  const visibleOptions = useMemo(() => {
-    return buildVisibleModelOptions({
-      options,
-      selected,
-      remoteOptions,
-      query: trimmedQuery,
-    });
-  }, [trimmedQuery, options, remoteOptions, selected]);
+  }, [
+    open,
+    providerState.active,
+    providerState.modelQuery,
+    providerState.providerId,
+    trimmedQuery,
+  ]);
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-left text-sm text-zinc-200 outline-none transition-colors hover:border-zinc-700 focus:border-emerald-500/70"
-      >
-        <span className="min-w-0">
-          <span className="block truncate">{selected?.label || value || "モデルを選択"}</span>
-          {(selected?.provider_id || selected?.model_id) && (
-            <span className="block truncate text-[11px] text-zinc-500">
-              {[selected.provider_id, selected.model_id].filter(Boolean).join(" / ")}
-            </span>
-          )}
-        </span>
-        <ChevronDown size={14} className={cn("shrink-0 text-zinc-500 transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <>
-          <button type="button" aria-label="モデル検索を閉じる" className="fixed inset-0 rumi-layer-panel cursor-default" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 right-0 top-[calc(100%+6px)] rumi-layer-local-popover overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl">
-            <label className="m-2 flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 focus-within:border-zinc-600 focus-within:text-zinc-300">
-              <Search size={14} />
-              <input
-                autoFocus
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={placeholder}
-                className="min-w-0 flex-1 bg-transparent text-zinc-200 outline-none placeholder:text-zinc-600"
-              />
-              {busy && <Loader2 size={13} className="animate-spin text-zinc-500" />}
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery("")}
-                  className="rounded p-0.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="モデル検索をクリア"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </label>
-            {error && <div className="border-t border-zinc-800 px-3 py-2 text-[11px] text-rose-300">{error}</div>}
-            <div className="max-h-72 overflow-y-auto border-t border-zinc-800 p-1">
-              {visibleOptions.length > 0 ? visibleOptions.map((option) => {
-                const active = option.value === value || option.qualified_model_id === value;
-                const badges = modelOptionBadges(option);
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      onChange(option.value);
-                      setOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-start justify-between gap-3 rounded-md px-2.5 py-2 text-left transition-colors",
-                      active ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200",
-                    )}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-zinc-100">{option.label}</span>
-                      <span className="block truncate text-[11px] text-zinc-500">
-                        {[option.provider_id, option.model_id || option.qualified_model_id || option.value].filter(Boolean).join(" / ")}
-                      </span>
-                    </span>
-                    <span className="flex max-w-[160px] flex-wrap justify-end gap-1">
-                      {badges.map((badge) => (
-                        <span key={badge} className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                          {badge}
-                        </span>
-                      ))}
-                      {active && <Check size={13} className="mt-1 shrink-0 text-emerald-300" />}
-                    </span>
-                  </button>
-                );
-              }) : (
-                <div className="px-3 py-5 text-xs text-zinc-600">一致するモデルがありません。</div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <ModelSearchPicker
+      value={value}
+      options={options}
+      remoteResults={remoteResults}
+      query={query}
+      loading={busy}
+      error={error}
+      placeholder={placeholder}
+      selectorSchema={resolvedSelectorSchema}
+      surface="settings"
+      open={open}
+      onOpenChange={setOpen}
+      onChange={onChange}
+      onQueryChange={setQuery}
+    />
   );
 }
 
@@ -827,22 +899,21 @@ function ModelAllowlistField({
   const searchRequestSeq = useRef(0);
   const selectedModels = parseModelAllowlist(value, fallback);
   const selectedSet = useMemo(() => new Set(selectedModels), [selectedModels]);
+  const selectedOptions = useMemo(() => {
+    const byId = new Map(options.flatMap((option) => [option.value, option.qualified_model_id].filter(Boolean).map((id) => [String(id), option] as const)));
+    return selectedModels.map((modelId) => ({ modelId, option: byId.get(modelId) }));
+  }, [options, selectedModels]);
   const trimmedQuery = query.trim();
 
   useEffect(() => {
     if (!open) return;
     searchRequestSeq.current += 1;
     const requestSeq = searchRequestSeq.current;
-    if (!trimmedQuery) {
-      setRemoteResults([]);
-      setBusy(false);
-      setError("");
-      return;
-    }
     let disposed = false;
+    setRemoteResults([]);
+    setBusy(true);
+    setError("");
     const timer = window.setTimeout(() => {
-      setBusy(true);
-      setError("");
       settingsApiResources.searchModels({ query: trimmedQuery, max_results: 50 })
         .then((result) => {
           if (disposed || requestSeq !== searchRequestSeq.current) return;
@@ -856,7 +927,7 @@ function ModelAllowlistField({
         .finally(() => {
           if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
         });
-    }, 160);
+    }, trimmedQuery ? 160 : 0);
     return () => {
       disposed = true;
       window.clearTimeout(timer);
@@ -889,26 +960,33 @@ function ModelAllowlistField({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-2">
-        {selectedModels.length > 0 ? selectedModels.map((modelId) => (
+      <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+        <div className="mb-2 flex items-center justify-between gap-3 text-[11px] text-zinc-500">
+          <span>利用するモデル</span>
+          <span>{selectedModels.length}件</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+        {selectedOptions.length > 0 ? selectedOptions.map(({ modelId, option }) => (
           <span
             key={modelId}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/90 px-2.5 py-1 text-xs text-zinc-200"
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/[0.09] bg-white/[0.04]/90 px-2.5 py-1 text-xs text-zinc-200"
             title={modelId}
           >
-            <span className="max-w-[260px] truncate font-mono">{modelId}</span>
+            <span className="max-w-[260px] truncate">{option?.label || modelId}</span>
+            {option?.provider_id ? <span className="text-[10px] text-zinc-500">· {option.provider_id}</span> : null}
             <button
               type="button"
               onClick={() => removeModel(modelId)}
               className="rounded-full p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-              aria-label={`${modelId} を allowlist から削除`}
+              aria-label={`${option?.label || modelId} を利用するモデルから削除`}
             >
               <X size={12} />
             </button>
           </span>
         )) : (
-          <span className="px-1 py-1 text-xs text-zinc-600">モデル未指定です。空のときは profile の既定 allowlist を使います。</span>
+          <span className="px-1 py-1 text-xs text-zinc-600">まだモデルを選択していません。モデルカタログから追加してください。</span>
         )}
+        </div>
       </div>
       <div className="relative">
         <button
@@ -939,7 +1017,7 @@ function ModelAllowlistField({
                   autoFocus
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="モデルを検索... @google"
+                  placeholder="モデル名、提供元、用途で検索"
                   className="min-w-0 flex-1 bg-transparent text-zinc-200 outline-none placeholder:text-zinc-600"
                 />
                 {busy && <Loader2 size={13} className="animate-spin text-zinc-500" />}
@@ -954,7 +1032,13 @@ function ModelAllowlistField({
                   </button>
                 )}
               </label>
-              {error && <div className="border-t border-zinc-800 px-3 py-2 text-[11px] text-rose-300">{error}</div>}
+              {error && (
+                <ErrorNotice
+                  className="rounded-none border-x-0 border-b-0 px-3 py-2 text-[11px]"
+                  copyLabel="モデル検索エラーをコピー"
+                  message={error}
+                />
+              )}
               <div className="max-h-72 overflow-y-auto border-t border-zinc-800 p-1">
                 {candidateOptions.length > 0 ? candidateOptions.map((option) => {
                   const badges = modelOptionBadges(option);
@@ -967,9 +1051,7 @@ function ModelAllowlistField({
                     >
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-zinc-100">{option.label || option.value}</span>
-                        <span className="block truncate font-mono text-[11px] text-zinc-500">
-                          {option.value}
-                        </span>
+                        <span className="block truncate text-[11px] text-zinc-500">{[option.provider_id, option.model_id || option.qualified_model_id].filter(Boolean).join(" · ") || "提供元情報なし"}</span>
                       </span>
                       <span className="flex max-w-[170px] flex-wrap justify-end gap-1">
                         {badges.map((badge) => (
@@ -1030,7 +1112,7 @@ function statusBadgeClass(status: string, connected: boolean, canConnect: boolea
   if (canConnect) {
     return "border-cyan-500/35 bg-cyan-500/10 text-cyan-200";
   }
-  return "border-zinc-700 bg-zinc-900 text-zinc-400";
+  return "border-white/[0.09] bg-white/[0.04] text-zinc-400";
 }
 
 function capabilityToneClass(tone: "enabled" | "approval" | "rejected" | "scope" | "neutral"): string {
@@ -1325,7 +1407,7 @@ function ProviderOAuthPanel({
                     "rounded-lg border px-3 py-2 text-xs transition-colors",
                     isBusy || !connected
                       ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600"
-                      : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500",
+                      : "border-white/[0.09] bg-white/[0.04] text-zinc-200 hover:border-zinc-500",
                   )}
                 >
                   Disconnect
@@ -1467,9 +1549,15 @@ function ProviderOAuthPanel({
               </div>
             )}
             {banner && (
-              <p className={cn("mt-3 text-[11px]", banner.tone === "success" ? "text-emerald-400" : "text-rose-300")}>
-                {banner.text}
-              </p>
+              banner.tone === "success" ? (
+                <p className="mt-3 text-[11px] text-emerald-400">{banner.text}</p>
+              ) : (
+                <ErrorNotice
+                  className="mt-3 px-3 py-2 text-[11px]"
+                  copyLabel="OAuth接続エラーをコピー"
+                  message={banner.text}
+                />
+              )
             )}
           </div>
         );
@@ -1492,7 +1580,7 @@ function PublicUrlField({
   const config = publicUrlConfig(value, field.default);
   const [providerId, setProviderId] = useState(String(config.provider_id ?? "cloudflare_quick_tunnel"));
   const [localUrl, setLocalUrl] = useState(String(config.local_url ?? "http://127.0.0.1:8766"));
-  const [routePath, setRoutePath] = useState(String(config.route_path ?? "/api/integrations/line/webhook"));
+  const [routePath, setRoutePath] = useState(String(config.route_path ?? settingsApiResources.canonicalRouteKey("api/integrations/line/webhook")));
   const [result, setResult] = useState<Record<string, unknown> | null>(
     config.result && typeof config.result === "object" ? config.result as Record<string, unknown> : null,
   );
@@ -1503,16 +1591,16 @@ function PublicUrlField({
     const next = publicUrlConfig(value, field.default);
     setProviderId(String(next.provider_id ?? "cloudflare_quick_tunnel"));
     setLocalUrl(String(next.local_url ?? "http://127.0.0.1:8766"));
-    setRoutePath(String(next.route_path ?? "/api/integrations/line/webhook"));
+    setRoutePath(String(next.route_path ?? settingsApiResources.canonicalRouteKey("api/integrations/line/webhook")));
     setResult(next.result && typeof next.result === "object" ? next.result as Record<string, unknown> : null);
   }, [field.default, value]);
 
   const routeOptions = [
-    { value: "/api/integrations/line/webhook", label: "LINE webhook" },
-    { value: "/api/integrations/discord/interactions", label: "Discord interactions" },
-    { value: "/api/integrations/discord/events", label: "Discord events" },
-    { value: "/api/integrations/slack/events", label: "Slack events" },
-    { value: "/api/webhooks/inbound/{webhook_id}", label: "Generic webhook" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/line/webhook"), label: "LINE webhook" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/discord/interactions"), label: "Discord interactions" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/discord/events"), label: "Discord events" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/slack/events"), label: "Slack events" },
+    { value: settingsApiResources.canonicalRouteKey("api/webhooks/inbound/{webhook_id}"), label: "Generic webhook" },
   ];
   const providerOptions = [
     { value: "cloudflare_quick_tunnel", label: "Cloudflare Quick Tunnel" },
@@ -1571,7 +1659,7 @@ function PublicUrlField({
           <input
             value={localUrl}
             onChange={(event) => setLocalUrl(event.target.value)}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-500"
+            className="w-full rounded-lg border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-500"
             placeholder="http://127.0.0.1:8766"
           />
         </label>
@@ -1604,7 +1692,7 @@ function PublicUrlField({
                 window.setTimeout(() => setCopied(false), 1600);
               });
             }}
-            className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500"
+            className="inline-flex items-center gap-2 rounded-lg border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 hover:border-zinc-500"
           >
             <Copy size={14} />
             {copied ? "コピー済み" : "Webhook URLをコピー"}
@@ -1626,9 +1714,12 @@ function PublicUrlField({
         </div>
       )}
       {!publicUrl && error && (
-        <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
-          {error}
-        </div>
+        <ErrorNotice
+          className="px-3 py-2 text-xs"
+          copyLabel="公開URLエラーをコピー"
+          message={error}
+          severity="warning"
+        />
       )}
     </div>
   );
@@ -1664,8 +1755,11 @@ const BUILTIN_API_PROVIDER_IDS: string[] = [
 ];
 
 const BUILTIN_EXTERNAL_PROVIDER_IDS: string[] = [
+  "cloudflare",
+  "codex",
   "discord",
   "generic",
+  "github",
   "line",
   "slack",
   "web",
@@ -1694,7 +1788,9 @@ function collectApiProviderOptions(providers: Array<Record<string, unknown>>): A
     const providerId = String(provider.provider_id ?? "").trim();
     if (!providerId) continue;
     const builtin = Boolean(provider.builtin) || BUILTIN_API_PROVIDER_IDS.includes(providerId) || BUILTIN_EXTERNAL_PROVIDER_IDS.includes(providerId);
-    const kind = normalizeProviderKind(provider.kind);
+    const kind = provider.kind == null && BUILTIN_EXTERNAL_PROVIDER_IDS.includes(providerId)
+      ? "custom"
+      : normalizeProviderKind(provider.kind);
     const label = String(provider.label ?? providerId);
     options.set(providerId, { provider_id: providerId, label, kind, builtin });
   }
@@ -1702,6 +1798,16 @@ function collectApiProviderOptions(providers: Array<Record<string, unknown>>): A
     if (a.builtin !== b.builtin) return a.builtin ? -1 : 1;
     return a.provider_id.localeCompare(b.provider_id);
   });
+}
+
+function preferredApiProviderId(value: unknown): string {
+  const providers = apiProviderRows(value);
+  const configuredProviderIds = registeredApiRows(providers)
+    .map((api) => String(api.provider_id ?? "").trim())
+    .filter(Boolean);
+  return configuredProviderIds.find((providerId) => providerId === "openrouter")
+    ?? configuredProviderIds[0]
+    ?? "openrouter";
 }
 
 function collectExternalProviderOptions(providers: Array<Record<string, unknown>>): ApiProviderOption[] {
@@ -1807,7 +1913,7 @@ function SearchableProviderSelect({
       {open && (
         <>
           <button type="button" aria-label="close provider select" className="fixed inset-0 rumi-layer-panel cursor-default" onClick={closeAll} />
-          <div className="absolute left-0 top-[calc(100%+6px)] rumi-layer-local-popover w-[min(520px,calc(100vw-32px))] max-w-[calc(100vw-32px)] overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl">
+          <div className="absolute left-0 top-[calc(100%+6px)] rumi-layer-local-popover w-[min(520px,calc(100vw-32px))] max-w-[calc(100vw-32px)] overflow-hidden rumi-popover">
             <label className="m-2 flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 focus-within:border-zinc-600 focus-within:text-zinc-300">
               <Search size={14} />
               <input
@@ -1871,7 +1977,7 @@ function SearchableProviderSelect({
                   value={draftId}
                   onChange={(event) => setDraftId(event.target.value)}
                   placeholder="provider id (例: tavily, searchapi)"
-                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-200 outline-none"
+                  className="w-full rounded-md border border-white/[0.09] bg-white/[0.04] px-2.5 py-1.5 text-sm text-zinc-200 outline-none"
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
@@ -2064,23 +2170,29 @@ function DeviceLockField({ field }: { field: SettingsSection["fields"][number] }
       ? lockMessage
       : availableMessage;
 
+  if (blocked) {
+    return (
+      <ErrorNotice
+        className="text-sm"
+        copyLabel="デバイス確認エラーをコピー"
+        message={message}
+      />
+    );
+  }
+
   return (
     <div
       data-settings-renderer="device_lock"
       data-device-state={state}
       className={cn(
         "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm",
-        blocked
-          ? "border-red-500/30 bg-red-500/10 text-red-100"
-          : state === "checking"
-            ? "border-zinc-700 bg-zinc-900/60 text-zinc-300"
-            : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+        state === "checking"
+          ? "border-white/[0.09] bg-white/[0.04]/60 text-zinc-300"
+          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
       )}
     >
       {state === "checking" ? (
         <Loader2 size={15} className="mt-0.5 shrink-0 animate-spin" />
-      ) : blocked ? (
-        <AlertTriangle size={15} className="mt-0.5 shrink-0" />
       ) : (
         <Check size={15} className="mt-0.5 shrink-0" />
       )}
@@ -2103,8 +2215,9 @@ function SettingsField({
   onChange: (sectionId: string, fieldId: string, value: unknown) => void;
 }) {
   const [secretDraft, setSecretDraft] = useState("");
-  const [secretState, setSecretState] = useState<"idle" | "saved">("idle");
-  const [apiProvider, setApiProvider] = useState("google");
+  const [secretState, setSecretState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [secretError, setSecretError] = useState("");
+  const [apiProvider, setApiProvider] = useState(() => preferredApiProviderId(value));
   const [apiName, setApiName] = useState("main");
   const [apiSecret, setApiSecret] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("");
@@ -2115,6 +2228,9 @@ function SettingsField({
   const [apiSaveState, setApiSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [apiSaveError, setApiSaveError] = useState("");
   const [apiAvailability, setApiAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
+  const [apiActionBusyKey, setApiActionBusyKey] = useState("");
+  const [apiActionMessage, setApiActionMessage] = useState("");
+  const [pendingApiDeleteKey, setPendingApiDeleteKey] = useState("");
   const [credentialTransfer, setCredentialTransfer] = useState<{
     providerId: string;
     providerLabel?: string;
@@ -2125,7 +2241,11 @@ function SettingsField({
   const [tokenName, setTokenName] = useState("main");
   const [tokenKind, setTokenKind] = useState("channel_access_token");
   const [tokenSecret, setTokenSecret] = useState("");
-  const [tokenSaveState, setTokenSaveState] = useState<"idle" | "saved">("idle");
+  const [tokenSaveState, setTokenSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [tokenSaveError, setTokenSaveError] = useState("");
+  const [tokenActionMessage, setTokenActionMessage] = useState("");
+  const [tokenBusyKey, setTokenBusyKey] = useState("");
+  const [pendingTokenDeleteKey, setPendingTokenDeleteKey] = useState("");
   const [renamingKey, setRenamingKey] = useState("");
   const [renameDraft, setRenameDraft] = useState("");
   const [openApiMenuKey, setOpenApiMenuKey] = useState("");
@@ -2139,6 +2259,13 @@ function SettingsField({
   const preferredRouteModel = field.type === "model_api_routes" ? String(sectionValues?.preferred_model ?? "").trim() : "";
   const [routeModel, setRouteModel] = useState(() => preferredRouteModel || String(routeOptions[0]?.value ?? ""));
   const [routeModelTouched, setRouteModelTouched] = useState(false);
+  useEffect(() => {
+    if (field.type !== "api_keys") return;
+    const connectionOptions = collectApiProviderOptions(apiProviderRows(value))
+      .filter((option) => option.kind === "custom");
+    if (connectionOptions.some((option) => option.provider_id === apiProvider)) return;
+    setApiProvider(connectionOptions[0]?.provider_id ?? "");
+  }, [apiProvider, field.type, value]);
   useEffect(() => {
     if (field.type !== "model_api_routes") return;
     if (!routeOptions.length) {
@@ -2158,6 +2285,23 @@ function SettingsField({
   }, [field.type, preferredRouteModel, routeModel, routeModelTouched, routeOptionKey, routeOptions]);
   const commonLabel = <span className="text-sm text-zinc-300">{field.label}</span>;
   const isSecretConfigured = Boolean(value);
+  const refreshSensitiveField = () => onChange(sectionId, field.id, { action: "refresh" });
+  const saveSecretValue = async () => {
+    const draft = secretDraft;
+    const providerId = String(field.provider_id ?? field.id.replace(/_api_key$/, "")).trim();
+    if (!providerId || !draft.trim() || secretState === "saving") return;
+    setSecretState("saving");
+    setSecretError("");
+    try {
+      await settingsApiResources.saveProviderApiKey(providerId, draft);
+      setSecretDraft("");
+      setSecretState("saved");
+      refreshSensitiveField();
+    } catch (errorValue) {
+      setSecretState("error");
+      setSecretError(errorValue instanceof Error ? errorValue.message : "Credential save failed.");
+    }
+  };
 
   let control: ReactElement;
   switch (String(field.type)) {
@@ -2171,7 +2315,8 @@ function SettingsField({
       const selectedProvider = routeProviderForOption(selectedOption, selectedModel);
       const isLocalModel = Boolean(selectedOption?.local) || selectedProvider === "stub";
       const providerRows = fieldApiProviderRows(field);
-      const providerOptionsForRoutes = collectApiProviderOptions(providerRows);
+      const providerOptionsForRoutes = collectApiProviderOptions(providerRows)
+        .filter((option) => option.kind === "llm");
       const allRegisteredApis = registeredApiRows(providerRows);
       // Hide non-LLM keys from the routes UI (they're not used for chat models).
       const llmRegisteredApis = allRegisteredApis.filter((apiRow) => normalizeProviderKind(apiRow.kind) !== "custom");
@@ -2208,11 +2353,12 @@ function SettingsField({
         <div className="space-y-4" data-settings-renderer="model_routing">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(180px,0.42fr)]">
             <label className="space-y-1.5">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-600">Model</span>
+              <span className="text-[11px] font-medium text-zinc-500">1. 設定するモデル</span>
               <SettingsModelSearchSelect
                 value={selectedModel}
                 options={routeOptions.map(modelFieldOptionToOption)}
                 placeholder="model/provider/notes で検索"
+                selectorSchema={parseModelSelectorSchema(field.selector_schema)}
                 onChange={(nextModel) => {
                   setRouteModelTouched(true);
                   setRouteModel(nextModel);
@@ -2220,19 +2366,15 @@ function SettingsField({
               />
             </label>
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-600">Provider</p>
+              <p className="text-[11px] font-medium text-zinc-500">接続プロバイダー</p>
               <p className="mt-1 font-mono text-sm text-zinc-300">{selectedProvider || "unknown"}</p>
             </div>
           </div>
 
-          {isLocalModel ? (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-3 text-sm text-zinc-400">
-              ローカル/StubモデルはAPIキーのルーティング不要です。
-            </div>
-          ) : (
+          {!isLocalModel && (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-600">使用する API key</span>
+                <span className="text-[11px] font-medium text-zinc-500">2. 使用するAPIキー</span>
                 <span className="text-[11px] text-zinc-500">選んだ API key ごとに別 model 扱いになります</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -2270,14 +2412,15 @@ function SettingsField({
                   type="button"
                   onClick={() => setRouteInlineAddOpen((current) => !current)}
                   className={cn(
-                    "rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
+                    "inline-flex min-h-11 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors",
                     routeInlineAddOpen
-                      ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
-                      : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-zinc-700",
+                      ? "border-emerald-400/70 bg-emerald-400/20 text-emerald-100"
+                      : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100 hover:border-emerald-400/70 hover:bg-emerald-500/15",
                   )}
                   title="新しい API key を追加"
                 >
-                  + API key
+                  <Plus size={16} aria-hidden />
+                  API keyを追加
                 </button>
               </div>
               {routeInlineAddOpen && (
@@ -2294,7 +2437,7 @@ function SettingsField({
                 </div>
               )}
               {filteredApis.length > 0 ? (
-                <div className="space-y-1.5 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2">
+                <div className="space-y-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] p-2">
                   {filteredApis.map((apiRow) => {
                     const apiProviderId = String(apiRow.provider_id ?? "");
                     const routeRef = apiRefForRoute(apiRow, apiProviderId || selectedProvider);
@@ -2339,7 +2482,7 @@ function SettingsField({
                     ? "検索条件に一致する API key がありません。"
                     : routeShowAllProviders
                       ? "登録済みの API key がありません。"
-                      : `${selectedProvider || "このprovider"} の API key がありません。+ API key で追加するか、APIs タブから登録してください。`}
+                      : `${selectedProvider || "このprovider"} の API key がありません。+ API key で追加するか、「接続」から登録してください。`}
                 </div>
               )}
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-500">
@@ -2370,8 +2513,12 @@ function SettingsField({
     }
     case "api_keys": {
       const providers = apiProviderRows(value);
-      const providerOptions = collectApiProviderOptions(providers);
-      const registeredApis = registeredApiRows(providers);
+      const allProviderOptions = collectApiProviderOptions(providers);
+      const providerOptions = allProviderOptions.filter((option) => option.kind === "custom");
+      const registeredApis = registeredApiRows(providers).filter((api) => {
+        const option = allProviderOptions.find((candidate) => candidate.provider_id === String(api.provider_id ?? ""));
+        return normalizeProviderKind(api.kind ?? option?.kind) === "custom";
+      });
       const selectedProviderOption = providerOptions.find((option) => option.provider_id === apiProvider);
       const selectedKind: "llm" | "custom" = selectedProviderOption?.kind ?? "llm";
       const isCustomProvider = !selectedProviderOption?.builtin;
@@ -2379,12 +2526,55 @@ function SettingsField({
         setApiSaveState("idle");
         setApiSaveError("");
         setApiAvailability(null);
+        setApiActionMessage("");
+      };
+      const refreshApiKeyField = () => onChange(sectionId, field.id, { action: "oauth_refresh" });
+      const renameProviderApiKey = async (apiRow: Record<string, unknown>) => {
+        const providerId = String(apiRow.provider_id ?? "").trim();
+        const apiId = String(apiRow.api_id ?? "").trim();
+        const nextName = renameDraft.trim();
+        const key = String(apiRow.key ?? `${providerId}:${apiId}`);
+        if (!providerId || !apiId || !nextName || apiActionBusyKey) return;
+        setApiActionBusyKey(key);
+        setApiSaveError("");
+        setApiActionMessage("");
+        try {
+          await settingsApiResources.renameProviderApiKey(providerId, apiId, nextName);
+          setRenamingKey("");
+          setApiActionMessage(`Renamed “${String(apiRow.name ?? apiId)}” to “${nextName}”.`);
+          refreshApiKeyField();
+        } catch (errorValue) {
+          setApiSaveError(errorValue instanceof Error ? errorValue.message : "API key rename failed.");
+        } finally {
+          setApiActionBusyKey("");
+        }
+      };
+      const deleteProviderApiKey = async (apiRow: Record<string, unknown>) => {
+        const providerId = String(apiRow.provider_id ?? "").trim();
+        const apiId = String(apiRow.api_id ?? "").trim();
+        const key = String(apiRow.key ?? `${providerId}:${apiId}`);
+        if (!providerId || !apiId || apiActionBusyKey) return;
+        setApiActionBusyKey(key);
+        setApiSaveError("");
+        setApiActionMessage("");
+        try {
+          await settingsApiResources.deleteProviderApiKey(providerId, apiId);
+          setPendingApiDeleteKey("");
+          setOpenApiMenuKey("");
+          setApiActionMessage(`Deleted API key “${String(apiRow.name ?? apiId)}”.`);
+          refreshApiKeyField();
+        } catch (errorValue) {
+          setApiSaveError(errorValue instanceof Error ? errorValue.message : "API key delete failed.");
+        } finally {
+          setApiActionBusyKey("");
+        }
       };
       const handleSubmitApi = async () => {
-        if (!apiProvider.trim() || !apiName.trim() || !apiSecret.trim()) return;
+        if (!apiProvider.trim() || !apiName.trim() || !apiSecret.trim() || apiActionBusyKey) return;
         setApiSaveState("saving");
         setApiSaveError("");
         setApiAvailability(null);
+        setApiActionMessage("");
         const allowedModels = apiAllowedModels.split(",").map((item) => item.trim()).filter(Boolean);
         try {
           const result = await settingsApiResources.saveProviderApiKey(apiProvider, apiSecret, {
@@ -2444,6 +2634,7 @@ function SettingsField({
                 return (
                   <div
                     key={key}
+                    aria-busy={apiActionBusyKey === key}
                     className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-zinc-900/40"
                   >
                     <div className="min-w-0 flex-1">
@@ -2456,35 +2647,22 @@ function SettingsField({
                             onKeyDown={(event) => {
                               if (event.key !== "Enter") return;
                               event.preventDefault();
-                              if (!renameDraft.trim()) return;
-                              onChange(sectionId, field.id, {
-                                action: "rename",
-                                provider_id: api.provider_id,
-                                api_id: api.api_id,
-                                name: renameDraft.trim(),
-                              });
-                              setRenamingKey("");
+                              void renameProviderApiKey(api);
                             }}
-                            className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 outline-none"
+                            className="min-w-0 flex-1 rounded-md border border-white/[0.09] bg-white/[0.04] px-2 py-1 text-xs text-zinc-200 outline-none"
                           />
                           <button
                             type="button"
-                            disabled={!renameDraft.trim()}
+                            disabled={!renameDraft.trim() || Boolean(apiActionBusyKey)}
                             onClick={(event) => {
                               event.stopPropagation();
-                              if (!renameDraft.trim()) return;
-                              onChange(sectionId, field.id, {
-                                action: "rename",
-                                provider_id: api.provider_id,
-                                api_id: api.api_id,
-                                name: renameDraft.trim(),
-                              });
-                              setRenamingKey("");
+                              void renameProviderApiKey(api);
                             }}
                             className="rounded-md border border-zinc-700 p-1 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
-                            title="Rename"
+                            title={apiActionBusyKey === key ? "Renaming…" : "Rename"}
+                            aria-label={apiActionBusyKey === key ? "Renaming API key" : "Rename API key"}
                           >
-                            <Check size={13} />
+                            {apiActionBusyKey === key ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                           </button>
                           <button
                             type="button"
@@ -2500,7 +2678,7 @@ function SettingsField({
                       ) : (
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium text-zinc-200">{String(api.name ?? api.api_id ?? "")}</span>
-                          <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
+                          <span className="rounded-full border border-white/[0.09] bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
                             {String(api.provider_id ?? "")}
                           </span>
                           {apiKind === "custom" && (
@@ -2518,9 +2696,12 @@ function SettingsField({
                         onClick={(event) => {
                           event.stopPropagation();
                           setOpenApiMenuKey(isMenuOpen ? "" : key);
+                          setPendingApiDeleteKey("");
                         }}
                         className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 text-zinc-500 transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
                         title="Actions"
+                        aria-haspopup="menu"
+                        aria-expanded={isMenuOpen}
                       >
                         <MoreVertical size={15} />
                       </button>
@@ -2533,38 +2714,72 @@ function SettingsField({
                             onClick={(event) => {
                               event.stopPropagation();
                               setOpenApiMenuKey("");
+                              setPendingApiDeleteKey("");
                             }}
                           />
-                          <div className="absolute right-0 top-[calc(100%+6px)] rumi-layer-local-popover w-32 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 py-1 shadow-2xl">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setRenamingKey(key);
-                                setRenameDraft(String(api.name ?? api.api_id ?? ""));
-                                setOpenApiMenuKey("");
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
-                            >
-                              <Pencil size={13} />
-                              Rename
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setOpenApiMenuKey("");
-                                onChange(sectionId, field.id, {
-                                  action: "delete",
-                                  provider_id: api.provider_id,
-                                  api_id: api.api_id,
-                                });
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/30"
-                            >
-                              <Trash2 size={13} />
-                              Delete
-                            </button>
+                          <div role="menu" className="absolute right-0 top-[calc(100%+6px)] rumi-layer-local-popover w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 py-1 shadow-2xl">
+                            {pendingApiDeleteKey === key ? (
+                              <div role="none" className="space-y-2 px-3 py-2.5">
+                                <p className="break-words text-xs font-medium text-rose-200">Delete “{String(api.name ?? api.api_id ?? "API key")}”?</p>
+                                <p className="text-[10px] leading-4 text-zinc-500">The credential reference and its routing entry will be removed. This cannot be undone.</p>
+                                <div className="flex gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(apiActionBusyKey)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void deleteProviderApiKey(api);
+                                    }}
+                                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/[0.08] px-2 py-1.5 text-[11px] font-medium text-rose-100 hover:bg-rose-400/[0.13] disabled:opacity-40"
+                                  >
+                                    {apiActionBusyKey === key ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                    Delete
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(apiActionBusyKey)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setPendingApiDeleteKey("");
+                                    }}
+                                    className="rounded-md border border-white/10 px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.05] disabled:opacity-40"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={Boolean(apiActionBusyKey)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setRenamingKey(key);
+                                    setRenameDraft(String(api.name ?? api.api_id ?? ""));
+                                    setOpenApiMenuKey("");
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                                >
+                                  <Pencil size={13} />
+                                  Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={Boolean(apiActionBusyKey)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setPendingApiDeleteKey(key);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/30 disabled:opacity-40"
+                                >
+                                  <Trash2 size={13} />
+                                  Delete…
+                                </button>
+                              </>
+                            )}
                           </div>
                         </>
                       )}
@@ -2625,11 +2840,11 @@ function SettingsField({
               />
               <button
                 type="button"
-                disabled={apiSaveState === "saving" || !apiProvider.trim() || !apiName.trim() || !apiSecret.trim()}
+                disabled={apiSaveState === "saving" || Boolean(apiActionBusyKey) || !apiProvider.trim() || !apiName.trim() || !apiSecret.trim()}
                 onClick={handleSubmitApi}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-xs transition-colors",
-                  apiSaveState !== "saving" && apiProvider.trim() && apiName.trim() && apiSecret.trim()
+                  apiSaveState !== "saving" && !apiActionBusyKey && apiProvider.trim() && apiName.trim() && apiSecret.trim()
                     ? "bg-zinc-100 text-zinc-950 border-zinc-100"
                     : "bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed",
                 )}
@@ -2644,7 +2859,7 @@ function SettingsField({
                   : "Custom LLM provider として保存されます。"}
               </p>
             )}
-            <details className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs">
+            <details className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs">
               <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">Advanced (任意): base_url / model 制限 / quota / notes</summary>
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 <input
@@ -2699,21 +2914,30 @@ function SettingsField({
             </details>
           </div>
           {apiFeedback?.text && (
-            <div
-              className={cn(
-                "rounded-lg border px-3 py-2 text-[11px]",
-                apiFeedback.tone === "success"
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-amber-500/30 bg-amber-500/10 text-amber-100",
-              )}
-            >
-              {apiFeedback.text}
+            apiFeedback.tone === "success" ? (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
+                {apiFeedback.text}
+              </div>
+            ) : (
+              <ErrorNotice
+                className="px-3 py-2 text-[11px]"
+                copyLabel="APIキー設定の警告をコピー"
+                message={apiFeedback.text}
+                severity="warning"
+              />
+            )
+          )}
+          {apiActionMessage && (
+            <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
+              {apiActionMessage}
             </div>
           )}
           {apiSaveError && (
-            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-200">
-              {apiSaveError}
-            </div>
+            <ErrorNotice
+              className="px-3 py-2 text-[11px]"
+              copyLabel="APIキー保存エラーをコピー"
+              message={apiSaveError}
+            />
           )}
         </div>
       );
@@ -2730,10 +2954,76 @@ function SettingsField({
         slack: "Slack: Signing Secret / Bot Tokenを貼り、Channel IDやThread TSはTarget欄へ。",
         generic: "Generic: shared secretやcallback URLを貼ります。",
       };
+      const saveExternalToken = async () => {
+        const providerId = tokenProvider.trim();
+        const tokenId = tokenName.trim();
+        const secret = tokenSecret;
+        if (!providerId || !tokenId || !secret.trim() || tokenSaveState === "saving") return;
+        setTokenSaveState("saving");
+        setTokenSaveError("");
+        setTokenActionMessage("");
+        try {
+          await settingsApiResources.saveExternalToken(providerId, secret, { tokenId, name: tokenId, kind: tokenKind });
+          setTokenSecret("");
+          setTokenSaveState("saved");
+          setTokenActionMessage(`Saved “${tokenId}” and verified the backend response.`);
+          refreshSensitiveField();
+        } catch (errorValue) {
+          setTokenSaveState("error");
+          setTokenSaveError(errorValue instanceof Error ? errorValue.message : "External credential save failed.");
+        }
+      };
+      const renameExternalToken = async (token: Record<string, unknown>) => {
+        const providerId = String(token.provider_id ?? "").trim();
+        const tokenId = String(token.token_id ?? "").trim();
+        const nextName = renameDraft.trim();
+        const key = String(token.key ?? `${providerId}:${tokenId}`);
+        if (!providerId || !tokenId || !nextName || tokenBusyKey) return;
+        setTokenBusyKey(key);
+        setTokenSaveState("saving");
+        setTokenSaveError("");
+        setTokenActionMessage("");
+        try {
+          await settingsApiResources.renameExternalToken(providerId, tokenId, nextName);
+          setRenamingKey("");
+          setTokenSaveState("saved");
+          setTokenActionMessage(`Renamed “${String(token.name ?? tokenId)}” to “${nextName}”.`);
+          refreshSensitiveField();
+        } catch (errorValue) {
+          setTokenSaveState("error");
+          setTokenSaveError(errorValue instanceof Error ? errorValue.message : "External credential rename failed.");
+        } finally {
+          setTokenBusyKey("");
+        }
+      };
+      const deleteExternalToken = async (token: Record<string, unknown>) => {
+        const providerId = String(token.provider_id ?? "").trim();
+        const tokenId = String(token.token_id ?? "").trim();
+        const key = String(token.key ?? `${providerId}:${tokenId}`);
+        if (!providerId || !tokenId || tokenBusyKey) return;
+        setTokenBusyKey(key);
+        setTokenSaveState("saving");
+        setTokenSaveError("");
+        setTokenActionMessage("");
+        try {
+          await settingsApiResources.deleteExternalToken(providerId, tokenId);
+          if (selectedTokenKey === key) setSelectedTokenKey("");
+          setPendingTokenDeleteKey("");
+          setOpenTokenMenuKey("");
+          setTokenSaveState("saved");
+          setTokenActionMessage(`Deleted credential “${String(token.name ?? tokenId)}”.`);
+          refreshSensitiveField();
+        } catch (errorValue) {
+          setTokenSaveState("error");
+          setTokenSaveError(errorValue instanceof Error ? errorValue.message : "External credential delete failed.");
+        } finally {
+          setTokenBusyKey("");
+        }
+      };
       control = (
         <div className="space-y-4">
           <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
-            <div className="grid grid-cols-[36px_minmax(220px,1.4fr)_minmax(130px,0.8fr)_minmax(120px,0.8fr)_48px] items-center gap-3 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2 text-[11px] font-medium text-zinc-500">
+            <div className="grid grid-cols-[36px_minmax(220px,1.4fr)_minmax(130px,0.8fr)_minmax(120px,0.8fr)_48px] items-center gap-3 border-b border-white/[0.07] bg-white/[0.045] px-3 py-2 text-[11px] font-medium text-zinc-500">
               <span className="h-4 w-4 rounded border border-cyan-500/70" />
               <span>Token</span>
               <span>Kind</span>
@@ -2750,11 +3040,12 @@ function SettingsField({
                 return (
                   <div
                     key={key}
+                    aria-busy={tokenBusyKey === key}
                     className={cn(
                       "grid grid-cols-[36px_minmax(220px,1.4fr)_minmax(130px,0.8fr)_minmax(120px,0.8fr)_48px] items-center gap-3 px-3 py-3 transition-colors",
                       isSelected ? "bg-zinc-900/85" : "bg-zinc-950/20 hover:bg-zinc-900/45",
                     )}
-                    onClick={() => setSelectedTokenKey(key)}
+                    onClick={() => setSelectedTokenKey((currentKey) => toggleSettingsRowSelection(currentKey, key))}
                   >
                     <span className={cn("h-4 w-4 rounded border", isSelected ? "border-cyan-400 bg-cyan-500/20" : "border-cyan-500/70")} />
                     <div className="min-w-0">
@@ -2767,35 +3058,23 @@ function SettingsField({
                             onKeyDown={(event) => {
                               if (event.key !== "Enter") return;
                               event.preventDefault();
-                              if (!renameDraft.trim()) return;
-                              onChange(sectionId, field.id, {
-                                action: "rename",
-                                provider_id: token.provider_id,
-                                token_id: token.token_id,
-                                name: renameDraft.trim(),
-                              });
-                              setRenamingKey("");
+                              void renameExternalToken(token);
                             }}
-                            className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 outline-none"
+                            aria-invalid={tokenSaveState === "error" && tokenBusyKey === key}
+                            className="min-w-0 flex-1 rounded-md border border-white/[0.09] bg-white/[0.04] px-2 py-1 text-xs text-zinc-200 outline-none"
                           />
                           <button
                             type="button"
-                            disabled={!renameDraft.trim()}
+                            disabled={!renameDraft.trim() || Boolean(tokenBusyKey)}
                             onClick={(event) => {
                               event.stopPropagation();
-                              if (!renameDraft.trim()) return;
-                              onChange(sectionId, field.id, {
-                                action: "rename",
-                                provider_id: token.provider_id,
-                                token_id: token.token_id,
-                                name: renameDraft.trim(),
-                              });
-                              setRenamingKey("");
+                              void renameExternalToken(token);
                             }}
                             className="rounded-md border border-zinc-700 p-1 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
-                            title="Rename"
+                            title={tokenBusyKey === key ? "Renaming…" : "Rename"}
+                            aria-label={tokenBusyKey === key ? "Renaming token" : "Rename token"}
                           >
-                            <Check size={13} />
+                            {tokenBusyKey === key ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                           </button>
                           <button
                             type="button"
@@ -2823,9 +3102,12 @@ function SettingsField({
                         onClick={(event) => {
                           event.stopPropagation();
                           setOpenTokenMenuKey(isMenuOpen ? "" : key);
+                          setPendingTokenDeleteKey("");
                         }}
                         className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 text-zinc-500 transition-colors hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-200"
                         title="Actions"
+                          aria-haspopup="menu"
+                          aria-expanded={isMenuOpen}
                       >
                         <MoreVertical size={15} />
                       </button>
@@ -2838,38 +3120,72 @@ function SettingsField({
                             onClick={(event) => {
                               event.stopPropagation();
                               setOpenTokenMenuKey("");
+                              setPendingTokenDeleteKey("");
                             }}
                           />
-                          <div className="absolute right-0 top-[calc(100%+6px)] rumi-layer-local-popover w-32 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 py-1 shadow-2xl">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setRenamingKey(key);
-                                setRenameDraft(String(token.name ?? token.token_id ?? ""));
-                                setOpenTokenMenuKey("");
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
-                            >
-                              <Pencil size={13} />
-                              Rename
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setOpenTokenMenuKey("");
-                                onChange(sectionId, field.id, {
-                                  action: "delete",
-                                  provider_id: token.provider_id,
-                                  token_id: token.token_id,
-                                });
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/30"
-                            >
-                              <Trash2 size={13} />
-                              Delete
-                            </button>
+                          <div role="menu" className="absolute right-0 top-[calc(100%+6px)] rumi-layer-local-popover w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 py-1 shadow-2xl">
+                            {pendingTokenDeleteKey === key ? (
+                              <div role="none" className="space-y-2 px-3 py-2.5">
+                                <p className="break-words text-xs font-medium text-rose-200">Delete “{String(token.name ?? token.token_id ?? "token")}”?</p>
+                                <p className="text-[10px] leading-4 text-zinc-500">The stored credential and endpoint references will be removed. This cannot be undone.</p>
+                                <div className="flex gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(tokenBusyKey)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void deleteExternalToken(token);
+                                    }}
+                                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/[0.08] px-2 py-1.5 text-[11px] font-medium text-rose-100 hover:bg-rose-400/[0.13] disabled:opacity-40"
+                                  >
+                                    {tokenBusyKey === key ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                    Delete
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(tokenBusyKey)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setPendingTokenDeleteKey("");
+                                    }}
+                                    className="rounded-md border border-white/10 px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.05] disabled:opacity-40"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={Boolean(tokenBusyKey)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setRenamingKey(key);
+                                    setRenameDraft(String(token.name ?? token.token_id ?? ""));
+                                    setOpenTokenMenuKey("");
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Pencil size={13} />
+                                  Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={Boolean(tokenBusyKey)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setPendingTokenDeleteKey(key);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/30 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Trash2 size={13} />
+                                  Delete…
+                                </button>
+                              </>
+                            )}
                           </div>
                         </>
                       )}
@@ -2907,11 +3223,15 @@ function SettingsField({
                     setTokenProvider(nextProvider);
                     setTokenKind(externalTokenKindOptions(nextProvider)[0]?.value ?? "token");
                     setTokenSaveState("idle");
+                    setTokenSaveError("");
+                    setTokenActionMessage("");
                   }}
                   onAddCustom={(option) => {
                     setTokenProvider(option.providerId);
                     setTokenKind(externalTokenKindOptions(option.providerId)[0]?.value ?? "token");
                     setTokenSaveState("idle");
+                    setTokenSaveError("");
+                    setTokenActionMessage("");
                   }}
                   options={providerOptions}
                   addCustomLabel="Add external provider..."
@@ -2926,9 +3246,11 @@ function SettingsField({
                   onChange={(event) => {
                     setTokenName(event.target.value);
                     setTokenSaveState("idle");
+                    setTokenSaveError("");
+                    setTokenActionMessage("");
                   }}
                   placeholder="main"
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-cyan-500"
+                  className="w-full rounded-lg border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-cyan-500"
                 />
               </label>
               <label className="space-y-1.5">
@@ -2938,6 +3260,8 @@ function SettingsField({
                   onChange={(nextKind) => {
                     setTokenKind(nextKind);
                     setTokenSaveState("idle");
+                    setTokenSaveError("");
+                    setTokenActionMessage("");
                   }}
                   options={externalTokenKindOptions(tokenProvider)}
                 />
@@ -2951,41 +3275,47 @@ function SettingsField({
                   onChange={(event) => {
                     setTokenSecret(event.target.value);
                     setTokenSaveState("idle");
+                    setTokenSaveError("");
+                    setTokenActionMessage("");
                   }}
+                  aria-invalid={tokenSaveState === "error"}
+                  aria-describedby={tokenSaveError ? `${sectionId}-${field.id}-token-error` : undefined}
                   placeholder={tokenKind === "webhook_url" ? "https://discord.com/api/webhooks/..." : `${tokenProvider} ${tokenKind}`}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-cyan-500"
+                  className="w-full rounded-lg border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-cyan-500"
                 />
               </label>
               <div className="flex items-end">
                 <button
                   type="button"
-                  disabled={!tokenProvider.trim() || !tokenName.trim() || !tokenSecret.trim()}
-                  onClick={() => {
-                    if (!tokenProvider.trim() || !tokenName.trim() || !tokenSecret.trim()) return;
-                    onChange(sectionId, field.id, {
-                      action: "upsert",
-                      provider_id: tokenProvider,
-                      token_id: tokenName,
-                      name: tokenName,
-                      kind: tokenKind,
-                      value: tokenSecret,
-                    });
-                    setTokenSecret("");
-                    setTokenSaveState("saved");
-                  }}
+                  disabled={!tokenProvider.trim() || !tokenName.trim() || !tokenSecret.trim() || tokenSaveState === "saving" || Boolean(tokenBusyKey)}
+                  onClick={() => { void saveExternalToken(); }}
                   className={cn(
                     "w-full rounded-lg border px-3 py-2 text-sm transition-colors",
-                    tokenProvider.trim() && tokenName.trim() && tokenSecret.trim()
+                    tokenProvider.trim() && tokenName.trim() && tokenSecret.trim() && tokenSaveState !== "saving" && !tokenBusyKey
                       ? "border-zinc-100 bg-zinc-100 text-zinc-950"
                       : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
                   )}
                 >
-                  Save
+                  {tokenSaveState === "saving" && !tokenBusyKey ? "Saving…" : "Save"}
                 </button>
               </div>
             </div>
           </div>
-          {tokenSaveState === "saved" && <p className="text-[11px] text-emerald-400">Saved</p>}
+          {tokenSaveState === "saved" && (
+            <p role="status" className="text-[11px] text-emerald-400">{tokenActionMessage || "Saved and verified by the backend."}</p>
+          )}
+          {tokenSaveState === "error" && tokenSaveError && (
+            <div id={`${sectionId}-${field.id}-token-error`}>
+              <ErrorNotice
+                className="px-3 py-2 text-[11px] leading-5"
+                copyLabel="外部認証情報保存エラーをコピー"
+                copyText={`${tokenSaveError}\n\nA new secret remains only in this input until the backend confirms it was stored.`}
+                message={tokenSaveError}
+              >
+                <p className="mt-1 text-rose-200/70">A new secret remains only in this input until the backend confirms it was stored.</p>
+              </ErrorNotice>
+            </div>
+          )}
         </div>
       );
       break;
@@ -3002,46 +3332,53 @@ function SettingsField({
       break;
     case "secret":
       control = (
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <input
-            type="password"
-            autoComplete="off"
-            value={secretDraft}
-            placeholder={isSecretConfigured ? "Saved" : "Not set"}
-            onChange={(event) => {
-              setSecretDraft(event.target.value);
-              setSecretState("idle");
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" || !secretDraft.trim()) return;
-              event.preventDefault();
-              onChange(sectionId, field.id, secretDraft);
-              setSecretDraft("");
-              setSecretState("saved");
-            }}
-            className="min-w-[220px] flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none"
-          />
-          <button
-            type="button"
-            disabled={!secretDraft.trim()}
-            onClick={() => {
-              if (!secretDraft.trim()) return;
-              onChange(sectionId, field.id, secretDraft);
-              setSecretDraft("");
-              setSecretState("saved");
-            }}
-            className={cn(
-              "px-3 py-2 rounded-lg text-xs border transition-colors",
-              secretDraft.trim()
-                ? "bg-zinc-100 text-zinc-950 border-zinc-100"
-                : "bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed",
-            )}
-          >
-            Save
-          </button>
-          <span className="w-14 text-[11px] text-zinc-500">
-            {secretState === "saved" || isSecretConfigured ? "Saved" : ""}
-          </span>
+        <div className="space-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <input
+              type="password"
+              autoComplete="off"
+              value={secretDraft}
+              placeholder={isSecretConfigured ? "Saved securely" : "Not set"}
+              aria-invalid={secretState === "error"}
+              onChange={(event) => {
+                setSecretDraft(event.target.value);
+                setSecretState("idle");
+                setSecretError("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || !secretDraft.trim() || secretState === "saving") return;
+                event.preventDefault();
+                void saveSecretValue();
+              }}
+              className="min-w-[220px] flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
+            />
+            <button
+              type="button"
+              disabled={!secretDraft.trim() || secretState === "saving"}
+              onClick={() => { void saveSecretValue(); }}
+              className={cn(
+                "rounded-lg border px-3 py-2 text-xs transition-colors",
+                secretDraft.trim() && secretState !== "saving"
+                  ? "border-zinc-100 bg-zinc-100 text-zinc-950"
+                  : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
+              )}
+            >
+              {secretState === "saving" ? "Saving…" : "Save"}
+            </button>
+            <span className={cn("min-w-16 text-[11px]", secretState === "error" ? "text-red-300" : secretState === "saved" || isSecretConfigured ? "text-emerald-400" : "text-zinc-500")} aria-live="polite">
+              {secretState === "saving" ? "Verifying…" : secretState === "saved" || isSecretConfigured ? "Saved" : ""}
+            </span>
+          </div>
+          {secretError ? (
+            <ErrorNotice
+              className="px-3 py-2 text-[11px] leading-5"
+              copyLabel="秘密情報保存エラーをコピー"
+              copyText={`${secretError}\n\nThe value remains only in this input so you can correct or retry it.`}
+              message={secretError}
+            >
+              <p className="mt-1 text-rose-200/70">The value remains only in this input so you can correct or retry it.</p>
+            </ErrorNotice>
+          ) : null}
         </div>
       );
       break;
@@ -3049,6 +3386,8 @@ function SettingsField({
       control = (
         <button
           type="button"
+          aria-label={field.label}
+          aria-pressed={Boolean(value)}
           onClick={() => onChange(sectionId, field.id, !Boolean(value))}
           className={cn("w-10 h-6 rounded-full relative transition-colors", Boolean(value) ? "bg-emerald-500" : "bg-zinc-700")}
         >
@@ -3059,14 +3398,14 @@ function SettingsField({
     case "select":
       control = field.id === "preferred_model" ? (
         <SettingsModelSearchSelect
-          value={String(value ?? field.default ?? "")}
+          value={formFieldString(value, field.default)}
           onChange={(nextValue) => onChange(sectionId, field.id, nextValue)}
           options={(field.options ?? []).map(modelFieldOptionToOption)}
           placeholder="model/provider/特徴メモで検索"
         />
       ) : (
         <CustomSelect
-          value={String(value ?? field.default ?? "")}
+          value={formFieldString(value, field.default)}
           onChange={(nextValue) => onChange(sectionId, field.id, nextValue)}
           options={(field.options ?? []).map((option) => ({ value: String(option.value), label: option.label }))}
         />
@@ -3121,7 +3460,7 @@ function SettingsField({
       );
       break;
     case "textarea":
-      control = sectionId === "operations_company" && field.id === "model_allowlist" ? (
+      control = field.id === "model_allowlist" ? (
         <ModelAllowlistField
           value={value}
           fallback={field.default}
@@ -3130,21 +3469,29 @@ function SettingsField({
         />
       ) : (
         <textarea
-          value={String(value ?? field.default ?? "")}
+          value={formFieldString(value, field.default)}
           onChange={(event) => onChange(sectionId, field.id, event.target.value)}
           className="w-full h-20 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none resize-none"
         />
       );
       break;
-    default:
+    default: {
+      const isComposerPlaceholder = sectionId === "general" && field.id === "composer_placeholder";
+      const textValue = formFieldString(value, field.default);
+      const defaultComposerPlaceholder = formFieldString(field.default, "メッセージを入力...");
+      const isUncustomizedComposerPlaceholder = isComposerPlaceholder
+        && textValue.replace(/…/g, "...") === defaultComposerPlaceholder.replace(/…/g, "...");
       control = (
         <input
           type="text"
-          value={String(value ?? field.default ?? "")}
+          value={isUncustomizedComposerPlaceholder ? "" : textValue}
+          placeholder={isComposerPlaceholder ? defaultComposerPlaceholder : undefined}
           onChange={(event) => onChange(sectionId, field.id, event.target.value)}
-          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none min-w-[240px]"
+          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 min-w-[240px]"
         />
       );
+      break;
+    }
   }
 
   return (
@@ -3191,30 +3538,58 @@ export function SettingsModalRenderer({
   settingsSections,
   settingsValues,
   desktopSystemInfo,
+  modelProfiles = [],
+  activeModelProfileId,
+  backendConnectionState = "online",
+  backendConnectionNote,
+  saveState = { status: "idle", dirtyKeys: [] },
+  loadState = { status: "ready" },
+  modelProfilesLoadState = { status: "ready" },
   locale = "ja",
   onClose,
+  onStartSettingsChat,
   onOpenSection,
+  onRetryLoad,
+  onRetrySave,
   onSettingChange,
 }: SettingsModalRendererProps) {
   const isJapanese = normalizeLocale(locale) === "ja";
   const localizedCopy = (english: string, japanese: string) => isJapanese ? japanese : english;
+  const prefersReducedMotion = useReducedMotion();
   const layerRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const dialogTitleRef = useRef<HTMLHeadingElement | null>(null);
   const placementMenuRef = useRef<HTMLDivElement | null>(null);
   const placementTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeConfirmationRef = useRef<HTMLDivElement | null>(null);
+  const stayInSettingsRef = useRef<HTMLButtonElement | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const [activeSectionId, setActiveSectionId] = useState<ControlCenterSection["id"]>(
-    () => mapSettingsSectionId(requestedSectionId) ?? "quick_setup",
+    () => {
+      if (!requestedSectionId) return "quick_setup";
+      const mapped = mapSettingsSectionId(requestedSectionId);
+      if (mapped) return mapped;
+      const sourceSection = buildControlCenterSections(settingsSections, locale).find((section) => (
+        section.sourceSections.some((source) => source.id === requestedSectionId)
+      ));
+      return sourceSection?.id ?? "packs_extensions";
+    },
+  );
+  const [settingsDisplayMode, setSettingsDisplayMode] = useState<"standard" | "advanced" | "developer">(
+    () => requestedSectionId === "external_custom" || requestedSectionId === "debug" ? "developer" : "standard",
   );
   const [settingsSearch, setSettingsSearch] = useState("");
+  const [profileSelectionRequest, setProfileSelectionRequest] = useState<{ id: string; version: number } | null>(null);
   const [placementMenuOpen, setPlacementMenuOpen] = useState(false);
+  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const [connectionBusy, setConnectionBusy] = useState("");
   const [connectionMessages, setConnectionMessages] = useState<Record<string, { tone: "success" | "error"; text: string }>>({});
   const [connectionScopeModes, setConnectionScopeModes] = useState<Record<string, string>>({});
   const [connectionCredentialDrafts, setConnectionCredentialDrafts] = useState<Record<string, string>>({});
   const [connectionOAuthReviews, setConnectionOAuthReviews] = useState<Record<string, PendingOAuthReview>>({});
   const [connectionDraftReviews, setConnectionDraftReviews] = useState<Record<string, CredentialImportReview>>({});
+  const [expandedConnectionProviderId, setExpandedConnectionProviderId] = useState("");
   const [codexAppServerDraft, setCodexAppServerDraft] = useState<CodexAppServerConfig>({
     transport: "off",
     enabled: false,
@@ -3227,6 +3602,20 @@ export function SettingsModalRenderer({
     automationEndpointEnabled: false,
   });
   const normalizedSearch = settingsSearch.trim().toLowerCase();
+  const dirtySettingsKeys = saveState.dirtyKeys ?? [];
+  const hasUnconfirmedSettingsChanges = settingsCloseRequiresConfirmation(saveState);
+  const dismissCloseConfirmation = useCallback(() => {
+    setCloseConfirmationOpen(false);
+    requestAnimationFrame(() => closeButtonRef.current?.focus());
+  }, []);
+  const requestClose = useCallback(() => {
+    if (hasUnconfirmedSettingsChanges) {
+      setPlacementMenuOpen(false);
+      setCloseConfirmationOpen(true);
+      return;
+    }
+    onClose();
+  }, [hasUnconfirmedSettingsChanges, onClose]);
   const sidebarSettings = settingsValues.sidebar ?? {};
   const controlCenterSections = useMemo(
     () => buildControlCenterSections(settingsSections, locale),
@@ -3240,9 +3629,38 @@ export function SettingsModalRenderer({
     () => buildCodexAppServerPrelude(settingsValues),
     [settingsValues],
   );
+  const profileWorkspaceSettingsValues = useMemo(
+    () => normalizeProfileReferenceSettings(settingsValues),
+    [settingsValues],
+  );
+  const profileWorkspaceCatalog = useMemo(
+    () => normalizeProfileReferenceCatalog(catalog),
+    [catalog],
+  );
+  const normalizedActiveModelProfileId = profileReferenceId(activeModelProfileId);
+  const profileWorkspace = useMemo(
+    () => buildSettingsProfileWorkspace({
+      settingsSections,
+      settingsValues: profileWorkspaceSettingsValues,
+      catalog: profileWorkspaceCatalog,
+      modelProfiles,
+      activeModelProfileId: normalizedActiveModelProfileId || undefined,
+    }),
+    [modelProfiles, normalizedActiveModelProfileId, profileWorkspaceCatalog, profileWorkspaceSettingsValues, settingsSections],
+  );
+  const profileOwnedFieldKeys = useMemo(() => {
+    const collection = profileWorkspace.editableCollection;
+    if (!collection) return new Set<string>();
+    return new Set([
+      `${collection.sectionId}:${collection.fieldId}`,
+      ...(collection.activeFieldId ? [`${collection.sectionId}:${collection.activeFieldId}`] : []),
+      ...(collection.defaultFieldId ? [`${collection.sectionId}:${collection.defaultFieldId}`] : []),
+    ]);
+  }, [profileWorkspace.editableCollection]);
   const activeProfileLabel = useMemo(
-    () => activeSettingsProfileLabel(settingsValues, catalog),
-    [catalog, settingsValues],
+    () => profileWorkspace.profiles.find((profile) => profile.active)?.name
+      ?? activeSettingsProfileLabel(settingsValues, catalog),
+    [catalog, profileWorkspace.profiles, settingsValues],
   );
   const placementManifestMap = useMemo(
     () => new Map(buildBuiltinPlacementManifests(settingsSections).map((manifest) => [manifest.id, manifest])),
@@ -3268,15 +3686,57 @@ export function SettingsModalRenderer({
       placement.id === manifest.id && placement.surface === "settings"
     )))
   ), [pinnedPlacements, placementManifestMap]);
-  const visibleSections = useMemo(
-    () => filterControlCenterSections(controlCenterSections, settingsSearch),
-    [controlCenterSections, settingsSearch],
-  );
+  const profileSearchMatches = useMemo(() => {
+    if (!normalizedSearch) return [];
+    return profileWorkspace.profiles.filter((profile) => ([
+      profile.name, profile.id, profile.role, profile.description, profile.providerId, profile.modelId,
+      ...profile.routeRefs, ...profile.capabilityTags,
+    ].join(" ").toLowerCase().includes(normalizedSearch)));
+  }, [normalizedSearch, profileWorkspace.profiles]);
+  const visibleSections = useMemo(() => {
+    const filtered = filterControlCenterSections(controlCenterSections, settingsSearch);
+    if (!normalizedSearch || profileSearchMatches.length === 0 || filtered.some((section) => section.id === "profiles")) return filtered;
+    const profilesSection = controlCenterSections.find((section) => section.id === "profiles");
+    return profilesSection ? [...filtered, profilesSection].sort((left, right) => left.order - right.order) : filtered;
+  }, [controlCenterSections, normalizedSearch, profileSearchMatches.length, settingsSearch]);
+  const settingsSearchMatches = useMemo(() => {
+    if (!normalizedSearch) return [];
+    return controlCenterSections.flatMap((section) => section.fields
+      .filter((field) => !profileOwnedFieldKeys.has(`${field.sourceSectionId}:${field.id}`))
+      .filter((field) => settingsFieldSearchText(field).includes(normalizedSearch))
+      .map((field) => ({ section, field })));
+  }, [controlCenterSections, normalizedSearch, profileOwnedFieldKeys]);
+  const navigationGroups = useMemo(() => ([
+    {
+      id: "everyday",
+      label: localizedCopy("Everyday", "日常設定"),
+      sectionIds: ["quick_setup", "models_api", "workspace_ui"],
+    },
+    {
+      id: "connections_features",
+      label: localizedCopy("Connections & features", "接続と機能"),
+      sectionIds: ["accounts_connections", "features", "tools_mcp", "computer_automation"],
+    },
+    {
+      id: "management",
+      label: localizedCopy("Management", "管理"),
+      sectionIds: ["privacy_security", "profiles", "packs_extensions"],
+    },
+    {
+      id: "details",
+      label: localizedCopy("Details", "詳細"),
+      sectionIds: ["advanced", "diagnostics"],
+    },
+  ]), [isJapanese]);
   useEffect(() => {
     if (!requestedSectionId) return;
     const mappedSectionId = mapSettingsSectionId(requestedSectionId);
-    if (mappedSectionId && controlCenterSections.some((section) => section.id === mappedSectionId)) {
-      setActiveSectionId(mappedSectionId);
+    const sourceSection = controlCenterSections.find((section) => (
+      section.sourceSections.some((source) => source.id === requestedSectionId)
+    ));
+    const target = mappedSectionId ?? sourceSection?.id ?? "packs_extensions";
+    if (controlCenterSections.some((section) => section.id === target)) {
+      setActiveSectionId(target);
     }
   }, [controlCenterSections, isOpen, requestedSectionId]);
   useEffect(() => {
@@ -3285,6 +3745,17 @@ export function SettingsModalRenderer({
       setActiveSectionId(visibleSections[0]?.id ?? "quick_setup");
     }
   }, [activeSectionId, normalizedSearch, visibleSections]);
+  useEffect(() => {
+    if (!isOpen) setCloseConfirmationOpen(false);
+  }, [isOpen]);
+  useEffect(() => {
+    if (!closeConfirmationOpen || hasUnconfirmedSettingsChanges) return;
+    dismissCloseConfirmation();
+  }, [closeConfirmationOpen, dismissCloseConfirmation, hasUnconfirmedSettingsChanges]);
+  useEffect(() => {
+    if (!closeConfirmationOpen) return;
+    requestAnimationFrame(() => stayInSettingsRef.current?.focus());
+  }, [closeConfirmationOpen]);
   useEffect(() => {
     if (!placementMenuOpen) return;
     const handlePointerDown = () => setPlacementMenuOpen(false);
@@ -3338,22 +3809,32 @@ export function SettingsModalRenderer({
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        if (placementMenuOpen) {
+        if (closeConfirmationOpen) {
+          dismissCloseConfirmation();
+        } else if (placementMenuOpen) {
           setPlacementMenuOpen(false);
           placementTriggerRef.current?.focus();
         } else {
-          onClose();
+          requestClose();
         }
         return;
       }
       if (event.key !== "Tab") return;
-      const scope = placementMenuOpen ? placementMenuRef.current : dialogRef.current;
+      const scope = closeConfirmationOpen
+        ? closeConfirmationRef.current
+        : placementMenuOpen
+          ? placementMenuRef.current
+          : dialogRef.current;
       if (!scope) return;
       const focusable = Array.from(scope.querySelectorAll<HTMLElement>(focusableSelector))
         .filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true" && element.offsetParent !== null);
       if (focusable.length === 0) {
         event.preventDefault();
-        (placementMenuOpen ? placementMenuRef.current : dialogTitleRef.current)?.focus();
+        (closeConfirmationOpen
+          ? stayInSettingsRef.current
+          : placementMenuOpen
+            ? placementMenuRef.current
+            : dialogTitleRef.current)?.focus();
         return;
       }
       const first = focusable[0];
@@ -3366,9 +3847,9 @@ export function SettingsModalRenderer({
         first.focus();
       }
     };
-    document.addEventListener("keydown", handleDialogKeyDown, true);
-    return () => document.removeEventListener("keydown", handleDialogKeyDown, true);
-  }, [isOpen, onClose, placementMenuOpen]);
+    document.addEventListener("keydown", handleDialogKeyDown);
+    return () => document.removeEventListener("keydown", handleDialogKeyDown);
+  }, [closeConfirmationOpen, dismissCloseConfirmation, isOpen, placementMenuOpen, requestClose]);
   useEffect(() => {
     if (!placementMenuOpen) return;
     requestAnimationFrame(() => {
@@ -3402,8 +3883,13 @@ export function SettingsModalRenderer({
     ?? visibleSections[0]
     ?? controlCenterSections[0];
   const fieldSourceValues = (field: ControlCenterField) => settingsValues[field.sourceSectionId] ?? {};
-  const primaryFields = activeSection?.fields.filter((field) => !field.advanced && settingsFieldVisible(field, fieldSourceValues(field))) ?? [];
-  const advancedFields = activeSection?.fields.filter((field) => field.advanced && settingsFieldVisible(field, fieldSourceValues(field))) ?? [];
+  const profilePanelOwnsField = (field: ControlCenterField) => (
+    activeSection?.id === "profiles"
+    && field.controlSectionId === "profiles"
+    && profileOwnedFieldKeys.has(`${field.sourceSectionId}:${field.id}`)
+  );
+  const primaryFields = activeSection?.fields.filter((field) => !field.advanced && !profilePanelOwnsField(field) && settingsFieldVisible(field, fieldSourceValues(field))) ?? [];
+  const advancedFields = activeSection?.fields.filter((field) => field.advanced && !profilePanelOwnsField(field) && settingsFieldVisible(field, fieldSourceValues(field))) ?? [];
   const activeSectionOwnText = [
     activeSection?.id ?? "",
     activeSection?.label ?? "",
@@ -3422,7 +3908,7 @@ export function SettingsModalRenderer({
     onSettingChange("sidebar", "ui_placements", updater(pinnedPlacements));
   };
   const openSection = (sectionId: string) => {
-    setActiveSectionId(mapSettingsSectionId(sectionId) ?? "packs_extensions");
+    setActiveSectionId(mapSettingsSectionId(sectionId) ?? "quick_setup");
     onOpenSection?.(sectionId);
   };
   const refreshConnectionStatus = (providerId: string, activeDiagnostics = false) => {
@@ -3688,17 +4174,29 @@ export function SettingsModalRenderer({
     }
   };
 
+  const settingsFieldAnchorId = (field: ControlCenterField) => `settings-field-${field.sourceSectionId}-${field.id}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const openSearchMatch = (sectionId: ControlCenterSection["id"], field: ControlCenterField) => {
+    setActiveSectionId(sectionId);
+    onOpenSection?.(sectionId);
+    requestAnimationFrame(() => {
+      const target = document.getElementById(settingsFieldAnchorId(field));
+      target?.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
+      target?.querySelector<HTMLElement>("input, select, textarea, button, [tabindex]:not([tabindex='-1'])")?.focus();
+    });
+  };
   const renderField = (field: ControlCenterField) => (
     <div
+      id={settingsFieldAnchorId(field)}
+      data-settings-field={`${field.sourceSectionId}.${field.id}`}
       key={`${field.sourceSectionId}.${field.id}`}
       className={cn(
-        "min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/50 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-950/60",
+        "min-w-0 border-b border-white/[0.07] px-1 py-4 transition-colors focus-within:border-indigo-400/35",
         settingsFieldTakesFullWidth(field) ? "lg:col-span-2" : "",
       )}
     >
       {field.sourceSectionLabel && field.sourceSectionId !== activeSection?.id && (
         <div className="mb-3 flex items-center justify-between gap-3">
-          <span className="rounded-md border border-zinc-800 bg-zinc-900/70 px-2 py-1 text-[10px] font-medium uppercase tracking-normal text-zinc-500">
+          <span className="rounded-md border border-white/[0.07] bg-white/[0.045] px-2 py-1 text-[10px] font-medium uppercase tracking-normal text-zinc-500">
             {field.sourceSectionLabel}
           </span>
         </div>
@@ -3732,7 +4230,7 @@ export function SettingsModalRenderer({
       ? "この項目を設定画面からすぐ開けるようにします。"
       : manifest.description;
     return (
-      <div key={manifest.id} className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+      <div key={manifest.id} className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h4 className="text-sm font-medium text-zinc-100">{placementLabel}</h4>
@@ -3770,22 +4268,73 @@ export function SettingsModalRenderer({
   };
 
   const renderSectionPrelude = (section: ControlCenterSection): ReactElement | null => {
-    if (section.id === "quick_setup") {
+    if (section.id === "profiles") {
       return (
-        <div className="divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/35 text-xs">
-          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]"><span className="font-medium text-zinc-300">基本設定</span><span className="text-zinc-500">モデル、APIキー、アカウント接続を設定します。</span></div>
-          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]"><span className="font-medium text-zinc-300">実行権限</span><span className="text-zinc-500">MCPとコンピューター操作は必要な権限だけを有効にします。</span></div>
-          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]"><span className="font-medium text-zinc-300">Pack設定</span><span className="text-zinc-500">検証済みの項目だけがこの画面へ追加されます。</span></div>
-        </div>
+        <ProfileSettingsPanel
+          workspace={profileWorkspace}
+          locale={locale}
+          loadState={modelProfilesLoadState}
+          saveState={saveState}
+          requestedProfileId={profileSelectionRequest?.id}
+          selectionRequestVersion={profileSelectionRequest?.version}
+          onSettingChange={onSettingChange}
+          onOpenSection={openSection}
+          onRetryLoad={onRetryLoad}
+        />
       );
     }
-    if (section.id === "accounts_connections") {
+    if (section.id === "quick_setup") {
+      return (
+        <section className="overflow-hidden rounded-2xl border border-indigo-300/15 bg-[#0b0d10] shadow-[0_24px_90px_rgba(0,0,0,0.28)]">
+          <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div className="flex min-w-0 gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-indigo-300/20 bg-indigo-300/10 text-indigo-100">
+                <MessageCircle size={20} />
+              </span>
+              <div className="min-w-0">
+                <h4 className="text-base font-semibold text-zinc-50">
+                  {localizedCopy("Configure with AI", "AIと設定する")}
+                </h4>
+                <p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-400">
+                  {localizedCopy(
+                    "Open the normal home chat with the Settings skill mentioned. Ask questions, compare options, and approve changes without learning a separate interface.",
+                    "通常のホームチャットに設定用Skillをメンションします。設定場所の質問、比較、変更の確認まで、いつもの入力欄で続けられます。",
+                  )}
+                </p>
+                <span className="mt-3 inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-400/[0.07] px-2.5 py-1 font-mono text-[11px] text-cyan-100">
+                  @Settings
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onStartSettingsChat}
+              disabled={!onStartSettingsChat}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-zinc-100 px-4 py-2.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+            >
+              {localizedCopy("Open Settings Mode", "Settings Modeを開く")}
+              <ArrowRight size={15} />
+            </button>
+          </div>
+          <div className="border-t border-white/[0.07] bg-white/[0.018] px-5 py-3 text-[11px] leading-5 text-zinc-500 sm:px-7">
+            {localizedCopy(
+              "Remove the @Settings mention from the composer to return to regular Tobkiri mode.",
+              "入力欄から @Settings メンションを削除すると、通常のTobkiriへ戻ります。",
+            )}
+          </div>
+        </section>
+      );
+    }
+    if (
+      section.id === "accounts_connections"
+      || (section.id === "tools_mcp" && mapSettingsSectionId(requestedSectionId) === "accounts_connections")
+    ) {
       const connectedCount = accountConnectionCards.filter((card) => card.connected || card.credential?.configured).length;
       const approvalCount = accountConnectionCards.reduce((sum, card) => sum + card.approvalRequiredCapabilities.length, 0);
       const blockedCount = accountConnectionCards.filter((card) => card.disabledReason && !card.connected && !card.credential?.configured).length;
       return (
         <div className="space-y-4">
-          <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
+          <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.03]">
             <div className="px-4 py-4 sm:px-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="max-w-2xl">
@@ -3832,14 +4381,25 @@ export function SettingsModalRenderer({
               const cloudflareRows = card.providerId === "cloudflare" ? cloudflareProvisioningRows(card.provisioning, isJapanese) : [];
               const cloudflareFacts = card.providerId === "cloudflare" ? cloudflareProvisioningFacts(card.provisioning, isJapanese) : [];
               const cloudflareBlockers = card.providerId === "cloudflare" ? cloudflareProvisioningBlockers(card.provisioning, isJapanese) : [];
+              const expanded = expandedConnectionProviderId === card.providerId;
+              const brandAsset = providerBrandAsset(card.providerId);
               return (
                 <article key={card.providerId} className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/55">
                   <div className="p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex min-w-0 gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-xs font-semibold text-zinc-300">
-                          {card.label.slice(0, 2).toUpperCase()}
-                        </div>
+                        {brandAsset ? (
+                          <img
+                            src={brandAsset}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-9 w-9 shrink-0 rounded-lg border border-white/[0.09] bg-white object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] bg-white/[0.04] text-xs font-semibold text-zinc-300">
+                            {card.label.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h4 className="text-sm font-semibold text-zinc-50">{card.label}</h4>
@@ -3850,6 +4410,15 @@ export function SettingsModalRenderer({
                           <p className="mt-1 text-xs leading-5 text-zinc-500">{card.description}</p>
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        aria-controls={`settings-connection-${card.providerId}`}
+                        onClick={() => setExpandedConnectionProviderId(expanded ? "" : card.providerId)}
+                        className="shrink-0 rounded-lg border border-zinc-800 bg-black/20 px-3 py-2 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+                      >
+                        {expanded ? localizedCopy("Hide details", "詳細を閉じる") : localizedCopy("Open details", "詳細を開く")}
+                      </button>
                     </div>
 
                     <div className="mt-4 grid gap-2 sm:grid-cols-3">
@@ -3866,6 +4435,12 @@ export function SettingsModalRenderer({
                         <div className="mt-1 text-xs text-zinc-200">{card.approvalRequiredCapabilities.length ? localizedCopy("Approval needed", "承認が必要") : card.capabilities.length ? localizedCopy("Granted", "許可済み") : localizedCopy("Limited", "制限あり")}</div>
                       </div>
                     </div>
+
+                    <div
+                      id={`settings-connection-${card.providerId}`}
+                      hidden={!expanded}
+                      className={cn(!expanded && "hidden")}
+                    >
 
                     {card.providerId === "cloudflare" && (cloudflareRows.length > 0 || cloudflareFacts.length > 0 || cloudflareBlockers.length > 0) && (
                       <div className="mt-4 rounded-xl border border-zinc-800 bg-black/20 p-3">
@@ -3908,7 +4483,13 @@ export function SettingsModalRenderer({
                         {cloudflareBlockers.length > 0 && (
                           <div className="mt-3 space-y-1.5">
                             {cloudflareBlockers.map((blocker) => (
-                              <div key={blocker} className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-5 text-amber-100/85">{blocker}</div>
+                              <ErrorNotice
+                                className="px-2.5 py-1.5 text-[11px] leading-5"
+                                copyLabel={localizedCopy("Copy Cloudflare diagnostic", "Cloudflare診断をコピー")}
+                                key={blocker}
+                                message={blocker}
+                                severity="warning"
+                              />
                             ))}
                           </div>
                         )}
@@ -4096,8 +4677,17 @@ export function SettingsModalRenderer({
                       </div>
                     )}
                     {message && (
-                      <p className={cn("mt-4 rounded-lg border px-3 py-2 text-[11px] leading-5", message.tone === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-rose-500/25 bg-rose-500/10 text-rose-200")}>{message.text}</p>
+                      message.tone === "success" ? (
+                        <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-200">{message.text}</p>
+                      ) : (
+                        <ErrorNotice
+                          className="mt-4 px-3 py-2 text-[11px] leading-5"
+                          copyLabel={localizedCopy("Copy connection error", "接続エラーをコピー")}
+                          message={message.text}
+                        />
+                      )
                     )}
+                    </div>
                   </div>
                 </article>
               );
@@ -4217,13 +4807,30 @@ export function SettingsModalRenderer({
                   ))}
                 </div>
 
-                {codexAppServerPrelude.blockedReason && <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-100/80">{codexAppServerPrelude.blockedReason}</p>}
+                {codexAppServerPrelude.blockedReason && (
+                  <ErrorNotice
+                    className="mt-4 px-3 py-2 text-[11px] leading-5"
+                    copyLabel={localizedCopy("Copy Codex App Server warning", "Codex App Serverの注意をコピー")}
+                    message={codexAppServerPrelude.blockedReason}
+                    severity="warning"
+                  />
+                )}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button type="button" disabled={connectionBusy === "codex_app_server:save"} onClick={() => void saveCodexAppServer()} className="rounded-lg border border-cyan-700 bg-cyan-950/30 px-3 py-1.5 text-xs text-cyan-100 transition-colors hover:border-cyan-500 hover:bg-cyan-900/35 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600">{connectionBusy === "codex_app_server:save" ? "Saving..." : "Save config"}</button>
                   <button type="button" disabled={connectionBusy === "codex_app_server:probe"} onClick={() => void probeCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:probe" ? "Probing..." : "Probe"}</button>
                   <button type="button" disabled={connectionBusy === "codex_app_server:clear"} onClick={() => void clearCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:clear" ? "Clearing..." : "Clear"}</button>
                 </div>
-                {appServerMessage && <p className={cn("mt-4 rounded-lg border px-3 py-2 text-[11px] leading-5", appServerMessage.tone === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-rose-500/25 bg-rose-500/10 text-rose-200")}>{appServerMessage.text}</p>}
+                {appServerMessage && (
+                  appServerMessage.tone === "success" ? (
+                    <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-200">{appServerMessage.text}</p>
+                  ) : (
+                    <ErrorNotice
+                      className="mt-4 px-3 py-2 text-[11px] leading-5"
+                      copyLabel={localizedCopy("Copy Codex App Server error", "Codex App Serverエラーをコピー")}
+                      message={appServerMessage.text}
+                    />
+                  )
+                )}
               </div>
             </div>
           </div>
@@ -4244,8 +4851,9 @@ export function SettingsModalRenderer({
   };
 
   const renderRightHelp = (section: ControlCenterSection | undefined): ReactElement => (
-    <aside className="hidden border-l border-zinc-800 bg-zinc-950/40 p-4 md:block">
+    <aside data-settings-right-help className="hidden min-w-0 overflow-y-auto border-l border-white/[0.07] bg-black/15 p-4 2xl:block">
       <div className="sticky top-4 space-y-4">
+        <ModelRoutingOverview workspace={profileWorkspace} locale={locale} onOpenSection={openSection} compact />
         <section className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
           <div className="text-xs font-medium uppercase tracking-normal text-zinc-500">{localizedCopy("Control Center", "設定ガイド")}</div>
           <h3 className="mt-2 text-sm font-medium text-zinc-100">{section?.label ?? localizedCopy("Settings", "設定")}</h3>
@@ -4260,7 +4868,29 @@ export function SettingsModalRenderer({
               : localizedCopy("Settings below apply to the profile reported by the runtime.", "以下の設定はruntimeが報告したプロファイルに適用されます。")}
           </p>
         </section>
-        <section className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
+        <section className="border border-zinc-800 bg-zinc-950/50 p-4">
+          <div className="text-xs font-medium uppercase tracking-normal text-zinc-500">{localizedCopy("Save state", "保存状態")}</div>
+          <div className="mt-2 text-xs text-zinc-300">
+            {saveState.status === "saving"
+              ? localizedCopy("Saving changes…", "変更を保存中…")
+              : saveState.status === "error"
+                ? localizedCopy("Save requires attention", "保存を確認してください")
+                : (saveState.dirtyKeys?.length ?? 0) > 0
+                  ? localizedCopy(`${saveState.dirtyKeys?.length ?? 0} unsaved changes`, `未保存の変更 ${saveState.dirtyKeys?.length ?? 0}件`)
+                  : localizedCopy("All changes saved", "すべて保存済み")}
+          </div>
+          {saveState.status === "error" ? (
+            <ErrorNotice
+              className="mt-3 px-3 py-2 text-[11px] leading-5"
+              copyLabel={localizedCopy("Copy settings save error", "設定保存エラーをコピー")}
+              message={saveState.message || localizedCopy("Some changes could not be saved. Review the affected settings and retry.", "一部の変更を保存できませんでした。該当する設定を確認して再試行してください。")}
+              trailing={(saveState.dirtyKeys?.length ?? 0) > 0 && onRetrySave ? (
+                <button type="button" onClick={onRetrySave} className="shrink-0 text-xs font-medium text-red-300 hover:text-red-200">{localizedCopy("Retry save", "保存を再試行")}</button>
+              ) : undefined}
+            />
+          ) : saveState.message ? <p className="mt-2 text-[11px] leading-5 text-zinc-500">{saveState.message}</p> : null}
+        </section>
+        <section className="border border-zinc-800 bg-zinc-950/50 p-4">
           <div className="text-xs font-medium uppercase tracking-normal text-zinc-500">{localizedCopy("Source sections", "設定の提供元")}</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {(section?.sourceSections ?? []).slice(0, 8).map((source) => (
@@ -4282,27 +4912,32 @@ export function SettingsModalRenderer({
       {isOpen && (
         <div ref={layerRef} className="fixed inset-0 rumi-layer-modal flex items-center justify-center" data-testid="settings-modal-layer">
           <motion.div
-            initial={{ opacity: 0 }}
+            initial={prefersReducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.16 }}
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={requestClose}
             aria-hidden="true"
           />
           <motion.div
             ref={dialogRef}
+            data-settings-modal
             role="dialog"
             aria-modal="true"
             aria-labelledby="rumi-settings-dialog-title"
-            aria-describedby="rumi-settings-dialog-description"
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.98, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: "spring", stiffness: 360, damping: 32 }}
-            className="relative flex h-[min(860px,calc(100vh-32px))] w-[min(1240px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0f11] shadow-2xl shadow-black/60"
+            exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, scale: 0.98, y: 8 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 34 }}
+            className="relative flex h-[min(920px,calc(100dvh-20px))] w-[min(1480px,calc(100vw-16px))] min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0d0f11] shadow-2xl shadow-black/60 max-sm:h-[calc(100dvh-4px)] max-sm:w-screen max-sm:rounded-none max-sm:border-x-0"
           >
-            <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center">
-              <div className="min-w-0">
+            <header
+              className="flex min-w-0 items-center justify-between gap-4 border-b border-zinc-800 px-4 py-2 sm:px-5"
+              inert={closeConfirmationOpen ? true : undefined}
+              aria-hidden={closeConfirmationOpen || undefined}
+            >
+              <div className="min-w-0 flex-1">
                 <h2
                   ref={dialogTitleRef}
                   id="rumi-settings-dialog-title"
@@ -4311,23 +4946,23 @@ export function SettingsModalRenderer({
                 >
                   {t(locale, "settings.title")}
                 </h2>
-                <p id="rumi-settings-dialog-description" className="text-xs text-zinc-500 mt-1">
-                  {t(locale, "settings.description")} {" "}
-                  {t(locale, "settings.backendRegistry", {
-                    extensionPoints: catalog?.extension_points.length ?? 0,
-                    parts: catalog?.parts?.length ?? 0,
-                    pack: health?.pack ?? "defaultspack",
-                  })}
-                </p>
-                <p className="mt-1 truncate text-[10px] text-zinc-600">Profile: {activeProfileLabel}</p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSettingsDisplayMode((current) => current === "standard" ? "advanced" : current === "advanced" ? "developer" : "standard")}
+                  className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                  aria-label={localizedCopy("Change settings display mode", "設定の表示モードを変更")}
+                  title={localizedCopy("Cycle standard, advanced, and developer settings", "標準・上級者・開発者向け設定を切り替えます")}
+                >
+                  {localizedCopy("View", "表示")}: {settingsDisplayMode === "standard" ? localizedCopy("Standard", "標準") : settingsDisplayMode === "advanced" ? localizedCopy("Advanced", "上級者") : localizedCopy("Developer", "開発者")}
+                </button>
                 <div className="relative">
                   <button
                     ref={placementTriggerRef}
                     type="button"
                     onClick={() => setPlacementMenuOpen((current) => !current)}
-                    className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-2.5 py-2 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                    className="rounded-lg border border-white/[0.07] bg-white/[0.035] px-2.5 py-2 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
                     title={t(locale, "settings.addPlacement")}
                     aria-label={t(locale, "settings.addPlacement")}
                     aria-haspopup="menu"
@@ -4373,19 +5008,24 @@ export function SettingsModalRenderer({
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={onClose} aria-label={t(locale, "settings.close")} className="rounded p-1 text-zinc-500 hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-300">
+                <button ref={closeButtonRef} type="button" onClick={requestClose} aria-label={t(locale, "settings.close")} className="flex h-10 w-10 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
                   <X size={18} />
                 </button>
               </div>
-            </div>
-            <div className="grid min-h-0 flex-1 md:grid-cols-[220px_minmax(0,1fr)_260px]">
-              <nav className="overflow-x-auto border-b border-white/7 bg-black/20 p-3 md:overflow-y-auto md:border-b-0 md:border-r">
+            </header>
+            <div
+              className="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_280px]"
+              inert={closeConfirmationOpen ? true : undefined}
+              aria-hidden={closeConfirmationOpen || undefined}
+            >
+              <nav className="min-w-0 overflow-x-auto border-b border-white/7 bg-black/20 p-3 lg:overflow-y-auto lg:border-b-0 lg:border-r" aria-label={localizedCopy("Settings categories", "設定カテゴリ")}>
                 <label className="mb-3 flex h-10 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 transition-colors focus-within:border-zinc-600 focus-within:text-zinc-300">
                   <Search size={14} />
                   <input
                     value={settingsSearch}
                     onChange={(event) => setSettingsSearch(event.target.value)}
                     placeholder={t(locale, "settings.searchPlaceholder")}
+                    aria-label={t(locale, "settings.searchPlaceholder")}
                     className="min-w-0 flex-1 bg-transparent text-zinc-200 outline-none placeholder:text-zinc-600"
                   />
                   {settingsSearch && (
@@ -4399,45 +5039,103 @@ export function SettingsModalRenderer({
                     </button>
                   )}
                 </label>
-                <div className="flex gap-1.5 md:flex-col">
-                  {visibleSections.map((section) => {
-                    const primaryFieldCount = section.fields.filter((field) => !field.advanced).length;
+                <div className="flex gap-4 lg:block">
+                  {navigationGroups.map((group) => {
+                    const groupSections = group.sectionIds
+                      .map((sectionId) => visibleSections.find((section) => section.id === sectionId))
+                      .filter((section): section is ControlCenterSection => Boolean(section));
+                    if (groupSections.length === 0) return null;
                     return (
-                      <button
-                        key={section.id}
-                        type="button"
-                        onClick={() => setActiveSectionId(section.id)}
-                        className={cn(
-                          "group relative flex-shrink-0 overflow-hidden rounded-xl border px-3 py-2.5 text-left text-xs transition-colors",
-                          activeSection?.id === section.id
-                            ? "border-zinc-700 bg-zinc-800 text-zinc-100"
-                            : "border-transparent text-zinc-500 hover:bg-white/[0.035] hover:text-zinc-300",
-                        )}
-                      >
-                        {activeSection?.id === section.id && <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-zinc-300" />}
-                        <span className="block font-medium">{section.label}</span>
-                        <span className="mt-1 block text-[10px] text-zinc-600 group-hover:text-zinc-500">{t(locale, "settings.controls", { count: primaryFieldCount })}</span>
-                      </button>
+                      <div key={group.id} className="flex shrink-0 gap-1.5 lg:mb-5 lg:block lg:last:mb-0">
+                        <div className="hidden px-2 pb-1.5 text-[9px] font-medium uppercase tracking-[0.16em] text-zinc-700 lg:block">{group.label}</div>
+                        {groupSections.map((section) => {
+                          return (
+                            <button
+                              key={section.id}
+                              type="button"
+                              onClick={() => openSection(section.id)}
+                              aria-current={activeSection?.id === section.id ? "page" : undefined}
+                              className={cn(
+                                "group relative mb-0 flex min-h-11 min-w-[154px] shrink-0 items-center justify-between gap-3 overflow-hidden border-l-2 px-3 py-2.5 text-left text-xs transition-colors lg:mb-0.5 lg:min-w-0 lg:w-full",
+                                activeSection?.id === section.id
+                                  ? "border-indigo-300 bg-white/[0.065] text-zinc-100"
+                                  : "border-transparent text-zinc-500 hover:bg-white/[0.035] hover:text-zinc-300",
+                              )}
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">{section.label}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     );
                   })}
                   {visibleSections.length === 0 && (
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-4 text-xs text-zinc-500">
+                    <div className="border border-zinc-800 bg-zinc-950/60 px-3 py-4 text-xs text-zinc-500">
                       {t(locale, "settings.noSections")}
                     </div>
                   )}
                 </div>
               </nav>
 
-              <div className="flex-1 space-y-8 overflow-y-auto p-5 sm:p-7">
+              <main className="min-w-0 space-y-7 overflow-y-auto p-4 sm:p-6" id="settings-content">
+                {normalizedSearch ? (
+                  <section className="border border-white/[0.08] bg-black/15" aria-labelledby="settings-search-results-title">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3">
+                      <div>
+                        <h3 id="settings-search-results-title" className="text-sm font-medium text-zinc-100">{localizedCopy("Search results", "検索結果")}</h3>
+                        <p className="mt-1 text-[11px] text-zinc-500">{localizedCopy(
+                          `${settingsSearchMatches.length + profileSearchMatches.length} matches across settings and profiles`,
+                          `設定とプロファイルから ${settingsSearchMatches.length + profileSearchMatches.length}件`,
+                        )}</p>
+                      </div>
+                      <button type="button" onClick={() => setSettingsSearch("")} className="text-xs font-medium text-zinc-500 hover:text-zinc-200">{localizedCopy("Clear search", "検索をクリア")}</button>
+                    </div>
+                    <div className="grid max-h-56 overflow-y-auto sm:grid-cols-2">
+                      {settingsSearchMatches.slice(0, 16).map(({ section, field }) => (
+                        <button
+                          key={`${section.id}:${field.sourceSectionId}:${field.id}`}
+                          type="button"
+                          onClick={() => openSearchMatch(section.id, field)}
+                          className="min-w-0 border-b border-white/[0.06] px-4 py-3 text-left hover:bg-white/[0.035] sm:odd:border-r"
+                        >
+                          <span className="block truncate text-xs font-medium text-zinc-200">{field.label}</span>
+                          <span className="mt-1 block truncate text-[10px] text-zinc-600">{section.label} · {field.sourceSectionLabel ?? field.sourceSectionId}</span>
+                        </button>
+                      ))}
+                      {profileSearchMatches.slice(0, 8).map((profile) => (
+                        <button
+                          key={`profile-search:${profile.id}`}
+                          type="button"
+                          onClick={() => {
+                            setActiveSectionId("profiles");
+                            setProfileSelectionRequest((current) => ({
+                              id: profile.id,
+                              version: (current?.version ?? 0) + 1,
+                            }));
+                          }}
+                          className="min-w-0 border-b border-white/[0.06] px-4 py-3 text-left hover:bg-white/[0.035] sm:odd:border-r"
+                        >
+                          <span className="block truncate text-xs font-medium text-zinc-200">{profile.name}</span>
+                          <span className="mt-1 block truncate font-mono text-[10px] text-zinc-600">{localizedCopy("Profile", "プロファイル")} · {profile.id}</span>
+                        </button>
+                      ))}
+                      {settingsSearchMatches.length === 0 && profileSearchMatches.length === 0 ? (
+                        <p className="px-4 py-6 text-xs text-zinc-500 sm:col-span-2">{t(locale, "settings.noFields")}</p>
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
                 {pinnedSettingsPlacements.length > 0 && (
                   <section className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <h3 className="text-sm font-medium text-zinc-100">Pinned placements</h3>
-                        <p className="mt-1 text-xs text-zinc-500">settings surface に固定した項目をここから開けます。</p>
+                        <h3 className="text-sm font-medium text-zinc-100">{localizedCopy("Pinned placements", "固定した項目")}</h3>
+                        <p className="mt-1 text-xs text-zinc-500">{localizedCopy("Open controls pinned to the Settings surface.", "Settings画面に固定した項目をここから開けます。")}</p>
                       </div>
                       <span className="rounded-full border border-zinc-800 px-2 py-1 text-[10px] text-zinc-500">
-                        {pinnedSettingsPlacements.length} pinned
+                        {localizedCopy(`${pinnedSettingsPlacements.length} pinned`, `${pinnedSettingsPlacements.length}件`)}
                       </span>
                     </div>
                     <div className="grid gap-3 lg:grid-cols-2">
@@ -4452,9 +5150,6 @@ export function SettingsModalRenderer({
                       <h3 className="text-xl font-semibold tracking-tight text-zinc-100">{activeSection.label}</h3>
                       {activeSection.description && <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">{activeSection.description}</p>}
                       </div>
-                      <span className="rounded-full border border-zinc-800 bg-zinc-950/60 px-2.5 py-1 text-[10px] text-zinc-500">
-                        {visiblePrimaryFields.length + visibleAdvancedFields.length} fields
-                      </span>
                     </div>
                     {renderSectionPrelude(activeSection)}
                     {activeSection.id === "tools_mcp" && (
@@ -4462,6 +5157,7 @@ export function SettingsModalRenderer({
                         tools={(catalog?.sidebar.items ?? []).filter((item) => item.category === "tool")}
                         settingsValues={settingsValues}
                         onSettingChange={onSettingChange}
+                        displayMode={settingsDisplayMode}
                       />
                     )}
                     {activeSection.id === "computer_automation" && (
@@ -4470,21 +5166,29 @@ export function SettingsModalRenderer({
                     <div className="grid gap-4 2xl:grid-cols-2">
                       {visiblePrimaryFields.map(renderField)}
                     </div>
-                    {normalizedSearch && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
-                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
+                    {normalizedSearch && activeSection.id !== "profiles" && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
+                      <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm text-zinc-500">
                         {t(locale, "settings.noFields")}
                       </div>
                     )}
-                    {!normalizedSearch && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
-                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
+                    {!normalizedSearch && settingsSections.length === 0 && (
+                      <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm text-zinc-500">
+                        {localizedCopy(
+                          "Loading built-in settings and provider information…",
+                          "組み込み設定とProvider情報を読み込んでいます…",
+                        )}
+                      </div>
+                    )}
+                    {!normalizedSearch && activeSection.id !== "profiles" && activeSection.id !== "quick_setup" && settingsSections.length > 0 && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
+                      <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm text-zinc-500">
                         {localizedCopy(
                           "Pack or provider contributions for this section will appear here after registry validation.",
                           "パックや外部サービスから追加される設定は、利用可能になるとここに表示されます。",
                         )}
                       </div>
                     )}
-                    {visibleAdvancedFields.length > 0 && (
-                      <details className="rounded-lg border border-zinc-800 bg-zinc-950/40">
+                    {visibleAdvancedFields.length > 0 && settingsDisplayMode !== "standard" && (
+                      <details className="rounded-lg border border-white/[0.07] bg-white/[0.03]">
                         <summary className="cursor-pointer list-none px-4 py-3 text-xs font-medium text-zinc-400 transition-colors hover:text-zinc-200">
                           {t(locale, "settings.advanced")}
                           <span className="mt-1 block font-normal leading-5 text-zinc-600">{t(locale, "settings.advancedHelp")}</span>
@@ -4493,6 +5197,16 @@ export function SettingsModalRenderer({
                           {visibleAdvancedFields.map(renderField)}
                         </div>
                       </details>
+                    )}
+                    {visibleAdvancedFields.length > 0 && settingsDisplayMode === "standard" && activeSection.id !== "quick_setup" && (
+                      <button
+                        type="button"
+                        onClick={() => setSettingsDisplayMode("advanced")}
+                        className="w-full rounded-xl border border-dashed border-white/[0.09] px-4 py-3 text-left text-xs text-zinc-500 transition-colors hover:border-zinc-600 hover:bg-white/[0.025] hover:text-zinc-300"
+                      >
+                        <span className="font-medium text-zinc-400">{localizedCopy("Advanced settings are hidden", "上級者向け設定は非表示です")}</span>
+                        <span className="mt-1 block text-[11px]">{localizedCopy(`${visibleAdvancedFields.length} low-frequency controls · Show advanced settings`, `低頻度の項目 ${visibleAdvancedFields.length}件 · 上級者向け設定を表示`)}</span>
+                      </button>
                     )}
                   </section>
                 )}
@@ -4506,7 +5220,7 @@ export function SettingsModalRenderer({
                     <h3 className="text-sm font-medium text-zinc-100">Extension Points</h3>
                     <div className="grid gap-3 md:grid-cols-3">
                       {(catalog?.extension_points ?? []).map((point) => (
-                        <div key={point.id} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 space-y-2">
+                        <div key={point.id} className="rounded-lg border border-white/[0.07] bg-white/[0.035] p-3 space-y-2">
                           <div className="text-sm text-zinc-200">{point.id}</div>
                           <div className="text-[11px] text-zinc-500 font-mono break-all">{point.path}</div>
                         </div>
@@ -4518,7 +5232,7 @@ export function SettingsModalRenderer({
                     <h3 className="text-sm font-medium text-zinc-100">Parts</h3>
                     <div className="grid gap-3 md:grid-cols-2">
                       {(catalog?.parts ?? []).map((part) => (
-                        <div key={part.id} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 space-y-2">
+                        <div key={part.id} className="rounded-lg border border-white/[0.07] bg-white/[0.035] p-3 space-y-2">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-sm text-zinc-200">{part.label ?? part.id}</div>
                             <div className="text-[10px] text-zinc-500 font-mono">{part.kind}</div>
@@ -4531,7 +5245,7 @@ export function SettingsModalRenderer({
                   <section className="space-y-3">
                     <h3 className="text-sm font-medium text-zinc-100">System Status</h3>
                     <textarea
-                      className="w-full h-28 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 resize-none focus:border-zinc-600 outline-none font-mono"
+                      className="w-full h-28 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 resize-none focus:border-indigo-400/50 outline-none font-mono"
                       value={JSON.stringify(
                         {
                           health,
@@ -4548,9 +5262,82 @@ export function SettingsModalRenderer({
                   </section>
                 </div>
               </details>}
-              </div>
+              </main>
               {renderRightHelp(activeSection)}
             </div>
+            <AnimatePresence>
+              {closeConfirmationOpen ? (
+                <motion.div
+                  ref={closeConfirmationRef}
+                  className="absolute inset-0 rumi-layer-local-popover flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="settings-close-confirmation-title"
+                  aria-describedby="settings-close-confirmation-description"
+                  initial={prefersReducedMotion ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }}
+                  transition={{ duration: prefersReducedMotion ? 0 : 0.12 }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="w-full max-w-lg border border-amber-300/25 bg-[#111315] shadow-2xl shadow-black/60">
+                    <div className="border-b border-white/[0.08] px-5 py-4">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-300" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <h3 id="settings-close-confirmation-title" className="text-sm font-semibold text-zinc-100">
+                            {localizedCopy("Settings changes are not confirmed", "未確定の設定変更があります")}
+                          </h3>
+                          <p id="settings-close-confirmation-description" className="mt-1 text-xs leading-5 text-zinc-400">
+                            {saveState.status === "saving"
+                              ? localizedCopy("A save request is still in progress. Closing does not cancel the request, but you will no longer see its result here.", "保存処理が進行中です。閉じても処理は中止されませんが、この画面では結果を確認できなくなります。")
+                              : localizedCopy("These edits are visible locally but have not been accepted by the backend. Keep Settings open to retry or review the validation error.", "変更は画面上に保持されていますが、Backendでは受理されていません。Settingsを開いたまま再試行するか、入力エラーを確認してください。")}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {dirtySettingsKeys.length > 0 ? (
+                      <div className="border-b border-white/[0.08] px-5 py-3">
+                        <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-600">{localizedCopy("Unconfirmed fields", "未確定の項目")}</div>
+                        <ul className="mt-2 space-y-1 font-mono text-[11px] text-amber-100/80">
+                          {dirtySettingsKeys.slice(0, 5).map((key) => <li key={key} className="break-all">{key}</li>)}
+                          {dirtySettingsKeys.length > 5 ? <li>{localizedCopy(`+${dirtySettingsKeys.length - 5} more`, `ほか ${dirtySettingsKeys.length - 5}件`)}</li> : null}
+                        </ul>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap justify-end gap-2 px-5 py-4">
+                      <button
+                        ref={stayInSettingsRef}
+                        type="button"
+                        onClick={dismissCloseConfirmation}
+                        className="rounded-md border border-indigo-300/30 bg-indigo-300/[0.08] px-3 py-2 text-xs font-medium text-indigo-100 hover:bg-indigo-300/[0.13]"
+                      >
+                        {localizedCopy("Stay in Settings", "Settingsに戻る")}
+                      </button>
+                      {dirtySettingsKeys.length > 0 && onRetrySave ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            dismissCloseConfirmation();
+                            onRetrySave();
+                          }}
+                          className="rounded-md border border-white/10 px-3 py-2 text-xs font-medium text-zinc-200 hover:bg-white/[0.05]"
+                        >
+                          {localizedCopy("Retry save", "保存を再試行")}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-md border border-red-300/25 px-3 py-2 text-xs font-medium text-red-200 hover:bg-red-300/[0.08]"
+                      >
+                        {localizedCopy("Close anyway", "そのまま閉じる")}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </motion.div>
         </div>
       )}

@@ -88,7 +88,9 @@ def _now_stamp() -> str:
 
 
 def _read_token(path: Path | None) -> str:
-    env_token = os.environ.get("RUMI_API_TOKEN", "").strip()
+    from core_runtime.host_contract import host_contract_value
+
+    env_token = host_contract_value("desktop_api_token")
     if env_token:
         return env_token
     candidates: list[Path] = []

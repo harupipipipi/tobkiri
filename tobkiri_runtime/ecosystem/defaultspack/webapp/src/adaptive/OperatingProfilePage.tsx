@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import type { AdaptiveOperatingProfile } from "../lib/adaptiveApi";
 import { fetchAdaptiveOperatingProfile, saveAdaptiveOperatingProfile } from "../lib/adaptiveApi";
+import { ErrorNotice } from "../components/ErrorNotice";
 import {
   AdaptiveEmptyState,
   ResourceBanner,
@@ -35,6 +36,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
   const [summaryDraft, setSummaryDraft] = useState(initialDraft.summary);
   const [autonomyDraft, setAutonomyDraft] = useState(initialDraft.autonomy.level);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!data) return;
@@ -44,9 +46,11 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
 
   const handleSave = async () => {
     if (!data) {
-      setSaveStatus("Cannot save until the adaptive API returns a profile.");
+      setSaveError("Cannot save until the adaptive API returns a profile.");
+      setSaveStatus(null);
       return;
     }
+    setSaveError(null);
     setSaveStatus("Saving profile draft...");
     try {
       await saveAdaptiveOperatingProfile({
@@ -60,7 +64,8 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
       });
       setSaveStatus("Profile draft saved.");
     } catch (err) {
-      setSaveStatus(`Kept local draft. ${err instanceof Error ? err.message : String(err)}`);
+      setSaveStatus(null);
+      setSaveError(`Kept local draft. ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -123,6 +128,15 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
               Reload
             </button>
           </div>
+          {saveError ? (
+            <ErrorNotice
+              className="mt-2 rounded-md p-3 text-xs"
+              copyLabel="Copy operating profile save error"
+              copyText={saveError}
+              errorIcon="operating-profile-save"
+              message={saveError}
+            />
+          ) : null}
           {saveStatus ? <p className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-xs text-zinc-300">{saveStatus}</p> : null}
         </div>
 

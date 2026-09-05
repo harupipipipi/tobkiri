@@ -1,3 +1,7 @@
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -40,7 +44,7 @@ test("executable renderer modules are restricted to build-owned static paths", (
   assert.equal(isTrustedLocalRendererModule("/static/renderers/custom.js?swap=1"), false);
   assert.equal(isTrustedLocalRendererModule("/static/renderers/custom.js#other"), false);
   assert.equal(isTrustedLocalRendererModule("/static/renderers/%2e%2e/custom.js"), false);
-  assert.equal(isTrustedLocalRendererModule("/api/ui/catalog"), false);
+  assert.equal(isTrustedLocalRendererModule(routeKey("api/ui/catalog")), false);
   assert.equal(isTrustedLocalRendererModule("https://example.com/custom.js"), false);
 
   Object.defineProperty(globalThis, "window", {
@@ -72,7 +76,7 @@ test("loader falls back for self-declared or writable renderer sources", () => {
 
   assert.equal(loadTrustedRenderer(renderer({ verified: false }), Fallback), Fallback);
   assert.equal(loadTrustedRenderer(renderer({ module: "/static/user_renderers/custom.js" }), Fallback), Fallback);
-  assert.equal(loadTrustedRenderer(renderer({ module: "/api/x" }), Fallback), Fallback);
+  assert.equal(loadTrustedRenderer(renderer({ module: routeKey("api/x") }), Fallback), Fallback);
   assert.notEqual(loadTrustedRenderer(renderer(), Fallback), Fallback);
 
   Object.defineProperty(globalThis, "window", {

@@ -1,0 +1,158 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.host.authorize.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "core-authority",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "host-authority.authorize",
+        "required_capabilities": [
+          "host.authority.consume"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+      "contract_id": "rumi.service.host.authorize.v1",
+      "id": "host-authority",
+      "loader": "python",
+      "module": "ecosystem.rumi_host_authority_bridge_pack.runtime.bridge",
+      "symbol": "create_authority_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.host_authority.boundary": {
+      "core_token_replay": "one_shot",
+      "receipt_ttl_seconds": 30,
+      "self_approval": false,
+      "service_receipt_replay": "redeem_once",
+      "token_scope": [
+        "operation",
+        "args_hash",
+        "caller_pack",
+        "caller_function",
+        "profile",
+        "workspace",
+        "session",
+        "expiry",
+        "replay"
+      ]
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.host.authorize.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Core-authority one-shot token and service receipt binding.",
+        "display_name": "Rumi Host Authority Bridge",
+        "host_execution": true,
+        "metadata": {
+          "authority_owner": "core_runtime.authority",
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:98850e08f8143c98c4b19b9211249776a7e8151a22d95a595c4eeea6c1acfc06",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:6b20a5968c5bb3c3450faeef99ba73241bc8befb9b9932ad49e14ae89a969af0"
+          },
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "receipt": {
+            "replay": "redeem_once",
+            "ttl_seconds": 30
+          },
+          "self_approval": false
+        },
+        "pack_id": "rumi_host_authority_bridge_pack",
+        "pack_identity": "rumi:ecosystem/rumi_host_authority_bridge_pack",
+        "provenance": {
+          "build_identity": "rumi_host_authority_bridge_pack:1.0.0",
+          "content_hash": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "host",
+            "authority",
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_host_authority_bridge_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_host_authority_bridge_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:6b20a5968c5bb3c3450faeef99ba73241bc8befb9b9932ad49e14ae89a969af0"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "core_runtime.host_intent.approval"
+    ],
+    "removal_wave": 10,
+    "rollback": "Revoke outstanding core one-shot tokens and remove ephemeral receipts.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Core-authority one-shot token and service receipt binding.",
+    "display_name": "Rumi Host Authority Bridge",
+    "id": "rumi.host_authority_bridge",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_host_authority_bridge_pack:1.0.0",
+    "content_hash": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

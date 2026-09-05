@@ -1,0 +1,290 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.credential.resolve.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_credential_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "credentials-v1",
+          "rollback_id": "credentials-v1"
+        },
+        "provider_instance_id": "credential-broker.resolve",
+        "required_capabilities": [
+          "credential.resolve"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.credential.manage.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_credential_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "credentials-v1",
+          "rollback_id": "credentials-v1"
+        },
+        "provider_instance_id": "credential-broker.manage",
+        "required_capabilities": [
+          "credential.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.resource.credential.status.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_credential_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "credential-broker.status",
+        "required_capabilities": [
+          "credential.status.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.credential.migrate.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_credential_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "credentials-v1",
+          "rollback_id": "credentials-v1"
+        },
+        "provider_instance_id": "credential-broker.migrate",
+        "required_capabilities": [
+          "credential.migrate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "contract_id": "rumi.service.credential.resolve.v1",
+      "id": "credential-resolve",
+      "loader": "process",
+      "module": "ecosystem.rumi_credential_broker_pack.runtime.process"
+    },
+    {
+      "artifact_hash": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "contract_id": "rumi.action.credential.manage.v1",
+      "id": "credential-manage",
+      "loader": "process",
+      "module": "ecosystem.rumi_credential_broker_pack.runtime.process"
+    },
+    {
+      "artifact_hash": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "contract_id": "rumi.resource.credential.status.v1",
+      "id": "credential-status",
+      "loader": "process",
+      "module": "ecosystem.rumi_credential_broker_pack.runtime.process"
+    },
+    {
+      "artifact_hash": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "contract_id": "rumi.action.credential.migrate.v1",
+      "id": "credential-migrate",
+      "loader": "process",
+      "module": "ecosystem.rumi_credential_broker_pack.runtime.process"
+    }
+  ],
+  "extensions": {
+    "rumi.credential_broker.security": {
+      "client_supplied_consumer_identity_trusted": false,
+      "secret_values_in_diagnostics": false,
+      "secret_values_in_status": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.credential.manage.v1",
+            "rumi.action.credential.migrate.v1",
+            "rumi.resource.credential.status.v1",
+            "rumi.service.credential.resolve.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Encrypted credential handle management and scoped provider resolution.",
+        "display_name": "Rumi Credential Broker",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:31cff7bf14e5ccc95e350ab8322958ff327355dfb5c920de55f8dcedf9479594",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:50603b7c0dc6b50975fc92b1c75b4e739345eb0c81281a079f85155fd0574a54"
+          },
+          "executable_code": true,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "network_policy": "none",
+          "owner_surfaces": [
+            "credential_handles",
+            "credential_scope",
+            "credential_status"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "required_secrets": [],
+          "security": {
+            "consumer_bound": true,
+            "encrypted_at_rest": true,
+            "expiry_bound": true,
+            "provider_bound": true,
+            "redacted_listing": true,
+            "scope_bound": true
+          },
+          "storage_namespace": "rumi.credentials"
+        },
+        "pack_id": "rumi_credential_broker_pack",
+        "pack_identity": "rumi:ecosystem/rumi_credential_broker_pack",
+        "provenance": {
+          "build_identity": "rumi_credential_broker_pack:1.0.0",
+          "content_hash": "sha256:944f1e6bca5c3e798f674aa964c59a422fd69d8a400255137348783e7c960e54",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "credential.manage",
+          "credential.migrate",
+          "credential.resolve",
+          "credential.status.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_credential_broker_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_credential_broker_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:50603b7c0dc6b50975fc92b1c75b4e739345eb0c81281a079f85155fd0574a54"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "defaultspack.ai_client.api_key_store",
+      "defaultspack.ai_client.oauth_store"
+    ],
+    "removal_wave": 10,
+    "rollback": "Restore the encrypted pre-migration credential snapshot and revoke imported handles.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Encrypted credential handle management and scoped provider resolution.",
+    "display_name": "Rumi Credential Broker",
+    "id": "rumi.credential_broker",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "credential.resolve"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "credential.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "credential.migrate"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "credential.status.read"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_credential_broker_pack:1.0.0",
+    "content_hash": "sha256:944f1e6bca5c3e798f674aa964c59a422fd69d8a400255137348783e7c960e54",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.credentials",
+      "retention": "until explicit revocation or profile migration rollback",
+      "schema_version": "1.0.0"
+    }
+  ]
+}

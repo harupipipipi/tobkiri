@@ -1,0 +1,8 @@
+{
+  "pack_id": "rumi_tool_broker_pack", "display_name": "Rumi Tool Broker Pack", "description": "Pack-agnostic fail-closed tool invocation pipeline.", "target_pack_id": "rumi_tool_broker_pack", "version": "1.0.0", "recommended": true, "risk_level": "critical", "supports_all_ok": false,
+  "depends_on": ["rumi_tool_registry_pack", "rumi_tool_validation_pack", "rumi_tool_guard_pack", "rumi_tool_policy_pack", "rumi_tool_approval_bridge_pack", "rumi_tool_executor_selector_pack", "rumi_tool_result_pack", "rumi_tool_audit_pack"],
+  "required_permissions": ["tool.invoke"], "conflicts_with": [], "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.tool_broker", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "tool-runtime", "channel": "experimental"}, "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["No concrete tool or service branches.", "All selected stages and audit are fail closed.", "Profile permissions and one-shot authority tokens are required."]
+}
+

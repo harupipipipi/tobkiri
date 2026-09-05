@@ -1,51 +1,101 @@
 {
-  "pack_id": "rumi_experiment_design_pack",
-  "pack_identity": "rumi:ecosystem/rumi_experiment_design_pack",
-  "display_name": "Rumi Experiment Design Pack",
-  "version": "0.1.0",
-  "description": "Declarative hypothesis, metric, sample-size, assignment, guardrail, instrumentation, and decision-record design pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "fixture",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative hypothesis, metric, sample-size, assignment, guardrail, instrumentation, and decision-record design pack.",
+  "display_name": "Rumi Experiment Design Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_setup_pack",
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
+    "asset_index": {
+      "catalog": [
+        "catalog/workflows.yaml",
+        "catalog/quality_matrix.yaml",
+        "catalog/taxonomy.yaml",
+        "catalog/handoff_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/ab_test_checkout_copy.example.yaml",
+        "examples/instrumentation_request.example.yaml",
+        "examples/quasi_experiment_pricing.example.yaml",
+        "examples/rollout_guardrail_plan.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/contract_fixture.yaml",
+        "fixtures/negative_cases.yaml"
+      ],
+      "index": [
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/safety.policy.yaml",
+        "policies/handoff.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/experiment_designer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/experiment_planner.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/assignment_plan.schema.json",
+        "schemas/decision_record.schema.json",
+        "schemas/guardrail_plan.schema.json",
+        "schemas/hypothesis.schema.json",
+        "schemas/instrumentation_request.schema.json",
+        "schemas/metric_plan.schema.json",
+        "schemas/sample_size_plan.schema.json"
+      ],
+      "template": [
+        "templates/handoff.template.md",
+        "templates/review_report.template.md",
+        "templates/artifact_card.template.md"
+      ]
+    },
+    "base_pack_promotion_eligible": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:91ed3ca4170dd6112d0b6e52c8e1db234e7c5e45ffd4249918d535ff4c6c9f1b",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:a0c347c0a7dfa63d270ae0e4b6aec50788ee48f215ebcc3269b1ae2574b9f645"
+    },
     "consumes_existing_sources_only": true,
-    "output_effect": "draft_and_handoff_only",
-    "defaultspack_promotion_eligible": false,
-    "owner_surfaces": [
-      "hypothesis_contract",
-      "metric_plan",
-      "sample_size_plan",
-      "assignment_plan",
-      "guardrail_plan",
-      "instrumentation_requirements",
-      "decision_record",
-      "experiment_readiness_packet"
-    ],
+    "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:a0c347c0a7dfa63d270ae0e4b6aec50788ee48f215ebcc3269b1ae2574b9f645"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "non_owner_surfaces": [
       "analytics query execution",
       "production rollout",
@@ -64,70 +114,46 @@
         "reason": "Own approval-aware downstream business execution when a design packet is ready for operating review."
       }
     ],
-    "asset_index": {
-      "index": [
-        "asset_index.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/workflows.yaml",
-        "catalog/quality_matrix.yaml",
-        "catalog/taxonomy.yaml",
-        "catalog/handoff_matrix.yaml"
-      ],
-      "schema": [
-        "schemas/assignment_plan.schema.json",
-        "schemas/decision_record.schema.json",
-        "schemas/guardrail_plan.schema.json",
-        "schemas/hypothesis.schema.json",
-        "schemas/instrumentation_request.schema.json",
-        "schemas/metric_plan.schema.json",
-        "schemas/sample_size_plan.schema.json"
-      ],
-      "policy": [
-        "policies/safety.policy.yaml",
-        "policies/handoff.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/handoff.template.md",
-        "templates/review_report.template.md",
-        "templates/artifact_card.template.md"
-      ],
-      "fixtures": [
-        "fixtures/contract_fixture.yaml",
-        "fixtures/negative_cases.yaml"
-      ],
-      "profiles": [
-        "profiles/experiment_designer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/experiment_planner.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/ab_test_checkout_copy.example.yaml",
-        "examples/instrumentation_request.example.yaml",
-        "examples/quasi_experiment_pricing.example.yaml",
-        "examples/rollout_guardrail_plan.example.yaml"
-      ]
-    }
+    "output_effect": "draft_and_handoff_only",
+    "owner_surfaces": [
+      "hypothesis_contract",
+      "metric_plan",
+      "sample_size_plan",
+      "assignment_plan",
+      "guardrail_plan",
+      "instrumentation_requirements",
+      "decision_record",
+      "experiment_readiness_packet"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_setup_pack"
+  },
+  "pack_id": "rumi_experiment_design_pack",
+  "pack_identity": "rumi:ecosystem/rumi_experiment_design_pack",
+  "provenance": {
+    "build_identity": "rumi_experiment_design_pack:0.1.0",
+    "content_hash": "sha256:91ed3ca4170dd6112d0b6e52c8e1db234e7c5e45ffd4249918d535ff4c6c9f1b",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "fixture",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

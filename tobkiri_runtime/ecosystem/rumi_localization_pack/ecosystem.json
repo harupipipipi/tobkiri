@@ -1,45 +1,92 @@
 {
-  "pack_id": "rumi_localization_pack",
-  "pack_identity": "rumi:ecosystem/rumi_localization_pack",
-  "display_name": "Rumi Localization Pack",
-  "version": "0.1.0",
-  "description": "Declarative terminology, protected-term, translation review, locale QA, and localization issue triage pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
+  "components": {},
   "connectivity": {
+    "provides": [],
     "requires": [
       "defaultspack"
-    ],
-    "provides": []
+    ]
   },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": {
-    "allowed_domains": [],
-    "allowed_ports": []
-  },
+  "dependencies": {},
+  "description": "Declarative terminology, protected-term, translation review, locale QA, and localization issue triage pack.",
+  "display_name": "Rumi Localization Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
+    "asset_index": {
+      "catalog": [
+        "catalog/localization_workflows.yaml",
+        "catalog/localization_quality_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/localization_review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/ja_en_product_copy.example.yaml",
+        "examples/support_macro_es.example.yaml",
+        "examples/app_strings_locale_qa.example.yaml"
+      ],
+      "glossary": [
+        "glossaries/example_glossary.yaml"
+      ],
+      "ledger": [
+        "ledgers/localization_evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/protected_terms.policy.yaml",
+        "policies/localization_safety.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/localization_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/translation_reviewer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/locale_issue.schema.json",
+        "schemas/localization_record.schema.json"
+      ],
+      "template": [
+        "templates/localization_handoff.template.md",
+        "templates/locale_review_report.template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:cce6588ac75beb3ae037706fdc8ea0cea7d793315642a44c0fda1105d863307e",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:bbd6a8ef99654c3e8b0801d7fc41b6afe02ca3a07d3dc5276c62899f5c358ef5"
+    },
     "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:bbd6a8ef99654c3e8b0801d7fc41b6afe02ca3a07d3dc5276c62899f5c358ef5"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_document_intelligence_pack",
@@ -76,57 +123,36 @@
       "segment_evidence_map",
       "localization_handoff_packet"
     ],
-    "asset_index": {
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/localization_workflows.yaml",
-        "catalog/localization_quality_matrix.yaml"
-      ],
-      "schema": [
-        "schemas/locale_issue.schema.json",
-        "schemas/localization_record.schema.json"
-      ],
-      "policy": [
-        "policies/protected_terms.policy.yaml",
-        "policies/localization_safety.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/localization_review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/localization_evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/localization_handoff.template.md",
-        "templates/locale_review_report.template.md"
-      ],
-      "profiles": [
-        "profiles/localization_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/translation_reviewer.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/ja_en_product_copy.example.yaml",
-        "examples/support_macro_es.example.yaml",
-        "examples/app_strings_locale_qa.example.yaml"
-      ],
-      "glossary": [
-        "glossaries/example_glossary.yaml"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_localization_pack",
+  "pack_identity": "rumi:ecosystem/rumi_localization_pack",
+  "provenance": {
+    "build_identity": "rumi_localization_pack:0.1.0",
+    "content_hash": "sha256:cce6588ac75beb3ae037706fdc8ea0cea7d793315642a44c0fda1105d863307e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

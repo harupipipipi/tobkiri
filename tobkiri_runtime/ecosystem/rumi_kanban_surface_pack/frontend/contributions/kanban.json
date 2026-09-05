@@ -1,0 +1,15 @@
+{
+  "version":"rumi.ui.contribution.v1",
+  "id":"rumi.kanban.route",
+  "kind":"route",
+  "mode":"isolated",
+  "label":"Kanban",
+  "description":"Inspect profile-scoped Kanban boards and cards.",
+  "priority":100,
+  "route":"/kanban",
+  "view":{"type":"isolated_application","mutations":"approved_action_only"},
+  "isolated":{"path":"/isolated/packs/rumi_kanban_surface_pack/index.html","rpc_contracts":["rumi.resource.kanban.v1"]},
+  "localization":{"en":"Kanban","ja":"カンバン"},
+  "accessibility":{"name":"Kanban","keyboard":true,"live":"polite"}
+}
+

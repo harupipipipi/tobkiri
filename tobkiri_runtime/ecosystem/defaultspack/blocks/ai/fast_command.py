@@ -30,9 +30,9 @@ def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
     summary = gateway_routing_summary(settings)
     if enabled:
         summary["message"] = (
-            "Fast modeをONにしました。OpenRouterはthroughput、"
-            "Vercel AI Gatewayはtpsで上流providerを並べます。"
+            "Enabled Fast mode. OpenRouter uses throughput routing and "
+            "Vercel AI Gateway uses TPS routing."
         )
     else:
-        summary["message"] = "Fast modeをOFFにし、通常のgateway routingへ戻しました。"
+        summary["message"] = "Disabled Fast mode and restored normal gateway routing."
     return ok(summary)

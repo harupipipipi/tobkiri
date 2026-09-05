@@ -591,7 +591,7 @@ class VocabRegistry:
         from_term: str,
         to_term: str,
         data: Any,
-        context: Dict[str, Any] = None,
+        context: Dict[str, Any] | None = None,
         log_success: bool = False
     ) -> Tuple[Any, bool]:
         """
@@ -660,16 +660,16 @@ class VocabRegistry:
         from_term: str,
         to_term: str,
         success: bool,
-        error: str = None,
-        error_type: str = None,
-        converter_info: ConverterInfo = None
+        error: str | None = None,
+        error_type: str | None = None,
+        converter_info: ConverterInfo | None = None
     ) -> None:
         """変換の監査ログを記録"""
         try:
             from .audit_logger import get_audit_logger
             audit = get_audit_logger()
             
-            details = {
+            details: Dict[str, str | None] = {
                 "from_term": from_term,
                 "to_term": to_term,
             }
@@ -819,8 +819,8 @@ class VocabRegistry:
         data,
         max_depth: int = MAX_NORMALIZE_DEPTH,
         _current_depth: int = 0,
-        collision_strategy: CollisionStrategy = None,
-        on_collision: Callable = None,
+        collision_strategy: CollisionStrategy | None = None,
+        on_collision: Callable[[object, object, object], object] | None = None,
     ):
         """
         dict のキーを優先語（preferred）に正規化する。
@@ -844,8 +844,8 @@ class VocabRegistry:
             return data, []
 
         strategy = collision_strategy or DEFAULT_COLLISION_STRATEGY
-        changes = []
-        normalized = {}
+        changes: list[tuple[object, object]] = []
+        normalized: dict[object, object] = {}
 
         with self._lock:
             for key, value in data.items():

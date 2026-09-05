@@ -1,0 +1,77 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_default_tool_projection_pack",
+  "source_identity": "sha256:3b1715c8a3407caf1f3c5329d0e44fd260d481a121c96e03459fdec371251ba8",
+  "variants": [
+    {
+      "variant_id": "rumi_default_tool_projection_pack.default-tools.migration-source.python",
+      "function_id": "rumi_default_tool_projection_pack.default-tools.migration-source",
+      "implementation_path": "runtime/projection.py",
+      "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.tool.migration.source.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:db31a74f3dad5d37fb4edefd83f3f24879ab52713bebdebcbd8e992463d6bd09",
+          "operation_id": "rumi_default_tool_projection_pack.default-tool-migration-source",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat.python",
+      "function_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat",
+      "implementation_path": "runtime/projection.py",
+      "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:a77395c8442f7ae695ac3b57016da5fdf1885624155168490981e7c9a2d363a5",
+          "operation_id": "rumi_default_tool_projection_pack.default-tool-local-operation",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:63ba233b911938f324605e3e1340e16e869a92aec8ca5868fd1b6699e181b6e4",
+  "catalog_digest": "sha256:15de0a6b54cbddb4e32efbdcba68edfc90d26054404949bc34375cb9b1bc20a9"
+}

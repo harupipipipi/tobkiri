@@ -1,0 +1,127 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:cb5041794ed859e54113ae0cb8a39f934a5945b41aab505eddf9b7d6e7e6a633",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:e60e67ca506a45acb77f711333f6b73c8987121466f479dc0c2e125526d6989a",
+      "kind": "executable",
+      "path": "runtime/executor.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_remote_executor_pack.tool-remote-execute"
+      ],
+      "revision_digest": "sha256:6a91b911d926084884afb7f9ee2321af5d226af60c1438c5f6398b408c0240dd"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:6a91b911d926084884afb7f9ee2321af5d226af60c1438c5f6398b408c0240dd",
+      "id": "rumi_tool_remote_executor_pack.tool-executor.remote",
+      "implementation_digest": "sha256:e60e67ca506a45acb77f711333f6b73c8987121466f479dc0c2e125526d6989a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_remote_executor_pack.tool-remote-execute"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:39269d8d36361fbf6681ec7d2060afb586dbc78287bdfbed839895c6b92ebab8",
+    "artifact_set_digest": "sha256:fc48329683cd3e0d54af15de09b8d343ad0c2f175f98003af780db2a76601d09",
+    "contract_catalog_digest": "sha256:d656ef01210a70f9e971875dc4d368f4042e4d29fe67f789b48e3c9f02e03b31"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.execute.v1",
+      "rumi:ecosystem/rumi_tool_remote_executor_pack",
+      "rumi_tool_remote_executor_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_remote_executor_pack.tool-remote-execute",
+      "owner": "rumi_tool_remote_executor_pack",
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "provider_id": "rumi_tool_remote_executor_pack.tool-executor.remote",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:7ee28a7ef8da430033f103c3ba8b9ca0929562b87a6e4bf48526230026eb53f8",
+    "display_name": "Rumi Tool Remote Executor",
+    "id": "rumi_tool_remote_executor_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_remote_executor_pack/pack.v4.json",
+    "source_digest": "sha256:39269d8d36361fbf6681ec7d2060afb586dbc78287bdfbed839895c6b92ebab8",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:12874aab7efd8e98c56eeb5031b3118cdc9977d1064bc5869ee7c41b2e8650a9",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:89d1dc2d5df45bf0db6f7ab0aefadb1ecc95ae537c2f76bbb583e86bca89fe04",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_tool_remote_executor_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:39269d8d36361fbf6681ec7d2060afb586dbc78287bdfbed839895c6b92ebab8"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_remote_executor_pack.tool-executor.remote",
+      "owner": "rumi_tool_remote_executor_pack",
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_remote_executor_pack.tool-remote-execute"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.execute"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.tool.remote.operation.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

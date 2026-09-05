@@ -1,0 +1,120 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:a96876529eaff04d5fef6fe99869ce75c9c2993ea59a536a50130004e0981d9c",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3c9f17067f3e7f313bee9e243ebb98586171baa2185ffed5f9b65c0ea6027194",
+      "kind": "executable",
+      "path": "runtime/guards.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.guard.evaluate.v1",
+      "operations": [
+        "rumi_tool_guard_pack.tool-guard-evaluate"
+      ],
+      "revision_digest": "sha256:3ad5139a86c6d9e61ff3486f4799a87fb62ae031537d73ecded0811f6180cbcd"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:3ad5139a86c6d9e61ff3486f4799a87fb62ae031537d73ecded0811f6180cbcd",
+      "id": "rumi_tool_guard_pack.tool-guard.evaluate",
+      "implementation_digest": "sha256:3c9f17067f3e7f313bee9e243ebb98586171baa2185ffed5f9b65c0ea6027194",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_guard_pack.tool-guard-evaluate"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:063f2d573a234a3ae229ed7d247a8b849475d79f19dfdf467aed331d26c47509",
+    "artifact_set_digest": "sha256:607ae9258da8aa5309d357285e4fd305e5dfb9350b1a920d4b5cd3843237ebbf",
+    "contract_catalog_digest": "sha256:9cbddb22662298a2d8fb83931f73d507271dc675f6dc441b2f1b0ce474dde1e5"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.guard.evaluate.v1",
+      "rumi:ecosystem/rumi_tool_guard_pack",
+      "rumi_tool_guard_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_guard_pack.tool-guard-evaluate",
+      "owner": "rumi_tool_guard_pack",
+      "contract_reference": "tobkiri.service.tool.guard.evaluate.v1",
+      "provider_id": "rumi_tool_guard_pack.tool-guard.evaluate",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:f8972319e44b6a0349f808fe0b6bf0671cac92e3fde62aa5bda659a7bdce4e25",
+    "display_name": "Rumi Tool Guard",
+    "id": "rumi_tool_guard_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_guard_pack/pack.v4.json",
+    "source_digest": "sha256:063f2d573a234a3ae229ed7d247a8b849475d79f19dfdf467aed331d26c47509",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:333579998681f4fe6ef4f96c46fa09dfe4c7332c0c396e0653555dff086a3631",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:617d73d2a898d671c1440f38c6f6ad8c84a3f3c5a8077986d11a7e580bb09bdf",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_tool_guard_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:063f2d573a234a3ae229ed7d247a8b849475d79f19dfdf467aed331d26c47509"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_guard_pack.tool-guard.evaluate",
+      "owner": "rumi_tool_guard_pack",
+      "contract_reference": "tobkiri.service.tool.guard.evaluate.v1",
+      "operations": [
+        "rumi_tool_guard_pack.tool-guard-evaluate"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.guard.evaluate"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

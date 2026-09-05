@@ -1,0 +1,81 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.credential.manage.v1",
+      "rumi.action.credential.migrate.v1",
+      "rumi.resource.credential.status.v1",
+      "rumi.service.credential.resolve.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Encrypted credential handle management and scoped provider resolution.",
+  "display_name": "Rumi Credential Broker",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:31cff7bf14e5ccc95e350ab8322958ff327355dfb5c920de55f8dcedf9479594",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:50603b7c0dc6b50975fc92b1c75b4e739345eb0c81281a079f85155fd0574a54"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:50603b7c0dc6b50975fc92b1c75b4e739345eb0c81281a079f85155fd0574a54"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none",
+    "owner_surfaces": [
+      "credential_handles",
+      "credential_scope",
+      "credential_status"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "security": {
+      "consumer_bound": true,
+      "encrypted_at_rest": true,
+      "expiry_bound": true,
+      "provider_bound": true,
+      "redacted_listing": true,
+      "scope_bound": true
+    },
+    "storage_namespace": "rumi.credentials"
+  },
+  "pack_id": "rumi_credential_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_credential_broker_pack",
+  "provenance": {
+    "build_identity": "rumi_credential_broker_pack:1.0.0",
+    "content_hash": "sha256:944f1e6bca5c3e798f674aa964c59a422fd69d8a400255137348783e7c960e54",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "credential.manage",
+    "credential.migrate",
+    "credential.resolve",
+    "credential.status.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

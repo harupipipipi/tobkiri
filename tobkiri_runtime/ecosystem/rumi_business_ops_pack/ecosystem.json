@@ -1,33 +1,79 @@
 {
-  "pack_id": "rumi_business_ops_pack",
-  "pack_identity": "rumi:ecosystem/rumi_business_ops_pack",
-  "display_name": "Rumi Business Ops Pack",
-  "version": "0.1.0",
-  "description": "Declarative business operations pack for sales, support, marketing, procurement, CRM hygiene, and admin workflows.",
-  "vocabulary": {
-    "types": [
-      "business_ops",
-      "catalog",
-      "policy",
-      "profile",
-      "prompt",
-      "preset",
-      "example",
-      "checklist",
-      "ledger",
-      "template"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
+  "dependencies": {},
+  "description": "Declarative business operations pack for sales, support, marketing, procurement, CRM hygiene, and admin workflows.",
+  "display_name": "Rumi Business Ops Pack",
   "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
+    "asset_index": {
+      "catalog": [
+        "catalog/business_ops_workflows.yaml",
+        "catalog/workflow_taxonomy.yaml"
+      ],
+      "checklist": [
+        "checklists/operator_handoff.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/procurement_memo.example.yaml",
+        "examples/sales_followup.example.yaml",
+        "examples/support_triage.example.yaml"
+      ],
+      "ledger": [
+        "ledgers/business_ops_handoff_ledger.schema.yaml"
+      ],
+      "manifest": [
+        "ecosystem.json"
+      ],
+      "policy": [
+        "policies/business_ops_safety.policy.yaml",
+        "policies/approval_risk_matrix.policy.yaml"
+      ],
+      "preset": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profile": [
+        "profiles/business_ops_operator.profile.yaml"
+      ],
+      "prompt": [
+        "prompts/business_ops_operator.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [],
+      "template": []
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:e7dcfbbcdba7f3e290e68a436bdde19c2b0ef1b3042c31efb64057d56b9c180d",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:7c34fbc9188cb6dbbd92749b68b14167193762989a1b8ebf72acb24f5f2f15b7"
+    },
     "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:7c34fbc9188cb6dbbd92749b68b14167193762989a1b8ebf72acb24f5f2f15b7"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_connector_gateway_pack",
@@ -56,51 +102,31 @@
       "business_ops_handoff_ledger",
       "operator_handoff_checklist"
     ],
-    "asset_index": {
-      "manifest": [
-        "ecosystem.json"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/business_ops_workflows.yaml",
-        "catalog/workflow_taxonomy.yaml"
-      ],
-      "policy": [
-        "policies/business_ops_safety.policy.yaml",
-        "policies/approval_risk_matrix.policy.yaml"
-      ],
-      "profile": [
-        "profiles/business_ops_operator.profile.yaml"
-      ],
-      "prompt": [
-        "prompts/business_ops_operator.system.md"
-      ],
-      "preset": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/procurement_memo.example.yaml",
-        "examples/sales_followup.example.yaml",
-        "examples/support_triage.example.yaml"
-      ],
-      "schema": [],
-      "checklist": [
-        "checklists/operator_handoff.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/business_ops_handoff_ledger.schema.yaml"
-      ],
-      "template": []
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_business_ops_pack",
+  "pack_identity": "rumi:ecosystem/rumi_business_ops_pack",
+  "provenance": {
+    "build_identity": "rumi_business_ops_pack:0.1.0",
+    "content_hash": "sha256:e7dcfbbcdba7f3e290e68a436bdde19c2b0ef1b3042c31efb64057d56b9c180d",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "business_ops",
+      "catalog",
+      "policy",
+      "profile",
+      "prompt",
+      "preset",
+      "example",
+      "checklist",
+      "ledger",
+      "template"
+    ]
   }
 }

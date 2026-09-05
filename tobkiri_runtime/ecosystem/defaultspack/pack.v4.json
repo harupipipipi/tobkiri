@@ -1,0 +1,128 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:0de6c267d5293de281b120e8237e0fd48151d947497a880c69103b1a3de5fce0",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:b51f935fa4438007fd0d19eeb7ff3b44b410751c94a987baac8e6306b07615d0",
+      "kind": "sidecar",
+      "path": "host_contract_contributions.v1.json"
+    },
+    {
+      "digest": "sha256:4a404c7427393f7343d9bc74d19b9f0f5066f7090e93e728e65e6452441242a7",
+      "kind": "executable",
+      "path": "runtime/conversation.py"
+    },
+    {
+      "digest": "sha256:5623895308596889104518081c539647de80ee8d070228311ec263c6ef85bcdd",
+      "kind": "sidecar",
+      "path": "update_metadata.v1.json"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "conversation.turn.v1",
+      "operations": [
+        "complete"
+      ],
+      "revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a",
+      "id": "defaultspack.conversation",
+      "implementation_digest": "sha256:4a404c7427393f7343d9bc74d19b9f0f5066f7090e93e728e65e6452441242a7",
+      "isolation": "pack_vm",
+      "operations": [
+        "complete"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:018a1e051e6bb10b43bd825b749a1b831c6fe88fcb8e9efca7dbf2ba5178a77b",
+    "contract_catalog_digest": "sha256:a994bb2d38eda959e15e1f1c6aae7a99937c80f691f0eb4bb2eca48f473f3daa",
+    "source_identity": "sha256:c9c561446efe070b449801cabfffa785758f03e49f1dc9a4652833b56f83256c"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2026-08-05"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "conversation.turn.v1",
+      "effect_ceiling": [],
+      "operation_id": "complete",
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.conversation",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:018a1e051e6bb10b43bd825b749a1b831c6fe88fcb8e9efca7dbf2ba5178a77b",
+    "display_name": "Tobkiri Defaults Providers",
+    "id": "defaultspack",
+    "kind": "normal_sandbox",
+    "version": "4.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:c9c561446efe070b449801cabfffa785758f03e49f1dc9a4652833b56f83256c",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:c9c561446efe070b449801cabfffa785758f03e49f1dc9a4652833b56f83256c",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "conversation.turn.v1",
+      "operations": [
+        "complete"
+      ],
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.conversation"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.stream.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

@@ -126,6 +126,11 @@ def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | 
     return None
 
 
+def get_profile_catalog() -> list[dict[str, Any]]:
+    """Return the resolved model profile catalog for one runtime operation."""
+    return _profile_catalog()
+
+
 def recommend_model(request: dict[str, Any] | None = None, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     request = dict(request or {})
     filters = {
@@ -228,6 +233,10 @@ def _profile_catalog() -> list[dict[str, Any]]:
     except Exception:
         pass
     try:
+        profiles.extend(_openrouter_chat_reasoning_profiles(list_model_catalog("openrouter")))
+    except Exception:
+        pass
+    try:
         from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
         service = ModelRuntimeSettingsService()
@@ -299,6 +308,106 @@ def _embedding_profiles_from_models(models: list[dict[str, Any]]) -> list[dict[s
                 "capability_tags": sorted(set([*(model.get("capability_tags") if isinstance(model.get("capability_tags"), list) else []), "embedding"])),
                 "recommended_roles": sorted(set([*(model.get("recommended_roles") if isinstance(model.get("recommended_roles"), list) else []), "tool_embedding"])),
                 "allowed_roles": sorted(set([*(model.get("allowed_roles") if isinstance(model.get("allowed_roles"), list) else []), "tool_embedding"])),
+            }
+        )
+    return output
+
+
+def _openrouter_chat_reasoning_profiles(
+    models: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project catalog-only OpenRouter chat models into searchable profiles.
+
+    The model-profile owner remains authoritative for saved profiles. This is a
+    read-only union for provider inventory that has no saved profile yet.
+    """
+    output: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        if str(model.get("provider_id") or model.get("provider") or "") != "openrouter":
+            continue
+        capabilities = {
+            str(value).strip().lower()
+            for value in model.get("capabilities", [])
+            if str(value or "").strip()
+        }
+        model_type = str(model.get("type") or "").strip().lower()
+        if not model_type:
+            model_type = "chat"
+        if model_type not in {"chat", "reasoning"}:
+            continue
+        if not {"chat", "text_input", "text_output"}.intersection(capabilities):
+            continue
+        provider_model_id = str(
+            model.get("provider_model_id") or model.get("model") or ""
+        ).strip()
+        qualified_model_id = str(
+            model.get("qualified_model_id")
+            or model.get("id")
+            or model.get("model_id")
+            or ""
+        ).strip()
+        if not provider_model_id and qualified_model_id.startswith("openrouter/"):
+            provider_model_id = qualified_model_id[len("openrouter/") :]
+        if not qualified_model_id:
+            qualified_model_id = f"openrouter/{provider_model_id}"
+        if not provider_model_id or not qualified_model_id or qualified_model_id in seen:
+            continue
+        seen.add(qualified_model_id)
+        context_length = model.get("context_length", model.get("max_context", 0))
+        try:
+            max_context = max(0, int(context_length or 0))
+        except (TypeError, ValueError):
+            max_context = 0
+        metadata = (
+            deepcopy(model.get("metadata"))
+            if isinstance(model.get("metadata"), dict)
+            else {}
+        )
+        metadata.setdefault("catalog_revision", model.get("catalog_revision"))
+        output.append(
+            {
+                "profile_id": qualified_model_id,
+                "qualified_model_id": qualified_model_id,
+                "provider_id": "openrouter",
+                "provider": "openrouter",
+                "provider_display_name": "OpenRouter",
+                "model_id": provider_model_id,
+                "model": provider_model_id,
+                "display_name": str(
+                    model.get("display_name")
+                    or model.get("name")
+                    or provider_model_id
+                ),
+                "type": model_type,
+                "capabilities": {
+                    "chat": True,
+                    "text": True,
+                    "thinking": model_type == "reasoning"
+                    or "thinking" in capabilities
+                    or "reasoning" in capabilities,
+                },
+                "supports_vision": "image_input" in capabilities or "vision" in capabilities,
+                "supports_image_input": "image_input" in capabilities or "vision" in capabilities,
+                "supports_audio": "audio_input" in capabilities,
+                "supports_audio_input": "audio_input" in capabilities,
+                "supports_tool_calling": "tool_calling" in capabilities or "tool_calls" in capabilities,
+                "supports_thinking": model_type == "reasoning" or "thinking" in capabilities or "reasoning" in capabilities,
+                "thinking_levels": ["low", "medium", "high"]
+                if model_type == "reasoning" or "thinking" in capabilities
+                else [],
+                "supports_fast": "fast" in capabilities,
+                "max_context": max_context,
+                "capability_tags": sorted(capabilities),
+                "availability": {
+                    "status": "available"
+                    if model.get("available", True)
+                    else "unavailable",
+                    "catalog_source": metadata.get("inventory_source", "bundled_catalog"),
+                },
+                "metadata": metadata,
             }
         )
     return output
@@ -428,6 +537,12 @@ def _search_text(item: dict[str, Any]) -> str:
     metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
     for key in ("notes", "source", "privacy", "provider_kind", "openai_model", "openai_base_url"):
         parts.append(str(metadata.get(key) or ""))
+    provider_id = str(item.get("provider_id") or "").strip().casefold()
+    model_id = str(item.get("model_id") or "").strip().casefold()
+    if provider_id == "openrouter" and re.fullmatch(r"tencent/hy3(?:-preview)?(?::free)?", model_id):
+        # Keep historical user searches discoverable without re-exposing the
+        # expired :free catalog IDs as selectable, non-executable profiles.
+        parts.extend(("hy3 free", "tencent hy3 free", "hy3 preview free"))
     return " ".join(parts).casefold()
 
 

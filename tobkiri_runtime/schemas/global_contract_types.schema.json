@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.rumi.local/global-contract-types.v1.schema.json",
+  "title": "Rumi Global Contract Types",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "contract_id", "version", "provider_instance_id"],
+  "properties": {
+    "status": {
+      "enum": ["ok", "unknown", "unavailable", "not_configured", "denied", "incompatible", "missing_provider", "stale_resolution", "invalid_manifest"]
+    },
+    "contract_id": {"type": "string"},
+    "version": {"type": "string"},
+    "provider_instance_id": {"type": "string"},
+    "diagnostics": {"type": "array", "items": {"type": "string"}},
+    "value": {}
+  }
+}
+

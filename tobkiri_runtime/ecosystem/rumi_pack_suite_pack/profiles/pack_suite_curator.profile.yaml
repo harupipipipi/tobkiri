@@ -1,7 +1,0 @@
-profile_id: rumi_pack_suite.curator
-pack_id: rumi_pack_suite_pack
-purpose: Recommend pack bundles and defaultspack promotion candidates without changing runtime state.
-policy:
-  local_first: true
-  network_default: deny
-  advisory_only: true

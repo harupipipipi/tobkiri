@@ -2,21 +2,36 @@
 //!
 //! V2: Full implementation with setup hook, commands, tray menu, and navigation guard.
 
-mod app_data_migration;
+mod artifact_integrity;
+mod ci_e2e_app_data;
 mod config;
+mod debug_approval;
+mod defaultspack_authority;
+mod defaultspack_manager;
 mod desktop_system_info;
 mod health_check;
 mod host_audit;
 mod host_broker;
 mod host_broker_types;
+mod host_contract;
+mod host_contract_contributions;
 mod kernel_manager;
+mod presentation;
 mod process_utils;
 mod python_env;
+mod runtime_resource_integrity;
+mod runtime_resource_paths;
+mod sealed_python;
+#[allow(dead_code)]
+mod sealed_python_protocol;
+mod shell_handoff;
+mod shell_runtime;
 mod tray;
 mod updater;
 
 use std::io::Write;
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -30,9 +45,14 @@ use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use tauri::{AppHandle, Emitter, Manager, Url};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use config::AppConfig;
-use host_broker::HostBrokerRuntime;
+use debug_approval::{DebugApprovalManager, DebugApprovalStatus};
+use defaultspack_manager::DefaultspackManager;
+#[cfg(any(debug_assertions, test))]
+use host_broker::DEFAULT_PORT as DEFAULT_HOST_BROKER_PORT;
+use host_broker::{BrokerAttestationIdentity, HostBrokerRuntime};
 use kernel_manager::KernelManager;
 
 mod dock_registration;
@@ -44,19 +64,124 @@ pub struct AllowedNavigationPorts(pub Arc<Mutex<Vec<u16>>>);
 
 const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
 const DEFAULTSPACK_RESERVED_PORT: u16 = 8766;
+const DEFAULTSPACK_MAIN_WINDOW_LABEL: &str = "defaultspack-main";
 const AUTHORITY_APPROVAL_WINDOW_LABEL: &str = "authority-approval";
-const AUTHORITY_APPROVAL_WINDOW_TITLE: &str = "Rumiの許可";
+const AUTHORITY_APPROVAL_WINDOW_TITLE: &str = "Tobkiriの許可";
 const AMBIENT_TRIGGER_WINDOW_LABEL: &str = "ambient-trigger";
 const AMBIENT_TRIGGER_WINDOW_TITLE: &str = "合図待ち";
+const AMBIENT_AUTHORITY_REQUEST_ID: &str = "rumi_ambient_trigger_pack";
 const FINGER_RECORDING_WINDOW_LABEL: &str = "finger-recording";
 const FINGER_RECORDING_WINDOW_TITLE: &str = "指で録音";
 const DEFAULTS_CONSOLE_WINDOW_LABEL: &str = "defaults-console";
 const DEFAULTS_CONSOLE_WINDOW_TITLE: &str = "詳細ログ";
 const HOST_PERMISSIONS_WINDOW_LABEL: &str = "host-permissions";
-const HOST_PERMISSIONS_WINDOW_TITLE: &str = "Rumi Host Permissions";
+const HOST_PERMISSIONS_WINDOW_TITLE: &str = "Tobkiri Launcher Host Permissions";
 const AUTHORITY_UI_OPERATOR_TTL_SECONDS: u64 = 180;
+const PANEL_SESSION_CALLER_DENIED: &str =
+    "panel session renewal is unavailable from this Launcher window";
+#[cfg(any(debug_assertions, test))]
+const DEBUG_INSTANCE_ID_ENV: &str = "RUMI_VIEWER_DEBUG_INSTANCE_ID";
+#[cfg(any(debug_assertions, test))]
+const DEBUG_USER_DATA_ROOT_ENV: &str = "RUMI_VIEWER_DEBUG_USER_DATA_ROOT";
+#[cfg(any(debug_assertions, test))]
+const HOST_BROKER_CONNECTION_ENV: &str = "RUMI_VIEWER_HOST_BROKER_CONNECTION";
+#[cfg(any(debug_assertions, test))]
+const HOST_BROKER_PORT_ENV: &str = "RUMI_VIEWER_BROKER_PORT";
+#[cfg(any(debug_assertions, test))]
+const HOST_BROKER_INSTANCE_NONCE_ENV: &str = "RUMI_VIEWER_BROKER_INSTANCE_NONCE";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_ISOLATION_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_ISOLATION";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_RUN_ID_ENV: &str = "RUMI_DEFAULTSPACK_RUN_ID";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_LAUNCH_NONCE_ENV: &str = "RUMI_DEFAULTSPACK_LAUNCH_NONCE";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_STATE_ROOT_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_STATE_ROOT";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_HTTP_PORT_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_HTTP_PORT";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_KERNEL_PORT_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_KERNEL_PORT";
+#[cfg(any(debug_assertions, test))]
+const DEBUG_CACHE_ENVIRONMENTS: [(&str, &str); 6] = [
+    ("PYTHONPYCACHEPREFIX", "python_bytecode"),
+    ("PYTHONUSERBASE", "python_user_base"),
+    ("PIP_CACHE_DIR", "pip_cache"),
+    ("XDG_CACHE_HOME", "xdg_cache"),
+    ("UV_CACHE_DIR", "uv_cache"),
+    ("CARGO_TARGET_DIR", "cargo_target"),
+];
+
+/// Debug-only, non-authorizing identity for an isolated Viewer run.
+///
+/// This is deliberately not a credential. It only allows a debug build to skip
+/// Tauri's process-global single-instance plugin after every other isolation
+/// precondition has been checked. Release builds always return `None`.
+#[cfg(any(debug_assertions, test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DebugParallelInstancePolicy {
+    supervisor_root: PathBuf,
+    user_data_root: PathBuf,
+    defaultspack_state_root: PathBuf,
+    broker_port: u16,
+    defaultspack_http_port: u16,
+    kernel_port: u16,
+}
+
+#[cfg(any(debug_assertions, test))]
+fn create_secure_debug_subdirectory(
+    supervisor_root: &std::path::Path,
+    name: &str,
+) -> AnyResult<PathBuf> {
+    let path = supervisor_root.join(name);
+    match fs::symlink_metadata(&path) {
+        Ok(_) => {
+            if !secure_debug_directory(&path, Some(name))
+                || !debug_directories_have_same_owner(&[supervisor_root, &path])
+            {
+                bail!("debug cache directory failed native ownership checks");
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+
+                builder.mode(0o700);
+            }
+            builder
+                .create(&path)
+                .context("failed to create isolated debug cache directory")?;
+            if !secure_debug_directory(&path, Some(name))
+                || !debug_directories_have_same_owner(&[supervisor_root, &path])
+            {
+                bail!("created debug cache directory failed native ownership checks");
+            }
+        }
+        Err(error) => return Err(error).context("failed to inspect debug cache directory"),
+    }
+    Ok(path)
+}
+
+#[cfg(any(debug_assertions, test))]
+fn prepare_debug_cache_environment(
+    policy: &DebugParallelInstancePolicy,
+) -> AnyResult<Vec<(&'static str, PathBuf)>> {
+    DEBUG_CACHE_ENVIRONMENTS
+        .iter()
+        .map(|(key, name)| {
+            create_secure_debug_subdirectory(&policy.supervisor_root, name).map(|path| (*key, path))
+        })
+        .collect()
+}
 
 type HmacSha256 = Hmac<Sha256>;
+
+fn bundled_resource_dir_fallback() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let resources = executable.parent()?.parent()?.join("Resources");
+    resources.is_dir().then_some(resources)
+}
 
 #[derive(Debug, Deserialize)]
 struct PanelBootstrapPayload {
@@ -106,6 +231,12 @@ struct AuthorityUiOperator {
     origin: String,
     window_label: String,
     request_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_snapshot_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    typed_confirmation_digest: Option<String>,
     issued_at: u64,
     expires_at: u64,
     nonce: String,
@@ -116,6 +247,22 @@ struct AuthorityUiOperator {
 struct AuthorityApprovalContext {
     request_id: String,
     ui_operator: AuthorityUiOperator,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct CodingUiOperator {
+    version: u8,
+    kind: String,
+    origin: String,
+    instance_nonce: String,
+    window_label: String,
+    request_id: String,
+    expected_digest: String,
+    decision: String,
+    issued_at: u64,
+    expires_at: u64,
+    nonce: String,
+    signature: String,
 }
 
 /// Returns the current setup progress message.
@@ -130,6 +277,86 @@ fn get_setup_progress(state: tauri::State<'_, SetupProgress>) -> String {
     }
 }
 
+#[tauri::command]
+fn debug_approval_status(
+    state: tauri::State<'_, Arc<DebugApprovalManager>>,
+) -> DebugApprovalStatus {
+    state.status()
+}
+
+fn validate_debug_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("debug approval can only be changed from the Launcher main window".into());
+    }
+    let url = window
+        .url()
+        .map_err(|error| format!("failed to inspect Launcher URL: {error}"))?;
+    let local_launcher = matches!(url.scheme(), "tauri" | "http" | "https")
+        && matches!(
+            url.host_str().unwrap_or(""),
+            "localhost" | "127.0.0.1" | "tauri.localhost"
+        );
+    if !local_launcher || url.path() == "/approval" {
+        return Err("debug approval is unavailable from this Launcher route".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn arm_debug_approval(
+    duration: String,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<DebugApprovalManager>>,
+) -> Result<DebugApprovalStatus, String> {
+    validate_debug_approval_window(&window)?;
+    let pending = state.status();
+    if matches!(pending.state.as_str(), "armed" | "active") {
+        return state.arm(&duration);
+    }
+    if pending.state != "pending" {
+        return Err("start a CLI debug session request before enabling".into());
+    }
+    let duration_label = match duration.as_str() {
+        "1h" => "1時間",
+        "1d" => "1日",
+        "1w" => "1週間",
+        "1mo" => "1か月",
+        "permanent" => "無期限（手動OFF・Launcher終了・guardian終了まで）",
+        _ => return Err("invalid debug approval duration".into()),
+    };
+    let message = format!(
+        "この1つのCLIデバッグセッションだけに個別承認を委任します。\n\n利用期間: {}\nWorkspace: {}\nPack / Profile: {} / {}\nRun: {}\nGuardian: Launcher-owned Defaultspack child（検証済み）\n\n承認後も各操作は個別のdigestに束縛されます。",
+        duration_label,
+        pending.workspace.as_deref().unwrap_or("unknown"),
+        pending.pack_id.as_deref().unwrap_or("unknown"),
+        pending.profile_id.as_deref().unwrap_or("unknown"),
+        pending.run_id.as_deref().unwrap_or("unknown"),
+    );
+    let confirmed = window
+        .dialog()
+        .message(message)
+        .title("Developer Debug Approvalを有効にしますか？")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            format!("{duration_label}だけ有効化"),
+            "キャンセル".into(),
+        ))
+        .blocking_show();
+    if !confirmed {
+        return Err("native confirmation was cancelled".into());
+    }
+    state.arm(&duration)
+}
+
+#[tauri::command]
+fn revoke_debug_approval(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<DebugApprovalManager>>,
+) -> Result<DebugApprovalStatus, String> {
+    validate_debug_approval_window(&window)?;
+    state.revoke("user_revoked")
+}
+
 /// Restart the Kernel process.
 #[tauri::command]
 fn restart_kernel(state: tauri::State<'_, Arc<Mutex<KernelManager>>>) -> Result<String, String> {
@@ -140,9 +367,11 @@ fn restart_kernel(state: tauri::State<'_, Arc<Mutex<KernelManager>>>) -> Result<
 
 #[tauri::command]
 fn reauthorize_panel_session(
+    window: tauri::WebviewWindow,
     config: tauri::State<'_, AppConfig>,
     km: tauri::State<'_, Arc<Mutex<KernelManager>>>,
 ) -> Result<String, String> {
+    validate_panel_session_caller(&window, config.inner())?;
     request_fresh_panel_session_code(&config, km.inner())
         .map_err(|error| format!("panel reauthorization failed: {error}"))
 }
@@ -175,12 +404,25 @@ fn valid_authority_request_id(request_id: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
 }
 
+fn defaultspack_http_port_for_urls(isolated_port: Option<u16>) -> u16 {
+    isolated_port.unwrap_or(DEFAULTSPACK_RESERVED_PORT)
+}
+
+fn active_defaultspack_http_port() -> u16 {
+    defaultspack_http_port_for_urls(
+        debug_defaultspack_ports_from_env().map(|(http_port, _)| http_port),
+    )
+}
+
 fn authority_approval_url(request_id: &str) -> Result<Url, String> {
     if !valid_authority_request_id(request_id) {
         return Err("invalid authority request id".into());
     }
     Url::parse_with_params(
-        &format!("http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/approval"),
+        &format!(
+            "http://127.0.0.1:{}/approval",
+            active_defaultspack_http_port()
+        ),
         &[("request_id", request_id.trim())],
     )
     .map_err(|error| format!("failed to build approval window URL: {error}"))
@@ -188,28 +430,32 @@ fn authority_approval_url(request_id: &str) -> Result<Url, String> {
 
 fn ambient_trigger_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/ambient"
+        "http://127.0.0.1:{}/ambient",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build ambient trigger window URL: {error}"))
 }
 
 fn finger_recording_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/finger-recording"
+        "http://127.0.0.1:{}/finger-recording",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build finger recording window URL: {error}"))
 }
 
 fn defaults_console_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/console"
+        "http://127.0.0.1:{}/console",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build defaults console window URL: {error}"))
 }
 
 fn host_permissions_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/host-permissions"
+        "http://127.0.0.1:{}/host-permissions",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build host permissions window URL: {error}"))
 }
@@ -270,12 +516,66 @@ fn open_authority_approval_window_for_app(
     focus_authority_approval_window(&window)
 }
 
+fn validate_authority_approval_open_caller(
+    window_label: &str,
+    focused: bool,
+    current_url: &Url,
+    expected_port: u16,
+) -> Result<(), String> {
+    if !focused {
+        return Err("opening an approval window requires the focused caller window".into());
+    }
+    if current_url.scheme() != "http"
+        || !current_url.username().is_empty()
+        || current_url.password().is_some()
+        || current_url.host_str() != Some("127.0.0.1")
+        || current_url.port_or_known_default() != Some(expected_port)
+    {
+        return Err("approval window is unavailable from this caller origin".into());
+    }
+    let path_allowed = match window_label {
+        DEFAULTSPACK_MAIN_WINDOW_LABEL => matches!(
+            current_url.path(),
+            "/" | "/chat"
+                | "/defaultspack"
+                | "/pack/defaultspack"
+                | "/coding"
+                | "/calendar"
+                | "/kanban"
+                | "/desktops"
+                | "/subagents"
+                | "/canvas"
+                | "/tools"
+        ),
+        AMBIENT_TRIGGER_WINDOW_LABEL => current_url.path() == "/ambient",
+        FINGER_RECORDING_WINDOW_LABEL => current_url.path() == "/finger-recording",
+        _ => false,
+    };
+    if !path_allowed {
+        return Err("approval window is unavailable from this caller route".into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn open_authority_approval_window(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     config: tauri::State<'_, AppConfig>,
     request_id: String,
 ) -> Result<(), String> {
+    let focused = window
+        .is_focused()
+        .map_err(|error| format!("failed to inspect approval caller focus: {error}"))?;
+    let current_url = window
+        .url()
+        .map_err(|error| format!("failed to inspect approval caller URL: {error}"))?;
+    validate_authority_approval_open_caller(
+        window.label(),
+        focused,
+        &current_url,
+        active_defaultspack_http_port(),
+    )?;
     open_authority_approval_window_for_app(&app, config.inner(), &request_id)
 }
 
@@ -471,16 +771,15 @@ async fn open_host_permissions_window(
 }
 
 #[cfg(debug_assertions)]
-#[derive(Debug, Deserialize)]
-struct AuthorityTestResponse {
-    status: String,
-    data: Option<AuthorityTestData>,
-}
+const DEBUG_DEFAULTSPACK_CONTRACT_PREFIX: &str = "/api/contracts/defaultspack/";
 
+/// One authenticated, short-lived panel session used only by the debug native
+/// approval smoke.  The cookie and CSRF token stay in this thread and are
+/// never logged or exposed to the approval window.
 #[cfg(debug_assertions)]
-#[derive(Debug, Deserialize)]
-struct AuthorityTestData {
-    request_id: Option<String>,
+struct DebugPanelSession {
+    cookie: String,
+    csrf_token: String,
 }
 
 #[cfg(debug_assertions)]
@@ -493,6 +792,299 @@ fn truthy_env_flag(name: &str) -> bool {
             .as_str(),
         "1" | "true" | "yes" | "on"
     )
+}
+
+#[cfg(debug_assertions)]
+fn debug_contract_url(base_url: &str, method: &str, api_path: &str) -> AnyResult<String> {
+    if !matches!(method, "GET" | "POST")
+        || !api_path.starts_with("/api/")
+        || api_path.contains(['?', '#', '\\'])
+    {
+        bail!("debug approval smoke contract route is invalid");
+    }
+    // The production web client sends an opaque `METHOD /api/...` token.  A
+    // slash must be percent-encoded too: the Host rejects a token containing a
+    // path separator before it decodes the exact signed route.
+    let encoded_path = api_path.replace('/', "%2F");
+    Ok(format!(
+        "{base_url}{DEBUG_DEFAULTSPACK_CONTRACT_PREFIX}{method}%20{encoded_path}"
+    ))
+}
+
+#[cfg(debug_assertions)]
+fn debug_contract_request_id() -> String {
+    let mut bytes = [0_u8; 16];
+    rand::thread_rng().fill(&mut bytes);
+    // RFC 4122 UUIDv4: PackAPI's replay guard deliberately requires this
+    // format rather than accepting arbitrary client correlation IDs.
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15],
+    )
+}
+
+#[cfg(debug_assertions)]
+fn debug_panel_session(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    bootstrap_secret: &str,
+) -> AnyResult<DebugPanelSession> {
+    let bootstrap = client
+        .post(format!("{base_url}/api/panel/auth/bootstrap"))
+        .header("X-Rumi-Desktop-Bootstrap", bootstrap_secret)
+        .send()
+        .context("debug approval smoke panel bootstrap request failed")?;
+    let bootstrap_status = bootstrap.status();
+    let bootstrap: ApiEnvelope<PanelBootstrapPayload> = bootstrap
+        .json()
+        .context("debug approval smoke panel bootstrap response was invalid")?;
+    if !bootstrap_status.is_success() || !bootstrap.success {
+        bail!("debug approval smoke panel bootstrap was rejected");
+    }
+    let code = bootstrap
+        .data
+        .context("debug approval smoke panel bootstrap response had no code")?
+        .code;
+    if code.is_empty() {
+        bail!("debug approval smoke panel bootstrap response had an empty code");
+    }
+
+    let exchange = client
+        .post(format!("{base_url}/api/panel/auth/exchange"))
+        .header(reqwest::header::ORIGIN, base_url)
+        .json(&serde_json::json!({ "code": code }))
+        .send()
+        .context("debug approval smoke panel exchange request failed")?;
+    let exchange_status = exchange.status();
+    let cookie = exchange
+        .headers()
+        .get(reqwest::header::SET_COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .filter(|value| value.starts_with("rumi_panel_session="))
+        .map(str::to_owned)
+        .context("debug approval smoke panel exchange had no session cookie")?;
+    let exchange: ApiEnvelope<serde_json::Value> = exchange
+        .json()
+        .context("debug approval smoke panel exchange response was invalid")?;
+    if !exchange_status.is_success() || !exchange.success {
+        bail!("debug approval smoke panel exchange was rejected");
+    }
+    let csrf_token = exchange
+        .data
+        .as_ref()
+        .and_then(|data| data.get("csrf_token"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .context("debug approval smoke panel exchange had no CSRF token")?;
+    Ok(DebugPanelSession { cookie, csrf_token })
+}
+
+#[cfg(debug_assertions)]
+fn debug_contract_request(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    session: &DebugPanelSession,
+    method: &str,
+    api_path: &str,
+    payload: Option<serde_json::Value>,
+) -> AnyResult<serde_json::Value> {
+    let url = debug_contract_url(base_url, method, api_path)?;
+    let mut request = client
+        .request(
+            reqwest::Method::from_bytes(method.as_bytes())
+                .context("debug approval smoke contract method was invalid")?,
+            url,
+        )
+        .header(reqwest::header::ORIGIN, base_url)
+        .header(reqwest::header::COOKIE, &session.cookie)
+        .header("X-Rumi-CSRF", &session.csrf_token)
+        .header("X-Tobkiri-Request-ID", debug_contract_request_id());
+    if let Some(payload) = payload {
+        request = request.json(&payload);
+    }
+    let response = request
+        .send()
+        .context("debug approval smoke contract request failed")?;
+    let status = response.status();
+    let envelope: ApiEnvelope<serde_json::Value> = response
+        .json()
+        .context("debug approval smoke contract response was invalid")?;
+    if !status.is_success() || !envelope.success {
+        bail!("debug approval smoke contract operation was rejected");
+    }
+    envelope
+        .data
+        .context("debug approval smoke contract response had no result")
+}
+
+#[cfg(debug_assertions)]
+fn debug_pending_interactive_request_id(value: &serde_json::Value) -> Option<&str> {
+    value
+        .get("approval_request_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|request_id| valid_authority_request_id(request_id))
+}
+
+#[cfg(debug_assertions)]
+fn debug_result_state(value: &serde_json::Value) -> Option<&str> {
+    value.get("state").and_then(serde_json::Value::as_str)
+}
+
+/// Finish one debug-only native approval smoke through the same captured V4
+/// client path that prepared it.
+///
+/// The approval window alone may settle the Host approval record but it cannot
+/// dispatch the deferred command.  A real command client resumes its own
+/// invocation after that decision.  This monitor mirrors that one client
+/// responsibility for the `RUMI_AUTHORITY_TEST_AUTORUN` smoke only; it never
+/// provides a UI operator, changes production routes, or retries a resumed
+/// effect.  The Host remains the sole authority that decides whether resume
+/// can execute the effect.
+#[cfg(debug_assertions)]
+fn monitor_debug_authority_smoke_settlement(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    session: &DebugPanelSession,
+    request_id: &str,
+    invocation_id: &str,
+) {
+    let deadline = SystemTime::now() + Duration::from_secs(120);
+    while SystemTime::now() < deadline {
+        let approval = match debug_contract_request(
+            client,
+            base_url,
+            session,
+            "POST",
+            "/api/interactive-approval/v1/get",
+            Some(serde_json::json!({ "request_id": request_id })),
+        ) {
+            Ok(approval) => approval,
+            Err(error) => {
+                warn!("debug approval smoke could not refresh its approval state: {error}");
+                return;
+            }
+        };
+        match debug_result_state(&approval) {
+            Some("approval_pending" | "pending") => {
+                thread::sleep(Duration::from_millis(300));
+            }
+            Some("approved") => {
+                let resumed = match debug_contract_request(
+                    client,
+                    base_url,
+                    session,
+                    "POST",
+                    "/api/command-protocol/v1/high-risk",
+                    Some(serde_json::json!({
+                        "phase": "resume",
+                        "invocation_id": invocation_id,
+                    })),
+                ) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        warn!(
+                            "debug approval smoke could not resume its approved command: {error}"
+                        );
+                        return;
+                    }
+                };
+                if debug_result_state(&resumed) != Some("succeeded") {
+                    warn!(
+                        "debug approval smoke approved command did not settle successfully: {}",
+                        debug_result_state(&resumed).unwrap_or("unknown")
+                    );
+                    return;
+                }
+                let status = match debug_contract_request(
+                    client,
+                    base_url,
+                    session,
+                    "POST",
+                    "/api/command-protocol/v1/high-risk",
+                    Some(serde_json::json!({
+                        "phase": "status",
+                        "invocation_id": invocation_id,
+                    })),
+                ) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        warn!("debug approval smoke could not verify its settled command: {error}");
+                        return;
+                    }
+                };
+                if debug_result_state(&status) == Some("succeeded") {
+                    info!(
+                        "debug approval smoke approved and resumed exactly once for request {request_id}"
+                    );
+                } else {
+                    warn!(
+                        "debug approval smoke approved command status was not succeeded: {}",
+                        debug_result_state(&status).unwrap_or("unknown")
+                    );
+                }
+                return;
+            }
+            Some("denied" | "expired") => {
+                let cancelled = match debug_contract_request(
+                    client,
+                    base_url,
+                    session,
+                    "POST",
+                    "/api/command-protocol/v1/high-risk",
+                    Some(serde_json::json!({
+                        "phase": "cancel",
+                        "invocation_id": invocation_id,
+                    })),
+                ) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        warn!(
+                            "debug approval smoke could not cancel its declined command: {error}"
+                        );
+                        return;
+                    }
+                };
+                match debug_result_state(&cancelled) {
+                    Some("cancelled" | "stale") => info!(
+                        "debug approval smoke declined request settled without dispatch for request {request_id}"
+                    ),
+                    state => warn!(
+                        "debug approval smoke declined command had an unexpected terminal state: {}",
+                        state.unwrap_or("unknown")
+                    ),
+                }
+                return;
+            }
+            Some(state) => {
+                warn!("debug approval smoke saw an unexpected approval state: {state}");
+                return;
+            }
+            None => {
+                warn!("debug approval smoke approval state was missing");
+                return;
+            }
+        }
+    }
+    warn!("debug approval smoke timed out waiting for native approval settlement");
 }
 
 #[cfg(debug_assertions)]
@@ -512,8 +1104,8 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
                 return;
             }
         };
-        let base_url = format!("http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}");
-        let health_url = format!("{base_url}/api/health");
+        let base_url = format!("http://127.0.0.1:{}", active_defaultspack_http_port());
+        let health_url = format!("{base_url}/health");
         let deadline = SystemTime::now() + Duration::from_secs(60);
         while SystemTime::now() < deadline {
             if client
@@ -527,63 +1119,137 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
             thread::sleep(Duration::from_millis(300));
         }
 
-        let request_url = format!("{base_url}/api/authority/test/request");
-        let response = match client
-            .post(&request_url)
-            .json(&serde_json::json!({
-                "provider_id": "opencode-go",
-                "api_id": "legacy",
-                "model_id": "deepseek-v4-pro",
-                "model_ref": "opencode-go/deepseek-v4-pro",
-                "pack_id": "defaultspack",
-                "app_display_name": "defaultspack v2",
-                "provider_display_name": "OpenCode Go",
-                "model_display_name": "DeepSeek V4 Pro via OpenCode Go",
-                "credential_label": "OpenCode Go API key",
-                "endpoint_url": "https://opencode.ai/zen/go/v1/chat/completions",
-                "endpoint_path": "/chat/completions",
-                "domain": "opencode.ai",
-                "transport": "https",
-                "provider_transport": "openai_chat_completions",
-                "provider_kind": "cloud",
-                "port": 443,
-                "reason": "defaultspack v2: OpenCode Go provider を DeepSeek V4 Pro との通信に使います。"
-            }))
-            .send()
-        {
-            Ok(response) => response,
+        let config = app.state::<AppConfig>().inner().clone();
+        let bootstrap_secret = match load_or_create_panel_bootstrap_secret(&config) {
+            Ok(secret) => secret,
             Err(error) => {
-                warn!("authority smoke test request failed: {error}");
+                warn!("debug approval smoke could not load panel bootstrap secret: {error}");
+                return;
+            }
+        };
+        let session = match debug_panel_session(&client, &base_url, &bootstrap_secret) {
+            Ok(session) => session,
+            Err(error) => {
+                warn!("debug approval smoke could not establish its panel session: {error}");
                 return;
             }
         };
 
-        let payload = match response.json::<AuthorityTestResponse>() {
-            Ok(payload) => payload,
+        // This is the real signed V4 high-risk path. `true` is a
+        // Host-allowlisted no-op when the Host later resumes the effect; it
+        // still exercises prepare -> pending approval -> single-use resume
+        // without a test-only authority bypass or a retired endpoint.  The
+        // relative cwd deliberately asks the Host to use the already selected
+        // trusted workspace instead of letting this debug client choose one.
+        let invocation_id = format!(
+            "debug-native-{}",
+            rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(24)
+                .map(char::from)
+                .collect::<String>()
+        );
+        let prepared = match debug_contract_request(
+            &client,
+            &base_url,
+            &session,
+            "POST",
+            "/api/command-protocol/v1/high-risk",
+            Some(serde_json::json!({
+                "phase": "prepare",
+                "invocation_id": invocation_id,
+                "command_ref": "terminal",
+                "arguments": {
+                    "command": ["true"],
+                    "cwd": ".",
+                    "env": {},
+                    "timeout": 30
+                },
+                "presentation": {
+                    "title": "Tobkiri native approval smoke (debug)",
+                    "summary": "A debug-only no-op command is awaiting one interactive approval."
+                }
+            })),
+        ) {
+            Ok(result) => result,
             Err(error) => {
-                warn!("authority smoke test response was not JSON: {error}");
+                warn!("debug approval smoke high-risk prepare failed: {error}");
                 return;
             }
         };
-        if payload.status != "ok" {
-            warn!(
-                "authority smoke test endpoint returned status={}",
-                payload.status
-            );
+        let request_id = match debug_pending_interactive_request_id(&prepared) {
+            Some(request_id) => request_id.to_string(),
+            None => {
+                warn!("debug approval smoke high-risk prepare did not return a pending request");
+                return;
+            }
+        };
+        if !matches!(
+            prepared.get("state").and_then(serde_json::Value::as_str),
+            Some("approval_pending" | "pending")
+        ) {
+            warn!("debug approval smoke high-risk prepare returned a non-pending state");
             return;
         }
-        let request_id = payload
-            .data
-            .and_then(|data| data.request_id)
-            .unwrap_or_default();
-        if !valid_authority_request_id(&request_id) {
-            warn!("authority smoke test returned invalid request id");
+        let fetched = match debug_contract_request(
+            &client,
+            &base_url,
+            &session,
+            "POST",
+            "/api/interactive-approval/v1/get",
+            Some(serde_json::json!({ "request_id": request_id })),
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                warn!("debug approval smoke could not read its pending request: {error}");
+                return;
+            }
+        };
+        let listed = match debug_contract_request(
+            &client,
+            &base_url,
+            &session,
+            "GET",
+            "/api/interactive-approval/v1/list",
+            None,
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                warn!("debug approval smoke could not list pending requests: {error}");
+                return;
+            }
+        };
+        let fetched_is_pending = fetched
+            .get("request_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|candidate| candidate == request_id)
+            && matches!(
+                fetched.get("state").and_then(serde_json::Value::as_str),
+                Some("approval_pending" | "pending")
+            );
+        let listed_is_pending = listed
+            .get("approvals")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|approvals| {
+                approvals.iter().any(|approval| {
+                    approval
+                        .get("request_id")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(request_id.as_str())
+                        && matches!(
+                            approval.get("state").and_then(serde_json::Value::as_str),
+                            Some("approval_pending" | "pending")
+                        )
+                })
+            });
+        if !fetched_is_pending || !listed_is_pending {
+            warn!("debug approval smoke pending request did not survive authoritative get/list");
             return;
         }
 
         thread::sleep(Duration::from_secs(2));
         let app_for_open = app.clone();
-        let config_for_open = app.state::<AppConfig>().inner().clone();
+        let config_for_open = config;
         let request_id_for_open = request_id.clone();
         if let Err(error) = app.run_on_main_thread(move || {
             match open_authority_approval_window_for_app(
@@ -600,7 +1266,16 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
             }
         }) {
             warn!("authority smoke test could not schedule approval window: {error}");
+            return;
         }
+
+        monitor_debug_authority_smoke_settlement(
+            &client,
+            &base_url,
+            &session,
+            &request_id,
+            &invocation_id,
+        );
     });
 }
 
@@ -612,16 +1287,127 @@ fn unix_now_seconds() -> u64 {
 }
 
 fn authority_operator_message(operator: &AuthorityUiOperator) -> String {
-    [
+    let mut fields = vec![
         format!("v{}", operator.version),
         operator.origin.clone(),
         operator.window_label.clone(),
         operator.request_id.clone(),
+    ];
+    if operator.version == 3 {
+        fields.extend([
+            operator.decision.clone().unwrap_or_default(),
+            operator.request_snapshot_digest.clone().unwrap_or_default(),
+            operator
+                .typed_confirmation_digest
+                .clone()
+                .unwrap_or_default(),
+        ]);
+    }
+    fields.extend([
+        operator.issued_at.to_string(),
+        operator.expires_at.to_string(),
+        operator.nonce.clone(),
+    ]);
+    fields.join("\n")
+}
+
+fn coding_operator_message(operator: &CodingUiOperator) -> String {
+    [
+        format!("v{}", operator.version),
+        operator.origin.clone(),
+        operator.instance_nonce.clone(),
+        operator.window_label.clone(),
+        operator.request_id.clone(),
+        operator.expected_digest.clone(),
+        operator.decision.clone(),
         operator.issued_at.to_string(),
         operator.expires_at.to_string(),
         operator.nonce.clone(),
     ]
     .join("\n")
+}
+
+#[tauri::command]
+async fn coding_approval_operator(
+    window: tauri::WebviewWindow,
+    attestation: tauri::State<'_, BrokerAttestationIdentity>,
+    request_id: String,
+    expected_digest: String,
+    decision: String,
+) -> Result<CodingUiOperator, String> {
+    if window.label() != "defaultspack-main" {
+        return Err("coding approval is only available in the Defaultspack Launcher window".into());
+    }
+    if !window
+        .is_focused()
+        .map_err(|error| format!("failed to inspect Defaultspack focus: {error}"))?
+    {
+        return Err("Defaultspack approval window must be focused".into());
+    }
+    let url = window
+        .url()
+        .map_err(|error| format!("failed to inspect Defaultspack URL: {error}"))?;
+    if !matches!(url.host_str().unwrap_or(""), "127.0.0.1" | "localhost")
+        || url.port_or_known_default() != Some(DEFAULTSPACK_RESERVED_PORT)
+    {
+        return Err("coding approval is unavailable from this window origin".into());
+    }
+    if !valid_authority_request_id(&request_id)
+        || expected_digest.len() != 64
+        || !expected_digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !matches!(decision.as_str(), "approve" | "deny")
+    {
+        return Err("coding approval binding is invalid".into());
+    }
+    let confirmed = window
+        .dialog()
+        .message(format!(
+            "{} request {}\nDigest: {}\n\nこのexact requestだけに適用します。",
+            if decision == "approve" {
+                "Approve"
+            } else {
+                "Deny"
+            },
+            request_id,
+            expected_digest,
+        ))
+        .title("Tobkiri coding approval")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            if decision == "approve" {
+                "Approve once".into()
+            } else {
+                "Deny".into()
+            },
+            "Cancel".into(),
+        ))
+        .blocking_show();
+    if !confirmed {
+        return Err("native coding approval was cancelled".into());
+    }
+    let issued_at = unix_now_seconds();
+    let nonce: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+    let mut operator = CodingUiOperator {
+        version: 4,
+        kind: "coding_ui_operator".into(),
+        origin: "tauri_webview_window".into(),
+        instance_nonce: attestation.instance_nonce().into(),
+        window_label: "defaultspack-main".into(),
+        request_id,
+        expected_digest,
+        decision,
+        issued_at,
+        expires_at: issued_at + 60,
+        nonce,
+        signature: String::new(),
+    };
+    operator.signature =
+        attestation.sign_message_base64(coding_operator_message(&operator).as_bytes());
+    Ok(operator)
 }
 
 fn sign_authority_ui_operator(
@@ -642,6 +1428,9 @@ fn sign_authority_ui_operator(
         origin: "tauri_webview_window".into(),
         window_label: AUTHORITY_APPROVAL_WINDOW_LABEL.into(),
         request_id: request_id.trim().into(),
+        decision: None,
+        request_snapshot_digest: None,
+        typed_confirmation_digest: None,
         issued_at: now,
         expires_at: now + AUTHORITY_UI_OPERATOR_TTL_SECONDS,
         nonce,
@@ -654,29 +1443,112 @@ fn sign_authority_ui_operator(
     Ok(operator)
 }
 
+fn valid_authority_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn sign_interactive_authority_ui_operator(
+    request_id: &str,
+    decision: &str,
+    request_snapshot_digest: &str,
+    typed_confirmation_digest: Option<&str>,
+    bootstrap_secret: &str,
+    now: u64,
+    nonce: String,
+) -> Result<AuthorityUiOperator, String> {
+    if !valid_authority_request_id(request_id) {
+        return Err("invalid authority request id".into());
+    }
+    if !matches!(decision, "approve" | "deny")
+        || !valid_authority_digest(request_snapshot_digest)
+        || typed_confirmation_digest.is_some_and(|digest| !valid_authority_digest(digest))
+        || decision == "deny" && typed_confirmation_digest.is_some()
+    {
+        return Err("interactive approval binding is invalid".into());
+    }
+    if bootstrap_secret.trim().is_empty() {
+        return Err("approval signing secret is unavailable".into());
+    }
+    let mut operator = AuthorityUiOperator {
+        version: 3,
+        kind: "ui_operator".into(),
+        origin: "tauri_webview_window".into(),
+        window_label: AUTHORITY_APPROVAL_WINDOW_LABEL.into(),
+        request_id: request_id.trim().into(),
+        decision: Some(decision.into()),
+        request_snapshot_digest: Some(request_snapshot_digest.into()),
+        typed_confirmation_digest: typed_confirmation_digest.map(str::to_string),
+        issued_at: now,
+        expires_at: now + AUTHORITY_UI_OPERATOR_TTL_SECONDS,
+        nonce,
+        signature: String::new(),
+    };
+    let mut mac = HmacSha256::new_from_slice(bootstrap_secret.as_bytes())
+        .map_err(|error| format!("failed to prepare approval signature: {error}"))?;
+    mac.update(authority_operator_message(&operator).as_bytes());
+    operator.signature = hex::encode(mac.finalize().into_bytes());
+    Ok(operator)
+}
+
+fn validate_authority_approval_context_caller(
+    window_label: &str,
+    focused: bool,
+    current_url: &Url,
+    request_id: &str,
+    expected_port: u16,
+) -> Result<(), String> {
+    if window_label != AUTHORITY_APPROVAL_WINDOW_LABEL {
+        return Err("approval context is only available in the approval window".into());
+    }
+    if !focused {
+        return Err("approval context requires the focused approval window".into());
+    }
+    if current_url.scheme() != "http"
+        || current_url.host_str() != Some("127.0.0.1")
+        || current_url.port_or_known_default() != Some(expected_port)
+        || current_url.path() != "/approval"
+    {
+        return Err("approval context is only available on the local approval route".into());
+    }
+    if !valid_authority_request_id(request_id) {
+        return Err("invalid authority request id".into());
+    }
+    let query_pairs = current_url.query_pairs().collect::<Vec<_>>();
+    if query_pairs.len() != 1
+        || query_pairs[0].0 != "request_id"
+        || request_id.trim() != query_pairs[0].1
+    {
+        return Err("approval context request id does not match the approval window URL".into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn authority_approval_context(
     window: tauri::WebviewWindow,
     config: tauri::State<'_, AppConfig>,
     request_id: String,
+    decision: Option<String>,
+    request_snapshot_digest: Option<String>,
+    typed_confirmation_digest: Option<String>,
 ) -> Result<AuthorityApprovalContext, String> {
-    if window.label() != AUTHORITY_APPROVAL_WINDOW_LABEL {
-        return Err("approval context is only available in the approval window".into());
-    }
+    let focused = window
+        .is_focused()
+        .map_err(|error| format!("failed to inspect approval window focus: {error}"))?;
     let current_url = window
         .url()
         .map_err(|error| format!("failed to inspect approval window URL: {error}"))?;
-    if current_url.path() != "/approval" {
-        return Err("approval context is only available on the approval route".into());
-    }
     let request_id = request_id.trim().to_string();
-    let url_request_id = current_url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "request_id").then(|| value.into_owned()))
-        .unwrap_or_default();
-    if request_id != url_request_id {
-        return Err("approval context request id does not match the approval window URL".into());
-    }
+    validate_authority_approval_context_caller(
+        window.label(),
+        focused,
+        &current_url,
+        &request_id,
+        active_defaultspack_http_port(),
+    )?;
     let bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
         .map_err(|error| format!("failed to load approval signing secret: {error}"))?;
     let nonce: String = rand::thread_rng()
@@ -684,8 +1556,28 @@ fn authority_approval_context(
         .take(32)
         .map(char::from)
         .collect();
-    let operator =
-        sign_authority_ui_operator(&request_id, &bootstrap_secret, unix_now_seconds(), nonce)?;
+    let operator = match (decision, request_snapshot_digest) {
+        (None, None)
+            if request_id == AMBIENT_AUTHORITY_REQUEST_ID
+                && typed_confirmation_digest.is_none() =>
+        {
+            sign_authority_ui_operator(&request_id, &bootstrap_secret, unix_now_seconds(), nonce)?
+        }
+        (Some(decision), Some(request_snapshot_digest))
+            if request_id != AMBIENT_AUTHORITY_REQUEST_ID =>
+        {
+            sign_interactive_authority_ui_operator(
+                &request_id,
+                &decision,
+                &request_snapshot_digest,
+                typed_confirmation_digest.as_deref(),
+                &bootstrap_secret,
+                unix_now_seconds(),
+                nonce,
+            )?
+        }
+        _ => return Err("interactive approval binding is incomplete".into()),
+    };
     Ok(AuthorityApprovalContext {
         request_id,
         ui_operator: operator,
@@ -1037,6 +1929,51 @@ fn navigation_is_allowed(
         && port.is_some_and(|candidate| allowed_ports.contains(&candidate))
 }
 
+/// The session-renewal IPC endpoint returns a bootstrap credential.  Tauri's
+/// capability is the first gate, while this live caller check prevents another
+/// allowed loopback document or a misconfigured capability from minting one.
+fn validate_panel_session_caller_context(
+    window_label: &str,
+    url: &Url,
+    configured_port: u16,
+) -> Result<(), &'static str> {
+    if window_label != "main"
+        || configured_port == 0
+        || url.scheme() != "http"
+        || !matches!(url.host_str(), Some("127.0.0.1") | Some("localhost"))
+        || url.port_or_known_default() != Some(configured_port)
+        || (url.path() != "/panel" && !url.path().starts_with("/panel/"))
+    {
+        return Err(PANEL_SESSION_CALLER_DENIED);
+    }
+    Ok(())
+}
+
+fn validate_panel_session_caller(
+    window: &tauri::WebviewWindow,
+    config: &AppConfig,
+) -> Result<(), String> {
+    let url = window.url().map_err(|error| {
+        // Never include the URL in diagnostics: it can carry a short-lived
+        // bootstrap code while the panel is exchanging its session.
+        warn!("panel session renewal caller inspection failed: {error}");
+        PANEL_SESSION_CALLER_DENIED.to_string()
+    })?;
+    validate_panel_session_caller_context(window.label(), &url, config.kernel_port).map_err(
+        |message| {
+            warn!(
+                "panel session renewal denied: caller_class={}",
+                if window.label() == "main" {
+                    "main"
+                } else {
+                    "non_main"
+                }
+            );
+            message.to_string()
+        },
+    )
+}
+
 fn panel_session_url_for_current(
     current: Option<&Url>,
     port: u16,
@@ -1119,9 +2056,19 @@ fn navigate_window_to_panel_session(
     port: u16,
     panel_code: &str,
 ) -> Result<(), tauri::Error> {
-    let current_url = window.url().ok();
-    let panel_url = panel_session_url_for_current(current_url.as_ref(), port, panel_code)?;
-    window.navigate(panel_url)
+    // On macOS a WebView can exist before WKWebView has a URL. Calling
+    // `window.url()` during that short window panics in Wry, so always use the
+    // stable panel entry point for a fresh authenticated session.
+    // `/panel/` is the canonical authenticated entry point. The frontend
+    // selects setup or the active panel from the authenticated lifecycle
+    // state after exchanging this bootstrap code.
+    let panel_url = panel_session_url_for_current(None, port, panel_code)?;
+    // `WebviewWindow::navigate` can return success on macOS while a WebView
+    // booted from the bundled splash page remains on `tauri://`. Changing the
+    // active document location reliably completes the same guarded local
+    // navigation and avoids leaving the user on a permanent “Ready”.
+    let script = format!("window.location.replace({:?});", panel_url.as_str());
+    window.eval(&script)
 }
 
 fn show_and_focus_window(window: &tauri::WebviewWindow) -> Result<(), tauri::Error> {
@@ -1150,7 +2097,11 @@ pub(crate) fn refresh_panel_session_for_window(app: &AppHandle, window_label: &s
             Ok(panel_code) => {
                 if let Some(win) = handle.get_webview_window(&label) {
                     if let Err(error) =
-                        navigate_window_to_panel_session(&win, config.kernel_port, &panel_code)
+                        navigate_window_to_panel_session(
+                            &win,
+                            config.kernel_port,
+                            &panel_code,
+                        )
                     {
                         error!("Failed to refresh panel session for {label}: {error}");
                     }
@@ -1175,6 +2126,10 @@ pub(crate) fn primary_window_label(has_panel: bool, has_main: bool) -> Option<&'
 
 fn should_send_to_background_on_close(label: &str) -> bool {
     PRIMARY_WINDOW_LABELS.contains(&label)
+}
+
+fn should_restore_primary_on_close(label: &str) -> bool {
+    dock_registration::is_defaultspack_main_window(label)
 }
 
 fn restore_primary_window(app: &AppHandle, refresh_panel_session: bool) -> Result<(), String> {
@@ -1283,22 +2238,32 @@ pub(crate) fn request_app_exit(app: &AppHandle) {
     }
 
     let km = Arc::clone(app.state::<Arc<Mutex<KernelManager>>>().inner());
+    let defaultspack = Arc::clone(app.state::<Arc<DefaultspackManager>>().inner());
     let handle = app.clone();
 
     std::thread::spawn(move || {
-        match km.lock() {
-            Ok(mut kernel) => {
-                if let Err(error) = kernel.stop() {
-                    error!("Failed to stop kernel during shutdown: {error}");
-                }
-            }
-            Err(error) => {
-                error!("Failed to lock kernel manager during shutdown: {error}");
-            }
-        }
-
+        stop_managed_runtimes(&defaultspack, &km);
         handle.exit(0);
     });
+}
+
+fn stop_managed_runtimes(
+    defaultspack: &DefaultspackManager,
+    kernel_manager: &Mutex<KernelManager>,
+) {
+    if let Err(error) = defaultspack.stop() {
+        error!("Failed to stop Defaultspack during shutdown: {error:#}");
+    }
+    match kernel_manager.lock() {
+        Ok(mut kernel) => {
+            if let Err(error) = kernel.stop() {
+                error!("Failed to stop kernel during shutdown: {error}");
+            }
+        }
+        Err(error) => {
+            error!("Failed to lock kernel manager during shutdown: {error}");
+        }
+    }
 }
 
 fn spawn_kernel_exit_monitor(
@@ -1345,12 +2310,25 @@ fn spawn_kernel_exit_monitor(
             }) {
                 Ok(panel_code) => {
                     if let Some(win) = app.get_webview_window("main") {
-                        if let Err(error) =
-                            navigate_window_to_panel_session(&win, config.kernel_port, &panel_code)
+                        if let Err(error) = navigate_window_to_panel_session(
+                            &win,
+                            config.kernel_port,
+                            &panel_code,
+                        )
                         {
                             error!("Failed to refresh panel after Kernel restart: {error}");
                         }
                     }
+                    // Exit 42 is a contract-transition handoff.  The new
+                    // Kernel has been given a freshly projected authority and
+                    // the old WebView cookie is intentionally not reused.
+                    // Restart guardian preparation only after the new panel
+                    // code was minted from that fresh authenticated process.
+                    prepare_defaultspack_guardian_in_background(
+                        app.clone(),
+                        config.clone(),
+                        panel_bootstrap_secret.clone(),
+                    );
                 }
                 Err(error) => {
                     warn!("Kernel restarted, but panel session refresh failed: {error}");
@@ -1398,7 +2376,7 @@ fn run_delayed_update_check() {
 fn startup_failure_message(stage: &str, error: &anyhow::Error, config: &AppConfig) -> String {
     let log_path = config.log_dir.join("kernel.log");
     format!(
-        "Error: {stage} failed — {error}. See {}",
+        "Error: {stage} failed — {error:#}. See {}",
         log_path.display()
     )
 }
@@ -1407,6 +2385,73 @@ fn startup_failure_message(stage: &str, error: &anyhow::Error, config: &AppConfi
 enum StartupRecoveryStage {
     HealthCheck,
     Bootstrap,
+}
+
+fn capture_guardian_kernel_generation(app: &AppHandle) -> Option<u64> {
+    let manager = Arc::clone(app.state::<Arc<Mutex<KernelManager>>>().inner());
+    let generation = match manager.lock() {
+        Ok(kernel) => Some(kernel.launch_generation()),
+        Err(error) => {
+            error!("Failed to capture Kernel generation for Defaultspack guardian: {error}");
+            None
+        }
+    };
+    generation
+}
+
+fn guardian_kernel_generation_is_current(app: &AppHandle, generation: u64) -> bool {
+    let manager = Arc::clone(app.state::<Arc<Mutex<KernelManager>>>().inner());
+    let is_current = match manager.lock() {
+        Ok(mut kernel) => kernel.is_current_launch_generation(generation),
+        Err(error) => {
+            error!("Failed to validate Kernel generation for Defaultspack guardian: {error}");
+            false
+        }
+    };
+    is_current
+}
+
+fn prepare_defaultspack_guardian_in_background(
+    app: AppHandle,
+    config: AppConfig,
+    panel_bootstrap_secret: String,
+) {
+    let Some(expected_generation) = capture_guardian_kernel_generation(&app) else {
+        return;
+    };
+    thread::spawn(move || {
+        if !guardian_kernel_generation_is_current(&app, expected_generation) {
+            info!(
+                "Skipping stale Defaultspack guardian task for Kernel generation {expected_generation}"
+            );
+            return;
+        }
+        match health_check::check_authenticated_runtime_ready(
+            config.kernel_port,
+            &panel_bootstrap_secret,
+        ) {
+            Ok(true) => {}
+            Ok(false) => {
+                info!("Deferring Launcher-owned Defaultspack guardian until runtime activation");
+                return;
+            }
+            Err(error) => {
+                error!(
+                    "Failed to verify runtime readiness before preparing Defaultspack guardian: {error:#}"
+                );
+                return;
+            }
+        }
+        if !guardian_kernel_generation_is_current(&app, expected_generation) {
+            info!(
+                "Skipping stale Defaultspack guardian task after readiness for Kernel generation {expected_generation}"
+            );
+            return;
+        }
+        if let Err(error) = dock_registration::prepare_defaultspack_guardian_impl(&app, &config) {
+            error!("Failed to prepare Launcher-owned Defaultspack guardian: {error:#}");
+        }
+    });
 }
 
 fn run_startup_sequence<StartKernel, WaitForHealthy, AuthorizePanel, RecoverConflict>(
@@ -1504,8 +2549,302 @@ fn start_kernel_and_bootstrap(
     )
 }
 
+fn startup_stage_name(stage: &Arc<Mutex<&'static str>>) -> &'static str {
+    stage
+        .lock()
+        .map(|current| *current)
+        .unwrap_or("unavailable")
+}
+
+fn record_startup_stage(stage: &Arc<Mutex<&'static str>>, next: &'static str) {
+    if let Ok(mut current) = stage.lock() {
+        *current = next;
+    }
+    // Keep this intentionally structural: startup logs must never include
+    // broker tokens, approval tokens, connection payloads, or environment
+    // values.
+    info!("Viewer startup stage={next}");
+}
+
+#[cfg(any(debug_assertions, test))]
+fn ascii_decimal_port(value: &str) -> Option<u16> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse::<u16>().ok().filter(|port| *port != 0)
+}
+
+#[cfg(any(debug_assertions, test))]
+fn is_clean_absolute_path(path: &std::path::Path) -> bool {
+    path.is_absolute()
+        && path.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            ) || cfg!(windows) && matches!(component, std::path::Component::Prefix(_))
+        })
+}
+
+#[cfg(any(debug_assertions, test))]
+fn secure_debug_directory(path: &std::path::Path, expected_name: Option<&str>) -> bool {
+    if !is_clean_absolute_path(path)
+        || expected_name
+            .is_some_and(|name| path.file_name().and_then(|part| part.to_str()) != Some(name))
+    {
+        return false;
+    }
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return false;
+    }
+    if path.canonicalize().ok().as_deref() != Some(path) {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if metadata.permissions().mode() & 0o777 != 0o700 {
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(all(any(debug_assertions, test), unix))]
+fn debug_directories_have_same_owner(paths: &[&std::path::Path]) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+
+    let mut owners = paths
+        .iter()
+        .filter_map(|path| fs::metadata(path).ok().map(|item| item.uid()));
+    let Some(owner) = owners.next() else {
+        return false;
+    };
+    // POSIX geteuid has no preconditions and does not dereference memory.
+    let effective_user = unsafe { geteuid() };
+    owner == effective_user && owners.all(|candidate| candidate == owner)
+}
+
+#[cfg(all(any(debug_assertions, test), not(unix)))]
+fn debug_directories_have_same_owner(_paths: &[&std::path::Path]) -> bool {
+    true
+}
+
+#[cfg(any(debug_assertions, test))]
+fn valid_debug_instance_id(value: &str) -> bool {
+    let Some(suffix) = value.strip_prefix("debug-") else {
+        return false;
+    };
+    (3..=58).contains(&suffix.len())
+        && suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+#[cfg(any(debug_assertions, test))]
+fn valid_launch_nonce(value: &str) -> bool {
+    (16..=128).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+#[cfg(any(debug_assertions, test))]
+struct DebugParallelInstanceEnvironment<'a> {
+    debug_build: bool,
+    instance_id: Option<&'a str>,
+    user_data_root: Option<&'a str>,
+    connection_path: Option<&'a str>,
+    broker_port: Option<&'a str>,
+    nonce: Option<&'a str>,
+    defaultspack_isolation: Option<&'a str>,
+    defaultspack_run_id: Option<&'a str>,
+    defaultspack_nonce: Option<&'a str>,
+    defaultspack_state_root: Option<&'a str>,
+    defaultspack_http_port: Option<&'a str>,
+    defaultspack_kernel_port: Option<&'a str>,
+}
+
+#[cfg(any(debug_assertions, test))]
+fn debug_parallel_instance_policy_from_values(
+    environment: DebugParallelInstanceEnvironment<'_>,
+) -> Option<DebugParallelInstancePolicy> {
+    if !environment.debug_build {
+        return None;
+    }
+
+    let instance_id = environment.instance_id?;
+    if !valid_debug_instance_id(instance_id) {
+        return None;
+    }
+
+    let user_data_root = PathBuf::from(environment.user_data_root?);
+    if !is_clean_absolute_path(&user_data_root)
+        || user_data_root.file_name()?.to_str()? != "viewer_user_data"
+    {
+        return None;
+    }
+
+    let connection_path = PathBuf::from(environment.connection_path?);
+    let expected_connection_path = user_data_root.join("host_broker").join("connection.json");
+    if !is_clean_absolute_path(&connection_path) || connection_path != expected_connection_path {
+        return None;
+    }
+
+    let broker_port = ascii_decimal_port(environment.broker_port?)?;
+    if broker_port == DEFAULT_HOST_BROKER_PORT {
+        return None;
+    }
+
+    let nonce = environment.nonce?;
+    if !valid_launch_nonce(nonce) {
+        return None;
+    }
+
+    if environment.defaultspack_isolation? != "1"
+        || environment.defaultspack_run_id? != instance_id
+        || environment.defaultspack_nonce? != nonce
+    {
+        return None;
+    }
+    let supervisor_root = user_data_root.parent()?.to_path_buf();
+    let defaultspack_state_root = PathBuf::from(environment.defaultspack_state_root?);
+    let expected_state_root = supervisor_root.join("defaultspack_state");
+    if !is_clean_absolute_path(&defaultspack_state_root)
+        || defaultspack_state_root != expected_state_root
+        || !secure_debug_directory(&supervisor_root, None)
+        || !secure_debug_directory(&user_data_root, Some("viewer_user_data"))
+        || !secure_debug_directory(&defaultspack_state_root, Some("defaultspack_state"))
+        || !debug_directories_have_same_owner(&[
+            &supervisor_root,
+            &user_data_root,
+            &defaultspack_state_root,
+        ])
+    {
+        return None;
+    }
+    let defaultspack_http_port = ascii_decimal_port(environment.defaultspack_http_port?)?;
+    let kernel_port = ascii_decimal_port(environment.defaultspack_kernel_port?)?;
+    if defaultspack_http_port == DEFAULTSPACK_RESERVED_PORT
+        || kernel_port == 8765
+        || defaultspack_http_port == kernel_port
+        || defaultspack_http_port == broker_port
+        || kernel_port == broker_port
+    {
+        return None;
+    }
+
+    Some(DebugParallelInstancePolicy {
+        supervisor_root,
+        user_data_root,
+        defaultspack_state_root,
+        broker_port,
+        defaultspack_http_port,
+        kernel_port,
+    })
+}
+
+#[cfg(debug_assertions)]
+fn debug_parallel_instance_policy_from_env() -> Option<DebugParallelInstancePolicy> {
+    debug_parallel_instance_policy_from_values(DebugParallelInstanceEnvironment {
+        debug_build: true,
+        instance_id: std::env::var(DEBUG_INSTANCE_ID_ENV).ok().as_deref(),
+        user_data_root: std::env::var(DEBUG_USER_DATA_ROOT_ENV).ok().as_deref(),
+        connection_path: std::env::var(HOST_BROKER_CONNECTION_ENV).ok().as_deref(),
+        broker_port: std::env::var(HOST_BROKER_PORT_ENV).ok().as_deref(),
+        nonce: std::env::var(HOST_BROKER_INSTANCE_NONCE_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_isolation: std::env::var(DEFAULTSPACK_DEBUG_ISOLATION_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_run_id: std::env::var(DEFAULTSPACK_DEBUG_RUN_ID_ENV).ok().as_deref(),
+        defaultspack_nonce: std::env::var(DEFAULTSPACK_DEBUG_LAUNCH_NONCE_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_state_root: std::env::var(DEFAULTSPACK_DEBUG_STATE_ROOT_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_http_port: std::env::var(DEFAULTSPACK_DEBUG_HTTP_PORT_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_kernel_port: std::env::var(DEFAULTSPACK_DEBUG_KERNEL_PORT_ENV)
+            .ok()
+            .as_deref(),
+    })
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn debug_defaultspack_ports_from_env() -> Option<(u16, u16)> {
+    debug_parallel_instance_policy_from_env()
+        .map(|policy| (policy.defaultspack_http_port, policy.kernel_port))
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn debug_defaultspack_approval_secret_path_from_env() -> Option<PathBuf> {
+    debug_parallel_instance_policy_from_env().map(|policy| {
+        policy
+            .defaultspack_state_root
+            .join("approval")
+            .join("approval_runtime_secret")
+    })
+}
+
+#[cfg(not(debug_assertions))]
+pub(crate) fn debug_defaultspack_approval_secret_path_from_env() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(not(debug_assertions))]
+pub(crate) fn debug_defaultspack_ports_from_env() -> Option<(u16, u16)> {
+    None
+}
+
 pub fn run() {
+    let context = tauri::generate_context!();
+    if context.config().identifier == shell_handoff::SHELL_BUNDLE_IDENTIFIER {
+        shell_runtime::run(context);
+        return;
+    }
+    run_launcher(context);
+}
+
+fn run_launcher(context: tauri::Context<tauri::Wry>) {
     env_logger::init();
+    let app_identifier = context.config().identifier.clone();
+
+    #[cfg(debug_assertions)]
+    let debug_parallel_instance = debug_parallel_instance_policy_from_env().and_then(|policy| {
+        match prepare_debug_cache_environment(&policy) {
+            Ok(environment) => {
+                for (key, path) in environment {
+                    std::env::set_var(key, path);
+                }
+                Some(policy)
+            }
+            Err(error) => {
+                error!("Viewer debug parallel-instance cache isolation was rejected: {error:#}");
+                None
+            }
+        }
+    });
+    #[cfg(debug_assertions)]
+    let debug_writable_roots = debug_parallel_instance.as_ref().map(|policy| {
+        (
+            policy.supervisor_root.clone(),
+            policy.user_data_root.clone(),
+        )
+    });
+    #[cfg(not(debug_assertions))]
+    let debug_writable_roots: Option<(PathBuf, PathBuf)> = None;
+    let startup_stage = Arc::new(Mutex::new("builder"));
 
     let allowed_navigation_ports =
         Arc::new(Mutex::new(navigation_ports_with_tauri_dev_server(vec![
@@ -1514,12 +2853,37 @@ pub fn run() {
     let allowed_navigation_ports_for_plugin = Arc::clone(&allowed_navigation_ports);
     let allowed_navigation_ports_for_setup = Arc::clone(&allowed_navigation_ports);
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    #[cfg(debug_assertions)]
+    let builder = if let Some(policy) = debug_parallel_instance.as_ref() {
+        // The policy is validated above, is debug-only, and carries no
+        // authorization. Production/release continues to register the plugin
+        // unconditionally.
+        info!(
+            "Viewer debug parallel-instance mode enabled for isolated ports broker={}, defaultspack={}, kernel={}",
+            policy.broker_port, policy.defaultspack_http_port, policy.kernel_port
+        );
+        tauri::Builder::default()
+    } else {
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Err(error) = show_primary_window(app) {
                 error!("Failed to focus existing Rumi window after duplicate launch: {error}");
             }
         }))
+    };
+    #[cfg(not(debug_assertions))]
+    let builder =
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Err(error) = show_primary_window(app) {
+                error!("Failed to focus existing Rumi window after duplicate launch: {error}");
+            }
+        }));
+
+    record_startup_stage(&startup_stage, "builder_configured");
+    let setup_startup_stage = Arc::clone(&startup_stage);
+    let build_startup_stage = Arc::clone(&startup_stage);
+
+    let app = builder
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("nav-guard")
                 .on_navigation(move |_webview, url| {
@@ -1540,21 +2904,28 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
-            let resource_dir = app
-                .path()
-                .resource_dir()
-                .context("failed to resolve resource_dir")?;
+            record_startup_stage(&setup_startup_stage, "setup_entered");
+            record_startup_stage(&setup_startup_stage, "resolving_app_paths");
+            let resource_dir = match app.path().resource_dir() {
+                Ok(resource_dir) => resource_dir,
+                Err(error) => bundled_resource_dir_fallback().ok_or_else(|| {
+                    anyhow!("failed to resolve resource_dir: {error}")
+                })?,
+            };
             let app_data_dir = app
                 .path()
                 .app_data_dir()
                 .context("failed to resolve app_data_dir")?;
-            if app_data_migration::migrate_legacy_app_data(&app_data_dir)? {
-                info!("copied legacy Rumi Viewer application data into Tobkiri Launcher storage");
-            }
-
+            let app_data_dir =
+                ci_e2e_app_data::resolve_app_data_dir_from_env(&app_identifier, &app_data_dir)?;
+            record_startup_stage(&setup_startup_stage, "building_config");
             let mut config = AppConfig::detect_for_tauri(resource_dir, app_data_dir)
                 .context("failed to build AppConfig")?;
+            if let Some((supervisor_root, user_data_root)) = debug_writable_roots.as_ref() {
+                config.isolate_writable_state(supervisor_root, user_data_root.clone());
+            }
 
+            record_startup_stage(&setup_startup_stage, "creating_state_directories");
             std::fs::create_dir_all(&config.log_dir).ok();
             std::fs::create_dir_all(&config.user_data_dir).ok();
             std::fs::create_dir_all(config.host_broker_dir()).ok();
@@ -1564,18 +2935,46 @@ pub fn run() {
             )));
             let progress_arc = progress.0.clone();
             app.manage(progress);
-            app.manage(ShutdownState(Arc::new(AtomicBool::new(false))));
+            let shutdown_flag = Arc::new(AtomicBool::new(false));
+            app.manage(ShutdownState(Arc::clone(&shutdown_flag)));
 
+            record_startup_stage(&setup_startup_stage, "loading_panel_bootstrap_secret");
             let panel_bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
                 .context("failed to load persisted panel bootstrap secret")?;
-            let host_broker = HostBrokerRuntime::start(&config)
+            let debug_approval = Arc::new(DebugApprovalManager::new(
+                config.log_dir.join("debug-approval-audit.jsonl"),
+            ));
+            record_startup_stage(&setup_startup_stage, "starting_host_broker");
+            let host_broker =
+                HostBrokerRuntime::start(&config, Arc::clone(&debug_approval))
                 .context("failed to start Viewer host broker")?;
+            let broker_attestation = host_broker.attestation_identity();
+            record_startup_stage(&setup_startup_stage, "host_broker_running");
             app.manage(host_broker.clone());
-            config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+            app.manage(broker_attestation.clone());
+            app.manage(Arc::clone(&debug_approval));
+            #[cfg(debug_assertions)]
+            if let Some(policy) = debug_parallel_instance.as_ref() {
+                // A complete debug policy binds every run to an exact reserved
+                // kernel port.  Do not scan/reuse another Viewer's kernel.
+                config.kernel_port = policy.kernel_port;
+            } else {
+                config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+            }
             set_allowed_navigation_ports(
                 &allowed_navigation_ports_for_setup,
                 navigation_ports_with_tauri_dev_server(vec![
                     config.kernel_port,
+                    #[cfg(debug_assertions)]
+                    debug_parallel_instance
+                        .as_ref()
+                        .map(|policy| policy.defaultspack_http_port)
+                        .unwrap_or(DEFAULTSPACK_RESERVED_PORT),
+                    #[cfg(not(debug_assertions))]
                     DEFAULTSPACK_RESERVED_PORT,
                 ]),
             );
@@ -1589,6 +2988,15 @@ pub fn run() {
             let km_for_thread = km.clone();
             let km_for_monitor = km.clone();
             app.manage(km);
+
+            let defaultspack_manager = Arc::new(DefaultspackManager::new(
+                config.clone(),
+                Arc::clone(&shutdown_flag),
+                broker_attestation,
+                Arc::clone(&debug_approval),
+            ));
+            let defaultspack_manager_for_monitor = Arc::clone(&defaultspack_manager);
+            app.manage(defaultspack_manager);
 
             app.manage(config.clone());
 
@@ -1610,6 +3018,7 @@ pub fn run() {
                 Arc::clone(&app.state::<ShutdownState>().inner().0),
                 panel_bootstrap_secret.clone(),
             );
+            DefaultspackManager::spawn_exit_monitor(defaultspack_manager_for_monitor);
 
             std::thread::spawn(move || {
                 // --- Fast path: existing authenticated kernel ---
@@ -1627,11 +3036,20 @@ pub fn run() {
                             update_setup_progress(Some(&handle), &progress_arc, "Ready");
                             if let Some(win) = handle.get_webview_window("main") {
                                 if let Err(e) =
-                                    navigate_and_show_window_to_panel_session(&win, port, &panel_code)
+                                    navigate_and_show_window_to_panel_session(
+                                        &win,
+                                        port,
+                                        &panel_code,
+                                    )
                                 {
                                     error!("Failed to navigate to panel: {e}");
                                 }
                             }
+                            prepare_defaultspack_guardian_in_background(
+                                handle.clone(),
+                                config.clone(),
+                                panel_bootstrap_secret.clone(),
+                            );
                             // Delayed background update check.
                             run_delayed_update_check();
                             return;
@@ -1644,7 +3062,9 @@ pub fn run() {
 
                 // --- Normal startup sequence ---
                 update_setup_progress(Some(&handle), &progress_arc, "Checking Python environment...");
-                if let Err(e) = python_env::ensure_python_env(&config) {
+                if let Err(e) = python_env::ensure_python_env_with_progress(&config, |message| {
+                    update_setup_progress(Some(&handle), &progress_arc, message);
+                }) {
                     let msg = startup_failure_message("Python setup", &e, &config);
                     error!("{msg}");
                     update_setup_progress(Some(&handle), &progress_arc, &msg);
@@ -1660,7 +3080,7 @@ pub fn run() {
                 ) {
                     Ok(code) => code,
                     Err(e) => {
-                        let msg = startup_failure_message("Viewer startup", &e, &config);
+                        let msg = startup_failure_message("Tobkiri Launcher startup", &e, &config);
                         error!("{msg}");
                         update_setup_progress(Some(&handle), &progress_arc, &msg);
                         return;
@@ -1670,16 +3090,28 @@ pub fn run() {
                 update_setup_progress(Some(&handle), &progress_arc, "Ready");
 
                 if let Some(win) = handle.get_webview_window("main") {
-                    if let Err(e) = navigate_and_show_window_to_panel_session(&win, port, &panel_code) {
+                    if let Err(e) = navigate_and_show_window_to_panel_session(
+                        &win,
+                        port,
+                        &panel_code,
+                    ) {
                         error!("Failed to navigate to panel: {e}");
                     }
                 }
+
+                prepare_defaultspack_guardian_in_background(
+                    handle.clone(),
+                    config.clone(),
+                    panel_bootstrap_secret.clone(),
+                );
 
                 // Delayed background update check.
                 run_delayed_update_check();
             });
 
+            record_startup_stage(&setup_startup_stage, "setting_up_tray");
             tray::setup_tray(app)?;
+            record_startup_stage(&setup_startup_stage, "setup_complete");
 
             Ok(())
         })
@@ -1687,14 +3119,21 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if should_send_to_background_on_close(window.label()) {
                     api.prevent_close();
-                    if let Err(error) = send_app_to_background(&window.app_handle()) {
+                    if let Err(error) = send_app_to_background(window.app_handle()) {
                         error!("Failed to send app to background: {error}");
+                    }
+                } else if should_restore_primary_on_close(window.label()) {
+                    if let Err(error) = restore_primary_window(window.app_handle(), true) {
+                        error!("Failed to restore launcher after closing Tobkiri: {error}");
                     }
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
             get_setup_progress,
+            debug_approval_status,
+            arm_debug_approval,
+            revoke_debug_approval,
             restart_kernel,
             reauthorize_panel_session,
             open_external_url,
@@ -1706,6 +3145,7 @@ pub fn run() {
             open_defaults_console_window,
             open_host_permissions_window,
             authority_approval_context,
+            coding_approval_operator,
             send_to_background,
             show_app_window,
             get_background_control_status,
@@ -1713,42 +3153,76 @@ pub fn run() {
             desktop_system_info::get_host_permission_status,
             desktop_system_info::open_host_permission_settings,
             dock_registration::register_defaultspack_dock,
-            dock_registration::launch_defaultspack_desktop
+            dock_registration::launch_defaultspack_desktop,
+            presentation::get_presentation_catalog,
+            presentation::select_presentation,
+            presentation::launch_selected_presentation
         ])
-        .build(tauri::generate_context!())
-        .map(|app| {
-            app.run(|app_handle, event| {
-                #[cfg(target_os = "macos")]
-                if let tauri::RunEvent::Reopen {
-                    has_visible_windows: false,
-                    ..
-                } = event
-                {
-                    if let Err(error) = show_primary_window(app_handle) {
-                        warn!("Failed to reopen primary window: {error}");
-                    }
-                }
+        .build(context);
 
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = (app_handle, event);
-                }
-            });
-        })
-        .unwrap_or_else(|error| error!("error while running tauri application: {error}"));
+    let app = match app {
+        Ok(app) => app,
+        Err(_) => {
+            // Do not convert a setup/build failure into a duplicate-instance
+            // success. The single-instance plugin itself retains its documented
+            // exit(0) behavior for normal duplicate launches.
+            error!(
+                "Viewer startup failed at stage={}; exiting nonzero",
+                startup_stage_name(&build_startup_stage)
+            );
+            std::process::exit(1);
+        }
+    };
+
+    record_startup_stage(&startup_stage, "running");
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+            let shutdown_requested = app_handle
+                .state::<ShutdownState>()
+                .inner()
+                .0
+                .load(Ordering::SeqCst);
+            if !shutdown_requested {
+                api.prevent_exit();
+                request_app_exit(app_handle);
+            }
+        }
+
+        if matches!(&event, tauri::RunEvent::Exit) {
+            app_handle
+                .state::<ShutdownState>()
+                .inner()
+                .0
+                .store(true, Ordering::SeqCst);
+            let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
+            let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
+            stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+        }
+
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen {
+            has_visible_windows: false,
+            ..
+        } = &event
+        {
+            if let Err(error) = show_primary_window(app_handle) {
+                warn!("Failed to reopen primary window: {error}");
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (app_handle, event);
+        }
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        ENV_LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn test_config() -> AppConfig {
         AppConfig::detect_for_tauri(
@@ -1756,6 +3230,458 @@ mod tests {
             PathBuf::from("/tmp/test_appdata"),
         )
         .unwrap()
+    }
+
+    struct DebugPolicyFixture {
+        supervisor: PathBuf,
+        user_data: PathBuf,
+        connection: PathBuf,
+        defaultspack_state: PathBuf,
+    }
+
+    impl DebugPolicyFixture {
+        fn new() -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let supervisor = std::env::temp_dir().canonicalize().unwrap().join(format!(
+                "rumi-viewer-policy-{}-{unique}",
+                std::process::id()
+            ));
+            let user_data = supervisor.join("viewer_user_data");
+            let connection = user_data.join("host_broker").join("connection.json");
+            let defaultspack_state = supervisor.join("defaultspack_state");
+            fs::create_dir(&supervisor).unwrap();
+            fs::create_dir(&user_data).unwrap();
+            fs::create_dir(&defaultspack_state).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+
+                for path in [&supervisor, &user_data, &defaultspack_state] {
+                    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+                }
+            }
+            Self {
+                supervisor,
+                user_data,
+                connection,
+                defaultspack_state,
+            }
+        }
+
+        fn path_text(path: &std::path::Path) -> &str {
+            path.to_str().unwrap()
+        }
+
+        fn viewer_values(&self) -> (&'static str, &str, &str, &'static str, &'static str) {
+            (
+                "debug-viewer-smoke-12345",
+                Self::path_text(&self.user_data),
+                Self::path_text(&self.connection),
+                "18770",
+                "debug_nonce_0123456789",
+            )
+        }
+
+        fn defaultspack_values(
+            &self,
+        ) -> (
+            &'static str,
+            &'static str,
+            &'static str,
+            &str,
+            &'static str,
+            &'static str,
+        ) {
+            (
+                "1",
+                "debug-viewer-smoke-12345",
+                "debug_nonce_0123456789",
+                Self::path_text(&self.defaultspack_state),
+                "18771",
+                "18772",
+            )
+        }
+    }
+
+    impl Drop for DebugPolicyFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.supervisor);
+        }
+    }
+
+    fn valid_debug_parallel_policy_values(
+        fixture: &DebugPolicyFixture,
+    ) -> (&'static str, &str, &str, &'static str, &'static str) {
+        fixture.viewer_values()
+    }
+
+    fn valid_debug_defaultspack_policy_values(
+        fixture: &DebugPolicyFixture,
+    ) -> (
+        &'static str,
+        &'static str,
+        &'static str,
+        &str,
+        &'static str,
+        &'static str,
+    ) {
+        fixture.defaultspack_values()
+    }
+
+    macro_rules! debug_policy {
+        (
+            $debug_build:expr, $instance_id:expr, $user_data_root:expr,
+            $connection_path:expr, $broker_port:expr, $nonce:expr,
+            $defaultspack_isolation:expr, $defaultspack_run_id:expr,
+            $defaultspack_nonce:expr, $defaultspack_state_root:expr,
+            $defaultspack_http_port:expr, $defaultspack_kernel_port:expr $(,)?
+        ) => {
+            debug_parallel_instance_policy_from_values(DebugParallelInstanceEnvironment {
+                debug_build: $debug_build,
+                instance_id: $instance_id,
+                user_data_root: $user_data_root,
+                connection_path: $connection_path,
+                broker_port: $broker_port,
+                nonce: $nonce,
+                defaultspack_isolation: $defaultspack_isolation,
+                defaultspack_run_id: $defaultspack_run_id,
+                defaultspack_nonce: $defaultspack_nonce,
+                defaultspack_state_root: $defaultspack_state_root,
+                defaultspack_http_port: $defaultspack_http_port,
+                defaultspack_kernel_port: $defaultspack_kernel_port,
+            })
+        };
+    }
+
+    #[test]
+    fn debug_parallel_instance_requires_every_isolation_precondition() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = valid_debug_parallel_policy_values(&fixture);
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            valid_debug_defaultspack_policy_values(&fixture);
+        let policy = debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .expect("fully isolated debug launch should be eligible");
+        assert_eq!(policy.supervisor_root, fixture.supervisor);
+        assert_eq!(policy.user_data_root, PathBuf::from(root));
+        assert_eq!(policy.broker_port, 18770);
+        assert_eq!(policy.defaultspack_http_port, 18771);
+        assert_eq!(policy.kernel_port, 18772);
+
+        for missing in 0..11 {
+            let mut values = [
+                Some(id),
+                Some(root),
+                Some(connection),
+                Some(port),
+                Some(nonce),
+                Some(isolation),
+                Some(run_id),
+                Some(defaultspack_nonce),
+                Some(state_root),
+                Some(http_port),
+                Some(kernel_port),
+            ];
+            values[missing] = None;
+            assert!(
+                debug_policy!(
+                    true, values[0], values[1], values[2], values[3], values[4], values[5],
+                    values[6], values[7], values[8], values[9], values[10]
+                )
+                .is_none(),
+                "missing precondition {missing} must retain single-instance"
+            );
+        }
+    }
+
+    #[test]
+    fn debug_parallel_instance_rejects_malformed_or_shared_inputs() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, _port, nonce) = valid_debug_parallel_policy_values(&fixture);
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            valid_debug_defaultspack_policy_values(&fixture);
+        for bad_id in ["viewer-smoke", "debug-x", "debug-has space"] {
+            assert!(debug_policy!(
+                true,
+                Some(bad_id),
+                Some(root),
+                Some(connection),
+                Some("18770"),
+                Some(nonce),
+                Some(isolation),
+                Some(run_id),
+                Some(defaultspack_nonce),
+                Some(state_root),
+                Some(http_port),
+                Some(kernel_port),
+            )
+            .is_none());
+        }
+        for bad_port in ["8770", "0", " 18770", "18770 ", "65536"] {
+            assert!(
+                debug_policy!(
+                    true,
+                    Some(id),
+                    Some(root),
+                    Some(connection),
+                    Some(bad_port),
+                    Some(nonce),
+                    Some(isolation),
+                    Some(run_id),
+                    Some(defaultspack_nonce),
+                    Some(state_root),
+                    Some(http_port),
+                    Some(kernel_port),
+                )
+                .is_none(),
+                "{bad_port:?} must retain single-instance"
+            );
+        }
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some("/tmp/not-the-run/host_broker/connection.json"),
+            Some("18770"),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some("relative-root"),
+            Some(connection),
+            Some("18770"),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn debug_parallel_instance_rejects_symlinked_or_permissive_supervisor() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let fixture = DebugPolicyFixture::new();
+        let alias = fixture.supervisor.with_file_name(format!(
+            "{}-alias",
+            fixture.supervisor.file_name().unwrap().to_string_lossy()
+        ));
+        symlink(&fixture.supervisor, &alias).unwrap();
+        let alias_user_data = alias.join("viewer_user_data");
+        let alias_connection = alias_user_data.join("host_broker").join("connection.json");
+        let alias_state = alias.join("defaultspack_state");
+        assert!(debug_policy!(
+            true,
+            Some("debug-viewer-smoke-12345"),
+            alias_user_data.to_str(),
+            alias_connection.to_str(),
+            Some("18770"),
+            Some("debug_nonce_0123456789"),
+            Some("1"),
+            Some("debug-viewer-smoke-12345"),
+            Some("debug_nonce_0123456789"),
+            alias_state.to_str(),
+            Some("18771"),
+            Some("18772"),
+        )
+        .is_none());
+        fs::remove_file(&alias).unwrap();
+
+        fs::set_permissions(&fixture.supervisor, fs::Permissions::from_mode(0o755)).unwrap();
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            fixture.defaultspack_values();
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn debug_parallel_instance_rejects_unexpected_state_basenames() {
+        let fixture = DebugPolicyFixture::new();
+        let wrong_user_data = fixture.supervisor.join("user_data");
+        let wrong_connection = wrong_user_data.join("host_broker").join("connection.json");
+        assert!(debug_policy!(
+            true,
+            Some("debug-viewer-smoke-12345"),
+            wrong_user_data.to_str(),
+            wrong_connection.to_str(),
+            Some("18770"),
+            Some("debug_nonce_0123456789"),
+            Some("1"),
+            Some("debug-viewer-smoke-12345"),
+            Some("debug_nonce_0123456789"),
+            fixture.defaultspack_state.to_str(),
+            Some("18771"),
+            Some("18772"),
+        )
+        .is_none());
+
+        let wrong_state = fixture.supervisor.join("state");
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some("1"),
+            Some(id),
+            Some(nonce),
+            wrong_state.to_str(),
+            Some("18771"),
+            Some("18772"),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn debug_cache_environment_stays_under_supervisor_without_recreating_state() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            fixture.defaultspack_values();
+        let policy = debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .unwrap();
+        let sentinel = fixture.supervisor.join("do-not-delete.txt");
+        fs::write(&sentinel, b"preserve").unwrap();
+
+        let environment = prepare_debug_cache_environment(&policy).unwrap();
+        let second = prepare_debug_cache_environment(&policy).unwrap();
+
+        assert_eq!(environment, second);
+        assert_eq!(fs::read(&sentinel).unwrap(), b"preserve");
+        for (_, path) in environment {
+            assert!(path.starts_with(&fixture.supervisor));
+            assert!(secure_debug_directory(
+                &path,
+                path.file_name().and_then(|v| v.to_str())
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn debug_cache_environment_rejects_preplanted_symlink() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            fixture.defaultspack_values();
+        let policy = debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .unwrap();
+        let external = fixture.supervisor.with_file_name(format!(
+            "{}-external-cache",
+            fixture.supervisor.file_name().unwrap().to_string_lossy()
+        ));
+        fs::create_dir(&external).unwrap();
+        fs::set_permissions(&external, fs::Permissions::from_mode(0o700)).unwrap();
+        symlink(&external, fixture.supervisor.join("cargo_target")).unwrap();
+
+        assert!(prepare_debug_cache_environment(&policy).is_err());
+        assert!(external.read_dir().unwrap().next().is_none());
+
+        fs::remove_dir(&external).unwrap();
+    }
+
+    #[test]
+    fn release_policy_never_bypasses_single_instance() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = valid_debug_parallel_policy_values(&fixture);
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            valid_debug_defaultspack_policy_values(&fixture);
+        assert!(debug_policy!(
+            false,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn defaultspack_auxiliary_urls_keep_production_default_and_accept_isolated_port() {
+        assert_eq!(
+            defaultspack_http_port_for_urls(None),
+            DEFAULTSPACK_RESERVED_PORT
+        );
+        assert_eq!(defaultspack_http_port_for_urls(Some(18771)), 18771);
     }
 
     #[test]
@@ -1777,10 +3703,210 @@ mod tests {
     fn authority_approval_url_targets_defaultspack_window_route() {
         let url = authority_approval_url("auth_123").unwrap();
 
+        assert_eq!(AUTHORITY_APPROVAL_WINDOW_TITLE, "Tobkiriの許可");
         assert_eq!(
             url.as_str(),
             "http://127.0.0.1:8766/approval?request_id=auth_123"
         );
+    }
+
+    #[test]
+    fn authority_approval_open_requires_focused_exact_launcher_route() {
+        for (label, route) in [
+            (DEFAULTSPACK_MAIN_WINDOW_LABEL, "/chat?chat=conversation-1"),
+            (DEFAULTSPACK_MAIN_WINDOW_LABEL, "/coding"),
+            (AMBIENT_TRIGGER_WINDOW_LABEL, "/ambient"),
+            (FINGER_RECORDING_WINDOW_LABEL, "/finger-recording"),
+        ] {
+            validate_authority_approval_open_caller(
+                label,
+                true,
+                &Url::parse(&format!("http://127.0.0.1:18771{route}")).unwrap(),
+                18771,
+            )
+            .unwrap();
+        }
+
+        let main_url = Url::parse("http://127.0.0.1:18771/chat").unwrap();
+        assert!(validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            false,
+            &main_url,
+            18771,
+        )
+        .is_err());
+        for (label, rejected) in [
+            (DEFAULTSPACK_MAIN_WINDOW_LABEL, "http://127.0.0.1:8766/chat"),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "https://127.0.0.1:18771/chat",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://example.invalid:18771/chat",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://localhost:18771/chat",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://user@127.0.0.1:18771/chat",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://127.0.0.1:18771/approval",
+            ),
+            (
+                AMBIENT_TRIGGER_WINDOW_LABEL,
+                "http://127.0.0.1:18771/finger-recording",
+            ),
+            (
+                FINGER_RECORDING_WINDOW_LABEL,
+                "http://127.0.0.1:18771/ambient",
+            ),
+            ("main", "http://127.0.0.1:18771/chat"),
+        ] {
+            assert!(validate_authority_approval_open_caller(
+                label,
+                true,
+                &Url::parse(rejected).unwrap(),
+                18771,
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn authority_approval_context_requires_focused_exact_local_route() {
+        let url = Url::parse("http://127.0.0.1:18771/approval?request_id=auth_123").unwrap();
+        validate_authority_approval_context_caller(
+            AUTHORITY_APPROVAL_WINDOW_LABEL,
+            true,
+            &url,
+            "auth_123",
+            18771,
+        )
+        .unwrap();
+
+        assert!(validate_authority_approval_context_caller(
+            AUTHORITY_APPROVAL_WINDOW_LABEL,
+            false,
+            &url,
+            "auth_123",
+            18771,
+        )
+        .is_err());
+        for rejected in [
+            "http://127.0.0.1:8766/approval?request_id=auth_123",
+            "https://127.0.0.1:18771/approval?request_id=auth_123",
+            "http://example.invalid:18771/approval?request_id=auth_123",
+            "http://localhost:18771/approval?request_id=auth_123",
+            "http://127.0.0.1:18771/ambient?request_id=auth_123",
+            "http://127.0.0.1:18771/approval?request_id=other",
+            "http://127.0.0.1:18771/approval?request_id=auth_123&extra=1",
+            "http://127.0.0.1:18771/approval?request_id=auth_123&request_id=auth_123",
+        ] {
+            assert!(validate_authority_approval_context_caller(
+                AUTHORITY_APPROVAL_WINDOW_LABEL,
+                true,
+                &Url::parse(rejected).unwrap(),
+                "auth_123",
+                18771,
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn authority_approval_acl_supports_isolated_local_ports_with_narrow_windows() {
+        let open: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/authority-approval-open.json"))
+                .unwrap();
+        assert_eq!(
+            open["windows"],
+            serde_json::json!(["defaultspack-main", "ambient-trigger", "finger-recording"])
+        );
+        assert_eq!(
+            open["remote"]["urls"],
+            serde_json::json!(["http://127.0.0.1:*/*"])
+        );
+        assert_eq!(
+            open["permissions"],
+            serde_json::json!(["allow-open-authority-approval-window"])
+        );
+
+        let context: serde_json::Value = serde_json::from_str(include_str!(
+            "../capabilities/authority-approval-context.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            context["windows"],
+            serde_json::json!(["authority-approval"])
+        );
+        assert_eq!(
+            context["remote"]["urls"],
+            serde_json::json!(["http://127.0.0.1:*/*"])
+        );
+        assert_eq!(
+            context["permissions"],
+            serde_json::json!([
+                "allow-authority-approval-context",
+                "allow-close-current-window"
+            ])
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_authority_smoke_uses_an_opaque_signed_contract_route() {
+        assert_eq!(
+            debug_contract_url(
+                "http://127.0.0.1:18771",
+                "POST",
+                "/api/command-protocol/v1/high-risk",
+            )
+            .unwrap(),
+            "http://127.0.0.1:18771/api/contracts/defaultspack/POST%20%2Fapi%2Fcommand-protocol%2Fv1%2Fhigh-risk",
+        );
+        assert!(debug_contract_url(
+            "http://127.0.0.1:18771",
+            "PUT",
+            "/api/command-protocol/v1/high-risk",
+        )
+        .is_err());
+        assert!(debug_contract_url(
+            "http://127.0.0.1:18771",
+            "POST",
+            "/api/command-protocol/v1/high-risk?unsafe=true",
+        )
+        .is_err());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_authority_smoke_request_ids_are_uuid_v4() {
+        let request_id = debug_contract_request_id();
+        let bytes = request_id.as_bytes();
+
+        assert_eq!(request_id.len(), 36);
+        assert_eq!(bytes[8], b'-');
+        assert_eq!(bytes[13], b'-');
+        assert_eq!(bytes[14], b'4');
+        assert_eq!(bytes[18], b'-');
+        assert!(matches!(bytes[19], b'8' | b'9' | b'a' | b'b'));
+        assert_eq!(bytes[23], b'-');
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_authority_smoke_reads_only_the_authoritative_state_field() {
+        assert_eq!(
+            debug_result_state(&serde_json::json!({ "state": "approved" })),
+            Some("approved")
+        );
+        assert_eq!(debug_result_state(&serde_json::json!({ "state": 1 })), None);
+        assert_eq!(debug_result_state(&serde_json::json!({})), None);
     }
 
     #[test]
@@ -1816,11 +3942,92 @@ mod tests {
 
         assert_eq!(operator.window_label, AUTHORITY_APPROVAL_WINDOW_LABEL);
         assert_eq!(operator.request_id, "auth_123");
+        assert_eq!(operator.decision, None);
+        assert_eq!(operator.request_snapshot_digest, None);
+        assert_eq!(operator.typed_confirmation_digest, None);
         assert_eq!(
             authority_operator_message(&operator),
             "v1\ntauri_webview_window\nauthority-approval\nauth_123\n1700000000\n1700000180\nnonce-1"
         );
         assert!(!operator.signature.is_empty());
+    }
+
+    #[test]
+    fn interactive_authority_ui_operator_binds_decision_snapshot_and_confirmation() {
+        let snapshot = "a".repeat(64);
+        let confirmation = "b".repeat(64);
+        let approve = sign_interactive_authority_ui_operator(
+            "auth_123",
+            "approve",
+            &snapshot,
+            Some(&confirmation),
+            "test-bootstrap-secret",
+            1_700_000_000,
+            "nonce-1".into(),
+        )
+        .unwrap();
+        assert_eq!(approve.version, 3);
+        assert_eq!(approve.decision.as_deref(), Some("approve"));
+        assert_eq!(
+            authority_operator_message(&approve),
+            format!(
+                "v3\ntauri_webview_window\nauthority-approval\nauth_123\napprove\n{snapshot}\n{confirmation}\n1700000000\n1700000180\nnonce-1"
+            )
+        );
+
+        let deny = sign_interactive_authority_ui_operator(
+            "auth_123",
+            "deny",
+            &snapshot,
+            None,
+            "test-bootstrap-secret",
+            1_700_000_000,
+            "nonce-1".into(),
+        )
+        .unwrap();
+        let changed_snapshot = sign_interactive_authority_ui_operator(
+            "auth_123",
+            "approve",
+            &"c".repeat(64),
+            Some(&confirmation),
+            "test-bootstrap-secret",
+            1_700_000_000,
+            "nonce-1".into(),
+        )
+        .unwrap();
+        let changed_confirmation = sign_interactive_authority_ui_operator(
+            "auth_123",
+            "approve",
+            &snapshot,
+            Some(&"d".repeat(64)),
+            "test-bootstrap-secret",
+            1_700_000_000,
+            "nonce-1".into(),
+        )
+        .unwrap();
+        assert_ne!(approve.signature, deny.signature);
+        assert_ne!(approve.signature, changed_snapshot.signature);
+        assert_ne!(approve.signature, changed_confirmation.signature);
+        assert!(sign_interactive_authority_ui_operator(
+            "auth_123",
+            "deny",
+            &snapshot,
+            Some(&confirmation),
+            "test-bootstrap-secret",
+            1_700_000_000,
+            "nonce-1".into(),
+        )
+        .is_err());
+        assert!(sign_interactive_authority_ui_operator(
+            "auth_123",
+            "approve",
+            &"A".repeat(64),
+            None,
+            "test-bootstrap-secret",
+            1_700_000_000,
+            "nonce-1".into(),
+        )
+        .is_err());
     }
 
     #[test]
@@ -1830,6 +4037,33 @@ mod tests {
         assert!(!should_send_to_background_on_close(
             AUTHORITY_APPROVAL_WINDOW_LABEL
         ));
+        assert!(should_restore_primary_on_close("defaultspack-main"));
+        assert!(!should_restore_primary_on_close("authority-approval"));
+    }
+
+    #[test]
+    fn macos_main_window_reserves_a_titlebar_without_showing_a_title() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let main_window = &config["app"]["windows"][0];
+
+        assert_eq!(main_window["hiddenTitle"], true);
+        assert_eq!(main_window["titleBarStyle"], "Transparent");
+    }
+
+    #[test]
+    fn macos_development_config_disables_all_packaged_runtime_resources() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.macos.dev.conf.json")).unwrap();
+
+        assert_eq!(
+            config["identifier"], "dev.tobkiri.local-launcher",
+            "the unbundled mode must be independently identifiable"
+        );
+        assert!(
+            config["bundle"]["resources"].is_null(),
+            "a per-entry null does not override Tauri's base resource map; dev must disable the map itself"
+        );
     }
 
     #[test]
@@ -1990,6 +4224,17 @@ mod tests {
     }
 
     #[test]
+    fn panel_navigation_script_replaces_the_splash_location() {
+        let url = panel_session_url_for_current(None, 8765, "fresh-code").unwrap();
+        let script = format!("window.location.replace({:?});", url.as_str());
+
+        assert_eq!(
+            script,
+            "window.location.replace(\"http://127.0.0.1:8765/panel/?code=fresh-code\");"
+        );
+    }
+
+    #[test]
     fn panel_navigation_url_preserves_existing_panel_route() {
         let current =
             Url::parse("http://localhost:8765/panel/packs?foo=bar&code=old#section").unwrap();
@@ -2007,6 +4252,35 @@ mod tests {
         let url = panel_session_url_for_current(Some(&current), 8765, "fresh").unwrap();
 
         assert_eq!(url.as_str(), "http://127.0.0.1:8765/panel/?code=fresh");
+    }
+
+    #[test]
+    fn panel_session_renewal_accepts_only_the_live_launcher_panel() {
+        for url in [
+            "http://127.0.0.1:8765/panel",
+            "http://localhost:8765/panel/",
+            "http://127.0.0.1:8765/panel/packs/defaults?code=secret",
+        ] {
+            validate_panel_session_caller_context("main", &Url::parse(url).unwrap(), 8765)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn panel_session_renewal_rejects_wrong_window_origin_port_and_route() {
+        for (label, url, port) in [
+            ("defaultspack-main", "http://127.0.0.1:8765/panel/", 8765),
+            ("main", "tauri://localhost/panel/", 8765),
+            ("main", "http://example.invalid:8765/panel/", 8765),
+            ("main", "http://127.0.0.1:8766/panel/", 8765),
+            ("main", "http://127.0.0.1:8765/approval", 8765),
+            ("main", "http://127.0.0.1:8765/panel/", 0),
+        ] {
+            assert_eq!(
+                validate_panel_session_caller_context(label, &Url::parse(url).unwrap(), port),
+                Err(PANEL_SESSION_CALLER_DENIED)
+            );
+        }
     }
 
     fn isolated_app_config(prefix: &str) -> (PathBuf, AppConfig) {
@@ -2097,40 +4371,6 @@ mod tests {
         let mut km = KernelManager::new(&config, "test-bootstrap".into());
         let result = km.wait_and_handle_restart().unwrap();
         assert!(!result);
-    }
-
-    #[test]
-    fn explicit_auto_approve_opt_in_is_required() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
-
-        let dev_environment = true;
-        let auto_approve_local = dev_environment
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!auto_approve_local);
-    }
-
-    #[test]
-    fn explicit_auto_approve_opt_in_only_applies_in_dev() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::set_var("RUMI_AUTO_APPROVE_LOCAL", "true");
-
-        let production_auto_approve = false
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-        let development_auto_approve = true
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!production_auto_approve);
-        assert!(development_auto_approve);
-
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
     }
 
     #[test]

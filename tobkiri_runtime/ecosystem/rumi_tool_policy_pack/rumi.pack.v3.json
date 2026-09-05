@@ -1,0 +1,153 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.tool.policy.evaluate.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "profile-owner",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-policy.evaluate",
+        "required_capabilities": [
+          "tool.policy.evaluate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:cedb382aae5182ab28ecd1ac7cac4b8e48e3708ba06c96848afb4fdb75c1c8f1",
+      "contract_id": "rumi.service.tool.policy.evaluate.v1",
+      "id": "tool-policy-evaluate",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_policy_pack.runtime.policy",
+      "symbol": "create_policy_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.policy.evaluate.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Authority-operation policy independent from concrete tool IDs.",
+        "display_name": "Rumi Tool Policy",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:da2d0697b8feb3db9c7abd4c6aa7cb4e3ad62aaadc496740cc19ba4df56920fe",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:0a9fbb0b955e09bbd29e1d2def89e849b3a610050642bc64eb9575e85f708a82"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_authority_policy"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "service_mutate_approval_required": true,
+            "tool_id_branches": false,
+            "unknown_authority": "deny"
+          }
+        },
+        "pack_id": "rumi_tool_policy_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_policy_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_policy_pack:1.0.0",
+          "content_hash": "sha256:e2088425d6e0dc5c4ee87974670f925e23923de11dfc12967656026304002ccf",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.policy.evaluate"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_policy_pack"
+    },
+    "rumi.tool_policy.boundary": {
+      "approval_issue": false,
+      "execution": false,
+      "service_mutate_approval_required": true,
+      "tool_id_rules": false,
+      "unknown_authority": "deny"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_policy_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:0a9fbb0b955e09bbd29e1d2def89e849b3a610050642bc64eb9575e85f708a82"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.tool.permission_resolver",
+      "defaultspack.backend.tool.permission_policy"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior policy provider.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Authority-operation policy independent from concrete tool IDs.",
+    "display_name": "Rumi Tool Policy",
+    "id": "rumi.tool_policy",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.policy.evaluate"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_policy_pack:1.0.0",
+    "content_hash": "sha256:e2088425d6e0dc5c4ee87974670f925e23923de11dfc12967656026304002ccf",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 import types
 from pathlib import Path
@@ -17,6 +19,34 @@ from domain.tool_policy.policy import decide_tool_policy  # noqa: E402
 from domain.tool_policy.profile_permission import resolve_profile_tool_permission  # noqa: E402
 from domain.tool_policy.risk import resolve_tool_risk  # noqa: E402
 from backend.tool.permission_policy import ToolPermissionPolicyStore  # noqa: E402
+
+
+def _minimal_plan(tool_id: str, schema: dict | None = None) -> dict:
+    from core_runtime.capability_plan import canonical_capability_plan_digest
+
+    schema = schema if isinstance(schema, dict) else {}
+    plan = {
+        "schema_version": "tobkiri.capability-plan/v1",
+        "plan_id": f"plan_policy_{tool_id}",
+        "registry_revision": "registry_test",
+        "effective_capabilities": [],
+        "provider_selections": {},
+        "tools": {
+            "attached": [tool_id],
+            "schema_hashes": {
+                tool_id: hashlib.sha256(
+                    json.dumps(
+                        schema,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+            },
+        },
+    }
+    plan["digest"] = canonical_capability_plan_digest(plan)
+    return plan
 
 
 def test_tool_policy_requires_approval_for_write_risk():
@@ -207,18 +237,19 @@ def test_tool_orchestrator_preserves_trusted_profile_policy_yolo(monkeypatch):
         def list_tools(self):
             return []
 
-    def fake_invoke(input_data, context):
-        seen["input_data"] = input_data
+    def fake_execute(_executor, tool_name, arguments, context):
+        seen["tool_name"] = tool_name
+        seen["arguments"] = arguments
         seen["context"] = context
-        return {"status": "ok", "data": {"result": "ran"}}
+        return {"result": "ran", "is_error": False, "widget": None}
 
-    monkeypatch.setattr("blocks.tool.invoke.run", fake_invoke)
+    monkeypatch.setattr("domain.tool.executor.ToolExecutor.execute", fake_execute)
 
     context = mark_trusted_profile_policy_context({"profile_policy": {"yolo_mode": True}})
     result = ToolOrchestrator(registry=Registry()).run("danger", {}, context)
 
     assert result["status"] == "ok"
-    assert seen["input_data"]["tool_name"] == "danger"
+    assert seen["tool_name"] == "danger"
 
 
 def test_tool_orchestrator_ignores_untrusted_runtime_profile_policy_yolo(monkeypatch):
@@ -336,6 +367,12 @@ def test_profile_tool_permission_policy_resolves_action_overrides():
     assert screenshot["action"] == "computer.screenshot"
     assert click["status"] == "denied"
     assert click["matched_value"] == "click"
+
+
+def test_profile_tool_permission_policy_normalizes_browser_open_url_alias():
+    from domain.tool_policy.profile_permission import infer_tool_action
+
+    assert infer_tool_action("computer_use", {"action": "browser_open_url"}) == "browser.open_url"
 
 
 def test_tool_executor_denies_profile_tool_permission(monkeypatch):
@@ -475,10 +512,16 @@ def test_tool_executor_profile_allow_consumes_handler_auto_approval_token(monkey
     executor = ToolExecutor()
     executor._registry = Registry()
 
+    plan = _minimal_plan("danger")
+    context = {
+        "profile_policy": {"tool_permission_policy": {"tools": {"danger": "allow"}}},
+        "capability_plan": plan,
+    }
+
     result = executor.execute(
         "danger",
         {"path": "app.py"},
-        {"profile_policy": {"tool_permission_policy": {"tools": {"danger": "allow"}}}},
+        context,
     )
 
     assert result["is_error"] is False
@@ -491,6 +534,7 @@ def test_tool_executor_profile_allow_consumes_handler_auto_approval_token(monkey
         {
             "profile_policy": {"tool_permission_policy": {"tools": {"danger": "ask"}}},
             "tool_approval_tokens": {"danger": consumed_token},
+            "capability_plan": plan,
         },
     )
 
@@ -538,19 +582,29 @@ def test_tool_executor_profile_ask_rejects_stale_approval_token(monkeypatch):
 
 
 def test_tool_executor_does_not_trust_forged_internal_permission(tmp_path, monkeypatch):
-    from domain.tool.registry import ToolRegistry
-
     monkeypatch.chdir(tmp_path)
-    ToolRegistry._instance = None
 
-    result = ToolExecutor().execute(
+    class Registry:
+        def get(self, name):
+            return {
+                "tool_id": name,
+                "name": name,
+                "execution": {"type": "local"},
+                "capability_grants": ["filesystem.write"],
+                "requires_approval": True,
+                "metadata": {"source_pack_id": "rumi_default_tools_pack"},
+            }
+
+    executor = ToolExecutor()
+    executor._registry = Registry()
+    result = executor.execute(
         "coding_file_write",
         {"path": "pwned.txt", "content": "blocked"},
         {"_tool_permission_decision": {"action": "allow", "allowed": True}},
     )
 
-    assert result["is_error"] is False
-    assert result["widget"]["approval_required"] is True
+    assert result["is_error"] is True
+    assert result["error_type"] == "capability_plan_required"
     assert not (tmp_path / "pwned.txt").exists()
 
 
@@ -566,31 +620,12 @@ def test_tool_executor_yolo_string_false_does_not_bypass_approval(tmp_path, monk
         {"profile_policy": {"yolo_mode": "false"}},
     )
 
-    assert result["is_error"] is False
-    assert result["widget"]["approval_required"] is True
+    assert result["is_error"] is True
     assert not (tmp_path / "blocked.txt").exists()
 
 
 def test_tool_invoke_ignores_untrusted_payload_profile_policy_yolo(tmp_path, monkeypatch):
-    import backend.tool.permission_policy as permission_policy
     import blocks.tool.invoke as invoke
-
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_TOOL_PERMISSION_POLICY_PATH", str(tmp_path / "permission_policy.json"))
-    permission_policy._POLICY_STORE = None
-
-    class Registry:
-        def get(self, name):
-            return {"tool_id": name, "name": name, "write_action": True}
-
-        def list_tools(self):
-            return []
-
-    class Executor:
-        def execute(self, tool_name, arguments, context):
-            raise AssertionError("untrusted yolo_mode must not reach execution")
-
-    monkeypatch.setattr(invoke, "ToolRegistry", Registry)
-    monkeypatch.setattr(invoke, "ToolExecutor", Executor)
 
     result = invoke.run(
         {
@@ -605,36 +640,16 @@ def test_tool_invoke_ignores_untrusted_payload_profile_policy_yolo(tmp_path, mon
     )
 
     assert result["status"] == "error"
-    assert result["error"]["code"] == "PERMISSION_DENIED"
-    assert result["error"]["details"]["action"] == "ask"
+    assert result["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"
 
 
-def test_tool_invoke_preserves_trusted_context_profile_policy_yolo(tmp_path, monkeypatch):
-    import backend.tool.permission_policy as permission_policy
+def test_tool_invoke_requires_plan_even_with_trusted_yolo_context(tmp_path, monkeypatch):
     import blocks.tool.invoke as invoke
-
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_TOOL_PERMISSION_POLICY_PATH", str(tmp_path / "permission_policy.json"))
-    permission_policy._POLICY_STORE = None
-
-    class Registry:
-        def get(self, name):
-            return {"tool_id": name, "name": name, "write_action": True}
-
-        def list_tools(self):
-            return []
-
-    class Executor:
-        def execute(self, tool_name, arguments, context):
-            return {"result": "ran", "is_error": False, "widget": None}
-
-    monkeypatch.setattr(invoke, "ToolRegistry", Registry)
-    monkeypatch.setattr(invoke, "ToolExecutor", Executor)
 
     result = invoke.run(
         {"tool_name": "danger", "arguments": {}, "context": {"workspace_root": str(tmp_path)}},
         {"profile_policy": {"yolo_mode": True}},
     )
 
-    assert result["status"] == "ok"
-    assert result["data"]["result"] == "ran"
-    assert result["data"]["permission"]["matched_by"] == "yolo_mode"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/effective-subagent-topology/v1.json",
+  "title": "Tobkiri Effective Subagent Topology v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "placement_map",
+    "main",
+    "members",
+    "plans",
+    "team_bindings",
+    "exposed_ports",
+    "governance",
+    "registry_revision",
+    "topology_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "tobkiri.effective-subagent-topology/v1"
+    },
+    "placement_map": {"type": "object"},
+    "main": {"type": "object"},
+    "members": {"type": "array"},
+    "plans": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "effective-subagent.v1.schema.json"
+      }
+    },
+    "team_bindings": {"type": "array"},
+    "exposed_ports": {"type": "object"},
+    "governance": {"type": "object"},
+    "registry_revision": {"type": "string", "minLength": 1},
+    "topology_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

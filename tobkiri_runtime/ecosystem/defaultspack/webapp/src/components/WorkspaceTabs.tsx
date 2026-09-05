@@ -152,7 +152,12 @@ function NewTabMenu({
   onCreate: (kind: WorkspaceTabKind) => void;
 }) {
   return (
-    <div className="absolute left-0 top-[calc(100%+6px)] rumi-layer-modal w-[min(420px,calc(100vw-48px))] overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950 py-2 shadow-2xl">
+    <div
+      id="rumi-new-workspace-tab-menu"
+      role="menu"
+      aria-label="Create workspace tab"
+      className="rumi-workspace-new-tab-menu absolute left-0 top-[calc(100%+6px)] rumi-layer-modal w-[min(420px,calc(100vw-24px))] overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950 py-2 shadow-2xl"
+    >
       <div className="grid grid-cols-2 gap-1.5 px-2">
         {options.map((option) => {
           const Icon = option.icon;
@@ -160,6 +165,7 @@ function NewTabMenu({
             <button
               key={option.kind}
               type="button"
+              role="menuitem"
               disabled={option.disabled}
               onClick={() => !option.disabled && onCreate(option.kind)}
               className={cn(
@@ -174,10 +180,10 @@ function NewTabMenu({
               </span>
               <span className="min-w-0">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-[12px] font-medium">{option.label}</span>
+                  <span className="break-words text-[12px] font-medium leading-4">{option.label}</span>
                   {option.badge && <span className="shrink-0 rounded bg-zinc-800 px-1 py-px text-[8px] text-zinc-500">{option.badge}</span>}
                 </span>
-                <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{option.description}</span>
+                <span className="mt-0.5 block text-[10px] leading-4 text-zinc-500">{option.description}</span>
               </span>
             </button>
           );
@@ -229,8 +235,8 @@ export function WorkspaceTabBar({
   };
 
   return (
-    <div className="flex h-10 shrink-0 items-end gap-1 border-b border-zinc-800/60 bg-[#09090b] px-2 pt-1">
-      <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden pb-0.5 scrollbar-none">
+    <div className="rumi-workspace-tabbar flex h-10 shrink-0 items-end gap-1 border-b border-zinc-800/60 bg-[#09090b] px-2 pt-1">
+      <div role="tablist" aria-label="Open workspaces" className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden pb-0.5 scrollbar-none">
         {tabs.map((tab) => {
           const Icon = iconForKind(tab.kind);
           const isActive = tab.id === activeTabId;
@@ -239,7 +245,7 @@ export function WorkspaceTabBar({
             <div
               key={tab.id}
               className={cn(
-                "group/tab flex h-8 max-w-52 min-w-28 items-center gap-1.5 rounded-t-lg border px-2 text-left text-[12px] transition-colors",
+                "group/tab flex h-9 max-w-52 min-w-24 items-center gap-1.5 rounded-t-lg border px-1.5 text-left text-[12px] transition-colors",
                 isActive
                   ? "border-zinc-700 border-b-[#09090b] bg-[#111116] text-zinc-100"
                   : "border-transparent bg-zinc-950/40 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200",
@@ -248,8 +254,11 @@ export function WorkspaceTabBar({
             >
               <button
                 type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => onSelect(tab.id)}
-                className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-0.5 text-left"
               >
                 <Icon size={13} className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{title}</span>
@@ -261,7 +270,10 @@ export function WorkspaceTabBar({
                     event.stopPropagation();
                     onClose(tab.id);
                   }}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-600 opacity-0 transition-opacity hover:bg-zinc-800 hover:text-zinc-200 group-hover/tab:opacity-100"
+                  className={cn(
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-600 transition-[opacity,color,background-color] hover:bg-zinc-800 hover:text-zinc-200 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
+                    isActive ? "opacity-60" : "opacity-0",
+                  )}
                   title="Close tab"
                   aria-label={`Close ${title}`}
                 >
@@ -277,11 +289,14 @@ export function WorkspaceTabBar({
           type="button"
           onClick={() => setIsMenuOpen((value) => !value)}
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-100",
+            "flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-100",
             isMenuOpen && "bg-zinc-900 text-zinc-100",
           )}
           title="New tab"
           aria-label="New tab"
+          aria-haspopup="menu"
+          aria-expanded={isMenuOpen}
+          aria-controls="rumi-new-workspace-tab-menu"
         >
           <Plus size={16} />
         </button>
@@ -325,8 +340,9 @@ export function WorkspaceTabRailPanel({
             >
               <button
                 type="button"
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => onSelect(tab.id)}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md text-left"
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-zinc-400">
                   <Icon size={15} />
@@ -361,6 +377,7 @@ export function WorkspaceTabRailPanel({
             <button
               key={option.kind}
               type="button"
+              role="menuitem"
               disabled={option.disabled}
               onClick={() => !option.disabled && onCreate(option.kind)}
               className={cn(

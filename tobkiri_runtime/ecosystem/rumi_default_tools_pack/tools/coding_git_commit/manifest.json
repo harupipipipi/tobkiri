@@ -35,7 +35,11 @@
           "message": {"type": "string"},
           "paths": {"type": "array", "items": {"type": "string"}, "description": "Files to stage and commit. Only these files are committed; unrelated dirty files are left untouched."},
           "files": {"type": "array", "items": {"type": "string"}, "description": "Alias for paths."},
-          "all_tracked": {"type": "boolean"}
+          "all_tracked": {"type": "boolean"},
+          "expected_head": {"type": "string", "description": "Pinned repository HEAD from the coding preflight."},
+          "expected_tree": {"type": "string", "description": "Pinned repository tree from the coding preflight."},
+          "expected_status_hash": {"type": "string", "description": "SHA-256 of porcelain-v2 status from the coding preflight."},
+          "expected_mount_revision": {"type": "integer", "description": "Workspace mount revision from the coding preflight."}
         },
         "required": ["message"]
       }

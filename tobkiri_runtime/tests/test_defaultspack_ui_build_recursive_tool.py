@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tests.ui_compiler_test_utils import build_args, fake_context, fixture_tree, write_pass_package
 
 from domain.tool.executor import ToolExecutor
@@ -14,7 +16,20 @@ from domain.tool.ui_compiler_runtime.fake_agent_backend import FakeUIAgentBacken
 from domain.tool.ui_compiler_runtime.subagent_backend import SubagentToolBackend
 from domain.ui_compiler import RenderMatrix, RenderSnapshot, UIAgentResult, UIAgentTask
 from domain.ui_compiler.planner import RecursiveUIPlanner
-from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
+
+
+pytestmark = pytest.mark.usefixtures("defaultspack_component_catalog_selected")
+
+
+def _disable_browser_renderer(monkeypatch) -> None:
+    """Patch the render module used by the imported orchestrator class."""
+
+    render_runner = RecursiveUIBuildOrchestrator.run.__globals__["RenderMatrixRunner"]
+    monkeypatch.setitem(
+        render_runner._render_subject.__globals__,
+        "_browser_executable_path",
+        lambda: "",
+    )
 
 
 def test_tool_registry_exposes_recursive_ui_runtime_tools() -> None:
@@ -35,7 +50,7 @@ def test_tool_registry_exposes_recursive_ui_runtime_tools() -> None:
         assert registry.get(tool_id)["write_action"] is True
 
 
-def test_tool_executor_yolo_context_can_run_build_recursive_with_fake_backend(tmp_path: Path) -> None:
+def test_tool_executor_rejects_unplanned_yolo_context(tmp_path: Path) -> None:
     ToolRegistry._instance = None
     write_pass_package(tmp_path / "project")
     result = ToolExecutor().execute(
@@ -49,9 +64,9 @@ def test_tool_executor_yolo_context_can_run_build_recursive_with_fake_backend(tm
         },
     )
 
-    assert result["is_error"] is False
-    assert result["widget"]["type"] == "ui_build_recursive"
-    assert (tmp_path / ".rumi" / "ui" / "runs" / "executor-run" / "reports" / "final.json").is_file()
+    assert result["is_error"] is True
+    assert result["error_type"] == "capability_plan_required"
+    assert not (tmp_path / ".rumi" / "ui" / "runs" / "executor-run").exists()
 
 
 def test_raw_yolo_context_cannot_call_runtime_directly(tmp_path: Path) -> None:
@@ -205,9 +220,7 @@ def test_recursive_build_fails_when_pipeline_specialist_fails(tmp_path: Path) ->
 
 
 def test_browser_render_synthetic_fallback_is_reported_as_warning(tmp_path: Path, monkeypatch) -> None:
-    from domain.tool.ui_compiler_runtime import render_matrix as render_module
-
-    monkeypatch.setattr(render_module, "_browser_executable_path", lambda: "")
+    _disable_browser_renderer(monkeypatch)
     write_pass_package(tmp_path / "project")
     args = build_args("browser-fallback-warn")
     args["options"]["browserRender"] = True
@@ -221,9 +234,7 @@ def test_browser_render_synthetic_fallback_is_reported_as_warning(tmp_path: Path
 
 
 def test_production_strict_browser_render_fallback_fails_build(tmp_path: Path, monkeypatch) -> None:
-    from domain.tool.ui_compiler_runtime import render_matrix as render_module
-
-    monkeypatch.setattr(render_module, "_browser_executable_path", lambda: "")
+    _disable_browser_renderer(monkeypatch)
     write_pass_package(tmp_path / "project")
     args = build_args("browser-fallback-fail")
     args["options"]["browserRender"] = True
@@ -240,9 +251,7 @@ def test_production_strict_browser_render_fallback_fails_build(tmp_path: Path, m
 
 
 def test_render_matrix_stage_strict_browser_fallback_fails_before_selection(tmp_path: Path, monkeypatch) -> None:
-    from domain.tool.ui_compiler_runtime import render_matrix as render_module
-
-    monkeypatch.setattr(render_module, "_browser_executable_path", lambda: "")
+    _disable_browser_renderer(monkeypatch)
     write_pass_package(tmp_path / "project")
     args = build_args("browser-fallback-stage-fail")
     args["options"]["browserRender"] = True
@@ -422,11 +431,15 @@ def test_quality_audit_fails_missing_typography_role_map() -> None:
     assert any("missing typography roles" in issue["message"] for issue in audit["typography"]["issues"])
 
 
-def test_recursive_ui_http_routes_are_registered() -> None:
-    routes = {(spec.method, spec.pattern) for spec in canonical_http_route_specs()}
+def test_recursive_ui_requires_captured_operation() -> None:
+    from tests.v4_batch_support import assert_route_cutover
 
-    assert ("POST", "/api/ui/build-recursive") in routes
-    assert ("GET", "/api/ui/generation-status") in routes
+    assert_route_cutover(
+        "POST",
+        "/api/ui/build-recursive",
+        "tobkiri.ui-build.v1",
+        "defaultspack.ui-build.recursive",
+    )
 
 
 def test_subagent_tool_backend_runs_real_delegate_path(tmp_path: Path, monkeypatch) -> None:

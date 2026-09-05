@@ -88,19 +88,20 @@ class TestNetworkGrantManagerDI:
         assert func_instance is di_instance
 
 
-class TestEgressProxyManagerDI:
+class TestRetiredEgressProxyManagerDI:
 
-    def test_default_egress_proxy_manager_has_network_grant_manager(self) -> None:
-        """DI-created egress proxies must enforce NetworkGrantManager grants."""
-        from core_runtime.network_grant_manager import NetworkGrantManager
-
+    def test_egress_proxy_manager_is_absent_and_fail_closed(self) -> None:
+        """The retired direct egress service is never a v4 DI entrypoint."""
         reset_container()
         container = get_container()
-        grant_manager = container.get("network_grant_manager")
-        egress_manager = container.get("egress_proxy_manager")
 
-        assert isinstance(grant_manager, NetworkGrantManager)
-        assert egress_manager._network_grant_manager is grant_manager
+        assert not container.has("egress_proxy_manager")
+        assert container.get_or_none("egress_proxy_manager") is None
+        with pytest.raises(
+            KeyError,
+            match="Service not registered: egress_proxy_manager",
+        ):
+            container.get("egress_proxy_manager")
 
 
 # ===================================================================

@@ -114,6 +114,32 @@ def _text_response(content: str = "done") -> dict:
     return {"status": "ok", "data": {"content": content}}
 
 
+def test_adapt_tool_definition_preserves_anthropic_input_schema() -> None:
+    adapted = adapt_tool_definition(
+        {
+            "name": "multiply_exactly",
+            "description": "Multiply two integers.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+                "required": ["a", "b"],
+            },
+        }
+    )
+
+    assert adapted["function"]["parameters"] == {
+        "type": "object",
+        "properties": {
+            "a": {"type": "integer"},
+            "b": {"type": "integer"},
+        },
+        "required": ["a", "b"],
+    }
+
+
 def _tool_call_response(name: str, arguments: str = '{"q": "rumi"}') -> dict:
     return {
         "status": "ok",
@@ -457,9 +483,11 @@ def test_agent_approve_preserves_tools_for_followup_completion() -> None:
     engine = AgentEngine()
     tools = [_tool("search")]
     seen_followup_tools = []
+    seen_followup_messages = []
 
     def fake_ai(messages, model, context, tools=None):
         seen_followup_tools.append(tools)
+        seen_followup_messages.append(list(messages))
         if len(seen_followup_tools) == 1:
             return _tool_call_response("search")
         return _text_response("used tool")
@@ -481,6 +509,8 @@ def test_agent_approve_preserves_tools_for_followup_completion() -> None:
     assert approved["status"] == "completed"
     assert seen_followup_tools == [tools, tools]
     assert executed == {"tool_name": "search", "tool_args": {"q": "rumi"}}
+    assert seen_followup_messages[1][-1]["role"] == "tool"
+    assert seen_followup_messages[1][-1]["tool_call_id"] == "call_1"
 
 
 def test_agent_yolo_auto_approves_tool_call_without_waiting() -> None:

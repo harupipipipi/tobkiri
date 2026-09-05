@@ -1,0 +1,127 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:32732a95463444e4a3d0c3a858322b617113073c88849c027b2b3652bed59adf",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+      "kind": "executable",
+      "path": "runtime/executor.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_mcp_executor_pack.tool-mcp-execute"
+      ],
+      "revision_digest": "sha256:27f48765aaca779b16b0dd64751f9cc2ffedba3d87c9ce9e139e4695abee4468"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:27f48765aaca779b16b0dd64751f9cc2ffedba3d87c9ce9e139e4695abee4468",
+      "id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
+      "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_mcp_executor_pack.tool-mcp-execute"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:a36b2a208bde192e99cb8e601aa23086747200d549e96b5524209bdac167d285",
+    "artifact_set_digest": "sha256:140bb358ad57cb9e0cf457a7949bcdfff593b7be709f93690c6353a48792c7d4",
+    "contract_catalog_digest": "sha256:d1f7f43f5696d752c4222cdb0e40b7a43ca583dc42de771e84c10b62b157ba00"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.execute.v1",
+      "rumi:ecosystem/rumi_tool_mcp_executor_pack",
+      "rumi_tool_mcp_executor_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_mcp_executor_pack.tool-mcp-execute",
+      "owner": "rumi_tool_mcp_executor_pack",
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "provider_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:2ad98e930afb6fd41a88c3eba17f2a26a9300c27c768f8ee08ebba016622b90a",
+    "display_name": "Rumi Tool MCP Executor",
+    "id": "rumi_tool_mcp_executor_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_mcp_executor_pack/pack.v4.json",
+    "source_digest": "sha256:a36b2a208bde192e99cb8e601aa23086747200d549e96b5524209bdac167d285",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:a62c13804161358cfb19a278987ac1e89c331c9166ac40d0d55989320cf20572",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:af5b32a7a0add109672d5709b3c91f9d441706df723a777ee53fc8e3d564bc80",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_tool_mcp_executor_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:a36b2a208bde192e99cb8e601aa23086747200d549e96b5524209bdac167d285"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
+      "owner": "rumi_tool_mcp_executor_pack",
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_mcp_executor_pack.tool-mcp-execute"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.execute"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.mcp.tool.call.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

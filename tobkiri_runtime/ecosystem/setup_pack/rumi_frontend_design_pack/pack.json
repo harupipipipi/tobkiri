@@ -17,7 +17,7 @@
     "component_acceptance_schema": "owned_by_rumi_frontend_design_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Frontend design is a declarative planning and QA contract pack; it must not replace defaultspack runtime startup or implementation ownership.",
     "criteria": [

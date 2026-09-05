@@ -1,3 +1,5 @@
+import { defaultspackApiFetch, defaultspackContractRoute } from "./api";
+
 export type DesktopPermissionStatus = {
   id: string;
   label: string;
@@ -104,8 +106,7 @@ export async function fetchDesktopSystemInfo(): Promise<DesktopSystemInfo | null
   }
 
   try {
-    const baseUrl = window.location.origin;
-    const res = await fetch(`${baseUrl}/api/desktop-system-info`);
+    const res = await defaultspackApiFetch(defaultspackContractRoute("api/desktop-system-info"));
     if (!res.ok) return null;
     const json: unknown = await res.json();
     if (isResponseShape(json) && isDesktopSystemInfoShape(json.data)) {

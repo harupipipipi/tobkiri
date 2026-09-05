@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any
 
+from domain.frontend_settings import frontend_settings_path
 from domain.webhook.endpoint import WebhookEndpoint
 
 
@@ -139,5 +139,4 @@ def _ascii_word(text: str) -> bool:
 
 
 def _frontend_settings_path() -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", "").strip()
-    return Path(override) if override else Path(__file__).resolve().parents[3] / "user_data" / "shared" / "frontend_settings.json"
+    return frontend_settings_path()

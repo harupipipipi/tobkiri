@@ -24,6 +24,10 @@ def _log_internal_error(context: str, exc: Exception) -> None:
             success=False,
             details={"context": context, "error": str(exc), "type": type(exc).__name__},
         )
+        # Internal API failures are rare and immediately actionable.  Persist
+        # them now instead of leaving the only diagnostic in the audit
+        # logger's in-memory batch until process shutdown.
+        audit.flush()
     except Exception:
         logger.exception(f"Internal error in {context}: {exc}")
 

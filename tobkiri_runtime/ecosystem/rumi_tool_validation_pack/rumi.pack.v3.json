@@ -1,0 +1,149 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.tool.arguments.validate.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "caller",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-validation.arguments",
+        "required_capabilities": [
+          "tool.arguments.validate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+      "contract_id": "rumi.service.tool.arguments.validate.v1",
+      "id": "tool-arguments-validate",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_validation_pack.runtime.validator",
+      "symbol": "create_validate_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.arguments.validate.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Deterministic non-coercing tool argument validation.",
+        "display_name": "Rumi Tool Validation",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:ec680478d367e6768a6ccaf367b6c74e25b48eee4fd6e016cee7c9df35449524",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:b7b5c9c3444c88af9d39541a32d8b463ccbd79448e334ef4838771037a454e60"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_argument_validation"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "coercion": false,
+            "execution": false
+          }
+        },
+        "pack_id": "rumi_tool_validation_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_validation_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_validation_pack:1.0.0",
+          "content_hash": "sha256:97370c6481222422c52f790f0d402c638a28a952cd6a9f440f357264c848768d",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.arguments.validate"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_validation_pack"
+    },
+    "rumi.tool_validation.boundary": {
+      "argument_coercion": false,
+      "authority": false,
+      "tool_execution": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_validation_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:b7b5c9c3444c88af9d39541a32d8b463ccbd79448e334ef4838771037a454e60"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "defaultspack.domain.tool.schema_adapter"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior validator.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Deterministic non-coercing tool argument validation.",
+    "display_name": "Rumi Tool Validation",
+    "id": "rumi.tool_validation",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.arguments.validate"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_validation_pack:1.0.0",
+    "content_hash": "sha256:97370c6481222422c52f790f0d402c638a28a952cd6a9f440f357264c848768d",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

@@ -1,0 +1,6 @@
+TOBKIRI NON-PUBLISHABLE CI/E2E ARTIFACT
+
+This application is built only for automated packaged-startup testing.
+It is not a production release and must never be published as one.
+Its bundle identifier and ephemeral signing identity are deliberately outside
+the production Tobkiri Launcher trust domain.

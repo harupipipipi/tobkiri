@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from core_runtime.ai_input_compiler import MODEL_INPUT_NODE_ID, compile_effective_ai_input
-from core_runtime.ai_input_models import (
+from ecosystem.defaultspack.domain.ai_input.ai_input_compiler import (
+    MODEL_INPUT_NODE_ID,
+    compile_effective_ai_input,
+)
+from ecosystem.defaultspack.domain.ai_input.ai_input_models import (
     AiInputEdge,
     AiInputNode,
     AiInputSegmentRegistry,

@@ -1,0 +1,162 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:915c63b4325bcab3e8b9ed1ed8a5fd126f7db13d4f5c8c895e66147d400801b5",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "kind": "executable",
+      "path": "runtime/authoring.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.tool.authoring.publish.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-publish"
+      ],
+      "revision_digest": "sha256:cd7a3ebc54c48ab00c37224f96f056dabc07b8863bbded6ee0747bf0974da656"
+    },
+    {
+      "contract_id": "tobkiri.service.tool.authoring.validate.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-validate"
+      ],
+      "revision_digest": "sha256:19feb9d8bbd4ff7cc45275b0192413bdae7155a6ec60704fec953ca09618fb6e"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:cd7a3ebc54c48ab00c37224f96f056dabc07b8863bbded6ee0747bf0974da656",
+      "id": "rumi_tool_authoring_pack.tool-authoring.publish",
+      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-publish"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:19feb9d8bbd4ff7cc45275b0192413bdae7155a6ec60704fec953ca09618fb6e",
+      "id": "rumi_tool_authoring_pack.tool-authoring.validate",
+      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-validate"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:9aa5f29bcaa42407b352364b3a8a08b4c6f358232fc34d69370ca464dfd9bd3d",
+    "artifact_set_digest": "sha256:65954be3af19352e05e8d151d5294fd3284f2f41b1b9bec43ee91e1a08cf6060",
+    "contract_catalog_digest": "sha256:6baef11d34824079eb73a7d9befa2de721d88b67df866fd15cfd8f56fd481faa"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.tool.authoring.publish.v1",
+      "rumi.service.tool.authoring.validate.v1",
+      "rumi:ecosystem/rumi_tool_authoring_pack",
+      "rumi_tool_authoring_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_tool_authoring_pack.tool-authoring-publish",
+      "owner": "rumi_tool_authoring_pack",
+      "contract_reference": "tobkiri.action.tool.authoring.publish.v1",
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.publish",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_tool_authoring_pack.tool-authoring-validate",
+      "owner": "rumi_tool_authoring_pack",
+      "contract_reference": "tobkiri.service.tool.authoring.validate.v1",
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.validate",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:3b24f458f5c281843652aed4192cb82875fc4bb1d76c0adc33a6db2c88920f27",
+    "display_name": "Rumi Tool Authoring",
+    "id": "rumi_tool_authoring_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_tool_authoring_pack/pack.v4.json",
+    "source_digest": "sha256:9aa5f29bcaa42407b352364b3a8a08b4c6f358232fc34d69370ca464dfd9bd3d",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:37e2e9b5dae1f809c21bc855ba84b9314b4fc311b9ef01378de2dd6f1d8b2577",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:d0c4d3e42fd264b8723ea95c47a7f032d6363ae6a250d28d0bcf3abacca96275",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_tool_authoring_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:9aa5f29bcaa42407b352364b3a8a08b4c6f358232fc34d69370ca464dfd9bd3d"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.publish",
+      "owner": "rumi_tool_authoring_pack",
+      "contract_reference": "tobkiri.action.tool.authoring.publish.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-publish"
+      ]
+    },
+    {
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.validate",
+      "owner": "rumi_tool_authoring_pack",
+      "contract_reference": "tobkiri.service.tool.authoring.validate.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-validate"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "tool.authoring.publish",
+      "tool.authoring.validate"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.tool.definition.manage.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

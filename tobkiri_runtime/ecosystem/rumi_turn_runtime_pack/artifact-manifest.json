@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/turns.py",
+      "role": "runtime",
+      "sha256": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

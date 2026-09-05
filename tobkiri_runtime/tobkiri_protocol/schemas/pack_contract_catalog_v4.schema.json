@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/pack-contract-catalog.v4.schema.json",
+  "title": "Tobkiri per-Pack contract catalog v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["catalog_api_version", "pack_id", "source_identity", "contracts"],
+  "properties": {
+    "catalog_api_version": {"const": "io.tobkiri.pack-contract-catalog.v4"},
+    "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "source_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "contracts": {"type": "array", "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/contract.v4.schema.json"}}
+  }
+}

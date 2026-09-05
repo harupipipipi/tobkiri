@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
+import threading
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from domain.ai_client.api_key_store import (
+    _secrets_dir as provider_secrets_dir,
     provider_api_metadata,
     provider_has_api_key,
     provider_named_api_keys,
     read_provider_api_key,
-    set_provider_api_key,
 )
 from domain.ai_client.model_groups import default_model_groups, normalize_model_groups
 from domain.ai_client.model_pack_store import normalize_model_packs
@@ -23,17 +24,77 @@ from domain.ai_client.rumi_process import (
     ensure_default_rumi_model_pack,
     resolve_rumi_base_model,
 )
-from domain.frontend_settings_store import FrontendSettingsStore
+from domain.frontend_settings_store import (
+    FrontendSettingsStore,
+    defaultspack_frontend_settings_path,
+)
 
 
 VALID_THINKING_LEVELS = {"none", "low", "medium", "high", "xhigh"}
 DEFAULT_MODEL = "stub/default"
-LEGACY_CLOUD_DEFAULT_MODEL = "openrouter/tencent/hy3-preview:free"
+LEGACY_CLOUD_DEFAULT_MODELS = {
+    "openrouter/tencent/hy3:free",
+    "openrouter/tencent/hy3-preview:free",
+}
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_DEEPTHINK_ENABLED = False
+DEEPTHINK_STATE_REF = "defaultspack:models.deepthink_enabled"
 CEREBRAS_REASONING_MODELS = {"gpt-oss-120b", "zai-glm-4.7"}
 MODEL_SLOT_MAIN = "main"
 MODEL_SLOT_LIGHTWEIGHT = "lightweight"
+
+_settings_cache_lock = threading.RLock()
+_settings_cache: dict[
+    tuple[str, str], tuple[tuple[Any, ...], dict[str, Any]]
+] = {}
+
+
+def _file_signature(path: Path) -> tuple[str, int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return str(path), stat.st_mtime_ns, stat.st_size
+
+
+def _settings_dependency_signature(
+    settings_path: Path,
+    pack_root: Path,
+) -> tuple[Any, ...]:
+    """Return non-secret inputs that affect resolved model settings.
+
+    Credential values stay inside the provider credential store.  The cache
+    only tracks the boolean availability state used by the settings projection
+    so a secret is never copied into, or hashed by, this module.
+    """
+    secrets_dir = provider_secrets_dir(pack_root)
+    dependency_paths = [
+        settings_path,
+        settings_path.with_suffix(f"{settings_path.suffix}.bak"),
+        secrets_dir / "provider_api_keys.json",
+        secrets_dir / "custom_providers.json",
+        secrets_dir / "provider_oauth.json",
+        pack_root / ".env",
+        pack_root / "config" / "settings_control_center" / "oauth.env",
+    ]
+    file_signatures = tuple(
+        signature
+        for path in dependency_paths
+        if (signature := _file_signature(path)) is not None
+    )
+    credential_state = tuple(
+        (
+            provider_id,
+            provider_has_api_key(provider_id, pack_root=pack_root),
+        )
+        for provider_id in ("google", "openrouter")
+    )
+    return (tuple(file_signatures), credential_state)
+
+
+def _invalidate_settings_cache(path: Path, pack_root: Path) -> None:
+    with _settings_cache_lock:
+        _settings_cache.pop((str(path), str(pack_root)), None)
 
 
 class ModelRuntimeSettingsService:
@@ -41,11 +102,23 @@ class ModelRuntimeSettingsService:
 
     def __init__(self, pack_root: Path | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._settings_path = self._pack_root / "user_data" / "shared" / "frontend_settings.json"
+        settings_owner = pack_root if pack_root is not None else None
+        self._settings_path = defaultspack_frontend_settings_path(settings_owner)
         self._settings_store = FrontendSettingsStore(self._settings_path)
 
     def get_settings(self) -> dict[str, Any]:
-        return self.refresh_models_settings(self._read_all().get("models", {}))
+        cache_key = (str(self._settings_path), str(self._pack_root))
+        signature = _settings_dependency_signature(self._settings_path, self._pack_root)
+        with _settings_cache_lock:
+            cached = _settings_cache.get(cache_key)
+            if cached is not None and cached[0] == signature:
+                return deepcopy(cached[1])
+
+        resolved = self._read_all().get("models", {})
+        resolved = resolved if isinstance(resolved, dict) else self.default_model_settings()
+        with _settings_cache_lock:
+            _settings_cache[cache_key] = (signature, deepcopy(resolved))
+        return deepcopy(resolved)
 
     def update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -63,6 +136,7 @@ class ModelRuntimeSettingsService:
             return all_settings
 
         self._settings_store.update(merge)
+        _invalidate_settings_cache(self._settings_path, self._pack_root)
         return result
 
     def get_preferred_model(self) -> str:
@@ -218,28 +292,74 @@ class ModelRuntimeSettingsService:
         settings = self.get_settings()
         return {
             "enabled": bool(settings.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)),
+            "state_ref": DEEPTHINK_STATE_REF,
+            "revision": self._settings_store.state_revision(DEEPTHINK_STATE_REF),
             "warning": "DeepThinkが有効なタスクには数時間かかる可能性があります。",
         }
 
-    def set_deepthink_enabled(self, enabled: bool | None = None) -> dict[str, Any]:
-        settings = self.get_settings()
-        if enabled is None:
-            next_enabled = not bool(settings.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED))
-        else:
-            next_enabled = self._coerce_bool(enabled, default=DEFAULT_DEEPTHINK_ENABLED)
-        updated = self.update_settings({"deepthink_enabled": next_enabled})
+    def set_deepthink_enabled(
+        self,
+        enabled: bool | None = None,
+        *,
+        expected_revision: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        requested = enabled if isinstance(enabled, bool) else None
+
+        def mutate(all_settings: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            current_models = all_settings.get("models", {})
+            if not isinstance(current_models, dict):
+                current_models = {}
+            current_enabled = bool(
+                current_models.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)
+            )
+            next_enabled = not current_enabled if requested is None else requested
+            sanitized = self.sanitize_models_patch(
+                {"deepthink_enabled": next_enabled}, current_models=current_models
+            )
+            updated_models = self.refresh_models_settings(
+                self._deep_merge(current_models, sanitized)
+            )
+            all_settings["models"] = dict(updated_models)
+            return all_settings, {
+                "enabled": next_enabled,
+                "persisted": True,
+                "settings": updated_models,
+            }
+
+        fingerprint = json.dumps(
+            {
+                "state_ref": DEEPTHINK_STATE_REF,
+                "desired": requested,
+                "expected_revision": expected_revision,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        updated = self._settings_store.mutate_state(
+            DEEPTHINK_STATE_REF,
+            mutate,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+        )
+        _invalidate_settings_cache(self._settings_path, self._pack_root)
+        next_enabled = bool(updated.get("enabled"))
         message = (
             "DeepThinkをONにしました。タスクには数時間かかる可能性があります。"
             if next_enabled
             else "DeepThinkをOFFにしました。"
         )
-        return {
-            "enabled": next_enabled,
-            "persisted": True,
-            "message": message,
-            "warning": "タスクには数時間かかる可能性があります。" if next_enabled else "",
-            "settings": updated,
+        updated["message"] = message
+        updated["warning"] = "タスクには数時間かかる可能性があります。" if next_enabled else ""
+        updated["state_snapshot"] = {
+            "state_ref": DEEPTHINK_STATE_REF,
+            "value": next_enabled,
+            "revision": int(updated.get("revision") or 0),
+            "freshness": "authoritative",
         }
+        return updated
 
     def get_effective_thinking_level(
         self,
@@ -287,7 +407,7 @@ class ModelRuntimeSettingsService:
             else:
                 result["provider_params"] = {}
             return result
-        if provider in {"openai", "openai_compatible", "openrouter"}:
+        if provider in {"openai", "openai_compatible", "openrouter", "nvidia"}:
             effort = "high" if normalized == "xhigh" else normalized
             if effort != "none":
                 result["provider_params"] = {"reasoning_effort": effort}
@@ -303,7 +423,7 @@ class ModelRuntimeSettingsService:
                 result["provider_params"] = {"reasoning_effort": effort}
             else:
                 result["provider_params"] = {}
-            result["level"] = effort if normalized == "xhigh" else normalized
+            result["level"] = normalized
         elif provider == "anthropic":
             result["provider_params"] = {"thinking_level": normalized}
         elif provider == "google":
@@ -416,7 +536,11 @@ class ModelRuntimeSettingsService:
 
             provider_map = detect_available_providers()
             available_providers.update(str(name or "").strip() for name in provider_map.keys() if str(name or "").strip())
-            for model in get_all_known_models():
+            # Rumi base-model resolution only needs models from providers that
+            # are actually available in this runtime.  Asking the catalog for
+            # every manifest here makes a routine model-pack lookup walk every
+            # unconfigured provider and repeatedly re-hash its metadata.
+            for model in get_all_known_models(active_provider_ids=available_providers):
                 if not isinstance(model, dict):
                     continue
                 if not self._is_real_chat_profile(model):
@@ -489,11 +613,13 @@ class ModelRuntimeSettingsService:
             ("openrouter", "openrouter_api_key", "openrouter_api_key_configured"),
         ):
             raw_key = sanitized.pop(field_id, None)
-            if isinstance(raw_key, str) and raw_key.strip():
-                result = set_provider_api_key(provider_id, raw_key, pack_root=self._pack_root)
-                sanitized[configured_field] = bool(result.get("success"))
-            else:
-                sanitized[configured_field] = provider_has_api_key(provider_id, pack_root=self._pack_root)
+            # Legacy model settings cannot carry a trusted approval context.
+            # Discard submitted secret material and preserve status only; new
+            # credentials must use the approved provider-key action.
+            del raw_key
+            sanitized[configured_field] = provider_has_api_key(
+                provider_id, pack_root=self._pack_root
+            )
             sanitized[field_id] = ""
         sanitized["model_api_routes"] = self._normalize_model_api_routes(
             sanitized.get("model_api_routes", "")
@@ -550,13 +676,12 @@ class ModelRuntimeSettingsService:
         normalized_favorites: list[str] = []
         for item in favorite_profiles:
             profile_id = str(item or "").strip()
+            if profile_id in LEGACY_CLOUD_DEFAULT_MODELS:
+                continue
             if profile_id and profile_id not in normalized_favorites:
                 normalized_favorites.append(profile_id)
         preferred_model = str(models.get("preferred_model") or DEFAULT_MODEL).strip() or DEFAULT_MODEL
-        if preferred_model == LEGACY_CLOUD_DEFAULT_MODEL and not provider_has_api_key(
-            "openrouter",
-            pack_root=self._pack_root,
-        ):
+        if preferred_model in LEGACY_CLOUD_DEFAULT_MODELS:
             preferred_model = DEFAULT_MODEL
         if preferred_model not in normalized_favorites:
             normalized_favorites.insert(0, preferred_model)

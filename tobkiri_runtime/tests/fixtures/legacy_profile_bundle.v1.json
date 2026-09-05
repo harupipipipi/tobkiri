@@ -1,0 +1,129 @@
+{
+  "schema": "io.tobkiri.legacy-profile-bundle.v1",
+  "version": 3,
+  "active_profile_id": "profile-bora",
+  "last_launched_profile_id": "profile-aoi",
+  "legacy_selection": {
+    "last_profile_id": "profile-bora",
+    "last_surface": "conversation"
+  },
+  "profiles": [
+    {
+      "profile_id": "profile-aoi",
+      "display_name": "Aoi Workbench",
+      "created_at": 1700000001,
+      "updated_at": 1700000011,
+      "workspace": {
+        "workspace_id": "workspace-aoi",
+        "label": "Aoi files",
+        "relative_root": "profiles/profile-aoi"
+      },
+      "conversation_records": [
+        {
+          "conversation_id": "conversation-aoi",
+          "title": "Aoi planning",
+          "messages": [
+            {"role": "user", "content": "Plan the Aoi workspace."},
+            {"role": "assistant", "content": "The Aoi workspace is ready."}
+          ],
+          "metadata": {"owner_profile_id": "profile-aoi", "turn_count": 2}
+        }
+      ],
+      "settings": {
+        "settings_id": "settings-aoi",
+        "locale": "ja",
+        "theme": "light",
+        "model_profile_id": "model-aoi",
+        "custom": {"density": "comfortable"}
+      },
+      "credential_refs": [
+        {
+          "credential_id": "credential-aoi",
+          "provider_id": "provider-aoi",
+          "key_version": "v1",
+          "purpose": "provider.invoke",
+          "secret_ref": "vault://profile-aoi/provider-aoi"
+        }
+      ],
+      "legacy_extra": {"favorite_tool": "search", "revision": 7}
+    },
+    {
+      "profile_id": "profile-bora",
+      "display_name": "Bora Research",
+      "created_at": 1700000101,
+      "updated_at": 1700000111,
+      "workspace": {
+        "workspace_id": "workspace-bora",
+        "label": "Bora research",
+        "relative_root": "profiles/profile-bora"
+      },
+      "conversation_records": [
+        {
+          "conversation_id": "conversation-bora",
+          "title": "Bora evidence",
+          "messages": [
+            {"role": "user", "content": "Keep the Bora evidence separate."},
+            {"role": "assistant", "content": "Bora evidence remains profile-scoped."}
+          ],
+          "metadata": {"owner_profile_id": "profile-bora", "turn_count": 2}
+        }
+      ],
+      "settings": {
+        "settings_id": "settings-bora",
+        "locale": "en-US",
+        "theme": "dark",
+        "model_profile_id": "model-bora",
+        "custom": {"density": "compact"}
+      },
+      "credential_refs": [
+        {
+          "credential_id": "credential-bora",
+          "provider_id": "provider-bora",
+          "key_version": "v2",
+          "purpose": "provider.invoke",
+          "secret_ref": "vault://profile-bora/provider-bora"
+        }
+      ],
+      "legacy_extra": {"favorite_tool": "evidence", "revision": 11}
+    },
+    {
+      "profile_id": "profile-cleo",
+      "display_name": "Cleo Studio",
+      "created_at": 1700000201,
+      "updated_at": 1700000211,
+      "workspace": {
+        "workspace_id": "workspace-cleo",
+        "label": "Cleo studio",
+        "relative_root": "profiles/profile-cleo"
+      },
+      "conversation_records": [
+        {
+          "conversation_id": "conversation-cleo",
+          "title": "Cleo design",
+          "messages": [
+            {"role": "user", "content": "Review the Cleo design notes."},
+            {"role": "assistant", "content": "The Cleo notes retain their original identity."}
+          ],
+          "metadata": {"owner_profile_id": "profile-cleo", "turn_count": 2}
+        }
+      ],
+      "settings": {
+        "settings_id": "settings-cleo",
+        "locale": "fr-FR",
+        "theme": "system",
+        "model_profile_id": "model-cleo",
+        "custom": {"density": "comfortable"}
+      },
+      "credential_refs": [
+        {
+          "credential_id": "credential-cleo",
+          "provider_id": "provider-cleo",
+          "key_version": "v1",
+          "purpose": "provider.invoke",
+          "secret_ref": "vault://profile-cleo/provider-cleo"
+        }
+      ],
+      "legacy_extra": {"favorite_tool": "design", "revision": 13}
+    }
+  ]
+}

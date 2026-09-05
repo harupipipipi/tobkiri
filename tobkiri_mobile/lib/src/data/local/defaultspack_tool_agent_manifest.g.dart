@@ -1801,9 +1801,15 @@ const defaultspackToolAgentManifestCatalog =
         "command": <String, dynamic>{"type": "string"},
         "note": <String, dynamic>{"type": "string"},
         "model": <String, dynamic>{"type": "string"},
-        "messages": <String, dynamic>{"type": "array"},
+        "messages": <String, dynamic>{
+          "type": "array",
+          "items": <String, dynamic>{"type": "object"}
+        },
         "params": <String, dynamic>{"type": "object"},
-        "tool_names": <String, dynamic>{"type": "array"}
+        "tool_names": <String, dynamic>{
+          "type": "array",
+          "items": <String, dynamic>{"type": "string"}
+        }
       },
       "required": <dynamic>["session_id"]
     },

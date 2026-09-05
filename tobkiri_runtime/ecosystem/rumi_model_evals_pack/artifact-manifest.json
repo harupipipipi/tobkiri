@@ -1,0 +1,7 @@
+{
+  "version": "rumi.pack-artifacts.v1",
+  "artifacts": [
+    {"path": "runtime/__init__.py", "sha256": "sha256:65ad7a99adbb923c9f64b399614b06f3ea322c45820a15d68adfcb694475cf1f"},
+    {"path": "runtime/evaluator.py", "sha256": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a"}
+  ]
+}

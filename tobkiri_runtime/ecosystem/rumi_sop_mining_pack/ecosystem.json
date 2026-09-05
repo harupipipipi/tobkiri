@@ -1,46 +1,108 @@
 {
-  "pack_id": "rumi_sop_mining_pack",
-  "pack_identity": "rumi:ecosystem/rumi_sop_mining_pack",
-  "display_name": "Rumi SOP Mining Pack",
-  "version": "0.1.0",
-  "description": "Declarative trace-to-SOP, checklist, runbook, and human-approved workflow recipe pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "runbook",
-      "checklist",
-      "ledger",
-      "template",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
+  "components": {},
   "connectivity": {
+    "provides": [],
     "requires": [
       "defaultspack"
-    ],
-    "provides": []
+    ]
   },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": {
-    "allowed_domains": [],
-    "allowed_ports": []
-  },
+  "dependencies": {},
+  "description": "Declarative trace-to-SOP, checklist, runbook, and human-approved workflow recipe pack.",
+  "display_name": "Rumi SOP Mining Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
+    "asset_index": {
+      "catalog": [
+        "catalog/sop_mining_workflows.yaml",
+        "catalog/sop_mining_quality_matrix.yaml",
+        "catalog/approval_state_machine.yaml",
+        "catalog/sop_step_taxonomy.yaml"
+      ],
+      "checklist": [
+        "checklists/sop_mining_review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/bug_triage_trace.example.yaml",
+        "examples/support_macro_trace.example.yaml",
+        "examples/release_checklist_trace.example.yaml"
+      ],
+      "ledger": [
+        "ledgers/sop_mining_evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/sop_mining_safety.policy.yaml",
+        "policies/trace_redaction.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/process_cartographer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/sop_extractor.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "runbook": [
+        "runbooks/sop_mining_runbook.template.yaml"
+      ],
+      "schema": [
+        "schemas/trace_evidence_record.schema.json",
+        "schemas/sop_mining_record.schema.json",
+        "schemas/workflow_recipe.schema.json",
+        "schemas/sop_trace.schema.json"
+      ],
+      "template": [
+        "templates/sop_mining_handoff.template.md",
+        "templates/assumption_log.template.md",
+        "templates/runbook.template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:5102398c55350d94472f8420f05b2d50aec423c6d0754f00524aefc22fcd6b98",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398"
+    },
     "declarative_only": true,
+    "excluded_surfaces": [
+      "automation_execution",
+      "browser_control",
+      "computer_control",
+      "schedule_creation",
+      "scheduled_jobs",
+      "tool_creation_or_invocation",
+      "live_trace_capture",
+      "long_term_run_ledger_storage",
+      "external_message_delivery"
+    ],
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_observability_pack",
@@ -81,73 +143,37 @@
       "source_consent_review",
       "non_execution_boundary_review"
     ],
-    "excluded_surfaces": [
-      "automation_execution",
-      "browser_control",
-      "computer_control",
-      "schedule_creation",
-      "scheduled_jobs",
-      "tool_creation_or_invocation",
-      "live_trace_capture",
-      "long_term_run_ledger_storage",
-      "external_message_delivery"
-    ],
-    "asset_index": {
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/sop_mining_workflows.yaml",
-        "catalog/sop_mining_quality_matrix.yaml",
-        "catalog/approval_state_machine.yaml",
-        "catalog/sop_step_taxonomy.yaml"
-      ],
-      "schema": [
-        "schemas/trace_evidence_record.schema.json",
-        "schemas/sop_mining_record.schema.json",
-        "schemas/workflow_recipe.schema.json",
-        "schemas/sop_trace.schema.json"
-      ],
-      "policy": [
-        "policies/sop_mining_safety.policy.yaml",
-        "policies/trace_redaction.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/sop_mining_review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/sop_mining_evidence_ledger.schema.yaml"
-      ],
-      "runbook": [
-        "runbooks/sop_mining_runbook.template.yaml"
-      ],
-      "template": [
-        "templates/sop_mining_handoff.template.md",
-        "templates/assumption_log.template.md",
-        "templates/runbook.template.md"
-      ],
-      "profiles": [
-        "profiles/process_cartographer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/sop_extractor.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/bug_triage_trace.example.yaml",
-        "examples/support_macro_trace.example.yaml",
-        "examples/release_checklist_trace.example.yaml"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_sop_mining_pack",
+  "pack_identity": "rumi:ecosystem/rumi_sop_mining_pack",
+  "provenance": {
+    "build_identity": "rumi_sop_mining_pack:0.1.0",
+    "content_hash": "sha256:5102398c55350d94472f8420f05b2d50aec423c6d0754f00524aefc22fcd6b98",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "runbook",
+      "checklist",
+      "ledger",
+      "template",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

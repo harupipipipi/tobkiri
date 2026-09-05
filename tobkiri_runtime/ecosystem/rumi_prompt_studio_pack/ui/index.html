@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prompt Studio</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main aria-label="Prompt Studio">
+      <header><div><p id="profile"></p><h1>Prompt Studio</h1></div><button id="reload">Reload</button></header>
+      <div class="layout">
+        <nav id="prompts" aria-label="Prompts"></nav>
+        <section aria-label="Prompt editor">
+          <label>Prompt ID<input id="prompt-id" autocomplete="off" spellcheck="false" /></label>
+          <label>Prompt body<textarea id="body" rows="22" spellcheck="false"></textarea></label>
+          <div class="actions" role="toolbar" aria-label="Prompt actions">
+            <button data-action="save">Save</button><button data-action="diff">Diff</button>
+            <button data-action="lint">Lint</button><button data-action="compact">Compact</button>
+            <button data-action="test">Test</button><button data-action="toggle">Toggle</button>
+            <button data-action="versions">Versions</button>
+          </div>
+          <p id="error" role="alert"></p><pre id="output" aria-label="Operation result"></pre>
+          <section id="versions" aria-label="Prompt versions"></section>
+        </section>
+      </div>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

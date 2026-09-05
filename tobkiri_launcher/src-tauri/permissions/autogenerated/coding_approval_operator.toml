@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-coding-approval-operator"
+description = "Enables the coding_approval_operator command without any pre-configured scope."
+commands.allow = ["coding_approval_operator"]
+
+[[permission]]
+identifier = "deny-coding-approval-operator"
+description = "Denies the coding_approval_operator command without any pre-configured scope."
+commands.deny = ["coding_approval_operator"]

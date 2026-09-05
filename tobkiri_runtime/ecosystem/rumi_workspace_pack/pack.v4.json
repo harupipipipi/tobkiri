@@ -1,0 +1,66 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:72a3b21f900ef4f99c16a64e86cef42466b3b679e239ddb9c0685f9aad545730",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:2253f112c86f44d2574a2d25d0ce49929c62dcdae084a8d694b57597e4b12d21",
+    "contract_catalog_digest": "sha256:461ffe5bd7ec4cb1692eeb3ae71a905da986f05b9e244c11977bc71a3c223448",
+    "source_identity": "sha256:d0ed98248dc1acbcb5e2a71ad866aa19a3bf4c5297876ff342ad935c732f16e4"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_workspace_pack",
+      "rumi_workspace_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:2253f112c86f44d2574a2d25d0ce49929c62dcdae084a8d694b57597e4b12d21",
+    "display_name": "rumi_workspace_pack",
+    "id": "rumi_workspace_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:d0ed98248dc1acbcb5e2a71ad866aa19a3bf4c5297876ff342ad935c732f16e4",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:d0ed98248dc1acbcb5e2a71ad866aa19a3bf4c5297876ff342ad935c732f16e4",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_workspace_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

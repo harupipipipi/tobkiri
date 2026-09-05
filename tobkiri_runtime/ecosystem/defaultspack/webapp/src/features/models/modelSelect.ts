@@ -53,6 +53,19 @@ export type ModelSelectDisplay = {
   apiKeyConfigured: boolean;
 };
 
+export type ModelProviderOption = {
+  provider_id: string;
+  label: string;
+  model_count: number;
+};
+
+export type ModelProviderQueryState = {
+  active: boolean;
+  providerQuery: string;
+  providerId: string;
+  modelQuery: string;
+};
+
 type SettingsFieldOption = NonNullable<SettingsSection["fields"][number]["options"]>[number];
 
 export function modelFieldOptionToModelSelectOption(option: SettingsFieldOption): ModelSelectOption {
@@ -145,6 +158,77 @@ export function modelSelectOptionMatchesSearch(option: ModelSelectOption, query:
   if (!normalizedQuery) return true;
   if (rawText.includes(rawQuery) || normalizedText.includes(normalizedQuery)) return true;
   return normalizedQuery.split(/\s+/).every((token) => normalizedText.includes(token) || rawText.includes(token));
+}
+
+function normalizedProviderId(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+export function modelProviderOptions(options: ModelSelectOption[]): ModelProviderOption[] {
+  const providers = new Map<string, ModelProviderOption>();
+  for (const option of options) {
+    const providerId = String(option.provider_id ?? "").trim();
+    if (!providerId) continue;
+    const key = normalizedProviderId(providerId);
+    const current = providers.get(key);
+    if (current) {
+      current.model_count += 1;
+      continue;
+    }
+    providers.set(key, {
+      provider_id: providerId,
+      label: String(option.provider_display_name ?? providerId).trim() || providerId,
+      model_count: 1,
+    });
+  }
+  return [...providers.values()].sort((left, right) => left.label.localeCompare(right.label));
+}
+
+export function parseModelProviderQuery(
+  query: string,
+  providers: ModelProviderOption[],
+  trigger = "@",
+): ModelProviderQueryState {
+  const raw = String(query ?? "");
+  if (!trigger || !raw.startsWith(trigger)) {
+    return { active: false, providerQuery: "", providerId: "", modelQuery: raw.trim() };
+  }
+  const afterTrigger = raw.slice(trigger.length);
+  const whitespaceIndex = afterTrigger.search(/\s/);
+  const providerQuery = (whitespaceIndex < 0 ? afterTrigger : afterTrigger.slice(0, whitespaceIndex)).trim();
+  const modelQuery = whitespaceIndex < 0 ? "" : afterTrigger.slice(whitespaceIndex).trim();
+  const normalizedQuery = normalizedProviderId(providerQuery);
+  const exact = providers.find((provider) => (
+    normalizedProviderId(provider.provider_id) === normalizedQuery
+    || normalizedProviderId(provider.label) === normalizedQuery
+  ));
+  return {
+    active: whitespaceIndex < 0,
+    providerQuery,
+    providerId: exact?.provider_id ?? (whitespaceIndex >= 0 ? providerQuery : ""),
+    modelQuery,
+  };
+}
+
+export function filterModelProviderOptions(
+  providers: ModelProviderOption[],
+  query: string,
+): ModelProviderOption[] {
+  const normalizedQuery = normalizeModelSearchText(query);
+  if (!normalizedQuery) return providers;
+  return providers.filter((provider) => {
+    const text = normalizeModelSearchText(`${provider.provider_id} ${provider.label}`);
+    return normalizedQuery.split(/\s+/).every((token) => text.includes(token));
+  });
+}
+
+export function filterModelOptionsByProvider(
+  options: ModelSelectOption[],
+  providerId: string,
+): ModelSelectOption[] {
+  const target = normalizedProviderId(providerId);
+  if (!target) return options;
+  return options.filter((option) => normalizedProviderId(option.provider_id) === target);
 }
 
 export function dedupeModelSelectOptions(options: ModelSelectOption[]): ModelSelectOption[] {

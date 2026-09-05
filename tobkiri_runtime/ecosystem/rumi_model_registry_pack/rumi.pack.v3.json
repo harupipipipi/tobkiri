@@ -1,0 +1,247 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.resource.ai.model.profile.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_model_registry_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "model-profiles-v1",
+          "rollback_id": "model-profiles-v1"
+        },
+        "provider_instance_id": "model-registry.profile",
+        "required_capabilities": [
+          "ai.model.profile.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.ai.model.profile.manage.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_model_registry_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "model-profiles-v1",
+          "rollback_id": "model-profiles-v1"
+        },
+        "provider_instance_id": "model-registry.manage",
+        "required_capabilities": [
+          "ai.model.profile.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.ai.model.registry.migrate.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_model_registry_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "model-profiles-v1",
+          "rollback_id": "model-profiles-v1"
+        },
+        "provider_instance_id": "model-registry.migrate",
+        "required_capabilities": [
+          "ai.model.profile.migrate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:c6186fd17b9a4a2ae6eba0bdc90687795bfd2aaba869c1131f353085d85bf78f",
+      "contract_id": "rumi.resource.ai.model.profile.v1",
+      "id": "model-profile-resource",
+      "loader": "process",
+      "module": "ecosystem.rumi_model_registry_pack.runtime.process"
+    },
+    {
+      "artifact_hash": "sha256:c6186fd17b9a4a2ae6eba0bdc90687795bfd2aaba869c1131f353085d85bf78f",
+      "contract_id": "rumi.action.ai.model.profile.manage.v1",
+      "id": "model-profile-manage",
+      "loader": "process",
+      "module": "ecosystem.rumi_model_registry_pack.runtime.process"
+    },
+    {
+      "artifact_hash": "sha256:c6186fd17b9a4a2ae6eba0bdc90687795bfd2aaba869c1131f353085d85bf78f",
+      "contract_id": "rumi.action.ai.model.registry.migrate.v1",
+      "id": "model-registry-migrate",
+      "loader": "process",
+      "module": "ecosystem.rumi_model_registry_pack.runtime.process"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.ai.model.profile.manage.v1",
+            "rumi.action.ai.model.registry.migrate.v1",
+            "rumi.resource.ai.model.profile.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Provider-neutral saved model profiles, aliases, migration, and rollback.",
+        "display_name": "Rumi Model Registry",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:391025636b8e28810f936b5b7bff6046ace1980f158126fe6daef5727d397b31",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:952f3b2a7d21afd84a25da1ebe015901563ce3fb567f44f983d9b4d434115b7d"
+          },
+          "executable_code": true,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "model_profiles",
+            "model_aliases"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "atomic_write": true,
+            "opaque_credentials_only": true,
+            "optimistic_revision": true,
+            "provider_neutral": true
+          },
+          "storage_namespace": "rumi.model_profiles"
+        },
+        "pack_id": "rumi_model_registry_pack",
+        "pack_identity": "rumi:ecosystem/rumi_model_registry_pack",
+        "provenance": {
+          "build_identity": "rumi_model_registry_pack:1.0.0",
+          "content_hash": "sha256:8840350a3124c81c164c3b0afb237784d740aaae1bccfd3c468ac5018119aef3",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.model.profile.manage",
+          "ai.model.profile.migrate",
+          "ai.model.profile.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_model_registry_pack"
+    },
+    "rumi.model_registry.boundary": {
+      "catalog_owner": false,
+      "credential_values_accepted": false,
+      "provider_execution_owner": false,
+      "provider_pack_id_branches": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_model_registry_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:952f3b2a7d21afd84a25da1ebe015901563ce3fb567f44f983d9b4d434115b7d"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.ai_client.saved_models",
+      "defaultspack.ai_client.model_aliases"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove migrated owner state and restore the owner-only source backup.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Provider-neutral saved model profiles, aliases, migration, and rollback.",
+    "display_name": "Rumi Model Registry",
+    "id": "rumi.model_registry",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "ai.model.profile.read"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "ai.model.profile.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "ai.model.profile.migrate"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_model_registry_pack:1.0.0",
+    "content_hash": "sha256:8840350a3124c81c164c3b0afb237784d740aaae1bccfd3c468ac5018119aef3",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": true,
+      "namespace": "rumi.model_profiles",
+      "retention": "until explicit deletion or profile migration rollback",
+      "schema_version": "1.0.0"
+    }
+  ]
+}

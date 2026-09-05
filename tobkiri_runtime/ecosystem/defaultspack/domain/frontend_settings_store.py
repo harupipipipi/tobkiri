@@ -5,23 +5,61 @@ import os
 import shutil
 import tempfile
 import threading
-from collections.abc import Callable, Iterator
+import time
+from copy import deepcopy
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, BinaryIO
-
-try:
-    import fcntl as _fcntl
-except ImportError:  # pragma: no cover - exercised on Windows
-    _fcntl = None  # type: ignore[assignment]
-
-try:
-    import msvcrt as _msvcrt
-except ImportError:  # pragma: no cover - exercised on POSIX
-    _msvcrt = None  # type: ignore[assignment]
-
-
+from typing import Any, Iterator
 REVISION_KEY = "_settings_revision"
+STATE_REVISIONS_KEY = "_state_revisions"
+MUTATION_RECEIPTS_KEY = "_mutation_receipts"
+MAX_MUTATION_RECEIPTS = 64
+
+
+class FrontendSettingsRevisionConflict(RuntimeError):
+    """Raised when a state mutation targets an obsolete state revision."""
+
+    def __init__(self, state_ref: str, expected: int, actual: int) -> None:
+        super().__init__(
+            f"state revision conflict for {state_ref}: expected {expected}, current {actual}"
+        )
+        self.state_ref = state_ref
+        self.expected = expected
+        self.actual = actual
+
+
+class FrontendSettingsIdempotencyConflict(RuntimeError):
+    """Raised when an idempotency key is reused for a different mutation."""
+
+
+def defaultspack_frontend_settings_path(pack_root: Path | None = None) -> Path:
+    """Return the durable settings path for a Defaultspack installation.
+
+    Managed desktop packs are unpacked into a replaceable application bundle.
+    The launcher supplies ``RUMI_USER_DATA`` for state that must survive a
+    bundle update; an explicit path still takes precedence for tests.
+    """
+    override = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", "").strip()
+    if override:
+        return Path(override).expanduser()
+    if pack_root is not None:
+        return Path(pack_root).expanduser() / "user_data" / "shared" / "frontend_settings.json"
+
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return (
+            Path(user_data).expanduser()
+            / "defaultspack"
+            / "shared"
+            / "frontend_settings.json"
+        )
+    return (
+        Path(__file__).resolve().parents[1]
+        / "user_data"
+        / "shared"
+        / "frontend_settings.json"
+    )
 
 
 class FrontendSettingsCorruptError(ValueError):
@@ -92,15 +130,117 @@ class FrontendSettingsStore:
             self._atomic_write(updated, preserve_backup=True)
             return updated
 
+    def mutate_state(
+        self,
+        state_ref: str,
+        transform: Callable[
+            [dict[str, Any]], tuple[dict[str, Any], dict[str, Any]]
+        ],
+        *,
+        expected_revision: int | None = None,
+        idempotency_key: str | None = None,
+        request_fingerprint: str = "",
+    ) -> dict[str, Any]:
+        """Atomically mutate one logical state resource.
+
+        State revisions are independent from the whole settings-document
+        revision. Optional idempotency receipts live in the same atomic file so
+        a retried transport cannot apply the mutation twice.
+        """
+        normalized_ref = str(state_ref or "").strip()
+        if not normalized_ref:
+            raise ValueError("state_ref is required")
+        normalized_key = str(idempotency_key or "").strip()
+        if normalized_key and not 8 <= len(normalized_key) <= 256:
+            raise ValueError("idempotency_key must be 8-256 characters")
+
+        with self._locked():
+            current = self._read_locked(recover=True)
+            receipts = current.get(MUTATION_RECEIPTS_KEY, {})
+            if not isinstance(receipts, dict):
+                receipts = {}
+            if normalized_key:
+                previous = receipts.get(normalized_key)
+                if isinstance(previous, dict):
+                    if str(previous.get("fingerprint") or "") != request_fingerprint:
+                        raise FrontendSettingsIdempotencyConflict(
+                            "idempotency_key was already used for a different mutation"
+                        )
+                    previous_result = previous.get("result")
+                    if isinstance(previous_result, dict):
+                        replay = deepcopy(previous_result)
+                        replay["idempotent_replay"] = True
+                        return replay
+
+            revisions = current.get(STATE_REVISIONS_KEY, {})
+            if not isinstance(revisions, dict):
+                revisions = {}
+            current_revision = revisions.get(normalized_ref, 0)
+            if (
+                not isinstance(current_revision, int)
+                or isinstance(current_revision, bool)
+                or current_revision < 0
+            ):
+                current_revision = 0
+            if expected_revision is not None and expected_revision != current_revision:
+                raise FrontendSettingsRevisionConflict(
+                    normalized_ref, expected_revision, current_revision
+                )
+
+            updated, result = transform(deepcopy(current))
+            if not isinstance(updated, dict) or not isinstance(result, dict):
+                raise TypeError("state mutation must return settings and result objects")
+            next_state_revision = current_revision + 1
+            next_revisions = dict(revisions)
+            next_revisions[normalized_ref] = next_state_revision
+            updated[STATE_REVISIONS_KEY] = next_revisions
+
+            document_revision = current.get(REVISION_KEY, 0)
+            if (
+                not isinstance(document_revision, int)
+                or isinstance(document_revision, bool)
+                or document_revision < 0
+            ):
+                document_revision = 0
+            updated[REVISION_KEY] = document_revision + 1
+
+            settled = deepcopy(result)
+            settled["state_ref"] = normalized_ref
+            settled["revision"] = next_state_revision
+            settled["document_revision"] = updated[REVISION_KEY]
+            settled["idempotent_replay"] = False
+
+            if normalized_key:
+                next_receipts = dict(receipts)
+                next_receipts.pop(normalized_key, None)
+                next_receipts[normalized_key] = {
+                    "fingerprint": request_fingerprint,
+                    "result": deepcopy(settled),
+                }
+                while len(next_receipts) > MAX_MUTATION_RECEIPTS:
+                    next_receipts.pop(next(iter(next_receipts)))
+                updated[MUTATION_RECEIPTS_KEY] = next_receipts
+
+            self._atomic_write(updated, preserve_backup=True)
+            return settled
+
+    def state_revision(self, state_ref: str) -> int:
+        value = self.read().get(STATE_REVISIONS_KEY, {})
+        if not isinstance(value, dict):
+            return 0
+        revision = value.get(str(state_ref or "").strip(), 0)
+        return revision if isinstance(revision, int) and not isinstance(revision, bool) else 0
+
     @contextmanager
     def _locked(self) -> Iterator[None]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with _thread_lock(self.path), self.lock_path.open("a+b") as lock_file:
-            _acquire_file_lock(lock_file)
-            try:
-                yield
-            finally:
-                _release_file_lock(lock_file)
+        with _thread_lock(self.path):
+            with self.lock_path.open("a+b") as lock_file:
+                _lock_file_handle(lock_file)
+                try:
+                    yield
+                finally:
+                    _unlock_file_handle(lock_file)
 
     def _read_locked(self, *, recover: bool) -> dict[str, Any]:
         if not self.path.exists():
@@ -154,17 +294,90 @@ class FrontendSettingsStore:
                 handle.write("\n")
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(temp_path, self.path)
-            if os.name != "nt":
-                directory_fd = os.open(self.path.parent, os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+            _replace_file(temp_path, self.path)
+            self._fsync_directory(self.path.parent)
         finally:
             temp_path.unlink(missing_ok=True)
 
     @staticmethod
     def _fsync_file(path: Path) -> None:
-        with path.open("rb") as handle:
-            os.fsync(handle.fileno())
+        try:
+            with path.open("rb") as handle:
+                os.fsync(handle.fileno())
+        except OSError:
+            return
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        if os.name == "nt":
+            return
+        try:
+            directory_fd = os.open(path, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            return
+
+
+def _lock_file_handle(handle: Any) -> None:
+    if os.name == "nt":
+        try:
+            import msvcrt
+
+            _ensure_lock_byte(handle)
+            handle.seek(0)
+            for _ in range(400):
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.025)
+            else:
+                raise TimeoutError("timed out acquiring frontend settings lock")
+        except ImportError:
+            return
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    except (ImportError, OSError):
+        return
+
+
+def _unlock_file_handle(handle: Any) -> None:
+    if os.name == "nt":
+        try:
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        except (ImportError, OSError):
+            return
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except (ImportError, OSError):
+        return
+
+
+def _ensure_lock_byte(handle: Any) -> None:
+    handle.seek(0, os.SEEK_END)
+    if handle.tell() == 0:
+        handle.write(b"\0")
+        handle.flush()
+
+
+def _replace_file(source: Path, destination: Path) -> None:
+    for attempt in range(40):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if attempt == 39:
+                raise
+            time.sleep(0.025)

@@ -1,0 +1,138 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:e3b5b9f0f7ab55d1a7f59feb1026ccb078e66449897dae0f69dbda8e69381faf",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:c706fc33ef41284698a398f2f3742c0352f325eaf95acbd7448f0a4cfa68d416",
+      "kind": "executable",
+      "path": "runtime/patch.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.file.patch.v1",
+      "operations": [
+        "rumi_file_patch_pack.file-patch"
+      ],
+      "revision_digest": "sha256:ef3d5198377b8ca71ad52b64d5e45213397aebcf522c1ea5473c170446caee63"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:ef3d5198377b8ca71ad52b64d5e45213397aebcf522c1ea5473c170446caee63",
+      "id": "rumi_file_patch_pack.file-patch.service",
+      "implementation_digest": "sha256:c706fc33ef41284698a398f2f3742c0352f325eaf95acbd7448f0a4cfa68d416",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_file_patch_pack.file-patch"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:6f547b2a40cc1e2da13951ff5a546290b24ce2082e6d0a702631adfb4a412351",
+    "artifact_set_digest": "sha256:16607c9339e3c8127a4855dd29c631cbb6e4546a5b698abfbe05816d38a44c69",
+    "contract_catalog_digest": "sha256:2bf3f501dad9e0680198344a727c77f4b915a587db173d6795df72724b24bd56"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.file.patch.v1",
+      "rumi:ecosystem/rumi_file_patch_pack",
+      "rumi_file_patch_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_file_patch_pack.file-patch",
+      "owner": "rumi_file_patch_pack",
+      "contract_reference": "tobkiri.service.file.patch.v1",
+      "provider_id": "rumi_file_patch_pack.file-patch.service",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:e2e0c140e32ea27e1d1fdd792dbd46ac332b512664c9bda402af42d4047aa820",
+    "display_name": "Rumi File Patch",
+    "id": "rumi_file_patch_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_file_patch_pack/pack.v4.json",
+    "source_digest": "sha256:6f547b2a40cc1e2da13951ff5a546290b24ce2082e6d0a702631adfb4a412351",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:4139a894c29838b4707e24d6818d4ad54f948e7d228f9380c2d7d8763349e0ac",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a",
+    "input_inventory_digest": "sha256:d8920aa9e82c78903bcf09ae3129102c11da4e2b55433f1d128bbce81f6808ea",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:ed6a2e262033b2b38866fe48da557c3f02382df037ad3b57902af3d484630a2a"
+      },
+      {
+        "path": "ecosystem/rumi_file_patch_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:6f547b2a40cc1e2da13951ff5a546290b24ce2082e6d0a702631adfb4a412351"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_file_patch_pack.file-patch.service",
+      "owner": "rumi_file_patch_pack",
+      "contract_reference": "tobkiri.service.file.patch.v1",
+      "operations": [
+        "rumi_file_patch_pack.file-patch"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "file.patch",
+      "host.authority.consume",
+      "workspace.metadata.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+      "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

@@ -36,11 +36,15 @@ _MODE_ALIASES = {
 
 DEFAULT_GATEWAY_ROUTING_SETTINGS: dict[str, Any] = {
     "gateway_routing_target": "all",
-    "gateway_provider_mode": "auto",
-    "gateway_primary_provider": "",
-    "gateway_provider_order": [],
-    "gateway_provider_only": [],
-    "gateway_provider_ignore": [],
+    "openrouter_provider_mode": "auto",
+    "openrouter_primary_provider": "",
+    "openrouter_provider_order": [],
+    "openrouter_provider_only": [],
+    "openrouter_provider_ignore": [],
+    "vercel_provider_mode": "auto",
+    "vercel_primary_provider": "",
+    "vercel_provider_order": [],
+    "vercel_provider_only": [],
     "gateway_provider_sort": "auto",
     "gateway_allow_fallbacks": True,
     "gateway_require_parameters": False,
@@ -87,6 +91,11 @@ def normalize_gateway_target(value: Any) -> str:
     return _GATEWAY_TARGET_ALIASES.get(token, token if token in GATEWAY_PROVIDER_IDS else "all")
 
 
+def is_known_gateway_target(value: Any) -> bool:
+    """Return whether a gateway target can be normalized without guessing."""
+    return str(value or "").strip().lower() in _GATEWAY_TARGET_ALIASES
+
+
 def normalize_provider_slug(value: Any) -> str:
     token = str(value or "").strip().lower()
     return _PROVIDER_SLUG_ALIASES.get(token, token)
@@ -114,12 +123,42 @@ def normalize_gateway_routing_settings(values: dict[str, Any] | None = None, *, 
             values = ModelRuntimeSettingsService(_pack_root(pack_root)).get_settings()
         except Exception:
             values = {}
+    raw_values = dict(values or {})
+    target = normalize_gateway_target(raw_values.get("gateway_routing_target"))
+    for provider_id, prefix in (
+        ("openrouter", "openrouter"),
+        ("vercel-ai-gateway", "vercel"),
+    ):
+        if target not in {provider_id, "all"}:
+            continue
+        for legacy_key, suffix in (
+            ("gateway_provider_mode", "provider_mode"),
+            ("gateway_primary_provider", "primary_provider"),
+            ("gateway_provider_order", "provider_order"),
+            ("gateway_provider_only", "provider_only"),
+        ):
+            destination = f"{prefix}_{suffix}"
+            if destination not in raw_values and legacy_key in raw_values:
+                raw_values[destination] = raw_values[legacy_key]
+    if (
+        target in {"openrouter", "all"}
+        and "openrouter_provider_ignore" not in raw_values
+        and "gateway_provider_ignore" in raw_values
+    ):
+        raw_values["openrouter_provider_ignore"] = raw_values[
+            "gateway_provider_ignore"
+        ]
     result = dict(DEFAULT_GATEWAY_ROUTING_SETTINGS)
-    result.update(dict(values or {}))
+    result.update(raw_values)
     result["gateway_routing_target"] = normalize_gateway_target(result.get("gateway_routing_target"))
-    result["gateway_provider_mode"] = _MODE_ALIASES.get(str(result.get("gateway_provider_mode") or "").strip().lower(), "auto")
-    result["gateway_primary_provider"] = normalize_provider_slug(result.get("gateway_primary_provider"))
-    for key in ("gateway_provider_order", "gateway_provider_only", "gateway_provider_ignore"):
+    for key in ("openrouter_provider_mode", "vercel_provider_mode"):
+        result[key] = _MODE_ALIASES.get(str(result.get(key) or "").strip().lower(), "auto")
+    for key in ("openrouter_primary_provider", "vercel_primary_provider"):
+        result[key] = normalize_provider_slug(result.get(key))
+    for key in (
+        "openrouter_provider_order", "openrouter_provider_only",
+        "openrouter_provider_ignore", "vercel_provider_order", "vercel_provider_only",
+    ):
         result[key] = normalize_provider_list(result.get(key))
     result["gateway_provider_sort"] = _SORT_ALIASES.get(str(result.get("gateway_provider_sort") or "").strip().lower(), "auto")
     result["gateway_allow_fallbacks"] = _coerce_bool(result.get("gateway_allow_fallbacks"), default=True)
@@ -143,9 +182,9 @@ def _target_matches(provider_id: str, settings: dict[str, Any]) -> bool:
     return target == "all" or target == provider_id
 
 
-def _ordered_slugs(settings: dict[str, Any]) -> list[str]:
-    primary = normalize_provider_slug(settings.get("gateway_primary_provider"))
-    order = normalize_provider_list(settings.get("gateway_provider_order"))
+def _ordered_slugs(settings: dict[str, Any], prefix: str) -> list[str]:
+    primary = normalize_provider_slug(settings.get(f"{prefix}_primary_provider"))
+    order = normalize_provider_list(settings.get(f"{prefix}_provider_order"))
     if primary and primary not in order:
         order.insert(0, primary)
     return order
@@ -155,10 +194,10 @@ def openrouter_provider_options(values: dict[str, Any] | None = None, *, pack_ro
     settings = normalize_gateway_routing_settings(values, pack_root=pack_root)
     if not _target_matches("openrouter", settings):
         return {}
-    mode = str(settings.get("gateway_provider_mode") or "auto")
-    primary = normalize_provider_slug(settings.get("gateway_primary_provider"))
-    order = _ordered_slugs(settings)
-    only = normalize_provider_list(settings.get("gateway_provider_only"))
+    mode = str(settings.get("openrouter_provider_mode") or "auto")
+    primary = normalize_provider_slug(settings.get("openrouter_primary_provider"))
+    order = _ordered_slugs(settings, "openrouter")
+    only = normalize_provider_list(settings.get("openrouter_provider_only"))
     if mode == "only" and primary and primary not in only:
         only.insert(0, primary)
     options: dict[str, Any] = {}
@@ -166,11 +205,11 @@ def openrouter_provider_options(values: dict[str, Any] | None = None, *, pack_ro
         options["order"] = order
     elif mode == "only" and only:
         options["only"] = only
-    elif settings.get("gateway_provider_order"):
+    elif settings.get("openrouter_provider_order"):
         options["order"] = order
-    elif settings.get("gateway_provider_only"):
+    elif settings.get("openrouter_provider_only"):
         options["only"] = only
-    ignored = normalize_provider_list(settings.get("gateway_provider_ignore"))
+    ignored = normalize_provider_list(settings.get("openrouter_provider_ignore"))
     if ignored:
         options["ignore"] = ignored
     sort_mode = str(settings.get("gateway_provider_sort") or "auto")
@@ -178,7 +217,8 @@ def openrouter_provider_options(values: dict[str, Any] | None = None, *, pack_ro
         sort_mode = "throughput"
     if sort_mode != "auto":
         options["sort"] = {"cost": "price", "throughput": "throughput", "latency": "latency"}[sort_mode]
-    options["allow_fallbacks"] = bool(settings.get("gateway_allow_fallbacks", True))
+    if not settings.get("gateway_allow_fallbacks", True):
+        options["allow_fallbacks"] = False
     if settings.get("gateway_require_parameters"):
         options["require_parameters"] = True
     minimum_tps = _nonnegative_float(settings.get("gateway_min_tokens_per_second"))
@@ -194,10 +234,10 @@ def vercel_gateway_options(values: dict[str, Any] | None = None, *, pack_root: P
     settings = normalize_gateway_routing_settings(values, pack_root=pack_root)
     if not _target_matches("vercel-ai-gateway", settings):
         return {}
-    mode = str(settings.get("gateway_provider_mode") or "auto")
-    primary = normalize_provider_slug(settings.get("gateway_primary_provider"))
-    order = _ordered_slugs(settings)
-    only = normalize_provider_list(settings.get("gateway_provider_only"))
+    mode = str(settings.get("vercel_provider_mode") or "auto")
+    primary = normalize_provider_slug(settings.get("vercel_primary_provider"))
+    order = _ordered_slugs(settings, "vercel")
+    only = normalize_provider_list(settings.get("vercel_provider_only"))
     if mode == "only" and primary and primary not in only:
         only.insert(0, primary)
     options: dict[str, Any] = {}
@@ -205,9 +245,9 @@ def vercel_gateway_options(values: dict[str, Any] | None = None, *, pack_root: P
         options["order"] = order
     elif mode == "only" and only:
         options["only"] = only
-    elif settings.get("gateway_provider_order"):
+    elif settings.get("vercel_provider_order"):
         options["order"] = order
-    elif settings.get("gateway_provider_only"):
+    elif settings.get("vercel_provider_only"):
         options["only"] = only
     sort_mode = str(settings.get("gateway_provider_sort") or "auto")
     if settings.get("fast_mode_enabled") and sort_mode == "auto":
@@ -221,11 +261,19 @@ def gateway_routing_summary(values: dict[str, Any] | None = None, *, pack_root: 
     settings = normalize_gateway_routing_settings(values, pack_root=pack_root)
     return {
         "target": settings["gateway_routing_target"],
-        "mode": settings["gateway_provider_mode"],
-        "primary_provider": settings["gateway_primary_provider"],
-        "order": settings["gateway_provider_order"],
-        "only": settings["gateway_provider_only"],
-        "ignore": settings["gateway_provider_ignore"],
+        "openrouter": {
+            "mode": settings["openrouter_provider_mode"],
+            "primary_provider": settings["openrouter_primary_provider"],
+            "order": settings["openrouter_provider_order"],
+            "only": settings["openrouter_provider_only"],
+            "ignore": settings["openrouter_provider_ignore"],
+        },
+        "vercel": {
+            "mode": settings["vercel_provider_mode"],
+            "primary_provider": settings["vercel_primary_provider"],
+            "order": settings["vercel_provider_order"],
+            "only": settings["vercel_provider_only"],
+        },
         "sort": settings["gateway_provider_sort"],
         "allow_fallbacks": settings["gateway_allow_fallbacks"],
         "require_parameters": settings["gateway_require_parameters"],

@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:95ba0c5893918c3136450443980137bdc27984a7171eda6aad6119d5e2f4413a",
+  "pack_id": "rumi_mcp_gateway_pack",
+  "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_mcp_gateway_pack.mcp-gateway.call",
+      "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "implementation_path": "runtime/gateway.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.tool.call.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_mcp_gateway_pack.mcp-tool-call",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:8ef6ff26343e457a1b65180c49f61f975a0a3c026198ccef77448058a73810f8",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_mcp_gateway_pack.mcp-gateway.call.python"
+    }
+  ]
+}

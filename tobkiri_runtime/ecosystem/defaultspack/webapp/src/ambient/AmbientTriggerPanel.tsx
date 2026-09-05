@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from "react";
 import { AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronUp, ExternalLink, Hand, Loader2, Mic, Radio, RefreshCcw, Settings, Shield, Video, Volume2, VolumeX, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { ErrorNotice } from "../components/ErrorNotice";
 import { api, defaultspackUrlWithLocalAuth, type Conversation } from "../lib/api";
 import {
   authorityRequestSettledStatus,
@@ -74,6 +75,8 @@ export type AmbientApprovalTarget = {
   canReject?: boolean;
 };
 
+type TestStatusTone = "status" | "success" | "error";
+
 type Props = {
   conversationId?: string | null;
   onOpenInput?: (text?: string) => void;
@@ -136,7 +139,20 @@ export function AmbientTriggerPanel({
   const [manualRumiFallbackOpen, setManualRumiFallbackOpen] = useState(false);
   const [rumiApprovalOpen, setRumiApprovalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessageState] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"status" | "warning" | "error">("status");
+  const setMessage = useCallback((next: SetStateAction<string | null>) => {
+    setMessageTone("status");
+    setMessageState(next);
+  }, []);
+  const setErrorMessage = useCallback((next: string) => {
+    setMessageTone("error");
+    setMessageState(next);
+  }, []);
+  const setWarningMessage = useCallback((next: string) => {
+    setMessageTone("warning");
+    setMessageState(next);
+  }, []);
   const [miniConversationIdOverride, setMiniConversationIdOverride] = useState<string | null>(null);
   const [miniConversation, setMiniConversation] = useState<Conversation | null>(null);
   const [miniChatLoading, setMiniChatLoading] = useState(false);
@@ -163,9 +179,11 @@ export function AmbientTriggerPanel({
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [micTestBusy, setMicTestBusy] = useState(false);
   const [micTestStatus, setMicTestStatus] = useState("未実行");
+  const [micTestTone, setMicTestTone] = useState<TestStatusTone>("status");
   const [micTestLevel, setMicTestLevel] = useState<number | null>(null);
   const [transcriptionTestBusy, setTranscriptionTestBusy] = useState(false);
   const [transcriptionTestStatus, setTranscriptionTestStatus] = useState("未実行");
+  const [transcriptionTestTone, setTranscriptionTestTone] = useState<TestStatusTone>("status");
   const [transcriptionTestText, setTranscriptionTestText] = useState("");
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamCleanupRef = useRef<(() => void) | null>(null);
@@ -429,7 +447,7 @@ export function AmbientTriggerPanel({
       pendingAmbientResponseRef.current = null;
       const errorMessage = ambientResultMessage(result, "AIに送信できませんでした。");
       setPinchDetectorStatus("error");
-      setMessage(errorMessage);
+      setErrorMessage(errorMessage);
       setMiniChatError(errorMessage);
       return;
     }
@@ -572,7 +590,7 @@ export function AmbientTriggerPanel({
         if (!cancelled) void refreshDevices();
       })
       .catch((error) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : "指で録音の状態を確認できませんでした。");
+        if (!cancelled) setErrorMessage(error instanceof Error ? error.message : "指で録音の状態を確認できませんでした。");
       });
     return () => {
       cancelled = true;
@@ -656,7 +674,7 @@ export function AmbientTriggerPanel({
       replaceCameraStream(null);
       setTrackingFrame(null);
       setPinchDetectorStatus("unavailable");
-      setMessage("カメラの接続が切れました。接続を確認してから、合図待ちをもう一度開始してください。");
+      setErrorMessage("カメラの接続が切れました。接続を確認してから、合図待ちをもう一度開始してください。");
       void ambientTriggerClient.stopMonitor()
         .catch(() => undefined)
         .finally(() => refresh({ probeOs: true }).catch(() => undefined));
@@ -738,7 +756,7 @@ export function AmbientTriggerPanel({
     try {
       const recording = await recorder.stop();
       if (recording.size <= 0) {
-        setMessage(`${ambientOperationLabels.failed}: 録音が空でした。もう一度お試しください。`);
+        setErrorMessage(`${ambientOperationLabels.failed}: 録音が空でした。もう一度お試しください。`);
         setMiniChatError("録音が空でした。もう一度お試しください。");
         setPinchDetectorStatus("tracking");
         return;
@@ -801,7 +819,7 @@ export function AmbientTriggerPanel({
       });
     } catch (error) {
       const errorText = error instanceof Error ? error.message : "送信できませんでした。録音は保存されていません。";
-      setMessage(`${ambientOperationLabels.failed}: ${errorText}`);
+      setErrorMessage(`${ambientOperationLabels.failed}: ${errorText}`);
       setMiniChatError(errorText);
     }
   }, [activateMiniConversationFromSubmitResult, dispatchTemplateContext, miniConversation, miniConversationId, settleAmbientSubmission]);
@@ -830,7 +848,7 @@ export function AmbientTriggerPanel({
   const beginPinchRecording = useCallback(async (state: PinchState) => {
     if (pinchRecorderRef.current) return;
     if (!allRumiPermissionsGranted || !allOsPermissionsGranted || rumiApprovalPending) {
-      setMessage("Tobkiriの許可と端末のマイク・カメラ許可がそろってから録音できます。");
+      setWarningMessage("Tobkiriの許可と端末のマイク・カメラ許可がそろってから録音できます。");
       return;
     }
     lastPinchStateRef.current = state;
@@ -870,7 +888,7 @@ export function AmbientTriggerPanel({
       setPinchRecording(false);
       setRecordingStartedAt(null);
       setPinchDetectorStatus("tracking");
-      setMessage(`${ambientOperationLabels.failed}: ${error instanceof Error ? error.message : "録音を開始できませんでした。"}`);
+      setErrorMessage(`${ambientOperationLabels.failed}: ${error instanceof Error ? error.message : "録音を開始できませんでした。"}`);
     }
   }, [allOsPermissionsGranted, allRumiPermissionsGranted, rumiApprovalPending, selectedMicId]);
 
@@ -952,7 +970,7 @@ export function AmbientTriggerPanel({
       })
       .catch((error) => {
         if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : "カメラを切り替えられませんでした。");
+          setErrorMessage(error instanceof Error ? error.message : "カメラを切り替えられませんでした。");
           setPinchDetectorStatus(cameraStream ? "tracking" : "unavailable");
         }
       });
@@ -983,7 +1001,7 @@ export function AmbientTriggerPanel({
         if (cancelled) return;
         const messageText = error instanceof Error ? error.message : "カメラ監視を再開できませんでした。";
         setPinchDetectorStatus("unavailable");
-        setMessage(messageText);
+        setErrorMessage(messageText);
         await ambientTriggerClient.stopMonitor().catch(() => undefined);
         await refresh({ probeOs: true }).catch(() => undefined);
       }
@@ -1063,7 +1081,7 @@ export function AmbientTriggerPanel({
       if (success) setMessage(success);
     } catch (error) {
       setExpanded(true);
-      setMessage(error instanceof Error ? error.message : "操作を完了できませんでした。");
+      setErrorMessage(error instanceof Error ? error.message : "操作を完了できませんでした。");
       await refresh({ probeOs: true }).catch(() => undefined);
     } finally {
       setBusy(false);
@@ -1091,7 +1109,7 @@ export function AmbientTriggerPanel({
     }
     setRumiApprovalOpen(false);
     setManualRumiFallbackOpen(true);
-    setMessage("Tobkiri Launcherの承認ウィンドウを開けませんでした。Viewerから開き直して許可してください。");
+    setErrorMessage("Tobkiri Launcherの承認ウィンドウを開けませんでした。Viewerから開き直して許可してください。");
   }
 
   async function openMiniAuthorityApproval(approval = miniAuthorityApproval, options?: { auto?: boolean }) {
@@ -1186,12 +1204,12 @@ export function AmbientTriggerPanel({
         }
       }
       miniAuthorityContinuationErrorRequestRef.current = requestId;
-      setMessage(MINI_AUTHORITY_CONTINUATION_PENDING_ERROR);
+      setErrorMessage(MINI_AUTHORITY_CONTINUATION_PENDING_ERROR);
       setMiniChatError(MINI_AUTHORITY_CONTINUATION_PENDING_ERROR);
     } catch (error) {
       console.warn("[ambient] authority approval continuation polling failed", error);
       miniAuthorityContinuationErrorRequestRef.current = requestId;
-      setMessage(MINI_AUTHORITY_CONTINUATION_PENDING_ERROR);
+      setErrorMessage(MINI_AUTHORITY_CONTINUATION_PENDING_ERROR);
       setMiniChatError(MINI_AUTHORITY_CONTINUATION_PENDING_ERROR);
     } finally {
       miniAuthorityContinuationWaitRef.current.delete(requestId);
@@ -1240,7 +1258,7 @@ export function AmbientTriggerPanel({
   async function startMonitoring() {
     if (!allRumiPermissionsGranted || !allOsPermissionsGranted || rumiApprovalPending) {
       setExpanded(true);
-      setMessage("Tobkiriの許可と端末のマイク・カメラ許可がそろってから合図待ちを開始できます。");
+      setWarningMessage("Tobkiriの許可と端末のマイク・カメラ許可がそろってから合図待ちを開始できます。");
       return;
     }
     await runAction(async () => {
@@ -1266,7 +1284,7 @@ export function AmbientTriggerPanel({
 
   async function enrollWakeVoice() {
     if (!allRumiPermissionsGranted || !allOsPermissionsGranted || rumiApprovalPending) {
-      setMessage("Tobkiriの許可と端末のマイク許可がそろってから声で起動を登録できます。");
+      setWarningMessage("Tobkiriの許可と端末のマイク許可がそろってから声で起動を登録できます。");
       return;
     }
     setBusy(true);
@@ -1283,7 +1301,7 @@ export function AmbientTriggerPanel({
       setMessage(String(result.reason ?? "声で起動する音声を登録しました。"));
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "声で起動する音声を登録できませんでした。");
+      setErrorMessage(error instanceof Error ? error.message : "声で起動する音声を登録できませんでした。");
     } finally {
       setBusy(false);
     }
@@ -1298,7 +1316,7 @@ export function AmbientTriggerPanel({
     }
     try {
       if (!allRumiPermissionsGranted || !allOsPermissionsGranted || rumiApprovalPending) {
-        setMessage("Tobkiriの許可と端末のマイク許可がそろってから音声待機を開始できます。");
+        setWarningMessage("Tobkiriの許可と端末のマイク許可がそろってから音声待機を開始できます。");
         return;
       }
       const stop = await startWakeListening(async (embedding) => {
@@ -1317,43 +1335,49 @@ export function AmbientTriggerPanel({
         onError: (error) => {
           audioStopRef.current = null;
           setMicListening(false);
-          setMessage(error instanceof Error ? error.message : "音声待機が停止しました。マイク接続を確認してください。");
+          setErrorMessage(error instanceof Error ? error.message : "音声待機が停止しました。マイク接続を確認してください。");
         },
       });
       audioStopRef.current = stop;
       setMicListening(true);
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "マイクを開始できませんでした。");
+      setErrorMessage(error instanceof Error ? error.message : "マイクを開始できませんでした。");
     }
   }
 
   async function runMicInputTest() {
     if (!micRumiPermissionGranted || rumiApprovalPending) {
       setMicTestStatus("Tobkiriのマイク利用許可を完了してください。");
+      setMicTestTone("error");
       setExpanded(true);
       return;
     }
     if (pinchRecording || pinchRecorderRef.current) {
       setMicTestStatus("録音中はマイクテストを実行できません。");
+      setMicTestTone("error");
       return;
     }
     setMicTestBusy(true);
     setMicTestLevel(null);
     setMicTestStatus("確認中です。1秒ほど話してください。");
+    setMicTestTone("status");
     try {
       const result = await testMicrophoneInput(1400, selectedMicId || undefined);
       const level = Math.max(result.peak, result.rms * 4);
       setMicTestLevel(level);
       if (level >= 0.03) {
         setMicTestStatus(`入力OK: 音量 ${formatMicLevel(level)}`);
+        setMicTestTone("success");
         await ambientTriggerClient.checkOsPermissions({ [AMBIENT_MIC_PERMISSION]: "granted" }).catch(() => undefined);
         await refresh().catch(() => undefined);
       } else {
         setMicTestStatus(`入力が小さいです: 音量 ${formatMicLevel(level)}。マイク選択やOS許可を確認してください。`);
+        setMicTestTone("error");
       }
     } catch (error) {
       setMicTestStatus(error instanceof Error ? error.message : "マイクテストに失敗しました。");
+      setMicTestTone("error");
       await ambientTriggerClient.checkOsPermissions({ [AMBIENT_MIC_PERMISSION]: "denied" }).catch(() => undefined);
       await refresh().catch(() => undefined);
     } finally {
@@ -1364,16 +1388,19 @@ export function AmbientTriggerPanel({
   async function runTranscriptionTest() {
     if (!micRumiPermissionGranted || !ambientDispatchGranted || rumiApprovalPending) {
       setTranscriptionTestStatus("Tobkiriのマイク/トリガー利用許可を完了してください。");
+      setTranscriptionTestTone("error");
       setExpanded(true);
       return;
     }
     if (pinchRecording || pinchRecorderRef.current) {
       setTranscriptionTestStatus("録音中は文字起こしテストを実行できません。");
+      setTranscriptionTestTone("error");
       return;
     }
     setTranscriptionTestBusy(true);
     setTranscriptionTestText("");
     setTranscriptionTestStatus("録音中です。3秒ほど話してください。");
+    setTranscriptionTestTone("status");
     let recorder: ActiveAudioRecorder | null = null;
     try {
       recorder = await startPinchAudioRecorder(selectedMicId || undefined);
@@ -1381,6 +1408,7 @@ export function AmbientTriggerPanel({
       const recording = await recorder.stop();
       recorder = null;
       setTranscriptionTestStatus("文字起こし中です。");
+      setTranscriptionTestTone("status");
       const result = await ambientTriggerClient.submitEvent({
         source: "microphone",
         trigger: "transcription_test",
@@ -1405,12 +1433,15 @@ export function AmbientTriggerPanel({
       if (transcript) {
         setTranscriptionTestText(transcript);
         setTranscriptionTestStatus(`文字起こしOK: ${String(transcription.source || transcription.model || "local")}`);
+        setTranscriptionTestTone("success");
       } else {
         const detail = String(transcription.reason || transcription.code || result.reason || "").trim();
         setTranscriptionTestStatus(detail ? `文字起こしできませんでした: ${detail}` : "文字起こしできませんでした。もう少し長く、はっきり話してください。");
+        setTranscriptionTestTone("error");
       }
     } catch (error) {
       setTranscriptionTestStatus(error instanceof Error ? error.message : "文字起こしテストに失敗しました。");
+      setTranscriptionTestTone("error");
     } finally {
       recorder?.cancel();
       setTranscriptionTestBusy(false);
@@ -1468,7 +1499,7 @@ export function AmbientTriggerPanel({
     } catch (error) {
       const errorText = error instanceof Error ? error.message : "送信できませんでした。";
       setMiniChatError(errorText);
-      setMessage(`${ambientOperationLabels.failed}: ${errorText}`);
+      setErrorMessage(`${ambientOperationLabels.failed}: ${errorText}`);
     } finally {
       setMiniSending(false);
     }
@@ -1504,7 +1535,7 @@ export function AmbientTriggerPanel({
     } catch (error) {
       const errorText = error instanceof Error ? error.message : "新規チャットを作成できませんでした。";
       setMiniChatError(errorText);
-      setMessage(errorText);
+      setErrorMessage(errorText);
     } finally {
       setMiniChatCreating(false);
     }
@@ -1532,7 +1563,7 @@ export function AmbientTriggerPanel({
     if (!target || approvalGestureBusyRef.current) return;
     if (decision === "approve" && target.canApprove === false) return;
     if (decision === "reject" && target.canReject === false) {
-      setMessage("この承認では拒否ジェスチャーは使えません。");
+      setWarningMessage("この承認では拒否ジェスチャーは使えません。");
       return;
     }
     approvalGestureBusyRef.current = true;
@@ -1559,7 +1590,7 @@ export function AmbientTriggerPanel({
       await onApprovalGestureRef.current?.(decision);
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "承認ジェスチャーを処理できませんでした。");
+      setErrorMessage(error instanceof Error ? error.message : "承認ジェスチャーを処理できませんでした。");
     } finally {
       approvalGestureBusyRef.current = false;
       setPinchDetectorStatus("tracking");
@@ -1587,7 +1618,7 @@ export function AmbientTriggerPanel({
       });
     } catch (error) {
       const errorText = error instanceof Error ? error.message : "送信を許可できませんでした。";
-      setMessage(`${ambientOperationLabels.failed}: ${errorText}`);
+      setErrorMessage(`${ambientOperationLabels.failed}: ${errorText}`);
       setMiniChatError(errorText);
       await refresh().catch(() => undefined);
     } finally {
@@ -1605,7 +1636,7 @@ export function AmbientTriggerPanel({
       setMessage(String(result.status ?? "") === "denied" ? "送信を破棄しました。" : String(result.reason ?? "送信を破棄しました。"));
       await refresh();
     } catch (error) {
-      setMessage(`${ambientOperationLabels.failed}: ${error instanceof Error ? error.message : "送信待ちを破棄できませんでした。"}`);
+      setErrorMessage(`${ambientOperationLabels.failed}: ${error instanceof Error ? error.message : "送信待ちを破棄できませんでした。"}`);
       await refresh().catch(() => undefined);
     } finally {
       setBusy(false);
@@ -1616,7 +1647,7 @@ export function AmbientTriggerPanel({
     if (cameraUnavailable && (uiState === "readyOff" || uiState === "paused" || uiState === "blocked")) {
       setExpanded(true);
       setSettingsOpen(true);
-      setMessage("カメラが見つかりません。接続してからデバイス更新を押してください。");
+      setErrorMessage("カメラが見つかりません。接続してからデバイス更新を押してください。");
       return;
     }
     switch (uiState) {
@@ -1787,10 +1818,18 @@ export function AmbientTriggerPanel({
           </button>
         </div>
         <div className="space-y-1 text-[11px] leading-5 text-zinc-400">
-          <p className={cn("flex items-center gap-1", micTestLevel !== null && micTestLevel >= 0.03 ? "text-emerald-200" : "")}>
-            {micTestLevel !== null && micTestLevel >= 0.03 ? <Check size={12} /> : null}
-            <span>{micTestStatus}</span>
-          </p>
+          {micTestTone === "error" ? (
+            <ErrorNotice
+              className="px-2 py-1 text-[11px] leading-5"
+              copyLabel="マイクテストエラーをコピー"
+              message={micTestStatus}
+            />
+          ) : (
+            <p className={cn("flex items-center gap-1", micTestTone === "success" ? "text-emerald-200" : "")}>
+              {micTestTone === "success" ? <Check size={12} /> : null}
+              <span>{micTestStatus}</span>
+            </p>
+          )}
           {micTestLevel !== null && (
             <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
               <div
@@ -1799,7 +1838,13 @@ export function AmbientTriggerPanel({
               />
             </div>
           )}
-          <p>{transcriptionTestStatus}</p>
+          {transcriptionTestTone === "error" ? (
+            <ErrorNotice
+              className="px-2 py-1 text-[11px] leading-5"
+              copyLabel="文字起こしテストエラーをコピー"
+              message={transcriptionTestStatus}
+            />
+          ) : <p>{transcriptionTestStatus}</p>}
           {transcriptionTestText && (
             <p className="rounded-md border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-emerald-100">
               {transcriptionTestText}
@@ -2145,9 +2190,24 @@ export function AmbientTriggerPanel({
             )}
 
             {visibleMessage && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-400">
-                {visibleMessage}
-              </div>
+              messageTone === "error" ? (
+                <ErrorNotice
+                  className="px-2 py-1.5 text-[11px]"
+                  copyLabel="アンビエント操作エラーをコピー"
+                  message={visibleMessage}
+                />
+              ) : messageTone === "warning" ? (
+                <ErrorNotice
+                  className="px-2 py-1.5 text-[11px]"
+                  copyLabel="アンビエント操作の警告をコピー"
+                  message={visibleMessage}
+                  severity="warning"
+                />
+              ) : (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-[11px] text-zinc-400">
+                  {visibleMessage}
+                </div>
+              )
             )}
           </div>
         )}

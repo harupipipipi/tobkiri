@@ -59,7 +59,7 @@ GITHUB_PROVIDER = ConnectionProvider(
         {"scopes": ["workflow"], "capabilities": ["github.actions.workflow"]},
     ],
     adapter={
-        "python": "ecosystem.defaultspack.domain.connections.github:GitHubConnectionAdapter",
+        "python": "core_runtime.connections.adapter:GenericConnectionAdapter",
         "sdk_optional": True,
     },
 )

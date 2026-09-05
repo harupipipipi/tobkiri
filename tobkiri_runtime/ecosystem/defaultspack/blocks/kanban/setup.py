@@ -18,6 +18,12 @@ def run(context: dict[str, Any]):
     routes = [
         ("GET", "/api/kanban/boards", "list_boards", {}),
         ("POST", "/api/kanban/boards/bootstrap", "bootstrap_board", {}),
+        (
+            "POST",
+            "/api/kanban/boards/{board_id}/migrate",
+            "migrate_board",
+            {"board_id": "board_id"},
+        ),
         ("GET", "/api/kanban/boards/{board_id}", "get_board", {"board_id": "board_id"}),
         ("PUT", "/api/kanban/boards/{board_id}", "update_board", {"board_id": "board_id"}),
         ("POST", "/api/kanban/boards/{board_id}/cards", "create_card", {"board_id": "board_id"}),

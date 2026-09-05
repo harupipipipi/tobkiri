@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+from typing import Any
 
 from .workspace_jail import WorkspaceJail
 
@@ -241,6 +242,8 @@ class FileOps:
             ["git"] + list(args),
             cwd=cwd or self._root,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout,
         )
@@ -264,7 +267,7 @@ class FileOps:
         return completed.stdout
 
     def _git_metadata(self):
-        metadata = {
+        metadata: dict[str, Any] = {
             "available": False,
             "root": None,
             "head": None,
@@ -319,7 +322,7 @@ class FileOps:
             if rel and not self._is_restricted_rel(rel):
                 tracked_paths[rel] = git_path.replace("\\", "/")
 
-        dirty_map = {}
+        dirty_map: dict[str, dict[str, Any]] = {}
         for label, paths in (
             ("staged", staged),
             ("modified", modified),
@@ -454,7 +457,7 @@ class FileOps:
         tracked_by_path, status_by_path = self._git_status_for_path(git_metadata)
         selected_rels = [self._normalize_rel(rel) for rel in (selected_rels or ["."])]
         if git_metadata.get("available"):
-            entries_by_path = {}
+            entries_by_path: dict[str, dict[str, Any]] = {}
             for rel in self._git_manifest_candidates(tracked_by_path, status_by_path, selected_rels):
                 self._append_manifest_file(
                     entries_by_path,
@@ -550,7 +553,7 @@ class FileOps:
         return True
 
     def _capture_worktree_contents(self, snapshot_root, worktree_entries, git_metadata):
-        captured = []
+        captured: list[dict[str, Any]] = []
         missing_dirty = []
         files_by_path = {
             entry["path"]: entry

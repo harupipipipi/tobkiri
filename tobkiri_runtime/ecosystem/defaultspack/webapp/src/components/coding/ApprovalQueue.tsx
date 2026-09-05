@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodingApprovalDecision, CodingApprovalRequest } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { codingResources } from "../../features/coding/resources/codingResources";
+import { ErrorNotice } from "../ErrorNotice";
 import { codingApprovalViewModel } from "../../lib/approvalPresentation";
 import { ApprovalDecisionSurface } from "../ApprovalDecisionSurface";
 import { mcpApprovalReviewRows } from "./mcpApproval";
@@ -160,7 +161,13 @@ export function ApprovalQueue({
         </button>
       </div>
 
-      {error && <p className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-200">{error}</p>}
+      {error && (
+        <ErrorNotice
+          className="mb-2 px-2 py-1 text-[11px]"
+          copyLabel="承認キューのエラーをコピー"
+          message={error}
+        />
+      )}
 
       <div className="space-y-2">
         {requests.length > visibleRequests.length && (

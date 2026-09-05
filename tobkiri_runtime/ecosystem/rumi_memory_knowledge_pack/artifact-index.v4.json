@@ -1,0 +1,27 @@
+{
+  "artifact_set_digest": "sha256:20bf8969fba8106ff65e3276f32fb01c20e8030cb6ab2efc20a5f37d7190023d",
+  "artifacts": [
+    {
+      "digest": "sha256:79c1db2ad75909117f26e3f39248386c93a2fa841149e70ea57c788b5c19cee7",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:42cd776e88ba7aef1d3731876289508d193ee21878b405978f38ea16217a7a3e",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:3dba9e65770b78583ab2e0dfb217057e71419dbd1dd1ef25dcaa6b2b13961670",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:7f11614d5b57994eb6e8ca7a99a2a7475134f4567a050ae3db2905ebf91995c5"
+  },
+  "pack_id": "rumi_memory_knowledge_pack",
+  "source_identity": "sha256:369c8c953fe5519ac26858e0c910b9d3b4f6cb5c90d7d2f6fc4b176778dc4967"
+}

@@ -1,34 +1,74 @@
 {
-  "pack_id": "rumi_api_toolsmith_pack",
-  "pack_identity": "rumi:ecosystem/rumi_api_toolsmith_pack",
-  "display_name": "Rumi API Toolsmith Pack",
-  "version": "0.1.0",
-  "description": "Declarative API, OpenAPI, GraphQL, webhook, and tool-schema review workflow pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "spec",
-      "policy",
-      "evidence",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative API, OpenAPI, GraphQL, webhook, and tool-schema review workflow pack.",
+  "display_name": "Rumi API Toolsmith Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalogs": [
+        "catalog/api_toolsmith_workflows.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "evidence_ledgers": [
+        "evidence/mock_test_evidence.schema.yaml"
+      ],
+      "examples": [
+        "examples/openapi_to_tool.example.yaml",
+        "examples/graphql_action_map.example.yaml",
+        "examples/webhook_contract_test.example.yaml"
+      ],
+      "policies": [
+        "policies/api_tool_safety.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/api_toolsmith.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/api_toolsmith.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "specs": [
+        "specs/openapi_schema_review.yaml",
+        "specs/graphql_operation_review.yaml",
+        "specs/webhook_contract_review.yaml"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c"
+    },
     "executable_code": false,
-    "registers_tools": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_connector_gateway_pack",
@@ -57,46 +97,32 @@
       "webhook_signature_policy_review",
       "mock_test_evidence"
     ],
-    "asset_index": {
-      "catalogs": [
-        "catalog/api_toolsmith_workflows.yaml"
-      ],
-      "specs": [
-        "specs/openapi_schema_review.yaml",
-        "specs/graphql_operation_review.yaml",
-        "specs/webhook_contract_review.yaml"
-      ],
-      "policies": [
-        "policies/api_tool_safety.policy.yaml"
-      ],
-      "evidence_ledgers": [
-        "evidence/mock_test_evidence.schema.yaml"
-      ],
-      "examples": [
-        "examples/openapi_to_tool.example.yaml",
-        "examples/graphql_action_map.example.yaml",
-        "examples/webhook_contract_test.example.yaml"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "profiles": [
-        "profiles/api_toolsmith.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/api_toolsmith.system.md"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "registers_tools": false,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_api_toolsmith_pack",
+  "pack_identity": "rumi:ecosystem/rumi_api_toolsmith_pack",
+  "provenance": {
+    "build_identity": "rumi_api_toolsmith_pack:0.1.0",
+    "content_hash": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "spec",
+      "policy",
+      "evidence",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

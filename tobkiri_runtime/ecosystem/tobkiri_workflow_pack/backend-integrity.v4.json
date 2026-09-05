@@ -1,0 +1,12 @@
+{
+  "files": {
+    "core_runtime/workflow_v4/__init__.py": "sha256:da40d71dce8a893305036c767481cd60fad1675fe2ca91e603ec899d8e77d16e",
+    "core_runtime/workflow_v4/engine.py": "sha256:4fda245ac2e586d999b1e7698cf516b4960803297473a2b76500e0a0dbbee12b",
+    "core_runtime/workflow_v4/integration.py": "sha256:19f1da94324333fa4291aa738b30e2651df361a07638a82ce49393e88469dffc",
+    "core_runtime/workflow_v4/models.py": "sha256:b10c9fda239788a3333e58b1ba0245375a592541dd3459f95d2e3caaa3e79684",
+    "core_runtime/workflow_v4/protocols.py": "sha256:1c775cd87cbe80f5090204d639a7ece2c2a557d6cad2c975b91d7947fe254219",
+    "core_runtime/workflow_v4/provider.py": "sha256:569c73c554d42405da5cf5f5c224b0ead282590fb4d870064b63b2d4b7286a58",
+    "core_runtime/workflow_v4/store.py": "sha256:fc6592c70f0e25a1f06a5a0de5834504affea40b70326e042fd88cfb1c0311ea"
+  },
+  "schema": "io.tobkiri.workflow-backend-integrity.v4"
+}

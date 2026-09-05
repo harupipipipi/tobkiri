@@ -81,7 +81,7 @@ def test_task_status_from_running_and_completed_delegate_results():
     )
 
 
-def test_task_prompt_frames_employee_delegation_from_president_chat():
+def test_task_prompt_frames_subagent_delegation_from_main_agent():
     from domain.company.run_dispatcher import _task_prompt
 
     prompt = _task_prompt(
@@ -97,10 +97,10 @@ def test_task_prompt_frames_employee_delegation_from_president_chat():
         {"agent_id": "research_specialist", "display_name": "Research Specialist"},
     )
 
-    assert "president in the main Rumi chat" in prompt
-    assert "does not perform specialist work directly" in prompt
+    assert "Main Agent in Tobkiri" in prompt
+    assert "coordinates Subagents" in prompt
     assert "Parent chat id: chat-main-1" in prompt
-    assert "Original president request" in prompt
+    assert "Original Main Agent request" in prompt
     assert "Company Workspace UI" not in prompt
 
 
@@ -164,7 +164,7 @@ def test_dispatch_persists_unconfigured_agent_model_error(monkeypatch, tmp_path)
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AGENT_RUNTIME_DIR", str(tmp_path / "agent_runtime"))
     monkeypatch.setattr("domain.agent.engine.get_model_capabilities", lambda _model: {})
 
-    def fake_complete(_self, _request):
+    def fake_complete(_gateway, _request):
         raise RuntimeError(
             "stub: provider is not configured. "
             "Configure a real or local AI provider before sending a message."

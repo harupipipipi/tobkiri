@@ -1,44 +1,5 @@
 {
-  "pack_id": "rumi_knowledge_marketplace_pack",
-  "pack_identity": "rumi:ecosystem/rumi_knowledge_marketplace_pack",
-  "display_name": "Rumi Knowledge Marketplace Pack",
-  "description": "Declarative local-first marketplace pack for tag-based capability requirements, provider-independent model tiers, capability cards, provenance ledgers, install review, trust rubrics, promotion gates, and blacklist policy.",
-  "version": "0.2.0",
-  "license": "MIT",
-  "vocabulary": {
-    "types": [
-      "manifest",
-      "documentation",
-      "catalog",
-      "schema",
-      "policy",
-      "workflow",
-      "ledger",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ],
-    "custom_types": {
-      "workflow": {
-        "description": "Declarative install-review workflows for untrusted marketplace candidates.",
-        "singleton": false
-      },
-      "ledger": {
-        "description": "Local provenance ledger contracts for reviewed marketplace content.",
-        "singleton": false
-      },
-      "schema": {
-        "description": "JSON Schema assets for marketplace cards and tag-based requirement records.",
-        "singleton": false
-      }
-    }
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
   "connectivity": {
     "provides": [
       "marketplace.card_schema",
@@ -54,26 +15,89 @@
       "defaultspack.model_routing"
     ]
   },
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative local-first marketplace pack for tag-based capability requirements, provider-independent model tiers, capability cards, provenance ledgers, install review, trust rubrics, promotion gates, and blacklist policy.",
+  "display_name": "Rumi Knowledge Marketplace Pack",
   "host_execution": false,
+  "license": "MIT",
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalog": [
+        "catalog/marketplace_card_schema.yaml",
+        "catalog/model_tiers.yaml",
+        "catalog/trust_rubric.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md",
+        "docs/tag-requirements.md"
+      ],
+      "examples": [
+        "examples/connector_card_review.example.yaml",
+        "examples/skill_review_card.example.yaml",
+        "examples/tagged_requirement.example.yaml",
+        "examples/template_catalog_entry.example.yaml"
+      ],
+      "frontend_extensions": [
+        "frontend_extensions/marketplace_preview.ui.json"
+      ],
+      "ledgers": [
+        "ledgers/provenance_ledger.yaml"
+      ],
+      "manifest": [
+        "ecosystem.json"
+      ],
+      "policies": [
+        "policies/marketplace_trust.policy.yaml",
+        "policies/promotion_blacklist.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/marketplace_curator.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/marketplace_curator.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schemas": [
+        "schemas/marketplace_card.schema.json",
+        "schemas/marketplace_requirement.schema.json"
+      ],
+      "workflows": [
+        "workflows/install_review_workflow.yaml"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:ae11e5127c0bb4a1dab5f1a763c5f9b87378b27454f74ef80a9a27613e6ab6b1",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:0add39edb25bd8c1f640624a08a0500399eb258534f798aad22e33ed399dd4d5"
+    },
     "executable_code": false,
-    "runtime_type": "declarative_pack",
-    "owner_surfaces": [
-      "skill_cards",
-      "tool_mcp_cards",
-      "template_catalogs",
-      "tag_requirements",
-      "model_tier_metadata",
-      "marketplace_listing_preview",
-      "install_candidate_reviews",
-      "trust_metadata",
-      "provenance_ledgers",
-      "promotion_blacklist_policy"
-    ],
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:0add39edb25bd8c1f640624a08a0500399eb258534f798aad22e33ed399dd4d5"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_pack_suite_pack",
@@ -98,64 +122,66 @@
     ],
     "overlap_notes": {
       "defaultspack": "Owns active grants, pack selection, model routing, and runtime enforcement.",
-      "rumi_pack_suite_pack": "Owns bundle installation and suite composition; marketplace owns candidate card trust metadata.",
-      "rumi_security_review_pack": "Owns security analysis; marketplace owns triage, provenance, and blacklist policy.",
       "rumi_connector_gateway_pack": "Owns connector execution; marketplace owns connector-card review records.",
-      "rumi_mcp_gateway_pack": "Owns unsupported MCP server review and namespace routing; marketplace owns searchable tags and requirement metadata."
+      "rumi_mcp_gateway_pack": "Owns unsupported MCP server review and namespace routing; marketplace owns searchable tags and requirement metadata.",
+      "rumi_pack_suite_pack": "Owns bundle installation and suite composition; marketplace owns candidate card trust metadata.",
+      "rumi_security_review_pack": "Owns security analysis; marketplace owns triage, provenance, and blacklist policy."
     },
-    "asset_index": {
-      "manifest": [
-        "ecosystem.json"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "frontend_extensions": [
-        "frontend_extensions/marketplace_preview.ui.json"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md",
-        "docs/tag-requirements.md"
-      ],
-      "catalog": [
-        "catalog/marketplace_card_schema.yaml",
-        "catalog/model_tiers.yaml",
-        "catalog/trust_rubric.yaml"
-      ],
-      "schemas": [
-        "schemas/marketplace_card.schema.json",
-        "schemas/marketplace_requirement.schema.json"
-      ],
-      "policies": [
-        "policies/marketplace_trust.policy.yaml",
-        "policies/promotion_blacklist.policy.yaml"
-      ],
-      "workflows": [
-        "workflows/install_review_workflow.yaml"
-      ],
-      "ledgers": [
-        "ledgers/provenance_ledger.yaml"
-      ],
-      "profiles": [
-        "profiles/marketplace_curator.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/marketplace_curator.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "examples": [
-        "examples/connector_card_review.example.yaml",
-        "examples/skill_review_card.example.yaml",
-        "examples/tagged_requirement.example.yaml",
-        "examples/template_catalog_entry.example.yaml"
-      ]
-    }
+    "owner_surfaces": [
+      "skill_cards",
+      "tool_mcp_cards",
+      "template_catalogs",
+      "tag_requirements",
+      "model_tier_metadata",
+      "marketplace_listing_preview",
+      "install_candidate_reviews",
+      "trust_metadata",
+      "provenance_ledgers",
+      "promotion_blacklist_policy"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack"
+  },
+  "pack_id": "rumi_knowledge_marketplace_pack",
+  "pack_identity": "rumi:ecosystem/rumi_knowledge_marketplace_pack",
+  "provenance": {
+    "build_identity": "rumi_knowledge_marketplace_pack:0.2.0",
+    "content_hash": "sha256:ae11e5127c0bb4a1dab5f1a763c5f9b87378b27454f74ef80a9a27613e6ab6b1",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.2.0",
+  "vocabulary": {
+    "custom_types": {
+      "ledger": {
+        "description": "Local provenance ledger contracts for reviewed marketplace content.",
+        "singleton": false
+      },
+      "schema": {
+        "description": "JSON Schema assets for marketplace cards and tag-based requirement records.",
+        "singleton": false
+      },
+      "workflow": {
+        "description": "Declarative install-review workflows for untrusted marketplace candidates.",
+        "singleton": false
+      }
+    },
+    "types": [
+      "manifest",
+      "documentation",
+      "catalog",
+      "schema",
+      "policy",
+      "workflow",
+      "ledger",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

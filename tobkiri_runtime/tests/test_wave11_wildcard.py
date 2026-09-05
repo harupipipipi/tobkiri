@@ -136,7 +136,7 @@ class TestIsWildcardModifierAllowed:
     def test_env_var_false_denies(self, monkeypatch):
         monkeypatch.setenv("RUMI_ALLOW_WILDCARD_MODIFIERS", "false")
         loader = FlowModifierLoader()
-        with patch("core_runtime.flow_modifier_loader.discover_pack_locations", return_value=[]):
+        with patch("core_runtime.flow_modifier_loader.resolve_pack_locations", return_value=[]):
             assert loader._is_wildcard_modifier_allowed("some_pack") is False
 
     def test_cache_hit_true(self):
@@ -152,7 +152,7 @@ class TestIsWildcardModifierAllowed:
     def test_ecosystem_json_not_found(self):
         """Pack not in discovery -> False."""
         loader = FlowModifierLoader()
-        with patch("core_runtime.flow_modifier_loader.discover_pack_locations", return_value=[]):
+        with patch("core_runtime.flow_modifier_loader.resolve_pack_locations", return_value=[]):
             result = loader._is_wildcard_modifier_allowed("missing_pack")
         assert result is False
         assert loader._wildcard_flags["missing_pack"] is False

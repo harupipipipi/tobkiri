@@ -28,7 +28,7 @@ acceptance_rubric:
       description: supports_all_ok remains false and defaultspack promotion remains disabled.
       blocking_failures:
         - supports_all_ok_true
-        - defaultspack_promotion_eligible
+        - base_pack_promotion_eligible
 acceptance_decision:
   ready_requires:
     - no_blocking_failures

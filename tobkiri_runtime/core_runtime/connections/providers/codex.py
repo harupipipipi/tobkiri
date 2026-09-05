@@ -87,7 +87,7 @@ CODEX_PROVIDER = ConnectionProvider(
         {"credential_kind": "codex_app_server_secret", "capabilities": ["codex.app_server.connect"]},
     ],
     adapter={
-        "python": "ecosystem.defaultspack.domain.connections.codex:CodexConnectionAdapter",
+        "python": "core_runtime.connections.adapter:GenericConnectionAdapter",
         "sdk_optional": True,
     },
     metadata={

@@ -1,0 +1,8 @@
+{
+  "schema": "io.tobkiri.runtime-resource-path-binding.v1",
+  "sealed_path": "app/defaultspack_entry.py",
+  "outer_path": "python-runtime/app/defaultspack_entry.py",
+  "application_path": "defaultspack_entry.py",
+  "size": 1940,
+  "sha256": "a233f670beb904ee5d5d532c1ce608f067e3418305de530cc4182beee8e8f8f9"
+}

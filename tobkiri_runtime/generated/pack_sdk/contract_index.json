@@ -1,0 +1,42 @@
+{
+  "generated": true,
+  "generator": "tobkiri.core_runtime.pack_sdk/v1",
+  "schemas": [
+    {
+      "definitions": [
+        "action",
+        "commandInvocationRequest",
+        "commandInvocationResult",
+        "commandPack",
+        "commandProtocolError",
+        "execution",
+        "form",
+        "formField",
+        "identity",
+        "localizedText",
+        "option",
+        "presentation",
+        "resolvedCatalog",
+        "resolvedCommand",
+        "searchSelect",
+        "select",
+        "toggle"
+      ],
+      "filename": "command-protocol-v1.schema.json",
+      "schema_id": "https://tobkiri.local/schemas/command-protocol-v1.schema.json",
+      "sha256": "745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a"
+    },
+    {
+      "definitions": [],
+      "filename": "global_contract_types.schema.json",
+      "schema_id": "https://schemas.rumi.local/global-contract-types.v1.schema.json",
+      "sha256": "dee1a00e778a8eb5654d2457d7c39aebe01e2684889ceb16f41d271afbb3dbc0"
+    },
+    {
+      "definitions": [],
+      "filename": "pack_manifest_v4.schema.json",
+      "schema_id": "https://schemas.tobkiri.local/io.tobkiri/pack-manifest.v4.schema.json",
+      "sha256": "98e039485400b9cc8e5dbc8b163ce1b91929e87e42847e88529a4355b9f18606"
+    }
+  ]
+}

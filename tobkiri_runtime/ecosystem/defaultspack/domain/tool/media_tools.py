@@ -3,7 +3,7 @@ from __future__ import annotations
 import wave
 from typing import Any
 
-from ._agent_os_common import PNG_1X1, err, missing_dependency, ok, read_text_file, write_bytes_file, workspace
+from ._agent_os_common import err, missing_dependency, ok, workspace
 from .preview_tools import image_render
 
 

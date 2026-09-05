@@ -104,9 +104,15 @@ def test_tagged_example_prefers_pack_and_supports_any_all_matching() -> None:
     assert example["expected_resolution"]["auto_install_allowed"] is False
 
 
-def test_frontend_registry_exposes_marketplace_coming_soon_search() -> None:
+def test_frontend_registry_exposes_marketplace_coming_soon_search(monkeypatch) -> None:
+    from domain.frontend import registry as frontend_registry
     from domain.frontend.registry import FrontendRegistry
 
+    monkeypatch.setattr(
+        frontend_registry,
+        "selected_extension_pack_ids",
+        lambda _pack_root: {"rumi_knowledge_marketplace_pack"},
+    )
     with patch("domain.frontend.registry.AIClient") as mock_client:
         mock_client.return_value.list_models.return_value = [{"id": "stub/default"}]
         catalog = FrontendRegistry(pack_root=DEFAULTSPACK_ROOT).build_catalog()

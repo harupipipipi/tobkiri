@@ -1,0 +1,27 @@
+{
+  "artifact_set_digest": "sha256:cbdd7570eebeaafd9bf3df8f1731fc5b0cb8d71d348654d3fc260355b3d298dc",
+  "artifacts": [
+    {
+      "digest": "sha256:f69f0f131602723c0b007c2a9faa4a9b1fafff808d0f5921cded1653acab0dc0",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:85e23296ceea71ea50d7419cbaee8dd8c2e581f84dcc1052510c4546d9aff21c",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:cedd4c11489a8a9ad428f4c462aab920909d08c704bbf2e0361f46869f379e80",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:3908eeb37d84efcd3114a7730a95c5e68de8ac48821a8b9ef5b70694544fd6b0"
+  },
+  "pack_id": "rumi_omnichannel_agent_inbox_pack",
+  "source_identity": "sha256:d08ddf0bdcd132176a325cb7722f468c2bb58b5c00d2bc85df289d9efb0c911f"
+}

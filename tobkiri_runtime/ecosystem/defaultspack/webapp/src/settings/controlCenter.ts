@@ -6,6 +6,7 @@ export type ControlCenterSectionId =
   | "quick_setup"
   | "models_api"
   | "accounts_connections"
+  | "features"
   | "tools_mcp"
   | "computer_automation"
   | "workspace_ui"
@@ -136,95 +137,103 @@ const BLOCKED_RAW_LABEL_PATTERNS: Array<[RegExp, string]> = [
 const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections">> = [
   {
     id: "quick_setup",
-    label: "Quick Setup",
-    description: "Setup blockers and the first choices that make Rumi usable.",
-    help: "Shows model, API, account, MCP, computer approval, and cloud continuation setup first.",
-    order: 10,
+    label: "AI Assistant",
+    description: "Understand, compare, and safely change settings through a guided conversation.",
+    help: "The assistant can prepare changes, while you keep final control over every value that is applied.",
+    order: 0,
   },
   {
     id: "models_api",
-    label: "Models & API",
-    description: "Model roles, providers, API keys, routing, and fallback.",
-    help: "Model ids and provider quirks stay here instead of leaking into unrelated sections.",
+    label: "Models",
+    description: "Default models, task assignments, model sets, and fallback behavior.",
+    help: "Connections and credentials are managed separately from model choice.",
+    order: 10,
+  },
+  {
+    id: "workspace_ui",
+    label: "Display & Input",
+    description: "Language, composer, input methods, shortcuts, responses, and previews.",
+    help: "Only everyday presentation and input controls belong here.",
     order: 20,
   },
   {
     id: "accounts_connections",
-    label: "Accounts & Connections",
-    description: "OAuth and account connections for Cloudflare, Google, Gmail, Drive, and future providers.",
-    help: "Connections own credentials and identity. Tool execution policy lives in Tools & MCP.",
+    label: "Connections",
+    description: "AI providers, accounts, credentials, channels, webhooks, and devices.",
+    help: "Connections own identity and secrets. Model choice and tool policy remain separate.",
     order: 30,
   },
   {
-    id: "tools_mcp",
-    label: "Tools & MCP",
-    description: "Installed tools, MCP servers, discovered tools, visibility, and approval policy.",
-    help: "MCP servers can require a connection, but the login flow belongs to Accounts & Connections.",
+    id: "features",
+    label: "Features",
+    description: "Calendar, commands, ambient capture, and other optional product features.",
+    help: "Feature-specific behavior stays with the feature that owns it.",
     order: 40,
   },
   {
-    id: "computer_automation",
-    label: "Computer & Automation",
-    description: "Screen observation, browser automation, local permissions, approvals, and cloud continuation.",
-    help: "Computer control is shown as a high-impact permission surface, not as a normal tool row.",
+    id: "tools_mcp",
+    label: "Tools",
+    description: "Chat tools, tool selection, MCP sources, transparency, and tool permissions.",
+    help: "A tool can require a connection, but sign-in remains in Connections.",
     order: 50,
   },
   {
-    id: "workspace_ui",
-    label: "Workspace & UI",
-    description: "Theme, layout, panes, shortcuts, composer behavior, and visual indicators.",
-    help: "Visual-only settings live here, including automation indicators.",
+    id: "computer_automation",
+    label: "Automation & Permissions",
+    description: "Approval rules, computer control, OS permissions, triggers, and continuation.",
+    help: "High-impact automation is explicit about scope, risk, and the next action.",
     order: 60,
+  },
+  {
+    id: "privacy_security",
+    label: "Safety & Data",
+    description: "External data flow, retention, logs, credential safety, and administrator policy.",
+    help: "Security state is explained by impact and action rather than raw counters.",
+    order: 70,
   },
   {
     id: "profiles",
     label: "Profiles",
-    description: "Profile-specific runtime presets for models, tools, credentials, and policy.",
-    help: "Profile-aware settings should show configured, missing, disabled, and unapproved states.",
-    order: 70,
-  },
-  {
-    id: "privacy_security",
-    label: "Privacy & Security",
-    description: "Credentials, approvals, audit logs, data retention, and dangerous action policy.",
-    help: "Write-like actions, secrets, and approvals stay visible and policy-aware.",
+    description: "Compare and apply per-profile overrides for models, tools, connections, and permissions.",
+    help: "Inherited and overridden values are shown with their effective scope.",
     order: 80,
   },
   {
     id: "packs_extensions",
     label: "Packs & Extensions",
-    description: "Pack install, update, enable, disable, and settings contributions.",
-    help: "Packs contribute settings through a registry contract instead of mutating UI directly.",
+    description: "Installed packs, trust, permissions, updates, and pack-owned settings.",
+    help: "Pack-owned settings stay with their owner and expose reset boundaries.",
     order: 90,
   },
   {
     id: "advanced",
-    label: "Advanced",
-    description: "Rare power-user and compatibility settings.",
-    help: "Low-frequency knobs stay below the daily setup path.",
+    label: "Advanced Settings",
+    description: "Custom models, routing, compatibility, context, and developer tuning.",
+    help: "Raw IDs, internal paths, and expert controls stay out of the standard experience.",
     order: 100,
   },
   {
     id: "diagnostics",
-    label: "Diagnostics",
-    description: "Health checks, logs, raw state, migration reports, and developer diagnostics.",
-    help: "Debug and raw JSON settings are intentionally parked here.",
+    label: "Diagnostics & Support",
+    description: "Actionable problems, connection tests, system state, logs, and support information.",
+    help: "Diagnostics starts with a fixable problem, not a dump of internal state.",
     order: 110,
   },
 ];
 
 const JA_SECTION_COPY: Record<ControlCenterSectionId, Pick<ControlCenterSection, "label" | "description" | "help">> = {
-  quick_setup: { label: "はじめに", description: "Rumiを使い始めるために必要な項目です。", help: "モデル、接続、機能、コンピュータ操作の準備状況を最初に確認できます。" },
-  models_api: { label: "モデルとAPI", description: "普段使うモデル、接続先、切り替え方を選びます。", help: "プロバイダー固有の値は、必要な場合だけ詳細設定に表示します。" },
-  accounts_connections: { label: "アカウントと接続", description: "Google、GitHubなどの外部サービスを接続します。", help: "ここではログイン情報を管理します。機能を実行する際の確認方法は「機能とMCP」で設定します。" },
-  tools_mcp: { label: "機能とMCP", description: "利用できる機能、MCPサーバー、実行前の確認方法を管理します。", help: "サービスへのログインと、機能を実行する権限は別々に管理されます。" },
-  computer_automation: { label: "コンピュータ操作", description: "画面・ブラウザ操作、自動化、端末間の引き継ぎを管理します。", help: "画面や入力を操作する機能は影響が大きいため、許可状態をここで確認できます。" },
-  workspace_ui: { label: "表示と操作", description: "言語、見た目、入力欄、ショートカットを変更します。", help: "日常的な表示・操作の設定をまとめています。" },
-  profiles: { label: "プロファイル", description: "用途ごとのモデル、機能、ポリシーの組み合わせを管理します。", help: "現在使われているプロファイルと不足している設定を確認できます。" },
-  privacy_security: { label: "プライバシーと安全", description: "認証情報、承認、履歴、危険な操作の扱いを管理します。", help: "書き込み操作や秘密情報は、承認ルールを保ったまま管理されます。" },
-  packs_extensions: { label: "パックと拡張機能", description: "追加機能のインストール、有効化、更新を管理します。", help: "拡張機能が追加した設定もここから確認できます。" },
-  advanced: { label: "詳細設定", description: "互換性や特殊な利用方法のための設定です。", help: "通常は変更する必要のない項目をまとめています。" },
-  diagnostics: { label: "診断", description: "動作状況、ログ、移行結果を確認します。", help: "問題調査に使う内部情報はここだけに表示します。" },
+  quick_setup: { label: "AIアシスタント", description: "AIと対話しながら、設定を探す・比較する・安全に変更するための画面です。", help: "AIは変更案を準備し、実際に適用する値はユーザーが確認できます。" },
+  models_api: { label: "モデル", description: "会話で使うモデル、用途別の割り当て、自動選択とフォールバックを設定します。", help: "接続や認証情報は「接続」で管理します。" },
+  workspace_ui: { label: "表示と入力", description: "表示言語、入力方法、ショートカット、回答とプレビューの見え方を設定します。", help: "日常的に変更する表示・入力項目だけをまとめています。" },
+  accounts_connections: { label: "接続", description: "AIプロバイダー、アカウント、外部サービス、Webhook、デバイスの接続を管理します。", help: "認証情報は専用の安全な保存経路を使用します。" },
+  features: { label: "機能", description: "カレンダー、コマンド、指で録音など、追加機能ごとの動作を設定します。", help: "各機能に固有の項目を、その所有機能ごとにまとめています。" },
+  tools_mcp: { label: "ツール", description: "チャットで使えるツール、MCP、ツール候補、透明性を管理します。", help: "ログインは「接続」、実行承認は「自動化と権限」で管理します。" },
+  computer_automation: { label: "自動化と権限", description: "承認ルール、コンピュータ操作、OS権限、トリガー、継続実行を管理します。", help: "影響の大きい操作は、必要な機能・リスク・適用範囲と一緒に表示します。" },
+  privacy_security: { label: "安全とデータ", description: "外部へ送るデータ、保持、ログ、認証情報、管理者ポリシーを管理します。", help: "件数ではなく、原因・影響・解決操作のある問題だけを表示します。" },
+  profiles: { label: "プロファイル", description: "モデル、ツール、接続、承認ルールの上書きを比較・適用します。", help: "継承値と上書き値、適用範囲を確認できます。" },
+  packs_extensions: { label: "Pack・拡張機能", description: "Packの提供元、信頼、権限、更新、Pack固有設定を管理します。", help: "Pack由来の項目を通常設定から隔離し、所有元とリセット範囲を示します。" },
+  advanced: { label: "詳細設定", description: "カスタムモデル、詳細ルーティング、互換性、内部チューニングを表示します。", help: "通常は変更不要な上級者・開発者向け項目です。" },
+  diagnostics: { label: "診断・サポート", description: "解決可能な問題、接続テスト、ログ、サポート情報を表示します。", help: "問題の原因、影響、修復操作を一つの場所で確認します。" },
 };
 
 type LocalizedFieldCopy = { label: string; help?: string; options?: Record<string, string> };
@@ -233,6 +242,10 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "general.composer_placeholder": { label: "入力欄の案内文", help: "メッセージ入力欄が空のときに表示する案内文です。" },
   "general.show_activity_in_messages": { label: "回答に処理状況を表示", help: "回答の上部に、処理の進み具合や利用した機能を表示します。" },
   "general.keyboard_button_navigation": { label: "キーボードでボタンを移動", help: "Tabキーで入力欄やサイドバーのボタンへ移動できるようにします。" },
+  "general.manual_runtime_mode_selection": {
+    label: "実行モードを手動選択できるようにする",
+    help: "通常はオフのまま、自律エージェントを使用します。オンにすると入力欄に実行モード選択を表示します。",
+  },
   "general.spotlight_shortcut_enabled": { label: "会話検索のショートカットを使う", help: "どの画面からでもショートカットで会話検索を開けます。" },
   "general.spotlight_shortcut": { label: "会話検索のキー", help: "会話検索を開くキーの組み合わせを指定します。" },
   "general.spotlight_shortcut_text_input": { label: "入力中も会話検索を開く", help: "入力欄にカーソルがあるときも会話検索のショートカットを使えます。" },
@@ -273,9 +286,13 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "*.lightweight_model": { label: "軽量モデル" },
   "*.preferred_model_group": { label: "モデルグループ" },
   "*.auto_route_within_group": { label: "用途に合わせてグループ内で自動選択" },
-  "*.model_api_routes": { label: "モデルごとのAPI接続" },
+  "*.model_api_routes": {
+    label: "モデル別の接続先",
+    help: "必要な場合だけ、モデルごとに使用するAPIキーを指定します。通常はプロバイダーの既定キーが使われます。",
+  },
   "*.thinking_level": { label: "考える深さ" },
   "*.deepthink_enabled": { label: "長時間の深い検討を使う" },
+  "*.model_allowlist": { label: "利用するモデル", help: "モデル選択画面に表示し、Tobkiriが自動選択できるモデルを選びます。" },
   "*.handoff": { label: "クラウド・別端末へ引き継ぐ" },
   "*.api_keys": { label: "APIキーとトークン" },
   "*.mention_policy": { label: "メンションの扱い" },
@@ -316,6 +333,33 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "*.ai_request_logging": { label: "AIへのリクエストを記録" },
 };
 
+const DEPRECATED_SETTING_KEYS = new Set([
+  "external_input.input_setup_guide",
+  "external_input.input_template_summary",
+  "external_input.input_profile_summary",
+  "external_output.output_setup_guide",
+  "tools.default_target",
+  "computer_use_haze.enabled",
+  "mimo_coding_company.run_initial_review_now",
+]);
+
+const ADVANCED_FIELD_PATTERNS = [
+  /(^|_)(route|routing|provider_order|provider_only|provider_ignore|primary_provider)($|_)/,
+  /(^|_)(provider_select|provider_mode|provider_filter|gateway_routing_target|gateway_provider_sort|gateway_allow_fallbacks|allow_gateway_fallbacks)($|_)/,
+  /(^|_)(latency|tokens_per_second|fast_min_samples|target_chars)($|_)/,
+  /(^|_)(custom_template_path|custom_profile_paths|custom_prompt_examples)($|_)/,
+  /(^|_)(semantic_backend|semantic_candidate_limit|selector_trace|final_limit)($|_)/,
+  /(^|_)(docker_worker_count|docker_personas)($|_)/,
+  /(^|_)(edge_width|animation_speed)($|_)/,
+];
+
+const ADVANCED_SOURCE_SECTIONS = new Set([
+  "external_input",
+  "external_output",
+  "line",
+  "mobile",
+]);
+
 const JA_SOURCE_SECTION_COPY: Record<string, string> = {
   general: "表示と操作",
   preview: "プレビュー",
@@ -325,6 +369,14 @@ const JA_SOURCE_SECTION_COPY: Record<string, string> = {
   accounts_connections: "アカウントと接続",
   tools: "機能とMCP",
   computer_use_haze: "コンピュータ操作中の表示",
+  calendar: "カレンダー",
+  ambient: "指で録音",
+  operations_company: "業務エージェント",
+  mimo_coding_company: "MiMo Coding",
+  mobile: "モバイル連携",
+  line: "LINE連携",
+  external_input: "外部からの受信・Webhook",
+  external_output: "外部への返信・送信",
 };
 
 /** Return user-facing source copy without exposing registry labels in Japanese. */
@@ -346,16 +398,28 @@ function localizedSectionMeta(locale: LocaleSetting): Array<Omit<ControlCenterSe
 
 const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   quick_setup: "quick_setup",
+  models_api: "models_api",
+  workspace_ui: "workspace_ui",
+  accounts_connections: "accounts_connections",
+  tools_mcp: "tools_mcp",
+  computer_automation: "computer_automation",
+  privacy_security: "privacy_security",
+  profiles: "profiles",
+  packs_extensions: "packs_extensions",
+  advanced: "advanced",
+  diagnostics: "diagnostics",
+  settings_home: "quick_setup",
+  home: "quick_setup",
   setup: "quick_setup",
   onboarding: "quick_setup",
   models: "models_api",
   model: "models_api",
   model_routing: "models_api",
   ai_model: "models_api",
-  apis: "models_api",
-  api: "models_api",
-  providers: "models_api",
-  provider: "models_api",
+  apis: "accounts_connections",
+  api: "accounts_connections",
+  providers: "accounts_connections",
+  provider: "accounts_connections",
   accounts: "accounts_connections",
   app: "accounts_connections",
   apps: "accounts_connections",
@@ -364,6 +428,15 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   mobile: "accounts_connections",
   pairing: "accounts_connections",
   oauth: "accounts_connections",
+  external_input: "accounts_connections",
+  external_output: "accounts_connections",
+  external_channel: "accounts_connections",
+  line: "accounts_connections",
+  features: "features",
+  feature: "features",
+  calendar: "features",
+  commands: "features",
+  ambient: "features",
   tools: "tools_mcp",
   tool: "tools_mcp",
   mcp: "tools_mcp",
@@ -371,7 +444,7 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   computer_use: "computer_automation",
   browser: "computer_automation",
   automation: "computer_automation",
-  ambient: "computer_automation",
+  triggers: "computer_automation",
   continuity: "computer_automation",
   system_info: "computer_automation",
   general: "workspace_ui",
@@ -379,14 +452,11 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   sidebar: "workspace_ui",
   history: "workspace_ui",
   composer: "workspace_ui",
-  commands: "workspace_ui",
   theme: "workspace_ui",
   layout: "workspace_ui",
-  calendar: "workspace_ui",
   workspace: "workspace_ui",
   ui: "workspace_ui",
   profile: "profiles",
-  profiles: "profiles",
   adaptive: "profiles",
   privacy: "privacy_security",
   security: "privacy_security",
@@ -397,23 +467,81 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   pack: "packs_extensions",
   extensions: "packs_extensions",
   extension: "packs_extensions",
-  advanced: "advanced",
-  diagnostics: "diagnostics",
   debug: "diagnostics",
   logs: "diagnostics",
 };
 
 const FIELD_TOKEN_ALIASES: Array<[RegExp, ControlCenterSectionId]> = [
-  [/\b(model|provider|api[_ -]?key|api[_ -]?route|token|openrouter)\b/i, "models_api"],
-  [/\b(oauth|account|connection|connect|gmail|drive|google|cloudflare|codex|github)\b/i, "accounts_connections"],
+  [/\b(model|model[_ -]?route|fallback|thinking|reasoning)\b/i, "models_api"],
+  [/\b(provider|api[_ -]?key|token|oauth|account|connection|connect|gmail|drive|google|cloudflare|codex|github|webhook|endpoint)\b/i, "accounts_connections"],
+  [/\b(calendar|command|ambient|voice[_ -]?capture)\b/i, "features"],
   [/\b(computer|browser|screen|click|type|scroll|desktop|accessibility|continuity|automation|ambient|camera|microphone)\b/i, "computer_automation"],
   [/\b(mcp|tool|approval|allowlist|denylist|permission[_ -]?overrides)\b/i, "tools_mcp"],
-  [/\b(theme|layout|sidebar|preview|composer|shortcut|command|gradient|indicator|calendar|language|voice)\b/i, "workspace_ui"],
+  [/\b(theme|layout|sidebar|preview|composer|shortcut|gradient|indicator|language|voice)\b/i, "workspace_ui"],
   [/\b(profile|runtime|adaptive)\b/i, "profiles"],
   [/\b(privacy|security|audit|retention|secret|credential|dangerous|authority)\b/i, "privacy_security"],
   [/\b(pack|extension|template)\b/i, "packs_extensions"],
   [/\b(debug|diagnostic|health|log|raw|migration)\b/i, "diagnostics"],
 ];
+
+const SOURCE_SECTION_ROUTES: Record<string, ControlCenterSectionId> = {
+  general: "workspace_ui",
+  preview: "workspace_ui",
+  chat_rendering: "workspace_ui",
+  models: "models_api",
+  apis: "accounts_connections",
+  accounts_connections: "accounts_connections",
+  external_input: "accounts_connections",
+  external_output: "accounts_connections",
+  line: "accounts_connections",
+  mobile: "accounts_connections",
+  calendar: "features",
+  commands: "features",
+  ambient: "features",
+  tools: "tools_mcp",
+  computer_use_haze: "computer_automation",
+  triggers: "computer_automation",
+  continuity: "computer_automation",
+  system_info: "computer_automation",
+  permissions: "computer_automation",
+  approvals: "computer_automation",
+  privacy: "privacy_security",
+  security: "privacy_security",
+  profiles: "profiles",
+  profile: "profiles",
+  adaptive: "profiles",
+  operations_company: "packs_extensions",
+  mimo_coding_company: "packs_extensions",
+  external_custom: "advanced",
+  context_compaction: "advanced",
+  debug: "diagnostics",
+  diagnostics: "diagnostics",
+};
+
+const FIELD_ROUTE_OVERRIDES: Record<string, ControlCenterSectionId> = {
+  "calendar.agent_model": "features",
+  "ambient.agent_model": "models_api",
+  "ambient.model": "models_api",
+  "ambient.provider": "accounts_connections",
+  "ambient.connection": "accounts_connections",
+  "ambient.confirm_before_ai_send": "computer_automation",
+  "external_input.include_source_context": "privacy_security",
+  "external_input.policy_summary": "privacy_security",
+  "models.api_keys": "accounts_connections",
+  "models.external_tokens": "accounts_connections",
+  "models.public_url_launcher": "accounts_connections",
+  "models.public_url_summary": "accounts_connections",
+  "models.input_provider": "accounts_connections",
+  "models.output_provider": "accounts_connections",
+  "models.input_endpoint_id": "accounts_connections",
+  "models.output_target_id": "accounts_connections",
+  "models.output_callback_token_id": "accounts_connections",
+  // Keep the Pack-owned storage keys, but surface these choices where users
+  // look for them in the task-oriented settings IA.
+  "operations_company.model_allowlist": "models_api",
+  "operations_company.tool_denylist": "tools_mcp",
+  "mimo_coding_company.model_allowlist": "models_api",
+};
 
 export function controlCenterSectionMeta(locale: LocaleSetting = "en"): ControlCenterSection[] {
   return localizedSectionMeta(locale).map((section) => ({ ...section, fields: [], sourceSections: [] }));
@@ -451,6 +579,12 @@ export function normalizeSettingsField(field: SettingsField, sourceSectionId = "
       }
     }
   }
+  if (ADVANCED_FIELD_PATTERNS.some((pattern) => pattern.test(String(field.id)))) {
+    normalized.advanced = true;
+  }
+  if (ADVANCED_SOURCE_SECTIONS.has(sourceSectionId)) {
+    normalized.advanced = true;
+  }
   return normalized;
 }
 
@@ -464,11 +598,19 @@ export function controlCenterSectionForField(section: SettingsSection, field: Se
   const fieldRecord = field as SettingsField & Record<string, unknown>;
   const explicit = mapSettingsSectionId(String(fieldRecord.control_center_section ?? fieldRecord.section ?? ""));
   if (explicit) return explicit;
-  const sectionMatch = mapSettingsSectionId(section.id);
+  const exact = FIELD_ROUTE_OVERRIDES[`${section.id}.${field.id}`];
+  if (exact) return exact;
+  const sectionMatch = SOURCE_SECTION_ROUTES[section.id] ?? mapSettingsSectionId(section.id);
   if (
     sectionMatch === "computer_automation"
     || sectionMatch === "accounts_connections"
+    || sectionMatch === "features"
     || sectionMatch === "privacy_security"
+    || sectionMatch === "workspace_ui"
+    || sectionMatch === "models_api"
+    || sectionMatch === "profiles"
+    || sectionMatch === "advanced"
+    || sectionMatch === "diagnostics"
   ) {
     return sectionMatch;
   }
@@ -490,6 +632,7 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
   for (const sourceSection of settingsSections) {
     const sourceSectionTargets = new Set<ControlCenterSectionId>();
     for (const rawField of sourceSection.fields) {
+      if (DEPRECATED_SETTING_KEYS.has(`${sourceSection.id}.${rawField.id}`)) continue;
       const targetId = controlCenterSectionForField(sourceSection, rawField);
       sourceSectionTargets.add(targetId);
       const target = byId.get(targetId);
@@ -511,9 +654,49 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
       byId.get(targetId)?.sourceSections.push(sourceSection);
     }
   }
+  const connections = byId.get("accounts_connections");
+  const models = byId.get("models_api");
+  const sharedApiKeyField = connections?.fields.find((field) => (
+    field.sourceSectionId === "apis"
+    && field.id === "api_keys"
+    && (field.type === "api_keys" || String(field.type) === "api_key_setup")
+  ));
+  if (models && sharedApiKeyField) {
+    const modelApiKeyField = {
+      ...sharedApiKeyField,
+      label: normalizeLocale(locale) === "ja" ? "AI APIキー" : "AI API keys",
+      help: normalizeLocale(locale) === "ja"
+        ? "メインモデルなどを選んだあと、AIモデルで使うAPIキーをここで登録します。"
+        : "After choosing your main models, register the API keys those AI models can use here.",
+      type: "api_key_setup",
+      renderer: "api_key_setup",
+      provider_scope: "llm",
+      controlSectionId: "models_api" as const,
+    } as ControlCenterField;
+    models.fields.push(modelApiKeyField);
+    const apiSource = settingsSections.find((section) => section.id === "apis");
+    if (apiSource && !models.sourceSections.some((section) => section.id === apiSource.id)) {
+      models.sourceSections.push(apiSource);
+    }
+    const modelFieldRank = (field: ControlCenterField): number => {
+      if (["main_model", "lightweight_model", "preferred_model", "preferred_model_group", "auto_route_within_group"].includes(field.id)) {
+        return 100;
+      }
+      if (field.sourceSectionId === "apis" && field.id === "api_keys") return 200;
+      if (field.id === "model_api_routes") return 900;
+      return 400;
+    };
+    models.fields = models.fields
+      .map((field, index) => ({ field, index }))
+      .sort((left, right) => (
+        modelFieldRank(left.field) - modelFieldRank(right.field)
+        || left.index - right.index
+      ))
+      .map(({ field }) => field);
+  }
   const quickSetup = byId.get("quick_setup");
   if (quickSetup) {
-    quickSetup.fields = selectQuickSetupFields(sections);
+    quickSetup.fields = [];
   }
   return sections;
 }
@@ -528,38 +711,6 @@ export function filterControlCenterSections(
     const sectionText = [section.id, section.label, section.description, section.help].join(" ").toLowerCase();
     return sectionText.includes(query) || section.fields.some((field) => settingsFieldSearchText(field).includes(query));
   });
-}
-
-function selectQuickSetupFields(sections: ControlCenterSection[]): ControlCenterField[] {
-  const wanted = new Set(["models_api", "accounts_connections", "tools_mcp", "computer_automation"]);
-  const scored = sections
-    .filter((section) => wanted.has(section.id))
-    .flatMap((section) => section.fields.map((field) => ({ field, score: quickSetupScore(field) })))
-    .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.field.sourceSectionLabel.localeCompare(b.field.sourceSectionLabel));
-
-  const seen = new Set<string>();
-  const selected: ControlCenterField[] = [];
-  for (const { field } of scored) {
-    const key = `${field.sourceSectionId}.${field.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    selected.push({ ...field, controlSectionId: "quick_setup" });
-    if (selected.length >= 6) break;
-  }
-  return selected;
-}
-
-function quickSetupScore(field: ControlCenterField): number {
-  const text = [field.id, field.label, field.help ?? "", field.type].join(" ").toLowerCase();
-  const fieldType = String(field.type);
-  let score = 0;
-  if (/default|preferred|api[_ -]?key|provider|model/.test(text)) score += 50;
-  if (/cloudflare|google|gmail|drive|codex|connection|oauth|continuity/.test(text)) score += 40;
-  if (/computer|browser|screen|accessibility|approval|mcp/.test(text)) score += 30;
-  if (fieldType === "secret" || fieldType === "api_key_setup" || fieldType === "model_select") score += 20;
-  if ((field as SettingsField & { advanced?: boolean }).advanced) score -= 40;
-  return score;
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -747,7 +898,7 @@ export function buildAccountConnectionPrelude(
         scope_modes: GOOGLE_ACCOUNT_SCOPE_MODE_FALLBACKS,
       },
       scopeMode: "google_identity",
-      configureSectionId: "models_api" as const,
+      configureSectionId: "accounts_connections" as const,
       configureLabel: "Configure self-host OAuth",
     },
     {
@@ -783,7 +934,7 @@ export function buildAccountConnectionPrelude(
         status_label: "Token needed",
         disabled_reason: "Save Codex access token",
       },
-      configureSectionId: "privacy_security" as const,
+      configureSectionId: "accounts_connections" as const,
       configureLabel: "Review credential policy",
       credential: (status) => ({
         kind: "codex_access_token",

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CodingTerminalResponse } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { codingResources } from "../../features/coding/resources/codingResources";
+import { ErrorNotice } from "../ErrorNotice";
 
 type TerminalLog = CodingTerminalResponse & {
   id: string;
@@ -199,9 +200,19 @@ export function TerminalPanel({
             {log.risk_reasons?.length ? (
               <p className="mt-1 truncate text-[10px] text-zinc-600">{log.risk_reasons.join(", ")}</p>
             ) : null}
-            <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
-              {log.stdout || log.stderr || (log.replay_status === "retrying" ? "Retrying with approval" : log.approval_required ? "Approval required" : "")}
-            </pre>
+            {log.classification === "error" && log.stderr ? (
+              <ErrorNotice
+                className="mt-1 px-2 py-1 font-mono text-[10px] leading-relaxed"
+                copyLabel="ターミナルエラーをコピー"
+                copyText={`${log.command}\n\n${log.stderr}`}
+                message={log.stderr}
+                title="Terminal command failed"
+              />
+            ) : (
+              <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
+                {log.stdout || log.stderr || (log.replay_status === "retrying" ? "Retrying with approval" : log.approval_required ? "Approval required" : "")}
+              </pre>
+            )}
           </div>
         ))}
         {logs.length === 0 && <p className="py-3 text-center text-[11px] text-zinc-600">No terminal runs</p>}

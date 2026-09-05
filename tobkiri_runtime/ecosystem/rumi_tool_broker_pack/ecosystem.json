@@ -1,0 +1,76 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.invoke.v1"
+    ],
+    "requires": [
+      "rumi.event.tool.invocation.v1",
+      "rumi.resource.tool.definition.v1",
+      "rumi.service.tool.arguments.validate.v1",
+      "rumi.service.tool.authorize.v1",
+      "rumi.service.tool.execute.v1",
+      "rumi.service.tool.executor.select.v1",
+      "rumi.service.tool.guard.evaluate.v1",
+      "rumi.service.tool.policy.evaluate.v1",
+      "rumi.service.tool.result.normalize.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Pack-agnostic resolve, validate, guard, authorize, select, execute, normalize, and audit pipeline.",
+  "display_name": "Rumi Tool Broker",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:e279d05e24a146e4be8481660818511daf5dd1080c12d650e37b50eb55de49b7",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:05738489604a92a85991b5c758f35f34ca74bb8ced10ead934b50bb74a137a1f"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:05738489604a92a85991b5c758f35f34ca74bb8ced10ead934b50bb74a137a1f"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_invocation_pipeline"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "approval": "core_authority_one_shot",
+      "concrete_tool_branches": false,
+      "domain_service_imports": false
+    }
+  },
+  "pack_id": "rumi_tool_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_broker_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_broker_pack:1.0.0",
+    "content_hash": "sha256:4fc9a408302b2124b977078ebbe70abb13bf81857ce154cce6bc252c9d9f8126",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.invoke"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

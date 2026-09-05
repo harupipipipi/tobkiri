@@ -1,226 +1,190 @@
-"""setup HTTP handlers."""
+"""Generic Host orchestration for application-composed setup operations."""
 
 from __future__ import annotations
 
-import hashlib
-import json
-from typing import Any, Dict
+import logging
+from typing import Any, Dict, Mapping
 
-from ..di_container import get_container
-from ..pack_function_runtime import invoke_pack_function
-from ..setup_pack import get_setup_pack_manager
+from ..profile_runtime_port import require_profile_runtime
+
+
+logger = logging.getLogger(__name__)
 
 
 class SetupHandlersMixin:
+    """Run one explicitly-confirmed Profile setup transaction through the Host."""
+
+    _dispatch_session: Any = None
+
     @staticmethod
-    def _pack_function_state(pack_id: str, function_id: str) -> Dict[str, Any]:
-        if not pack_id:
-            return {
-                "exists": False,
-                "registry_available": False,
-                "reason": "pack_id_missing",
-            }
-        function_registry = get_container().get_or_none("function_registry")
-        if function_registry is None:
-            return {
-                "exists": False,
-                "registry_available": False,
-                "reason": "function_registry_unavailable",
-            }
-        qualified_name = (
-            function_id if ":" in function_id else f"{pack_id}:{function_id}"
-        )
-        if function_registry.get(qualified_name) is None:
-            return {
-                "exists": False,
-                "registry_available": True,
-                "reason": "function_not_registered",
-            }
+    def _setup_resolution_denied_response(
+        runtime: Any,
+        error: BaseException,
+    ) -> Dict[str, Any] | None:
+        """Map an application Profile denial to the typed setup response."""
+
+        if not runtime.is_resolution_denied(error):
+            return None
         return {
-            "exists": True,
-            "registry_available": True,
-            "reason": None,
+            "error": str(error),
+            "status_code": 409,
+            "state": "activation_denied",
+            "write_set": [],
         }
 
-    @classmethod
-    def _pack_function_exists(cls, pack_id: str, function_id: str) -> bool:
-        return bool(cls._pack_function_state(pack_id, function_id).get("exists"))
+    @staticmethod
+    def _setup_listing(
+        *,
+        active: bool = False,
+        activation_denied: bool = False,
+        denial_diagnostic: str | None = None,
+    ) -> Mapping[str, Any]:
+        """Request the application's complete setup presentation from one catalog."""
 
-    def _get_pack_migration_status(self, pack_id: str) -> Dict[str, Any]:
-        if not pack_id:
-            return {
-                "pack_id": None,
-                "available": False,
-                "needs_user_migration": False,
-                "registry_available": False,
-                "reason": "pack_id_missing",
-            }
-        function_state = self._pack_function_state(pack_id, "get_migration_status")
-        if not function_state.get("exists"):
-            return {
-                "pack_id": pack_id,
-                "available": False,
-                "needs_user_migration": False,
-                "registry_available": bool(function_state.get("registry_available")),
-                "reason": function_state.get("reason"),
-            }
-        status = invoke_pack_function(pack_id, "get_migration_status")
-        payload = dict(status) if isinstance(status, dict) else {"result": status}
-        payload.setdefault("needs_user_migration", False)
-        payload["pack_id"] = pack_id
-        payload["available"] = True
-        payload["registry_available"] = True
-        payload["reason"] = None
-        return payload
+        runtime = require_profile_runtime()
+        from ..bootstrap.profile_capture import (
+            _bundle_root,
+            prepare_bootstrap_profile_confirmation,
+        )
+
+        catalog = runtime.load_catalog(_bundle_root())
+        confirmation = prepare_bootstrap_profile_confirmation()
+        return runtime.setup_listing(
+            catalog,
+            confirmation,
+            active=active,
+            activation_denied=activation_denied,
+            denial_diagnostic=denial_diagnostic,
+        )
+
+    @staticmethod
+    def _recommended_default_profile_preview() -> Dict[str, Any]:
+        """Compatibility adapter for callers of the former preview helper."""
+
+        runtime = require_profile_runtime()
+        return dict(runtime.setup_preview(SetupHandlersMixin._setup_listing()))
 
     def _setup_list_packs(self) -> Dict[str, Any]:
-        result = self._normalize_setup_pack_selection_payload(
-            get_setup_pack_manager().list_packs()
+        """Return the application's setup listing after Host state capture."""
+
+        from ..bootstrap.profile_capture import (
+            active_profile_exists,
+            capture_active_profile,
         )
-        result["review_revision"] = self._setup_pack_review_revision(result.get("packs"))
-        return result
 
-    @staticmethod
-    def _setup_pack_review_revision(packs: Any) -> str:
-        reviewed = []
-        for item in packs if isinstance(packs, list) else []:
-            if not isinstance(item, dict):
-                continue
-            reviewed.append({
-                key: item.get(key)
-                for key in (
-                    "pack_id", "version", "source_path", "description", "risk_level",
-                    "supports_all_ok", "required_permissions", "depends_on", "conflicts_with",
-                )
-            })
-        encoded = json.dumps(reviewed, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        return "setup-review-v1:" + hashlib.sha256(encoded).hexdigest()
-
-    @staticmethod
-    def _normalize_setup_pack_selection_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-        result = dict(payload or {})
-        packs = result.get("packs")
-        if not isinstance(packs, list):
-            return result
-        if not any(
-            key in result
-            for key in (
-                "selected_setup_pack_id",
-                "selected_setup_pack_ids",
-                "active_setup_pack_id",
-                "active_target_pack_id",
+        active = False
+        activation_denied = False
+        denial_diagnostic: str | None = None
+        if active_profile_exists():
+            try:
+                capture_active_profile()
+                active = True
+            except Exception as error:
+                runtime = require_profile_runtime()
+                if runtime.is_reconfirmation_required(error):
+                    denial_diagnostic = str(error)
+                elif runtime.is_resolution_denied(error):
+                    activation_denied = True
+                    denial_diagnostic = str(error)
+                else:
+                    raise
+        runtime = require_profile_runtime()
+        try:
+            listing = self._setup_listing(
+                active=active,
+                activation_denied=activation_denied,
+                denial_diagnostic=denial_diagnostic,
             )
-        ):
-            return result
-
-        pack_by_id = {
-            str(item.get("pack_id") or "").strip(): item
-            for item in packs
-            if isinstance(item, dict) and str(item.get("pack_id") or "").strip()
-        }
-        selected_ids: list[str] = []
-        seen_selected: set[str] = set()
-        for item in result.get("selected_setup_pack_ids") or []:
-            pack_id = str(item or "").strip()
-            if pack_id and pack_id in pack_by_id and pack_id not in seen_selected:
-                selected_ids.append(pack_id)
-                seen_selected.add(pack_id)
-
-        legacy_selected = str(result.get("selected_setup_pack_id") or "").strip()
-        if legacy_selected and legacy_selected in pack_by_id and legacy_selected not in seen_selected:
-            selected_ids.append(legacy_selected)
-            seen_selected.add(legacy_selected)
-
-        active_setup_pack_id = str(result.get("active_setup_pack_id") or "").strip()
-        if active_setup_pack_id not in seen_selected:
-            active_setup_pack_id = ""
-        active_pack = pack_by_id.get(active_setup_pack_id) if active_setup_pack_id else None
-        active_target_pack_id = (
-            str(active_pack.get("target_pack_id") or "").strip()
-            if isinstance(active_pack, dict)
-            else ""
-        )
-
-        for item in packs:
-            if isinstance(item, dict):
-                item["selected"] = str(item.get("pack_id") or "").strip() in seen_selected
-
-        result["selected_setup_pack_ids"] = selected_ids
-        result["selected_setup_pack_id"] = active_setup_pack_id or (
-            selected_ids[0] if selected_ids else None
-        )
-        result["active_setup_pack_id"] = active_setup_pack_id or None
-        result["active_target_pack_id"] = active_target_pack_id or None
-        return result
+        except Exception as error:
+            response = self._setup_resolution_denied_response(runtime, error)
+            if response is not None:
+                return response
+            raise
+        return dict(listing)
 
     def _setup_install_pack(self, body: Dict[str, Any]) -> Dict[str, Any]:
-        payload = dict(body or {})
-        setup_pack_ids = payload.get("setup_pack_ids")
-        if setup_pack_ids is None:
-            setup_pack_id = str(payload.get("setup_pack_id", "")).strip()
-            if not setup_pack_id:
-                return {"error": "setup_pack_id or setup_pack_ids is required", "status_code": 400}
-            setup_pack_ids = setup_pack_id
+        """Ask the application to authorize a request before Host activation."""
 
-        selected = [str(item).strip() for item in (setup_pack_ids if isinstance(setup_pack_ids, list) else [setup_pack_ids]) if str(item).strip()]
-        reviewed = [str(item).strip() for item in payload.get("reviewed_pack_ids") or [] if str(item).strip()]
-        current = self._normalize_setup_pack_selection_payload(get_setup_pack_manager().list_packs())
-        revision = self._setup_pack_review_revision(current.get("packs"))
-        if payload.get("review_revision") != revision or reviewed != selected:
-            return {"error": "Setup pack review is missing or stale; refresh and review the exact install plan", "status_code": 409}
-        confirmed = {str(item).strip() for item in payload.get("confirmed_privileged_pack_ids") or [] if str(item).strip()}
-        by_id = {str(item.get("pack_id") or ""): item for item in current.get("packs") or [] if isinstance(item, dict)}
-        privileged = {pack_id for pack_id in selected if by_id.get(pack_id, {}).get("supports_all_ok") or by_id.get(pack_id, {}).get("risk_level") == "high"}
-        if not privileged.issubset(confirmed):
-            return {"error": "Each high-risk or all-OK-capable pack requires explicit item-level confirmation", "status_code": 400}
+        runtime = require_profile_runtime()
+        decision = runtime.setup_activation_decision(body, None)
+        if decision.response is not None:
+            return dict(decision.response)
+        try:
+            listing = self._setup_listing()
+        except Exception as error:
+            response = self._setup_resolution_denied_response(runtime, error)
+            if response is not None:
+                return response
+            raise
+        decision = runtime.setup_activation_decision(body, listing)
+        if decision.response is not None:
+            return dict(decision.response)
+        confirmation = decision.confirmation
+        if confirmation is None:
+            raise RuntimeError("application setup decision has no activation input")
 
-        result = get_setup_pack_manager().install(setup_pack_ids)
-        if "error" in result:
-            return result
+        from ..bootstrap.profile_capture import (
+            activation_audit_receipt,
+            capture_bootstrap_profile,
+        )
 
-        installed_target_pack_ids = [
-            str(pack_id).strip()
-            for pack_id in (result.get("installed_target_pack_ids") or [])
-            if str(pack_id).strip()
-        ]
-        if not installed_target_pack_ids:
-            active_target_pack_id = str(result.get("active_target_pack_id") or "").strip()
-            if active_target_pack_id:
-                installed_target_pack_ids = [active_target_pack_id]
-
-        migration_statuses: Dict[str, Dict[str, Any]] = {}
-        migrations: Dict[str, Any] = {}
-        for target_pack_id in installed_target_pack_ids:
-            status = self._get_pack_migration_status(target_pack_id)
-            if (
-                status.get("available")
-                and status.get("needs_user_migration")
-                and self._pack_function_exists(target_pack_id, "run_migration")
-            ):
-                migrations[target_pack_id] = invoke_pack_function(target_pack_id, "run_migration")
-                status = self._get_pack_migration_status(target_pack_id)
-            migration_statuses[target_pack_id] = status
-        if migration_statuses:
-            result["migration_statuses"] = migration_statuses
-        if migrations:
-            result["migrations"] = migrations
+        lifecycle = getattr(self.__class__, "app_lifecycle_manager", None)
+        dispatch_session: Any = None
+        try:
+            if lifecycle is not None and hasattr(lifecycle, "activate_bootstrap_profile"):
+                activated = lifecycle.activate_bootstrap_profile(confirmation)
+                if not isinstance(activated, tuple) or len(activated) != 2:
+                    raise RuntimeError("application activation result is invalid")
+                active_profile, dispatch_session = activated
+            else:
+                active_profile = capture_bootstrap_profile(confirmation=confirmation)
+            audit_receipt = activation_audit_receipt(active_profile)
+        except Exception:
+            return dict(runtime.setup_activation_failure())
+        finally:
+            # This process still serves the stale HostProfileControl handler.
+            # The activated capture is validation-only and must not survive
+            # until the Launcher cold-restarts into a freshly published tuple.
+            close = getattr(dispatch_session, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    logger.exception("activated restart-only dispatch session did not close")
+        result = dict(runtime.setup_activation_success(active_profile, audit_receipt))
+        if result.get("state") == "active":
+            # The receipt has been durably committed, but this HTTP handler
+            # remains bound to HostProfileControl until the Launcher performs
+            # the cold handoff.
+            result["restart_required"] = True
         return result
 
-    def _setup_grant_all_ok(self, setup_pack_id: str) -> Dict[str, Any]:
-        return get_setup_pack_manager().grant_all_ok(setup_pack_id)
+    @staticmethod
+    def _retired_state() -> Dict[str, Any]:
+        """Return the Pack-owned response for a removed setup operation."""
 
-    def _setup_revoke_all_ok(self, setup_pack_id: str) -> Dict[str, Any]:
-        return get_setup_pack_manager().revoke_all_ok(setup_pack_id)
+        return dict(require_profile_runtime().retired_setup_response())
+
+    @classmethod
+    def _retired_setup_complete_state(cls) -> Dict[str, Any]:
+        """Return the Pack-owned no-write response for the retired route."""
+
+        return dict(require_profile_runtime().retired_setup_response(route="/api/setup/complete"))
+
+    def _setup_grant_all_ok(self, _setup_pack_id: str) -> Dict[str, Any]:
+        """Reject the retired blanket approval surface."""
+
+        return self._retired_state()
+
+    def _setup_revoke_all_ok(self, _setup_pack_id: str) -> Dict[str, Any]:
+        """Reject the retired blanket approval surface."""
+
+        return self._retired_state()
 
     def _setup_get_migration_status(self) -> Dict[str, Any]:
-        selection = get_setup_pack_manager().get_selection()
-        active_target_pack_id = str(selection.get("active_target_pack_id") or "")
-        if not active_target_pack_id:
-            return {
-                "pack_id": None,
-                "available": False,
-                "needs_user_migration": False,
-                "registry_available": False,
-                "reason": "active_target_not_selected",
-            }
-        return self._get_pack_migration_status(active_target_pack_id)
+        """Report that retired setup migration has no Host write authority."""
+
+        return self._retired_state()
+
+
+__all__ = ["SetupHandlersMixin"]

@@ -154,9 +154,10 @@ Completed in this slice:
 - local action attempts and outcomes are written to a redacted JSONL audit log;
 - frontend model fallback and optional operations-company calls are catalog
   driven;
-- `scripts/quality/scan_defaultspack_integrity.py --strict` checks route/block
-  parity, frontend/backend route parity, local-first defaults, sensitive route
-  guard wiring, and syntax for the new safety modules.
+- `scripts/quality/scan_defaultspack_integrity.py --strict` verifies the v4 Pack,
+  contract catalog, artifact index, executable catalog, bundle lock, declared
+  implementation hashes, and the local-first/safety source guards. It does not
+  use a legacy manifest, Registry, or authority projection.
 
 Remaining extension work should stay manifest-driven and should avoid adding
 cloud defaults back into the fresh local runtime.

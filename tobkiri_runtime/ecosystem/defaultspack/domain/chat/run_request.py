@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import importlib
 import json
 from functools import lru_cache
@@ -18,12 +19,14 @@ from blocks._common import gen_id
 from core_runtime.authority.principal import build_principal_id
 from domain.ai_client.capabilities.registry import get_model_provider_capabilities
 from blocks.chat._context_helpers import enrich_messages, extract_user_text
-from domain.capability.catalog import CapabilityCatalog
 from domain.capabilities.runtime_snapshot import build_runtime_capability_snapshot
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.model_router import ModelRoutingRequest, route_model_request
 from domain.ai_client.model_search import get_model_capabilities
 from domain.ai_client.request_planner import plan_model_request
+from domain.capability.models import stable_revision
+from domain.capability.orchestrator import CapabilityOrchestrator
+from domain.capability.repository import CapabilityRepository
 from domain.chat.ir import RumiChatIR
 from domain.chat.ir_blocks import IR_SCHEMA_VERSION
 from domain.chat.ir_legacy_adapter import (
@@ -42,13 +45,14 @@ from domain.chat.tool_selection_schema import (
     normalize_tool_target,
     normalize_tool_targets,
 )
-from domain.mention import extract_mention_values
+from domain.mention import extract_mention_values, is_mention_start
 from domain.chat.tool_selection_service import ToolSelectionService
 from domain.chat.tool_selection_preview import (
     ToolSelectionPreviewAccessError,
     ToolSelectionPreviewStore,
     preview_payload_bindings,
 )
+from domain.frontend_settings import frontend_settings_path
 from domain.human_operator.constants import HUMAN_OPERATOR_TOOL_NAME, is_human_operator_model
 from domain.vision.image_bridge import (
     apply_vision_bridge_to_messages,
@@ -66,10 +70,9 @@ from domain.coding.frontend_precision import (
     precision_metadata,
 )
 from domain.prompt.manager import get_manager
-from domain.skill_trigger import RuntimeSkillTriggerService
 from domain.temporal_context import add_temporal_context_message, current_datetime_context
 from domain.tool.loading import split_tools_by_loading
-from domain.tool.registry import ToolRegistry
+from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.tool.eligibility import filter_tool_definitions_by_eligibility
 from domain.tool.schema_adapter import (
     adapt_tool_definitions,
@@ -92,7 +95,12 @@ _PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _VECTOR_TOOL_ASSIST_PROFILE_IDS = {"defaultspack.mimo_coding_company"}
 _COMPUTER_USE_REQUEST_RE = re.compile(
     r"compute[\s_-]*use|compu?ter[\s_-]*use|computer\s+ツール|コンピューター操作|pc操作|"
-    r"(google\s*chrome|chrome|chatgpt|vivaldi|vivladi|line|ブラウザ|browser).{0,80}(操作|送信|入力|クリック|開いて|開く)",
+    r"(google\s*chrome|chrome|chatgpt|atlas|アトラス|vivaldi|vivladi|line|ブラウザ|browser).{0,80}(操作|送信|入力|input|クリック|開いて|開く|open)",
+    re.IGNORECASE,
+)
+_EXPLICIT_BROWSER_NAVIGATION_RE = re.compile(
+    r"(https?://|www\.|google\.com|youtube\.com).{0,160}"
+    r"(->|→|youtube|google|検索|入力|input|開いて|開く|open|再生|play)",
     re.IGNORECASE,
 )
 _COMPUTER_USE_CHROME_TARGET_RE = re.compile(
@@ -106,9 +114,29 @@ _COMPUTER_USE_CHROME_NEGATED_RE = re.compile(
 _COMPUTER_USE_VIVALDI_TARGET_RE = re.compile(
     r"vivaldi|vivladi|ヴィヴァルディ|ビバルディ", re.IGNORECASE
 )
+_COMPUTER_USE_ATLAS_TARGET_RE = re.compile(r"chat\s*gpt\s*atlas|chatgpt\s*atlas|atlas|ａｔｌａｓ|アトラス", re.IGNORECASE)
 _COMPUTER_USE_LINE_TARGET_RE = re.compile(r"(?<![A-Za-z])line(?![A-Za-z])|ライン", re.IGNORECASE)
 _COMPUTER_USE_CHATGPT_TARGET_RE = re.compile(r"chat\s*gpt|chatgpt", re.IGNORECASE)
+_COMPUTER_USE_PHYSICAL_INPUT_RE = re.compile(
+    r"mouse|keyboard|key\s*board|physical|real\s+(?:ui|mouse|keyboard|click)|foreground|"
+    r"マウス|キーボード|キー入力|物理|実操作|実際に|クリック|入力",
+    re.IGNORECASE,
+)
+_TOOL_MENTION_RE = re.compile(r"@([A-Za-z0-9_.:-]+)")
 _COMPUTER_USE_TOOL_IDS = {"computer_use", "browser_computer", "browser_use"}
+_COMPUTER_NAVIGATION_PROVIDER_DISABLED_ACTIONS = {
+    "apps",
+    "browser.session",
+    "computer.apps",
+    "context",
+    "computer.context",
+    "diagnose",
+    "computer.diagnose",
+    "doctor",
+    "computer.doctor",
+    "windows",
+    "computer.windows",
+}
 _CODING_PR_REQUEST_RE = re.compile(
     r"pull\s*request|draft\s*pr|github\.com|git\s*hub|プルリク|"
     r"(?<![A-Za-z])pr(?![A-Za-z]).{0,24}(出して|作って|作成|開いて|open|create)|"
@@ -127,6 +155,11 @@ _CODING_PR_TOOL_IDS = [
     "coding_git_push",
     "coding_github_pr_create",
 ]
+
+# Empty conversations are routed through the catalog-owned Rumi profile.  The
+# persisted model settings default (``stub/default``) remains available for
+# explicit local-provider selection, but is not a user-facing chat default.
+DEFAULT_CHAT_MODEL = "rumi/rumi"
 
 
 def _is_provider_qualified_model(value: Any) -> bool:
@@ -274,14 +307,21 @@ def prepare_chat_run(
     conversation_metadata = conversation.get("metadata") if isinstance(conversation.get("metadata"), dict) else {}
     if conversation_metadata.get("shared_read_only") is True:
         raise ValueError("This imported conversation is read-only. Create a continue copy to send messages.")
-    active_startup_profile = _load_active_startup_profile()
-    conversation = _conversation_with_active_profile_prompt(conversation, active_startup_profile)
+    active_startup_profile = _load_active_v4_profile()
 
     message = input_data.get("message") if isinstance(input_data.get("message"), dict) else {}
+    top_level_metadata = input_data.get("metadata") if isinstance(input_data.get("metadata"), dict) else {}
+    if top_level_metadata:
+        message = dict(message)
+        message_metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+        message["metadata"] = {**top_level_metadata, **message_metadata}
     content, metadata, runtime_content = _prepared_user_content(store, conversation_id, message)
     chat_references = _chat_references(store, conversation_id, metadata)
     metadata = dict(metadata) if isinstance(metadata, dict) else {}
     metadata.setdefault("chat_references", chat_references)
+    authority_resume_followup = _hidden_authority_followup_from_metadata(
+        metadata
+    ) is not None
     user_message_dict = {
         "role": message.get("role", "user"),
         "content": content,
@@ -294,6 +334,7 @@ def prepare_chat_run(
     user_message = store.add_message(conversation_id, user_message_dict)
     if user_message is None:
         raise RuntimeError("Failed to add user message")
+    current_user_message_hidden = _message_hidden_from_model(user_message)
 
     user_message_for_ir = dict(user_message)
     if runtime_content is not None:
@@ -308,21 +349,30 @@ def prepare_chat_run(
                 user_message_for_ir if item.get("id") == user_message.get("id") else item
                 for item in message_chain
             ]
-    chat_ir = stored_messages_to_ir(conversation_id, message_chain)
+    model_message_chain = _model_visible_message_chain(
+        message_chain,
+        preserve_hidden_tool_progress=authority_resume_followup,
+    )
+    chat_ir = stored_messages_to_ir(conversation_id, model_message_chain)
     standard_messages = ir_to_legacy_standard_messages(chat_ir)
     runtime_content = _runtime_user_content_override(metadata)
-    if runtime_content:
+    if runtime_content and not current_user_message_hidden:
         _replace_current_user_content_for_model(
             standard_messages,
             role=str(user_message.get("role") or message.get("role") or "user"),
             runtime_content=runtime_content,
         )
-    model = str((conversation or {}).get("model") or "stub/default")
+    model = str((conversation or {}).get("model") or DEFAULT_CHAT_MODEL)
     request_id = gen_id()
 
     manager = get_manager()
     system_prompt = _conversation_system_prompt(conversation, manager)
-    user_text = extract_user_text(content)
+    raw_user_text = extract_user_text(content)
+    user_text = raw_user_text
+    if _message_hidden_from_model(user_message):
+        visible_user_text = _last_visible_user_text(model_message_chain)
+        if visible_user_text:
+            user_text = visible_user_text
     inferred_tool_ids = _infer_requested_tools_from_message(user_text)
     effective_inferred_tool_ids = (
         [] if _has_explicit_selected_tools(input_data) else inferred_tool_ids
@@ -394,7 +444,9 @@ def prepare_chat_run(
     request_context = _merge_active_startup_profile_context(context or {}, active_startup_profile)
     requested_tool_ids_for_policy = _requested_tool_ids_from_selection(tool_selection)
     _apply_requested_tool_policy(request_context, requested_tool_ids_for_policy)
-    if _has_computer_use_tool(effective_inferred_tool_ids):
+    if _has_computer_use_tool(effective_inferred_tool_ids) or _has_computer_use_tool(
+        requested_tool_ids_for_policy
+    ):
         request_context["user_requested_computer_use"] = True
         request_context = _apply_computer_use_context_preferences(request_context, user_text)
     request_context["conversation_id"] = conversation_id
@@ -403,21 +455,19 @@ def prepare_chat_run(
     )
     request_context["chat_references"] = chat_references
     request_context["history_json_path"] = chat_references["history_json_path"]
+    request_context["user_text"] = user_text
+    request_context["conversation_user_text"] = _conversation_user_text_for_context(standard_messages)
     request_context["model"] = model
     request_context["chat_params"] = params
     request_context["request_id"] = request_id
     request_context["tool_selection"] = _tool_selection_metadata(tool_selection)
     _copy_enriched_context_into_request_context(request_context, enrich_info)
-    if isinstance(metadata, dict):
-        forced_skill_ids = (
-            metadata.get("skills") or metadata.get("skill_ids") or metadata.get("selected_skills")
-        )
-        if isinstance(forced_skill_ids, list):
-            request_context["skills"] = [
-                str(item) for item in forced_skill_ids if str(item).strip()
-            ]
-        elif isinstance(forced_skill_ids, str) and forced_skill_ids.strip():
-            request_context["skills"] = forced_skill_ids
+    if isinstance(metadata, dict) and any(
+        key in metadata for key in ("skills", "skill_ids", "selected_skills")
+    ):
+        # Client metadata is an untrusted rendering hint. The backend resolves
+        # explicit Skills again from the canonical message text.
+        request_context["ignored_client_skill_metadata"] = True
     conversation_metadata = (
         conversation.get("metadata") if isinstance(conversation.get("metadata"), dict) else {}
     )
@@ -425,10 +475,13 @@ def prepare_chat_run(
         request_context["conversation_tool_preferences"] = conversation_metadata["tool_preferences"]
     resolved_profile_id = str(
         request_context.get("profile_id")
-        or metadata.get("profile_id")
-        or conversation_metadata.get("profile_id")
         or ""
     ).strip()
+    requested_profile_id = str(
+        metadata.get("profile_id") or conversation_metadata.get("profile_id") or ""
+    ).strip()
+    if requested_profile_id and requested_profile_id != resolved_profile_id:
+        request_context["ignored_requested_profile_id"] = requested_profile_id
     if resolved_profile_id:
         request_context["profile_id"] = resolved_profile_id
         _hydrate_profile_policy_from_profile_id(request_context, resolved_profile_id)
@@ -442,11 +495,16 @@ def prepare_chat_run(
     if resolved_agent_id:
         request_context["agent_id"] = resolved_agent_id
     _propagate_conversation_workspace(request_context, metadata, conversation_metadata)
+    if authority_resume_followup:
+        request_context["authority_resume_followup"] = True
     request_context.update(_approval_followup_tool_context(metadata))
     raw_tool_policy = params.get("tool_policy")
     if isinstance(raw_tool_policy, dict):
         sanitized_tool_policy, ignored_tool_policy_keys = _sanitize_untrusted_chat_tool_policy(
-            raw_tool_policy
+            raw_tool_policy,
+            trusted_local_ui=bool(
+                request_context.get("_defaultspack_local_ui_authenticated")
+            ),
         )
         if ignored_tool_policy_keys:
             params["tool_policy"] = sanitized_tool_policy
@@ -492,6 +550,12 @@ def prepare_chat_run(
             ),
             **tool_policy,
         }
+        if (
+            str(tool_policy.get("action_approval_mode") or "").strip().lower()
+            == "full"
+            and tool_policy.get("full_access") is True
+        ):
+            request_context["full_access"] = True
         policy_profile_id = str(tool_policy.get("profile_id") or "").strip()
         if policy_profile_id and not request_context.get("profile_id"):
             request_context["profile_id"] = policy_profile_id
@@ -504,7 +568,7 @@ def prepare_chat_run(
         parallel_tool_calls = tool_policy.get("parallel_tool_calls")
         if "parallel_tool_calls" not in params and isinstance(parallel_tool_calls, bool):
             params["parallel_tool_calls"] = parallel_tool_calls
-    if tool_selection.must_use and "tool_choice" not in params:
+    if tool_selection.must_use:
         params["tool_choice"] = "required"
     prepared_input = {**prepared_input, "params": params}
     tool_resolution_input = {
@@ -565,6 +629,9 @@ def prepare_chat_run(
     tool_hint_prompt = _tool_selection_hints_prompt(tool_context)
     if tool_hint_prompt:
         _append_system_context_message(standard_messages, tool_hint_prompt)
+    computer_use_hint_prompt = _computer_use_runtime_prompt(request_context, raw_tools)
+    if computer_use_hint_prompt:
+        _append_system_context_message(standard_messages, computer_use_hint_prompt)
     _ensure_must_use_has_eligible_tools(tool_selection, raw_tools)
     modalities = detect_modalities(content, metadata)
     route_preferred_model = model
@@ -654,7 +721,78 @@ def prepare_chat_run(
     )
     raw_tools = list(eligibility_result.get("allowed_tools") or [])
     _ensure_must_use_has_eligible_tools(tool_selection, raw_tools)
+    capability_plan = CapabilityOrchestrator(
+        call_handler=request_context.get("call_handler")
+    ).compile_selected(
+        user_text=user_text,
+        selected_tools=raw_tools,
+        eligible_tools=raw_tools,
+        settings=(
+            tool_context.get("capability_settings_snapshot")
+            if isinstance(tool_context.get("capability_settings_snapshot"), dict)
+            else _read_frontend_settings()
+        ),
+        runtime_profile=(
+            tool_context.get("runtime_profile")
+            if isinstance(tool_context.get("runtime_profile"), dict)
+            else None
+        ),
+        context={
+            **request_context,
+            **tool_context,
+            "policy_generation": CapabilityRepository().policy_generation(),
+        },
+    )
+    compiled_model_input = capability_plan.pop("_compiled_model_input")
+    compiled_tool_ids = set(compiled_model_input["tool_ids"])
+    raw_tools = [
+        tool
+        for tool in compiled_model_input["tools"]
+        if tool_name_from_definition(tool) in compiled_tool_ids
+    ]
+    if tool_selection.must_use:
+        attached_tool_ids = [
+            tool_name_from_definition(tool)
+            for tool in raw_tools
+            if tool_name_from_definition(tool)
+        ]
+        explicitly_requested = set(
+            _coerce_tool_id_list(list(tool_selection.include))
+        )
+        required_tool_ids = [
+            tool_id
+            for tool_id in attached_tool_ids
+            if not explicitly_requested or tool_id in explicitly_requested
+        ]
+        if not required_tool_ids:
+            raise ValueError(
+                "params.tool_selection.must_use did not resolve to an "
+                "attached Tool"
+            )
+        request_context["required_tool_ids"] = list(required_tool_ids)
+        tool_context["required_tool_ids"] = list(required_tool_ids)
+        if len(required_tool_ids) == 1 and not isinstance(
+            params.get("tool_choice"), dict
+        ):
+            params["tool_choice"] = {
+                "type": "function",
+                "function": {"name": required_tool_ids[0]},
+            }
     provider_tools = adapt_tool_definitions(raw_tools)
+    skill_instructions = str(
+        compiled_model_input.get("skill_instructions") or ""
+    ).strip()
+    matched_skills = list(compiled_model_input.get("matched_skills") or [])
+    request_context["capability_plan"] = capability_plan
+    tool_context["capability_plan"] = capability_plan
+    provider_tools, provider_schema_restrictions = _shape_provider_tools_for_request(
+        provider_tools,
+        request_context,
+        user_text=user_text,
+    )
+    if provider_schema_restrictions:
+        request_context["provider_tool_schema_restrictions"] = provider_schema_restrictions
+        tool_context["provider_tool_schema_restrictions"] = provider_schema_restrictions
     filter_entries = list(eligibility_result.get("entries") or [])
     if isinstance(tool_context.get("unselected_requested_tools"), list):
         filter_entries.extend(
@@ -753,24 +891,13 @@ def prepare_chat_run(
         connected_names = {name for name in connected_names if name not in provider_compat_tool_ids}
     tool_context["chat_references"] = chat_references
     tool_context["history_json_path"] = chat_references["history_json_path"]
-    skill_eval = RuntimeSkillTriggerService().evaluate(
-        user_text=user_text,
-        tool_names=[
-            tool_name_from_definition(tool) for tool in raw_tools if tool_name_from_definition(tool)
-        ],
-        context=request_context,
-    )
-    matched_skills = skill_eval.get("matched", []) if isinstance(skill_eval, dict) else []
-    skill_instructions = (
-        str(skill_eval.get("instructions") or "").strip() if isinstance(skill_eval, dict) else ""
-    )
     if skill_instructions:
         _append_system_context_message(standard_messages, skill_instructions)
         request_context["matched_skill_instructions"] = matched_skills
         tool_context["matched_skill_instructions"] = matched_skills
         try:
-            from core_runtime.ai_input_token_estimator import estimate_tokens
-            from core_runtime.ai_input_trace_store import AiInputTraceStore
+            from ..ai_input.ai_input_token_estimator import estimate_tokens
+            from ..ai_input.ai_input_trace_store import AiInputTraceStore
             from domain.prompt.usage import append_runtime_prompt_segment, compact_prompt_usage_for_metadata
 
             skill_segment = {
@@ -788,8 +915,8 @@ def prepare_chat_run(
                 "allow_disable": False,
                 "editable": False,
                 "readonly_reason": "Runtime skill instructions are controlled by skill definitions.",
-                "preview": " ".join(skill_instructions.split())[:280],
-                "text": skill_instructions,
+                "preview": "[instruction body redacted from trace]",
+                "text_hash": stable_revision(skill_instructions),
                 "metadata": {"matched_skills": matched_skills},
             }
             request_context["prompt_usage"] = compact_prompt_usage_for_metadata(
@@ -808,8 +935,10 @@ def prepare_chat_run(
                     trace_store.save_trace(trace_profile_id, trace)
         except Exception:
             pass
-
     provider_input_ir = legacy_standard_messages_to_ir(standard_messages, conversation_id)
+    if authority_resume_followup and provider_tools:
+        params = dict(params)
+        params.setdefault("tool_choice", "required")
     planned_request = plan_model_request(
         provider_input_ir,
         model,
@@ -823,7 +952,7 @@ def prepare_chat_run(
     params = planned_request.params
     provider_chat_ir = planned_request.ir
     standard_messages = ir_to_legacy_standard_messages(provider_chat_ir)
-    if provider_tools:
+    if provider_tools and not authority_resume_followup:
         provider_tools = with_assistant_progress_tool(list(provider_tools))
         _append_system_context_message(standard_messages, assistant_progress_system_instruction())
         provider_chat_ir = legacy_standard_messages_to_ir(standard_messages, conversation_id)
@@ -882,8 +1011,8 @@ def _apply_effective_ai_input_to_request_context(
     ):
         return request_context, ""
     try:
-        from core_runtime.ai_input_graph_builder import build_runtime_ai_input_trace
-        from core_runtime.ai_input_trace_store import AiInputTraceStore
+        from ..ai_input.ai_input_graph_builder import build_runtime_ai_input_trace
+        from ..ai_input.ai_input_trace_store import AiInputTraceStore
         from domain.prompt.usage import compact_prompt_usage_for_metadata, prompt_usage_from_trace
     except Exception:
         return request_context, ""
@@ -961,6 +1090,32 @@ def _copy_enriched_context_into_request_context(
             request_context[key] = list(value)
 
 
+def _conversation_user_text_for_context(messages: list[dict[str, Any]]) -> str:
+    texts: list[str] = []
+    for message in list(messages or [])[-12:]:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        text = _message_content_text_for_context(message.get("content"))
+        if text:
+            texts.append(text)
+    return "\n".join(texts[-6:])
+
+
+def _message_content_text_for_context(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    parts.append(str(item.get("text") or ""))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(part.strip() for part in parts if part and part.strip())
+    return ""
+
+
 def _replace_system_prompt_message(messages: list[dict[str, Any]], system_prompt: str) -> None:
     if not system_prompt:
         return
@@ -1012,6 +1167,189 @@ def _tool_selection_hints_prompt(context: dict[str, Any]) -> str:
         "All eligible tool schemas are attached, but prefer this order when it fits the user request:\n"
         + "\n".join(lines)
     )
+
+
+def _explicit_browser_navigation_requested(context: dict[str, Any], user_text: str = "") -> bool:
+    text_parts = [user_text]
+    if isinstance(context, dict):
+        text_parts.extend(
+            [
+                str(context.get("user_text") or ""),
+                str(context.get("conversation_user_text") or ""),
+            ]
+        )
+    text = "\n".join(part for part in text_parts if isinstance(part, str) and part)
+    return bool(_EXPLICIT_BROWSER_NAVIGATION_RE.search(text))
+
+
+def _shape_provider_tools_for_request(
+    provider_tools: list[dict[str, Any]],
+    context: dict[str, Any],
+    *,
+    user_text: str = "",
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if (
+        not provider_tools
+        or not isinstance(context, dict)
+        or not context.get("user_requested_computer_use")
+        or not _explicit_browser_navigation_requested(context, user_text)
+    ):
+        return provider_tools, []
+
+    shaped_tools: list[dict[str, Any]] = []
+    restrictions: list[dict[str, Any]] = []
+    for tool in provider_tools:
+        shaped_tool, restriction = _restrict_computer_navigation_provider_tool(tool)
+        shaped_tools.append(shaped_tool)
+        if restriction:
+            restrictions.append(restriction)
+    return shaped_tools, restrictions
+
+
+def _restrict_computer_navigation_provider_tool(
+    tool: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    tool_name = tool_name_from_definition(tool)
+    if tool_name not in _COMPUTER_USE_TOOL_IDS:
+        return tool, None
+    if not isinstance(tool, dict):
+        return tool, None
+    function_def = tool.get("function")
+    if not isinstance(function_def, dict):
+        return tool, None
+    parameters = function_def.get("parameters")
+    if not isinstance(parameters, dict):
+        return tool, None
+    properties = parameters.get("properties")
+    if not isinstance(properties, dict):
+        return tool, None
+    action_schema = properties.get("action")
+    if not isinstance(action_schema, dict) or not isinstance(action_schema.get("enum"), list):
+        return tool, None
+
+    original_actions = [str(action) for action in action_schema.get("enum") or []]
+    allowed_actions = [
+        action
+        for action in original_actions
+        if action not in _COMPUTER_NAVIGATION_PROVIDER_DISABLED_ACTIONS
+    ]
+    if allowed_actions == original_actions:
+        return tool, None
+
+    shaped_tool = copy.deepcopy(tool)
+    shaped_function = shaped_tool.setdefault("function", {})
+    shaped_parameters = shaped_function.setdefault("parameters", {})
+    shaped_properties = shaped_parameters.setdefault("properties", {})
+    shaped_action = shaped_properties.setdefault("action", {})
+    shaped_action["enum"] = allowed_actions
+    existing_description = str(shaped_action.get("description") or "").strip()
+    shaped_action["description"] = (
+        "For this explicit browser-navigation request, choose browser.open_url as the "
+        "first external action when a URL is named. Diagnostic discovery actions "
+        "such as computer.context, computer.apps, and computer.doctor are hidden for "
+        "this request unless a later tool result asks for diagnostics."
+        + (f" {existing_description}" if existing_description else "")
+    )
+    return shaped_tool, {
+        "tool_name": tool_name,
+        "reason": "explicit_browser_navigation",
+        "removed_actions": [
+            action
+            for action in original_actions
+            if action in _COMPUTER_NAVIGATION_PROVIDER_DISABLED_ACTIONS
+        ],
+        "allowed_actions": allowed_actions,
+    }
+
+
+def _computer_use_runtime_prompt(context: dict[str, Any], tools: list[dict[str, Any]]) -> str:
+    if not isinstance(context, dict) or not context.get("user_requested_computer_use"):
+        return ""
+    tool_names = {
+        tool_name_from_definition(tool)
+        for tool in tools or []
+        if tool_name_from_definition(tool)
+    }
+    if not (tool_names & _COMPUTER_USE_TOOL_IDS):
+        return ""
+    lines = ["Computer-use execution contract:"]
+    target_app = str(context.get("computer_use_target_app") or "").strip()
+    target_title = str(context.get("computer_use_target_title") or "").strip()
+    if target_app:
+        target = target_app + (f" / {target_title}" if target_title else "")
+        lines.append(f"- Target the visible app/window: {target}.")
+    foreground_preferred = _computer_use_foreground_preferred_for_prompt(context)
+    user_text = str(context.get("user_text") or context.get("conversation_user_text") or "")
+    if _explicit_browser_navigation_requested(context, user_text):
+        lines.append(
+            "- When the user gives an explicit browser URL or ordered browser navigation, use browser.open_url "
+            "with the requested URL as the first external action. Do not spend the first actions on "
+            "computer.context, computer.apps, or computer.doctor unless browser.open_url fails or the target app is unknown."
+        )
+    lines.append(
+        "- Do not treat browser.open_url or app launch as task completion when the user asked to operate the app; "
+        "continue with visible-screen actions until the requested UI result is verified."
+    )
+    if foreground_preferred:
+        lines.append(
+            "- This is a visible foreground computer-use run. For computer.type, computer.key, and "
+            "computer.scroll, omit background=true and use fallback=foreground when you need on-screen input."
+        )
+    else:
+        lines.append(
+            "- Supported safe input actions (computer.type, computer.key, computer.scroll) run in background by default "
+            "when a trusted non-physical background driver is available. If the tool reports "
+            "foreground_confirmation_required, ask the user `foregroundで作業しますか？` and only retry with "
+            "fallback=foreground after explicit user confirmation and approval."
+        )
+    lines.append(
+        "- Use computer.show_app/select_window, then computer.screenshot or computer.observe before coordinate-based actions; "
+        "continue with computer.type, computer.key, computer.click, or computer.scroll as needed."
+    )
+    lines.append(
+        "- Enter any text or URL explicitly requested by the user exactly and completely, character-for-character. "
+        "Before typing into an editable field or address bar, focus it and clear or replace existing content, then type "
+        "the full literal. Never abbreviate, truncate, paraphrase, or rely on autocomplete/search suggestions as proof "
+        "that the requested input was entered."
+    )
+    lines.append(
+        "- For multi-step navigation, use computer.screenshot or computer.observe after every consequential action, "
+        "including typing, Enter/submission, navigation, and clicking a result or media item. Confirm the expected "
+        "text, page, or state before continuing; if it failed, recover and retry from the last visually verified state."
+    )
+    lines.append(
+        "- Do not declare completion until the user's requested final state is visually verified. For media playback, "
+        "verify actual playback state rather than merely opening the page or media item."
+    )
+    if context.get("computer_use_mouse_keyboard_requested") or context.get("computer_use_physical_clicks"):
+        lines.append(
+            "- The user explicitly asked for mouse/keyboard app operation. Prefer foreground UI navigation "
+            "(for browsers: command+l, type the URL/search text, return) over a direct browser.open_url-only answer."
+        )
+        lines.append(
+            "- For real visible pointer clicks, include physical=true; approval still gates execution before the host performs it."
+        )
+    return "\n".join(lines)
+
+
+def _computer_use_foreground_preferred_for_prompt(context: dict[str, Any]) -> bool:
+    if not isinstance(context, dict):
+        return False
+    value = context.get("computer_use_foreground_preferred")
+    if isinstance(value, bool):
+        if value:
+            return True
+    elif str(value or "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    target_alias = re.sub(
+        r"[^a-z0-9]+",
+        "",
+        str(context.get("computer_use_target_app") or "").strip().casefold(),
+    )
+    if target_alias in {"atlas", "chatgptatlas"}:
+        return True
+    env_value = str(os.environ.get("RUMI_COMPUTER_USE_DEBUG_FOREGROUND") or "").strip().lower()
+    return env_value in {"1", "true", "yes", "on"}
 
 
 def _tool_discovery_fallback_prompt(tools: list[dict[str, Any]]) -> str:
@@ -1132,10 +1470,302 @@ def _current_turn_history_only(context: dict[str, Any] | None) -> bool:
     return mode in {"current_turn", "current_message", "stateless", "none"}
 
 
+def _model_visible_message_chain(
+    messages: list[dict[str, Any]],
+    *,
+    preserve_hidden_tool_progress: bool = False,
+) -> list[dict[str, Any]]:
+    """Return model-visible history, optionally retaining safe resume progress.
+
+    Authority/approval followups intentionally hide their UI-only messages from
+    the provider.  A hidden assistant message can nevertheless contain tool
+    logs for successful actions that happened before the approval pause.  On a
+    hidden authority resume, retain only each tool's compact ``model_context``
+    as a linked assistant tool-call/tool-result pair.  The executable arguments,
+    approval payload, and one-shot token are deliberately not reconstructed.
+    """
+    visible: list[dict[str, Any]] = []
+    linked_tool_call_ids = _stored_tool_call_ids(
+        [
+            message
+            for message in list(messages or [])
+            if isinstance(message, dict) and not _message_hidden_from_model(message)
+        ]
+    )
+    for message_index, message in enumerate(list(messages or [])):
+        if not isinstance(message, dict):
+            continue
+        if not _message_hidden_from_model(message):
+            visible.append(message)
+            continue
+        if not preserve_hidden_tool_progress or str(message.get("role") or "").lower() != "assistant":
+            continue
+        for progress_index, progress in enumerate(_hidden_tool_progress(message)):
+            source_tool_call_id = str(progress.get("tool_call_id") or "").strip()
+            if source_tool_call_id and source_tool_call_id in linked_tool_call_ids:
+                continue
+            # Reconstructed history is evidence, not an executable replay.  A
+            # local ID avoids copying an opaque provider ID (or malformed
+            # secret-bearing log value) into a new provider request.
+            tool_call_id = "resume-progress-{}-{}".format(message_index, progress_index)
+            while tool_call_id in linked_tool_call_ids:
+                tool_call_id += "-next"
+            linked_tool_call_ids.add(tool_call_id)
+            tool_name = str(progress.get("tool_name") or "tool").strip() or "tool"
+            model_context = progress.get("model_context")
+            visible.extend(
+                [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_call",
+                                "id": tool_call_id,
+                                "name": tool_name,
+                                "arguments": {},
+                            }
+                        ],
+                    },
+                    {
+                        "role": "tool",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_call_id": tool_call_id,
+                                "name": tool_name,
+                                "content": json.dumps(
+                                    {"model_context": model_context},
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            }
+                        ],
+                    },
+                ]
+            )
+    return visible
+
+
+def _stored_tool_call_ids(messages: list[dict[str, Any]]) -> set[str]:
+    found: set[str] = set()
+    for message in list(messages or []):
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            tool_call_id = str(block.get("id") or block.get("tool_call_id") or "").strip()
+            if tool_call_id and block.get("type") in {"tool_call", "tool_result"}:
+                found.add(tool_call_id)
+    return found
+
+
+def _hidden_tool_progress(message: dict[str, Any]) -> list[dict[str, Any]]:
+    progress: list[dict[str, Any]] = []
+    for log in list(message.get("tool_logs") or []):
+        if not isinstance(log, dict):
+            continue
+        model_context = _find_model_context(log.get("result"))
+        safe_context = _safe_resume_model_context(model_context)
+        outcome = safe_context.get("outcome") if isinstance(safe_context, dict) else None
+        if not isinstance(outcome, dict) or outcome.get("succeeded") is not True:
+            continue
+        if outcome.get("approval_pending") is True:
+            continue
+        tool_name = str(log.get("tool_name") or "").strip()
+        if tool_name not in _SAFE_RESUME_TOOL_NAMES:
+            continue
+        progress.append(
+            {
+                "tool_name": tool_name,
+                "tool_call_id": str(log.get("tool_call_id") or ""),
+                "model_context": safe_context,
+            }
+        )
+    return progress
+
+
+def _find_model_context(value: Any, *, depth: int = 0) -> dict[str, Any] | None:
+    if depth > 6:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text[0] not in "[{":
+            return None
+        try:
+            return _find_model_context(json.loads(text), depth=depth + 1)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+    if isinstance(value, dict):
+        context = value.get("model_context")
+        if isinstance(context, dict):
+            return context
+        for key in ("data", "result"):
+            found = _find_model_context(value.get(key), depth=depth + 1)
+            if found is not None:
+                return found
+    return None
+
+
+def _safe_resume_model_context(value: Any) -> dict[str, Any]:
+    """Allowlist progress facts; never carry URLs, args, payloads, or tokens."""
+    if not isinstance(value, dict):
+        return {}
+    safe: dict[str, Any] = {}
+    action = str(value.get("action") or "").strip()
+    if action in _SAFE_RESUME_ACTIONS:
+        safe["action"] = action
+    for section, allowed in {
+        "outcome": {"succeeded", "approval_pending", "effect_observed", "postcondition_verified"},
+        "target": {
+            "app",
+            "pid",
+            "window_id",
+            "window_selected",
+            "window_foreground",
+            "binding_valid",
+        },
+        "navigation": {"open_succeeded", "same_url_reopen_needed"},
+    }.items():
+        raw = value.get(section)
+        if not isinstance(raw, dict):
+            continue
+        compact: dict[str, Any] = {}
+        for key in allowed:
+            item = raw.get(key)
+            if isinstance(item, bool) or isinstance(item, int):
+                compact[key] = item
+            elif key == "app" and isinstance(item, str) and _safe_resume_app_name(item):
+                compact[key] = item.strip()[:160]
+        if compact:
+            safe[section] = compact
+    transition = value.get("task_transition")
+    if isinstance(transition, dict):
+        compact_transition: dict[str, Any] = {}
+        for key in ("completed_phase", "next_phase"):
+            item = transition.get(key)
+            if isinstance(item, str) and item.strip() in _SAFE_RESUME_PHASES:
+                compact_transition[key] = item.strip()
+        for key in ("recommended_actions", "avoid_actions"):
+            items = transition.get(key)
+            if isinstance(items, list):
+                allowed_actions = (
+                    _SAFE_RESUME_RECOMMENDED_ACTIONS
+                    if key == "recommended_actions"
+                    else _SAFE_RESUME_AVOID_ACTIONS
+                )
+                compact_transition[key] = [
+                    str(item).strip()
+                    for item in items[:8]
+                    if isinstance(item, str) and item.strip() in allowed_actions
+                ]
+        if compact_transition:
+            safe["task_transition"] = compact_transition
+    return safe
+
+
+_SAFE_RESUME_TOOL_NAMES = {"browser_computer", "browser_use", "computer_use"}
+_SAFE_RESUME_ACTIONS = {
+    "browser.open_url",
+    "computer.click",
+    "computer.drag",
+    "computer.key",
+    "computer.observe",
+    "computer.screenshot",
+    "computer.scroll",
+    "computer.select_app",
+    "computer.select_window",
+    "computer.show_app",
+    "computer.type",
+}
+_SAFE_RESUME_PHASES = {
+    "action_completed",
+    "action_failed",
+    "approval_requested",
+    "await_approval",
+    "bind_foreground_target",
+    "continue_unresolved_task",
+    "enter_text",
+    "interact_with_visible_target",
+    "navigate_to_requested_page",
+    "observe_action_effect",
+    "observe_current_target",
+    "observe_opened_page",
+    "recover_from_failure",
+    "submit_or_verify_typed_text",
+}
+_SAFE_RESUME_RECOMMENDED_ACTIONS = _SAFE_RESUME_ACTIONS | {
+    "approve_request",
+    "inspect_failure_and_recover",
+}
+_SAFE_RESUME_AVOID_ACTIONS = {
+    "assume_action_succeeded",
+    "browser.open_url:same_setup_page",
+    "browser.open_url:same_url",
+    "repeat_action_before_observing_effect",
+    "repeat_completed_action_without_state_change",
+    "repeat_observation_without_state_change",
+    "repeat_same_text",
+    "repeat_target_selection_when_binding_is_valid",
+    "repeat_target_selection_without_binding_failure",
+    "repeat_unapproved_action",
+    "send_input_before_target_binding",
+}
+
+
+def _safe_resume_app_name(value: str) -> bool:
+    text = str(value or "").strip()
+    if not text or len(text) > 160 or any(ord(char) < 32 for char in text):
+        return False
+    lowered = text.casefold()
+    return not any(marker in lowered for marker in ("://", "?", "=", "approval_token", "bearer "))
+
+
+def _message_hidden_from_model(message: dict[str, Any]) -> bool:
+    if not isinstance(message, dict):
+        return False
+    metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
+    if metadata.get("hidden") is True:
+        return True
+    chat_display = metadata.get("chat_display")
+    if not isinstance(chat_display, dict):
+        chat_display = metadata.get("chatDisplay")
+    if isinstance(chat_display, dict) and chat_display.get("hidden") is True:
+        return True
+    if isinstance(metadata.get("approval_followup"), dict) or isinstance(metadata.get("approvalFollowup"), dict):
+        return True
+    if _hidden_authority_followup_from_metadata(metadata) is not None:
+        return True
+    if any(
+        isinstance(metadata.get(key), dict)
+        for key in ("pending_approval", "pendingAuthorityApproval", "pending_authority_approval")
+    ):
+        return True
+    finish_reason = str(message.get("finish_reason") or "").strip()
+    return finish_reason in {"approval_required", "authority_approval_required"}
+
+
+def _last_visible_user_text(messages: list[dict[str, Any]]) -> str:
+    for message in reversed(list(messages or [])):
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("role") or "").strip().lower() != "user":
+            continue
+        text = extract_user_text(message.get("content"))
+        if text.strip():
+            return text
+    return ""
+
+
 def prefocus_computer_use_target_window(prepared: PreparedChatRun) -> Any:
     if not isinstance(prepared.request_context, dict) or not prepared.request_context.get(
         "user_requested_computer_use"
     ):
+        return None
+    if not _computer_use_prefocus_is_preapproved(prepared.tool_context):
         return None
     target_app = str(prepared.request_context.get("computer_use_target_app") or "").strip()
     target_title = str(prepared.request_context.get("computer_use_target_title") or "").strip()
@@ -1177,6 +1807,28 @@ def prefocus_computer_use_target_window(prepared: PreparedChatRun) -> Any:
     from domain.tool.executor import ToolExecutor
 
     return ToolExecutor().execute(tool_name, arguments, invoke_context)
+
+
+def _computer_use_prefocus_is_preapproved(context: dict[str, Any] | None) -> bool:
+    """Only run automatic focus changes in an internally approved tool context.
+
+    Prefocus wraps ``computer.select_window``. Running it without a preapproved
+    context creates hidden pending approvals before the model's explicit
+    computer-use action, which makes live debugging look stuck.
+    """
+    if not isinstance(context, dict):
+        return False
+    try:
+        internal_context = importlib.import_module("domain.tool_policy.internal_context")
+    except Exception:
+        return False
+    internal_tool_decision_allows = getattr(internal_context, "internal_tool_decision_allows", None)
+    tool_server_approval_context_is_internal = getattr(
+        internal_context, "tool_server_approval_context_is_internal", None
+    )
+    if not callable(internal_tool_decision_allows) or not callable(tool_server_approval_context_is_internal):
+        return False
+    return bool(tool_server_approval_context_is_internal(context) or internal_tool_decision_allows(context))
 
 
 def _prepared_user_content(
@@ -1336,7 +1988,6 @@ def _runtime_user_content_override(metadata: dict[str, Any] | None) -> str:
 
 _WORKSPACE_ID_KEYS = ("workspace_id", "workspaceId")
 _WORKSPACE_ROOT_KEYS = ("workspace_root", "workspaceRoot", "rootPath")
-_MERGED_PROFILE_DICT_FIELDS = ("policy", "permissions", "metadata", "surfaces", "node_settings")
 _CLIENT_TOOL_POLICY_PRIVILEGED_TRUE_KEYS = {
     "allow_browser",
     "allow_client_supplied_approved",
@@ -1372,27 +2023,6 @@ _CLIENT_TOOL_POLICY_UNTRUSTED_STRUCTURAL_KEYS = {
 }
 
 
-def _merge_profile_snapshot_sources(
-    profile_id: str,
-    catalog_profile: dict[str, Any] | None,
-    workspace_profile: dict[str, Any] | None,
-) -> dict[str, Any]:
-    merged = dict(catalog_profile) if isinstance(catalog_profile, dict) else {}
-    overrides = dict(workspace_profile) if isinstance(workspace_profile, dict) else {}
-    for field_name in _MERGED_PROFILE_DICT_FIELDS:
-        base = merged.get(field_name) if isinstance(merged.get(field_name), dict) else {}
-        override = overrides.get(field_name) if isinstance(overrides.get(field_name), dict) else {}
-        if base or override:
-            merged[field_name] = {**base, **override}
-    for key, value in overrides.items():
-        if key in _MERGED_PROFILE_DICT_FIELDS:
-            continue
-        merged[key] = value
-    if merged:
-        merged.setdefault("profile_id", profile_id)
-    return merged
-
-
 def _client_policy_value_truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -1413,9 +2043,14 @@ def _client_policy_value_false(value: Any) -> bool:
     return str(value).strip().lower() in {"0", "false", "no", "off"}
 
 
-def _sanitize_untrusted_chat_tool_policy(policy: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def _sanitize_untrusted_chat_tool_policy(
+    policy: dict[str, Any],
+    *,
+    trusted_local_ui: bool = False,
+) -> tuple[dict[str, Any], list[str]]:
     sanitized: dict[str, Any] = {}
     ignored: list[str] = []
+    requested_mode = str(policy.get("action_approval_mode") or "").strip().lower()
     for key, value in policy.items():
         key_text = str(key or "").strip()
         lower_key = key_text.lower()
@@ -1427,16 +2062,50 @@ def _sanitize_untrusted_chat_tool_policy(policy: dict[str, Any]) -> tuple[dict[s
         if lower_key in _CLIENT_TOOL_POLICY_APPROVAL_BYPASS_KEYS and _client_policy_value_truthy(value):
             ignored.append(key_text)
             continue
-        if lower_key in _CLIENT_TOOL_POLICY_PRIVILEGED_TRUE_KEYS and _client_policy_value_truthy(value):
+        if (
+            lower_key in _CLIENT_TOOL_POLICY_PRIVILEGED_TRUE_KEYS
+            and _client_policy_value_truthy(value)
+            and not (trusted_local_ui and requested_mode == "full")
+        ):
             ignored.append(key_text)
             continue
-        if lower_key in _CLIENT_TOOL_POLICY_APPROVAL_WEAKENING_FALSE_KEYS and _client_policy_value_false(value):
+        if (
+            lower_key in _CLIENT_TOOL_POLICY_APPROVAL_WEAKENING_FALSE_KEYS
+            and _client_policy_value_false(value)
+            and not (trusted_local_ui and requested_mode == "full")
+        ):
             ignored.append(key_text)
             continue
-        if lower_key == "action_approval_mode" and str(value or "").strip().lower() == "full":
+        if (
+            lower_key == "action_approval_mode"
+            and str(value or "").strip().lower() == "full"
+            and not trusted_local_ui
+        ):
             ignored.append(key_text)
             continue
         sanitized[key] = value
+    if trusted_local_ui and requested_mode == "full":
+        sanitized.update(
+            {
+                "action_approval_mode": "full",
+                "allow_file_write": True,
+                "allow_network": True,
+                "allow_shell": True,
+                "full_access": True,
+                "write_actions_require_approval": False,
+                "yolo_mode": True,
+            }
+        )
+    elif requested_mode == "agent":
+        # Delegated approval must never inherit the legacy blanket-yolo bypass.
+        for key in (
+            "allow_file_write",
+            "allow_network",
+            "allow_shell",
+            "full_access",
+            "yolo_mode",
+        ):
+            sanitized.pop(key, None)
     return sanitized, ignored
 
 
@@ -1445,26 +2114,29 @@ def _profile_snapshot(profile_id: str) -> dict[str, Any]:
     candidate = str(profile_id or "").strip()
     if not candidate:
         return {}
-    workspace_profile: dict[str, Any] = {}
     try:
-        from core_runtime.profile_workspace import ProfileWorkspaceManager
+        from core_runtime.resolved_profile_scope import persisted_resolved_profile
 
-        loaded = ProfileWorkspaceManager().load_profile_yaml(candidate)
-        if isinstance(loaded, dict) and loaded:
-            workspace_profile = dict(loaded)
+        plan = persisted_resolved_profile()
     except Exception:
-        workspace_profile = {}
-    catalog_profile: dict[str, Any] = {}
-    try:
-        loaded = CapabilityCatalog().profile(candidate)
-        if isinstance(loaded, dict) and loaded:
-            catalog_profile = dict(loaded)
-    except Exception:
-        catalog_profile = {}
-    merged = _merge_profile_snapshot_sources(candidate, catalog_profile, workspace_profile)
-    if merged:
-        return merged
-    return {}
+        return {}
+    if plan is None or str(plan.profile_id) != candidate:
+        return {}
+    return {
+        "version": 4,
+        "profile_id": str(plan.profile_id),
+        "profile_revision": str(plan.profile_revision),
+        "plan_hash": str(plan.plan_hash),
+        "packs": list(plan.effective_pack_set),
+        "providers": [
+            {
+                "contract_id": provider.contract_id,
+                "provider_instance_id": provider.provider_instance_id,
+                "source_pack_id": provider.source_pack_id,
+            }
+            for provider in plan.providers
+        ],
+    }
 
 
 def _first_non_empty_str(*sources: dict[str, Any] | None, keys: tuple[str, ...]) -> str:
@@ -1623,8 +2295,63 @@ def _runtime_profile_with_policy_connected_tools(
         )
         or ""
     ).strip()
-    if not base_profile and snapshot_profile_id:
-        base_profile = _profile_snapshot(snapshot_profile_id)
+    base_profile_id = str(
+        base_profile.get("profile_id")
+        or (
+            base_profile.get("profile", {}).get("profile_id")
+            if isinstance(base_profile.get("profile"), dict)
+            else ""
+        )
+        or ""
+    ).strip()
+    if (
+        base_profile
+        and snapshot_profile_id
+        and base_profile_id
+        and base_profile_id != snapshot_profile_id
+    ):
+        snapshot = _profile_snapshot(snapshot_profile_id)
+        if isinstance(snapshot, dict) and snapshot:
+            base_profile = snapshot
+    if snapshot_profile_id:
+        snapshot = _profile_snapshot(snapshot_profile_id)
+        if isinstance(snapshot, dict) and snapshot:
+            # Runtime graph projections intentionally omit some canonical
+            # profile fields. Preserve graph/agent authority while hydrating
+            # those non-authoritative fields from the saved snapshot.
+            base_profile = {
+                **snapshot,
+                **base_profile,
+                "metadata": {
+                    **(
+                        snapshot.get("metadata")
+                        if isinstance(snapshot.get("metadata"), dict)
+                        else {}
+                    ),
+                    **(
+                        base_profile.get("metadata")
+                        if isinstance(base_profile.get("metadata"), dict)
+                        else {}
+                    ),
+                },
+                "policy": {
+                    **(
+                        snapshot.get("policy")
+                        if isinstance(snapshot.get("policy"), dict)
+                        else {}
+                    ),
+                    **(
+                        base_profile.get("policy")
+                        if isinstance(base_profile.get("policy"), dict)
+                        else {}
+                    ),
+                },
+            }
+        # The request-selected profile is authoritative even when its saved
+        # snapshot is temporarily unavailable.  Keeping the prior graph's ID
+        # here makes downstream tool-policy evaluation run under the wrong
+        # profile while retaining stale graph connections.
+        base_profile["profile_id"] = snapshot_profile_id
     if not isinstance(base_profile, dict) or not base_profile:
         return runtime_profile, str(agent_id or "").strip()
 
@@ -1664,7 +2391,7 @@ def _runtime_profile_with_policy_connected_tools(
     defaultspack["agents"] = agents
     patched["defaultspack"] = defaultspack
     if snapshot_profile_id:
-        patched.setdefault("profile_id", snapshot_profile_id)
+        patched["profile_id"] = snapshot_profile_id
     return patched, resolved_agent_id
 
 
@@ -1779,9 +2506,10 @@ def _apply_authority_context(
 
     followup: dict[str, str] = {}
     approval_tokens: dict[str, dict[str, str]] = {}
+    allow_consumed_one_shot_tokens_for_run = False
 
     def add_authority_followup(raw: Any, *, prefer_primary: bool = True, require_issued: bool = False) -> None:
-        nonlocal followup
+        nonlocal followup, allow_consumed_one_shot_tokens_for_run
         if not isinstance(raw, dict):
             return
         permission_id = str(raw.get("permission_id") or "").strip()
@@ -1791,12 +2519,23 @@ def _apply_authority_context(
             return
         token = str(raw.get("approval_token") or raw.get("token") or "").strip()
         authority_request_id = str(raw.get("request_id") or raw.get("approval_request_id") or "").strip()
-        if require_issued and not _authority_followup_was_issued(
-            raw,
-            conversation_id=conversation_id,
-            principal_id=authority_principal_id,
-        ):
-            return
+        if require_issued:
+            issued = _authority_followup_was_issued(
+                raw,
+                conversation_id=conversation_id,
+                principal_id=authority_principal_id,
+            )
+            if not issued:
+                issued = _authority_followup_was_issued(
+                    raw,
+                    conversation_id=conversation_id,
+                    principal_id=authority_principal_id,
+                    include_consumed=True,
+                )
+                if issued:
+                    allow_consumed_one_shot_tokens_for_run = True
+            if not issued:
+                return
         if token and authority_request_id:
             approval_tokens[permission_id] = {
                 "approval_token": token,
@@ -1811,10 +2550,8 @@ def _apply_authority_context(
             }
 
     for raw_followup in _trusted_authority_followups_from_current_chain(conversation_id):
-        approvals = raw_followup.get("approvals") if isinstance(raw_followup, dict) else None
-        if isinstance(approvals, list):
-            for item in approvals:
-                add_authority_followup(item, prefer_primary=False, require_issued=True)
+        for item in _authority_followup_approval_items(raw_followup):
+            add_authority_followup(item, prefer_primary=False, require_issued=True)
         add_authority_followup(raw_followup, prefer_primary=False, require_issued=True)
 
     if isinstance(metadata, dict):
@@ -1822,10 +2559,8 @@ def _apply_authority_context(
         if not isinstance(raw_followup, dict):
             raw_followup = metadata.get("approval_followup")
         if isinstance(raw_followup, dict):
-            approvals = raw_followup.get("approvals")
-            if isinstance(approvals, list):
-                for item in approvals:
-                    add_authority_followup(item, prefer_primary=False)
+            for item in _authority_followup_approval_items(raw_followup):
+                add_authority_followup(item, prefer_primary=False)
             add_authority_followup(raw_followup, prefer_primary=True)
 
     authority_context = {
@@ -1843,8 +2578,21 @@ def _apply_authority_context(
         authority_context["permission_id"] = followup["permission_id"]
     if approval_tokens:
         authority_context["approval_tokens"] = approval_tokens
+    if allow_consumed_one_shot_tokens_for_run:
+        authority_context["allow_consumed_one_shot_tokens_for_run"] = True
     request_context["authority_principal_id"] = authority_principal_id
     request_context["authority"] = authority_context
+
+
+def _authority_followup_approval_items(raw_followup: Any) -> list[Any]:
+    if not isinstance(raw_followup, dict):
+        return []
+    items: list[Any] = []
+    for key in ("approvals", "related_approvals", "relatedApprovals"):
+        raw_items = raw_followup.get(key)
+        if isinstance(raw_items, list):
+            items.extend(raw_items)
+    return items
 
 
 def _trusted_authority_followups_from_current_chain(conversation_id: str) -> list[dict[str, Any]]:
@@ -1870,6 +2618,8 @@ def _trusted_authority_followups_from_current_chain(conversation_id: str) -> lis
             followups.append(raw_followup)
             continue
         if str(message.get("role") or "").strip().lower() == "user":
+            if _approval_followup_from_metadata(metadata) is not None:
+                continue
             break
     followups.reverse()
     return followups
@@ -1893,11 +2643,19 @@ def _hidden_authority_followup_from_metadata(metadata: dict[str, Any]) -> dict[s
     return raw_followup if hidden else None
 
 
+def _approval_followup_from_metadata(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    raw_followup = metadata.get("approval_followup")
+    if not isinstance(raw_followup, dict):
+        raw_followup = metadata.get("approvalFollowup")
+    return raw_followup if isinstance(raw_followup, dict) else None
+
+
 def _authority_followup_was_issued(
     raw: dict[str, Any],
     *,
     conversation_id: str,
     principal_id: str,
+    include_consumed: bool = False,
 ) -> bool:
     permission_id = str(raw.get("permission_id") or "").strip()
     authority_request_id = str(raw.get("request_id") or raw.get("approval_request_id") or "").strip()
@@ -1905,9 +2663,9 @@ def _authority_followup_was_issued(
     if not permission_id or not authority_request_id or not token:
         return False
     try:
-        from core_runtime.authority import get_authority_service
+        from core_runtime.legacy_runtime_removed import removed_authority_service
 
-        service = get_authority_service()
+        service = removed_authority_service()
         issued = getattr(service, "one_shot_approval_issued", None)
         if not callable(issued):
             return False
@@ -1918,6 +2676,7 @@ def _authority_followup_was_issued(
                 token=token,
                 conversation_id=conversation_id,
                 principal_id=principal_id,
+                include_consumed=include_consumed,
             )
         )
     except Exception:
@@ -1970,54 +2729,29 @@ def _replace_current_user_content_for_model(
 
 def _conversation_system_prompt(conv: dict[str, Any], manager: Any) -> str:
     from blocks.chat._prompt_helpers import resolve_conversation_system_prompt
-    from domain.kanban.service import append_kanban_system_prompt_note
+    from domain.kanban.prompt_note import append_kanban_system_prompt_note
 
     return append_kanban_system_prompt_note(resolve_conversation_system_prompt(conv, manager), conv)
 
 
-def _load_active_startup_profile() -> dict[str, Any]:
+def _load_active_v4_profile() -> dict[str, Any]:
+    """Return a non-authoritative view of the verified v4 activation only."""
     try:
-        from core_runtime.profile_paths import active_profile_id
-        from core_runtime.profile_runtime_selection import apply_profile_graph_selection
-        from core_runtime.profile_workspace import ProfileWorkspaceManager
+        from core_runtime.resolved_profile_scope import persisted_resolved_profile
     except Exception:
         return {}
-
     try:
-        profile_id = str(active_profile_id() or "").strip()
+        plan = persisted_resolved_profile()
     except Exception:
         return {}
-    if not profile_id:
+    if plan is None:
         return {}
-
-    try:
-        profile = ProfileWorkspaceManager().load_profile_yaml(profile_id)
-    except Exception:
-        return {"profile_id": profile_id}
-    if not isinstance(profile, dict):
-        profile = {"profile_id": profile_id}
-    profile.setdefault("profile_id", profile_id)
-    try:
-        return apply_profile_graph_selection(profile)
-    except Exception:
-        return profile
-
-
-def _conversation_with_active_profile_prompt(
-    conversation: dict[str, Any],
-    active_profile: dict[str, Any] | None,
-) -> dict[str, Any]:
-    conv = dict(conversation or {})
-    if str(conv.get("system_prompt_id") or "").strip():
-        return conv
-    if not isinstance(active_profile, dict):
-        return conv
-    prompt_id = str(
-        active_profile.get("system_prompt_id") or active_profile.get("default_prompt_id") or ""
-    ).strip()
-    if prompt_id:
-        conv["system_prompt_id"] = prompt_id
-    return conv
+    return {
+        "profile_id": str(plan.profile_id),
+        "profile_revision": str(plan.profile_revision),
+        "plan_hash": str(plan.plan_hash),
+        "effective_pack_set": list(plan.effective_pack_set),
+    }
 
 
 def _merge_active_startup_profile_context(
@@ -2032,44 +2766,16 @@ def _merge_active_startup_profile_context(
     if not profile_id:
         return merged
 
-    policy = active_profile.get("policy") if isinstance(active_profile.get("policy"), dict) else {}
-    existing_policy = (
-        merged.get("profile_policy") if isinstance(merged.get("profile_policy"), dict) else {}
-    )
-    if policy or existing_policy:
-        merged["profile_policy"] = {
-            **dict(policy or {}),
-            **dict(existing_policy or {}),
-        }
-
-    metadata = (
-        active_profile.get("metadata") if isinstance(active_profile.get("metadata"), dict) else {}
-    )
-    selected = metadata.get("selected") if isinstance(metadata.get("selected"), dict) else {}
-    if selected and "profile_graph_selection" not in merged:
-        merged["profile_graph_selection"] = {
-            key: list(value) if isinstance(value, list) else value
-            for key, value in selected.items()
-        }
-
-    merged.setdefault("active_startup_profile_id", profile_id)
+    merged["profile_id"] = profile_id
     merged.setdefault(
-        "active_startup_profile",
+        "resolved_profile",
         {
             "profile_id": profile_id,
-            "system_prompt_id": active_profile.get("system_prompt_id"),
-            "default_prompt_id": active_profile.get("default_prompt_id"),
-            "selected": merged.get("profile_graph_selection", {}),
+            "profile_revision": active_profile.get("profile_revision"),
+            "plan_hash": active_profile.get("plan_hash"),
+            "effective_pack_set": list(active_profile.get("effective_pack_set") or []),
         },
     )
-
-    runtime_profile_key = str(active_profile.get("last_runtime_profile_key") or "").strip()
-    if (
-        runtime_profile_key
-        and not merged.get("runtime_profile_key")
-        and not merged.get("_runtime_profile_key")
-    ):
-        merged["runtime_profile_key"] = runtime_profile_key
     return merged
 
 
@@ -2620,6 +3326,18 @@ def _resolve_selected_tools(
     unknown = []
     for item in raw_tools:
         if isinstance(item, dict):
+            target = normalize_tool_target(item)
+            target_only_keys = {"kind", "id", "tool_id", "service_id"}
+            if target is not None and set(item).issubset(target_only_keys):
+                if target.kind != "tool":
+                    unknown.append(f"{target.kind}:{target.id}")
+                    continue
+                tool_def = registry.get(target.id)
+                if tool_def is None:
+                    unknown.append(f"tool:{target.id}")
+                    continue
+                resolved.append(tool_def)
+                continue
             resolved.append(item)
             continue
         if not isinstance(item, str):
@@ -2661,7 +3379,10 @@ def _infer_requested_tools_from_message(user_text: str) -> list[str]:
         seen.add(value)
         inferred.append(value)
 
-    if isinstance(user_text, str) and _COMPUTER_USE_REQUEST_RE.search(user_text):
+    if isinstance(user_text, str) and (
+        _COMPUTER_USE_REQUEST_RE.search(user_text)
+        or _explicit_browser_navigation_requested({}, user_text)
+    ):
         add("computer_use")
         add("browser_computer")
 
@@ -2682,11 +3403,17 @@ def _tool_mention_ids_from_text(user_text: str) -> list[str]:
         registry = ToolRegistry()
     except Exception:
         return []
+    registered_tools: list[dict[str, Any]] = []
     try:
+        registered_tools = [
+            tool
+            for tool in registry.list_tools()
+            if isinstance(tool, dict)
+            and str(tool.get("tool_id") or "").strip()
+        ]
         known_tool_ids = [
             str(tool.get("tool_id") or "").strip()
-            for tool in registry.list_tools()
-            if isinstance(tool, dict) and str(tool.get("tool_id") or "").strip()
+            for tool in registered_tools
         ]
     except (AttributeError, TypeError):
         known_tool_ids = []
@@ -2704,7 +3431,115 @@ def _tool_mention_ids_from_text(user_text: str) -> list[str]:
             continue
         seen.add(tool_id)
         tool_ids.append(tool_id)
+    labels: dict[str, list[str]] = {}
+    for tool in registered_tools:
+        tool_id = str(tool.get("tool_id") or "").strip()
+        display_name = str(tool.get("display_name") or "").strip()
+        if not tool_id or not display_name:
+            continue
+        labels.setdefault(display_name.casefold(), []).append(tool_id)
+    for label, matching_ids in sorted(
+        labels.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        if len(matching_ids) != 1:
+            continue
+        pattern = re.compile(
+            rf"@{re.escape(label)}(?![\w./:-])",
+            re.IGNORECASE,
+        )
+        if not any(
+            is_mention_start(user_text, match.start(), known_tool_ids)
+            for match in pattern.finditer(user_text)
+        ):
+            continue
+        tool_id = matching_ids[0]
+        if tool_id not in seen:
+            seen.add(tool_id)
+            tool_ids.append(tool_id)
     return tool_ids
+
+
+def _verified_approval_followup_tool_ids(
+    input_data: dict[str, Any],
+) -> list[str]:
+    """Recover the exact Tool authorized by a signed approval follow-up.
+
+    The visible approval-continuation text no longer contains the original
+    ``@Tool`` mention. Client-provided ``selected_tools`` is not sufficient
+    authority for a low-level Tool, so validate the server-side approval and
+    its one-shot token before treating this one Tool as explicitly selected.
+    Token consumption remains the executor's responsibility.
+    """
+
+    message = (
+        input_data.get("message")
+        if isinstance(input_data, dict)
+        and isinstance(input_data.get("message"), dict)
+        else {}
+    )
+    metadata = (
+        message.get("metadata")
+        if isinstance(message.get("metadata"), dict)
+        else {}
+    )
+    followup = (
+        metadata.get("approval_followup")
+        if isinstance(metadata.get("approval_followup"), dict)
+        else {}
+    )
+    tool_id = str(followup.get("tool_name") or "").strip()
+    request_id = str(
+        followup.get("request_id")
+        or followup.get("approval_request_id")
+        or ""
+    ).strip()
+    token = str(
+        followup.get("approval_token") or followup.get("token") or ""
+    ).strip()
+    if not (tool_id and request_id and token):
+        return []
+
+    try:
+        from domain.safety import approval
+
+        request = approval.get_approval_request(request_id)
+    except Exception:
+        return []
+    if not isinstance(request, dict):
+        return []
+    if str(request.get("status") or "") != "approved":
+        return []
+
+    operation = str(request.get("operation") or "").strip()
+    if operation != f"tool.{tool_id}":
+        return []
+    details = (
+        request.get("details")
+        if isinstance(request.get("details"), dict)
+        else {}
+    )
+    request_tool_id = str(details.get("tool_name") or "").strip()
+    if request_tool_id and request_tool_id != tool_id:
+        return []
+    args_hash = str(request.get("args_hash") or "").strip()
+    if not args_hash:
+        return []
+    try:
+        verification = approval.verify_execution_token(
+            token,
+            operation,
+            args_hash,
+            consume=False,
+        )
+    except Exception:
+        return []
+    if not getattr(verification, "valid", False):
+        return []
+    if str(getattr(verification, "request_id", "") or "").strip() != request_id:
+        return []
+    return [tool_id]
 
 
 def _has_computer_use_tool(tool_ids: list[str]) -> bool:
@@ -2740,7 +3575,22 @@ def _requested_tool_ids_include_shell(tool_ids: list[str]) -> bool:
         metadata = tool_def.get("metadata") if isinstance(tool_def.get("metadata"), dict) else {}
         category = str(tool_def.get("category") or metadata.get("category") or "").strip()
         action_type = str(tool_def.get("action_type") or metadata.get("action_type") or "").strip()
-        if category == "shell" or action_type == "shell":
+        capability_grants = tool_def.get("capability_grants")
+        capability_grants = capability_grants if isinstance(capability_grants, list) else []
+        tags = tool_def.get("tags")
+        tags = tags if isinstance(tags, list) else []
+        if (
+            category == "shell"
+            or action_type == "shell"
+            or any(
+                str(grant).strip().startswith(("shell.", "terminal."))
+                for grant in capability_grants
+            )
+            or any(
+                str(tag).strip().lower() in {"shell", "terminal", "command"}
+                for tag in tags
+            )
+        ):
             return True
     return False
 
@@ -2849,7 +3699,11 @@ def _has_explicit_selected_tools(input_data: dict[str, Any]) -> bool:
 def _computer_use_preferences_from_text(user_text: str) -> dict[str, Any]:
     text = user_text if isinstance(user_text, str) else ""
     preferences = {}
-    if _COMPUTER_USE_VIVALDI_TARGET_RE.search(text):
+    atlas_target = _COMPUTER_USE_ATLAS_TARGET_RE.search(text)
+    if atlas_target:
+        preferences["computer_use_target_app"] = "ChatGPT Atlas"
+        preferences["computer_use_foreground_preferred"] = True
+    elif _COMPUTER_USE_VIVALDI_TARGET_RE.search(text):
         preferences["computer_use_target_app"] = "Vivaldi"
     elif _COMPUTER_USE_CHROME_TARGET_RE.search(text) and not _COMPUTER_USE_CHROME_NEGATED_RE.search(
         text
@@ -2857,8 +3711,11 @@ def _computer_use_preferences_from_text(user_text: str) -> dict[str, Any]:
         preferences["computer_use_target_app"] = "Google Chrome"
     if _COMPUTER_USE_LINE_TARGET_RE.search(text):
         preferences["computer_use_target_title"] = "LINE"
-    elif _COMPUTER_USE_CHATGPT_TARGET_RE.search(text):
+    elif not atlas_target and _COMPUTER_USE_CHATGPT_TARGET_RE.search(text):
         preferences["computer_use_target_title"] = "ChatGPT"
+    if _COMPUTER_USE_PHYSICAL_INPUT_RE.search(text):
+        preferences["computer_use_mouse_keyboard_requested"] = True
+        preferences["computer_use_physical_clicks"] = True
     return preferences
 
 
@@ -2971,6 +3828,18 @@ def _available_tools(
     caller_provider_tools = _caller_provider_tool_definitions(input_data)
     resolved_context = resolve_runtime_profile_context(context or {})
     resolved_context["tool_selection"] = _tool_selection_metadata(selection)
+    verified_explicit_tool_ids = list(
+        dict.fromkeys(
+            [
+                *_tool_mention_ids_from_text(user_text),
+                *_verified_approval_followup_tool_ids(input_data),
+            ]
+        )
+    )
+    if verified_explicit_tool_ids:
+        resolved_context["verified_explicit_tool_ids"] = (
+            verified_explicit_tool_ids
+        )
     caller_provider_tool_ids = [
         tool_name_from_definition(tool)
         for tool in caller_provider_tools
@@ -2980,6 +3849,10 @@ def _available_tools(
         resolved_context["caller_provider_tool_ids"] = caller_provider_tool_ids
     agent_id = input_data.get("agent_id") or resolved_context.get("agent_id")
     requested_tool_ids = _requested_tool_ids_from_selection(selection)
+    if caller_provider_tool_ids:
+        requested_tool_ids = list(
+            dict.fromkeys([*requested_tool_ids, *caller_provider_tool_ids])
+        )
     runtime_profile, agent_id = _runtime_profile_with_policy_connected_tools(
         resolved_context.get("runtime_profile"),
         profile_id=resolved_context.get("profile_id"),
@@ -3000,6 +3873,17 @@ def _available_tools(
             agent_id=agent_id,
             policy_context=resolved_context,
         )
+        if _should_include_requested_computer_tools_for_turn(
+            resolved_context,
+            runtime_profile,
+            agent_id,
+        ):
+            profile_filtered = _include_requested_computer_tools_for_turn(
+                profile_filtered,
+                registry_tools,
+                requested_tool_ids,
+                resolved_context,
+            )
         service = ToolSelectionService(
             call_handler=resolved_context.get("call_handler"),
             settings=settings,
@@ -3011,6 +3895,7 @@ def _available_tools(
             context=resolved_context,
         )
         filtered = list(decision.selected_tools)
+        resolved_context["capability_settings_snapshot"] = settings
         selection_trace = decision.to_trace_dict()
         selected_tool_ids = [
             tool_name_from_definition(tool)
@@ -3052,7 +3937,10 @@ def _available_tools(
             "candidate_count": 0,
             "duration_ms": 0,
         }
-        if selection.mode == "manual":
+        if isinstance(exc, PermissionError):
+            filtered = []
+            resolved_context["tool_selection"]["stage"] = "selection_forbidden"
+        elif selection.mode == "manual":
             try:
                 filtered, unknown_tools = _resolve_selected_tools(selection.include, user_text=user_text, context=resolved_context)
                 if unknown_tools:
@@ -3109,6 +3997,64 @@ def _available_tools(
             selection_metadata["provider_compat_tool_ids"] = caller_provider_tool_ids
     filtered = _append_special_model_tools(filtered, resolved_context, agent_id=agent_id)
     return filtered, adapt_tool_definitions(filtered), resolved_context
+
+
+def _include_requested_computer_tools_for_turn(
+    profile_filtered: list[dict[str, Any]],
+    registry_tools: list[dict[str, Any]],
+    requested_tool_ids: list[str],
+    context: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if not context.get("user_requested_computer_use") or not requested_tool_ids:
+        return profile_filtered
+    requested = {
+        str(tool_id or "").strip()
+        for tool_id in requested_tool_ids
+        if str(tool_id or "").strip() in _COMPUTER_USE_TOOL_IDS
+    }
+    if not requested:
+        return profile_filtered
+    existing = _tool_name_set(profile_filtered)
+    additions: list[dict[str, Any]] = []
+    for tool in registry_tools:
+        name = tool_name_from_definition(tool)
+        if not name or name not in requested or name in existing:
+            continue
+        allowed = filter_tool_definitions_for_runtime_profile(
+            [tool],
+            None,
+            policy_context=context,
+        )
+        if not allowed:
+            continue
+        additions.extend(allowed)
+        existing.add(name)
+    if not additions:
+        return profile_filtered
+    return [*profile_filtered, *additions]
+
+
+def _should_include_requested_computer_tools_for_turn(
+    context: dict[str, Any],
+    runtime_profile: Any,
+    agent_id: Any,
+) -> bool:
+    if not context.get("user_requested_computer_use"):
+        return False
+    if not isinstance(runtime_profile, dict):
+        return True
+    defaultspack = runtime_profile.get("defaultspack")
+    if not isinstance(defaultspack, dict):
+        return True
+    agents = defaultspack.get("agents")
+    if not isinstance(agents, dict) or not agents:
+        return True
+    if agent_id:
+        agent = agents.get(str(agent_id))
+        if isinstance(agent, dict):
+            return not bool(agent.get("tools"))
+        return True
+    return False
 
 
 def _persist_tool_selection_trace(
@@ -3290,8 +4236,7 @@ def _tool_selection_selector_model(
 
 
 def _read_frontend_settings() -> dict[str, Any]:
-    env_path = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH")
-    path = Path(env_path).expanduser() if env_path else Path(__file__).resolve().parents[2] / "user_data" / "shared" / "frontend_settings.json"
+    path = frontend_settings_path()
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

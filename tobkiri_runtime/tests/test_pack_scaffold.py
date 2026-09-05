@@ -1,348 +1,129 @@
-"""
-test_pack_scaffold.py - PackScaffold のユニットテスト (Wave 14 T-055)
-"""
+"""Regression tests for the v4-only compatibility scaffold entry point."""
 
 from __future__ import annotations
 
 import json
-import pytest
 from pathlib import Path
 
-from core_runtime.pack_scaffold import PackScaffold, main, VALID_TEMPLATES
+import pytest
 
+from core_runtime.pack_scaffold import PackScaffold, VALID_TEMPLATES, main
+from tobkiri_protocol.validation import validate_document
 
-# ======================================================================
-# Fixture
-# ======================================================================
 
 @pytest.fixture
-def scaffold():
+def scaffold() -> PackScaffold:
     return PackScaffold()
 
 
-# ======================================================================
-# テスト: minimal テンプレート
-# ======================================================================
-
-class TestMinimalTemplate:
-    """minimal テンプレートの生成確認"""
-
-    def test_creates_pack_directory(self, scaffold, tmp_path: Path):
-        result = scaffold.generate("my_pack", tmp_path, template="minimal")
-        assert result == tmp_path / "my_pack"
-        assert result.is_dir()
-
-    def test_creates_ecosystem_json(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        eco = tmp_path / "my_pack" / "ecosystem.json"
-        assert eco.is_file()
-
-    def test_creates_init_py(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        init = tmp_path / "my_pack" / "__init__.py"
-        assert init.is_file()
-
-    def test_creates_contract_docs(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        pack_dir = tmp_path / "my_pack"
-        assert (pack_dir / "README.md").is_file()
-        assert (pack_dir / "docs" / "README.md").is_file()
-        assert (pack_dir / "docs" / "architecture.md").is_file()
-        assert (pack_dir / "docs" / "interfaces.md").is_file()
-        assert (pack_dir / "docs" / "operations.md").is_file()
-
-    def test_minimal_has_exactly_seven_files(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        pack_dir = tmp_path / "my_pack"
-        files = list(pack_dir.rglob("*"))
-        file_only = [f for f in files if f.is_file()]
-        assert len(file_only) == 7
-
-    def test_ecosystem_json_is_valid_json(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        eco = tmp_path / "my_pack" / "ecosystem.json"
-        data = json.loads(eco.read_text(encoding="utf-8"))
-        assert isinstance(data, dict)
-
-    def test_ecosystem_json_has_pack_id(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        eco = tmp_path / "my_pack" / "ecosystem.json"
-        data = json.loads(eco.read_text(encoding="utf-8"))
-        assert data["pack_id"] == "my_pack"
-
-    def test_ecosystem_json_has_required_fields(self, scaffold, tmp_path: Path):
-        scaffold.generate("test_pack", tmp_path, template="minimal")
-        eco = tmp_path / "test_pack" / "ecosystem.json"
-        data = json.loads(eco.read_text(encoding="utf-8"))
-        for field in ("pack_id", "version", "description", "capabilities",
-                       "flows", "connectivity", "trust"):
-            assert field in data, f"Missing field: {field}"
-
-    def test_ecosystem_json_connectivity_is_list(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        eco = tmp_path / "my_pack" / "ecosystem.json"
-        data = json.loads(eco.read_text(encoding="utf-8"))
-        assert isinstance(data["connectivity"], list)
-
-    def test_ecosystem_json_version_format(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        eco = tmp_path / "my_pack" / "ecosystem.json"
-        data = json.loads(eco.read_text(encoding="utf-8"))
-        assert data["version"] == "0.1.0"
-
-
-# ======================================================================
-# テスト: capability テンプレート
-# ======================================================================
-
-class TestCapabilityTemplate:
-    """capability テンプレートの生成確認"""
-
-    def test_creates_capability_handler(self, scaffold, tmp_path: Path):
-        scaffold.generate("cap_pack", tmp_path, template="capability")
-        handler = tmp_path / "cap_pack" / "capability_handler.py"
-        assert handler.is_file()
-
-    def test_has_ecosystem_json(self, scaffold, tmp_path: Path):
-        scaffold.generate("cap_pack", tmp_path, template="capability")
-        assert (tmp_path / "cap_pack" / "ecosystem.json").is_file()
-
-    def test_has_init_py(self, scaffold, tmp_path: Path):
-        scaffold.generate("cap_pack", tmp_path, template="capability")
-        assert (tmp_path / "cap_pack" / "__init__.py").is_file()
-
-    def test_capability_has_exactly_eight_files(self, scaffold, tmp_path: Path):
-        scaffold.generate("cap_pack", tmp_path, template="capability")
-        pack_dir = tmp_path / "cap_pack"
-        file_only = [f for f in pack_dir.rglob("*") if f.is_file()]
-        assert len(file_only) == 8
-
-    def test_capability_handler_contains_handle_function(self, scaffold, tmp_path: Path):
-        scaffold.generate("cap_pack", tmp_path, template="capability")
-        handler = tmp_path / "cap_pack" / "capability_handler.py"
-        content = handler.read_text(encoding="utf-8")
-        assert "def handle(" in content
-
-
-# ======================================================================
-# テスト: flow テンプレート
-# ======================================================================
-
-class TestFlowTemplate:
-    """flow テンプレートの生成確認"""
-
-    def test_creates_flows_directory(self, scaffold, tmp_path: Path):
-        scaffold.generate("flow_pack", tmp_path, template="flow")
-        flows_dir = tmp_path / "flow_pack" / "flows"
-        assert flows_dir.is_dir()
-
-    def test_creates_sample_flow_yaml(self, scaffold, tmp_path: Path):
-        scaffold.generate("flow_pack", tmp_path, template="flow")
-        flow = tmp_path / "flow_pack" / "flows" / "sample_flow.yaml"
-        assert flow.is_file()
-
-    def test_has_ecosystem_json(self, scaffold, tmp_path: Path):
-        scaffold.generate("flow_pack", tmp_path, template="flow")
-        assert (tmp_path / "flow_pack" / "ecosystem.json").is_file()
-
-    def test_flow_does_not_have_capability_handler(self, scaffold, tmp_path: Path):
-        scaffold.generate("flow_pack", tmp_path, template="flow")
-        handler = tmp_path / "flow_pack" / "capability_handler.py"
-        assert not handler.exists()
-
-    def test_sample_flow_yaml_content(self, scaffold, tmp_path: Path):
-        scaffold.generate("flow_pack", tmp_path, template="flow")
-        flow = tmp_path / "flow_pack" / "flows" / "sample_flow.yaml"
-        content = flow.read_text(encoding="utf-8")
-        assert "sample_flow" in content
-        assert "steps:" in content
-
-    def test_flow_template_creates_flows_doc(self, scaffold, tmp_path: Path):
-        scaffold.generate("flow_pack", tmp_path, template="flow")
-        assert (tmp_path / "flow_pack" / "docs" / "flows.md").is_file()
-
-
-# ======================================================================
-# テスト: full テンプレート
-# ======================================================================
-
-class TestFullTemplate:
-    """full テンプレートの生成確認"""
-
-    def test_has_all_minimal_files(self, scaffold, tmp_path: Path):
-        scaffold.generate("full_pack", tmp_path, template="full")
-        assert (tmp_path / "full_pack" / "ecosystem.json").is_file()
-        assert (tmp_path / "full_pack" / "__init__.py").is_file()
-
-    def test_has_capability_handler(self, scaffold, tmp_path: Path):
-        scaffold.generate("full_pack", tmp_path, template="full")
-        assert (tmp_path / "full_pack" / "capability_handler.py").is_file()
-
-    def test_has_flows_directory_and_sample(self, scaffold, tmp_path: Path):
-        scaffold.generate("full_pack", tmp_path, template="full")
-        assert (tmp_path / "full_pack" / "flows" / "sample_flow.yaml").is_file()
-
-    def test_has_tests_directory(self, scaffold, tmp_path: Path):
-        scaffold.generate("full_pack", tmp_path, template="full")
-        assert (tmp_path / "full_pack" / "tests").is_dir()
-        assert (tmp_path / "full_pack" / "tests" / "__init__.py").is_file()
-
-    def test_has_readme(self, scaffold, tmp_path: Path):
-        scaffold.generate("full_pack", tmp_path, template="full")
-        readme = tmp_path / "full_pack" / "README.md"
-        assert readme.is_file()
-        content = readme.read_text(encoding="utf-8")
-        assert "full_pack" in content
-
-    def test_full_has_exactly_eleven_files(self, scaffold, tmp_path: Path):
-        scaffold.generate("full_pack", tmp_path, template="full")
-        pack_dir = tmp_path / "full_pack"
-        file_only = [f for f in pack_dir.rglob("*") if f.is_file()]
-        assert len(file_only) == 11
-
-
-# ======================================================================
-# テスト: pack_id バリデーション
-# ======================================================================
-
-class TestPackIdValidation:
-    """pack_id バリデーションのテスト"""
-
-    def test_empty_pack_id_raises(self, scaffold, tmp_path: Path):
-        with pytest.raises(ValueError, match="Invalid pack_id"):
-            scaffold.generate("", tmp_path)
-
-    def test_pack_id_with_spaces_raises(self, scaffold, tmp_path: Path):
-        with pytest.raises(ValueError, match="Invalid pack_id"):
-            scaffold.generate("my pack", tmp_path)
-
-    def test_pack_id_with_dots_raises(self, scaffold, tmp_path: Path):
-        with pytest.raises(ValueError, match="Invalid pack_id"):
-            scaffold.generate("my.pack", tmp_path)
-
-    def test_pack_id_with_slash_raises(self, scaffold, tmp_path: Path):
-        with pytest.raises(ValueError, match="Invalid pack_id"):
-            scaffold.generate("my/pack", tmp_path)
-
-    def test_pack_id_too_long_raises(self, scaffold, tmp_path: Path):
-        long_id = "a" * 65
-        with pytest.raises(ValueError, match="Invalid pack_id"):
-            scaffold.generate(long_id, tmp_path)
-
-    def test_valid_pack_id_with_hyphens(self, scaffold, tmp_path: Path):
-        result = scaffold.generate("my-pack", tmp_path)
-        assert result.is_dir()
-
-    def test_valid_pack_id_with_underscores(self, scaffold, tmp_path: Path):
-        result = scaffold.generate("my_pack", tmp_path)
-        assert result.is_dir()
-
-    def test_valid_pack_id_max_length(self, scaffold, tmp_path: Path):
-        pack_id = "a" * 64
-        result = scaffold.generate(pack_id, tmp_path)
-        assert result.is_dir()
-
-
-# ======================================================================
-# テスト: 上書き防止
-# ======================================================================
-
-class TestOverwriteProtection:
-    """上書き防止のテスト"""
-
-    def test_existing_nonempty_dir_raises(self, scaffold, tmp_path: Path):
-        pack_dir = tmp_path / "my_pack"
-        pack_dir.mkdir()
-        (pack_dir / "some_file.txt").write_text("existing", encoding="utf-8")
-        with pytest.raises(FileExistsError, match="already exists"):
-            scaffold.generate("my_pack", tmp_path)
-
-    def test_existing_empty_dir_is_allowed(self, scaffold, tmp_path: Path):
-        pack_dir = tmp_path / "my_pack"
-        pack_dir.mkdir()
-        result = scaffold.generate("my_pack", tmp_path)
-        assert result == pack_dir
-        assert (pack_dir / "ecosystem.json").is_file()
-
-    def test_force_overwrites_existing(self, scaffold, tmp_path: Path):
-        pack_dir = tmp_path / "my_pack"
-        pack_dir.mkdir()
-        (pack_dir / "some_file.txt").write_text("existing", encoding="utf-8")
-        result = scaffold.generate("my_pack", tmp_path, force=True)
-        assert result == pack_dir
-        assert (pack_dir / "ecosystem.json").is_file()
-        # 元のファイルも残っている（削除はしない）
-        assert (pack_dir / "some_file.txt").is_file()
-
-    def test_force_updates_ecosystem_json(self, scaffold, tmp_path: Path):
-        scaffold.generate("my_pack", tmp_path, template="minimal")
-        eco = tmp_path / "my_pack" / "ecosystem.json"
-        original = eco.read_text(encoding="utf-8")
-        # force で再生成
-        scaffold.generate("my_pack", tmp_path, template="full", force=True)
-        updated = eco.read_text(encoding="utf-8")
-        assert original == updated  # ecosystem.json の内容は同じ pack_id なので同一
-        # full テンプレートの追加ファイルが存在する
-        assert (tmp_path / "my_pack" / "README.md").is_file()
-
-    def test_nonexistent_target_dir_is_created(self, scaffold, tmp_path: Path):
-        deep_dir = tmp_path / "a" / "b" / "c"
-        result = scaffold.generate("my_pack", deep_dir)
-        assert result.is_dir()
-        assert (result / "ecosystem.json").is_file()
-
-
-# ======================================================================
-# テスト: テンプレートバリデーション
-# ======================================================================
-
-class TestTemplateValidation:
-    """未知テンプレートの検証"""
-
-    def test_unknown_template_raises(self, scaffold, tmp_path: Path):
-        with pytest.raises(ValueError, match="Unknown template"):
-            scaffold.generate("my_pack", tmp_path, template="nonexistent")
-
-    def test_valid_templates_constant(self):
-        assert "minimal" in VALID_TEMPLATES
-        assert "capability" in VALID_TEMPLATES
-        assert "flow" in VALID_TEMPLATES
-        assert "full" in VALID_TEMPLATES
-
-
-# ======================================================================
-# テスト: CLI エントリポイント
-# ======================================================================
-
-class TestCLI:
-    """CLI main() のテスト"""
-
-    def test_cli_generates_pack(self, tmp_path: Path):
-        exit_code = main(["test_pack", "--output", str(tmp_path)])
-        assert exit_code == 0
-        assert (tmp_path / "test_pack" / "ecosystem.json").is_file()
-
-    def test_cli_with_template(self, tmp_path: Path):
-        exit_code = main(["test_pack", "-t", "full", "-o", str(tmp_path)])
-        assert exit_code == 0
-        assert (tmp_path / "test_pack" / "README.md").is_file()
-
-    def test_cli_invalid_pack_id(self, tmp_path: Path):
-        exit_code = main(["invalid pack!", "-o", str(tmp_path)])
-        assert exit_code == 1
-
-    def test_cli_default_template_is_minimal(self, tmp_path: Path):
-        main(["test_pack", "-o", str(tmp_path)])
-        pack_dir = tmp_path / "test_pack"
-        file_only = [f for f in pack_dir.rglob("*") if f.is_file()]
-        assert len(file_only) == 7
-
-    def test_cli_force_flag(self, tmp_path: Path):
-        main(["test_pack", "-o", str(tmp_path)])
-        exit_code = main(["test_pack", "-o", str(tmp_path), "--force"])
-        assert exit_code == 0
-
-    def test_cli_existing_dir_without_force(self, tmp_path: Path):
-        main(["test_pack", "-o", str(tmp_path), "-t", "full"])
-        exit_code = main(["test_pack", "-o", str(tmp_path)])
-        assert exit_code == 1
+@pytest.mark.parametrize("template", VALID_TEMPLATES)
+def test_every_template_emits_complete_v4_without_legacy_files(
+    scaffold: PackScaffold,
+    tmp_path: Path,
+    template: str,
+) -> None:
+    root = scaffold.generate("example.pack", tmp_path, template=template)
+
+    manifest = validate_document((root / "pack.v4.json").read_bytes(), "pack")
+    validate_document((root / "contracts.v4.json").read_bytes(), "pack_contract_catalog")
+    validate_document((root / "artifact-index.v4.json").read_bytes(), "pack_artifact_index")
+    validate_document((root / "executables.v4.json").read_bytes(), "executable_catalog")
+
+    assert manifest["pack"]["id"] == "example.pack"
+    assert manifest["requirements"]["execution_boundary"] == "declarative_only"
+    assert manifest["requirements"]["capabilities"] == []
+    assert manifest["functions"] == []
+    assert manifest["migration"]["compatibility"] == "none"
+    assert not (root / "ecosystem.json").exists()
+    assert not (root / "rumi.pack.v3.json").exists()
+
+
+def test_scaffold_is_byte_deterministic(scaffold: PackScaffold, tmp_path: Path) -> None:
+    first = scaffold.generate("example.first", tmp_path / "one")
+    second = scaffold.generate("example.first", tmp_path / "two")
+    first_files = {
+        path.relative_to(first).as_posix(): path.read_bytes()
+        for path in first.rglob("*")
+        if path.is_file()
+    }
+    second_files = {
+        path.relative_to(second).as_posix(): path.read_bytes()
+        for path in second.rglob("*")
+        if path.is_file()
+    }
+    assert first_files == second_files
+
+
+@pytest.mark.parametrize(
+    "pack_id",
+    ["", "Upper.case", "noseparator", "../escape", "bad space.pack", "a/b"],
+)
+def test_invalid_pack_identity_is_rejected(
+    scaffold: PackScaffold,
+    tmp_path: Path,
+    pack_id: str,
+) -> None:
+    with pytest.raises(ValueError, match="pack_id"):
+        scaffold.generate(pack_id, tmp_path)
+
+
+def test_existing_or_force_target_never_overwrites(
+    scaffold: PackScaffold,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "example.pack"
+    root.mkdir()
+    (root / "owned.txt").write_text("owned\n", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        scaffold.generate("example.pack", tmp_path)
+    with pytest.raises(FileExistsError, match="force overwrite was retired"):
+        scaffold.generate("example.pack", tmp_path, force=True)
+    assert (root / "owned.txt").read_text(encoding="utf-8") == "owned\n"
+
+
+def test_symlink_target_is_rejected(
+    scaffold: PackScaffold,
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = tmp_path / "example.pack"
+    try:
+        target.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    with pytest.raises(ValueError, match="symlink"):
+        scaffold.generate("example.pack", tmp_path)
+
+
+def test_cli_reports_v4_and_refuses_force(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["example.pack", "--output", str(tmp_path)]) == 0
+    assert "Pack v4 scaffold created" in capsys.readouterr().out
+    assert main(["example.pack", "--output", str(tmp_path), "--force"]) == 1
+    assert (tmp_path / "example.pack" / "pack.v4.json").is_file()
+
+
+def test_integrity_documents_bind_exact_source_and_files(
+    scaffold: PackScaffold,
+    tmp_path: Path,
+) -> None:
+    root = scaffold.generate("example.pack", tmp_path, template="full")
+    manifest = json.loads((root / "pack.v4.json").read_text(encoding="utf-8"))
+    contracts = json.loads((root / "contracts.v4.json").read_text(encoding="utf-8"))
+    executables = json.loads((root / "executables.v4.json").read_text(encoding="utf-8"))
+    index = json.loads((root / "artifact-index.v4.json").read_text(encoding="utf-8"))
+
+    identities = {
+        manifest["integrity"]["source_identity"],
+        contracts["source_identity"],
+        executables["source_identity"],
+        index["source_identity"],
+    }
+    assert len(identities) == 1
+    assert index["artifact_set_digest"] == manifest["pack"]["artifact_digest"]
+    assert {item["path"] for item in index["artifacts"]} >= {
+        "pack.v4.json",
+        "contracts.v4.json",
+        "scaffold-source.v1.json",
+    }

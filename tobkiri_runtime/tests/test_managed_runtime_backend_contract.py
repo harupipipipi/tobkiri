@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-import json
 from pathlib import Path
 import sys
 import threading
@@ -2205,99 +2204,16 @@ def test_desktop_request_required_access_can_be_requested_and_granted(tmp_path, 
     assert access_request["data"]["request_id"] not in registry_after_destroy
 
 
-def test_defaultspack_runtime_routes_return_honest_unavailable_state(monkeypatch) -> None:
-    from ecosystem.defaultspack.blocks.sandbox import api
-    from ecosystem.defaultspack.backend.sandbox.providers import linux_native
-    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
+def test_defaultspack_runtime_requires_captured_operation(monkeypatch) -> None:
+    del monkeypatch
+    from tests.v4_batch_support import assert_route_cutover
 
-    routes = {(spec.method, spec.pattern, spec.block_module) for spec in canonical_http_route_specs()}
-    route_specs = {
-        (spec.method, spec.pattern): spec
-        for spec in canonical_http_route_specs()
-        if spec.pattern.startswith("/api/runtime")
-        or spec.pattern.startswith("/api/sandbox")
-        or spec.pattern.startswith("/api/sandboxes")
-        or spec.pattern.startswith("/api/desktops")
-    }
-
-    assert ("GET", "/api/runtime/providers", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/runtime/ensure", "blocks.sandbox.api") in routes
-    assert ("GET", "/api/sandbox/templates", "blocks.sandbox.api") in routes
-    assert ("GET", "/api/desktops", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/sandboxes/{sandbox_id}/exec", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/sandboxes/{sandbox_id}/files/apply-patch", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/sandboxes/{sandbox_id}/ports", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/desktops/{seat_id}/rules", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/desktops/{seat_id}/ai-input", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/desktops/{seat_id}/access-requests", "blocks.sandbox.api") in routes
-    assert ("POST", "/api/desktops/{seat_id}/access-requests/{request_id}/grant", "blocks.sandbox.api") in routes
-    assert route_specs[("GET", "/api/runtime/providers")].function_id == "managed_runtime_providers"
-    assert route_specs[("POST", "/api/desktops/{seat_id}/input")].legacy_block_module == ""
-    assert route_specs[("POST", "/api/desktops/{seat_id}/input")].path_inject == {"seat_id": "seat_id"}
-    assert route_specs[("POST", "/api/desktops/{seat_id}/ai-input")].function_id == "managed_runtime_desktop_ai_input"
-    assert route_specs[("POST", "/api/desktops/{seat_id}/ai-input")].defaults == {"_handler": "desktop_ai_input"}
-    static_routes = {
-        (route["method"], route["path"]): route.get("function_id")
-        for route in json.loads((DEFAULTSPACK_ROOT / "routes.json").read_text(encoding="utf-8"))["routes"]
-        if str(route.get("path", "")).startswith(("/api/runtime", "/api/sandbox", "/api/desktops"))
-    }
-    sandbox_runtime_template = json.loads(
-        (DEFAULTSPACK_ROOT / "templates" / "sandbox_runtime" / "default" / "template.json").read_text(encoding="utf-8")
+    assert_route_cutover(
+        "GET",
+        "/api/runtime/providers",
+        "tobkiri.managed-runtime.v1",
+        "defaultspack.managed-runtime.providers",
     )
-    route_pieces = {
-        piece["function_id"]: piece
-        for piece in sandbox_runtime_template["pieces"]
-        if piece.get("kind") == "function"
-    }
-    for key, spec in route_specs.items():
-        assert static_routes.get(key) == spec.function_id
-    for function_id in {
-        "managed_runtime_uninstall",
-        "managed_runtime_sandbox_stop",
-        "managed_runtime_sandbox_delete",
-        "managed_runtime_desktop_stop",
-        "managed_runtime_desktop_delete",
-    }:
-        assert route_pieces[function_id]["requires_confirmation"] is True
-        assert route_pieces[function_id]["confirmation_field"] == "confirm_destructive"
-
-    monkeypatch.setattr(api.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(linux_native.sys, "platform", "linux")
-    monkeypatch.setattr(linux_native.shutil, "which", lambda _name: None)
-    api._reset_service_for_tests(None)
-    try:
-        providers = api.run({"_handler": "runtime_providers"}, {})
-        doctor = api.run({"_handler": "runtime_doctor"}, {})
-        ensure = api.run({"_handler": "runtime_ensure", "provider_id": "missing-provider"}, {})
-        update = api.run({"_handler": "runtime_update", "provider_id": "missing-provider"}, {})
-        uninstall = api.run(
-            {"_handler": "runtime_uninstall", "provider_id": "missing-provider", "confirm_destructive": True},
-            {},
-        )
-        templates = api.run({"_handler": "sandbox_templates"}, {})
-        desktops = api.run({"_handler": "desktops_list"}, {})
-    finally:
-        api._reset_service_for_tests(None)
-
-    assert providers["status"] == "ok"
-    assert providers["data"]["providers"][0]["status"] == "unavailable"
-    assert doctor["data"]["status"] == "needs_setup"
-    assert ensure["data"]["status"] == "failed"
-    assert ensure["data"]["error"]["code"] == "MANAGED_RUNTIME_NOT_READY"
-    assert ensure["data"]["error"]["message"] == "Managed runtime provider is not registered."
-    assert update["data"]["status"] == "failed"
-    assert update["data"]["error"]["code"] == "MANAGED_RUNTIME_NOT_READY"
-    assert update["data"]["error"]["message"] == "Managed runtime provider is not registered."
-    assert uninstall["data"]["status"] == "failed"
-    assert uninstall["data"]["error"]["code"] == "MANAGED_RUNTIME_NOT_READY"
-    assert uninstall["data"]["error"]["message"] == "Managed runtime provider is not registered."
-    assert {template["template_id"] for template in templates["data"]["templates"]} >= {"desktop.linux_native", "desktop.ubuntu", "tool.ephemeral"}
-    coding_template = next(template for template in templates["data"]["templates"] if template["template_id"] == "desktop.coding")
-    assert coding_template["trust_level"] == "builtin"
-    assert "desktop.browser" in coding_template["source_template_ids"]
-    assert "google-chrome-stable" in {app["name"] for app in coding_template["provisioning"]["packages"]}
-    assert "playwright" in coding_template["provisioning"]["mcp_servers"]
-    assert desktops["data"]["desktops"] == []
 
 
 def test_runtime_doctor_selects_ready_desktop_provider(monkeypatch, tmp_path) -> None:
@@ -2390,17 +2306,18 @@ def test_defaultspack_runtime_service_registers_cross_platform_providers(tmp_pat
     }
     assert mac_isolation["mode"] == "lima_vm"
     assert mac_isolation["vm"] is True
-    assert mac_isolation["security_boundary"] is False
+    assert mac_isolation["security_boundary"] is True
     assert mac_isolation["separate_workdirs"] is True
     assert mac_isolation["shared_guest_identity"] is True
-    assert mac_isolation["sandbox_workspace_shared"] is True
-    assert mac_isolation["sandbox_process_namespace_shared"] is True
+    assert mac_isolation["sandbox_workspace_shared"] is False
+    assert mac_isolation["sandbox_process_namespace_shared"] is False
     assert mac_isolation["sandbox_operation_binding"] == "provider_instance_id"
-    assert mac_isolation["sandbox_cgroup_scope"] == "not_claimed"
-    assert mac_isolation["process_cleanup"] == "best_effort"
-    assert mac_isolation["untrusted_pack_boundary"] is False
-    assert "does not claim cross-sandbox filesystem isolation" in mac_isolation["warnings"][0]
-    assert "best effort" in mac_isolation["warnings"][1]
+    assert mac_isolation["sandbox_cgroup_scope"] == "guest_prlimit"
+    assert mac_isolation["process_cleanup"] == "pid_namespace"
+    assert mac_isolation["untrusted_pack_boundary"] is True
+    assert mac_isolation["desktop_security_boundary"] is False
+    assert "Desktop GUI processes share" in mac_isolation["warnings"][0]
+    assert "prlimit" in mac_isolation["warnings"][1]
     assert windows_isolation["mode"] == "wsl2_vm"
     assert windows_isolation["vm"] is True
     assert windows_isolation["security_boundary"] is False

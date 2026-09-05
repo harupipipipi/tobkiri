@@ -13,6 +13,12 @@ from ecosystem.defaultspack.domain.tool.mcp_client import McpClient
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
 from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
+pytestmark = pytest.mark.usefixtures(
+    "wave7_owner_bindings",
+    "defaultspack_component_catalog_selected",
+    "defaultspack_v4_tool_dispatch",
+)
+
 
 @pytest.fixture(autouse=True)
 def _reset_mcp_singletons():
@@ -301,6 +307,7 @@ def test_mcp_connect_approval_binds_resolved_saved_config(monkeypatch, tmp_path)
 
 
 def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatch, tmp_path):
+    import domain.chat.run_request as run_request_module
     from domain.chat.store import ChatStore
     from domain.chat.stream_engine import ChatRunEngine
 
@@ -384,6 +391,15 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
     monkeypatch.setattr(
         ChatRunEngine, "_provider_supports_stream_tool_calls", staticmethod(lambda _model: True)
     )
+    monkeypatch.setattr(
+        run_request_module,
+        "get_model_capabilities",
+        lambda _model: {
+            "profile_id": "openai/gpt-5.5",
+            "supports_tool_calling": True,
+            "supports_thinking": True,
+        },
+    )
 
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
@@ -397,7 +413,7 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
                 },
                 "tools": [tool_id],
             },
-            {},
+            {"developer_mode": True},
             stream_mode=True,
         )
     )
@@ -415,9 +431,12 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
     ]
     assert len(started) == 1
     assert len(completed) == 1
-    assert final_message["metadata"]["attached_tools"] == [tool_id]
-    assert final_message["metadata"]["attached_provider_tools"] == [tool_id]
-    assert final_message["metadata"]["executed_tools"] == [tool_id]
+    attached = [
+        event
+        for event in final_message["events"]
+        if event.get("phase") == "tools_attached"
+    ]
+    assert attached and attached[-1]["tool_count"] == 1
     assert final_message["tool_logs"][0]["tool_name"] == tool_id
     result_payload = json.loads(final_message["tool_logs"][0]["result"]["data"]["result"])
     assert result_payload == {

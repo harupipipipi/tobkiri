@@ -32,13 +32,12 @@ def _reset_defaultspack_singletons():
     ToolRegistry._instance = None
 
 
-def test_operations_company_profile_coexists_with_default_profile():
+def test_operations_company_catalog_owns_its_company_profiles():
     from domain.capability.catalog import CapabilityCatalog
 
     manifest = CapabilityCatalog(DEFAULTSPACK_ROOT).manifest()
     profile_ids = {profile["profile_id"] for profile in manifest["profiles"]}
 
-    assert "defaultspack.local_agent" in profile_ids
     assert "defaultspack.operations_company" in profile_ids
     assert "defaultspack.mimo_coding_company" in profile_ids
     assert manifest["counts"]["profiles"] >= 2
@@ -74,6 +73,23 @@ def test_mimo_coding_company_uses_xiaomi_mimo_models(tmp_path, monkeypatch):
         == "xiaomi-token-plan-sgp/mimo-v2-omni"
     )
     assert runtime._allowed_model("xiaomi-token-plan-sgp/mimo-v2-flash") == "xiaomi-token-plan-sgp/mimo-v2-flash"
+
+
+def test_mimo_coding_company_defaults_use_launcher_user_data(tmp_path, monkeypatch):
+    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import (
+        MimoCodingCompanyRuntime,
+    )
+
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", raising=False)
+    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
+
+    runtime = MimoCodingCompanyRuntime()
+
+    expected_root = tmp_path / "defaultspack" / "shared"
+    assert runtime.state_path == expected_root / "mimo_coding_company" / "state.json"
+    assert runtime.schedules_dir == expected_root / "schedules"
+    assert runtime._docker_runtime_dir() == expected_root / "mimo_coding_company" / "docker_swarm"
 
 
 def test_mimo_coding_company_status_supersedes_legacy_provider_conversations_idempotently(tmp_path, monkeypatch):
@@ -224,237 +240,16 @@ def test_operations_conversation_resolves_pack_system_prompt():
     assert "Client Manager" in prompt
 
 
-def test_mimo_coding_company_bootstrap_creates_company_conversation_and_loops(tmp_path, monkeypatch):
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
-    from domain.agent.scheduler import Scheduler
-    from domain.chat.store import ChatStore
-    from domain.company.task_store import CompanyTaskStore
+def test_mimo_coding_company_bootstrap_requires_captured_operation(tmp_path, monkeypatch):
+    del tmp_path, monkeypatch
+    from tests.v4_batch_support import assert_route_cutover
 
-    _reset_defaultspack_singletons()
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", str(tmp_path / "mimo" / "state.json"))
-    monkeypatch.delenv("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", raising=False)
-
-    runtime = MimoCodingCompanyRuntime(pack_root=tmp_path / "ops_pack")
-    status = runtime.bootstrap(
-        start_nonstop=True,
-        heartbeat_minutes=30,
-        review_interval_minutes=180,
-        qa_interval_minutes=240,
-        model="stub/default",
-        vision_model="stub/default",
-        fast_model="stub/default",
-        qa_targets=["http://127.0.0.1:3000"],
-        docker_worker_count=4,
-        docker_personas=["first_time_user", "power_user"],
-        seed_knowledge=False,
-        run_initial_review_now=False,
+    assert_route_cutover(
+        "POST",
+        "/api/company/mimo/bootstrap",
+        "tobkiri.operations-company.v1",
+        "rumi_operations_company.bootstrap",
     )
-
-    assert status["bootstrapped"] is True
-    assert status["company"]["id"] == "mimo-coding-company"
-    assert status["conversation_id"]
-    assert status["harness"]["qa_targets"] == ["http://127.0.0.1:3000"]
-    assert status["harness"]["max_tool_calls"] is None
-    assert status["harness"]["schedules_dir"] == str(tmp_path / "user_data" / "shared" / "schedules")
-    assert status["company"]["metadata"]["max_tool_calls"] is None
-    assert len(status["harness"]["seeded_task_ids"]) == 6
-    assert status["harness"]["docker_swarm"]["worker_count"] == 4
-    assert status["harness"]["docker_swarm"]["personas"] == ["first_time_user", "power_user"]
-    assert len(status["harness"]["docker_swarm"]["workers"]) == 4
-    assert status["harness"]["open_task_count"] == 6
-    assert len(status["harness"]["stream_task_ids"]) == 6
-    assert status["harness"]["autonomy_board"]["next_focus"][0]["id"] == "initial_harness_review"
-    assert status["harness"]["qa_swarm_plan"]["workers"][0]["persona_id"] == "first_time_user"
-    assert status["harness"]["qa_swarm_plan"]["workers"][0]["qa_target"] == "http://127.0.0.1:3000"
-    assert Path(status["harness"]["docker_swarm"]["compose_path"]).is_file()
-    assert Path(status["harness"]["docker_swarm"]["template_compose_path"]).is_file()
-    assert Path(status["harness"]["docker_swarm"]["status_dir"]).is_dir()
-    assert Path(status["harness"]["docker_swarm"]["supervisor_path"]).is_file()
-    assert Path(status["harness"]["docker_swarm"]["workers"][0]["assignment_path"]).is_file()
-    assert status["harness"]["docker_swarm"]["monitoring"]["reported_workers"] == 0
-    assert "--project-name " + status["harness"]["docker_swarm"]["project_name"] in status["harness"]["docker_swarm"]["commands"]["up"]
-    assert "docker ps --filter" in status["harness"]["docker_swarm"]["commands"]["docker_ps"]
-    assert status["harness"]["docker_swarm"]["workers"][0]["container_name"].startswith(
-        status["harness"]["docker_swarm"]["project_name"] + "-"
-    )
-    queued_tasks = CompanyTaskStore().list("mimo-coding-company", status="queued", limit=50, offset=0)
-    assert queued_tasks is not None and queued_tasks[1] == 6
-    assignment = json.loads(Path(status["harness"]["docker_swarm"]["workers"][0]["assignment_path"]).read_text(encoding="utf-8"))
-    supervisor = json.loads(Path(status["harness"]["docker_swarm"]["supervisor_path"]).read_text(encoding="utf-8"))
-    assert assignment["container_name"] == status["harness"]["docker_swarm"]["workers"][0]["container_name"]
-    assert assignment["persona_id"] == "first_time_user"
-    assert assignment["qa_target"] == "http://127.0.0.1:3000"
-    assert supervisor["project_name"] == status["harness"]["docker_swarm"]["project_name"]
-    assert supervisor["monitoring"]["reported_workers"] == 0
-    assert supervisor["commands"]["docker_ps"] == status["harness"]["docker_swarm"]["commands"]["docker_ps"]
-
-    conversation = ChatStore().get_conversation(status["conversation_id"])
-    assert conversation["conversation_kind"] == "mimo_coding_company"
-    assert conversation["agent_id"] == "client_manager"
-    assert conversation["metadata"]["profile_id"] == "defaultspack.mimo_coding_company"
-    assert "mimo-coding-company" in conversation["tags"]
-    loop_conversation_ids = status["loop_conversation_ids"]
-    assert {"kickoff_review", "heartbeat", "improvement_loop", "qa_loop"} <= set(loop_conversation_ids)
-    assert len(set(loop_conversation_ids.values())) == len(loop_conversation_ids)
-    parent_after_lanes = ChatStore().get_conversation(status["conversation_id"])
-    assert set(loop_conversation_ids.values()) <= set(parent_after_lanes["child_conversation_ids"])
-
-    loop_keys = {schedule["task"]["metadata"]["loop_key"] for schedule in status["schedules"]}
-    assert {"kickoff_review", "heartbeat", "improvement_loop", "qa_loop"} <= loop_keys
-    assert any(schedule["task"]["agent_id"] == "browser_qa" for schedule in status["schedules"])
-    schedules_by_loop = {schedule["task"]["metadata"]["loop_key"]: schedule for schedule in status["schedules"]}
-    kickoff_schedule = schedules_by_loop["kickoff_review"]
-    heartbeat_schedule = schedules_by_loop["heartbeat"]
-    improvement_schedule = schedules_by_loop["improvement_loop"]
-    qa_schedule = schedules_by_loop["qa_loop"]
-    assert kickoff_schedule["task"]["timeout"] == 900
-    assert heartbeat_schedule["task"]["timeout"] == 1800
-    assert improvement_schedule["task"]["timeout"] == 30 * 24 * 60 * 60
-    assert qa_schedule["task"]["timeout"] == 30 * 24 * 60 * 60
-    assert improvement_schedule["task"]["timeout"] > heartbeat_schedule["task"]["timeout"]
-    assert qa_schedule["task"]["timeout"] > heartbeat_schedule["task"]["timeout"]
-    assert improvement_schedule["task"]["conversation_id"] == loop_conversation_ids["improvement_loop"]
-    assert qa_schedule["task"]["conversation_id"] == loop_conversation_ids["qa_loop"]
-    assert improvement_schedule["task"]["conversation_id"] != qa_schedule["task"]["conversation_id"]
-    for loop_key, schedule in schedules_by_loop.items():
-        assert schedule["task"]["conversation_id"] == loop_conversation_ids[loop_key]
-        assert schedule["task"]["conversation_id"] != status["conversation_id"]
-        assert schedule["task"]["metadata"]["parent_conversation_id"] == status["conversation_id"]
-        assert schedule["task"]["metadata"]["schedule_failure_external_issue_policy"] == "blocked_only"
-        assert "scheduled_timeout" in schedule["task"]["metadata"]["schedule_suppress_external_issue_on"]
-        assert schedule["task"]["metadata"]["provider_health_external_issue_policy"] == "provider_health_only"
-        assert schedule["task"]["metadata"]["provider_health_blocker_signal"] == "provider_health_blocker"
-        loop_conversation = ChatStore().get_conversation(schedule["task"]["conversation_id"])
-        assert loop_conversation["parent_conversation_id"] == status["conversation_id"]
-        assert loop_conversation["conversation_kind"] == "mimo_coding_company_loop"
-    assert heartbeat_schedule["task"]["tool_policy"]["max_tool_calls"] is None
-    assert heartbeat_schedule["task"]["tool_policy"]["schedule_initial_tool_choice"] == "required"
-    assert qa_schedule["task"]["tool_policy"]["schedule_initial_tool_choice"] == "required"
-    assert qa_schedule["task"]["tool_policy"]["schedule_failure_external_issue_policy"] == "blocked_only"
-    assert qa_schedule["task"]["tool_policy"]["provider_health_external_issue_policy"] == "provider_health_only"
-    assert qa_schedule["task"]["tool_policy"]["provider_health_blocker_signal"] == "provider_health_blocker"
-    assert qa_schedule["task"]["tool_policy"]["schedule_auto_approve_expires_in_seconds"] == 24 * 60 * 60
-    assert "conversation_running" in qa_schedule["task"]["tool_policy"]["schedule_suppress_external_issue_on"]
-    assert heartbeat_schedule["task"]["tools"] == ["rumi_api"]
-    heartbeat_allowlist = set(heartbeat_schedule["task"]["tool_policy"]["tool_allowlist"])
-    assert "rumi_api" in heartbeat_allowlist
-    assert "todo" not in heartbeat_schedule["task"]["tools"]
-    assert "subagent" not in heartbeat_schedule["task"]["tools"]
-    assert "todo" not in heartbeat_allowlist
-    assert "subagent" not in heartbeat_allowlist
-    assert "knowledge_search" not in heartbeat_allowlist
-    assert "knowledge_create" not in heartbeat_allowlist
-    assert "web_search" not in heartbeat_allowlist
-    heartbeat_auto_approve = set(heartbeat_schedule["task"]["tool_policy"]["schedule_auto_approve_tool_allowlist"])
-    assert "rumi_api:list_routes" in heartbeat_auto_approve
-    assert "GET /api/agent/mimo-company/manifest" in heartbeat_auto_approve
-    assert "GET /api/agent/mimo-company/status" in heartbeat_auto_approve
-    assert "GET /api/company/mimo-coding-company/channels" in heartbeat_auto_approve
-    assert "GET /api/company/mimo-coding-company/messages" in heartbeat_auto_approve
-    assert "GET /api/company/mimo-coding-company/status" in heartbeat_auto_approve
-    assert "GET /api/company/status" in heartbeat_auto_approve
-    assert "GET /api/desktops" in heartbeat_auto_approve
-    assert "GET /api/health" in heartbeat_auto_approve
-    assert "GET /api/tasks" in heartbeat_auto_approve
-    assert "0/4 workers reported status" in heartbeat_schedule["task"]["message"]
-    assert "short read-only heartbeat" in heartbeat_schedule["task"]["message"]
-    assert "at most one or two rumi_api GET checks against allowlisted /api paths" in heartbeat_schedule["task"]["message"]
-    assert "never request bare /status" in heartbeat_schedule["task"]["message"]
-    assert "Do not call todo or subagent tools" in heartbeat_schedule["task"]["message"]
-    assert "do not enumerate routes" in heartbeat_schedule["task"]["message"]
-    assert "do not make fixes or create issues" in heartbeat_schedule["task"]["message"]
-    assert "0/4 workers reported status" in qa_schedule["task"]["message"]
-    assert "one small, useful, testable change" in improvement_schedule["task"]["message"]
-    assert "Keep repo discovery narrow" in improvement_schedule["task"]["message"]
-    assert "create a draft PR with coding_github_pr_create" in improvement_schedule["task"]["message"]
-    assert "Do not create GitHub issues for scheduler bookkeeping noise" in qa_schedule["task"]["message"]
-    assert "provider billing/credits/auth failures" in qa_schedule["task"]["message"]
-    assert "CreditsError" in qa_schedule["task"]["message"]
-    assert "HTTP 401" in qa_schedule["task"]["message"]
-    assert {"desktop_list", "desktop_create", "desktop_frame", "desktop_input"} <= set(qa_schedule["task"]["tools"])
-    auto_approve_allowlist = set(qa_schedule["task"]["tool_policy"]["schedule_auto_approve_tool_allowlist"])
-    assert "rumi_api" not in auto_approve_allowlist
-    assert {
-        "rumi_api:list_routes",
-        "GET /api/agent/mimo-company/manifest",
-        "GET /api/agent/mimo-company/status",
-        "GET /api/agent/self-improvement/status",
-        "GET /api/agent/multi/status",
-        "GET /api/company/mimo-coding-company/channels",
-        "GET /api/company/mimo-coding-company/messages",
-        "GET /api/company/mimo-coding-company/status",
-        "GET /api/company/status",
-        "GET /api/desktops",
-        "GET /api/health",
-        "GET /api/remote/host/status",
-        "GET /api/repo/files",
-        "GET /api/tasks",
-        "todo",
-        "subagent",
-        "knowledge_search",
-        "knowledge_create",
-        "web_search",
-        "desktop_list",
-        "desktop_create",
-        "desktop_frame",
-        "desktop_input",
-        "coding_file_read",
-        "coding_file_search",
-        "coding_file_list",
-        "coding_file_write",
-        "coding_file_create",
-        "coding_file_patch",
-        "coding_file_restore",
-        "coding_git_status",
-        "coding_git_diff",
-        "coding_git_commit",
-        "coding_git_push",
-        "coding_github_pr_create",
-        "coding_terminal_exec",
-    } <= auto_approve_allowlist
-    assert "managed desktop" in qa_schedule["task"]["message"]
-    assert (tmp_path / "user_data" / "shared" / "schedules" / f"{qa_schedule['id']}.json").is_file()
-    assert not (tmp_path / "ops_pack" / "user_data" / "shared" / "schedules" / f"{qa_schedule['id']}.json").exists()
-    browser_qa_role = next(role for role in status["manifest"]["roles"] if role["agent_id"] == "browser_qa")
-    assert {"desktop_list", "desktop_create", "desktop_frame", "desktop_input"} <= set(browser_qa_role["allowed_tools"])
-    coding_engineer_role = next(role for role in status["manifest"]["roles"] if role["agent_id"] == "coding_engineer")
-    assert {"coding_git_commit", "coding_git_push", "coding_github_pr_create"} <= set(coding_engineer_role["allowed_tools"])
-    assert {
-        "desktop_list",
-        "desktop_create",
-        "desktop_frame",
-        "desktop_input",
-        "coding_git_commit",
-        "coding_git_push",
-        "coding_github_pr_create",
-    } <= set(status["manifest"]["tool_policy"]["allowlist"])
-    assert status["harness"]["qa_swarm_plan"]["managed_desktop_fallback"]["tools"] == [
-        "desktop_list",
-        "desktop_create",
-        "desktop_frame",
-        "desktop_input",
-    ]
-    assert status["harness"]["qa_swarm_plan"]["managed_desktop_fallback"]["create_defaults"]["template_id"] == "desktop.browser"
-    assert "template_id=desktop.browser" in qa_schedule["task"]["message"]
-    assert "status is running" in qa_schedule["task"]["message"]
-    assert "exactly matches the managed desktop target URL" in qa_schedule["task"]["message"]
-    assert "Ignore destroyed, failed, stale, or wrong-target seats" in qa_schedule["task"]["message"]
-    assert "If no current-target running browser desktop is available" in qa_schedule["task"]["message"]
-    assert "ERR_CONNECTION_REFUSED" in qa_schedule["task"]["message"]
-    assert "trusted local/server context" in qa_schedule["task"]["message"]
-    assert "do not add payload owner_id" in qa_schedule["task"]["message"]
-    assert "access_policy.owner_id as owner_id" not in qa_schedule["task"]["message"]
-    assert "owner_id=mimo-coding-company" not in qa_schedule["task"]["message"]
-    assert "action=type_text" in qa_schedule["task"]["message"]
-    assert "action=key" in qa_schedule["task"]["message"]
-    assert "never send a text-only payload" in qa_schedule["task"]["message"]
-
-    for schedule in status["schedules"]:
-        Scheduler().delete_schedule(schedule["id"])
-    _reset_defaultspack_singletons()
 
 
 def test_mimo_coding_company_status_includes_runtime_workspace_counts(tmp_path, monkeypatch):
@@ -1221,122 +1016,16 @@ def test_mimo_coding_company_rebootstrap_recovers_running_qa_after_chat_target_r
     _reset_defaultspack_singletons()
 
 
-def test_mimo_coding_company_bootstrap_defers_overdue_loop_schedule_arming_until_state_saved(tmp_path, monkeypatch):
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
-    from domain.agent.schedule_store import save_schedule
-    from domain.agent.scheduler import Scheduler
+def test_mimo_company_schedule_arming_requires_captured_operation(tmp_path, monkeypatch):
+    del tmp_path, monkeypatch
+    from tests.v4_batch_support import assert_route_cutover
 
-    _reset_defaultspack_singletons()
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
-    state_path = tmp_path / "mimo" / "state.json"
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", str(state_path))
-    monkeypatch.delenv("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", raising=False)
-
-    loop_keys = ["kickoff_review", "heartbeat", "improvement_loop", "qa_loop"]
-    schedule_ids = {loop_key: "sched_existing_" + loop_key for loop_key in loop_keys}
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
-        json.dumps({"schema_version": 1, "schedule_ids": schedule_ids}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    assert_route_cutover(
+        "POST",
+        "/api/company/mimo/schedules/arm",
+        "tobkiri.operations-company.v1",
+        "rumi_operations_company.schedule-arm",
     )
-
-    overdue = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    agent_ids = {
-        "kickoff_review": "project_manager",
-        "heartbeat": "scheduler",
-        "improvement_loop": "project_manager",
-        "qa_loop": "browser_qa",
-    }
-    for loop_key, schedule_id in schedule_ids.items():
-        is_once = loop_key == "kickoff_review"
-        save_schedule(
-            {
-                "id": schedule_id,
-                "name": "MiMo Coding Company " + loop_key.replace("_", " "),
-                "description": "Persisted overdue MiMo loop schedule.",
-                "type": "once" if is_once else "interval",
-                "task": {
-                    "message": "overdue " + loop_key,
-                    "model": "stub/default",
-                    "conversation_id": "conv_previous",
-                    "timeout": 600,
-                    "profile_id": "defaultspack.mimo_coding_company",
-                    "agent_id": agent_ids[loop_key],
-                    "tools": ["rumi_api"],
-                    "metadata": {
-                        "profile_id": "defaultspack.mimo_coding_company",
-                        "company_id": "mimo-coding-company",
-                        "conversation_id": "conv_previous",
-                        "loop_key": loop_key,
-                    },
-                },
-                "config": {"run_at": overdue} if is_once else {"value": 30, "unit": "minutes"},
-                "status": "active",
-                "execution_count": 0,
-                "last_executed_at": None,
-                "next_execution_at": overdue,
-                "created_at": overdue,
-                "updated_at": overdue,
-            }
-        )
-
-    arm_observations: list[dict[str, object]] = []
-
-    def record_arm(self, schedule_id):
-        schedule = getattr(self, "_schedules", {}).get(schedule_id, {})
-        task = schedule.get("task") if isinstance(schedule.get("task"), dict) else {}
-        metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
-        if metadata.get("profile_id") != "defaultspack.mimo_coding_company":
-            return
-        if metadata.get("company_id") != "mimo-coding-company":
-            return
-        state_payload = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
-        arm_observations.append(
-            {
-                "schedule_id": schedule_id,
-                "loop_key": metadata.get("loop_key"),
-                "last_bootstrapped_at": bool(state_payload.get("last_bootstrapped_at")),
-            }
-        )
-
-    monkeypatch.setattr(Scheduler, "_arm_timer", record_arm)
-
-    runtime = MimoCodingCompanyRuntime(pack_root=tmp_path / "ops_pack")
-    status = runtime.bootstrap(
-        start_nonstop=True,
-        heartbeat_minutes=30,
-        review_interval_minutes=120,
-        qa_interval_minutes=90,
-        model="stub/default",
-        vision_model="stub/default",
-        fast_model="stub/default",
-        qa_targets=["http://127.0.0.1:3001"],
-        seed_knowledge=False,
-        run_initial_review_now=False,
-    )
-
-    assert status["bootstrapped"] is True
-    assert arm_observations
-    assert {item["loop_key"] for item in arm_observations} >= set(loop_keys)
-    assert all(item["last_bootstrapped_at"] for item in arm_observations)
-
-    saved_state = json.loads(state_path.read_text(encoding="utf-8"))
-    bootstrapped_at = datetime.fromisoformat(saved_state["last_bootstrapped_at"].replace("Z", "+00:00"))
-    schedules_by_loop = {schedule["task"]["metadata"]["loop_key"]: schedule for schedule in status["schedules"]}
-    assert schedules_by_loop["kickoff_review"]["task"]["timeout"] == 900
-    assert schedules_by_loop["heartbeat"]["task"]["timeout"] == 1800
-    assert schedules_by_loop["improvement_loop"]["task"]["timeout"] == 30 * 24 * 60 * 60
-    assert schedules_by_loop["qa_loop"]["task"]["timeout"] == 30 * 24 * 60 * 60
-    qa_schedule = schedules_by_loop["qa_loop"]
-    qa_next = datetime.fromisoformat(qa_schedule["next_execution_at"].replace("Z", "+00:00"))
-    assert qa_schedule["status"] == "active"
-    assert qa_next > bootstrapped_at
-
-    for schedule in status["schedules"]:
-        Scheduler().delete_schedule(schedule["id"])
-    _reset_defaultspack_singletons()
 
 
 def test_mimo_coding_company_bootstrap_recovers_orphaned_running_loop_execution(tmp_path, monkeypatch):
@@ -1689,17 +1378,16 @@ def test_mimo_coding_company_status_syncs_observability_to_team_workspace(tmp_pa
         metadata={"company_id": "mimo-coding-company", "profile_id": "defaultspack.mimo_coding_company"},
     )
     chat_store.update_conversation(child["id"], {"title": "Subagent capability probe"})
+    old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
     chat_store.add_message(
         child["id"],
         {
             "role": "user",
             "content": [{"type": "text", "text": "Simple test: List 3 things you can do as a subagent."}],
+            "created_at": old_timestamp,
+            "updated_at": old_timestamp,
         },
     )
-    old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
-    chat_store._conversations[child["id"]]["created_at"] = old_timestamp
-    chat_store._conversations[child["id"]]["updated_at"] = old_timestamp
-    chat_store._save_conversations()
     recent_child = chat_store.create_conversation(
         model="stub/default",
         system_prompt_id="mimo_coding_company",
@@ -1717,10 +1405,15 @@ def test_mimo_coding_company_status_syncs_observability_to_team_workspace(tmp_pa
             "content": [{"type": "text", "text": "This subagent was just started and may still be running."}],
         },
     )
-    future_timestamp = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp() * 1000)
-    chat_store._conversations[recent_child["id"]]["created_at"] = future_timestamp
-    chat_store._conversations[recent_child["id"]]["updated_at"] = future_timestamp
-    chat_store._save_conversations()
+    monkeypatch.setattr(
+        MimoCodingCompanyRuntime,
+        "_conversation_age_seconds",
+        staticmethod(
+            lambda conversation: 600
+            if conversation.get("id") == child["id"]
+            else 0
+        ),
+    )
 
     observed = runtime.status(sync_observability=True, include_desktop_monitoring=True)
     observability = observed["harness"]["observability"]
@@ -1849,122 +1542,48 @@ def test_mimo_company_status_reports_scheduler_subagent_blocker_signals(tmp_path
     _reset_defaultspack_singletons()
 
 
-def test_mimo_company_workspace_channels_sync_schedule_history(tmp_path, monkeypatch):
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import (
-        DEFAULT_FAST_MODEL,
-        DEFAULT_MAIN_MODEL,
-        DEFAULT_VISION_MODEL,
-        MimoCodingCompanyRuntime,
-    )
-    from blocks.company import channels, messages
-    from domain.agent.schedule_store import append_history
-    from domain.agent.scheduler import Scheduler
-    from domain.chat.store import ChatStore
-    from domain.company import mimo_sync
-    from domain.company.runtime_store import CompanyRuntimeStore
+def test_mimo_company_workspace_channels_use_selected_state_without_schedule_sync(tmp_path, monkeypatch):
+    from blocks.company import bootstrap, channels, messages
 
     _reset_defaultspack_singletons()
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", str(tmp_path / "mimo" / "state.json"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", str(tmp_path / "schedules"))
-    monkeypatch.setattr(mimo_sync, "_last_sync_at", 0.0)
-    monkeypatch.setattr(
-        MimoCodingCompanyRuntime,
-        "_desktop_monitoring_observation",
-        staticmethod(lambda: {
-            "surface": "desktops",
-            "expected_api": "GET /api/desktops",
-            "status": "ok",
-            "desktop_count": 1,
-        }),
-    )
 
-    parent = ChatStore().create_conversation(
-        model=DEFAULT_MAIN_MODEL,
-        system_prompt_id="mimo_coding_company",
-        conversation_kind="mimo_coding_company",
-        agent_id="client_manager",
-        group_id="company:mimo-coding-company",
-        metadata={"company_id": "mimo-coding-company", "profile_id": "defaultspack.mimo_coding_company"},
-    )
-    scheduler = Scheduler()
-    schedule = scheduler.create_schedule(
-        "once",
+    company_id = bootstrap.run(
+        {"metadata": {"name": "MiMo Coding Company"}},
+        {},
+    )["data"]["company"]["id"]
+    channel = channels.run(
         {
-            "message": "Run MiMo heartbeat.",
-            "model": DEFAULT_MAIN_MODEL,
-            "conversation_id": parent["id"],
-            "profile_id": "defaultspack.mimo_coding_company",
-            "agent_id": "scheduler",
-            "metadata": {
-                "profile_id": "defaultspack.mimo_coding_company",
-                "company_id": "mimo-coding-company",
-                "conversation_id": parent["id"],
-                "conversation_group_id": "company:mimo-coding-company",
-                "loop_key": "heartbeat",
-            },
+            "action": "upsert",
+            "company_id": company_id,
+            "channel": {"id": "ops-company", "name": "Operations"},
         },
-        {"run_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat().replace("+00:00", "Z")},
-        name="MiMo Coding Company heartbeat",
+        {},
     )
-    state_path = tmp_path / "mimo" / "state.json"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "conversation_id": parent["id"],
-                "conversation_group_id": "company:mimo-coding-company",
-                "main_model": DEFAULT_MAIN_MODEL,
-                "vision_model": DEFAULT_VISION_MODEL,
-                "fast_model": DEFAULT_FAST_MODEL,
-                "schedule_ids": {"heartbeat": schedule["id"]},
-                "loop_conversation_ids": {"heartbeat": parent["id"]},
-            }
-        ),
-        encoding="utf-8",
+    created = messages.run(
+        {
+            "action": "create",
+            "company_id": company_id,
+            "channel_id": "ops-company",
+            "sender_id": "scheduler",
+            "content": "Selected Company state message.",
+            "metadata": {"sync_source": "explicit_test"},
+        },
+        {},
     )
-    for index in range(6):
-        append_history(
-            schedule["id"],
-            {
-                "schedule_id": schedule["id"],
-                "execution_id": f"exec_after_workspace_stale_{index}",
-                "trigger": "scheduled",
-                "status": "completed",
-                "started_at": f"2026-06-30T17:{10 + index:02d}:00Z",
-                "completed_at": f"2026-06-30T17:{11 + index:02d}:00Z",
-                "result": "MiMo schedule continued after the Team Workspace count last refreshed.",
-            },
-        )
+    listed = channels.run({"company_id": company_id}, {})
+    listed_messages = messages.run(
+        {"company_id": company_id, "channel_id": "ops-company"},
+        {},
+    )
 
-    _existing, total_before = CompanyRuntimeStore().list_messages("mimo-coding-company", limit=5, offset=0)
-    listed = channels.run({"company_id": "mimo-coding-company"}, {})
-    listed_messages = messages.run({"company_id": "mimo-coding-company", "order": "desc"}, {})
-
-    assert total_before == 0
-    assert listed["status"] == "ok"
-    ops_channel = next(channel for channel in listed["data"]["channels"] if channel["id"] == "ops-company")
-    assert ops_channel["message_count"] == 6
-    assert ops_channel["last_message_at"]
-    assert listed_messages["data"]["total"] == 6
-    synced_execution_ids = {
-        message["metadata"]["execution_id"]
-        for message in listed_messages["data"]["messages"]
-        if isinstance(message.get("metadata"), dict)
-    }
-    assert synced_execution_ids == {f"exec_after_workspace_stale_{index}" for index in range(6)}
-    assert {
-        message["metadata"]["sync_source"]
-        for message in listed_messages["data"]["messages"]
-        if isinstance(message.get("metadata"), dict)
-    } == {"mimo_schedule_history"}
-
-    scheduler.delete_schedule(schedule["id"])
-    _reset_defaultspack_singletons()
+    assert channel["status"] == "ok"
+    assert created["status"] == "ok"
+    assert [item["id"] for item in listed["data"]["channels"]] == ["ops-company"]
+    assert listed_messages["data"]["total"] == 1
+    assert listed_messages["data"]["messages"][0]["text"] == "Selected Company state message."
+    assert "message_count" not in listed["data"]["channels"][0]
 
 
 def test_mimo_coding_company_observability_repairs_stale_scheduled_draft(tmp_path, monkeypatch):
@@ -2022,6 +1641,7 @@ def test_mimo_coding_company_observability_repairs_stale_scheduled_draft(tmp_pat
             "metadata": {"source": "scheduler"},
         },
     )
+    old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
     draft = chat_store.add_message(
         loop["id"],
         {
@@ -2035,12 +1655,10 @@ def test_mimo_coding_company_observability_repairs_stale_scheduled_draft(tmp_pat
                 "streaming": True,
                 "thinking": {"state": "running"},
             },
+            "created_at": old_timestamp,
+            "updated_at": old_timestamp,
         },
     )
-    old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
-    chat_store._conversations[loop["id"]]["messages"][-1]["created_at"] = old_timestamp
-    chat_store._conversations[loop["id"]]["messages"][-1]["updated_at"] = old_timestamp
-    chat_store._save_conversations()
 
     scheduler = Scheduler()
     run_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat().replace("+00:00", "Z")
@@ -2164,6 +1782,7 @@ def test_mimo_coding_company_observability_repairs_stale_scheduled_user_message(
         name="MiMo Coding Company qa loop",
     )
 
+    old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
     user = chat_store.add_message(
         loop["id"],
         {
@@ -2177,12 +1796,10 @@ def test_mimo_coding_company_observability_repairs_stale_scheduled_user_message(
                 "company_id": "mimo-coding-company",
                 "profile_id": "defaultspack.mimo_coding_company",
             },
+            "created_at": old_timestamp,
+            "updated_at": old_timestamp,
         },
     )
-    old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
-    chat_store._conversations[loop["id"]]["messages"][-1]["created_at"] = old_timestamp
-    chat_store._conversations[loop["id"]]["messages"][-1]["updated_at"] = old_timestamp
-    chat_store._save_conversations()
 
     runtime = MimoCodingCompanyRuntime(pack_root=tmp_path / "ops_pack")
     summary = runtime._sync_company_observability(
@@ -2214,116 +1831,69 @@ def test_mimo_coding_company_observability_repairs_stale_scheduled_user_message(
     _reset_defaultspack_singletons()
 
 
-def test_mimo_coding_company_scheduled_user_gaps_reads_history_snapshot_without_chatstore_load(tmp_path, monkeypatch):
+def test_mimo_coding_company_scheduled_user_gaps_uses_selected_conversation_owner(tmp_path, monkeypatch):
     from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
     from domain.chat.store import ChatStore
 
     _reset_defaultspack_singletons()
     monkeypatch.chdir(tmp_path)
-    storage_path = tmp_path / "chat" / "conversations.json"
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", str(tmp_path / "schedules"))
 
-    parent_id = "mimo-parent-history-only"
-    loop_id = "mimo-loop-history-only"
-    schedule_id = "sched-history-only"
-    user_id = "scheduled-user-history-only"
     old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
-    storage_path.parent.mkdir(parents=True, exist_ok=True)
-    storage_path.write_text(json.dumps({"schema_version": 1, "updated_at": 0, "conversations": {}}), encoding="utf-8")
-
-    def write_history(conversation):
-        history_path = storage_path.parent / "conversations" / conversation["id"] / "history.json"
-        history_path.parent.mkdir(parents=True, exist_ok=True)
-        history_path.write_text(
-            json.dumps({"schema_version": 1, "updated_at": 1, "conversation": conversation}),
-            encoding="utf-8",
-        )
-        return history_path
-
-    write_history(
-        {
-            "id": parent_id,
-            "title": "MiMo parent",
-            "created_at": old_timestamp,
-            "updated_at": old_timestamp,
-            "model": "stub/default",
-            "conversation_kind": "mimo_coding_company",
-            "current_node_id": None,
-            "child_conversation_ids": [],
-            "messages": [],
-        }
+    schedule_id = "sched-owner-history"
+    chat_store = ChatStore()
+    parent = chat_store.create_conversation(
+        model="stub/default",
+        conversation_kind="mimo_coding_company",
     )
-    loop_history_path = write_history(
+    loop = chat_store.create_conversation(
+        model="stub/default",
+        parent_conversation_id=parent["id"],
+        conversation_kind="mimo_coding_company_loop",
+        metadata={
+            "company_id": "mimo-coding-company",
+            "profile_id": "defaultspack.mimo_coding_company",
+            "parent_conversation_id": parent["id"],
+            "loop_key": "qa_loop",
+        },
+    )
+    user = chat_store.add_message(
+        loop["id"],
         {
-            "id": loop_id,
-            "title": "MiMo QA loop",
+            "role": "user",
+            "content": [{"type": "text", "text": "Continue this approved scheduled task."}],
             "created_at": old_timestamp,
             "updated_at": old_timestamp,
-            "model": "stub/default",
-            "conversation_kind": "mimo_coding_company_loop",
-            "parent_conversation_id": parent_id,
-            "current_node_id": user_id,
-            "child_conversation_ids": [],
             "metadata": {
-                "company_id": "mimo-coding-company",
-                "profile_id": "defaultspack.mimo_coding_company",
-                "parent_conversation_id": parent_id,
+                "source": "scheduler_approval_followup",
+                "schedule_id": schedule_id,
+                "schedule_execution_id": "sexec-owner-history",
                 "loop_key": "qa_loop",
             },
-            "messages": [
-                {
-                    "id": user_id,
-                    "conversation_id": loop_id,
-                    "role": "user",
-                    "parent_id": None,
-                    "children_ids": [],
-                    "content": [{"type": "text", "text": "Continue this approved scheduled task."}],
-                    "raw_text": "Continue this approved scheduled task.",
-                    "created_at": old_timestamp,
-                    "updated_at": old_timestamp,
-                    "metadata": {
-                        "source": "scheduler_approval_followup",
-                        "schedule_id": schedule_id,
-                        "schedule_execution_id": "sexec-history-only",
-                        "loop_key": "qa_loop",
-                        "company_id": "mimo-coding-company",
-                        "profile_id": "defaultspack.mimo_coding_company",
-                    },
-                }
-            ],
-        }
+        },
     )
-
-    chat_loads = []
-
-    def fail_if_chat_loaded(self, requested_conversation_id):
-        del self
-        chat_loads.append(requested_conversation_id)
-        raise AssertionError("scheduled user gap scan should use history.json snapshots")
 
     class NoRunningSchedules:
         def get_schedule(self, requested_schedule_id):
             assert requested_schedule_id == schedule_id
             return None
 
-    monkeypatch.setattr(ChatStore, "get_conversation", fail_if_chat_loaded)
     summary = MimoCodingCompanyRuntime(pack_root=tmp_path / "ops_pack")._scheduled_user_gaps(
         {
-            "conversation_id": parent_id,
-            "loop_conversation_ids": {"qa_loop": loop_id},
+            "conversation_id": parent["id"],
+            "loop_conversation_ids": {"qa_loop": loop["id"]},
             "schedule_ids": {"qa_loop": schedule_id},
         },
         scheduler=NoRunningSchedules(),
     )
-    repaired_loop = json.loads(loop_history_path.read_text(encoding="utf-8"))["conversation"]
+    repaired_loop = ChatStore().get_conversation(loop["id"])
     repaired = repaired_loop["messages"][-1]
 
-    assert chat_loads == []
     assert summary["checked"] == 1
     assert summary["repaired"] == [repaired["id"]]
     assert repaired["role"] == "assistant"
-    assert repaired["parent_id"] == user_id
+    assert repaired["parent_id"] == user["id"]
     assert repaired["metadata"]["error_code"] == "SCHEDULED_MIMO_USER_ORPHANED"
     assert repaired_loop["current_node_id"] == repaired["id"]
     _reset_defaultspack_singletons()
@@ -2775,130 +2345,16 @@ def test_mimo_coding_company_observability_ignores_stale_schedules_outside_state
     _reset_defaultspack_singletons()
 
 
-def test_mimo_coding_company_observability_suppresses_expected_schedule_noise(tmp_path, monkeypatch):
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
-    from domain.agent.schedule_store import append_history
-    from domain.agent.scheduler import Scheduler
-    from domain.chat.store import ChatStore
-    from domain.company.runtime_store import CompanyRuntimeStore
+def test_mimo_company_observability_requires_captured_operation(tmp_path, monkeypatch):
+    del tmp_path, monkeypatch
+    from tests.v4_batch_support import assert_route_cutover
 
-    _reset_defaultspack_singletons()
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_MIMO_CODING_STATE_PATH", str(tmp_path / "mimo" / "state.json"))
-    monkeypatch.delenv("RUMI_DEFAULTSPACK_AGENT_SCHEDULES_DIR", raising=False)
-    monkeypatch.setattr(
-        MimoCodingCompanyRuntime,
-        "_desktop_monitoring_observation",
-        staticmethod(lambda: {
-            "surface": "desktops",
-            "expected_api": "GET /api/desktops",
-            "status": "ok",
-            "desktop_count": 1,
-        }),
+    assert_route_cutover(
+        "GET",
+        "/api/company/mimo/observability",
+        "tobkiri.operations-company.v1",
+        "rumi_operations_company.observe",
     )
-
-    parent = ChatStore().create_conversation(
-        model="opencode-go/mimo-v2.5",
-        conversation_kind="mimo_coding_company",
-        group_id="company:mimo-coding-company",
-        metadata={"profile_id": "defaultspack.mimo_coding_company", "company_id": "mimo-coding-company"},
-    )
-    scheduler = Scheduler()
-    schedule = scheduler.create_schedule(
-        "interval",
-        {
-            "message": "QA loop.",
-            "model": "xiaomi-token-plan-sgp/mimo-v2-omni",
-            "conversation_id": parent["id"],
-            "profile_id": "defaultspack.mimo_coding_company",
-            "agent_id": "browser_qa",
-            "tool_policy": {
-                "profile_id": "defaultspack.mimo_coding_company",
-                "schedule_suppress_external_issue_on": [
-                    "already_running",
-                    "conversation_running",
-                    "scheduled_timeout",
-                ],
-            },
-            "metadata": {
-                "profile_id": "defaultspack.mimo_coding_company",
-                "company_id": "mimo-coding-company",
-                "conversation_id": parent["id"],
-                "conversation_group_id": "company:mimo-coding-company",
-                "loop_key": "qa_loop",
-                "schedule_suppress_external_issue_on": [
-                    "already_running",
-                    "conversation_running",
-                    "scheduled_timeout",
-                ],
-            },
-        },
-        {"value": 30, "unit": "minutes"},
-        name="MiMo Coding Company qa loop",
-    )
-    append_history(
-        schedule["id"],
-        {
-            "schedule_id": schedule["id"],
-            "execution_id": "exec_overlap",
-            "trigger": "scheduled",
-            "status": "skipped",
-            "started_at": "2026-06-29T00:00:00Z",
-            "completed_at": "2026-06-29T00:00:00Z",
-            "error": "conversation is already running: " + parent["id"],
-            "error_code": "CONVERSATION_RUNNING",
-            "skipped_reason": "conversation_running",
-        },
-    )
-    append_history(
-        schedule["id"],
-        {
-            "schedule_id": schedule["id"],
-            "execution_id": "exec_timeout",
-            "trigger": "scheduled",
-            "status": "error",
-            "started_at": "2026-06-29T00:30:00Z",
-            "completed_at": "2026-06-29T01:00:00Z",
-            "error": "scheduled task timed out after 1800 seconds",
-        },
-    )
-    append_history(
-        schedule["id"],
-        {
-            "schedule_id": schedule["id"],
-            "execution_id": "exec_real_error",
-            "trigger": "scheduled",
-            "status": "error",
-            "started_at": "2026-06-29T01:30:00Z",
-            "completed_at": "2026-06-29T01:30:08Z",
-            "error": "handler execution failed for desktop_frame",
-        },
-    )
-
-    runtime = MimoCodingCompanyRuntime(pack_root=tmp_path / "ops_pack")
-    summary = runtime._sync_company_observability(
-        {
-            "conversation_id": parent["id"],
-            "conversation_group_id": "company:mimo-coding-company",
-            "schedule_ids": {"qa_loop": schedule["id"]},
-        }
-    )
-    messages, total = CompanyRuntimeStore().list_messages("mimo-coding-company", limit=20, offset=0)
-
-    latest_by_execution = {item["execution_id"]: item for item in summary["schedule_history"]["latest"]}
-    assert latest_by_execution["exec_overlap"]["suppressed"] is True
-    assert latest_by_execution["exec_overlap"]["suppressed_reason"] == "conversation_running"
-    assert latest_by_execution["exec_timeout"]["suppressed"] is True
-    assert latest_by_execution["exec_timeout"]["suppressed_reason"] == "scheduled_timeout"
-    assert latest_by_execution["exec_real_error"]["signal"] == "tool_handler_failure"
-    assert summary["team_workspace"]["synced_messages"] == 1
-    assert total == 1
-    assert messages[0]["metadata"]["execution_id"] == "exec_real_error"
-
-    scheduler.delete_schedule(schedule["id"])
-    _reset_defaultspack_singletons()
 
 
 def test_mimo_coding_company_observability_suppresses_timeout_without_schedule_config():
@@ -3072,10 +2528,11 @@ def test_mimo_coding_company_observability_resolves_stale_subagent_unanswered_me
             "content": [{"type": "text", "text": "Please answer once the child runner resumes."}],
         },
     )
-    old_timestamp = int((datetime.now(timezone.utc) - timedelta(minutes=10)).timestamp() * 1000)
-    chat_store._conversations[child["id"]]["created_at"] = old_timestamp
-    chat_store._conversations[child["id"]]["updated_at"] = old_timestamp
-    chat_store._save_conversations()
+    monkeypatch.setattr(
+        MimoCodingCompanyRuntime,
+        "_conversation_age_seconds",
+        staticmethod(lambda conversation: 600 if conversation.get("id") == child["id"] else 0),
+    )
 
     runtime_store = CompanyRuntimeStore()
     runtime_store.add_message(
@@ -3236,53 +2693,39 @@ def test_mimo_coding_conversation_resolves_pack_system_prompt():
     assert "Toolsmith builds missing tools or skills instead of stopping" in prompt
 
 
-def test_operations_heartbeat_trigger_persists_into_single_client_conversation(tmp_path, monkeypatch):
-    from ecosystem.rumi_operations_company_pack.domain.agent.operations_company import OperationsCompanyRuntime
-    from domain.agent.scheduler import Scheduler
-    from domain.chat.store import ChatStore
+def test_operations_heartbeat_requires_captured_operation(tmp_path, monkeypatch):
+    del tmp_path, monkeypatch
+    from tests.v4_batch_support import assert_route_cutover
 
-    _reset_defaultspack_singletons()
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_OPERATIONS_STATE_PATH", str(tmp_path / "ops" / "state.json"))
-
-    status = OperationsCompanyRuntime().bootstrap(start_nonstop=True, heartbeat_minutes=30, model="stub/default")
-    conversation_id = status["conversation_id"]
-    schedule_id = status["schedules"][0]["id"]
-
-    result = Scheduler().trigger_now(schedule_id)
-
-    assert result["status"] == "completed"
-    conversation = ChatStore().get_conversation(conversation_id)
-    roles = [message["role"] for message in conversation["messages"]]
-    assert roles == ["user", "assistant"]
-    assert conversation["messages"][0]["metadata"]["source"] == "scheduler"
-    assert conversation["messages"][0]["metadata"]["profile_id"] == "defaultspack.operations_company"
-
-    persisted = json.loads((tmp_path / "chat" / "conversations.json").read_text(encoding="utf-8"))
-    assert persisted["conversations"][conversation_id]["messages"][0]["metadata"]["schedule_id"] == schedule_id
-
-    Scheduler().delete_schedule(schedule_id)
-    _reset_defaultspack_singletons()
+    assert_route_cutover(
+        "POST",
+        "/api/company/operations/heartbeat",
+        "tobkiri.operations-company.v1",
+        "rumi_operations_company.heartbeat",
+    )
 
 
-def test_rumi_api_tool_lists_routes_and_requires_mutation_approval():
+def test_rumi_api_tool_has_zero_legacy_routes_and_requires_dispatch_approval():
     from ecosystem.rumi_default_tools_pack.domain.tool.rumi_api import run
 
     listed = run({"action": "list_routes"}, {})
-    mutation = run(
+    pending = run(
         {
-            "action": "request",
-            "method": "POST",
-            "path": "/api/agent/company/bootstrap",
-            "body": {"start_nonstop": True},
-            "allow_mutation": True,
+            "action": "dispatch",
+            "contract_id": "company.operations.v1",
+            "operation_id": "company.bootstrap",
+            "payload": {"start_nonstop": True},
         },
         {"profile_policy": {"yolo_mode": False}},
     )
 
     assert listed["status"] == "ok"
-    assert any(route["path"] == "/api/agent/company/status" for route in listed["data"]["routes"])
-    assert any(route["path"] == "/api/agent/mimo-company/status" for route in listed["data"]["routes"])
-    assert mutation["status"] == "ok"
-    assert mutation["data"]["approval_required"] is True
+    assert listed["data"] == {
+        "routes": [],
+        "count": 0,
+        "dispatch": "captured_v4_qualified_operations_only",
+    }
+    assert pending["status"] == "ok"
+    assert pending["data"]["approval_required"] is True
+    assert pending["data"]["contract_id"] == "company.operations.v1"
+    assert pending["data"]["operation_id"] == "company.bootstrap"

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "startup-progress",
+  "description": "Allows the local Launcher splash to read startup progress without exposing the command to remote panel origins.",
+  "windows": ["main"],
+  "permissions": ["allow-get-setup-progress"]
+}

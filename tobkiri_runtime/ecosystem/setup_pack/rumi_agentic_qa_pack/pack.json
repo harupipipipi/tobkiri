@@ -24,7 +24,7 @@
     "qa_evidence_ledger": "owned_by_rumi_agentic_qa_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Agentic QA is an acceptance and triage contract pack, not a replacement for defaultspack runtime startup or execution ownership.",
     "criteria": [

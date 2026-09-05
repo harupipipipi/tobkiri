@@ -21,6 +21,7 @@ domains:
     path: domain/agent_runtime
   ai_client:
     may_import:
+    - domain/ai_input
     - domain/components
     - domain/connections
     - domain/extensions
@@ -34,6 +35,11 @@ domains:
     - domain/chat/ir_legacy_adapter
     - domain/chat/store
     - domain/frontend_settings_store
+  ai_input:
+    may_import:
+    - domain/prompt
+    - domain/tool
+    path: domain/ai_input
   ambient:
     may_import:
     - domain/input
@@ -58,16 +64,22 @@ domains:
     may_import: []
     path: domain/capabilities
   capability:
-    may_import: []
+    may_import:
+    - domain/chat
+    - domain/extensions
+    - domain/mention
+    - domain/skill_trigger
     path: domain/capability
   chat:
     may_import:
     - domain/ai_client
+    - domain/ai_input
     - domain/capabilities
     - domain/coding
     - domain/context_engine
     - domain/dev
     - domain/extensions
+    - domain/frontend_settings
     - domain/human_operator
     - domain/kanban
     - domain/prompt
@@ -79,7 +91,12 @@ domains:
     - domain/vision
     path: domain/chat
     public_imports:
+    - domain/capability/activity_registry
     - domain/capability/catalog
+    - domain/capability/models
+    - domain/capability/orchestrator
+    - domain/capability/repository
+    - domain/capability/settings
     - domain/mention
     - domain/tool_policy/internal_context
   change_request:
@@ -87,7 +104,9 @@ domains:
     - domain/coding
     path: domain/change_request
   coding:
-    may_import: []
+    may_import:
+    - domain/safety
+    - domain/tool_policy
     path: domain/coding
   coding_backends:
     may_import: []
@@ -101,8 +120,11 @@ domains:
     - domain/ai_client
     - domain/chat
     - domain/input
+    - domain/safety
+    - domain/tool_policy
     path: domain/company
     public_imports:
+    - domain/agent/placement_catalog
     - domain/mention
   components:
     may_import: []
@@ -135,6 +157,7 @@ domains:
   external:
     may_import:
     - domain/components
+    - domain/frontend_settings
     - domain/input
     - domain/integrations
     - domain/memory2
@@ -152,6 +175,7 @@ domains:
     - domain/dev
     - domain/extensions
     - domain/external
+    - domain/safety
     - domain/tool
     - domain/webhook
     path: domain/frontend
@@ -161,6 +185,10 @@ domains:
   frontend_settings_store:
     may_import: []
     path: domain/frontend_settings_store.py
+  frontend_settings:
+    may_import:
+    - domain/frontend_settings_store
+    path: domain/frontend_settings.py
   function_runtime:
     may_import:
     - domain/adaptive
@@ -208,6 +236,7 @@ domains:
   integrations:
     may_import:
     - domain/external
+    - domain/frontend_settings
     - domain/input
     - domain/webhook
     path: domain/integrations
@@ -220,6 +249,8 @@ domains:
     may_import:
     - domain/ai_client
     - domain/chat
+    - domain/safety
+    - domain/tool_policy
     path: domain/kanban
   media:
     may_import:
@@ -230,7 +261,8 @@ domains:
     - domain/memory2
     path: domain/memory
   memory2:
-    may_import: []
+    may_import:
+    - domain/memory
     path: domain/memory2
   mention:
     may_import: []
@@ -248,6 +280,7 @@ domains:
     path: domain/p2p
   prompt:
     may_import:
+    - domain/ai_input
     - domain/capability
     - domain/components
     - domain/extensions
@@ -255,9 +288,6 @@ domains:
   prompts:
     may_import: []
     path: domain/prompts
-  providers:
-    may_import: []
-    path: domain/providers
   recording:
     may_import: []
     path: domain/recording
@@ -272,8 +302,16 @@ domains:
   runtime_config:
     may_import: []
     path: domain/runtime_config.py
-  safety:
+  runtime_v4:
     may_import: []
+    path: domain/runtime_v4
+  runtime_surface_v4:
+    may_import:
+    - domain/runtime_v4
+    path: domain/runtime_surface_v4.py
+  safety:
+    may_import:
+    - domain/host_bridge
     path: domain/safety
   scheduler:
     may_import:
@@ -295,7 +333,9 @@ domains:
     path: domain/skill_feedback.py
   skill_trigger:
     may_import:
+    - domain/capability
     - domain/extensions
+    - domain/mention
     path: domain/skill_trigger.py
   stream:
     may_import: []
@@ -322,9 +362,12 @@ domains:
     - domain/ai_client
     - domain/artifact
     - domain/capabilities
+    - domain/capability
     - domain/coding
     - domain/components
     - domain/extensions
+    - domain/frontend
+    - domain/frontend_settings
     - domain/host_bridge
     - domain/human_operator
     - domain/integrations

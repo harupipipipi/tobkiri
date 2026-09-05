@@ -1,40 +1,12 @@
 {
-  "pack_id": "rumi_security_review_pack",
-  "pack_identity": "rumi:ecosystem/rumi_security_review_pack",
-  "version": "1.0.0",
+  "components": {},
+  "load_order": [],
   "metadata": {
-    "name": "Rumi Security Review Pack",
-    "description": "Declarative local-first security and privacy review pack for threat modeling, secret scanning review, permission review, MCP/browser risk, dependency review, and release signoff.",
-    "author": "Rumi AI Team",
-    "license": "MIT",
-    "tags": ["security", "privacy", "review", "threat-modeling", "release-signoff"],
-    "runtime_type": "declarative_pack",
-    "network_policy": "none_by_default",
-    "required_secrets": [],
-    "executable_code": false,
-    "grant_override": false,
     "asset_index": {
       "catalogs": [
         "catalog/review_controls.yaml",
         "catalog/risk_taxonomy.yaml",
         "catalog/finding_schema.json"
-      ],
-      "profiles": [
-        "profiles/security_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/security_reviewer.system.md",
-        "prompts/release_signoff.system.md"
-      ],
-      "presets": [
-        "presets/threat_model_review.preset.yaml",
-        "presets/permission_grant_review.preset.yaml",
-        "presets/mcp_browser_risk_review.preset.yaml",
-        "presets/dependency_release_signoff.preset.yaml"
-      ],
-      "examples": [
-        "examples/pack_security_review.example.yaml",
-        "examples/release_signoff.example.yaml"
       ],
       "docs": [
         "README.md",
@@ -42,9 +14,73 @@
         "docs/architecture.md",
         "docs/interfaces.md",
         "docs/operations.md"
+      ],
+      "examples": [
+        "examples/pack_security_review.example.yaml",
+        "examples/release_signoff.example.yaml"
+      ],
+      "presets": [
+        "presets/threat_model_review.preset.yaml",
+        "presets/permission_grant_review.preset.yaml",
+        "presets/mcp_browser_risk_review.preset.yaml",
+        "presets/dependency_release_signoff.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/security_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/security_reviewer.system.md",
+        "prompts/release_signoff.system.md"
       ]
-    }
+    },
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:875de058af53bf84ee896b096de72efe668dd40a1204b49efe583f65578667a9",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:cb2cc66db0959f038d3bd06c28a6693511ed75876fe6061deab83b3e3651b105"
+    },
+    "description": "Declarative local-first security and privacy review pack for threat modeling, secret scanning review, permission review, MCP/browser risk, dependency review, and release signoff.",
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:cb2cc66db0959f038d3bd06c28a6693511ed75876fe6061deab83b3e3651b105"
+    },
+    "grant_override": false,
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Security Review Pack",
+    "network_policy": "none_by_default",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack",
+    "tags": [
+      "security",
+      "privacy",
+      "review",
+      "threat-modeling",
+      "release-signoff"
+    ]
   },
+  "pack_id": "rumi_security_review_pack",
+  "pack_identity": "rumi:ecosystem/rumi_security_review_pack",
+  "provenance": {
+    "build_identity": "rumi_security_review_pack:1.0.0",
+    "content_hash": "sha256:875de058af53bf84ee896b096de72efe668dd40a1204b49efe583f65578667a9",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "version": "1.0.0",
   "vocabulary": {
     "types": [
       "security_review",
@@ -55,12 +91,5 @@
       "preset",
       "example"
     ]
-  },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": {
-    "allowed_domains": [],
-    "allowed_ports": []
   }
 }

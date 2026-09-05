@@ -17,6 +17,247 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
 class TestDefaultspackDesktopSurface(unittest.TestCase):
+    _PANEL_BOOTSTRAP_SECRET = "desktop-surface-host-secret"
+
+    def test_launch_log_uses_external_app_data_and_rejects_sealed_resources(self):
+        from defaultspack import desktop_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sealed_app = root / "sealed-app"
+            sealed_app.mkdir()
+            external_logs = root / "app-data" / "logs"
+            with patch.object(
+                desktop_app,
+                "_sealed_app_root",
+                return_value=sealed_app,
+            ):
+                with patch.dict(
+                    os.environ,
+                    {"RUMI_LOG_DIR": str(external_logs)},
+                    clear=True,
+                ):
+                    self.assertEqual(
+                        desktop_app._diagnostic_log_path(),
+                        (external_logs / "defaultspack-launch.jsonl").resolve(),
+                    )
+                with patch.dict(
+                    os.environ,
+                    {"RUMI_LOG_DIR": str(sealed_app / "logs")},
+                    clear=True,
+                ):
+                    with self.assertRaisesRegex(ValueError, "outside sealed app"):
+                        desktop_app._diagnostic_log_path()
+
+                redirect = root / "redirect"
+                redirect.symlink_to(sealed_app, target_is_directory=True)
+                with patch.dict(
+                    os.environ,
+                    {"RUMI_LOG_DIR": str(redirect / "logs")},
+                    clear=True,
+                ):
+                    with self.assertRaisesRegex(ValueError, "outside sealed app"):
+                        desktop_app._diagnostic_log_path()
+
+    @staticmethod
+    def _activate_defaults(user_data: Path) -> None:
+        from core_runtime.bootstrap.profile_capture import (
+            capture_default_profile,
+            prepare_default_profile_confirmation,
+        )
+        from tests.conformance_support.host_contract import host_contract
+
+        with patch.dict(
+            os.environ,
+            {
+                "TOBKIRI_USER_DATA": str(user_data),
+                "RUMI_USER_DATA": str(user_data),
+            },
+            clear=False,
+        ):
+            active = capture_default_profile(
+                confirmation=prepare_default_profile_confirmation()
+            )
+        user_data.chmod(0o700)
+        contract_path = user_data / "host_contract.json"
+        contract_path.write_text(
+            json.dumps(
+                host_contract(
+                    profile_id=str(active.resolved.profile["profile_id"]),
+                    profile_revision=str(active.resolved.plan["profile_revision"]),
+                    activation_id=str(active.activation["activation_id"]),
+                    plan_digest=str(active.resolved.plan["plan_digest"]),
+                    values={
+                        "panel_bootstrap_secret": (
+                            TestDefaultspackDesktopSurface._PANEL_BOOTSTRAP_SECRET
+                        )
+                    },
+                )
+            ),
+            encoding="utf-8",
+        )
+        contract_path.chmod(0o600)
+        from core_runtime.panel_auth import (
+            PanelAuthManager,
+            reset_panel_auth_manager_for_tests,
+        )
+
+        reset_panel_auth_manager_for_tests(
+            PanelAuthManager(
+                bootstrap_secret=(
+                    TestDefaultspackDesktopSurface._PANEL_BOOTSTRAP_SECRET
+                )
+            )
+        )
+
+    def test_desktop_app_help_exits_before_runtime_setup(self):
+        from defaultspack import desktop_app
+
+        with patch.object(
+            desktop_app, "_ensure_import_path"
+        ) as ensure_import_path:
+            with self.assertRaises(SystemExit) as exited:
+                desktop_app.main(["--help"])
+
+        self.assertEqual(exited.exception.code, 0)
+        ensure_import_path.assert_not_called()
+
+    def test_desktop_app_url_uses_canonical_ipv4_loopback(self):
+        from defaultspack import desktop_app
+
+        with patch.dict(
+            os.environ,
+            {
+                "DEFAULTS_HTTP_PORT": "18776",
+                "RUMI_DEFAULTSPACK_PORT": "18776",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                desktop_app._url(), "http://127.0.0.1:18776/chat"
+            )
+
+    def test_debug_own_bind_does_not_adopt_existing_healthy_server(self):
+        from defaultspack import desktop_app
+
+        class BindFailureServer:
+            def start(self):
+                raise OSError("address already in use")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            self._activate_defaults(user_data)
+            with patch.dict(
+                os.environ,
+                {
+                    "DEFAULTS_HTTP_HOST": "127.0.0.1",
+                    "DEFAULTS_HTTP_PORT": "18776",
+                    "RUMI_DEFAULTSPACK_PORT": "18776",
+                    "RUMI_DEFAULTSPACK_REQUIRE_OWN_BIND": "1",
+                    "TOBKIRI_USER_DATA": str(user_data),
+                    "RUMI_USER_DATA": str(user_data),
+                    "TOBKIRI_HOST_CONTRACT_PATH": str(
+                        user_data / "host_contract.json"
+                    ),
+                },
+                clear=False,
+            ):
+                with patch(
+                    "core_runtime.pack_api_server.PackAPIServer",
+                    return_value=BindFailureServer(),
+                ):
+                    with patch.object(
+                        desktop_app, "_wait_until_ready"
+                    ) as wait_until_ready:
+                        with patch(
+                            "domain.scheduler.daemon.start_scheduler_daemon"
+                        ) as start_scheduler:
+                            with self.assertRaisesRegex(
+                                OSError, "address already in use"
+                            ):
+                                desktop_app.main()
+
+        wait_until_ready.assert_not_called()
+        start_scheduler.assert_not_called()
+
+    def test_surface_url_passes_local_auth_only_in_fragment(self):
+        from defaultspack import desktop_app
+
+        with patch.dict(
+            os.environ,
+            {"RUMI_DEFAULTSPACK_LOCAL_TOKEN": "local-token"},
+            clear=True,
+        ):
+            url = desktop_app._surface_url("http://localhost:8766/chat")
+
+        self.assertEqual(url, "http://localhost:8766/chat")
+        self.assertNotIn("local-token", url)
+        self.assertNotIn("#", url)
+        self.assertNotIn("?", url)
+
+    def test_surface_url_reads_launcher_token_file(self):
+        from defaultspack import desktop_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            user_data.mkdir()
+            (Path(tmp) / ".desktop_api_token").write_text(
+                "local token", encoding="utf-8"
+            )
+            with patch.dict(
+                os.environ,
+                {"RUMI_USER_DATA": str(user_data)},
+                clear=True,
+            ):
+                url = desktop_app._surface_url("http://localhost:8766/chat")
+
+        self.assertEqual(url, "http://localhost:8766/chat")
+        self.assertNotIn("local token", url)
+        self.assertNotIn("#", url)
+
+    def test_desktop_startup_never_imports_bundle_local_legacy_state(self):
+        from defaultspack import desktop_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            bundle_root = Path(tmp) / "replaceable-bundle"
+            legacy_root = bundle_root / "user_data"
+            legacy_secrets = legacy_root / "secrets"
+            legacy_settings = legacy_root / "shared" / "frontend_settings.json"
+            legacy_secrets.mkdir(parents=True, exist_ok=True)
+            legacy_settings.parent.mkdir(parents=True, exist_ok=True)
+            secret_file = legacy_secrets / "OPENROUTER_API_KEY.json"
+            key_file = legacy_root / ".secrets_key"
+            secret_file.write_text('{"encrypted": "fixture"}', encoding="utf-8")
+            key_file.write_text("fixture-key", encoding="utf-8")
+            legacy_settings.write_text('{"models": {"preferred_model": "openrouter/demo"}}', encoding="utf-8")
+            with patch.dict(os.environ, {"RUMI_USER_DATA": str(user_data)}, clear=True):
+                with patch.object(desktop_app, "_pack_root", return_value=bundle_root):
+                    desktop_app._configure_persistent_user_state()
+                configured_settings = os.environ[
+                    "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH"
+                ]
+
+            self.assertFalse((user_data / "secrets" / secret_file.name).exists())
+            self.assertFalse((user_data / ".secrets_key").exists())
+            self.assertFalse(
+                (
+                    user_data
+                    / "defaultspack"
+                    / "shared"
+                    / "frontend_settings.json"
+                ).exists()
+            )
+            self.assertEqual(
+                configured_settings,
+                str(
+                    user_data
+                    / "defaultspack"
+                    / "shared"
+                    / "frontend_settings.json"
+                ),
+            )
+
     def test_surface_can_be_disabled_for_smoke_tests(self):
         from defaultspack.native_webview import open_desktop_surface
 
@@ -61,20 +302,137 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
             def stop(self):
                 self.stopped = True
 
+            def issue_panel_login_code(self):
+                return {"code": "test-panel-login-code"}
+
         fake_server = FakeServer()
 
-        with patch.dict(os.environ, {"RUMI_DEFAULTSPACK_OPEN_BROWSER": "1", "RUMI_DEFAULTSPACK_SURFACE": "webview"}, clear=True):
-            with patch("transport.http.DefaultsHttpServer", return_value=fake_server):
-                with patch.object(desktop_app, "_wait_until_ready", return_value=True):
-                    with patch.object(desktop_app, "_wait_until_chat_ready", return_value=True):
-                        with patch("defaultspack.native_webview.open_desktop_surface", return_value="webview"):
-                            result = desktop_app.main()
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            self._activate_defaults(user_data)
+            with patch.dict(
+                os.environ,
+                {
+                    "RUMI_DEFAULTSPACK_OPEN_BROWSER": "1",
+                    "RUMI_DEFAULTSPACK_SURFACE": "webview",
+                    "TOBKIRI_USER_DATA": str(user_data),
+                    "RUMI_USER_DATA": str(user_data),
+                    "TOBKIRI_HOST_CONTRACT_PATH": str(
+                        user_data / "host_contract.json"
+                    ),
+                },
+                clear=True,
+            ):
+                with patch("core_runtime.pack_api_server.PackAPIServer", return_value=fake_server):
+                    with patch.object(desktop_app, "_wait_until_ready", return_value=True):
+                        with patch.object(desktop_app, "_wait_until_chat_ready", return_value=True):
+                            with patch("defaultspack.native_webview.open_desktop_surface", return_value="webview"):
+                                result = desktop_app.main()
 
         self.assertEqual(result, 0)
         self.assertTrue(fake_server.started)
         self.assertTrue(fake_server.stopped)
 
-    def test_desktop_app_main_logs_and_exits_when_existing_server_is_reused(self):
+    def test_valid_stale_profile_does_not_open_authenticated_surface(self):
+        from core_runtime.app_lifecycle_manager import (
+            get_runtime_readiness,
+            reset_runtime_readiness,
+        )
+        from defaultspack import desktop_app
+        from ecosystem.defaultspack.domain.runtime_v4 import (
+            ProfileReconfirmationRequired,
+        )
+
+        captured: dict[str, object] = {}
+        events: list[tuple[str, dict[str, object]]] = []
+        server_state = {"stopped": False, "handoff_attempts": 0}
+
+        class FakeServer:
+            def __init__(self, *_args, **kwargs):
+                captured.update(kwargs)
+
+            def start(self):
+                return None
+
+            def stop(self):
+                server_state["stopped"] = True
+
+            def issue_panel_login_code(self):
+                server_state["handoff_attempts"] += 1
+                raise RuntimeError(
+                    "current panel authentication capture is unavailable"
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            self._activate_defaults(user_data)
+            reset_runtime_readiness()
+            env = {
+                "RUMI_DEFAULTSPACK_OPEN_BROWSER": "1",
+                "RUMI_DEFAULTSPACK_SURFACE": "webview",
+                "TOBKIRI_USER_DATA": str(user_data),
+                "RUMI_USER_DATA": str(user_data),
+                "TOBKIRI_HOST_CONTRACT_PATH": str(
+                    user_data / "host_contract.json"
+                ),
+            }
+            denial = (
+                "legacy activation requires explicit reconfirmation: "
+                "Authority Kernel reference is missing for edge test"
+            )
+            with patch.dict(os.environ, env, clear=True):
+                with patch.object(
+                    desktop_app,
+                    "_restore_active_profile_contracts",
+                    side_effect=ProfileReconfirmationRequired(denial),
+                ):
+                    with patch.object(
+                        desktop_app,
+                        "_write_launch_event",
+                        side_effect=lambda event, **fields: events.append(
+                            (event, fields)
+                        ),
+                    ):
+                        with patch(
+                            "core_runtime.pack_api_server.PackAPIServer",
+                            FakeServer,
+                        ):
+                            with patch.object(
+                                desktop_app, "_wait_until_ready", return_value=True
+                            ):
+                                with patch.object(
+                                    desktop_app,
+                                    "_wait_until_chat_ready",
+                                    return_value=True,
+                                ):
+                                    with patch(
+                                        "defaultspack.native_webview.open_desktop_surface",
+                                        return_value="webview",
+                                    ) as open_surface:
+                                        with self.assertRaisesRegex(
+                                            RuntimeError,
+                                            "authentication capture is unavailable",
+                                        ):
+                                            desktop_app.main()
+
+        self.assertIsNone(captured["dispatch_session"])
+        self.assertEqual(captured["contract_bindings"], ())
+        self.assertEqual(server_state["handoff_attempts"], 1)
+        self.assertTrue(server_state["stopped"])
+        open_surface.assert_not_called()
+        readiness = get_runtime_readiness()
+        self.assertTrue(readiness["panel_ready"])
+        self.assertFalse(readiness["runtime_ready"])
+        self.assertEqual(
+            readiness["runtime_status"], "profile_reconfirmation_required"
+        )
+        self.assertEqual(readiness["runtime_error"], denial)
+        event = next(
+            item for item in events if item[0] == "profile_reconfirmation_required"
+        )
+        self.assertEqual(event[1]["denial_diagnostic"], denial)
+
+    def test_desktop_app_main_fails_closed_when_server_bind_is_busy(self):
         from defaultspack import desktop_app
 
         class PortBusyServer:
@@ -91,14 +449,21 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "defaultspack-launch.jsonl"
+            user_data = Path(tmp) / "user_data"
+            self._activate_defaults(user_data)
             env = {
                 "DEFAULTS_HTTP_PORT": "8766",
                 "RUMI_DEFAULTSPACK_LAUNCH_LOG": str(log_path),
                 "RUMI_DEFAULTSPACK_OPEN_BROWSER": "1",
                 "RUMI_DEFAULTSPACK_PORT": "8766",
+                "TOBKIRI_USER_DATA": str(user_data),
+                "RUMI_USER_DATA": str(user_data),
+                "TOBKIRI_HOST_CONTRACT_PATH": str(
+                    user_data / "host_contract.json"
+                ),
             }
             with patch.dict(os.environ, env, clear=True):
-                with patch("transport.http.DefaultsHttpServer", return_value=fake_server):
+                with patch("core_runtime.pack_api_server.PackAPIServer", return_value=fake_server):
                     with patch.object(desktop_app, "_wait_until_ready", return_value=True):
                         with patch.object(desktop_app, "_wait_until_chat_ready", return_value=True):
                             with patch.object(
@@ -107,17 +472,20 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                                 return_value=[{"pid": "123", "command": "python3"}],
                             ):
                                 with patch("defaultspack.native_webview.open_desktop_surface", return_value="browser"):
-                                    result = desktop_app.main()
+                                    with self.assertRaisesRegex(
+                                        OSError, "address already in use"
+                                    ):
+                                        desktop_app.main()
 
-            self.assertEqual(result, 0)
             self.assertFalse(fake_server.stopped)
             events = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
 
         event_names = [event["event"] for event in events]
         self.assertIn("server_start_oserror", event_names)
-        self.assertIn("duplicate_launcher_exit", event_names)
+        self.assertNotIn("duplicate_launcher_exit", event_names)
         busy_event = next(event for event in events if event["event"] == "server_start_oserror")
-        self.assertTrue(busy_event["existing_ready"])
+        self.assertFalse(busy_event["existing_ready"])
+        self.assertTrue(busy_event["own_bind_required"])
         self.assertEqual(busy_event["port_owners"], [{"pid": "123", "command": "python3"}])
         self.assertNotIn("RUMI_API_TOKEN", events[0]["env"])
 

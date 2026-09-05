@@ -1,0 +1,139 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.shell.inspect.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_shell_policy_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "shell-policy.inspect",
+        "required_capabilities": [
+          "shell.inspect"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed",
+      "contract_id": "rumi.service.shell.inspect.v1",
+      "id": "shell-inspect",
+      "loader": "python",
+      "module": "ecosystem.rumi_shell_policy_pack.runtime.policy",
+      "symbol": "create_shell_policy_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.shell.inspect.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Pure command inspection and risk classification.",
+        "display_name": "Rumi Shell Policy",
+        "host_execution": false,
+        "metadata": {
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:5a1d4d491b35ff437f1a831c3993d05b9bca1ef445e330276e63075a874c1be0",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:dde1dd3d89b52be72606ac2605dde644c073721e7ea6b44e7d0b18c17ee70f94"
+          },
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_shell_policy_pack",
+        "pack_identity": "rumi:ecosystem/rumi_shell_policy_pack",
+        "provenance": {
+          "build_identity": "rumi_shell_policy_pack:1.0.0",
+          "content_hash": "sha256:416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "shell.inspect"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_shell_policy_pack"
+    },
+    "rumi.shell_policy.boundary": {
+      "execute": false,
+      "filesystem": false,
+      "network": false,
+      "tool_or_ui_registry_imports": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_shell_policy_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:dde1dd3d89b52be72606ac2605dde644c073721e7ea6b44e7d0b18c17ee70f94"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.coding.terminal_policy"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior pure classifier.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Pure command inspection and risk classification.",
+    "display_name": "Rumi Shell Policy",
+    "id": "rumi.shell_policy",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "inspect",
+      "approval_required": false,
+      "capability": "shell.inspect"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_shell_policy_pack:1.0.0",
+    "content_hash": "sha256:416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

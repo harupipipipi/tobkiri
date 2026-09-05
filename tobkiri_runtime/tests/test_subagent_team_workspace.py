@@ -45,18 +45,28 @@ def _configure_temp_runtime(tmp_path, monkeypatch) -> None:
 
 
 def _create_workspace(*, settings: dict[str, Any] | None = None) -> tuple[Any, Any, dict[str, Any]]:
+    from domain.company.contract_facade import CompanyContractFacade
     from domain.company.runtime_store import CompanyRuntimeStore
     from domain.company.store import CompanyStore
 
     store = CompanyStore()
     runtime_store = CompanyRuntimeStore()
-    company = store.create_company(
+    store.create_company(
         company_id="tw_short",
         name="Subagent Team",
         settings=settings,
         metadata={"surface": "subagent_team_workspace"},
     )
-    return store, runtime_store, company
+    canonical_company = CompanyContractFacade(
+        {
+            "company_id": "tw_short",
+            "name": "Subagent Team",
+            "settings": settings or {},
+            "metadata": {"surface": "subagent_team_workspace"},
+        },
+        {},
+    ).run("create")
+    return store, runtime_store, canonical_company
 
 
 def _trusted_coding_workspace(workspace: Path, workspace_id: str = "trusted-team-workspace") -> str:
@@ -1151,7 +1161,7 @@ def test_subagent_team_company_write_bypass_is_blocked_on_company_routes(tmp_pat
     ui_bootstrap = company_status.run({"conversation_id": "chat-main-guard", "bootstrap": True}, {})
     assert ui_bootstrap["status"] == "ok"
     ui_company_id = ui_bootstrap["data"]["company_id"]
-    assert ui_bootstrap["data"]["company"]["metadata"]["surface"] == "main_chat"
+    assert ui_bootstrap["data"]["company"]["metadata"]["source"] == "chat"
     ui_message_write = company_messages.run(
         {"company_id": ui_company_id, "action": "create", "channel_id": "ops-company", "content": "@coding_engineer bypass"},
         {},
@@ -1162,6 +1172,23 @@ def test_subagent_team_company_write_bypass_is_blocked_on_company_routes(tmp_pat
         {},
     )
     assert ui_task_write["status"] == "ok"
+
+    from domain.company.contract_facade import _conversation_company_id
+
+    marker_company_id = _conversation_company_id("subagent-chat-guard")
+    marker_created = company_create.run(
+        {
+            "id": marker_company_id,
+            "name": "Subagent Marker",
+            "metadata": {
+                "conversation_id": "subagent-chat-guard",
+                "surface": "subagent_team_workspace",
+                "subagent_team": True,
+            },
+        },
+        {},
+    )
+    assert marker_created["status"] == "ok", marker_created
 
     marker_bootstrap = company_bootstrap.run(
         {
@@ -1175,7 +1202,7 @@ def test_subagent_team_company_write_bypass_is_blocked_on_company_routes(tmp_pat
         },
         {},
     )
-    assert marker_bootstrap["status"] == "ok"
+    assert marker_bootstrap["status"] == "ok", marker_bootstrap
     marker_company_id = marker_bootstrap["data"]["company"]["id"]
     marker_message_write = company_messages.run(
         {"company_id": marker_company_id, "action": "create", "channel_id": "ops-company", "content": "@coding_engineer bypass"},
@@ -1202,57 +1229,15 @@ def test_subagent_team_company_write_bypass_is_blocked_on_company_routes(tmp_pat
     assert normal_message["status"] == "ok"
 
 
-def test_subagent_team_routes_are_registered_in_runtime_and_api_map():
-    from ecosystem.defaultspack.transport.registry import _ALWAYS_AVAILABLE_HTTP_ROUTE_SPECS, canonical_http_route_specs
+def test_subagent_team_requires_captured_operation():
+    from tests.v4_batch_support import assert_route_cutover
 
-    expected_routes = {
-        ("POST", "/api/subagent-team/bootstrap"),
-        ("POST", "/api/subagent-team/workspace/metadata"),
-        ("GET", "/api/subagent-team/status"),
-        ("GET", "/api/subagent-team/channels"),
-        ("POST", "/api/subagent-team/channels"),
-        ("GET", "/api/subagent-team/channels/{channel_id}"),
-        ("PATCH", "/api/subagent-team/channels/{channel_id}"),
-        ("POST", "/api/subagent-team/channels/{channel_id}/messages"),
-        ("POST", "/api/subagent-team/channels/{channel_id}/leave"),
-        ("POST", "/api/subagent-team/channels/{channel_id}/archive"),
-        ("POST", "/api/subagent-team/creator/test"),
-        ("GET", "/api/subagent-team/creator/decision-preview"),
-        ("GET", "/api/subagent-team/creator/settings"),
-        ("PATCH", "/api/subagent-team/creator/settings"),
-        ("GET", "/api/subagent-team/rich"),
-        ("POST", "/api/subagent-team/rich"),
-        ("POST", "/api/subagent-team/messages"),
-        ("POST", "/api/subagent-team/channel-check"),
-        ("GET", "/api/subagent-team/agents/{short_id}"),
-        ("PATCH", "/api/subagent-team/agents/{short_id}"),
-        ("POST", "/api/subagent-team/agents/{short_id}/pause"),
-        ("POST", "/api/subagent-team/agents/{short_id}/resume"),
-        ("GET", "/api/subagent-team/dms"),
-        ("POST", "/api/subagent-team/dms/{thread_id}/messages"),
-        ("GET", "/api/subagent-team/goals"),
-        ("POST", "/api/subagent-team/goals"),
-        ("GET", "/api/subagent-team/goals/{goal_id}"),
-        ("PATCH", "/api/subagent-team/goals/{goal_id}"),
-        ("POST", "/api/subagent-team/goals/{goal_id}/approve"),
-        ("POST", "/api/subagent-team/tasks/{task_id}/complete"),
-        ("GET", "/api/subagent-team/file-tree"),
-        ("GET", "/api/subagent-team/file-tree/open"),
-    }
-
-    runtime_routes = {(spec.method, spec.pattern) for spec in canonical_http_route_specs()}
-    assert expected_routes <= runtime_routes
-    registry_mode_routes = {(spec.method, spec.pattern) for spec in _ALWAYS_AVAILABLE_HTTP_ROUTE_SPECS}
-    assert expected_routes <= registry_mode_routes
-    assert ("GET", "/api/subagent-team/{company_id}/channels") in registry_mode_routes
-
-    routes_json = json.loads((DEFAULTSPACK_ROOT / "routes.json").read_text(encoding="utf-8"))
-    api_map_routes = {
-        (str(route.get("method") or "").upper(), str(route.get("path") or ""))
-        for route in routes_json.get("routes", [])
-        if isinstance(route, dict)
-    }
-    assert expected_routes <= api_map_routes
+    assert_route_cutover(
+        "GET",
+        "/api/subagent-team/channels",
+        "tobkiri.subagent-team.v1",
+        "defaultspack.subagent-team.list-channels",
+    )
 
 
 def test_subagent_team_provider_safe_function_manifests_are_registered():
@@ -1281,43 +1266,13 @@ def test_subagent_team_provider_safe_function_manifests_are_registered():
         assert manifest["extensions"]["defaultspack"]["default_args"]["action"] == function_id
 
 
-def test_subagent_team_http_route_defaults_execute_blocks(tmp_path, monkeypatch):
-    _configure_temp_runtime(tmp_path, monkeypatch)
-    _, _, company = _create_workspace()
+def test_subagent_team_mutation_requires_captured_operation(tmp_path, monkeypatch):
+    del tmp_path, monkeypatch
+    from tests.v4_batch_support import assert_route_cutover
 
-    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
-
-    specs = {(spec.method, spec.pattern): spec for spec in canonical_http_route_specs()}
-    rich_spec = specs[("POST", "/api/subagent-team/rich")]
-    assert rich_spec.defaults["action"] == "set"
-    creator_settings_spec = specs[("PATCH", "/api/subagent-team/creator/settings")]
-    assert creator_settings_spec.defaults["action"] == "update_settings"
-
-    from blocks.subagent_team import rich as rich_block
-    from blocks.subagent_team import creator as creator_block
-
-    result = rich_block.run(
-        {
-            **rich_spec.defaults,
-            "company_id": company["id"],
-            "actor_id": "project_manager",
-            "enabled": True,
-        },
-        {"actor_id": "project_manager"},
+    assert_route_cutover(
+        "POST",
+        "/api/subagent-team/rich",
+        "tobkiri.subagent-team.v1",
+        "defaultspack.subagent-team.update-rich",
     )
-
-    assert result["status"] == "ok"
-    assert result["data"]["rich_enabled"] is True
-
-    creator_settings = creator_block.run(
-        {
-            **creator_settings_spec.defaults,
-            "company_id": company["id"],
-            "settings": {"auto_create_agents": False, "default_channel_id": "ops-company"},
-        },
-        {"actor_id": "project_manager"},
-    )
-
-    assert creator_settings["status"] == "ok"
-    assert creator_settings["data"]["settings"]["auto_create_agents"] is False
-    assert creator_settings["data"]["settings"]["default_channel_id"] == "ops-company"

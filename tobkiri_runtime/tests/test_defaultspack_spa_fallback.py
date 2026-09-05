@@ -12,21 +12,18 @@ def test_direct_spa_route_serves_shell_after_route_miss() -> None:
     assert path_params == {}
     assert source == "fallback"
     assert path_inject == {}
-    assert pattern == ""
+    assert pattern == "/share/{token}"
 
 
-def test_api_desktops_remains_api_route() -> None:
-    server = DefaultsHttpServer(None)
+def test_api_desktops_does_not_fall_back_to_spa_or_legacy_api():
+    from tests.v4_batch_support import assert_route_cutover
 
-    handler, _path_params, source, _path_inject, pattern = server._match_route(
+    assert_route_cutover(
         "GET",
         "/api/desktops",
+        "tobkiri.desktop.v1",
+        "defaultspack.desktop.list",
     )
-
-    assert handler is not None
-    assert handler != server._handle_static
-    assert source in {"fallback", "registry"}
-    assert pattern == "/api/desktops"
 
 
 def test_unknown_api_route_does_not_use_spa_fallback() -> None:

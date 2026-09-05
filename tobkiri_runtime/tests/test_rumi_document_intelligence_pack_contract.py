@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_document_intelligence_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -57,7 +58,8 @@ def test_pack_required_assets_and_metadata() -> None:
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["vocabulary"]["types"]
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert "depends_on" not in ecosystem
     assert "optional_integrations" not in ecosystem
     assert ecosystem["required_secrets"] == []
@@ -95,10 +97,10 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert setup["risk_level"] == "medium"
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.overlap_policy["slide_sheet_doc_creation"] == "handoff_to_rumi_workspace_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "reason" in candidate.defaultspack_promotion
-    assert "promotion_blockers" in candidate.defaultspack_promotion
-    assert "promotion_evidence_required" in candidate.defaultspack_promotion
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "reason" in candidate.base_pack_promotion
+    assert "promotion_blockers" in candidate.base_pack_promotion
+    assert "promotion_evidence_required" in candidate.base_pack_promotion
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"

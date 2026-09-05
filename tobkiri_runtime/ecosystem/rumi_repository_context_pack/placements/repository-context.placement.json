@@ -1,0 +1,90 @@
+{
+  "schema_version": "tobkiri.subagent-placement/v1",
+  "id": "repository-context",
+  "subject": {
+    "exact_ref": "pack://rumi_repository_context_pack/tobkiri.repository-context@1.0.0"
+  },
+  "presentation": {
+    "display_name": "repository-context-subagent",
+    "visible": true
+  },
+  "role": {
+    "contract_ref": "tobkiri.role/repository-context/v1",
+    "instructions_ref": "pack-resource://prompts/repository-context.system.md",
+    "completion_contracts": ["tobkiri.repository-evidence/v1"],
+    "behavior": {
+      "goal": "Discard unrelated files and hand concise evidence to the caller."
+    }
+  },
+  "bindings": [
+    {
+      "slot": "model",
+      "provider_ref": "route://utility/context-summarizer",
+      "cost_tiers": ["free", "low"],
+      "required_capabilities": ["text", "structured_output"]
+    },
+    {
+      "slot": "tools",
+      "activity_ids": ["coding.repository-context"],
+      "allow_tool_tags": ["workspace.read", "file.inspect"],
+      "deny_effects": ["filesystem.write", "git.publish", "process.execute"],
+      "maximum_effect": "read"
+    },
+    {
+      "slot": "skills",
+      "required": ["tobkiri.repository-context-preparation"]
+    },
+    {
+      "slot": "workspace",
+      "provider_ref": "workspace://current",
+      "access": "read_only"
+    },
+    {
+      "slot": "context",
+      "provider_ref": "context://repository-evidence",
+      "access": "derived_only"
+    }
+  ],
+  "participation": [
+    {
+      "protocol_ref": "tobkiri.protocol/agent-tool/v1",
+      "participant_role": "context-scout",
+      "input_port": "investigation",
+      "output_port": "repository-evidence"
+    }
+  ],
+  "governance": {
+    "allowed_capabilities": [
+      "file.inspect",
+      "ai.gateway.generate",
+      "subagent.placement.compile",
+      "repository.content.external_share"
+    ],
+    "denied_capabilities": [
+      "file.write",
+      "git.publish",
+      "secret.read",
+      "terminal.execute"
+    ],
+    "maximum_parallel_runs": 4,
+    "maximum_steps": 2,
+    "maximum_tool_calls": 260,
+    "maximum_cost": 1.0,
+    "timeout_seconds": 600,
+    "context_token_budget": 64000,
+    "spawn": {"allowed": false},
+    "approval": {"minimum": "auto"}
+  },
+  "features": [],
+  "enforcement": {
+    "tool_allowlist": "host_enforced",
+    "workspace_scope": "host_enforced",
+    "output_schema": "host_validated",
+    "system_prompt": "behavioral_only"
+  },
+  "required_enforcement": {
+    "tool_allowlist": "host_enforced",
+    "workspace_scope": "host_enforced",
+    "output_schema": "host_validated"
+  }
+}

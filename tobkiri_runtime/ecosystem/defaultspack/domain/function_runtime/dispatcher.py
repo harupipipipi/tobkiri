@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from domain.tool.executor import SubagentFactory
 
 from .errors import FunctionNotFoundError
 from .registry import (
@@ -24,25 +28,52 @@ def run_defaultspack_function(
     function_id: str,
     input_data: dict[str, Any] | None,
     context: dict[str, Any] | None = None,
+    *,
+    subagent_factory: "SubagentFactory | None" = None,
 ) -> dict[str, Any]:
     try:
         args = ensure_dict(input_data)
         ctx = dict(context or {})
-        handler = get_handler(function_id)
-        return normalize_output(handler(args, ctx))
+        handler = get_handler(function_id, subagent_factory=subagent_factory)
+        return normalize_output(
+            _materialize_stream_output(handler(args, ctx))
+        )
     except FunctionNotFoundError as exc:
         return error(str(exc), "FUNCTION_NOT_FOUND")
     except Exception as exc:
         return normalize_exception(exc)
 
 
-def get_handler(function_id: str):
+def _materialize_stream_output(value: Any) -> Any:
+    """Make subprocess-backed SSE results safe to cross the JSON boundary."""
+    if not isinstance(value, dict) or not value.get("_sse"):
+        return value
+    events = value.get("events")
+    if events is None or isinstance(events, (list, str, bytes)):
+        return value
+    if not isinstance(events, Iterable):
+        return value
+    materialized = dict(value)
+    materialized["events"] = list(events)
+    return materialized
+
+
+def get_handler(
+    function_id: str,
+    *,
+    subagent_factory: "SubagentFactory | None" = None,
+):
     if function_id in _PROMPT_HANDLERS:
         return _PROMPT_HANDLERS[function_id]
     if function_id in _MODEL_RUNTIME_HANDLERS:
         return _MODEL_RUNTIME_HANDLERS[function_id]
     if function_id in TOOL_FUNCTION_ACTIONS:
-        return lambda args, ctx: _run_tool_function(function_id, args, ctx)
+        return lambda args, ctx: _run_tool_function(
+            function_id,
+            args,
+            ctx,
+            subagent_factory=subagent_factory,
+        )
     if function_id in MANAGEMENT_ALIASES:
         return lambda args, ctx: _run_existing_pack_function(MANAGEMENT_ALIASES[function_id], args, ctx)
     block_module = block_module_for(function_id)
@@ -127,11 +158,13 @@ def _run_tool_function(
     function_id: str,
     args: dict[str, Any],
     context: dict[str, Any],
+    *,
+    subagent_factory: "SubagentFactory | None" = None,
 ) -> dict[str, Any]:
     from domain.tool.executor import ToolExecutor, _filtered_tool_rejection
 
     tool_name, defaults = TOOL_FUNCTION_ACTIONS[function_id]
-    arguments = dict(defaults)
+    arguments: dict[str, Any] = dict(defaults)
     if tool_name == "browser_computer":
         payload = dict(args.get("payload") or {})
         for key, value in args.items():
@@ -155,7 +188,9 @@ def _run_tool_function(
         )
     # The public function is the safety boundary; call the local implementation
     # directly here to avoid recursing through the AI tool facade.
-    result = ToolExecutor()._execute_local(tool_name, arguments, context)
+    result = ToolExecutor(
+        subagent_factory=subagent_factory,
+    )._execute_local(tool_name, arguments, context)
     if function_id in {"browser_open_url", "browser_screenshot", "browser_session"} and isinstance(result, dict):
         try:
             from domain.browser.browser_artifacts import BrowserArtifactStore
@@ -183,8 +218,6 @@ def _apply_function_defaults(function_id: str, payload: dict[str, Any]) -> dict[
         payload.setdefault("_method", "PUT")
     elif function_id == "prompt_system_get":
         payload.setdefault("_method", "GET")
-    elif function_id == "prompt_system_set":
-        payload.setdefault("_method", "PUT")
     elif function_id == "coding_git_branch_get":
         payload.setdefault("_method", "GET")
     elif function_id == "coding_git_branch_create":
@@ -203,63 +236,29 @@ def _model_runtime_service():
 
 
 def _provider_key_status(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del args, context
-    from domain.ai_client.api_key_store import provider_key_status
+    from blocks.ai.provider_key import run
 
-    return ok({"providers": provider_key_status()})
+    return run({**args, "_method": "GET"}, context)
 
 
 def _set_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del context
-    from domain.ai_client.api_key_store import set_provider_api_key
+    from blocks.ai.provider_key import run
 
-    result = set_provider_api_key(
-        str(args.get("provider_id") or "").strip(),
-        str(args.get("value") or ""),
-        api_id=args.get("api_id"),
-        name=args.get("name"),
-        base_url=args.get("base_url"),
-        allowed_models=args.get("allowed_models"),
-        default_model=args.get("default_model"),
-        notes=args.get("notes"),
-        quota_label=args.get("quota_label"),
-    )
-    if not result.get("success"):
-        return error(result.get("error") or "failed to save api key", "API_KEY_SAVE_FAILED")
-    return ok({key: value for key, value in result.items() if key != "error"})
+    return run({**args, "_method": "POST", "action": "upsert"}, context)
 
 
 def _delete_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del context
-    from domain.ai_client.api_key_store import delete_provider_api_key
+    from blocks.ai.provider_key import run
 
-    result = delete_provider_api_key(
-        str(args.get("provider_id") or "").strip(),
-        str(args.get("api_id") or "").strip(),
-    )
-    if not result.get("success"):
-        return error(result.get("error") or "failed to delete api key", "API_KEY_DELETE_FAILED")
-    return ok({key: value for key, value in result.items() if key != "error"})
+    return run({**args, "_method": "POST", "action": "delete"}, context)
 
 
 def _rename_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del context
-    from domain.ai_client.api_key_store import rename_provider_api_key
+    from blocks.ai.provider_key import run
 
-    result = rename_provider_api_key(
-        str(args.get("provider_id") or "").strip(),
-        str(args.get("api_id") or "").strip(),
-        str(args.get("name") or args.get("new_name") or "").strip(),
-        new_api_id=args.get("new_api_id"),
-        base_url=args.get("base_url"),
-        allowed_models=args.get("allowed_models"),
-        default_model=args.get("default_model"),
-        notes=args.get("notes"),
-        quota_label=args.get("quota_label"),
-    )
-    if not result.get("success"):
-        return error(result.get("error") or "failed to rename api key", "API_KEY_RENAME_FAILED")
-    return ok({key: value for key, value in result.items() if key != "error"})
+    payload = {**args, "_method": "POST", "action": "rename"}
+    payload.setdefault("name", args.get("new_name"))
+    return run(payload, context)
 
 
 def _validate_model_params(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
@@ -308,11 +307,19 @@ def _input_endpoint_create(args: dict[str, Any], context: dict[str, Any]) -> dic
         return error("shared_secret is required", "INVALID_INPUT")
     ttl_seconds = args.get("ttl_seconds")
     try:
-        ttl_value = int(ttl_seconds) if ttl_seconds not in (None, "") else 3600
+        ttl_value = (
+            int(ttl_seconds)
+            if isinstance(ttl_seconds, (int, float, str)) and ttl_seconds not in (None, "")
+            else 3600
+        )
     except (TypeError, ValueError):
         ttl_value = 3600
     ttl_value = max(ttl_value, 1)
-    default_delivery = dict(args.get("default_delivery") if isinstance(args.get("default_delivery"), dict) else {})
+    default_delivery = (
+        dict(args["default_delivery"])
+        if isinstance(args.get("default_delivery"), dict)
+        else {}
+    )
     default_delivery.setdefault("action_id", str(args.get("action_id") or default_delivery.get("action_id") or "chat.message").strip() or "chat.message")
     allowed_delivery_actions = _normalize_delivery_actions(
         args.get("allowed_delivery_actions"),
@@ -323,7 +330,7 @@ def _input_endpoint_create(args: dict[str, Any], context: dict[str, Any]) -> dic
         "kind": str(args.get("kind") or "generic").strip() or "generic",
         "input_profile_id": str(args.get("input_profile_id") or "generic.webhook.default").strip() or "generic.webhook.default",
         "enabled": args.get("enabled", True) is not False,
-        "target": dict(args.get("target") if isinstance(args.get("target"), dict) else {}),
+        "target": dict(args["target"]) if isinstance(args.get("target"), dict) else {},
         "default_delivery": default_delivery,
         "allowed_delivery_actions": allowed_delivery_actions,
         "ttl_seconds": ttl_value,
@@ -332,7 +339,7 @@ def _input_endpoint_create(args: dict[str, Any], context: dict[str, Any]) -> dic
             "mode": "shared_secret",
             "header": str(args.get("header") or "x-rumi-webhook-token").strip() or "x-rumi-webhook-token",
         },
-        "metadata": dict(args.get("metadata") if isinstance(args.get("metadata"), dict) else {}),
+        "metadata": dict(args["metadata"]) if isinstance(args.get("metadata"), dict) else {},
     }
     created = WebhookEndpointStore().upsert(payload)
     endpoint = created.get("endpoint") if isinstance(created.get("endpoint"), dict) else {}

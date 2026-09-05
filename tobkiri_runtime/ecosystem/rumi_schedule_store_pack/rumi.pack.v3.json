@@ -1,0 +1,216 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.schedule.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_schedule_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "schedule-store.resource",
+        "required_capabilities": [
+          "schedule.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.schedule.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_schedule_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "schedule-store.action",
+        "required_capabilities": [
+          "schedule.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779",
+      "contract_id": "rumi.resource.schedule.v1",
+      "id": "schedule-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_schedule_store_pack.runtime.store",
+      "symbol": "create_schedule_resource"
+    },
+    {
+      "artifact_hash": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779",
+      "contract_id": "rumi.action.schedule.v1",
+      "id": "schedule-action",
+      "loader": "python",
+      "module": "ecosystem.rumi_schedule_store_pack.runtime.store",
+      "symbol": "create_schedule_action"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.schedule.v1",
+            "rumi.resource.schedule.v1"
+          ],
+          "requires": [
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Authoritative schedule state and dispatch lifecycle.",
+        "display_name": "Rumi Schedule Store",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:12453c22320bcb5a96bb35d1ebbb67df0f68e8962987fd8238e6168846a21a25",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4"
+          },
+          "owner_surfaces": [
+            "schedules",
+            "schedule_leases",
+            "schedule_retries"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_schedule_store_pack",
+        "pack_identity": "rumi:ecosystem/rumi_schedule_store_pack",
+        "provenance": {
+          "build_identity": "rumi_schedule_store_pack:1.0.0",
+          "content_hash": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "schedule.manage",
+          "schedule.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_schedule_store_pack"
+    },
+    "rumi.schedule_store.boundary": {
+      "agent": false,
+      "chat": false,
+      "clock": false,
+      "company": false,
+      "dispatch": false,
+      "lease_owned": true,
+      "retries_owned": true,
+      "revision_bound": true
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_schedule_store_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.scheduler.job_store"
+    ],
+    "removal_wave": 10,
+    "rollback": "Atomically restore the prior owner snapshot; never enable dual writers.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Authoritative schedule state and dispatch lifecycle.",
+    "display_name": "Rumi Schedule Store",
+    "id": "rumi.schedule_store",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "schedule.read"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "schedule.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_schedule_store_pack:1.0.0",
+    "content_hash": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": true,
+      "namespace": "rumi.schedules",
+      "retention": "until explicit deletion/profile cleanup",
+      "schema_version": "1.0.0"
+    }
+  ]
+}

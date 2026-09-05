@@ -1,100 +1,34 @@
-"""
-api パッケージ — PackAPIHandler のハンドラ Mixin 群
+"""HTTP boundary modules for the Tobkiri runtime.
 
-使い方:
-    from .api import (
-        PackHandlersMixin,
-        ContainerHandlersMixin,
-        ...
-    )
-
-    class PackAPIHandler(PackHandlersMixin, ..., BaseHTTPRequestHandler):
-        ...
+Production code imports the small v4 boundary modules directly.  Historical
+handler modules remain importable for offline tooling, but importing this
+package never loads them into the production reachability graph.
 """
+
+from __future__ import annotations
+
 import importlib
 
-from .api_response import APIResponse
-from .auth_gate import AuthGateMixin
-from .flow_handlers import FlowHandlersMixin
-from .http_response import ResponseWriterMixin
-from .request_body import RequestBodyMixin
-from .route_handlers import RouteHandlersMixin
-from .router_table import APIRouteTableMixin
-from .control_panel_handlers import ControlPanelHandlersMixin
-from .capability_graph_handlers import CapabilityGraphHandlersMixin
-from .setup_handlers import SetupHandlersMixin
-from .oauth_handlers import OAuthHandlersMixin
-from .viewer_handlers import ViewerHandlersMixin
-from .desktop_handlers import DesktopHandlersMixin
-from .web_mounts import WebMountMixin
-from .security import (
-    AuthorityHandlersMixin,
-    CapabilityGrantHandlersMixin,
-    CapabilityInstallerHandlersMixin,
-    NetworkHandlersMixin,
-    PrivilegeHandlersMixin,
-)
-from .lifecycle import (
-    PackHandlersMixin,
-    PackLifecycleHandlersMixin,
-    ContainerHandlersMixin,
-    PipHandlersMixin,
-)
-from .store import (
-    SecretsHandlersMixin,
-    StoreHandlersMixin,
-    StoreShareHandlersMixin,
-    UnitHandlersMixin,
-)
 
-__all__ = [
-    "APIResponse",
-    "ResponseWriterMixin",
-    "AuthGateMixin",
-    "WebMountMixin",
-    "APIRouteTableMixin",
-    "RequestBodyMixin",
-    "AuthorityHandlersMixin",
-    "PackHandlersMixin",
-    "ContainerHandlersMixin",
-    "NetworkHandlersMixin",
-    "CapabilityGrantHandlersMixin",
-    "StoreShareHandlersMixin",
-    "PrivilegeHandlersMixin",
-    "CapabilityInstallerHandlersMixin",
-    "PipHandlersMixin",
-    "SecretsHandlersMixin",
-    "StoreHandlersMixin",
-    "UnitHandlersMixin",
-    "FlowHandlersMixin",
-    "RouteHandlersMixin",
-    "PackLifecycleHandlersMixin",
-    "ControlPanelHandlersMixin",
-    "CapabilityGraphHandlersMixin",
-    "SetupHandlersMixin",
-    "OAuthHandlersMixin",
-    "ViewerHandlersMixin",
-    "DesktopHandlersMixin",
-]
-
-_LAZY_SUBMODULES = {
-    "control_panel_handlers",
-    "capability_graph_handlers",
-    "desktop_handlers",
-    "flow_handlers",
-    "lifecycle",
-    "oauth_handlers",
-    "route_handlers",
-    "secrets_handlers",
-    "setup_handlers",
-    "store",
-    "viewer_handlers",
+_LAZY_EXPORTS = {
+    "APIResponse": ("api_response", "APIResponse"),
+    "AuthGateMixin": ("auth_gate", "AuthGateMixin"),
+    "RequestBodyMixin": ("request_body", "RequestBodyMixin"),
+    "ResponseWriterMixin": ("http_response", "ResponseWriterMixin"),
+    "SetupHandlersMixin": ("setup_handlers", "SetupHandlersMixin"),
+    "WebMountMixin": ("web_mounts", "WebMountMixin"),
 }
 
+__all__ = sorted(_LAZY_EXPORTS)
 
-def __getattr__(name):
-    if name in _LAZY_SUBMODULES:
-        module = importlib.import_module(f"{__name__}.{name}")
-        globals()[name] = module
-        return module
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+def __getattr__(name: str) -> object:
+    """Load a boundary export only when a caller explicitly requests it."""
+
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute_name = target
+    value = getattr(importlib.import_module(f"{__name__}.{module_name}"), attribute_name)
+    globals()[name] = value
+    return value
