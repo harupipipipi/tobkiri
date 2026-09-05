@@ -77,6 +77,10 @@ class _ChatScreenState extends State<ChatScreen>
   MobileNotificationSettings _notificationSettings =
       MobileNotificationSettings.defaults;
   List<ModelFavoriteConfig> _modelFavorites = [];
+  final Set<String> _deletingConversationIds = {};
+  final Set<String> _restoringConversationIds = {};
+  String _deletionStatus = '';
+  String? _focusConversationId;
 
   @override
   void initState() {
@@ -416,8 +420,116 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Future<void> _delete(String id) async {
-    await widget.store.delete(id);
-    if (mounted) setState(() {});
+    final conversation =
+        widget.store.conversations.where((item) => item.id == id).firstOrNull;
+    if (conversation == null || _deletingConversationIds.contains(id)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('「${conversation.title}」を削除しますか？'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'この端末の履歴から「最近削除したチャット」へ移動します。'
+            'PC上の会話やリモート履歴は削除されません。後から復元できます。',
+          ),
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('最近削除したチャットへ移動'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _deletingConversationIds.add(id);
+      _deletionStatus = '「${conversation.title}」を移動しています';
+    });
+    try {
+      final result = await widget.store.delete(id);
+      if (!mounted) return;
+      final activeTitle = result.wasActive ? widget.store.active?.title : null;
+      final focusId = result.wasActive ? result.nextActiveId : null;
+      setState(() {
+        _deletingConversationIds.remove(id);
+        _deletionStatus = activeTitle == null
+            ? '「${conversation.title}」を最近削除したチャットへ移動しました'
+            : '「${conversation.title}」を最近削除したチャットへ移動し、'
+                '「$activeTitle」を選択しました';
+        _focusConversationId = focusId;
+      });
+      _clearConversationFocusRequestAfterFrame(focusId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('「${conversation.title}」を移動しました'),
+          duration: const Duration(seconds: 10),
+          action: SnackBarAction(
+            label: '元に戻す',
+            onPressed: () => unawaited(_restore(id)),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _deletingConversationIds.remove(id);
+        _deletionStatus = '「${conversation.title}」を削除できませんでした。'
+            '元の会話と選択を保持しています';
+        _focusConversationId = id;
+      });
+      _clearConversationFocusRequestAfterFrame(id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('保存できなかったため、チャットを削除しませんでした')),
+      );
+    }
+  }
+
+  Future<void> _restore(String id) async {
+    final conversation = widget.store.deletedConversations
+        .where((item) => item.id == id)
+        .firstOrNull;
+    if (conversation == null || _restoringConversationIds.contains(id)) return;
+    setState(() {
+      _restoringConversationIds.add(id);
+      _deletionStatus = '「${conversation.title}」を復元しています';
+    });
+    try {
+      await widget.store.restore(id);
+      if (!mounted) return;
+      setState(() {
+        _restoringConversationIds.remove(id);
+        _deletionStatus = '「${conversation.title}」を復元して選択しました';
+        _focusConversationId = id;
+      });
+      _clearConversationFocusRequestAfterFrame(id);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('「${conversation.title}」を復元しました')));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _restoringConversationIds.remove(id);
+        _deletionStatus = '「${conversation.title}」を復元できませんでした';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('保存できなかったため、チャットを復元できませんでした')),
+      );
+    }
+  }
+
+  void _clearConversationFocusRequestAfterFrame(String? id) {
+    if (id == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _focusConversationId != id) return;
+      setState(() => _focusConversationId = null);
+    });
   }
 
   Future<void> _pin(String id) async {
@@ -1915,6 +2027,7 @@ class _ChatScreenState extends State<ChatScreen>
               spaces: _spaces,
               activeSpaceId: _activeSpaceId,
               conversations: widget.store.conversations,
+              deletedConversations: widget.store.deletedConversations,
               pcConversations: _pcConversations,
               loadingPc: _loadingPc,
               activeId: _displayActiveId(),
@@ -1931,6 +2044,11 @@ class _ChatScreenState extends State<ChatScreen>
                 _select(id);
               },
               onDelete: _delete,
+              onRestore: _restore,
+              deletingIds: _deletingConversationIds,
+              restoringIds: _restoringConversationIds,
+              deletionStatus: _deletionStatus,
+              focusConversationId: _focusConversationId,
               onRename: _rename,
               onPin: _pin,
               onReconnectSpace: () {
