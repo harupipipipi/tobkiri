@@ -480,9 +480,17 @@ class PackVMLifecycleV4:
                 ):
                     raise ValueError("PackVM failed-provision cleanup is already bound")
                 source["cleanup_operation_id"] = operation_id
-                proof = dict(source["recovery_proof"])
                 plan_digest = str(source["plan_digest"])
-                mode = "failed_provision"
+                if self._provisioner.state_path.exists():
+                    # A preflight failure may coexist with an older, fully
+                    # authenticated instance.  Its explicit deletion is the
+                    # ordinary attested cleanup ceremony; failed-provision
+                    # proof remains reserved for an orphan with no state.
+                    proof = None
+                    mode = "attested"
+                else:
+                    proof = dict(source["recovery_proof"])
+                    mode = "failed_provision"
             elif not self._provisioner.state_path.exists():
                 # A Launcher restart rotates the authenticated panel session,
                 # so the new UI cannot read the prior session's operation.

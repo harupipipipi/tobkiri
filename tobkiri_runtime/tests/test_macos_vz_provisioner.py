@@ -357,6 +357,61 @@ def test_failed_cleanup_binding_can_be_retried() -> None:
     )
 
 
+def test_failed_source_with_authenticated_state_uses_attested_cleanup(
+    tmp_path: Path,
+) -> None:
+    """Keep authenticated-state cleanup out of orphan recovery."""
+
+    cleaned = threading.Event()
+
+    class Provisioner:
+        state_path = tmp_path / "packvm-vz-attestation.json"
+
+        def doctor(self) -> SimpleNamespace:
+            return SimpleNamespace(instance=macos_vz_provisioner.VZ_INSTANCE)
+
+        def cleanup(self, _confirmation: str) -> None:
+            cleaned.set()
+
+        def cleanup_failed_provision(
+            self, _confirmation: str, _proof: dict[str, object]
+        ) -> dict[str, object]:
+            raise AssertionError("authenticated state must use ordinary cleanup")
+
+    provisioner = Provisioner()
+    provisioner.state_path.write_text("authenticated-state", encoding="utf-8")
+    lifecycle = PackVMLifecycleV4(provisioner=provisioner)  # type: ignore[arg-type]
+    session_id = "panel-session"
+    source_id = "11111111-1111-1111-1111-111111111111"
+    cleanup_id = "22222222-2222-2222-2222-222222222222"
+    with lifecycle._journal_transaction():
+        lifecycle._operations[source_id] = {
+            "operation_id": source_id,
+            "operation_kind": "provision",
+            "state": "failed",
+            "session_digest": _digest(session_id.encode()),
+            "plan_digest": _digest(b"plan"),
+            "recovery_proof": {"untrusted_by_provisioner": True},
+            "updated_unix": 1,
+        }
+        lifecycle._persist_operations()
+
+    queued = lifecycle.cleanup(
+        {
+            "confirmation": (
+                f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+                f"{macos_vz_provisioner.VZ_INSTANCE}"
+            ),
+            "operation_id": cleanup_id,
+            "source_operation_id": source_id,
+        },
+        session_id=session_id,
+    )
+
+    assert queued["cleanup_mode"] == "attested"
+    assert cleaned.wait(timeout=2)
+
+
 @pytest.fixture
 def provisioner_fixture(tmp_path: Path) -> tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path]:
     """Build tiny verified inputs without a VM image download or VZ helper."""
@@ -469,6 +524,43 @@ def attested_provisioner(
     return provisioner, manifest, root
 
 
+def _write_failed_recovery(
+    provisioner: MacOSVZProvisioner,
+    manifest: MacOSVZAssetManifest,
+) -> tuple[Path, dict[str, object]]:
+    """Create one signed tiny orphan fixture and return its public proof."""
+
+    provisioner._ensure_state_root()
+    root = (
+        provisioner.state_path.parent
+        / "instances"
+        / macos_vz_provisioner.VZ_INSTANCE
+    )
+    root.mkdir(mode=0o700)
+    _private_file(root / "partial", b"orphan")
+    recovery: dict[str, object] = {
+        "version": macos_vz_provisioner.VZ_STATE_VERSION,
+        "backend_id": macos_vz_provisioner.PACKVM_BACKEND_ID,
+        "instance": macos_vz_provisioner.VZ_INSTANCE,
+        "session_digest": _digest(b"session"),
+        "plan_digest": _digest(b"plan"),
+        "ceremony_nonce_digest": _digest(b"nonce"),
+        "config_digest": manifest.config_digest,
+        "image_digest": manifest.image_digest,
+        "guest_runner_digest": manifest.agent_digest,
+        "host_build_digest": manifest.helper_digest,
+        "instance_root": str(root),
+        "instance_root_device": root.stat().st_dev,
+        "instance_root_inode": root.stat().st_ino,
+        **provisioner.recovery_identity(),
+    }
+    macos_vz_provisioner._atomic_private_json(
+        provisioner.recovery_path,
+        provisioner._signed_recovery(recovery),
+    )
+    return root, recovery
+
+
 def test_stopped_instance_remains_authenticated_and_can_be_cleaned(
     attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
 ) -> None:
@@ -540,9 +632,11 @@ def test_lifecycle_rechecks_state_after_acquiring_mutation_lock(
 
     @contextmanager
     def gate_after_state_rotation(
-        name: str, binding: dict[str, str | int],
+        name: str,
+        binding: dict[str, str | int],
+        **options: bool,
     ) -> Iterator[None]:
-        with gate(name, binding):
+        with gate(name, binding, **options):
             updated = provisioner._load_state()
             updated["created_unix"] = 123
             provisioner._write_attested_state(updated)
@@ -588,6 +682,270 @@ def test_operation_gate_adopts_only_an_exact_stale_owner_claim(
         claim = json.loads(provisioner.mutation_claim_path.read_text())
         assert claim["owner_pid"] == os.getpid()
 
+    assert not provisioner.mutation_claim_path.exists()
+
+
+def test_preflight_provision_failure_does_not_strand_owner_claim(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """Only failures with orphan recovery evidence retain a provision claim."""
+
+    provisioner, _manifest, _root = attested_provisioner
+    binding = {
+        "session_digest": _digest(b"session"),
+        "plan_digest": _digest(b"plan"),
+        "ceremony_nonce_digest": _digest(b"nonce"),
+    }
+
+    with pytest.raises(ValueError, match="already provisioned"):
+        with provisioner.operation_gate(
+            "provision", binding, preserve_claim_on_error=True
+        ):
+            raise ValueError("PackVM VZ is already provisioned")
+
+    assert not provisioner.recovery_path.exists()
+    assert not provisioner.mutation_claim_path.exists()
+
+
+def test_invalid_recovery_does_not_preserve_failed_provision_claim(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """Existence alone is not enough to retain a failed mutation owner."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    binding = {
+        "session_digest": _digest(b"session"),
+        "plan_digest": _digest(b"plan"),
+        "ceremony_nonce_digest": _digest(b"nonce"),
+    }
+
+    with pytest.raises(ValueError, match="failed after invalid evidence"):
+        with provisioner.operation_gate(
+            "provision", binding, preserve_claim_on_error=True
+        ):
+            _private_file(provisioner.recovery_path, b"{}")
+            raise ValueError("failed after invalid evidence")
+
+    assert provisioner.recovery_path.exists()
+    assert not provisioner.mutation_claim_path.exists()
+
+
+def test_cleanup_adopts_stale_preflight_claim_for_authenticated_instance(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit attested cleanup can retire a legacy preflight owner claim."""
+
+    provisioner, _manifest, root = attested_provisioner
+    binding = {
+        "session_digest": _digest(b"session"),
+        "plan_digest": _digest(b"new plan"),
+        "ceremony_nonce_digest": _digest(b"nonce"),
+    }
+    provisioner.mutation_claim_path.parent.mkdir(
+        parents=True, mode=0o700, exist_ok=True
+    )
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": binding,
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        macos_vz_provisioner, "_process_is_alive", lambda _pid: False
+    )
+
+    provisioner.cleanup(
+        f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+        f"{macos_vz_provisioner.VZ_INSTANCE}"
+    )
+
+    assert not root.exists()
+    assert not provisioner.state_path.exists()
+    assert not provisioner.mutation_claim_path.exists()
+
+
+def test_cleanup_rejects_live_preflight_claim(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """An active provision owner still fences explicit attested cleanup."""
+
+    provisioner, _manifest, root = attested_provisioner
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": os.getpid(),
+                "binding": {
+                    "session_digest": _digest(b"session"),
+                    "plan_digest": _digest(b"plan"),
+                    "ceremony_nonce_digest": _digest(b"nonce"),
+                },
+            }
+        ).encode(),
+    )
+
+    with pytest.raises(ValueError, match="unresolved owner claim"):
+        provisioner.cleanup(
+            f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+            f"{macos_vz_provisioner.VZ_INSTANCE}"
+        )
+
+    assert root.exists()
+    assert provisioner.state_path.exists()
+    assert provisioner.mutation_claim_path.exists()
+
+
+@pytest.mark.parametrize("owner_pid", [None, True, 0, -1, "123"])
+def test_cleanup_rejects_malformed_preflight_claim_owner(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    owner_pid: object,
+) -> None:
+    """Malformed durable owner identity is unresolved, never assumed dead."""
+
+    provisioner, _manifest, root = attested_provisioner
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": owner_pid,
+                "binding": {
+                    "session_digest": _digest(b"session"),
+                    "plan_digest": _digest(b"plan"),
+                    "ceremony_nonce_digest": _digest(b"nonce"),
+                },
+            }
+        ).encode(),
+    )
+
+    with pytest.raises(ValueError, match="unresolved owner claim"):
+        provisioner.cleanup(
+            f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+            f"{macos_vz_provisioner.VZ_INSTANCE}"
+        )
+
+    assert root.exists()
+    assert provisioner.state_path.exists()
+    assert provisioner.mutation_claim_path.exists()
+
+
+def test_failed_provision_cleanup_rejects_missing_owner_claim(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """Signed orphan proof cannot fabricate the durable mutation owner."""
+
+    provisioner, manifest, _base = provisioner_fixture
+    root, proof = _write_failed_recovery(provisioner, manifest)
+
+    with pytest.raises(ValueError, match="recovery claim is unavailable"):
+        provisioner.cleanup_failed_provision(
+            (
+                f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+                f"{macos_vz_provisioner.VZ_INSTANCE}"
+            ),
+            proof,
+        )
+
+    assert root.exists()
+    assert provisioner.recovery_path.exists()
+
+
+def test_failed_provision_cleanup_rejects_mismatched_owner_claim(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Orphan cleanup cannot adopt a claim from a different failed ceremony."""
+
+    provisioner, manifest, _base = provisioner_fixture
+    root, proof = _write_failed_recovery(provisioner, manifest)
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": {
+                    "session_digest": proof["session_digest"],
+                    "plan_digest": _digest(b"other-plan"),
+                    "ceremony_nonce_digest": proof["ceremony_nonce_digest"],
+                },
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        macos_vz_provisioner, "_process_is_alive", lambda _pid: False
+    )
+
+    with pytest.raises(ValueError, match="unresolved owner claim"):
+        provisioner.cleanup_failed_provision(
+            (
+                f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+                f"{macos_vz_provisioner.VZ_INSTANCE}"
+            ),
+            proof,
+        )
+
+    assert root.exists()
+    assert provisioner.recovery_path.exists()
+
+
+def test_failed_provision_cleanup_adopts_exact_stale_owner_claim(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact signed orphan proof may recover only its stale durable claim."""
+
+    provisioner, manifest, _base = provisioner_fixture
+    root, proof = _write_failed_recovery(provisioner, manifest)
+    binding = {
+        field: proof[field]
+        for field in (
+            "session_digest",
+            "plan_digest",
+            "ceremony_nonce_digest",
+        )
+    }
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": binding,
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        macos_vz_provisioner, "_process_is_alive", lambda _pid: False
+    )
+
+    result = provisioner.cleanup_failed_provision(
+        (
+            f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+            f"{macos_vz_provisioner.VZ_INSTANCE}"
+        ),
+        proof,
+    )
+
+    assert result == {"missing": False}
+    assert not root.exists()
+    assert not provisioner.recovery_path.exists()
     assert not provisioner.mutation_claim_path.exists()
 
 

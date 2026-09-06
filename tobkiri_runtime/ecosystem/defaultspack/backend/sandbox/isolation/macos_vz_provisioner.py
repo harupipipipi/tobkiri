@@ -552,6 +552,8 @@ class MacOSVZProvisioner:
         binding: Mapping[str, str | int],
         *,
         recover_claim: bool = False,
+        recover_stale_claim_for_cleanup: bool = False,
+        require_existing_claim: bool = False,
         preserve_claim_on_error: bool = False,
         retain_claim_on_success: bool = False,
     ) -> Iterator[None]:
@@ -579,20 +581,45 @@ class MacOSVZProvisioner:
                 stale_recovery = (
                     recover_claim
                     and _claim_binding_equal(existing, claim)
+                    and _valid_process_id(existing.get("owner_pid"))
                     and not _process_is_alive(existing.get("owner_pid"))
                 )
-                if not same_owner and not stale_recovery:
+                stale_attested_cleanup = (
+                    recover_stale_claim_for_cleanup
+                    and operation == "cleanup"
+                    and existing.get("version") == 1
+                    and existing.get("operation") == "provision"
+                    and existing.get("instance") == VZ_INSTANCE
+                    and _valid_process_id(existing.get("owner_pid"))
+                    and not _process_is_alive(existing.get("owner_pid"))
+                    and not self._failed_provision_claim_is_recoverable(existing)
+                )
+                if (
+                    not same_owner
+                    and not stale_recovery
+                    and not stale_attested_cleanup
+                ):
                     raise ValueError("PackVM VZ mutation has an unresolved owner claim")
-                if stale_recovery:
+                if stale_recovery or stale_attested_cleanup:
                     _atomic_private_json(self.mutation_claim_path, claim)
             else:
+                if require_existing_claim:
+                    raise ValueError("PackVM VZ mutation recovery claim is unavailable")
                 _atomic_private_json(self.mutation_claim_path, claim)
             yield
             succeeded = True
         finally:
             if locked:
+                # A failed provision owns recoverable mutable state only after
+                # the signed recovery record exists.  Preflight failures (for
+                # example an already-provisioned instance) must not strand an
+                # owner claim that blocks the explicit cleanup ceremony.
+                preserve_failed_claim = (
+                    preserve_claim_on_error
+                    and self._failed_provision_claim_is_recoverable(claim)
+                )
                 should_remove = (succeeded and not retain_claim_on_success) or (
-                    not succeeded and not preserve_claim_on_error
+                    not succeeded and not preserve_failed_claim
                 )
                 if should_remove:
                     current = _read_json_if_present(self.mutation_claim_path)
@@ -600,6 +627,29 @@ class MacOSVZProvisioner:
                         self.mutation_claim_path.unlink(missing_ok=True)
                 _unlock(descriptor)
             os.close(descriptor)
+
+    def _failed_provision_claim_is_recoverable(
+        self, claim: Mapping[str, Any]
+    ) -> bool:
+        """Return whether signed orphan evidence is bound to this claim."""
+
+        if (
+            claim.get("version") != 1
+            or claim.get("operation") != "provision"
+            or claim.get("instance") != VZ_INSTANCE
+        ):
+            return False
+        try:
+            recovery = self._load_recovery()
+            expected = {
+                "version": 1,
+                "operation": "provision",
+                "instance": VZ_INSTANCE,
+                "binding": _recovery_binding(recovery),
+            }
+        except (OSError, ValueError):
+            return False
+        return _claim_binding_equal(claim, expected)
 
     def recovery_identity(self) -> dict[str, int | str]:
         """Return non-secret stable state-root identity for operation recovery."""
@@ -1277,21 +1327,11 @@ class MacOSVZProvisioner:
             raise ValueError(f"PackVM cleanup requires exact confirmation: {expected}")
         state = self._load_state()
         with self.operation_gate(
-            "cleanup", {"attestation_digest": str(state["attestation_digest"])}
+            "cleanup",
+            {"attestation_digest": str(state["attestation_digest"])},
+            recover_stale_claim_for_cleanup=True,
         ):
-            self._assert_state_current(state)
-            self._require_manifest()
-            # Cleanup authenticates ownership of the old instance, not its
-            # ability to execute under the newly installed release.
-            for key, value in self.recovery_identity().items():
-                if key != "vz_provisioner_digest" and state.get(key) != value:
-                    raise ValueError(f"PackVM VZ {key} changed")
-            self._remove_empty_domains_root()
-            self._remove_exact_instance(Path(str(state["instance_root"])), state)
-            self._audit("deleted", str(state["attestation_digest"]))
-            self.state_path.unlink(missing_ok=True)
-            self.recovery_path.unlink(missing_ok=True)
-            (self._state_dir / "packvm-vz-attestation.key").unlink(missing_ok=True)
+            self._cleanup_authenticated_instance(state)
 
     def cleanup_failed_provision(
         self, confirmation: str, expected_proof: Mapping[str, Any]
@@ -1308,12 +1348,32 @@ class MacOSVZProvisioner:
         instance_root = Path(str(recovery["instance_root"]))
         bound_recovery = self._bind_legacy_empty_recovery_root(instance_root, recovery)
         with self.operation_gate(
-            "provision", _recovery_binding(expected_proof), recover_claim=True
+            "provision",
+            _recovery_binding(expected_proof),
+            recover_claim=True,
+            require_existing_claim=True,
         ):
             self._remove_exact_instance(instance_root, bound_recovery)
             self.recovery_path.unlink(missing_ok=True)
             self._audit("failed_provision_deleted", None)
         return {"missing": False}
+
+    def _cleanup_authenticated_instance(self, state: Mapping[str, Any]) -> None:
+        """Remove one authenticated instance while its lifecycle gate is held."""
+
+        self._assert_state_current(state)
+        self._require_manifest()
+        # Cleanup authenticates ownership of the old instance, not its ability
+        # to execute under the newly installed release.
+        for key, value in self.recovery_identity().items():
+            if key != "vz_provisioner_digest" and state.get(key) != value:
+                raise ValueError(f"PackVM VZ {key} changed")
+        self._remove_empty_domains_root()
+        self._remove_exact_instance(Path(str(state["instance_root"])), state)
+        self._audit("deleted", str(state["attestation_digest"]))
+        self.state_path.unlink(missing_ok=True)
+        self.recovery_path.unlink(missing_ok=True)
+        (self._state_dir / "packvm-vz-attestation.key").unlink(missing_ok=True)
 
     def recover_provision_operation(self, expected_proof: Mapping[str, Any]) -> PackVMDoctor:
         """Reconcile a restart only when the exact state proof still verifies."""
@@ -2856,8 +2916,9 @@ def _claim_binding_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> b
 
 
 def _process_is_alive(value: object) -> bool:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if not _valid_process_id(value):
         return False
+    assert isinstance(value, int) and not isinstance(value, bool)
     try:
         os.kill(value, 0)
     except ProcessLookupError:
@@ -2865,6 +2926,12 @@ def _process_is_alive(value: object) -> bool:
     except PermissionError:
         return True
     return True
+
+
+def _valid_process_id(value: object) -> bool:
+    """Accept only a positive integer owner PID from a durable claim."""
+
+    return not isinstance(value, bool) and isinstance(value, int) and value > 0
 
 
 def _digest_bytes(value: bytes) -> str:
