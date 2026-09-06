@@ -114,15 +114,15 @@ pub(crate) struct RuntimeLaunchContribution {
     pub entrypoint: String,
 }
 
-/// Recoverable compatibility state for an activation created before the
-/// ResolvedPlan launch selector became available.
+/// Recoverable state when an internally valid activation cannot authorize the
+/// current signed Pack closure and must be explicitly resolved again.
 #[derive(Debug)]
 pub(crate) struct ProfileReresolutionRequired;
 
 impl fmt::Display for ProfileReresolutionRequired {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(
-            "active ResolvedPlan has no Application launch contribution; profile reactivation or re-resolution is required",
+            "active Profile cannot authorize the current packaged artifacts; profile reactivation or re-resolution is required",
         )
     }
 }
@@ -141,6 +141,12 @@ impl fmt::Display for ShellReconfirmationRequired {
 }
 
 impl std::error::Error for ShellReconfirmationRequired {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReconfirmationKind {
+    Profile,
+    Shell,
+}
 
 impl ProfileReresolutionRequired {
     pub(crate) const CODE: &'static str = "PROFILE_RERESOLUTION_REQUIRED";
@@ -325,37 +331,69 @@ impl SignedApplicationResolver {
         #[cfg(test)]
         let catalog = fixture_catalog_with_shell_variant(catalog, &bundle_root, &bundle_lock)?;
         let active = select_profile_authority(config, &catalog, &bundle_root, &bundle_lock)?;
-        let (selected, reconfirmation) = match validate_profile(&active.profile, &catalog, &active)
-        {
-            Ok(_) => (active, None),
-            Err(error)
-                if error
-                    .downcast_ref::<ShellReconfirmationRequired>()
-                    .is_some() =>
-            {
-                let candidate =
-                    select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
-                if candidate.profile_id != active.profile_id
-                    || candidate.base_pack_id != active.base_pack_id
-                    || candidate.shell_provider_id != active.shell_provider_id
-                    || candidate.shell_pack_id != active.shell_pack_id
-                    || candidate.application_pack_id != active.application_pack_id
+        let (mut selected, mut reconfirmation, mut previous_launch) =
+            match validate_profile(&active.profile, &catalog, &active) {
+                Ok(_) => (active, None, None),
+                Err(error)
+                    if error
+                        .downcast_ref::<ShellReconfirmationRequired>()
+                        .is_some() =>
                 {
-                    bail!("updated Shell requires an unchanged Base and Application selection");
+                    let candidate =
+                        select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
+                    ensure_reconfirmation_selection_is_stable(&active, &candidate)?;
+                    (
+                        candidate,
+                        Some(ReconfirmationKind::Shell),
+                        Some(
+                            active
+                                .launch_contribution
+                                .context("active launch selector is missing")?,
+                        ),
+                    )
                 }
-                (
-                    candidate,
-                    Some(
-                        active
-                            .launch_contribution
-                            .context("active launch selector is missing")?,
-                    ),
-                )
+                Err(error)
+                    if error
+                        .downcast_ref::<ProfileReresolutionRequired>()
+                        .is_some() =>
+                {
+                    let candidate =
+                        select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
+                    ensure_reconfirmation_selection_is_stable(&active, &candidate)?;
+                    (
+                        candidate,
+                        Some(ReconfirmationKind::Profile),
+                        active.launch_contribution,
+                    )
+                }
+                Err(error) => return Err(error),
+            };
+        let mut selected_variant = validate_profile(&selected.profile, &catalog, &selected)?;
+        if let Err(error) =
+            validate_profile_pack_closure(&selected, &catalog, &bundle_root, &bundle_lock)
+        {
+            if reconfirmation.is_some()
+                || error
+                    .downcast_ref::<ProfileReresolutionRequired>()
+                    .is_none()
+            {
+                return Err(error);
             }
-            Err(error) => return Err(error),
-        };
-        let selected_variant = validate_profile(&selected.profile, &catalog, &selected)?;
-        validate_profile_pack_closure(&selected, &catalog, &bundle_root, &bundle_lock)?;
+            let candidate =
+                select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
+            ensure_reconfirmation_selection_is_stable(&selected, &candidate)?;
+            previous_launch = selected.launch_contribution;
+            selected = candidate;
+            selected_variant = validate_profile(&selected.profile, &catalog, &selected)?;
+            if let Err(candidate_error) =
+                validate_profile_pack_closure(&selected, &catalog, &bundle_root, &bundle_lock)
+            {
+                bail!(
+                    "current signed bootstrap Profile Pack closure is invalid: {candidate_error:#}"
+                );
+            }
+            reconfirmation = Some(ReconfirmationKind::Profile);
+        }
 
         let application_path =
             bundle_pack_path(&bundle_root, &bundle_lock, &selected.application_pack_id)?;
@@ -369,7 +407,7 @@ impl SignedApplicationResolver {
             &selected.application_pack_id,
             selected.application_artifact_digest.as_deref(),
         )?;
-        if let Some(previous) = reconfirmation.as_ref() {
+        if let Some(previous) = previous_launch.as_ref() {
             validate_application_selector(previous, selected_variant, &application_pack)?;
             if previous.relative_path != selected_variant.artifact_ref
                 || previous.entrypoint != selected_variant.entrypoint
@@ -391,7 +429,7 @@ impl SignedApplicationResolver {
             verify_pack_artifact_index(&pack_root, &bundle_root, &root_pack_id)?;
 
         let catalog_revision = crate::presentation::catalog_revision(&catalog)?;
-        if reconfirmation.is_some() {
+        if let Some(kind) = reconfirmation {
             #[cfg(target_os = "macos")]
             if selected_variant.platform == "macos" {
                 let artifact = pack_root
@@ -408,7 +446,10 @@ impl SignedApplicationResolver {
             }
             // All new packaged closure and artifact checks above must succeed
             // before exposing setup. The candidate is never execution authority.
-            return Err(ShellReconfirmationRequired.into());
+            return Err(match kind {
+                ReconfirmationKind::Profile => ProfileReresolutionRequired.into(),
+                ReconfirmationKind::Shell => ShellReconfirmationRequired.into(),
+            });
         }
         Ok(ApplicationAuthority {
             pack_root,
@@ -427,6 +468,23 @@ impl SignedApplicationResolver {
             launch_contribution: selected.launch_contribution,
         })
     }
+}
+
+fn ensure_reconfirmation_selection_is_stable(
+    active: &SelectedProfileAuthority,
+    candidate: &SelectedProfileAuthority,
+) -> Result<()> {
+    if candidate.profile_id != active.profile_id
+        || candidate.base_pack_id != active.base_pack_id
+        || candidate.shell_provider_id != active.shell_provider_id
+        || candidate.shell_pack_id != active.shell_pack_id
+        || candidate.application_pack_id != active.application_pack_id
+    {
+        bail!(
+            "updated bundle requires an unchanged Profile, Base, Shell, and Application selection"
+        );
+    }
+    Ok(())
 }
 
 fn ensure_materialized_pack_selected(
@@ -1191,12 +1249,21 @@ fn validate_profile_pack_closure(
                 .and_then(|item| value_str(item, "/artifact_digest"))
         };
         if let Some(expected) = expected_artifact_digest {
-            if !valid_digest(expected)
-                || value_str(&pack, "/pack/artifact_digest") != Some(expected)
-            {
-                bail!("selected Profile Pack artifact digest differs from its authority");
-            }
+            validate_selected_pack_artifact_digest(
+                expected,
+                value_str(&pack, "/pack/artifact_digest"),
+            )?;
         }
+    }
+    Ok(())
+}
+
+fn validate_selected_pack_artifact_digest(expected: &str, actual: Option<&str>) -> Result<()> {
+    if !valid_digest(expected) || !actual.is_some_and(valid_digest) {
+        bail!("selected Profile Pack artifact digest is invalid");
+    }
+    if actual != Some(expected) {
+        return Err(ProfileReresolutionRequired.into());
     }
     Ok(())
 }
@@ -4092,6 +4159,27 @@ mod tests {
             .downcast_ref::<ProfileReresolutionRequired>()
             .is_none());
         assert!(malformed.to_string().contains("malformed"));
+    }
+
+    #[test]
+    fn changed_valid_pack_artifact_requires_profile_reresolution() {
+        let expected = format!("sha256:{}", "a".repeat(64));
+        let changed = format!("sha256:{}", "b".repeat(64));
+
+        validate_selected_pack_artifact_digest(&expected, Some(&expected)).unwrap();
+        let changed_error =
+            validate_selected_pack_artifact_digest(&expected, Some(&changed)).unwrap_err();
+        assert!(changed_error
+            .downcast_ref::<ProfileReresolutionRequired>()
+            .is_some());
+
+        let malformed_error =
+            validate_selected_pack_artifact_digest(&expected, Some("sha256:not-a-digest"))
+                .unwrap_err();
+        assert!(malformed_error
+            .downcast_ref::<ProfileReresolutionRequired>()
+            .is_none());
+        assert!(malformed_error.to_string().contains("digest is invalid"));
     }
 
     #[test]

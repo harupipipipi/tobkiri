@@ -77,17 +77,22 @@ fn verified_active_application_authority(
     }
     match crate::defaultspack_authority::resolve(config) {
         Ok(authority) => Ok(Some(authority)),
-        Err(error)
-            if error
-                .downcast_ref::<crate::defaultspack_authority::ShellReconfirmationRequired>()
-                .is_some() =>
-        {
+        Err(error) if requires_setup_reconfirmation(&error) => {
             // The Python Host must verify and reconfirm the successor before
             // publishing any active execution identity or contributions.
             Ok(None)
         }
         Err(error) => Err(error).context("failed to resolve durable active Application authority"),
     }
+}
+
+fn requires_setup_reconfirmation(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<crate::defaultspack_authority::ShellReconfirmationRequired>()
+        .is_some()
+        || error
+            .downcast_ref::<crate::defaultspack_authority::ProfileReresolutionRequired>()
+            .is_some()
 }
 
 /// Publish contributions only from the independently verified active Application.
@@ -940,6 +945,18 @@ mod tests {
         assert!(envs.contains(&("PYTHONIOENCODING", "utf-8")));
         assert!(envs.contains(&("PYTHONUNBUFFERED", "1")));
         assert!(envs.contains(&("PYTHONDONTWRITEBYTECODE", "1")));
+    }
+
+    #[test]
+    fn only_typed_reconfirmation_states_fall_back_to_bootstrap() {
+        let shell = anyhow::Error::new(crate::defaultspack_authority::ShellReconfirmationRequired);
+        let profile =
+            anyhow::Error::new(crate::defaultspack_authority::ProfileReresolutionRequired);
+        let malformed = anyhow::anyhow!("active Profile pointer is malformed");
+
+        assert!(requires_setup_reconfirmation(&shell));
+        assert!(requires_setup_reconfirmation(&profile));
+        assert!(!requires_setup_reconfirmation(&malformed));
     }
 
     #[test]
