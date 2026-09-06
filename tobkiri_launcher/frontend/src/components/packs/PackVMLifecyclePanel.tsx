@@ -49,6 +49,18 @@ function safeUserError(error: unknown, fallback: string): string {
   return message || fallback;
 }
 
+function savedOperationCannotResume(error: unknown): boolean {
+  const data = error && typeof error === 'object' && 'data' in error
+    ? (error as {data?: unknown}).data
+    : null;
+  const code = data && typeof data === 'object' && 'code' in data
+    ? (data as {code?: unknown}).code
+    : null;
+  if (code === 'INVALID_REQUEST') return true;
+  const message = error instanceof Error ? error.message : '';
+  return /operation_id is unknown|unknown.*operation|operation.*unknown|operation.*not found|not found|stale or tampered|session.*(?:mismatch|invalid)|different session/i.test(message);
+}
+
 function digestRow(label: string, value: string): ReactNode {
   return (
     <div>
@@ -215,6 +227,7 @@ export function PackVMLifecyclePanel() {
           : 'PackVM instance was cleaned up.',
         attestation_digest: null,
       });
+      clearPackVMOperationId();
       setPlan(null);
       setConsent(null);
       setCleanupRequested(false);
@@ -228,8 +241,7 @@ export function PackVMLifecyclePanel() {
       const nextOperation = await fetchPackVMProgress(operationId);
       await acceptOperation(nextOperation, operationId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      if (/operation_id is unknown|unknown.*operation|operation.*unknown|operation.*not found|not found|stale or tampered|session.*(?:mismatch|invalid)|different session/i.test(message)) {
+      if (savedOperationCannotResume(error)) {
         clearPackVMOperationId();
         setPlan(null);
         setConsent(null);
@@ -382,14 +394,19 @@ export function PackVMLifecyclePanel() {
   };
 
   const operationStatus = operation
-    ? `${operation.operation_kind === 'cleanup' ? 'Cleanup' : 'Provisioning'}: ${operationStatusLabel(operation.state)}`
+    ? `${operation.operation_kind === 'cleanup' ? 'Cleanup' : 'Provisioning'}: ${operationStatusLabel(operation.state, operation.operation_kind)}`
     : null;
   const cleanupConfirmation = doctor ? cleanupConfirmationForInstance(doctor.instance) : '';
   const hasActiveOperation = Boolean(operation && operationIsPolling(operation.state));
   const canPrepareNewPlan = Boolean(
     !doctor?.ready
     && !hasActiveOperation
-    && (!operation || operation.state === 'failed' || operation.state === 'cancelled'),
+    && (
+      !operation
+      || operation.state === 'failed'
+      || operation.state === 'cancelled'
+      || (operation.operation_kind === 'cleanup' && operation.state === 'succeeded')
+    ),
   );
   const canPrepare = !doctor?.ready && !hasActiveOperation && !pendingAction;
   const planIsAvailable = plan?.runtime_path_status === 'ready'
@@ -610,7 +627,7 @@ export function PackVMLifecyclePanel() {
                         ? 'rounded-md border border-emerald-300 bg-emerald-50 p-2 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300'
                         : 'rounded-md border border-border p-2'}
                   >
-                    {operationStatusLabel(state)}
+                    {operationStatusLabel(state, operation.operation_kind)}
                   </li>
                 ))}
               </ol>

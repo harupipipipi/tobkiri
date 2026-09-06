@@ -88,6 +88,12 @@ export function classifyPackVMRecoveryCode(error: unknown): PackVMRecoveryCode {
     : typeof error === 'string'
       ? error.toLowerCase()
       : '';
+  // A doctor result can legitimately report that a previously provisioned
+  // VM is stale because the packaged helper changed. That is a local
+  // cleanup/reprovision condition, not a Profile/catalog integrity failure.
+  if (/^packvm vz helper_digest changed\.?$/.test(text.trim())) {
+    return 'API_FAILURE';
+  }
   if (
     text.includes('digest')
     || text.includes('integrity')
@@ -379,11 +385,14 @@ export function operationIsPolling(state: ApiPackVMOperationState): boolean {
   return state === 'queued' || state === 'running';
 }
 
-export function operationStatusLabel(state: ApiPackVMOperationState): string {
+export function operationStatusLabel(
+  state: ApiPackVMOperationState,
+  operationKind: ApiPackVMOperation['operation_kind'] = 'provision',
+): string {
   switch (state) {
     case 'queued': return 'Queued';
-    case 'running': return 'Provisioning';
-    case 'succeeded': return 'Provisioned';
+    case 'running': return operationKind === 'cleanup' ? 'Cleaning up' : 'Provisioning';
+    case 'succeeded': return operationKind === 'cleanup' ? 'Cleaned up' : 'Provisioned';
     case 'failed': return 'Failed';
     case 'cancelled': return 'Cancelled';
     case 'interrupted': return 'Interrupted — restart detected';

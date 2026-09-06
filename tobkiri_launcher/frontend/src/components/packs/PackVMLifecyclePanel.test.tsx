@@ -510,6 +510,13 @@ test('PackVM GUI stops and cleans only the authenticated instance', {concurrency
   assert.match(String(bodies[1]?.operation_id), /^[0-9a-f-]{36}$/i);
   assert.doesNotMatch(surface.container.textContent ?? '', /Confirm PackVM cleanup/);
   assert.match(surface.container.textContent ?? '', /PackVM instance was cleaned up/);
+  assert.match(surface.container.textContent ?? '', /Cleanup: Cleaned up/);
+  assert.doesNotMatch(surface.container.textContent ?? '', /Cleanup: Provisioned/);
+  assert.equal(buttonWithText(surface.container, 'Prepare a new plan').disabled, false);
+  assert.equal(
+    readSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation'),
+    null,
+  );
 });
 
 test('PackVM GUI presents diagnostic severity, owner, and contribution evidence', {concurrency: false}, async () => {
@@ -584,4 +591,25 @@ test('PackVM GUI clears a tampered durable operation id after server validation 
   await settle();
   assert.equal(readSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation'), null);
   assert.match(surface.container.textContent ?? '', /could not be resumed|packvm_operation_unknown/i);
+});
+
+test('PackVM GUI retires a saved operation rejected by the current authenticated session', {concurrency: false}, async () => {
+  configureStore();
+  writeSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation', operationId);
+  installFetch(async (route) => {
+    assert.equal(route, `/api/v4/packvm/progress?operation_id=${operationId}`);
+    return new Response(JSON.stringify({
+      success: false,
+      data: {code: 'INVALID_REQUEST'},
+      error: 'The request is invalid',
+    }), {status: 400, headers: {'Content-Type': 'application/json'}});
+  });
+  assert.ok(surface);
+  await renderPanel(surface.root);
+  await settle();
+  assert.equal(
+    readSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation'),
+    null,
+  );
+  assert.match(surface.container.textContent ?? '', /The request is invalid/);
 });
