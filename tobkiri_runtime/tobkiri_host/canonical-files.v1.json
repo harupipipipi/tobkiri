@@ -27,6 +27,7 @@
     "shells.py",
     "tauri_roles.py",
     "triggers.py",
+    "wasm_component.py",
     "workspace_mutation.py"
   ]
 }
