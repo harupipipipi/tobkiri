@@ -621,12 +621,13 @@ fn resolve_verified_presentation_target(
         .iter()
         .find(|variant| variant.artifact_id == authority.launch.artifact_id)
         .context("active Profile Shell artifact handle is not in the verified catalog")?;
-    if variant.sha256.as_deref() != Some(authority.launch.artifact_digest.as_str())
-        || variant.entrypoint_sha256.as_deref() != Some(authority.launch.entrypoint_digest.as_str())
-        || variant.sha256.as_deref() != Some(launch_contribution.artifact_digest.as_str())
-        || variant.artifact_ref != launch_contribution.relative_path
-        || variant.entrypoint != launch_contribution.entrypoint
-    {
+    crate::defaultspack_authority::validate_active_shell_variant(
+        variant,
+        &launch_contribution,
+        &authority.launch.entrypoint_digest,
+        config.is_dev_workspace(),
+    )?;
+    if authority.launch.artifact_digest != launch_contribution.artifact_digest {
         bail!("active Profile Shell artifact handle differs from its signed catalog");
     }
     let artifact = resolve_artifact(config, &shell)?;

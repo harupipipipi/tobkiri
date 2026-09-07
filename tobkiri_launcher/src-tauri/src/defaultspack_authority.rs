@@ -2333,7 +2333,8 @@ fn validate_profile<'a>(
     Ok(variants[0])
 }
 
-fn validate_active_shell_variant(
+/// Bind a catalog variant to the already verified active launch contribution.
+pub(crate) fn validate_active_shell_variant(
     variant: &crate::presentation::ArtifactVariant,
     launch: &RuntimeLaunchContribution,
     executable_digest: &str,
@@ -4164,6 +4165,14 @@ mod tests {
                 true,
             )
             .unwrap();
+            unsealed_development_variant.entrypoint = "different-executable".into();
+            assert!(validate_active_shell_variant(
+                &unsealed_development_variant,
+                &launch,
+                &executable_digest,
+                true,
+            )
+            .is_err());
         }
         variant.sha256 = Some(format!("sha256:{}", "c".repeat(64)));
         assert!(
