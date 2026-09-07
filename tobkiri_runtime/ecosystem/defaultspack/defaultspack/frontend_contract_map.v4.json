@@ -4,6 +4,21 @@
   "routes": [
     {
       "method": "GET",
+      "path": "/api/chat/conversations",
+      "presentation": "conversation_list",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.list",
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "operation_id": "rumi_conversation_store_pack.conversation-resource",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/home/dashboard",
       "presentation": "broker_result",
       "targets": [

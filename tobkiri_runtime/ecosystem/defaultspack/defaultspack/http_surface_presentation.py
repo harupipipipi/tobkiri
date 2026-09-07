@@ -24,6 +24,10 @@ from .model_profile_presentation import (
     MODEL_PROFILE_LIST_TARGET,
     present_model_profiles,
 )
+from .conversation_list_presentation import (
+    CONVERSATION_LIST_TARGET,
+    present_conversation_list,
+)
 
 
 _CONVERSATION_TARGET = (
@@ -136,11 +140,11 @@ class DefaultspackHTTPPresentation:
             target.operation_id,
             target.provider_id,
             target.function_id,
-        ) == MODEL_PROFILE_LIST_TARGET:
+        ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET}:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))
             if not profile_id or payload:
-                raise ValueError("model profile listing requires captured identity")
+                raise ValueError("owner listing requires captured identity")
             return {"profile_id": profile_id, "operation": "list"}
         if not target.contribution_id.startswith("pack."):
             return dict(payload)
@@ -196,6 +200,8 @@ class DefaultspackHTTPPresentation:
 
         if binding.presentation == "model_profile_list":
             return present_model_profiles(result)
+        if binding.presentation == "conversation_list":
+            return present_conversation_list(result)
         if binding.presentation != "dynamic_pack_catalog":
             return dict(result)
         capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))

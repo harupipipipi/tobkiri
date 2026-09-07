@@ -449,12 +449,12 @@
     {
       "path": "packs/rumi_conversation_store_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:9c4ceda8129fe3a2c736e3636305c073bb88688bc4758d8fe39e26de9a024e51"
+      "digest": "sha256:7544ae95f15ad1ac407aa1c65b62ada6f7c6d0e7aa9b43b2de48b421bed333b8"
     },
     {
       "path": "packs/rumi_conversation_store_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:284d6c5023510de8c6cbd7b7debc08b6eb0b9cb129009d39cc9456a3dac65df1"
+      "digest": "sha256:ce69c7a3f5754d3110a05affb990532517e884e296b098c695b7ad4718dd34b1"
     },
     {
       "path": "packs/rumi_credential_broker_pack.executables.v4.json",
@@ -1374,7 +1374,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:1587679cbc43cd79188205dadbe20101350f77b4014b4cdbb73cdc8039ce8b63"
+      "digest": "sha256:bb431b5c73fe7dbe417cdf85af88c9b6d6374ea8b53a02419545df855b657bdf"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1434,7 +1434,7 @@
     {
       "path": "defaults.profile.v4.json",
       "kind": "profile",
-      "digest": "sha256:ffd178556e394454cde2bbcd426b3d3d9b79739caae075f9819a889a2a03b9e1"
+      "digest": "sha256:87d6253f00e3ad80f30d5ea60dc398c9efb3056d2e741a75d6caaed0a61c830b"
     }
   ]
 }

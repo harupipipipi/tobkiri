@@ -372,6 +372,34 @@ def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
+def test_history_list_reads_real_captured_store_without_mutation(
+    production_server, tmp_path: Path,
+) -> None:
+    """The full UI reads its own stored history through the real Broker."""
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+
+    store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+    store.create({"id": "history-1", "title": "History entry"}, expected_revision=0)
+    before = store.path.read_bytes()
+    server, _session, _authority = production_server
+    cookie, _csrf, _origin = _authenticate(server)
+    status, payload, _headers = _request(
+        server, "GET", _contract("GET", "/api/chat/conversations"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, payload
+    assert payload["data"] == {
+        "conversations": store.snapshot()["conversations"], "total": 1,
+    }
+    for query in ("profile_id=other", "operation=delete", "approved=true"):
+        status, payload, _headers = _request(
+            server, "GET", _contract("GET", f"/api/chat/conversations?{query}"),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 400, payload
+    assert store.path.read_bytes() == before
+
+
 def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
     production_server, tmp_path: Path,
 ) -> None:
