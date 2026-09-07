@@ -3129,8 +3129,8 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_conversation_store_pack.conversation-store.resource",
-      "implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
-      "implementation_path": "runtime/store.py",
+      "implementation_digest": "sha256:f7238f1bd17ae48657c627c8e0272857440608a6423d17f0c4ea4c7048e97aea",
+      "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
       },
@@ -3143,8 +3143,8 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
-          "implementation_path": "runtime/store.py",
+          "implementation_digest": "sha256:f7238f1bd17ae48657c627c8e0272857440608a6423d17f0c4ea4c7048e97aea",
+          "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
           },
@@ -3170,6 +3170,12 @@
           "module": "ecosystem.rumi_conversation_store_pack.runtime.store",
           "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json",
           "symbol": "create_conversation_resource"
+        },
+        {
+          "kind": "explicit-implementation-adapter",
+          "legacy_implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+          "legacy_implementation_path": "runtime/store.py",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_conversation_store_pack.conversation-store.resource.python"
@@ -10960,9 +10966,10 @@
   "source": {
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
-    "input_count": 191,
-    "input_digest": "sha256:22088c68fd4d3fd2bff4e2e1e632aca6b1fb09f1f4b887694f468d00b228de87",
+    "input_count": 192,
+    "input_digest": "sha256:0e566113492e261fc1a0b3a3789521614e07379643eb0a5ecd8c7561be176dc9",
     "input_paths": [
+      "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-manifest.json",
@@ -11156,6 +11163,11 @@
       "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/rumi.pack.v3.json"
     ],
     "inputs": [
+      {
+        "digest": "sha256:f7238f1bd17ae48657c627c8e0272857440608a6423d17f0c4ea4c7048e97aea",
+        "kind": "explicit-implementation-adapter",
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py"
+      },
       {
         "digest": "sha256:c6e3b6d22a3a86a8fe2314796951d4077ca87e19dd03d04743e172249968ea0c",
         "kind": "legacy-artifact-manifest",
@@ -11632,7 +11644,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:61615b791f3f83f8dd93dfd69796408f8a988ed81ce1017f573b3c66a4a3d45b",
+        "digest": "sha256:d2dd73919f3b6d07104fe6c1db9fcf2376571e9c0bb7cca4f24acab4106f0609",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

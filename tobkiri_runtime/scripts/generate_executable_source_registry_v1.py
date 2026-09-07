@@ -683,6 +683,9 @@ def build_registry(
     source_inputs.append(
         {"kind": "legacy-explicit-fixture", "path": _label(fixture_resolved, repository_root), "digest": _file_digest(fixture_resolved)}
     )
+    _apply_implementation_adapters(
+        records, fixture_resolved, ecosystem_root, repository_root, source_inputs
+    )
     source_inputs.sort(key=lambda item: (item["kind"], item["path"]))
     for record in records.values():
         _normalize_record(record)
@@ -699,6 +702,70 @@ def build_registry(
         },
         "packs": {key: records[key] for key in sorted(records)},
     }
+
+
+def _apply_implementation_adapters(
+    records: dict[str, dict[str, Any]],
+    fixture_path: Path,
+    ecosystem_root: Path,
+    repository_root: Path,
+    source_inputs: list[dict[str, str]],
+) -> None:
+    """Bind explicit same-owner adapters while retaining verified legacy evidence.
+
+    This is source bookkeeping, not semantic approval or runtime authority.
+    Both implementations are pinned; no v4 artifact is an input.
+    """
+    adapters = _load_json(fixture_path).get("implementation_adapters", [])
+    if not isinstance(adapters, list):
+        raise ExecutableSourceRegistryError("implementation_adapters must be a list")
+    seen: set[str] = set()
+    for adapter in adapters:
+        if not isinstance(adapter, Mapping):
+            raise ExecutableSourceRegistryError("implementation adapter is not an object")
+        function_id = adapter.get("function_id")
+        if not isinstance(function_id, str) or function_id not in records:
+            raise ExecutableSourceRegistryError("implementation adapter Function is unknown")
+        if function_id in seen:
+            raise ExecutableSourceRegistryError("duplicate implementation adapter")
+        seen.add(function_id)
+        record = records[function_id]
+        legacy = adapter.get("legacy")
+        expected = {
+            key: record[key]
+            for key in (
+                "pack_id", "owner", "contract_id", "contract_version",
+                "implementation_path", "implementation_digest",
+            )
+        }
+        expected["operation_ids"] = sorted(
+            operation["operation_id"] for operation in record["operations"]
+        )
+        if legacy != expected:
+            raise ExecutableSourceRegistryError("implementation adapter legacy identity mismatch")
+        replacement = adapter.get("implementation_path")
+        if not isinstance(replacement, str) or not replacement.strip():
+            raise ExecutableSourceRegistryError("implementation adapter path is missing")
+        pack_root = ecosystem_root / record["pack_id"]
+        implementation = _relative_runtime_path(pack_root, replacement)
+        digest = _file_digest(implementation)
+        if adapter.get("implementation_digest") != digest:
+            raise ExecutableSourceRegistryError("implementation adapter digest is stale")
+        evidence = {
+            "kind": "explicit-implementation-adapter",
+            "path": _label(fixture_path, repository_root),
+            "legacy_implementation_path": record["implementation_path"],
+            "legacy_implementation_digest": record["implementation_digest"],
+        }
+        record["source"].append(evidence)
+        for target in [record, *record["operations"]]:
+            target["implementation_path"] = implementation.relative_to(pack_root).as_posix()
+            target["implementation_digest"] = digest
+        source_inputs.append({
+            "kind": "explicit-implementation-adapter",
+            "path": _label(implementation, repository_root),
+            "digest": digest,
+        })
 
 
 def generate(

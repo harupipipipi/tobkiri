@@ -109,6 +109,7 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
         ("rumi_command_protocol_pack.catalog.read", "rumi_command_protocol_pack", "command.catalog.read", "runtime/catalog.py"),
         ("tobkiri.ui.settings.read", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.settings-read", "runtime/settings.py"),
         ("tobkiri.ui.catalog.read", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.catalog-read", "runtime/settings.py"),
+        ("rumi_conversation_store_pack.conversation-store.resource", "rumi_conversation_store_pack", "rumi_conversation_store_pack.conversation-resource", "runtime/host.py"),
     ):
         record = records[function_id]
         assert record["owner"] == pack_id
@@ -153,6 +154,56 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
         assert record["function_id"] == function_id
         implementation = ECOSYSTEM / record["pack_id"] / record["implementation_path"]
         assert implementation.is_file()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["owner", "contract_id", "implementation_digest", "operation_ids", "stale", "escape", "duplicate", "unknown"],
+)
+def test_source_registry_rejects_unbound_implementation_adapter(
+    tmp_path: Path, mutation: str,
+) -> None:
+    """Adapters cannot replace another owner, operation, or unpinned byte set."""
+    fixture = json.loads(
+        Path("tests/fixtures/legacy_executable_sources.v1.json").read_text()
+    )
+    adapter = fixture["implementation_adapters"][0]
+    if mutation in {"owner", "contract_id", "implementation_digest", "operation_ids"}:
+        adapter["legacy"][mutation] = "unrelated"
+    elif mutation == "stale":
+        adapter["implementation_digest"] = "sha256:" + "0" * 64
+    elif mutation == "escape":
+        adapter["implementation_path"] = "../outside.py"
+    elif mutation == "duplicate":
+        fixture["implementation_adapters"].append(dict(adapter))
+    else:
+        adapter["function_id"] = "unknown.function"
+    fixture_path = tmp_path / "sources.json"
+    fixture_path.write_text(json.dumps(fixture))
+    with pytest.raises(ExecutableSourceRegistryError):
+        build_registry(fixture_path=fixture_path)
+
+
+def test_source_registry_retains_adapter_predecessor_evidence() -> None:
+    """The new reader keeps the verified predecessor and hashes its own bytes."""
+    registry = build_registry()
+    record = registry["packs"][
+        "rumi_conversation_store_pack.conversation-store.resource"
+    ]
+    assert any(item["kind"] == "legacy-v3-entrypoint" for item in record["source"])
+    adapter = next(
+        item for item in record["source"]
+        if item["kind"] == "explicit-implementation-adapter"
+    )
+    assert adapter["legacy_implementation_path"] == "runtime/store.py"
+    assert adapter["legacy_implementation_digest"] == "sha256:" + hashlib.sha256(
+        (ECOSYSTEM / record["pack_id"] / "runtime/store.py").read_bytes()
+    ).hexdigest()
+    assert any(
+        item["kind"] == "explicit-implementation-adapter"
+        and item["digest"] == record["implementation_digest"]
+        for item in registry["source"]["inputs"]
+    )
 
 
 def test_source_registry_rejects_unsafe_explicit_implementation_path(
