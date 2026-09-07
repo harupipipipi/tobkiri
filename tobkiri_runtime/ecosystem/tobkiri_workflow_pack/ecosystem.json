@@ -26,7 +26,7 @@
   "pack_identity": "tobkiri:ecosystem/tobkiri_workflow_pack",
   "provenance": {
     "build_identity": "tobkiri_workflow_pack:4.0.0",
-    "content_hash": "sha256:d061bf7e09d2fdbf3df0f912efe68fe2c6482d580b18f849af0c55f4a07948b7",
+    "content_hash": "sha256:102ba424d6048109af3d3abab0462c8a0d3740c86393bebadb0b100ed54c0a8f",
     "signature": null,
     "trust_class": "local"
   },

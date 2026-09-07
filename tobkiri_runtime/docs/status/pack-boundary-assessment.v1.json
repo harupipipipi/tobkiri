@@ -409,7 +409,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-          "sha256": "412e8e25eaa60e98b0d1b10d9a8d7319059cd09123ad12c7767a5527cd690a5d"
+          "sha256": "602e5d3ee5db0853a685c0bcc34b50501426883751bc15cca9f6785eee93b91d"
         }
       ]
     },
@@ -1249,7 +1249,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/ecosystem.json",
-          "sha256": "127164eadd131cada8c15ff6a153561c41aade56458e3b1897fcf50979bd1caa"
+          "sha256": "d4ddf6d047790dd78e04a49bc08cae4bf2dd97a035e058dd70dbc35df806897b"
         }
       ]
     },
@@ -2281,7 +2281,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/ecosystem.json",
-          "sha256": "ba6d4dcf5a3810d3375cd20c6243c90b7d3b73b0ecce033d35a24c52d3e43ed6"
+          "sha256": "e65e76b76b10a655aac4a78e972ef62d82c939ae4f86eed0bdbac74118f2958b"
         }
       ]
     },
@@ -2521,7 +2521,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/ecosystem.json",
-          "sha256": "3fd9b2111d0b21655ba9d53de40a5a949667ae4b744028ed4b6ddabe86e3ad09"
+          "sha256": "46630ad199c587ea8513ecbb21f5667f9fd0513ec1574023224654860ff0a709"
         }
       ]
     },
@@ -2545,7 +2545,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/ecosystem.json",
-          "sha256": "90bdc9940d82fe582309a26e98799b169b722e09bdec6b91a1c4309b7ea1460c"
+          "sha256": "63ce080a69cdf5fae8de392cdaac260bb19f17fa1a546487c1f1db338a5ff003"
         }
       ]
     },
@@ -2833,7 +2833,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/ecosystem.json",
-          "sha256": "8813a1e060ff31536b61e09370eab617b2efc7f0d37429a8440ac95716d3ffe2"
+          "sha256": "51816d4da01101e832356504c0ed05553204c03f55c2eb2a0709e7f1b2d87e61"
         }
       ]
     },
@@ -3553,7 +3553,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/ecosystem.json",
-          "sha256": "20111d2ff210a5577287d8b20ad390bbda03e8343ef34431c927888ed43374ba"
+          "sha256": "bcff790b4a5e7bcda1788c7d51ff05be65368b3c0e916de84932395713b818c6"
         }
       ]
     }
