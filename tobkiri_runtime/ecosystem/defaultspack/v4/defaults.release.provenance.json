@@ -1,8 +1,8 @@
 {
   "schema": "io.tobkiri.profile-release-provenance.v1",
   "profile_id": "defaults",
-  "profile_revision": "sha256:2f94d3a1fefb76e9e34c82c70b748e4adecea729599cbb56c5400d7e0fd70ef9",
-  "profile_definition_digest": "sha256:d7e54451641f3d5f03aab9d067503f6b80206de780e6b2c1a4918bb9e3d3cdb5",
+  "profile_revision": "sha256:121167c89f1e193ed7a3fea9c6599dee3d330bc3fab0fcc878479f7423da9c72",
+  "profile_definition_digest": "sha256:c5dcbfbe9b052bcb727c453df0e2079fca0eb8726c03334581941d75addf2441",
   "source_inputs": [
     {
       "path": "core_runtime/profile_content_projection.py",
@@ -14,7 +14,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
-      "digest": "sha256:a0483a72e357a1661b2fabd4a5e168d5545784b2528fb115a8939f3f42246b5a"
+      "digest": "sha256:2d79f8985c9cdba77544a140f545c9a7637bfd9ce1840fd26d4d69482bad6173"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
@@ -1114,7 +1114,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-      "digest": "sha256:be886606d34b6b21150e6782050f76873cb9acb39c30d4fbea70ba0b50bd8420"
+      "digest": "sha256:eb14e3a15352f0ac2405fed6c2ff6699b5bd4f2fc8d323078b58335d49858cfd"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/search_home_pack.executables.v4.json",
@@ -1142,11 +1142,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.executables.v4.json",
-      "digest": "sha256:2c8b226b185c38b2e77fc01f42a90e48251324fe2a01e58ef4028fbfcf806eda"
+      "digest": "sha256:94a2b85ea72d42567d433c084ecad1b997e0641bc4c75de4b486c6529c27cc1e"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.pack.v4.json",
-      "digest": "sha256:dd3b2ba96d2e98b1b66e5fcea8784b4a0cbce14bfc33a6cb0564f10e8124f327"
+      "digest": "sha256:334fb9de9f7a5d19029e5bd2125c805a736855f68607a7c01e9080687a00fa76"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.executables.v4.json",
@@ -1325,19 +1325,19 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:ada0b62cd8e9272a904786aa7371d35cf6199b2c028a4596a59fc4c5423d0768",
-    "catalog_revision": "sha256:cb70778a2405ad2fd5b254aba2f76dccaa929d41efd95d7b4f43b12233130655",
-    "closure_digest": "sha256:d21f7dd731dbcbf0f738b90cb2235e9b466f18556e41e37622d68666b869cebe"
+    "bundle_digest": "sha256:ba1fdc6b7558818a74e5ad3fc3cf258440eb79af5546e0002ca1c6d8bd8eb513",
+    "catalog_revision": "sha256:12d19b16f33abaced7d567a15aec8d0c7868fb0f60d02385c8504175f4876a42",
+    "closure_digest": "sha256:78806d250bb15a9e2688ae1d788214a1b357b25fe2c12c58cbe717e129437fb6"
   },
   "outputs": [
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-      "digest": "sha256:cbc19ef30ddc20baf7e81e01c117b4b5dfe5ef03760574ae2ab23c81cc56c1d9"
+      "digest": "sha256:ef4bde3a33c61f69f72007c087cc3d7dd2cee8ba942ae8c4e5485b1a5c511653"
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:07377ec7b2d683de6b2fef80a9eacae9b1e21f53de0c782bbb818e452a15b464"
+      "digest": "sha256:d410505ec2630aa4c426fdcede37840a37e6fccfdc37a791190623d2e051b07a"
     }
   ],
-  "release_digest": "sha256:6e5f6faef96f593ae68400a70cd1c62408573105a07f60e4e04e225702c9e794"
+  "release_digest": "sha256:e9ac2edee63095eab4e2bfe51acdc1819f76f192ffafb2bb9aa1c5a511a5799f"
 }

@@ -11,8 +11,8 @@
           "contribution_id": "defaults.ui.catalog.read",
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "operation_id": "tobkiri_ui_settings_pack.catalog-read",
-          "provider_id": "tobkiri.ui.settings.read",
-          "function_id": "tobkiri.ui.settings.read",
+          "provider_id": "tobkiri.ui.catalog.read",
+          "function_id": "tobkiri.ui.catalog.read",
           "allowed_payload_keys": []
         }
       ]

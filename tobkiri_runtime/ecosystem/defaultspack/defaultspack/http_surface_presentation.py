@@ -148,8 +148,8 @@ class DefaultspackHTTPPresentation:
                 "defaults.ui.catalog.read",
                 "tobkiri.resource.ui.settings.v1",
                 "tobkiri_ui_settings_pack.catalog-read",
-                "tobkiri.ui.settings.read",
-                "tobkiri.ui.settings.read",
+                "tobkiri.ui.catalog.read",
+                "tobkiri.ui.catalog.read",
             ),
         }:
             session.assert_current()

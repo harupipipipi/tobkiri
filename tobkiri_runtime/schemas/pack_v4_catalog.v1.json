@@ -16233,6 +16233,24 @@
       ],
       "dependencies": {},
       "description": "Read-only app preferences and settings controls with captured model choices.",
+      "functions": [
+        {
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "function_id": "tobkiri.ui.settings.read",
+          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.settings-read"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "function_id": "tobkiri.ui.catalog.read",
+          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.catalog-read"
+          ]
+        }
+      ],
       "display_name": "Tobkiri UI Settings",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
@@ -16262,12 +16280,12 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
               "id": "tobkiri_ui_settings_pack.settings-read",
-              "implementation_digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b"
+              "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45"
             },
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
               "id": "tobkiri_ui_settings_pack.catalog-read",
-              "implementation_digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b"
+              "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -16297,7 +16315,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b",
+          "digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
           "kind": "executable",
           "path": "runtime/settings.py"
         }

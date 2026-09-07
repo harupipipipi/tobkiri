@@ -20,6 +20,7 @@ from ecosystem.defaultspack.domain.frontend_builtin_catalog import builtin_ui_ca
 
 PACK_ID = "tobkiri_ui_settings_pack"
 FUNCTION_ID = "tobkiri.ui.settings.read"
+CATALOG_FUNCTION_ID = "tobkiri.ui.catalog.read"
 CONTRACT_ID = "tobkiri.resource.ui.settings.v1"
 OPERATION_ID = "tobkiri_ui_settings_pack.settings-read"
 CATALOG_OPERATION_ID = "tobkiri_ui_settings_pack.catalog-read"
@@ -74,21 +75,26 @@ def _values(
 class SettingsReadHostFactoryV4:
     """Bind UI preferences and model reads to a reviewed Host capture."""
 
-    function_id = FUNCTION_ID
+    def __init__(self, function_id: str = FUNCTION_ID) -> None:
+        self.function_id = function_id
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Prepare one exact read operation without reading or creating state."""
         if not context.profile_id or context.user_data_root is None:
             raise PermissionError("settings capture is incomplete")
-        if not 1 <= len(context.provider_bindings) <= 2:
+        if len(context.provider_bindings) != 1:
             raise PermissionError("settings binding is ambiguous")
         operation_ids: set[str] = set()
         for binding in context.provider_bindings:
             operation = binding.operation
             if (
-                binding.function.function_id != FUNCTION_ID
+                binding.function.function_id != self.function_id
                 or operation.contract_id != CONTRACT_ID
-                or operation.operation_id not in {OPERATION_ID, CATALOG_OPERATION_ID}
+                or operation.operation_id
+                != {
+                    FUNCTION_ID: OPERATION_ID,
+                    CATALOG_FUNCTION_ID: CATALOG_OPERATION_ID,
+                }.get(self.function_id)
                 or operation.operation_id in operation_ids
             ):
                 raise PermissionError("settings binding is invalid")
@@ -173,4 +179,7 @@ class SettingsReadHostFactoryV4:
         )
 
 
-HOST_PROVIDER_FACTORY = {FUNCTION_ID: SettingsReadHostFactoryV4()}
+HOST_PROVIDER_FACTORY = {
+    FUNCTION_ID: SettingsReadHostFactoryV4(),
+    CATALOG_FUNCTION_ID: SettingsReadHostFactoryV4(CATALOG_FUNCTION_ID),
+}
