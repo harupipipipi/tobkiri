@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import multiprocessing
 from pathlib import Path
+from types import SimpleNamespace
 import threading
 import time
 
@@ -301,11 +302,24 @@ def test_contract_routes_are_exact_digest_pinned_broker_bindings(active_runtime)
         if item["path"] == "defaultspack/frontend_contract_map.v4.json"
     )
 
-    # The map has 28 logical routes and 37 exact route-to-target bindings.
-    # Interactive approval and command-protocol routes are Host-owned
-    # contributions, but remain digest-pinned Broker targets like every
-    # Defaults surface route.
-    assert len(routes) == 37
+    # Compare every exact declaration, not a count frozen before startup
+    # read routes were added. Extra or omitted targets must still fail.
+    declared_map = json.loads((
+        RUNTIME_ROOT / "ecosystem" / "defaultspack" / "defaultspack"
+        / "frontend_contract_map.v4.json"
+    ).read_text(encoding="utf-8"))
+    identity_keys = ("contract_id", "operation_id", "provider_id", "function_id")
+    expected = {
+        (binding["method"], binding["path"], *(target[key] for key in identity_keys))
+        for binding in declared_map["routes"]
+        for target in binding["targets"]
+    }
+    actual = {
+        (route["method"], route["logical_target"], *(route[key] for key in identity_keys))
+        for route in routes
+    }
+    assert actual == expected
+    assert len(routes) == len(expected)
     assert all(
         set(route)
         >= {
@@ -330,6 +344,42 @@ def test_contract_routes_are_exact_digest_pinned_broker_bindings(active_runtime)
     assert str(RUNTIME_ROOT) not in serialized
     assert "session_secret" not in serialized
     assert "cookie" not in serialized
+
+
+@pytest.mark.parametrize(
+    "callers, accepted",
+    [(["shell", "nested"], True), (["nested"], False),
+     (["shell", "shell"], False), ([], False)],
+)
+def test_frontend_route_requires_one_shell_edge(callers: list[str], accepted: bool) -> None:
+    """Shared Provider identity does not confer another caller's authority."""
+    target = SimpleNamespace(
+        contract_id="contract", operation_id="read", provider_id="provider",
+        function_id="function", contribution_id="read", allowed_payload_keys=(),
+    )
+    binding = SimpleNamespace(
+        method="GET", path="/read", presentation="broker_result", targets=(target,),
+    )
+    operations = [
+        {"contract_id": "contract", "operation_id": "read", "function_id": "function",
+         "target_provider_id": "provider", "caller_function_id": caller,
+         "owner_pack_id": "owner", "artifact_digest": "artifact",
+         "function_principal_id": "principal"}
+        for caller in callers
+    ]
+
+    def project() -> list[dict[str, object]]:
+        return runtime_surface._verified_route_projection(
+            (binding,), operations=operations, frontend_map_digest="map",
+            shell_function_ids=frozenset({"shell"}),
+        )
+
+    if accepted:
+        assert len(project()) == 1
+    else:
+        with pytest.raises(RuntimeSurfaceError) as denied:
+            project()
+        assert denied.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
 
 
 def test_contract_route_principal_mismatch_fails_closed(active_runtime) -> None:
