@@ -331,10 +331,13 @@ impl SignedApplicationResolver {
         } else {
             None
         };
-        let (bundle_root, application_pack_root, development_bundle) = match development_roots {
-            Some((root, bundle)) => (bundle, root, true),
-            None => (packaged_bundle_root, pack_root.clone(), false),
-        };
+        let (bundle_root, application_pack_root, pack_root, development_bundle) =
+            match development_roots {
+                Some((root, bundle, materialized_pack_root)) => {
+                    (bundle, root, materialized_pack_root, true)
+                }
+                None => (packaged_bundle_root, pack_root.clone(), pack_root, false),
+            };
         verify_symlink_free_tree(&pack_root, &pack_root)?;
         let bundle_lock = verify_bundle_lock(&bundle_root)?;
         #[cfg(test)]
@@ -814,15 +817,22 @@ fn packaged_bundle_root(app_root: &Path, source: &str) -> Result<PathBuf> {
 }
 
 #[cfg(debug_assertions)]
-fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, PathBuf)>> {
+fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, PathBuf, PathBuf)>> {
     if !config.is_dev_workspace() {
         return Ok(None);
     }
-    let mut candidates = vec![config.app_dir.join("bundled/dev-defaults")];
+    let mut candidates = vec![(
+        config.app_dir.join("bundled/dev-defaults"),
+        config.app_dir.clone(),
+    )];
     if let Some(workspace_root) = config.dev_workspace_root.as_ref() {
-        candidates.push(workspace_root.join("tobkiri_launcher/src-tauri/target/dev-defaults"));
+        let target_root = workspace_root.join("tobkiri_launcher/src-tauri/target");
+        candidates.push((
+            target_root.join("dev-defaults"),
+            target_root.join("debug/app"),
+        ));
     }
-    for candidate in candidates {
+    for (candidate, runtime_candidate) in candidates {
         match fs::symlink_metadata(&candidate) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -836,13 +846,22 @@ fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, Pat
             "development Application artifact root",
         )?;
         verify_symlink_free_tree(&root, &root)?;
-        return Ok(Some((root, bundle)));
+        let runtime_root =
+            canonical_directory(&runtime_candidate, "development staged runtime root")?;
+        crate::runtime_resource_integrity::verify_subtree(&runtime_root, "ecosystem/defaultspack")
+            .context("development staged Pack seal is invalid")?;
+        let materialized_pack_root = canonical_child_directory(
+            &runtime_root,
+            Path::new("ecosystem/defaultspack"),
+            "development materialized Pack root",
+        )?;
+        return Ok(Some((root, bundle, materialized_pack_root)));
     }
     Ok(None)
 }
 
 #[cfg(not(debug_assertions))]
-fn development_defaults_roots(_config: &AppConfig) -> Result<Option<(PathBuf, PathBuf)>> {
+fn development_defaults_roots(_config: &AppConfig) -> Result<Option<(PathBuf, PathBuf, PathBuf)>> {
     Ok(None)
 }
 

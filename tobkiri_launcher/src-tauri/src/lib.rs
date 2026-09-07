@@ -2289,7 +2289,7 @@ fn spawn_kernel_exit_monitor(
                                 info!("Kernel restart handoff completed");
                             }
                             Err(error) => {
-                                error!("Failed to restart Kernel after handoff: {error}");
+                                error!("Failed to restart Kernel after handoff: {error:#}");
                             }
                         },
                         Ok(false) => {}

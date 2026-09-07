@@ -161,7 +161,7 @@ fn collect_files(
     Ok(())
 }
 
-pub(crate) fn verify(root: &Path) -> Result<VerifiedResourceManifest> {
+fn load_manifest(root: &Path) -> Result<(Vec<u8>, BTreeMap<CanonicalResourcePath, ResourceEntry>)> {
     let manifest_path = root.join(MANIFEST_NAME);
     let metadata = fs::symlink_metadata(&manifest_path).with_context(|| {
         format!(
@@ -182,7 +182,6 @@ pub(crate) fn verify(root: &Path) -> Result<VerifiedResourceManifest> {
         bail!("packaged runtime manifest schema is unsupported");
     }
 
-    let mut expected = BTreeMap::new();
     let mut verified_entries = BTreeMap::new();
     let mut expected_ambiguity_keys = BTreeSet::new();
     for entry in manifest.entries {
@@ -194,36 +193,81 @@ pub(crate) fn verify(root: &Path) -> Result<VerifiedResourceManifest> {
                 .bytes()
                 .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
             || !expected_ambiguity_keys.insert(relative.ambiguity_key())
-            || expected
-                .insert(relative.clone(), (entry.size, entry.sha256.clone()))
-                .is_some()
+            || verified_entries.contains_key(&relative)
         {
             bail!("packaged runtime manifest contains an unsafe or duplicate path");
         }
         verified_entries.insert(relative, entry);
     }
+    Ok((manifest_bytes, verified_entries))
+}
 
+fn verify_file_set(
+    root: &Path,
+    current: &Path,
+    expected: &BTreeMap<CanonicalResourcePath, ResourceEntry>,
+) -> Result<()> {
     let mut actual_files = Vec::new();
     let mut actual_ambiguity_keys = BTreeSet::new();
-    collect_files(root, root, &mut actual_files, &mut actual_ambiguity_keys)?;
+    collect_files(root, current, &mut actual_files, &mut actual_ambiguity_keys)?;
     actual_files.sort();
     if actual_files != expected.keys().cloned().collect::<Vec<_>>() {
         bail!("packaged runtime file inventory does not match its manifest");
     }
     for relative in actual_files {
         let payload = fs::read(root.join(relative.as_path()))?;
-        let (size, digest) = &expected[&relative];
-        if payload.len() as u64 != *size || format!("{:x}", Sha256::digest(&payload)) != *digest {
+        let entry = &expected[&relative];
+        if payload.len() as u64 != entry.size
+            || format!("{:x}", Sha256::digest(&payload)) != entry.sha256
+        {
             bail!(
                 "packaged runtime resource failed integrity: {}",
                 relative.as_str()
             );
         }
     }
+    Ok(())
+}
+
+pub(crate) fn verify(root: &Path) -> Result<VerifiedResourceManifest> {
+    let (manifest_bytes, verified_entries) = load_manifest(root)?;
+    verify_file_set(root, root, &verified_entries)?;
     Ok(VerifiedResourceManifest {
         sha256: format!("{:x}", Sha256::digest(&manifest_bytes)),
         entries: verified_entries,
     })
+}
+
+/// Verify one immutable runtime subtree against the outer staging manifest.
+///
+/// Development-only mutable peers such as a provisioned virtual environment
+/// do not weaken the selected subtree: every file below `subtree` must still
+/// be present in the manifest with its exact size and digest.
+pub(crate) fn verify_subtree(root: &Path, subtree: &str) -> Result<()> {
+    let subtree = CanonicalResourcePath::parse(subtree).map_err(anyhow::Error::msg)?;
+    let mut subtree_root = root.to_path_buf();
+    for component in subtree.as_path().components() {
+        subtree_root.push(component);
+        let metadata = fs::symlink_metadata(&subtree_root).with_context(|| {
+            format!(
+                "packaged runtime subtree is missing: {}",
+                subtree_root.display()
+            )
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            bail!("packaged runtime subtree is not a regular directory");
+        }
+    }
+    let (_, manifest_entries) = load_manifest(root)?;
+    let prefix = format!("{}/", subtree.as_str());
+    let expected = manifest_entries
+        .into_iter()
+        .filter(|(path, _)| path.as_str().starts_with(&prefix))
+        .collect::<BTreeMap<_, _>>();
+    if expected.is_empty() {
+        bail!("packaged runtime manifest omits the selected subtree");
+    }
+    verify_file_set(root, &subtree_root, &expected)
 }
 
 #[cfg(test)]
@@ -278,6 +322,35 @@ mod tests {
         let root = fixture();
         let verification = verify(&root);
         assert!(verification.is_ok(), "{verification:?}");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn verifies_selected_subtree_while_ignoring_mutable_peers() {
+        let root = fixture();
+        let cache = root.join("dev-venv/lib/python3.13/site-packages/example/__pycache__");
+        fs::create_dir_all(&cache).unwrap();
+        fs::write(cache.join("mutable.pyc"), b"mutable").unwrap();
+
+        assert!(verify(&root).is_err());
+        assert!(verify_subtree(&root, "core_runtime").is_ok());
+        fs::write(root.join("core_runtime/bootstrap.py"), b"tampered").unwrap();
+        assert!(verify_subtree(&root, "core_runtime").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn subtree_rejects_symlinked_ancestor_with_matching_bytes() {
+        let root = fixture();
+        let manifest_path = root.join(MANIFEST_NAME);
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        manifest["entries"][0]["path"] = serde_json::json!("alias/core_runtime/bootstrap.py");
+        fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        std::os::unix::fs::symlink(&root, root.join("alias")).unwrap();
+        let error = verify_subtree(&root, "alias/core_runtime").unwrap_err();
+        assert!(error.to_string().contains("not a regular directory"));
         fs::remove_dir_all(root).unwrap();
     }
 
