@@ -151,6 +151,13 @@ class DefaultspackHTTPPresentation:
                 "tobkiri.ui.catalog.read",
                 "tobkiri.ui.catalog.read",
             ),
+            (
+                "defaults.commands.catalog.read",
+                "tobkiri.resource.command.catalog.v1",
+                "command.catalog.read",
+                "rumi_command_protocol_pack.catalog.read",
+                "rumi_command_protocol_pack.catalog.read",
+            ),
         }:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))

@@ -432,6 +432,33 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     )
     assert status == 200, host_payload
     assert host_payload["data"]["dynamic_host"]["profile_id"] == "defaults"
+    status, command_payload, _ = _request(
+        server, "GET", _contract("GET", "/api/command-protocol/v1/catalog"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, command_payload
+    command_catalog = command_payload["data"]
+    assert command_catalog["kind"] == "ResolvedCommandCatalog"
+    assert command_catalog["rollout"]["legacy_execution_enabled"] is False
+    declarations = json.loads((
+        Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
+        / "commands" / "default_commands.json"
+    ).read_text(encoding="utf-8"))
+    assert {item["identity"]["id"] for item in command_catalog["commands"]} == {
+        item["id"] for item in declarations
+    }
+    available = {item["identity"]["id"] for item in command_catalog["commands"]
+                 if item["availability"]["status"] == "available"}
+    assert available == {"terminal", "commit", "push", "patch", "restore"}
+    assert all(item["authorization"]["approval_required"]
+               for item in command_catalog["commands"]
+               if item["identity"]["id"] in available)
+    for query in ("profile_id=other", "approved=true", "operation=invoke"):
+        status, payload, _ = _request(
+            server, "GET", _contract("GET", f"/api/command-protocol/v1/catalog?{query}"),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 400, payload
     for query in ("profile_id=other", "full=true", "operation=write"):
         status, payload, _ = _request(
             server, "GET", _contract("GET", f"/api/ui/full-catalog?{query}"),

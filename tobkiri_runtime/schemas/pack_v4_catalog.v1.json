@@ -2820,13 +2820,14 @@
       "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
       "capabilities": [
-        "host.authority.consume"
+        "host.authority.consume",
+        "command.catalog.read"
       ],
       "dependencies": {
         "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
       },
       "description": "Host-owned adapter from command protocol invocations to approval-gated effects.",
-      "display_name": "Rumi Command Protocol",
+      "display_name": "Tobkiri Command Protocol",
       "execution_boundary": "host_brokered",
       "functions": [
         {
@@ -2835,6 +2836,14 @@
           "implementation_digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
           "operation_ids": [
             "high_risk_command.manage"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "function_id": "rumi_command_protocol_pack.catalog.read",
+          "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+          "operation_ids": [
+            "command.catalog.read"
           ]
         }
       ],
@@ -2924,6 +2933,38 @@
           },
           "security": "restricted",
           "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "command.catalog.read",
+              "id": "command.catalog.read",
+              "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174"
+            }
+          ],
+          "owner": "rumi_command_protocol_pack",
+          "provider_id": "rumi_command_protocol_pack.catalog.read",
+          "required_capabilities": [
+            "command.catalog.read"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
@@ -2939,6 +2980,11 @@
           "digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
           "kind": "executable",
           "path": "runtime/high_risk_adapter.py"
+        },
+        {
+          "digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+          "kind": "executable",
+          "path": "runtime/catalog.py"
         }
       ],
       "secrets": [],

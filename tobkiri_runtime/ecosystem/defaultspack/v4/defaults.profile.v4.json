@@ -123,7 +123,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:a0c63bd4383c1438a6c2c38b49a2876e20dc152c2e7dca2755c36dc527f83297",
+    "source_digest": "sha256:a3fd957d0b93745a42ea1e9d6ea27efaa78538ec09e8b370eeb9aa43b0bbeb3b",
     "repository_commit": "working-tree",
     "repository_tree": "b88e50f6df4e77e2bca6c2642893b86728a5b11ae3d9d5326b65f85a0b1c35a7",
     "generator": "tobkiri-profile-artifacts",
@@ -173,6 +173,27 @@
     ]
   },
   "requested_edges": [
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.command.catalog.v1",
+      "operation_id": "command.catalog.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.command.catalog.v1"
+          ],
+          "operation": [
+            "command.catalog.read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_command_protocol_pack.catalog.read"
+    },
     {
       "caller_function_id": "tobkiri.ui.catalog.read",
       "contract_id": "tobkiri.resource.ai.model.profile.v1",

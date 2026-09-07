@@ -4,6 +4,21 @@
   "routes": [
     {
       "method": "GET",
+      "path": "/api/command-protocol/v1/catalog",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.commands.catalog.read",
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "operation_id": "command.catalog.read",
+          "provider_id": "rumi_command_protocol_pack.catalog.read",
+          "function_id": "rumi_command_protocol_pack.catalog.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/ui/full-catalog",
       "presentation": "broker_result",
       "targets": [
