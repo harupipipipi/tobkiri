@@ -1719,7 +1719,7 @@ fn resolve_artifact(
             let (digest, size) = artifact_integrity::digest_and_size(&path)
                 .context("development Shell artifact could not be hashed or measured")?;
             artifact.path = Some(relative_string);
-            artifact.sha256 = Some(normalize_digest(&digest));
+            artifact.sha256 = Some(digest);
             artifact.size = Some(size);
             artifact.source_identity = Some("development-checkout".to_string());
             artifact.source_revision = Some(variant.descriptor_digest.clone());
