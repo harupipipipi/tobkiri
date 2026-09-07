@@ -1947,9 +1947,12 @@ def capture_production_dispatch(
             result = {"status": "ok", "value": dict(provider_result)}
             if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
                 raise ValueError("verified Provider capability result is too large")
-        except Exception:
+        except Exception as error:
             # Do not project provider/backend details through the PackVM ABI.
             # The guest receives a typed, bounded result it can safely render.
+            from .bridge_diagnostics import record_bridge_failure
+
+            record_bridge_failure(error)
             result = _provider_unavailable_bridge_result()
         finally:
             with caller_session_bindings_lock:
