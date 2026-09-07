@@ -2322,8 +2322,8 @@
     {
       "path": "scripts/generate_executable_source_registry_v1.py",
       "type": "regular-file",
-      "size": 30741,
-      "sha256": "fa0de736ae4246a0c80c73707302fb12a7a124ae894922a0b212aabb0d81e68f",
+      "size": 33899,
+      "sha256": "5f30aba3fbf591862f747b5f3dc7a2e49da880f593e40d16a5b71fa5025adbf7",
       "executable": false
     },
     {
