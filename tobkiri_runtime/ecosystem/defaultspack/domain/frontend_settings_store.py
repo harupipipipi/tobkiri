@@ -63,7 +63,7 @@ def defaultspack_frontend_settings_path(pack_root: Path | None = None) -> Path:
 
 
 class FrontendSettingsCorruptError(ValueError):
-    """Raised when neither the settings document nor its backup is readable."""
+    """Raised when settings cannot be decoded under the chosen recovery policy."""
 
 
 _locks_guard = threading.Lock()

@@ -60,6 +60,32 @@ def test_snapshot_does_not_recover_corrupt_settings_from_backup(tmp_path: Path) 
     assert {item.name: item.read_bytes() for item in tmp_path.iterdir()} == before
 
 
+@pytest.mark.parametrize("content", [b"[]", b"null", b"42", b"\xff"])
+def test_snapshot_rejects_invalid_documents_without_changes(
+    tmp_path: Path, content: bytes
+) -> None:
+    path = tmp_path / "settings.json"
+    path.write_bytes(content)
+    with pytest.raises(FrontendSettingsCorruptError, match="snapshot is corrupt"):
+        FrontendSettingsStore(path).read_snapshot()
+    assert path.read_bytes() == content
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_snapshot_propagates_access_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+
+    def denied(path: Path) -> dict:
+        raise PermissionError("read denied")
+
+    monkeypatch.setattr(store, "_load_mapping", denied)
+    with pytest.raises(PermissionError, match="read denied"):
+        store.read_snapshot()
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_snapshot_observes_complete_documents_during_updates(tmp_path: Path) -> None:
     store = FrontendSettingsStore(tmp_path / "settings.json")
     store.update(lambda _: {"counter": 0, "mirror": 0})
