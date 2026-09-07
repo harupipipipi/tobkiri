@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:61788f504bf1fa9474dfc0f517aed99de6da0acc002e2b865129e433b32310be",
+  "catalog_digest": "sha256:e0547aa546dc8a4b719a06234fe78809e4de331a7b442ae773d93924df5cddf6",
   "pack_id": "rumi_provider_registry_pack",
-  "source_identity": "sha256:e39682b8605ff38baae47fdbca59535f481af9942f96ebf2180b246c42a7f7cd",
+  "source_identity": "sha256:cb5179586989b5f7e70c893cb17aaa2c8a41fefbff15ea22a2516d1ab3ad4149",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.provider-registry.health",
-      "implementation_digest": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455",
+      "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
       "implementation_path": "runtime/health_process.py",
       "materialization_mode": "on_demand",
       "operations": [

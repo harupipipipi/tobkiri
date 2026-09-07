@@ -133,29 +133,6 @@ class _CapturedBackend:
         assert domain_id
 
 
-class _GatewayCapturedBackend(_CapturedBackend):
-    """Execute only the model-catalog PackVM edge needed by the AI Gateway."""
-
-    def materialize(self, binding, reservation_id: str) -> RuntimeEvidence:
-        self.target_executable_digest = binding.function.implementation_digest
-        return super().materialize(binding, reservation_id)
-
-    def invoke(self, request: object) -> ProviderOutcome:
-        from ecosystem.rumi_model_catalog_pack.runtime.catalog import (
-            tobkiri_packvm_invoke,
-        )
-
-        contract_id = getattr(request, "contract_id", None)
-        if contract_id != "tobkiri.resource.ai.model.catalog.v1":
-            raise AssertionError("unexpected PackVM operation in AI Gateway test")
-        return ProviderOutcome(
-            tobkiri_packvm_invoke(
-                getattr(request, "operation_id", None),
-                getattr(request, "payload", None),
-            )
-        )
-
-
 class _ProviderResponse:
     def __enter__(self) -> "_ProviderResponse":
         return self
@@ -219,7 +196,6 @@ def test_production_dispatch_executes_credentialed_provider_request(
         "_open_pinned_request",
         open_request,
     )
-    packvm_backend = _GatewayCapturedBackend(_digest("gateway-packvm"))
     session = capture_production_dispatch(
         active,
         bundle_root=_bundle_root(),
@@ -228,7 +204,6 @@ def test_production_dispatch_executes_credentialed_provider_request(
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
         runtime_surface_factory=create_runtime_surface_services,
         credential_store_factory=_credential_store_factory,
-        backends=BackendRegistry((packvm_backend,)),
     )
     try:
         adapter_metadata = session.provider_metadata(
@@ -243,9 +218,13 @@ def test_production_dispatch_executes_credentialed_provider_request(
             {
                 "_session_id": "session.panel.provider-production",
                 "profile_id": "defaults",
-                "provider_id": "production-test",
-                "model_id": "production-test/model",
                 "messages": [{"role": "user", "content": "hello"}],
+                "requirements": {
+                    "preferred_model_id": "production-test/model",
+                    "preferred_provider_instance_id": (
+                        "provider.compatibility.generate"
+                    ),
+                },
                 "deadline": time.time() + 30.0,
             },
         )
