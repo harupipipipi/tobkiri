@@ -23,10 +23,15 @@ import {
   isConversationV4Contribution,
 } from "./ConversationV4View";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { TobkiriLoadingScreen } from "../components/TobkiriLoadingScreen";
 
 export { frontendActionErrorMessage } from "./ConversationV4View";
 
 const quarantined = new Set<string>();
+
+const DefaultsChatApp = lazy(() => import("../App").then(({ ChatApp }) => ({
+  default: ChatApp,
+})));
 
 export const ISOLATED_FRONTEND_SANDBOX = "allow-scripts";
 // Sandboxed documents have an opaque origin, so a specific target origin
@@ -163,6 +168,17 @@ function ContributionView({
     [capabilities, catalog, item],
   );
   if (isConversationV4Contribution(item)) {
+    // Select the full Defaults surface only after the active contribution has
+    // passed the same Profile, activation, plan and quarantine checks above.
+    if (catalog.profile_id === "defaults") {
+      return (
+        <div data-defaults-chat-app>
+          <Suspense fallback={<TobkiriLoadingScreen />}>
+            <DefaultsChatApp />
+          </Suspense>
+        </div>
+      );
+    }
     return (
       <ConversationV4View
         item={item}

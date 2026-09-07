@@ -67,6 +67,48 @@ const capabilities: FrontendCapabilityInvoker = {
   readDataSource: async () => ({ ok: true }),
 };
 
+test("Defaults /chat selects the full ChatApp only for the verified active contribution", () => {
+  resetFrontendHostQuarantineForTests();
+  const item = contribution({
+    contribution_id: "defaults.conversation.complete",
+    owner_pack_id: "defaultspack",
+    build_identity: "defaultspack.conversation",
+    resolved_profile_id: "defaults",
+    route: "/chat",
+    action_contract: "conversation.turn.v1",
+    view: { type: "conversation_v4" },
+  });
+  const render = (value: FrontendCatalog, plan = "plan-1") => renderToStaticMarkup(
+    <DynamicFrontendHost
+      catalog={value}
+      route="/chat"
+      activePlanHash={plan}
+      capabilities={capabilities}
+    />,
+  );
+  const current = catalog([item], { profile_id: "defaults" });
+  assert.match(render(current), /data-defaults-chat-app/);
+  assert.doesNotMatch(render(current), /Message Tobkiri/);
+  assert.doesNotMatch(render(current, "plan-stale"), /data-defaults-chat-app/);
+  for (const overrides of [
+    { resolved_profile_id: "other" },
+    { resolved_profile_revision: "stale" },
+    { resolved_activation_id: "activation:stale" },
+    { resolved_plan_hash: "plan-stale" },
+    { owner_pack_id: "other" },
+    { build_identity: "other" },
+  ]) {
+    assert.doesNotMatch(render(catalog([{ ...item, ...overrides }], {
+      profile_id: "defaults",
+    })), /data-defaults-chat-app/);
+  }
+  assert.doesNotMatch(render({ ...current, quarantined_pack_ids: ["defaultspack"] }), /data-defaults-chat-app/);
+  assert.doesNotMatch(render(catalog([{ ...item, resolved_profile_id: "fixture" }])), /data-defaults-chat-app/);
+  quarantineFrontendContribution(item);
+  assert.doesNotMatch(render(current), /data-defaults-chat-app/);
+  resetFrontendHostQuarantineForTests();
+});
+
 test("route visibility follows the active resolved plan", () => {
   resetFrontendHostQuarantineForTests();
   const current = catalog([contribution()]);
