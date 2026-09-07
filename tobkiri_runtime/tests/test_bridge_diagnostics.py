@@ -3,6 +3,7 @@
 import logging
 
 import pytest
+from tobkiri_host.errors import ProviderExecutionError
 
 from core_runtime.bootstrap.bridge_diagnostics import record_bridge_failure
 from core_runtime.global_contract_dispatch import GlobalContractInvocationError
@@ -34,3 +35,23 @@ def test_bridge_failure_logs_only_fixed_reason(
     assert record.getMessage() == f"PackVM capability bridge failed: {reason}"
     assert record.exc_info is None
     assert "secret" not in caplog.text
+
+
+def test_nested_broker_failure_and_cyclic_cause_are_bounded(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Broker wrapping preserves classification without exposing its cause."""
+    wrapper = ProviderExecutionError("secret wrapper")
+    wrapper.__cause__ = GlobalContractInvocationError(
+        "capability_mismatch", "secret prompt"
+    )
+    with caplog.at_level(logging.WARNING):
+        record_bridge_failure(wrapper)
+        wrapper.__cause__ = wrapper
+        record_bridge_failure(wrapper)
+    assert [record.getMessage() for record in caplog.records] == [
+        "PackVM capability bridge failed: capability_mismatch",
+        "PackVM capability bridge failed: internal_error",
+    ]
+    assert "secret" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
