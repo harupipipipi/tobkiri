@@ -18,6 +18,7 @@ import {
   fetchFrontendCatalog,
   fetchRuntimeOperationStatus,
   fetchPacks,
+  fetchPackVMDoctor,
   fetchNamedProfiles,
   fetchPresentationState,
   installPack,
@@ -698,6 +699,48 @@ test('unsafe frontend requests time out and reject instead of leaving lifecycle 
     apiFetch('/api/v4/packvm/prepare', {method: 'POST'}, {timeoutMs: 1}),
     /POST request timed out after 1ms: \/api\/v4\/packvm\/prepare/,
   );
+});
+
+test('PackVM doctor accepts slow verified image checks without replaying provisioning', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  const doctor = {
+    ready: true,
+    backend_id: 'tobkiri.python-pack-v4',
+    platform: 'macos-arm64',
+    instance: 'tobkiri-packvm-v4',
+    reason: null,
+    attestation_digest: `sha256:${'a'.repeat(64)}`,
+  };
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/v4/packvm/doctor');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: doctor})),
+    ), 15_000));
+  };
+  const pending = fetchPackVMDoctor();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(15_000);
+  assert.deepEqual(await pending, doctor);
+  assert.equal(reads, 1);
+});
+
+test('PackVM doctor still stops at its bounded verification deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/v4/packvm/doctor');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>(() => {});
+  };
+  const bounded = assert.rejects(fetchPackVMDoctor(), /request timed out after 60000ms/);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(60_000);
+  await bounded;
+  assert.equal(reads, 1);
 });
 
 test('activation verification waits through a slow restart without submitting another mutation', async (context) => {
