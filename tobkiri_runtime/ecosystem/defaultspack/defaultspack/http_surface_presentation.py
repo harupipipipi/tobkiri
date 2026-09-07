@@ -20,6 +20,11 @@ from core_runtime.pack_api_server import (
 )
 from tobkiri_protocol.canonical import canonical_digest
 
+from .model_profile_presentation import (
+    MODEL_PROFILE_LIST_TARGET,
+    present_model_profiles,
+)
+
 
 _CONVERSATION_TARGET = (
     "defaults.conversation.complete",
@@ -125,6 +130,18 @@ class DefaultspackHTTPPresentation:
     ) -> Mapping[str, object]:
         """Bind Defaultspack media targets to their selected workspace only."""
 
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) == MODEL_PROFILE_LIST_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or payload:
+                raise ValueError("model profile listing requires captured identity")
+            return {"profile_id": profile_id, "operation": "list"}
         if not target.contribution_id.startswith("pack."):
             return dict(payload)
         if target.contract_id != "tobkiri.service.media.inspect.v1":
@@ -177,6 +194,8 @@ class DefaultspackHTTPPresentation:
     ) -> Mapping[str, object]:
         """Attach Defaultspack UI contributions to the committed catalog result."""
 
+        if binding.presentation == "model_profile_list":
+            return present_model_profiles(result)
         if binding.presentation != "dynamic_pack_catalog":
             return dict(result)
         capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))

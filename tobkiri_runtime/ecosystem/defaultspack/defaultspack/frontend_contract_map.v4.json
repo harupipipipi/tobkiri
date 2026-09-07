@@ -226,6 +226,21 @@
     },
     {
       "method": "GET",
+      "path": "/api/ai/profiles",
+      "presentation": "model_profile_list",
+      "targets": [
+        {
+          "contribution_id": "defaults.models.profiles.list",
+          "contract_id": "tobkiri.resource.ai.model.profile.v1",
+          "operation_id": "rumi_model_registry_pack.model-profile-resource",
+          "provider_id": "rumi_model_registry_pack.model-registry.profile",
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/interactive-approval/v1/list",
       "presentation": "broker_result",
       "targets": [

@@ -6,8 +6,8 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:95c5d796bb1599e30261551c44c7977d6936174d75a110bf489c9040ddd16b06",
   "profile_definition_digest": "sha256:1bbcd07089a2b65921fa871e58d32960a00a49b96f49b30395c64a6e137fdea5",
-  "catalog_revision": "sha256:ee5f3c0a7af5d22b8cf9c3b2ab8f614e5073b7466d7e4818779969cc75345514",
-  "bundle_digest": "sha256:d78e96a219c053f8f1e070a89b58c8f4e8e051be17feb9c58a7affa20be101a4",
+  "catalog_revision": "sha256:a6c3daa7b91b916983cbef5a74cf206e9ce9dc757a99598d1ee85829b10fd80a",
+  "bundle_digest": "sha256:da1396dbdfa2e68902267856bdd83eb7bf3bc8807c20533cb7458a241c28ef03",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -27,7 +27,7 @@
     "pack_id": "runtime.tauri.application.default",
     "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
     "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
-    "definition_digest": "sha256:0073f5c24ca13de5e992e1133452609d70e527c2fcac11d1e44f98c724ca5505"
+    "definition_digest": "sha256:b836ca4f7eba287d51f3b72bb67982a80bbc0ec061ab405b458e121222a2b930"
   },
   "effective_set": [
     {
@@ -555,5 +555,5 @@
   "constraints_digest": "sha256:ad9245b6c52024ae77f03e7b3c62c113d5a07799e1c6b43824dbc3d13079a291",
   "closure_digest": "sha256:a9c025136592dab9d8a11ae9ca8087208f6066c09df3d49af762727c01359085",
   "provenance_digest": "sha256:33b1317585683521bb54bfba855e5c0d067c9596447db5cbf1981f1cf4845aaa",
-  "lock_digest": "sha256:4aa9ad1612452cb176c132df223f4c77ccf4da27a148f9786276484670f2cb5e"
+  "lock_digest": "sha256:0b2092da2fefa997ab491edbcf05e9e6e9b45ec93ddc7145ea0e6aafe4cea23c"
 }
