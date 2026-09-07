@@ -235,7 +235,7 @@ def test_production_dispatch_executes_credentialed_provider_request(
                 "preferred_model_id": envelope.payload["model"],
                 "preferred_provider_instance_id": "provider.compatibility.generate",
             },
-            "deadline": time.time() + 30.0,
+            "deadline": int(time.time()) + 30,
         }
         response = backend.capability_bridge(
             envelope, _ai_bridge_request(ai_request),
