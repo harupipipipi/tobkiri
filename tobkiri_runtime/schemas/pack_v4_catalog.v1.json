@@ -9869,17 +9869,17 @@
             {
               "entrypoint_id": "bundled-model-catalog",
               "id": "rumi_model_catalog_pack.bundled-model-catalog",
-          "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
+          "implementation_digest": "sha256:43ec3b8ffb88f6cfc0432c4df219b09712280747d5534ec36a95acdc9f13d79b"
             },
             {
               "entrypoint_id": "bundled-model-catalog.generate",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
-          "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
+          "implementation_digest": "sha256:43ec3b8ffb88f6cfc0432c4df219b09712280747d5534ec36a95acdc9f13d79b"
             },
             {
               "entrypoint_id": "bundled-model-catalog.stream",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
-          "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
+          "implementation_digest": "sha256:43ec3b8ffb88f6cfc0432c4df219b09712280747d5534ec36a95acdc9f13d79b"
             }
           ],
           "owner": "rumi_model_catalog_pack",
@@ -9907,7 +9907,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a",
+      "digest": "sha256:43ec3b8ffb88f6cfc0432c4df219b09712280747d5534ec36a95acdc9f13d79b",
           "kind": "executable",
           "path": "runtime/catalog.py"
         }

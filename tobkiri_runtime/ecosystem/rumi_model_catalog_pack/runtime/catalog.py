@@ -11,14 +11,14 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
-from core_runtime.host_provider_backend_v4 import (
-    CapturedHostProviderV4,
-    HostProviderCaptureContextV4,
-    HostProviderContributionV4,
-    HostProviderInvocationContextV4,
-)
+if TYPE_CHECKING:
+    from core_runtime.host_provider_backend_v4 import (
+        CapturedHostProviderV4,
+        HostProviderCaptureContextV4,
+        HostProviderInvocationContextV4,
+    )
 
 CATALOG_REVISION = "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
@@ -634,6 +634,13 @@ class ModelCatalogHostFactoryV4:
         context: HostProviderCaptureContextV4,
     ) -> CapturedHostProviderV4:
         """Capture all and only operations resolved to the catalog Function."""
+
+        # The standalone PackVM catalog has no Host modules. Import these
+        # only when the Host explicitly captures its own provider factory.
+        from core_runtime.host_provider_backend_v4 import (
+            CapturedHostProviderV4,
+            HostProviderContributionV4,
+        )
 
         if not context.provider_bindings or any(
             binding.function.function_id != self.function_id
