@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "97c2a0b103740e8a359e8ddada04bb8c35ec30496f886d2e677804accbea65c5",
+    "digest": "1713075acad55b7cce91478e55bf8a74feff0e724bb0aefd5f6de2420aa99d92",
     "entries": [
       {
         "path": "index.html",
@@ -1045,13 +1045,13 @@
       },
       {
         "path": "src/host/ConversationV4View.test.tsx",
-        "size": 4130,
-        "sha256": "7471443b8fc5ccbdb96c9306ff8d6da820044edf8ff745bca661babef22b9f0b"
+        "size": 4604,
+        "sha256": "58f4478fc7a1d965a56021afdf580808d7270dd363983cb6a05aa7af003b829d"
       },
       {
         "path": "src/host/ConversationV4View.tsx",
-        "size": 12001,
-        "sha256": "1b5381a9481421bc57591ae2f479e52fc5b00d910277dc4ac0736930de002c7e"
+        "size": 12909,
+        "sha256": "0828f6118ca37ac8ad83cea942385139b3933df4905312382fa5710794371313"
       },
       {
         "path": "src/host/DynamicFrontendHost.test.tsx",
@@ -1876,7 +1876,7 @@
     ]
   },
   "bundle": {
-    "digest": "c2fcebd9c121d6061a1748ff7674dc25463220813ffeeb0e21f0c8566921cac3",
+    "digest": "ba01a1dcc2301a870975bfac4ddb1fcaa0ff16435d8f1f6bc6cadd5aec843f46",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1885,8 +1885,8 @@
       },
       {
         "path": "shell-app.js",
-        "size": 23692,
-        "sha256": "f9eb12e60ec93dbd1ee3e8e4092ffb04ff9ddbc5d361cf55f4b428a21842ac0f"
+        "size": 24007,
+        "sha256": "19cb20dbfa06b770cb17873f10d21b07f03d88a7862757dae0561cbcb2f82e37"
       },
       {
         "path": "shell-defaultspack-app.js",
