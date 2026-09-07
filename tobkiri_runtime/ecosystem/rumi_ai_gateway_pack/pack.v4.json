@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:a09fffb521abc168123431b2b20adc0ea3c262ed367c9cbdb87f4fe19104f704",
+      "digest": "sha256:676a7360e11579ceb38389266aac4b6f94bf5bcf9a7330dbf3fb2f8f9c8b3a2b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -72,7 +72,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:6ee74e38ea446c36053feac7837d214b2f897aad221c6b571fd547b3ec60083f",
+    "artifact_set_digest": "sha256:799c945f64d1516bf867765047d7781d985ca88708a883b60ac2c78352a740d3",
     "contract_catalog_digest": "sha256:20c461b0c6f997177910df3d8ca4f885dcfbf78573b2a0f3be9a6a29aca8022e",
     "source_identity": "sha256:11f8631e8829c35a20ed2fff86bf854f64ffedc54303697cb4359ffbcf9493ec"
   },
@@ -124,7 +124,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:6ee74e38ea446c36053feac7837d214b2f897aad221c6b571fd547b3ec60083f",
+    "artifact_digest": "sha256:799c945f64d1516bf867765047d7781d985ca88708a883b60ac2c78352a740d3",
     "display_name": "Rumi AI Gateway",
     "id": "rumi_ai_gateway_pack",
     "kind": "host_extension",

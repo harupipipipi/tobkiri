@@ -1,6 +1,6 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:02537c1ffd20bc962bc900afabc7ee7e2a809c57dea59909515f23a31541a5c6",
+  "catalog_digest": "sha256:b06bc330ce0e3b9364502af447dab446f121a161c687186747a140b8736f7c78",
   "pack_id": "rumi_provider_adapters_pack",
   "source_identity": "sha256:923b6baa2c4a19aad2e33895787bb62671fc08d9c37e0e4acf8c4a4d7bda3722",
   "variants": [
@@ -64,7 +64,7 @@
             "type": "object"
           },
           "revision_digest": "sha256:729e08de33262fe2c1b9269ed22d4090f0fcd29321301c46d093c808c9211e95",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }
       ],
@@ -132,7 +132,7 @@
             "type": "object"
           },
           "revision_digest": "sha256:8fd2fa8b32bf0d21ffbf0ca8976feeefe042ed54a3e8c6ef93bf00bb9cba971d",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }
       ],

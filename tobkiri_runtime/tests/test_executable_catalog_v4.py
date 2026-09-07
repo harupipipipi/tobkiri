@@ -15,6 +15,57 @@ from tobkiri_protocol.errors import SchemaValidationError
 ROOT = Path(__file__).resolve().parent.parent
 
 
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        ("defaultspack", "defaultspack.conversation", "complete"),
+        (
+            "rumi_ai_gateway_pack",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+        ),
+        (
+            "rumi_ai_gateway_pack",
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+        ),
+        (
+            "rumi_provider_adapters_pack",
+            "rumi_provider_adapters_pack.provider.compatibility.generate",
+            "rumi_provider_adapters_pack.provider-generate",
+        ),
+        (
+            "rumi_provider_adapters_pack",
+            "rumi_provider_adapters_pack.provider.compatibility.stream",
+            "rumi_provider_adapters_pack.provider-stream",
+        ),
+    ),
+)
+def test_ai_conversation_chain_outlives_provider_transport_deadline(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """Cold PackVM startup must not consume the provider's response budget."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item for item in catalog["variants"] if item["function_id"] == function_id
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == operation_id
+    )
+
+    assert operation["timeout_default_ms"] == 120_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
 def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     pack_roots = sorted(path.parent for path in (ROOT / "ecosystem").glob("*/pack.v4.json"))
     compiled = [compile_pack_root(path) for path in pack_roots]

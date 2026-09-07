@@ -25,6 +25,43 @@ from tobkiri_protocol.validation import validate_document  # noqa: E402
 
 ECOSYSTEM = ROOT / "ecosystem"
 
+_DEFAULT_TIMEOUT_MS = 30_000
+_HARD_TIMEOUT_MAX_MS = 300_000
+
+# The conversation bridge performs a cold PackVM launch before entering the
+# Host-owned AI gateway.  That gateway gives its credentialed provider request
+# a 60-second deadline, so every enclosing Broker operation must outlive both
+# the provider deadline and the PackVM startup budget.  Keep the override
+# finite and identity-specific; unrelated Pack operations retain the shorter
+# default.
+_LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
+    (
+        "defaultspack",
+        "defaultspack.conversation",
+        "complete",
+    ): 120_000,
+    (
+        "rumi_ai_gateway_pack",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+    ): 120_000,
+    (
+        "rumi_ai_gateway_pack",
+        "rumi_ai_gateway_pack.ai-gateway.stream",
+        "rumi_ai_gateway_pack.ai-gateway.stream",
+    ): 120_000,
+    (
+        "rumi_provider_adapters_pack",
+        "rumi_provider_adapters_pack.provider.compatibility.generate",
+        "rumi_provider_adapters_pack.provider-generate",
+    ): 120_000,
+    (
+        "rumi_provider_adapters_pack",
+        "rumi_provider_adapters_pack.provider.compatibility.stream",
+        "rumi_provider_adapters_pack.provider-stream",
+    ): 120_000,
+}
+
 
 def _file_digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
@@ -77,6 +114,19 @@ def _execution_metadata(manifest: dict[str, Any], function: dict[str, Any]) -> d
         "materialization_mode": "on_demand",
         "execution_domain_profile": domain,
     }
+
+
+def _operation_timeout_ms(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> int:
+    """Return the finite default timeout for one exact executable operation."""
+
+    return _LONG_RUNNING_OPERATION_TIMEOUTS_MS.get(
+        (pack_id, function_id, operation_id),
+        _DEFAULT_TIMEOUT_MS,
+    )
 
 
 def _render_document(
@@ -137,8 +187,12 @@ def _render_document(
                     "output_schema": schemas[operation["output_schema_digest"]],
                     "error_schema": schemas[operation["error_schema_digest"]],
                     "effect_class": _effect_class(operation),
-                    "timeout_default_ms": 30_000,
-                    "timeout_hard_max_ms": 300_000,
+                    "timeout_default_ms": _operation_timeout_ms(
+                        pack_id,
+                        function["id"],
+                        operation_id,
+                    ),
+                    "timeout_hard_max_ms": _HARD_TIMEOUT_MAX_MS,
                     "idempotency": operation["idempotency"]["mode"],
                 }
             )

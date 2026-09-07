@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:222fbcaa23a0eb73da43c23a8071f654d19d0b7b62afd72215929d47dafbb0dc",
+  "source_identity": "sha256:63d6f6ddf8a56b6caa36739ac9ca825456db085ed406cfeae3352c5cc368f988",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
@@ -31,7 +31,7 @@
             "type": "object"
           },
           "effect_class": "privileged",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
         }
@@ -99,13 +99,13 @@
             "type": "object"
           },
           "effect_class": "privileged",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
         }
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:f686721a30155b519771c69ae41a8d345e9f2281cb6b23aabe0dcc2282124861",
-  "catalog_digest": "sha256:815a3eaf896b0c2c190b8b7b643d7025db8bd07489d21a45900fdefa4bb1c102"
+  "materialization_catalog_digest": "sha256:304f628786d0f75608a6ec40cf105f53ad9205673b06c53386cf5d18dab6cc56",
+  "catalog_digest": "sha256:ce3cb41053a3e0a264406932a5306f0d53314e9f29af4485ed62bb4b3c01e9fc"
 }

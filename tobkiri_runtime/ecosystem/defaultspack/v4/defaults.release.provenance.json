@@ -22,11 +22,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaultspack.executables.v4.json",
-      "digest": "sha256:2ab9b28790bd911df52ccec8cd25a0df4aa485c2cf5e9b9ed5b011d4d3e001fe"
+      "digest": "sha256:b94457cc883d97d0b0e4c1d9e3b9e8dea0a5daf20299d55589ca52b20d5c8262"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json",
-      "digest": "sha256:790398b182d2cf532c601a636e3b781c3131e7166b2c124004cd13335d90578e"
+      "digest": "sha256:6b9518946fd34f1cd7f6336a048d4a2ed9d063c599f31071da5bfd6994197f16"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -86,11 +86,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.executables.v4.json",
-      "digest": "sha256:3a02d1a054747d285748c5e2f39ec69681e9d42c06c9a4b4e4bdb2a458629c75"
+      "digest": "sha256:27657e2b86df02e2a9ac2add72db4272ab72e31b6432d80741f13784907f41f6"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.pack.v4.json",
-      "digest": "sha256:e149225cdd37ce070a097ef98db08e400b97e30d13ebf9eea6825276dcaf37b9"
+      "digest": "sha256:5064a483effbe74702a475c1348a3ea2c064c1fa2fe8d302fef150c35dc05112"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_modality_pack.executables.v4.json",
@@ -790,11 +790,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.executables.v4.json",
-      "digest": "sha256:470bf422dcfec11e8bb4a2c65ad24b6ef452f2e553db7ed4e85bda22e3849a32"
+      "digest": "sha256:b802de0906ebd50ba8ed57cf1e69c24f9cc28671ccea822c54c228e8f3f6af87"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.pack.v4.json",
-      "digest": "sha256:6e14ab0dddc7a18d18f58f6ea8ce34743383689d6feead527f4299fed357aa11"
+      "digest": "sha256:3951afd58591564995a319d31ab79da2b782c765673f84460abe66e03a4eeb62"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_registry_pack.executables.v4.json",
@@ -1317,9 +1317,9 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:de2fa58e8a979a051938646a98fb7ff934e08c9e78bd1ed23d361d74adf7747d",
-    "catalog_revision": "sha256:e1942fa89dc28bf3e3df4f47448586e205077422114b420fe6d4a3e6c10eb490",
-    "closure_digest": "sha256:0765d7870afbc1ae16ebceb9649becc74f9f840f43cd7e3c45f736b0e876d000"
+    "bundle_digest": "sha256:2b3cee9ac251c80e018209d92b1a9dae3a18aa1b0e66c6258890a3f2db8f323f",
+    "catalog_revision": "sha256:0b4d2c3b3c61298179057e7cee0e460499807456f5dde252c91351fb3c9f919e",
+    "closure_digest": "sha256:99ac74a9b8ea922865863ad2c4220cc8721aae0372c87d33969aad81d3975ad9"
   },
   "outputs": [
     {
@@ -1328,8 +1328,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:f87673416fccbecde4b0d18ac9cde4ff7d5ee36ccce4648545c394731963fb16"
+      "digest": "sha256:7aee709f88948a8bdc7175e14fa95a0068166084f78991f428f08c47c796a306"
     }
   ],
-  "release_digest": "sha256:b0dc487dcc07d13e1b67590f281156ed630301916a6ebc27727adb20f6f69b52"
+  "release_digest": "sha256:7ab11ffb43a270c940b5b39e83128f5693a7b70a6ce19e013839bbe6eabc2863"
 }

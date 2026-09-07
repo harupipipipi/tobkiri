@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:0de6c267d5293de281b120e8237e0fd48151d947497a880c69103b1a3de5fce0",
+      "digest": "sha256:f95fa4b2b5380005318c26b7300ef0bf98b2852b74be5d5cf5e17731aea5db2b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -43,7 +43,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:018a1e051e6bb10b43bd825b749a1b831c6fe88fcb8e9efca7dbf2ba5178a77b",
+    "artifact_set_digest": "sha256:6628114b5fd55ea429ead767e5a997a50d12eee6afd6b7cf4225f8adb0cf9d91",
     "contract_catalog_digest": "sha256:a994bb2d38eda959e15e1f1c6aae7a99937c80f691f0eb4bb2eca48f473f3daa",
     "source_identity": "sha256:c9c561446efe070b449801cabfffa785758f03e49f1dc9a4652833b56f83256c"
   },
@@ -64,7 +64,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:018a1e051e6bb10b43bd825b749a1b831c6fe88fcb8e9efca7dbf2ba5178a77b",
+    "artifact_digest": "sha256:6628114b5fd55ea429ead767e5a997a50d12eee6afd6b7cf4225f8adb0cf9d91",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
