@@ -85,9 +85,9 @@ fn health_client() -> &'static reqwest::blocking::Client {
         reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_millis(800))
             // Health verifies the durable Profile, which can exceed 800 ms on
-            // a cold start. Abandoning it sooner leaves that work running while
-            // polling starts more captures against the same activation lock.
-            .timeout(Duration::from_secs(5))
+            // a cold start. Abandoning it leaves that work running while polling
+            // starts more captures against the same activation lock.
+            .timeout(Duration::from_secs(30))
             .build()
             .expect("failed to build health-check HTTP client")
     })

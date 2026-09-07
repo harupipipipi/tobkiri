@@ -69,6 +69,28 @@ def test_private_pack_entrypoint_refuses_root_execution(
     assert packvm_guest_runner._execute_staged_module(implementation) == 1
 
 
+def test_guest_child_wraps_terminal_pack_outcome_for_host_abi() -> None:
+    """A terminal Pack result uses the exact Host-visible invoke envelope."""
+
+    outcome = {"content": [{"type": "text", "text": "done"}], "tool_calls": []}
+
+    assert packvm_guest_runner._host_invoke_result(outcome) == {
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": outcome,
+    }
+
+
+def test_guest_child_preserves_bridge_request_before_host_round_trip() -> None:
+    """The first bridge request remains visible to the guest agent dispatcher."""
+
+    bridge_request = {
+        "kind": packvm_guest_runner.PACKVM_BRIDGE_REQUEST_KIND,
+        "continuation": {},
+    }
+
+    assert packvm_guest_runner._host_invoke_result(bridge_request) is bridge_request
+
+
 def test_guest_child_policy_denies_all_available_process_and_socket_syscalls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

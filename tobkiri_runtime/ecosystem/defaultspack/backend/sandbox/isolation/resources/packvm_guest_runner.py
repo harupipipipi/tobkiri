@@ -33,7 +33,7 @@ from typing import Callable, Mapping, Protocol
 
 
 PROTOCOL = "io.tobkiri.packvm-supervisor.v1"
-BUILD_ID = "tobkiri-packvm-runner-3"
+BUILD_ID = "tobkiri-packvm-runner-4"
 ARTIFACT_ROOT = Path("/var/lib/tobkiri-packvm/artifacts")
 REQUEST_ROOT = Path("/run/tobkiri-packvm/requests")
 MAX_REQUEST_BYTES = 700 * 1024 * 1024
@@ -58,6 +58,7 @@ PACKVM_BRIDGE_REQUEST_KIND = "tobkiri.packvm.bridge.request.v1"
 PACKVM_BRIDGE_RESULT_KIND = "tobkiri.packvm.bridge.result.v1"
 PACKVM_CONTINUATION_KIND = "tobkiri.packvm.continuation.v1"
 PACKVM_BRIDGE_HOST_RESULT_KIND = "tobkiri.packvm.bridge.host-result.v1"
+PACKVM_INVOKE_RESULT_KIND = "tobkiri.packvm.invoke.result.v1"
 PACKVM_BRIDGE_TARGET = {
     "contract_id": "tobkiri.service.ai.generate.v1",
     "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
@@ -325,6 +326,17 @@ def _looks_like_bridge_request(value: dict[str, object]) -> bool:
     """Return whether an artifact selected the explicit bridge ABI path."""
 
     return value.get("kind") == PACKVM_BRIDGE_REQUEST_KIND
+
+
+def _host_invoke_result(value: dict[str, object]) -> dict[str, object]:
+    """Preserve bridge requests and wrap every terminal Pack ABI outcome."""
+
+    if _looks_like_bridge_request(value):
+        return value
+    return {
+        "kind": PACKVM_INVOKE_RESULT_KIND,
+        "outcome": value,
+    }
 
 
 def _validate_bridge_request(value: object) -> dict[str, object]:
@@ -1567,7 +1579,12 @@ def _execute_staged_module(path: Path) -> int:
         result = operation(request["operation_id"], request["payload"])
         if not isinstance(result, dict):
             raise ValueError("PackVM implementation result must be an object")
-        encoded = json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
+        host_result = _host_invoke_result(result)
+        encoded = json.dumps(
+            host_result,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
         if len(encoded) > MAX_RESULT_BYTES:
             raise ValueError("PackVM implementation result exceeds size limit")
         sys.stdout.buffer.write(encoded)

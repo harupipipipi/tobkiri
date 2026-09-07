@@ -514,6 +514,39 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(sleeps, [0.2, 0.2])
 
+    def test_wait_until_ready_does_not_flood_slow_profile_verification(self):
+        from defaultspack import desktop_app
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        with patch.object(
+            desktop_app.urllib.request,
+            "urlopen",
+            return_value=FakeResponse(),
+        ) as urlopen:
+            with patch.object(
+                desktop_app.time,
+                "time",
+                side_effect=[0.0, 0.0, 0.0],
+            ):
+                result = desktop_app._wait_until_ready(
+                    "http://localhost:8766/chat",
+                    timeout=30.0,
+                )
+
+        self.assertTrue(result)
+        urlopen.assert_called_once_with(
+            "http://localhost:8766/health",
+            timeout=30.0,
+        )
+
     def test_managed_pack_root_alias_supports_ecosystem_defaultspack_imports(self):
         from defaultspack import desktop_app
 

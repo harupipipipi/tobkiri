@@ -589,15 +589,22 @@ def _port_from_url(url: str) -> str:
         return ""
 
 
-def _wait_until_ready(url: str, timeout: float = 10.0) -> bool:
+def _wait_until_ready(url: str, timeout: float = 30.0) -> bool:
     deadline = time.time() + timeout
     health_url = url.split("/chat", 1)[0].rstrip("/") + "/health"
     while time.time() < deadline:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return False
         try:
-            with urllib.request.urlopen(health_url, timeout=1.0) as response:
+            # Durable Profile verification can be slow on a cold start.  Let
+            # one verification finish instead of abandoning it and starting
+            # more handler threads against the same activation lock.
+            with urllib.request.urlopen(health_url, timeout=remaining) as response:
                 return 200 <= response.status < 300
         except (OSError, urllib.error.URLError):
-            time.sleep(0.2)
+            if time.time() < deadline:
+                time.sleep(0.2)
     return False
 
 
