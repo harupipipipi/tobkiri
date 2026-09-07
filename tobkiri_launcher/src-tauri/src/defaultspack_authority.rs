@@ -324,15 +324,24 @@ impl SignedApplicationResolver {
             .context("signed presentation catalog authority was rejected")?;
         let app_root = canonical_directory(&config.app_dir, "packaged application root")?;
         let (_, bootstrap_profile_source, _) = catalog.bootstrap_profile_identity()?;
-        let bundle_root = packaged_bundle_root(&app_root, bootstrap_profile_source)?;
-        let pack_root = canonical_pack_root(&bundle_root)?;
+        let packaged_bundle_root = packaged_bundle_root(&app_root, bootstrap_profile_source)?;
+        let pack_root = canonical_pack_root(&packaged_bundle_root)?;
+        let development_roots = if has_verified_active_profile(config)? {
+            development_defaults_roots(config)?
+        } else {
+            None
+        };
+        let (bundle_root, application_pack_root, development_bundle) = match development_roots {
+            Some((root, bundle)) => (bundle, root, true),
+            None => (packaged_bundle_root, pack_root.clone(), false),
+        };
         verify_symlink_free_tree(&pack_root, &pack_root)?;
         let bundle_lock = verify_bundle_lock(&bundle_root)?;
         #[cfg(test)]
         let catalog = fixture_catalog_with_shell_variant(catalog, &bundle_root, &bundle_lock)?;
         let active = select_profile_authority(config, &catalog, &bundle_root, &bundle_lock)?;
         let (mut selected, mut reconfirmation, mut previous_launch) =
-            match validate_profile(&active.profile, &catalog, &active) {
+            match validate_profile(&active.profile, &catalog, &active, development_bundle) {
                 Ok(_) => (active, None, None),
                 Err(error)
                     if error
@@ -368,10 +377,15 @@ impl SignedApplicationResolver {
                 }
                 Err(error) => return Err(error),
             };
-        let mut selected_variant = validate_profile(&selected.profile, &catalog, &selected)?;
-        if let Err(error) =
-            validate_profile_pack_closure(&selected, &catalog, &bundle_root, &bundle_lock)
-        {
+        let mut selected_variant =
+            validate_profile(&selected.profile, &catalog, &selected, development_bundle)?;
+        if let Err(error) = validate_profile_pack_closure(
+            &selected,
+            &catalog,
+            &bundle_root,
+            &bundle_lock,
+            development_bundle,
+        ) {
             if reconfirmation.is_some()
                 || error
                     .downcast_ref::<ProfileReresolutionRequired>()
@@ -384,10 +398,15 @@ impl SignedApplicationResolver {
             ensure_reconfirmation_selection_is_stable(&selected, &candidate)?;
             previous_launch = selected.launch_contribution;
             selected = candidate;
-            selected_variant = validate_profile(&selected.profile, &catalog, &selected)?;
-            if let Err(candidate_error) =
-                validate_profile_pack_closure(&selected, &catalog, &bundle_root, &bundle_lock)
-            {
+            selected_variant =
+                validate_profile(&selected.profile, &catalog, &selected, development_bundle)?;
+            if let Err(candidate_error) = validate_profile_pack_closure(
+                &selected,
+                &catalog,
+                &bundle_root,
+                &bundle_lock,
+                development_bundle,
+            ) {
                 bail!(
                     "current signed bootstrap Profile Pack closure is invalid: {candidate_error:#}"
                 );
@@ -399,7 +418,7 @@ impl SignedApplicationResolver {
             bundle_pack_path(&bundle_root, &bundle_lock, &selected.application_pack_id)?;
         let application_pack = read_json(&application_path, "selected Application Pack v4")?;
         let launch = validate_application_pack(
-            &pack_root,
+            &application_pack_root,
             &pack_root,
             &application_pack,
             selected_variant,
@@ -792,6 +811,39 @@ fn packaged_bundle_root(app_root: &Path, source: &str) -> Result<PathBuf> {
     }
     let relative = bundle_components.iter().collect::<PathBuf>();
     canonical_child_directory(app_root, &relative, "selected Pack v4 root")
+}
+
+#[cfg(debug_assertions)]
+fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, PathBuf)>> {
+    if !config.is_dev_workspace() {
+        return Ok(None);
+    }
+    let mut candidates = vec![config.app_dir.join("bundled/dev-defaults")];
+    if let Some(workspace_root) = config.dev_workspace_root.as_ref() {
+        candidates.push(workspace_root.join("tobkiri_launcher/src-tauri/target/dev-defaults"));
+    }
+    for candidate in candidates {
+        match fs::symlink_metadata(&candidate) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error).context("failed to inspect development Defaults root"),
+        }
+        let root = canonical_directory(&candidate, "development Defaults root")?;
+        let bundle = canonical_child_directory(&root, Path::new("v4"), "development Pack v4 root")?;
+        canonical_child_directory(
+            &root,
+            Path::new("platform-artifacts"),
+            "development Application artifact root",
+        )?;
+        verify_symlink_free_tree(&root, &root)?;
+        return Ok(Some((root, bundle)));
+    }
+    Ok(None)
+}
+
+#[cfg(not(debug_assertions))]
+fn development_defaults_roots(_config: &AppConfig) -> Result<Option<(PathBuf, PathBuf)>> {
+    Ok(None)
 }
 
 fn canonical_pack_root(bundle_root: &Path) -> Result<PathBuf> {
@@ -1204,6 +1256,7 @@ fn validate_profile_pack_closure(
     catalog: &crate::presentation::PresentationCatalog,
     bundle_root: &Path,
     bundle_lock: &VerifiedBundleLock,
+    development_bundle: bool,
 ) -> Result<()> {
     let mut identities = selected.pack_ids.clone();
     identities.insert(selected.base_pack_id.clone());
@@ -1223,7 +1276,11 @@ fn validate_profile_pack_closure(
                 .context("selected Profile Pack escaped its bundle root")?
                 .to_string_lossy()
                 .replace('\\', "/");
-            if bundle_lock.authority_digests.get(&relative) != Some(expected) {
+            let generated_development_identity = development_bundle
+                && (pack_id == selected.application_pack_id || pack_id == selected.shell_pack_id);
+            if !generated_development_identity
+                && bundle_lock.authority_digests.get(&relative) != Some(expected)
+            {
                 bail!("selected Profile Pack source digest differs from the signed catalog");
             }
         }
@@ -2190,6 +2247,7 @@ fn validate_profile<'a>(
     profile: &Value,
     catalog: &'a crate::presentation::PresentationCatalog,
     selected: &SelectedProfileAuthority,
+    development_bundle: bool,
 ) -> Result<&'a crate::presentation::ArtifactVariant> {
     let profile_id =
         value_str(profile, "/profile_id").context("selected Profile identity is missing")?;
@@ -2251,7 +2309,7 @@ fn validate_profile<'a>(
             .launch_contribution
             .as_ref()
             .context("active Profile has no runtime launch contribution")?;
-        validate_active_shell_variant(variants[0], launch, executable_digest)?;
+        validate_active_shell_variant(variants[0], launch, executable_digest, development_bundle)?;
     }
     Ok(variants[0])
 }
@@ -2260,14 +2318,19 @@ fn validate_active_shell_variant(
     variant: &crate::presentation::ArtifactVariant,
     launch: &RuntimeLaunchContribution,
     executable_digest: &str,
+    development_bundle: bool,
 ) -> Result<()> {
+    let variant_artifact_digest = variant.sha256.as_deref();
+    let variant_entrypoint_digest = variant.entrypoint_sha256.as_deref();
+    let development_digests_are_unsealed = cfg!(debug_assertions)
+        && development_bundle
+        && variant_artifact_digest.is_none()
+        && variant_entrypoint_digest.is_none();
     if !valid_digest(executable_digest)
         || !valid_digest(&launch.artifact_digest)
-        || !variant.sha256.as_deref().is_some_and(valid_digest)
-        || !variant
-            .entrypoint_sha256
-            .as_deref()
-            .is_some_and(valid_digest)
+        || (!development_digests_are_unsealed
+            && (!variant_artifact_digest.is_some_and(valid_digest)
+                || !variant_entrypoint_digest.is_some_and(valid_digest)))
         || variant.artifact_ref != launch.relative_path
         || variant.entrypoint != launch.entrypoint
         || variant.platform != launch.platform
@@ -2275,8 +2338,9 @@ fn validate_active_shell_variant(
     {
         bail!("active Profile Shell differs from its signed executable artifact");
     }
-    if variant.entrypoint_sha256.as_deref() != Some(executable_digest)
-        || variant.sha256.as_deref() != Some(launch.artifact_digest.as_str())
+    if (!development_digests_are_unsealed && variant_entrypoint_digest != Some(executable_digest))
+        || (!development_digests_are_unsealed
+            && variant_artifact_digest != Some(launch.artifact_digest.as_str()))
     {
         return Err(ShellReconfirmationRequired.into());
     }
@@ -4062,10 +4126,29 @@ mod tests {
                 "prebuilt": true, "production": true
             }))
             .unwrap();
-        validate_active_shell_variant(&variant, &launch, &executable_digest).unwrap();
+        validate_active_shell_variant(&variant, &launch, &executable_digest, false).unwrap();
+        if cfg!(debug_assertions) {
+            let mut unsealed_development_variant = variant.clone();
+            unsealed_development_variant.sha256 = None;
+            unsealed_development_variant.entrypoint_sha256 = None;
+            assert!(validate_active_shell_variant(
+                &unsealed_development_variant,
+                &launch,
+                &executable_digest,
+                false,
+            )
+            .is_err());
+            validate_active_shell_variant(
+                &unsealed_development_variant,
+                &launch,
+                &executable_digest,
+                true,
+            )
+            .unwrap();
+        }
         variant.sha256 = Some(format!("sha256:{}", "c".repeat(64)));
         assert!(
-            validate_active_shell_variant(&variant, &launch, &executable_digest)
+            validate_active_shell_variant(&variant, &launch, &executable_digest, false)
                 .unwrap_err()
                 .downcast_ref::<ShellReconfirmationRequired>()
                 .is_some()
@@ -4102,8 +4185,8 @@ mod tests {
                 "sha256" => variant.sha256 = Some("invalid".into()),
                 _ => unreachable!(),
             }
-            let error =
-                validate_active_shell_variant(&variant, &launch, &executable_digest).unwrap_err();
+            let error = validate_active_shell_variant(&variant, &launch, &executable_digest, false)
+                .unwrap_err();
             if matches!(field, "platform" | "architecture") {
                 assert!(validate_application_selector(&launch, &variant, &pack).is_err());
             }
