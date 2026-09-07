@@ -1955,6 +1955,12 @@ class RuntimeSurfaceService:
             frontend_bindings,
             operations=operations,
             frontend_map_digest=_frontend_map_digest(snapshot),
+            shell_function_ids=frozenset(
+                str(function["id"])
+                for function in snapshot.catalog.packs[
+                    str(active.resolved.profile["shell"]["pack_id"])
+                ]["functions"]
+            ),
         )
         return {
             "packs": packs,
@@ -2194,6 +2200,7 @@ def _verified_route_projection(
     *,
     operations: list[dict[str, object]],
     frontend_map_digest: str,
+    shell_function_ids: frozenset[str],
 ) -> list[dict[str, object]]:
     """Bind every digest-pinned frontend route to one captured principal."""
 
@@ -2214,6 +2221,7 @@ def _verified_route_projection(
                 and operation["operation_id"] == operation_id
                 and operation["function_id"] == function_id
                 and operation["target_provider_id"] == provider_id
+                and operation["caller_function_id"] in shell_function_ids
             ]
             if len(exact) != 1:
                 raise RuntimeSurfaceError(
