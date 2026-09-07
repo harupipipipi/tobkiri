@@ -70,7 +70,12 @@ def test_profile_identity_and_presentation_replacement_are_rejected(field: str) 
 def test_conflicting_existing_definitions_are_not_silently_overwritten(field: str) -> None:
     current = _profile()
     source = deepcopy(current)
-    source[field][0]["unexpected_change"] = True
+    if field == "packs":
+        source[field][0]["role"] = "application"
+    else:
+        source[field][0]["requested_scope_template"]["dimensions"]["operation"].append(
+            "write"
+        )
     with pytest.raises(ProfileDefinitionStoreConflict, match="conflicts"):
         profile_source_additions(current, source)
 
