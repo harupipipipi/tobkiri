@@ -1747,6 +1747,57 @@
       ],
       "variant_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe.python"
     },
+    "rumi_command_protocol_pack.catalog.read": {
+      "contract_id": "tobkiri.resource.command.catalog.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_command_protocol_pack.catalog.read",
+      "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+      "implementation_path": "runtime/catalog.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "command.catalog.read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "command.catalog.read",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+          "implementation_path": "runtime/catalog.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "command.catalog.read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_command_protocol_pack",
+      "pack_id": "rumi_command_protocol_pack",
+      "source": [
+        {
+          "entrypoint_id": "command.catalog.read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_command_protocol_pack.catalog.read.python"
+    },
     "rumi_command_protocol_pack.high-risk-command.service": {
       "contract_id": "tobkiri.service.command.high-risk.v1",
       "contract_version": "1.0.0",
@@ -5867,7 +5918,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
-      "implementation_digest": "sha256:cf339a1e99524d37d5bec3b3ab721aef8063f532b7873c0bafc253f4cabc780f",
+      "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
       "implementation_path": "runtime/catalog.py",
       "input_schema": {
         "type": "object"
@@ -5880,7 +5931,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cf339a1e99524d37d5bec3b3ab721aef8063f532b7873c0bafc253f4cabc780f",
+          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -5901,7 +5952,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cf339a1e99524d37d5bec3b3ab721aef8063f532b7873c0bafc253f4cabc780f",
+          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -5921,7 +5972,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cf339a1e99524d37d5bec3b3ab721aef8063f532b7873c0bafc253f4cabc780f",
+          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -6870,7 +6921,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.provider-registry.health",
-      "implementation_digest": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455",
+      "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
       "implementation_path": "runtime/health_process.py",
       "input_schema": {
         "type": "object"
@@ -6883,7 +6934,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455",
+          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "implementation_path": "runtime/health_process.py",
           "input_schema": {
             "type": "object"
@@ -6904,7 +6955,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455",
+          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "implementation_path": "runtime/health_process.py",
           "input_schema": {
             "type": "object"
@@ -6924,7 +6975,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455",
+          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "implementation_path": "runtime/health_process.py",
           "input_schema": {
             "type": "object"
@@ -7818,7 +7869,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_shell_policy_pack.shell-policy.inspect",
-      "implementation_digest": "sha256:416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed",
+      "implementation_digest": "sha256:4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
       "implementation_path": "runtime/policy.py",
       "input_schema": {
         "type": "object"
@@ -7832,7 +7883,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:416d5f2b739f31f241c55c18665e66bb9362a0e293c08d4dc321d97373085bed",
+          "implementation_digest": "sha256:4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
           "implementation_path": "runtime/policy.py",
           "input_schema": {
             "type": "object"
@@ -10258,6 +10309,108 @@
       ],
       "variant_id": "tobkiri.host.pack-control.python"
     },
+    "tobkiri.ui.catalog.read": {
+      "contract_id": "tobkiri.resource.ui.settings.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.ui.catalog.read",
+      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_path": "runtime/settings.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "implementation_path": "runtime/settings.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.ui.catalog.read.python"
+    },
+    "tobkiri.ui.settings.read": {
+      "contract_id": "tobkiri.resource.ui.settings.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.ui.settings.read",
+      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_path": "runtime/settings.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.settings-read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "implementation_path": "runtime/settings.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.settings-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.ui.settings.read.python"
+    },
     "tobkiri.workflow.provider": {
       "contract_id": "tobkiri.workflow.v4",
       "contract_version": "1.0.0",
@@ -10808,7 +10961,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 191,
-    "input_digest": "sha256:6cbd709a8ecd2d1e98f5a19359ab3910d1aaf2ddaf3fc99dfa60423e7949a47c",
+    "input_digest": "sha256:0466a43c672d27b993cb29a4339d876a5dcae70b65439d385adb6dfcff4d007b",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/artifact-manifest.json",
@@ -11294,7 +11447,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:f03dac719fd2a4d4d534e2224de64c81c0755113927250291e263ef3c51dccb4",
+        "digest": "sha256:edc04d50bac773c1be65578c0f8d859504c9cd393ade28125454779ffc5fb29f",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-manifest.json"
       },
@@ -11329,7 +11482,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:c9ee7eb31cccbc757963a05d42b813a79bebbdb38e601d7efc3d3aa9c29ef0db",
+        "digest": "sha256:9311f2590e6a18dbf7805b27f8ba6de69ac82186866594a23ce7f7d28a5d31b2",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/artifact-manifest.json"
       },
@@ -11374,7 +11527,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:0386a454865c7a93fecf36b1361889773c1f8332f35353df4c7f430b0cf73fa2",
+        "digest": "sha256:0453e2bdf62215d18a91c0119e33f1ce25d8b6dd0ae67284508a496cc10f4a91",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/artifact-manifest.json"
       },
@@ -11479,7 +11632,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:ef893c8b08f222b26a0939c9d473ba22babba20a5598031dcdd7cb7e61a1c877",
+        "digest": "sha256:61615b791f3f83f8dd93dfd69796408f8a988ed81ce1017f573b3c66a4a3d45b",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -11774,7 +11927,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:1ac46806987402de7335f4f6d28f66edcf9dc9d7e9f41b1225b3bc2051c70b83",
+        "digest": "sha256:ac25bd6f5a9165798af584159c0100521ba1747eeddca63a7fd841ca4901a594",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json"
       },
@@ -11809,7 +11962,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:7b4ecd392642e3e67040e199ae82e34f127895bb2b0acc686390dea87ab1792b",
+        "digest": "sha256:1da6803821d986e125f8ff61b570f31efd2a6abda84c1239d0650b2480ca026b",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json"
       },
@@ -11854,7 +12007,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:0f282117b9e279763565abd4d139380c6bbe6ca5d321bd0d6a57defb7658773c",
+        "digest": "sha256:58256f959fce1f279921475d778b1e801976bc62ff8a33b9eddfcdaf005fc367",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/rumi.pack.v3.json"
       },

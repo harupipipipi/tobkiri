@@ -342,11 +342,39 @@
     "rumi_command_protocol_pack": {
       "entries": [
         {
+          "function_id": "rumi_command_protocol_pack.catalog.read",
+          "operation_ids": ["command.catalog.read"],
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/catalog.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
           "function_id": "rumi_command_protocol_pack.high-risk-command.service",
           "operation_ids": ["high_risk_command.manage"],
           "contract_id": "tobkiri.service.command.high-risk.v1",
           "contract_version": "1.0.0",
           "implementation_path": "runtime/high_risk_adapter.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        }
+      ]
+    },
+    "tobkiri_ui_settings_pack": {
+      "entries": [
+        {
+          "function_id": "tobkiri.ui.settings.read",
+          "operation_ids": ["tobkiri_ui_settings_pack.settings-read"],
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "tobkiri.ui.catalog.read",
+          "operation_ids": ["tobkiri_ui_settings_pack.catalog-read"],
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
           "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
         }
       ]

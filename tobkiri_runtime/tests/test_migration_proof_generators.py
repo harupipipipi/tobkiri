@@ -103,8 +103,20 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
     assert payload["source"]["input_paths"] == [
         item["path"] for item in payload["source"]["inputs"]
     ]
-    assert len(records) == 172
-    assert sum(len(record["operations"]) for record in records.values()) == 234
+    assert len(records) == 175
+    assert sum(len(record["operations"]) for record in records.values()) == 237
+    for function_id, pack_id, operation_id, implementation_path in (
+        ("rumi_command_protocol_pack.catalog.read", "rumi_command_protocol_pack", "command.catalog.read", "runtime/catalog.py"),
+        ("tobkiri.ui.settings.read", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.settings-read", "runtime/settings.py"),
+        ("tobkiri.ui.catalog.read", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.catalog-read", "runtime/settings.py"),
+    ):
+        record = records[function_id]
+        assert record["owner"] == pack_id
+        assert record["implementation_path"] == implementation_path
+        assert record["implementation_digest"] == "sha256:" + hashlib.sha256(
+            (ECOSYSTEM / pack_id / implementation_path).read_bytes()
+        ).hexdigest()
+        assert [item["operation_id"] for item in record["operations"]] == [operation_id]
     git_write = records["rumi_git_write_pack.git-commit.service"]
     assert [operation["operation_id"] for operation in git_write["operations"]] == [
         "rumi_git_write_pack.git-commit"
