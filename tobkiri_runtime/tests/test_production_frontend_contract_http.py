@@ -542,6 +542,19 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
     assert payload["data"]["code"] == "invalid_contract_payload"
 
 
+def test_external_session_cannot_borrow_a_provider_only_edge(production_server) -> None:
+    """A unique nested edge is not an implicit Shell capability."""
+    from core_runtime.authority.v4 import AuthorityDenied
+
+    _server, session, _authority = production_server
+    with pytest.raises(AuthorityDenied, match="captured Shell caller edge"):
+        session.context_for(
+            "tobkiri.service.ai.generate.v1",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            "external-panel-session",
+        )
+
+
 def test_command_protocol_paths_are_inert_in_captured_production_http(
     production_server,
     monkeypatch: pytest.MonkeyPatch,

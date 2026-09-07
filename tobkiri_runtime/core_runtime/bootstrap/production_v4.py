@@ -1342,6 +1342,11 @@ def capture_production_dispatch(
             )
             function_principals.append(principal)
         principals_by_function[function.function_id] = tuple(function_principals)
+    shell_principal_ids = frozenset(
+        principal.principal_id
+        for principals in principals_by_function.values()
+        for principal in principals
+    )
     for binding in plan["bindings"]:
         principal = FunctionPrincipal.from_dict(binding["function_principal"])
         existing = list(principals_by_function.get(principal.function_id, ()))
@@ -2390,11 +2395,17 @@ def capture_production_dispatch(
             if len(matches) != 1:
                 raise AuthorityDenied("authenticated nested caller edge is invalid")
             return matches[0]
-        if len(candidates) != 1:
+        # An external panel session belongs to the captured Shell, never to
+        # an arbitrary Provider which happens to call the same operation.
+        # Nested Provider sessions above retain their exact Host binding.
+        shell_candidates = tuple(
+            edge for edge in candidates if edge.caller.principal_id in shell_principal_ids
+        )
+        if len(shell_candidates) != 1:
             raise AuthorityDenied(
-                "operation has multiple caller edges without an authenticated binding"
+                "operation does not identify one captured Shell caller edge"
             )
-        return candidates[0]
+        return shell_candidates[0]
 
     def context_for(contract_id: str, operation_id: str, session_id: str) -> RequestContext:
         if not isinstance(session_id, str) or not session_id.strip() or len(session_id) > 512:
