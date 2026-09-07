@@ -8,6 +8,37 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.parametrize("explicit", [False, True])
+def test_capture_uses_host_selected_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, explicit: bool
+) -> None:
+    """Dispatch keeps the bundle selected by Host activation or explicit injection."""
+    from core_runtime.bootstrap import profile_capture
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_runtime_capture_inputs,
+    )
+    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+
+    selected = tmp_path / "generated-bundle"
+    injected = tmp_path / "explicit-bundle"
+    monkeypatch.setattr(profile_capture, "_bundle_root", lambda: selected)
+    observed: list[Path] = []
+
+    class CatalogObserved(Exception):
+        pass
+
+    def load_catalog(cls: type, root: Path) -> None:
+        observed.append(root)
+        raise CatalogObserved
+
+    monkeypatch.setattr(BundledCatalog, "load", classmethod(load_catalog))
+    with pytest.raises(CatalogObserved):
+        defaultspack_runtime_capture_inputs(
+            bundle_root=injected if explicit else None,
+        )
+    assert observed == [injected if explicit else selected]
+
+
 def test_runtime_v4_import_does_not_install_profile_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

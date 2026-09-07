@@ -60,9 +60,7 @@ def defaultspack_runtime_capture_inputs(
         resolve_frontend_contract_map_path,
         load_frontend_contract_bindings,
     )
-    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
-        defaultspack_profile_bundle_root,
-    )
+    from core_runtime.bootstrap.profile_capture import _bundle_root
     from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
     from ecosystem.defaultspack.domain.runtime_surface_v4 import (
         create_runtime_surface_services,
@@ -73,7 +71,9 @@ def defaultspack_runtime_capture_inputs(
     )
 
     runtime_root = Path(__file__).resolve().parents[3]
-    bundle_root = bundle_root or defaultspack_profile_bundle_root()
+    # Activation and dispatch must use the same Host-verified bundle,
+    # including the generated artifacts selected for a source-development run.
+    bundle_root = bundle_root if bundle_root is not None else _bundle_root()
     catalog = BundledCatalog.load(bundle_root)
     application_id = _application_id(active, catalog.packs)
     application = catalog.packs.get(application_id)
