@@ -717,7 +717,7 @@ def test_pack_catalog_read_is_profile_bound_audited_and_restart_safe(
             "catalog.read",
             {"_session_id": "session.panel.restart"},
         )["count"]
-        == 140
+        == len(expected_pack_ids)
     )
 
     catalog_grant = next(
