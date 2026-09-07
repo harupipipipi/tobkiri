@@ -147,6 +147,19 @@ struct LaunchAssetsTests {
             }
         }
     }
+
+    @Test
+    func directBindingAcceptsHostDigestLeaseIdentifier() throws {
+        let fixture = try LaunchFixture()
+        defer { fixture.cleanup() }
+        let leaseID = CanonicalJSON.sha256Text("host-lease")
+
+        let binding = try DirectLaunchBinding.parse(
+            fixture.directRawLaunch(leaseID: leaseID)
+        )
+
+        #expect(binding.leaseID == leaseID)
+    }
 }
 
 private final class LaunchFixture {
@@ -246,9 +259,8 @@ private final class LaunchFixture {
         try LaunchBinding.parse(rawLaunch(bootMode: "linux"))
     }
 
-    func directRawLaunch() -> [String: Any] {
+    func directRawLaunch(leaseID: String = "lease-1") -> [String: Any] {
         let domainID = "domain-1"
-        let leaseID = "lease-1"
         let reservationID = "reservation-1"
         let publicKey = Data(repeating: 7, count: 32)
         let imageDigest = digest("image.raw")
