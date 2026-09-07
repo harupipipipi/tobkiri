@@ -39,6 +39,8 @@ SOURCE_FILES = (
     "ecosystem/defaultspack/host_contract_contributions.v1.json",
     "ecosystem/defaultspack/update_metadata.v1.json",
     "ecosystem/defaultspack/domain/runtime_surface_v4.py",
+    "ecosystem/defaultspack/domain/frontend_settings_catalog.py",
+    "ecosystem/defaultspack/domain/frontend_settings_store.py",
 )
 MANIFEST_KEYS = ("schema", "roots", "files")
 FILE_KEYS = ("path", "type", "size", "sha256", "executable")

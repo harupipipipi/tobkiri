@@ -24,7 +24,7 @@ from domain.ai_client.model_runtime_settings import (  # noqa: E402
     ModelRuntimeSettingsService,
 )
 from domain.frontend.registry import FrontendRegistry  # noqa: E402
-from domain.frontend.settings_catalog_inputs import SettingsCatalogInputs  # noqa: E402
+from domain.frontend_settings_catalog import SettingsCatalogInputs  # noqa: E402
 
 
 @pytest.mark.parametrize("has_models", [False, True])

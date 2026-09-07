@@ -6,8 +6,8 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:5d3d0f0f7ded71b5b1db34f74df7f8ce7cd1e11677fd981ca1ff9966e0f8ce25",
   "profile_definition_digest": "sha256:1fea9d7ae83a5bd6f8a07c017da4de5792a818ed71515083b92d7c0eb41feebe",
-  "catalog_revision": "sha256:713f8ac748ec3d140aefdc21ae8820512f98dfca78f2b91b1db48837e433bb3a",
-  "bundle_digest": "sha256:510ea5c3353bd6d639ea48a6149384aa02d4c507752b9cbcfc4b242e499e0e4a",
+  "catalog_revision": "sha256:63b834486f59b57adde90eb8d1eb3fca1f45ac5a9e0a1a5f0e766e9ff8ec5b96",
+  "bundle_digest": "sha256:73d948eb98688150349242d1ab286947548b9bf817f0c85ea7370ec51d7a1467",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -43,7 +43,7 @@
     {
       "role": "pack",
       "identity": "tobkiri_ui_settings_pack",
-      "artifact_digest": "sha256:8442a8a7de78518a12e7e1006fb7c09aa85c0037714bc3bd42d1a7c9c02bbfe6"
+      "artifact_digest": "sha256:9502b5c5a92ff8aa8c35c37e1ff5ad1c6996e80dc52f52a321a5b337cfd716c5"
     },
     {
       "role": "pack",
@@ -574,8 +574,8 @@
     },
     {
       "pack_id": "tobkiri_ui_settings_pack",
-      "artifact_digest": "sha256:8442a8a7de78518a12e7e1006fb7c09aa85c0037714bc3bd42d1a7c9c02bbfe6",
-      "executable_catalog_digest": "sha256:79322cbbb6fb67033783b8b47847e6c05fd5d3a5b40007ba9cc61d286c8caea5",
+      "artifact_digest": "sha256:9502b5c5a92ff8aa8c35c37e1ff5ad1c6996e80dc52f52a321a5b337cfd716c5",
+      "executable_catalog_digest": "sha256:adf9bca1f63f389ef575abc309ecfe3bec034adaad0fcbc0ef34ef2d242a0076",
       "variant_id": "tobkiri.ui.settings.read.python",
       "platform": "any",
       "architecture": "any",
@@ -587,7 +587,7 @@
   ],
   "requested_edges_digest": "sha256:e797b22f45068320c121e3ebf1104bc07560823d38a3fc805030d6f0e5089260",
   "constraints_digest": "sha256:ca4de2cef8387730639e7b3974080b7b5b79412326c43a006f5b4aa815b78f0f",
-  "closure_digest": "sha256:5c32253b8c6cdf3a68251fde0c4819105d432088e2f09a312ba648f373806ee4",
+  "closure_digest": "sha256:ee6c2657b948576079bfb980697ce6f799abe87147468dedab624b3043b0bee9",
   "provenance_digest": "sha256:edb8a7fac23a53106671211ebeac369549e8e11202d50dbc83456213e79c2ef4",
-  "lock_digest": "sha256:089b4964961359d1650d2f64a19a387b0c7703ce09a41b40e0a0ce9cb7559950"
+  "lock_digest": "sha256:8604c1926874de616f9b7eaaaee13df63a40f71ab0999825f849a76c65c3de44"
 }

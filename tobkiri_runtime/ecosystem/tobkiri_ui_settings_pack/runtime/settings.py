@@ -11,9 +11,11 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from domain.frontend.registry import FrontendRegistry
-from domain.frontend.settings_catalog_inputs import SettingsCatalogInputs
-from domain.frontend_settings_store import FrontendSettingsStore
+from ecosystem.defaultspack.domain.frontend_settings_catalog import (
+    SettingsCatalogInputs,
+    SettingsSections,
+)
+from ecosystem.defaultspack.domain.frontend_settings_store import FrontendSettingsStore
 
 PACK_ID = "tobkiri_ui_settings_pack"
 FUNCTION_ID = "tobkiri.ui.settings.read"
@@ -125,8 +127,7 @@ class SettingsReadHostFactoryV4:
                 model_route_options=_model_options(models),
                 api_key_status=[],
             )
-            registry = FrontendRegistry(context.user_data_root / "defaultspack")
-            sections = registry._settings_sections([], [], template_catalog={}, inputs=inputs)
+            sections = SettingsSections().build([], [], template_catalog={}, inputs=inputs)
             return {"sections": sections, "values": _values(sections, store.read_snapshot())}
 
         return CapturedHostProviderV4(

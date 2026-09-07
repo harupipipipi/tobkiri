@@ -468,6 +468,6 @@
     "runtime.tauri.application.default": "sha256:07f88b71a6c479d60b7b70860260d71428858de764ac6759dfd01b0e9a00e0eb",
     "shell.tauri.default": "sha256:b27a7025b1bd35a5ade4f88e381b65a71093c0ff02d78f083410e71e15af4605",
     "tobkiri_host_pack_control": "sha256:6dea0485c733cd61d5aec6db75de6179b484584ba0e3f07ce204ba5b0851668e",
-    "tobkiri_ui_settings_pack": "sha256:3136b753534985a2bf829d871b71e553e8ab543f0c69a8833727d1516cb6eae8"
+    "tobkiri_ui_settings_pack": "sha256:fb1ec74d7760c592778fe33013ba158a7aa429e3255ad0aa8a28aa59816a91cd"
   }
 }
