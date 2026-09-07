@@ -92,7 +92,23 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     )
     assert added_packs <= {row["pack_id"] for row in active.resolved.profile["packs"]}
     assert profile_capture.capture_bootstrap_profile() == active
+    with pytest.raises(ProfileResolutionDenied, match="requires reconfirmation"):
+        profile_capture.capture_bootstrap_profile(
+            include_source_additions=True, confirmation=confirmation
+        )
     assert (
         ProfileDefinitionStore(user_data).get_profile("defaults").display_name
         == "My retained Defaults"
     )
+
+
+def test_source_update_cannot_create_an_unconfirmed_initial_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_data = tmp_path / "absent-user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    with pytest.raises(ProfileResolutionDenied, match="requires an active Profile"):
+        profile_capture.capture_bootstrap_profile(
+            include_source_additions=True, confirmation={}
+        )
+    assert not user_data.exists()
