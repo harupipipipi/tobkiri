@@ -77,6 +77,8 @@ const EXACT_NON_MAP_API_ROUTES = [
   {method: 'POST', path: PANEL_AUTH_EXCHANGE_PATH},
   {method: 'GET', path: '/api/setup/packs'},
   {method: 'POST', path: '/api/setup/packs/install'},
+  {method: 'GET', path: '/api/setup/packs?include_source_additions=true'},
+  {method: 'POST', path: '/api/setup/packs/install?include_source_additions=true'},
   {method: 'POST', path: '/api/setup/runtime/reconcile'},
   {method: 'GET', path: '/api/v4/profiles'},
   {method: 'POST', path: '/api/v4/profiles/create'},
@@ -254,7 +256,9 @@ function isUnsafeMethod(method: string): boolean {
 }
 
 function isSetupApiPath(path: string): boolean {
-  return path === '/api/setup/packs' || path === '/api/setup/packs/install';
+  return path === '/api/setup/packs' || path === '/api/setup/packs/install'
+    || path === '/api/setup/packs?include_source_additions=true'
+    || path === '/api/setup/packs/install?include_source_additions=true';
 }
 
 interface ParsedFrontendContractPath {
