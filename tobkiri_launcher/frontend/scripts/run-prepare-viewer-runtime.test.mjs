@@ -24,6 +24,7 @@ test("python3Commands uses the Python launcher first on Windows", () => {
 test("runPrepareViewerRuntime falls back from a missing python3 alias", () => {
   const calls = [];
   const status = runPrepareViewerRuntime(["--mode", "dev"], {
+    environment: {},
     platform: "darwin",
     spawn(command, args) {
       calls.push([command, args]);
@@ -43,6 +44,7 @@ test("runPrepareViewerRuntime falls back from a missing python3 alias", () => {
 test("a preparer failure is returned without retrying another interpreter", () => {
   const calls = [];
   assert.equal(runPrepareViewerRuntime(["--mode", "dev"], {
+    environment: {},
     spawn(command) { calls.push(command); return {status: 7}; },
   }), 7);
   assert.equal(calls.length, 1);
