@@ -57,6 +57,17 @@ def create_model_catalog_operation(client: Any):
             models = [item for item in models if item["provider_id"] == provider_id]
         if model_id:
             models = [item for item in models if item["model_id"] == model_id]
+        # v4 pins generation and streaming as distinct executable providers.
+        # The old unsuffixed instance cannot resolve either captured binding.
+        execution_provider = (
+            "provider.compatibility.stream"
+            if name == "rumi_model_catalog_pack.bundled-model-catalog.stream"
+            else "provider.compatibility.generate"
+        )
+        models = [
+            {**item, "execution_provider_instance_id": execution_provider}
+            for item in models
+        ]
         return {
             "catalog_revision": CATALOG_REVISION,
             "providers": providers,
