@@ -11,8 +11,17 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:b6fba6eafe1809167a9dc7f5c88948557a46f08e3f059a46d3250fc79930841f");
-  assert.equal(result.runtimeMap.routes.length, 28);
+  assert.equal(result.rawDigest, "sha256:4ac98962f1260e696ffef268012a7d1cb682bbcb5a0a6c2cf50f68c77211cf8f");
+  assert.equal(result.runtimeMap.routes.length, 33);
+  for (const path of [
+    "/api/ai/profiles", "/api/chat/conversations", "/api/ui/settings",
+    "/api/ui/full-catalog", "/api/command-protocol/v1/catalog",
+  ]) {
+    const read = result.runtimeMap.routes.find((route) => route.path === path);
+    assert.equal(read?.method, "GET");
+    assert.equal(read?.targets.length, 1);
+    assert.deepEqual(read?.targets[0].allowed_payload_keys, path === "/api/ui/settings" ? ["full"] : []);
+  }
   const capability = result.runtimeMap.routes.find(
     (route) => route.method === "POST" && route.path === "/api/ui/capability/invoke",
   );
