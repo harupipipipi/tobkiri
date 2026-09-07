@@ -24,6 +24,7 @@ from core_runtime import credential_transport as credential_transport_module
 from core_runtime.credential_transport import CredentialMaterialStoreBinding
 from core_runtime.bootstrap.profile_capture import (
     capture_default_profile,
+    host_profile_catalog,
     prepare_default_profile_confirmation,
 )
 from ecosystem.defaultspack.domain.runtime_v4 import ProfileResolutionDenied
@@ -155,6 +156,26 @@ class _ProviderResponse:
         return value[:amount]
 
 
+def _ai_bridge_request(request: dict[str, object]) -> dict[str, object]:
+    """Build the test guest ABI frame; Host still binds the actual caller."""
+    target = {
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+    }
+    digest = canonical_digest(request)
+    return {
+        "kind": "tobkiri.packvm.bridge.request.v1",
+        "protocol": "io.tobkiri.packvm.bridge.v1", "version": 1,
+        "target": target, "request": request, "request_digest": digest,
+        "continuation": {
+            "kind": "tobkiri.packvm.continuation.v1",
+            "protocol": "io.tobkiri.packvm.bridge.v1", "version": 1,
+            "operation_id": "complete", "nonce": "a" * 48,
+            "target": target, "request_digest": digest,
+        },
+    }
+
+
 def test_production_dispatch_executes_credentialed_provider_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -196,6 +217,25 @@ def test_production_dispatch_executes_credentialed_provider_request(
         "_open_pinned_request",
         open_request,
     )
+    # Model the guest transport only. The real outer Broker envelope and
+    # Host continuation bind Defaults to the AI gateway; a panel session
+    # must not invoke the Provider-only gateway edge directly.
+    conversation_binding = next(
+        item for item in active.resolved.plan["bindings"]
+        if item["contract_id"] == "conversation.turn.v1" and item["operation_id"] == "complete"
+    )
+    target = FunctionPrincipal.from_dict(conversation_binding["function_principal"])
+    backend = _CapturedBackend(_digest("credentialed-bridge-backend"))
+    backend.target_executable_digest = target.function_implementation_digest
+
+    def invoke_guest(envelope) -> ProviderOutcome:
+        response = backend.capability_bridge(
+            envelope, _ai_bridge_request(dict(envelope.payload)),
+        )
+        assert response["result"]["status"] == "ok", response
+        return ProviderOutcome(response["result"]["value"])
+
+    monkeypatch.setattr(backend, "invoke", invoke_guest)
     session = capture_production_dispatch(
         active,
         bundle_root=_bundle_root(),
@@ -204,6 +244,8 @@ def test_production_dispatch_executes_credentialed_provider_request(
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
         runtime_surface_factory=create_runtime_surface_services,
         credential_store_factory=_credential_store_factory,
+        backends=BackendRegistry((backend,)),
+        target_backend_digests={target.principal_id: backend.status.backend_digest},
     )
     try:
         adapter_metadata = session.provider_metadata(
@@ -213,8 +255,8 @@ def test_production_dispatch_executes_credentialed_provider_request(
             item["provider_instance_id"] for item in adapter_metadata
         } == {"provider.compatibility.generate"}
         result = session.invoke(
-            "tobkiri.service.ai.generate.v1",
-            "rumi_ai_gateway_pack.ai-gateway.generate",
+            "conversation.turn.v1",
+            "complete",
             {
                 "_session_id": "session.panel.provider-production",
                 "profile_id": "defaults",
@@ -474,29 +516,7 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             "messages": [{"role": "user", "content": "hello"}],
             "requirements": {"request_surface": "defaultspack.conversation"},
         }
-        bridge_request = {
-            "kind": "tobkiri.packvm.bridge.request.v1",
-            "protocol": "io.tobkiri.packvm.bridge.v1",
-            "version": 1,
-            "target": {
-                "contract_id": "tobkiri.service.ai.generate.v1",
-                "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-            },
-            "request": request,
-            "request_digest": canonical_digest(request),
-            "continuation": {
-                "kind": "tobkiri.packvm.continuation.v1",
-                "protocol": "io.tobkiri.packvm.bridge.v1",
-                "version": 1,
-                "operation_id": "complete",
-                "nonce": "a" * 48,
-                "target": {
-                    "contract_id": "tobkiri.service.ai.generate.v1",
-                    "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-                },
-                "request_digest": canonical_digest(request),
-            },
-        }
+        bridge_request = _ai_bridge_request(request)
         outer = SimpleNamespace(
             context=context,
             target_principal=OpaqueAuthorityRef(target.principal_id),
@@ -626,7 +646,7 @@ def test_pack_catalog_read_is_profile_bound_audited_and_restart_safe(
         "catalog.read",
         {"_session_id": "session.panel.first-start"},
     )
-    assert result["count"] == 140
+    assert result["count"] == len(host_profile_catalog(bundle_root=_bundle_root()).packs)
     assert result["profile_id"] == "defaults"
     assert result["plan_digest"] == active.resolved.plan["plan_digest"]
     assert [event["event_state"] for event in store.audit_events()][-3:] == [
