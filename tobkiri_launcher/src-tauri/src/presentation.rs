@@ -1926,13 +1926,14 @@ fn write_selection_with_identity(
         .find(|item| item.provider_id == selection.shell_provider_id)
         .context("selected Shell disappeared before persistence")?;
     validate_production_artifact(artifact)?;
-    if !shell.artifact_variants.iter().any(|variant| {
-        variant.artifact_id == artifact.artifact_id
-            && variant.sha256 == artifact.sha256
-            && variant.platform == artifact.platform
-            && variant.architecture == artifact.architecture
-            && variant.path == artifact.path
-    }) {
+    let expected_artifact = resolve_artifact(config, shell)?;
+    validate_production_artifact(&expected_artifact)?;
+    if expected_artifact.artifact_id != artifact.artifact_id
+        || expected_artifact.sha256 != artifact.sha256
+        || expected_artifact.platform != artifact.platform
+        || expected_artifact.architecture != artifact.architecture
+        || expected_artifact.path != artifact.path
+    {
         bail!("verified Shell artifact does not match the selected catalog variant");
     }
     let stored = StoredProfileSelection {
@@ -3182,6 +3183,55 @@ mod tests {
             "digest_mismatch"
         );
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn development_selection_preserves_digest_and_rejects_changed_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-development-selection-{}",
+            std::process::id()
+        ));
+        let mut config = test_config(&root);
+        config.dev_workspace_root = Some(root.clone());
+        let catalog: PresentationCatalog =
+            serde_json::from_str(include_str!("../bundled/presentation_catalog.json")).unwrap();
+        let shell = catalog
+            .shell_providers
+            .iter()
+            .find(|shell| shell.provider_id == catalog.default_selection.shell_provider_id)
+            .unwrap();
+        let variant = shell
+            .artifact_variants
+            .iter()
+            .find(|variant| {
+                variant.platform == current_platform()
+                    && variant.architecture == current_architecture()
+            })
+            .unwrap();
+        let artifact_path = root.join("bundled/dev-shell").join(&variant.artifact_ref);
+        fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+        fs::write(&artifact_path, b"verified development shell").unwrap();
+        let artifact = resolve_artifact(&config, shell).unwrap();
+        assert!(artifact.sha256.as_ref().unwrap().starts_with("sha256:"));
+        write_selection_with_identity(
+            &config,
+            &catalog,
+            &catalog.default_selection,
+            &artifact,
+            None,
+        )
+        .unwrap();
+        fs::write(&artifact_path, b"changed development shell").unwrap();
+        assert!(write_selection_with_identity(
+            &config,
+            &catalog,
+            &catalog.default_selection,
+            &artifact,
+            None,
+        )
+        .is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
