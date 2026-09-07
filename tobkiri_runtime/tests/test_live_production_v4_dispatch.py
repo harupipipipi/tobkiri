@@ -24,7 +24,6 @@ from core_runtime import credential_transport as credential_transport_module
 from core_runtime.credential_transport import CredentialMaterialStoreBinding
 from core_runtime.bootstrap.profile_capture import (
     capture_default_profile,
-    host_profile_catalog,
     prepare_default_profile_confirmation,
 )
 from ecosystem.defaultspack.domain.runtime_v4 import ProfileResolutionDenied
@@ -229,8 +228,17 @@ def test_production_dispatch_executes_credentialed_provider_request(
     backend.target_executable_digest = target.function_implementation_digest
 
     def invoke_guest(envelope) -> ProviderOutcome:
+        ai_request = {
+            "profile_id": envelope.context.profile_id,
+            "messages": envelope.payload["messages"],
+            "requirements": {
+                "preferred_model_id": envelope.payload["model"],
+                "preferred_provider_instance_id": "provider.compatibility.generate",
+            },
+            "deadline": time.time() + 30.0,
+        }
         response = backend.capability_bridge(
-            envelope, _ai_bridge_request(dict(envelope.payload)),
+            envelope, _ai_bridge_request(ai_request),
         )
         assert response["result"]["status"] == "ok", response
         return ProviderOutcome(response["result"]["value"])
@@ -259,15 +267,8 @@ def test_production_dispatch_executes_credentialed_provider_request(
             "complete",
             {
                 "_session_id": "session.panel.provider-production",
-                "profile_id": "defaults",
                 "messages": [{"role": "user", "content": "hello"}],
-                "requirements": {
-                    "preferred_model_id": "production-test/model",
-                    "preferred_provider_instance_id": (
-                        "provider.compatibility.generate"
-                    ),
-                },
-                "deadline": time.time() + 30.0,
+                "model": "production-test/model",
             },
         )
     finally:
@@ -646,7 +647,12 @@ def test_pack_catalog_read_is_profile_bound_audited_and_restart_safe(
         "catalog.read",
         {"_session_id": "session.panel.first-start"},
     )
-    assert result["count"] == len(host_profile_catalog(bundle_root=_bundle_root()).packs)
+    source_catalog = json.loads((
+        Path(__file__).resolve().parents[1] / "schemas" / "pack_v4_catalog.v1.json"
+    ).read_text(encoding="utf-8"))
+    expected_pack_ids = set(source_catalog["pack_ids"])
+    assert {pack["pack_id"] for pack in result["packs"]} == expected_pack_ids
+    assert result["count"] == len(expected_pack_ids)
     assert result["profile_id"] == "defaults"
     assert result["plan_digest"] == active.resolved.plan["plan_digest"]
     assert [event["event_state"] for event in store.audit_events()][-3:] == [
