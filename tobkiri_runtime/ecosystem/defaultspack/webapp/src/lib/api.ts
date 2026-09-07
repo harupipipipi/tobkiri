@@ -2957,6 +2957,21 @@ export function explainDefaultspackApiError(
 
 type DefaultspackApiPath = string | DefaultspackContractRoute;
 
+/** Process reachability is distinct from verified Profile execution readiness. */
+export type RuntimeHealth = {
+  status: string;
+  pack?: string;
+  ts?: string;
+  runtime_ready?: boolean;
+  runtime_status?: string;
+  active_profile_ready?: boolean;
+  launch_ready?: boolean;
+  profile_id?: string;
+  profile_revision?: string;
+  activation_id?: string;
+  plan_digest?: string;
+};
+
 type ResponseShapeGuard<T> = (value: unknown) => value is T;
 
 function apiPathLabel(path: DefaultspackApiPath): string {
@@ -2984,6 +2999,29 @@ async function request<T>(
       throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
     }
     throw new Error("defaultspack API returned an invalid JSON response");
+  }
+
+  const hostEnvelope = objectRecord(payload);
+  if (hostEnvelope && typeof hostEnvelope.success === "boolean") {
+    if (!response.ok || hostEnvelope.success !== true || hostEnvelope.error != null) {
+      throw new Error(explainDefaultspackApiError(
+        response.status,
+        typeof hostEnvelope.error === "string" ? { message: hostEnvelope.error } : undefined,
+        response.statusText,
+      ));
+    }
+    if (!("data" in hostEnvelope)) {
+      throw invalidApiContractResponse(path, "missing Host data envelope");
+    }
+    // Host-owned reads return data directly; Pack operations may additionally
+    // carry their own status envelope. Neither layer may hide a failure.
+    payload = hostEnvelope.data;
+    if (!isApiErrorEnvelope(payload) && !isApiOkEnvelope(payload)) {
+      if (responseShape && !responseShape(payload)) {
+        throw invalidApiContractResponse(path, "data does not match the endpoint schema");
+      }
+      return payload as T;
+    }
   }
 
   if (isApiErrorEnvelope(payload)) {
@@ -3508,7 +3546,8 @@ export const api = {
   },
 
   health() {
-    return request<{ status: string; pack: string; ts: string }>(defaultspackContractRoute("api/health"));
+    // Process health is Host-owned, not a Defaultspack operation contract.
+    return request<RuntimeHealth>("/health", { cache: "no-store" });
   },
 
   uiCatalog() {

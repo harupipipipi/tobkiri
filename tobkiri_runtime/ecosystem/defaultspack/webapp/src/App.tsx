@@ -2600,7 +2600,7 @@ export function ChatApp() {
   const [pendingCommandApproval, setPendingCommandApproval] = useState<PendingCommandApproval | null>(null);
   const [pendingHighRiskCommand, setPendingHighRiskCommand] = useState<PendingHighRiskCommand | null>(null);
   const [commandProgressEvents, setCommandProgressEvents] = useState<Array<Record<string, unknown>>>([]);
-  const [health, setHealth] = useState<{ status: string; pack: string; ts: string } | null>(null);
+  const [health, setHealth] = useState<Awaited<ReturnType<typeof api.health>> | null>(null);
   const [backendConnectionState, setBackendConnectionState] = useState<BackendConnectionState>("online");
   const [backendConnectionNote, setBackendConnectionNote] = useState<string | null>(null);
   const [operationsStatus, setOperationsStatus] = useState<OperationsCompanyStatus | null>(null);

@@ -40,6 +40,52 @@ function requestTarget(input: RequestInfo | URL): string {
   return separator < 0 ? operation : operation.slice(separator + 1);
 }
 
+test("health uses the Host endpoint and preserves execution-not-ready evidence", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const health = {
+    status: "ok",
+    runtime_ready: false,
+    runtime_status: "panel_ready",
+    active_profile_ready: true,
+    profile_id: "defaults",
+  };
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "/health");
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: health, error: null }));
+  };
+  assert.deepEqual(await api.health(), health);
+});
+
+test("Host envelopes do not hide Host or nested Pack failures", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  for (const payload of [
+    { success: false, data: { status: "ok" }, error: "Host denied" },
+    { success: true, data: { status: "ok" }, error: "Conflicting failure" },
+    { success: true, error: null },
+    { success: true, data: { status: "error", error: { code: "DENIED", message: "Pack denied" } }, error: null },
+  ]) {
+    globalThis.fetch = async () => new Response(JSON.stringify(payload));
+    await assert.rejects(api.health());
+  }
+});
+
+test("Host envelopes preserve endpoint shape validation and Pack result unwrapping", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    success: true, data: { packs: [] }, error: null,
+  }));
+  await assert.rejects(api.uiCatalog(), /endpoint schema/);
+  const health = { status: "ok", runtime_ready: false };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    success: true, data: { status: "ok", data: health }, error: null,
+  }));
+  assert.deepEqual(await api.health(), health);
+});
+
 test("command event stream reconnects after fetch failure", async () => {
   const originalFetch = globalThis.fetch;
   let attempts = 0;
