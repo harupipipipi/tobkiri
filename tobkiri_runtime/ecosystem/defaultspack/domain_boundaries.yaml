@@ -181,7 +181,19 @@ domains:
     path: domain/frontend
     public_imports:
     - domain/capability/catalog
+    - domain/frontend_builtin_catalog
+    - domain/frontend_command_catalog
+    - domain/frontend_settings_catalog
     - domain/frontend_settings_store
+  frontend_builtin_catalog:
+    may_import: []
+    path: domain/frontend_builtin_catalog.py
+  frontend_command_catalog:
+    may_import: []
+    path: domain/frontend_command_catalog.py
+  frontend_settings_catalog:
+    may_import: []
+    path: domain/frontend_settings_catalog.py
   frontend_settings_store:
     may_import: []
     path: domain/frontend_settings_store.py
