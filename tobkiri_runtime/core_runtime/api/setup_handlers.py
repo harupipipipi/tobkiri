@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Mapping
+from urllib.parse import urlsplit
 
 from ..activation_handoff import ActivationCommittedError
 from ..profile_runtime_port import require_profile_runtime
@@ -16,6 +17,15 @@ class SetupHandlersMixin:
     """Run one explicitly-confirmed Profile setup transaction through the Host."""
 
     _dispatch_session: Any = None
+
+    def _setup_review_options(self) -> Dict[str, Any]:
+        """Accept only the canonical, explicit additive review selector."""
+        query = urlsplit(getattr(self, "path", "")).query
+        if not query:
+            return {}
+        if query != "include_source_additions=true":
+            raise require_profile_runtime().denied("invalid setup review selector")
+        return {"include_source_additions": True}
 
     @staticmethod
     def _setup_resolution_denied_response(
@@ -39,6 +49,7 @@ class SetupHandlersMixin:
         active: bool = False,
         activation_denied: bool = False,
         denial_diagnostic: str | None = None,
+        include_source_additions: bool = False,
     ) -> Mapping[str, Any]:
         """Request the application's complete setup presentation from one catalog."""
 
@@ -47,7 +58,9 @@ class SetupHandlersMixin:
             prepare_bootstrap_profile_review,
         )
 
-        catalog, confirmation = prepare_bootstrap_profile_review()
+        catalog, confirmation = prepare_bootstrap_profile_review(
+            include_source_additions=include_source_additions
+        )
         return runtime.setup_listing(
             catalog,
             confirmation,
@@ -93,6 +106,7 @@ class SetupHandlersMixin:
                 active=active,
                 activation_denied=activation_denied,
                 denial_diagnostic=denial_diagnostic,
+                **self._setup_review_options(),
             )
         except Exception as error:
             response = self._setup_resolution_denied_response(runtime, error)
@@ -109,7 +123,8 @@ class SetupHandlersMixin:
         if decision.response is not None:
             return dict(decision.response)
         try:
-            listing = self._setup_listing()
+            review_options = self._setup_review_options()
+            listing = self._setup_listing(**review_options)
         except Exception as error:
             response = self._setup_resolution_denied_response(runtime, error)
             if response is not None:
@@ -132,12 +147,14 @@ class SetupHandlersMixin:
         active_profile: Any = None
         try:
             if lifecycle is not None and hasattr(lifecycle, "activate_bootstrap_profile"):
-                activated = lifecycle.activate_bootstrap_profile(confirmation)
+                activated = lifecycle.activate_bootstrap_profile(confirmation, **review_options)
                 if not isinstance(activated, tuple) or len(activated) != 2:
                     raise RuntimeError("application activation result is invalid")
                 active_profile, dispatch_session = activated
             else:
-                active_profile = capture_bootstrap_profile(confirmation=confirmation)
+                active_profile = capture_bootstrap_profile(
+                    confirmation=confirmation, **review_options
+                )
             audit_receipt = activation_audit_receipt(active_profile)
             result = dict(runtime.setup_activation_success(active_profile, audit_receipt))
         except Exception as error:
