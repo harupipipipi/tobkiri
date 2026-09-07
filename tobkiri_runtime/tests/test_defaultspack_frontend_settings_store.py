@@ -24,6 +24,51 @@ from domain.ai_client.model_runtime_settings import (  # noqa: E402
     ModelRuntimeSettingsService,
 )
 from domain.frontend.registry import FrontendRegistry  # noqa: E402
+from domain.frontend.settings_catalog_inputs import SettingsCatalogInputs  # noqa: E402
+
+
+@pytest.mark.parametrize("has_models", [False, True])
+def test_explicit_settings_catalog_never_discovers_ambient_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, has_models: bool
+) -> None:
+    registry = FrontendRegistry(tmp_path)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("ambient discovery is not permitted")
+
+    for name in (
+        "_external_io_template_catalog",
+        "_input_profile_options",
+        "_output_profile_options",
+        "_model_options",
+        "_model_route_options",
+    ):
+        monkeypatch.setattr(registry, name, forbidden)
+    monkeypatch.setattr("domain.frontend.registry.provider_key_status", forbidden)
+    options = [{"value": "captured-model", "label": "Captured Model"}] if has_models else []
+    inputs = SettingsCatalogInputs(
+        input_templates=[],
+        output_templates=[],
+        input_profile_options=[],
+        output_profile_options=[],
+        model_options=options,
+        model_route_options=options,
+        api_key_status=[],
+    )
+    sections = registry._settings_sections([], [], template_catalog={}, inputs=inputs)
+    fields = {
+        (section["id"], field["id"]): field
+        for section in sections
+        for field in section["fields"]
+    }
+    assert fields["general", "composer_placeholder"]["default"] == "メッセージを入力..."
+    assert fields["models", "preferred_model"]["options"] == options
+    assert fields["models", "model_api_routes"]["options"] == options
+    assert fields["models", "model_api_routes"]["api_keys"] == []
+    fields["models", "preferred_model"]["options"].append({"value": "changed"})
+    assert inputs.model_options == options
+    assert fields["models", "model_api_routes"]["options"] == options
+    assert list(tmp_path.iterdir()) == []
 
 
 def _process_update(path_text: str, key: str, value: str) -> None:

@@ -15,6 +15,7 @@ from typing import Any, Callable
 from urllib.parse import quote
 
 from domain.ai_client.client import AIClient
+from domain.frontend.settings_catalog_inputs import SettingsCatalogInputs
 from domain.ai_client.api_key_store import provider_key_status
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.oauth_store import provider_oauth_statuses
@@ -925,12 +926,25 @@ class FrontendRegistry:
         *,
         template_catalog: dict[str, Any] | None = None,
         lightweight: bool = False,
+        inputs: SettingsCatalogInputs | None = None,
     ) -> list[dict[str, Any]]:
-        external_template_catalog = self._external_io_template_catalog(template_catalog)
-        input_templates = _validated_dict_list(external_template_catalog.get("input"))
-        output_templates = _validated_dict_list(external_template_catalog.get("output"))
-        input_profile_options = self._input_profile_options()
-        output_profile_options = self._output_profile_options()
+        if inputs is None:
+            external_template_catalog = self._external_io_template_catalog(template_catalog)
+            input_templates = _validated_dict_list(external_template_catalog.get("input"))
+            output_templates = _validated_dict_list(external_template_catalog.get("output"))
+            input_profile_options = self._input_profile_options()
+            output_profile_options = self._output_profile_options()
+            model_options = self._model_options(lightweight=lightweight)
+            model_route_options = self._model_route_options(lightweight=lightweight)
+            api_key_status = [] if lightweight else provider_key_status(pack_root=self._pack_root)
+        else:
+            input_templates = deepcopy(inputs.input_templates)
+            output_templates = deepcopy(inputs.output_templates)
+            input_profile_options = deepcopy(inputs.input_profile_options)
+            output_profile_options = deepcopy(inputs.output_profile_options)
+            model_options = deepcopy(inputs.model_options)
+            model_route_options = deepcopy(inputs.model_route_options)
+            api_key_status = deepcopy(inputs.api_key_status)
         sections: list[dict[str, object]] = [
             {
                 "id": "general",
@@ -1219,7 +1233,7 @@ class FrontendRegistry:
                         "label": "Main Model",
                         "type": "model_select",
                         "default": "stub/default",
-                        "options": self._model_options(lightweight=lightweight),
+                        "options": deepcopy(model_options),
                         "help": "Default model for normal conversations and new chats.",
                     },
                     {
@@ -1227,7 +1241,7 @@ class FrontendRegistry:
                         "label": "Lightweight Model",
                         "type": "model_select",
                         "default": "",
-                        "options": self._model_options(lightweight=lightweight),
+                        "options": deepcopy(model_options),
                         "help": "Fast model for quick replies and delegated rough work. Leave empty for automatic selection.",
                     },
                     {
@@ -1235,7 +1249,7 @@ class FrontendRegistry:
                         "label": "Preferred Model",
                         "type": "select",
                         "default": "stub/default",
-                        "options": self._model_options(lightweight=lightweight),
+                        "options": deepcopy(model_options),
                         "help": "新しい会話と composer の既定モデルです。",
                         "advanced": True,
                     },
@@ -1288,8 +1302,8 @@ class FrontendRegistry:
                         "label": "Model API Variants",
                         "type": "model_api_routes",
                         "default": "",
-                        "options": self._model_route_options(lightweight=lightweight),
-                        "api_keys": [] if lightweight else provider_key_status(pack_root=self._pack_root),
+                        "options": model_route_options,
+                        "api_keys": api_key_status,
                         "help": "モデルごとに使う API key を選びます。複数選んだら、各 API key ごとに別 model variant として composer に並びます。",
                     },
                     {
