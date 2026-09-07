@@ -271,7 +271,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:bf9457cbeb71bb4e8ac04201bef4909585e0db3643cff557b486e96e4b49954f",
+  "default_profile_digest": "sha256:ffd178556e394454cde2bbcd426b3d3d9b79739caae075f9819a889a2a03b9e1",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
   "default_selection": {
@@ -290,6 +290,7 @@
         "effect_scope": [
           "app.shell.v1",
           "conversation.turn.v1",
+          "tobkiri.resource.ai.model.profile.v1",
           "tobkiri.service.command.high-risk.v1",
           "tobkiri.service.interactive-approval.v1"
         ],
@@ -386,6 +387,7 @@
       ],
       "consumes_contracts": [
         "conversation.turn.v1",
+        "tobkiri.resource.ai.model.profile.v1",
         "tobkiri.service.interactive-approval.v1",
         "tobkiri.service.command.high-risk.v1"
       ],

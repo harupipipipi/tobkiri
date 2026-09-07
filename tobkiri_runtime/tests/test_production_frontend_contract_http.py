@@ -372,6 +372,45 @@ def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
+def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
+    production_server, tmp_path: Path,
+) -> None:
+    """Read persisted model identities through authenticated production HTTP."""
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+
+    registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
+    registry.save(
+        {
+            "model_profile_id": "ui-model",
+            "display_name": "UI model",
+            "model_id": "test-model",
+            "credential_handle": "opaque:test-only",
+        },
+        expected_revision=0,
+    )
+    server, _session, _authority = production_server
+    cookie, _csrf, _origin = _authenticate(server)
+    status, payload, _headers = _request(
+        server, "GET", _contract("GET", "/api/ai/profiles"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, payload
+    assert payload["data"] == {
+        "profiles": [{
+            "profile_id": "ui-model",
+            "display_name": "UI model",
+            "model_id": "test-model",
+        }],
+        "count": 1,
+    }
+    status, payload, _headers = _request(
+        server, "GET", _contract("GET", "/api/ai/profiles?profile_id=other"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 400, payload
+    assert payload["data"]["code"] == "invalid_contract_payload"
+
+
 def test_command_protocol_paths_are_inert_in_captured_production_http(
     production_server,
     monkeypatch: pytest.MonkeyPatch,

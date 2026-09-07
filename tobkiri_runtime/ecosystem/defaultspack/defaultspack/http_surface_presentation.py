@@ -128,7 +128,7 @@ class DefaultspackHTTPPresentation:
         session: DispatchSession,
         workspace_binding_resolver: WorkspaceBindingResolver | None,
     ) -> Mapping[str, object]:
-        """Bind Defaultspack media targets to their selected workspace only."""
+        """Bind model reads and media paths to the captured Profile."""
 
         if (
             target.contribution_id,

@@ -75,8 +75,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 12694,
-      "sha256": "9b8c5e233f800816a7b39af7d65dca1cb7d743a5bd08d163cbd9cd4b9ce95029",
+      "size": 12686,
+      "sha256": "5c5b60faff1d5144f8bcfb33bcf2716aca75a6cc7d70d96d43412500025c380e",
       "executable": false
     },
     {
@@ -188,7 +188,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 56906,
-      "sha256": "da1396dbdfa2e68902267856bdd83eb7bf3bc8807c20533cb7458a241c28ef03",
+      "sha256": "6ae8f5cfb362ab887fe36df355b9bbd26a83aaf5b975a869d4cbd93fde02c0c8",
       "executable": false
     },
     {
@@ -201,29 +201,29 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
       "type": "regular-file",
-      "size": 56786,
-      "sha256": "1b5d457e00ea2ed0a1ef480a9bf33e06249fddaf869b119f40235e5dac1c0a3a",
+      "size": 57407,
+      "sha256": "c14c5f7b20bccb5bb6dace69009106191c60710cfff779ee87d0284dd7fc80a7",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 25057,
-      "sha256": "3ec2aaefd5253aa5223880376a0dceeff5100fff1cfb04171b73d5387bf5d140",
+      "sha256": "b1e2014455bac5f676a451fc8a7855afa1eaf5bda3a2e874864b3a0979f15b85",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
       "type": "regular-file",
-      "size": 66952,
-      "sha256": "bf9457cbeb71bb4e8ac04201bef4909585e0db3643cff557b486e96e4b49954f",
+      "size": 67724,
+      "sha256": "ffd178556e394454cde2bbcd426b3d3d9b79739caae075f9819a889a2a03b9e1",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 64151,
-      "sha256": "dcafddfa474398f577f43b3d502943cd81b7794f7148242d27a0e678ad1f8b50",
+      "sha256": "e6fee1bf9859ff04fe0147a27f10f0f1dfe1a6344206230a91dfca5855743f81",
       "executable": false
     },
     {
