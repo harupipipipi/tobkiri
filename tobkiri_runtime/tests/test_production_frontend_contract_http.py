@@ -372,6 +372,55 @@ def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
+def test_settings_reads_saved_values_and_models_through_real_broker(
+    production_server, tmp_path: Path,
+) -> None:
+    """Settings use captured state and a nested model contract, without writes."""
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+
+    root = tmp_path / "user-data"
+    registry = ModelRegistry("defaults", user_data_root=root)
+    registry.save(
+        {"model_profile_id": "settings-model", "display_name": "Settings model",
+         "model_id": "test-model", "credential_handle": "opaque:test-secret"},
+        expected_revision=0,
+    )
+    path = root / "defaultspack" / "shared" / "frontend_settings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "general": {"composer_placeholder": "Saved placeholder"},
+        "models": {"google_api_key": "hidden-test-secret"},
+        "apis": {"api_keys": [{"value": "hidden-test-secret"}]},
+        "_mutation_receipts": {"hidden-test-secret": {}},
+    }), encoding="utf-8")
+    before = path.read_bytes()
+    server, _session, _authority = production_server
+    cookie, _csrf, _origin = _authenticate(server)
+    for suffix in ("", "?full=true"):
+        status, payload, _ = _request(
+            server, "GET", _contract("GET", f"/api/ui/settings{suffix}"),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 200, payload
+        data = payload["data"]
+        assert data["values"]["general"]["composer_placeholder"] == "Saved placeholder"
+        fields = {field["id"]: field for section in data["sections"]
+                  if section["id"] == "models" for field in section["fields"]}
+        assert fields["preferred_model"]["options"] == [
+            {"value": "settings-model", "label": "Settings model"}
+        ]
+        assert "hidden-test-secret" not in json.dumps(payload)
+        assert "opaque:test-secret" not in json.dumps(payload)
+    for query in ("profile_id=other", "operation=write", "approved=true", "full=false"):
+        status, payload, _ = _request(
+            server, "GET", _contract("GET", f"/api/ui/settings?{query}"),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 400, payload
+    assert path.read_bytes() == before
+    assert list(path.parent.iterdir()) == [path]
+
+
 def test_history_list_reads_real_captured_store_without_mutation(
     production_server, tmp_path: Path,
 ) -> None:

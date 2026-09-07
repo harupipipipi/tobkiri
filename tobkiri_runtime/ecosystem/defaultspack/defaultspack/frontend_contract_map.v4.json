@@ -4,6 +4,23 @@
   "routes": [
     {
       "method": "GET",
+      "path": "/api/ui/settings",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.settings.read",
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "operation_id": "tobkiri_ui_settings_pack.settings-read",
+          "provider_id": "tobkiri.ui.settings.read",
+          "function_id": "tobkiri.ui.settings.read",
+          "allowed_payload_keys": [
+            "full"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/chat/conversations",
       "presentation": "conversation_list",
       "targets": [

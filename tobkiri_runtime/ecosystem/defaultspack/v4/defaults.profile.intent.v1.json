@@ -10,6 +10,7 @@
   "display_name": "Tobkiri Defaults",
   "mode": "interactive",
   "packs": [
+    {"artifact_digest": null, "pack_id": "tobkiri_ui_settings_pack", "role": "provider"},
     {
       "artifact_digest": null,
       "pack_id": "rumi_conversation_store_pack",
@@ -115,6 +116,46 @@
   "profile_authority_snapshot_digest": null,
   "profile_id": "defaults",
   "requested_edges": [
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.ui.settings.v1",
+      "operation_id": "tobkiri_ui_settings_pack.settings-read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ui.settings.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.settings-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.settings.read"
+    },
+    {
+      "caller_function_id": "tobkiri.ui.settings.read",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
     {
       "caller_function_id": "shell.tauri.default",
       "contract_id": "tobkiri.resource.conversation.v1",

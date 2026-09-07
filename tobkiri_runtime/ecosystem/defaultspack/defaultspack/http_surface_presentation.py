@@ -140,6 +140,28 @@ class DefaultspackHTTPPresentation:
             target.operation_id,
             target.provider_id,
             target.function_id,
+        ) == (
+            "defaults.ui.settings.read",
+            "tobkiri.resource.ui.settings.v1",
+            "tobkiri_ui_settings_pack.settings-read",
+            "tobkiri.ui.settings.read",
+            "tobkiri.ui.settings.read",
+        ):
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if (
+                not profile_id
+                or set(payload) - {"full"}
+                or ("full" in payload and payload["full"] not in {True, "true"})
+            ):
+                raise ValueError("settings read requires captured identity")
+            return {"profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
         ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET}:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))

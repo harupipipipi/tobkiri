@@ -1,0 +1,123 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:915fed343cecc13e55f7ad456d6635b9ace58259193f0b0528fcdb4b5315c76d",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:54752474aac3a8d412c7ca6aa89f3ff7119d1ceaf91d45c3370df3dfca1f0159",
+      "kind": "executable",
+      "path": "runtime/settings.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.ui.settings.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.settings-read"
+      ],
+      "revision_digest": "sha256:341ce71eded9516b8eb4d9ba2004f7289ea7bd5cfbb541e06c342124b4c43e2e"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:341ce71eded9516b8eb4d9ba2004f7289ea7bd5cfbb541e06c342124b4c43e2e",
+      "id": "tobkiri.ui.settings.read",
+      "implementation_digest": "sha256:54752474aac3a8d412c7ca6aa89f3ff7119d1ceaf91d45c3370df3dfca1f0159",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_ui_settings_pack.settings-read"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:b8eb5b6f6978a73f7d1f0c5f63f0686a0ea3f5eae015daecb5623d612d96d51e",
+    "artifact_set_digest": "sha256:4d926cb20eab3eceebfa46006502bb35ba6ac4162525f45b8433ebc056ce1bd7",
+    "contract_catalog_digest": "sha256:baf348c35323b64dded77841c4ca628615bc247a9a20440bbd825c91633e69c3"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 13,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "tobkiri_ui_settings_pack.settings-read",
+      "owner": "tobkiri_ui_settings_pack",
+      "contract_reference": "tobkiri.resource.ui.settings.v1",
+      "provider_id": "tobkiri.ui.settings.read",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:8442a8a7de78518a12e7e1006fb7c09aa85c0037714bc3bd42d1a7c9c02bbfe6",
+    "display_name": "Tobkiri UI Settings",
+    "id": "tobkiri_ui_settings_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
+    "source_digest": "sha256:b8eb5b6f6978a73f7d1f0c5f63f0686a0ea3f5eae015daecb5623d612d96d51e",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:6e6b017bd6f067198ed55f1d1e54dbcc8dec23e5897b4d0c5c5e1e8a7d40cc26",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
+    "input_inventory_digest": "sha256:fd5115c039be95eac77396ce26da59a90d73fc87a9581c63676c89dfc261ca41",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943"
+      },
+      {
+        "path": "ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:b8eb5b6f6978a73f7d1f0c5f63f0686a0ea3f5eae015daecb5623d612d96d51e"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "tobkiri.ui.settings.read",
+      "owner": "tobkiri_ui_settings_pack",
+      "contract_reference": "tobkiri.resource.ui.settings.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.settings-read"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "ui.settings.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

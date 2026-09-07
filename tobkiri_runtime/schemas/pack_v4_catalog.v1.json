@@ -147,6 +147,7 @@
     "rumi_workspace_pack",
     "search_home_pack",
     "tobkiri_host_pack_control",
+    "tobkiri_ui_settings_pack",
     "tobkiri_workflow_pack"
   ],
   "packs": [
@@ -16219,6 +16220,89 @@
         "historical_classification": "modern-only",
         "mode": "canonical-v4",
         "owner": "tobkiri_host_pack_control",
+        "source_format": "pack.v4.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "host_brokered"
+    },
+    {
+      "approval_policy": "capability_gated",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "ui.settings.read"
+      ],
+      "dependencies": {},
+      "description": "Read-only app preferences and settings controls with captured model choices.",
+      "display_name": "Tobkiri UI Settings",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "compatibility": "none",
+        "removal_wave": 13,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "tobkiri_ui_settings_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
+              "id": "tobkiri_ui_settings_pack.settings-read",
+              "implementation_digest": "sha256:54752474aac3a8d412c7ca6aa89f3ff7119d1ceaf91d45c3370df3dfca1f0159"
+            }
+          ],
+          "owner": "tobkiri_ui_settings_pack",
+          "provider_id": "tobkiri.ui.settings.read",
+          "required_capabilities": [
+            "ui.settings.read"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.ai.model.profile.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:54752474aac3a8d412c7ca6aa89f3ff7119d1ceaf91d45c3370df3dfca1f0159",
+          "kind": "executable",
+          "path": "runtime/settings.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [],
+      "source_provenance": {
+        "historical_classification": "modern-only",
+        "mode": "canonical-v4",
+        "owner": "tobkiri_ui_settings_pack",
         "source_format": "pack.v4.json"
       },
       "version": "1.0.0",
