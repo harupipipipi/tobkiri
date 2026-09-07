@@ -685,7 +685,7 @@ def test_only_captured_command_protocol_route_is_not_legacy_transport() -> None:
     assert command_protocol_binding_findings(bindings) == []
 
     high_risk = next(
-        binding for binding in bindings if "command-protocol" in binding.path
+        binding for binding in bindings if binding.path == "/api/command-protocol/v1/high-risk"
     )
     assert command_protocol_binding_findings(
         (replace(high_risk, path="/api/command-protocol/v1/invoke"),)
@@ -700,6 +700,21 @@ def test_only_captured_command_protocol_route_is_not_legacy_transport() -> None:
             ),
         )
     )
+
+
+def test_command_catalog_route_policy_rejects_widening() -> None:
+    bindings = load_current_signed_application_bindings()
+    catalog = next(binding for binding in bindings
+                   if binding.path == "/api/command-protocol/v1/catalog")
+    for changed in (
+        replace(catalog, method="POST"),
+        replace(catalog, path="/api/command-protocol/v1/invoke"),
+        replace(catalog, targets=(replace(catalog.targets[0],
+                                         allowed_payload_keys=frozenset({"approved"})),)),
+        replace(catalog, targets=(replace(catalog.targets[0],
+                                         function_id="untrusted.function"),)),
+    ):
+        assert command_protocol_binding_findings((changed,))
 
 
 def test_interactive_command_routes_are_captured_host_contract_operations() -> None:
