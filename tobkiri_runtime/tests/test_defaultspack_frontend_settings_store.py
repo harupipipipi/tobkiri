@@ -31,6 +31,54 @@ def _process_update(path_text: str, key: str, value: str) -> None:
     store.update(lambda current: {**current, key: value})
 
 
+def test_snapshot_does_not_create_a_missing_store(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "absent" / "settings.json")
+    assert store.read_snapshot() == {}
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_snapshot_leaves_valid_settings_and_revision_unchanged(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    document = {"general": {"language": "ja"}, REVISION_KEY: 7}
+    path.write_text(json.dumps(document), encoding="utf-8")
+    before = path.read_bytes()
+    snapshot = FrontendSettingsStore(path).read_snapshot()
+    assert snapshot == document
+    snapshot["general"]["language"] = "en"
+    assert path.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_snapshot_does_not_recover_corrupt_settings_from_backup(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    store = FrontendSettingsStore(path)
+    path.write_text("{broken", encoding="utf-8")
+    store.backup_path.write_text('{"general": {"language": "ja"}}', encoding="utf-8")
+    before = {item.name: item.read_bytes() for item in tmp_path.iterdir()}
+    with pytest.raises(FrontendSettingsCorruptError, match="snapshot is corrupt"):
+        store.read_snapshot()
+    assert {item.name: item.read_bytes() for item in tmp_path.iterdir()} == before
+
+
+def test_snapshot_observes_complete_documents_during_updates(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    store.update(lambda _: {"counter": 0, "mirror": 0})
+
+    def write(index: int) -> None:
+        store.update(lambda _: {"counter": index, "mirror": index})
+
+    def read(_: int) -> None:
+        value = store.read_snapshot()
+        assert value["counter"] == value["mirror"]
+        assert isinstance(value[REVISION_KEY], int)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(write, index) for index in range(30)]
+        futures += [pool.submit(read, index) for index in range(100)]
+        for future in futures:
+            future.result()
+
+
 def test_concurrent_thread_updates_preserve_disjoint_keys(tmp_path: Path) -> None:
     path = tmp_path / "frontend_settings.json"
     store = FrontendSettingsStore(path)

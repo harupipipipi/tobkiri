@@ -113,6 +113,23 @@ class FrontendSettingsStore:
         with self._locked():
             return self._read_locked(recover=True)
 
+    def read_snapshot(self) -> dict[str, Any]:
+        """Read an atomic snapshot without locking files, repair or migration.
+
+        Writers publish complete documents with atomic replacement. This read
+        therefore observes either revision without needing a filesystem write.
+        Recovery remains an explicit write-capable operation, never a side
+        effect of a read-only UI contract.
+        """
+        try:
+            return self._load_mapping(self.path)
+        except FileNotFoundError:
+            return {}
+        except (json.JSONDecodeError, TypeError, ValueError) as error:
+            raise FrontendSettingsCorruptError(
+                "frontend settings snapshot is corrupt"
+            ) from error
+
     def update(
         self,
         transform: Callable[[dict[str, Any]], dict[str, Any]],
