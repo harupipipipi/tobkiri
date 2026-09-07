@@ -76,8 +76,7 @@ class DefaultspackHTTPPresentation:
         expires_at = body.get("expires_at")
         try:
             request_id_valid = (
-                isinstance(request_id, str)
-                and str(uuid.UUID(request_id)) == request_id
+                isinstance(request_id, str) and str(uuid.UUID(request_id)) == request_id
             )
         except ValueError:
             request_id_valid = False
@@ -95,17 +94,14 @@ class DefaultspackHTTPPresentation:
             return None
         if (
             body.get("profile_id") != getattr(session, "profile_id", None)
-            or body.get("profile_revision")
-            != getattr(session, "profile_revision", None)
+            or body.get("profile_revision") != getattr(session, "profile_revision", None)
             or body.get("activation_id") != getattr(session, "activation_id", None)
             or body.get("plan_hash") != getattr(session, "plan_digest", None)
             or body.get("catalog_hash") != snapshot.catalog_hash
         ):
             return None
         nested = body.get("payload")
-        if not isinstance(nested, Mapping) or any(
-            not isinstance(key, str) for key in nested
-        ):
+        if not isinstance(nested, Mapping) or any(not isinstance(key, str) for key in nested):
             return None
         target = next(
             (
@@ -140,18 +136,28 @@ class DefaultspackHTTPPresentation:
             target.operation_id,
             target.provider_id,
             target.function_id,
-        ) == (
-            "defaults.ui.settings.read",
-            "tobkiri.resource.ui.settings.v1",
-            "tobkiri_ui_settings_pack.settings-read",
-            "tobkiri.ui.settings.read",
-            "tobkiri.ui.settings.read",
-        ):
+        ) in {
+            (
+                "defaults.ui.settings.read",
+                "tobkiri.resource.ui.settings.v1",
+                "tobkiri_ui_settings_pack.settings-read",
+                "tobkiri.ui.settings.read",
+                "tobkiri.ui.settings.read",
+            ),
+            (
+                "defaults.ui.catalog.read",
+                "tobkiri.resource.ui.settings.v1",
+                "tobkiri_ui_settings_pack.catalog-read",
+                "tobkiri.ui.settings.read",
+                "tobkiri.ui.settings.read",
+            ),
+        }:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))
             if (
                 not profile_id
-                or set(payload) - {"full"}
+                or set(payload)
+                - ({"full"} if target.contribution_id == "defaults.ui.settings.read" else set())
                 or ("full" in payload and payload["full"] not in {True, "true"})
             ):
                 raise ValueError("settings read requires captured identity")
@@ -340,8 +346,7 @@ def _diagnostics(
                     and provider.get("profile_id") == getattr(session, "profile_id", None)
                     and provider.get("profile_revision")
                     == getattr(session, "profile_revision", None)
-                    and provider.get("activation_id")
-                    == getattr(session, "activation_id", None)
+                    and provider.get("activation_id") == getattr(session, "activation_id", None)
                     and provider.get("plan_digest") == getattr(session, "plan_digest", None)
                     and provider.get("backend_unavailable_reason")
                 ):

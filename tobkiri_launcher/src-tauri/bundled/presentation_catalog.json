@@ -158,7 +158,7 @@
     },
     {
       "contract_id": "tobkiri.resource.ui.settings.v1",
-      "digest": "sha256:341ce71eded9516b8eb4d9ba2004f7289ea7bd5cfbb541e06c342124b4c43e2e",
+      "digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.pack.v4.json"
     },
@@ -307,7 +307,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:705d0b89aae9b1ea73b5b4df24f2661d40c5070ac06bff8e57884285b5b983ad",
+  "default_profile_digest": "sha256:cbc19ef30ddc20baf7e81e01c117b4b5dfe5ef03760574ae2ab23c81cc56c1d9",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
   "default_selection": {
@@ -465,9 +465,9 @@
     "rumi_shell_execute_pack": "sha256:4ac4e4784a7ea2da8ee94e72cf2bdac46ce40ea0dbedba3fecd6a2a7d7a95171",
     "rumi_shell_policy_pack": "sha256:ce6900e137ce7230b68d9653915daad3f6da3c99bcbf17052f9d3583ce9ec583",
     "rumi_workspace_mount_pack": "sha256:2b478e7dc0bbf018ba9588b77c4c79f99be3be22826e1dae2fc455d5c86a7e57",
-    "runtime.tauri.application.default": "sha256:07f88b71a6c479d60b7b70860260d71428858de764ac6759dfd01b0e9a00e0eb",
+    "runtime.tauri.application.default": "sha256:be886606d34b6b21150e6782050f76873cb9acb39c30d4fbea70ba0b50bd8420",
     "shell.tauri.default": "sha256:b27a7025b1bd35a5ade4f88e381b65a71093c0ff02d78f083410e71e15af4605",
     "tobkiri_host_pack_control": "sha256:6dea0485c733cd61d5aec6db75de6179b484584ba0e3f07ce204ba5b0851668e",
-    "tobkiri_ui_settings_pack": "sha256:fb1ec74d7760c592778fe33013ba158a7aa429e3255ad0aa8a28aa59816a91cd"
+    "tobkiri_ui_settings_pack": "sha256:dd3b2ba96d2e98b1b66e5fcea8784b4a0cbce14bfc33a6cb0564f10e8124f327"
   }
 }

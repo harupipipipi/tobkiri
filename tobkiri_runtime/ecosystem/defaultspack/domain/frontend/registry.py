@@ -16,6 +16,7 @@ from urllib.parse import quote
 
 from domain.ai_client.client import AIClient
 from domain.frontend_settings_catalog import SettingsCatalogInputs, SettingsSections
+from domain.frontend_builtin_catalog import builtin_ui_catalog
 from domain.ai_client.api_key_store import provider_key_status
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.oauth_store import provider_oauth_statuses
@@ -239,14 +240,7 @@ class FrontendRegistry:
         }
 
     def _sidebar_filters(self) -> list[dict[str, str]]:
-        return [
-            {"id": "all", "label": "All"},
-            {"id": "tool", "label": "Tools"},
-            {"id": "widget", "label": "Widgets"},
-            {"id": "system", "label": "System"},
-            {"id": "integration", "label": "Integrations"},
-            {"id": "capability", "label": "Capabilities"},
-        ]
+        return builtin_ui_catalog()["sidebar_filters"]
 
     def _app_metadata(self, ui_surfaces: list[dict[str, Any]]) -> dict[str, Any]:
         app: dict[str, Any] = {
@@ -341,31 +335,7 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        shell: dict[str, object] = {
-            "layout": {
-                "id": "default_chat_shell",
-                "regions": [
-                    {"id": "title_bar", "part_id": "app_chrome", "renderer": "title_bar", "slot": "top", "order": 10, "enabled": True},
-                    {"id": "history", "part_id": "conversation_history", "renderer": "history_board", "slot": "left", "order": 20, "enabled": True},
-                    {"id": "chat_header", "part_id": "ai_chat", "renderer": "chat_header", "slot": "main", "order": 30, "enabled": True},
-                    {"id": "chat_messages", "part_id": "ai_chat", "renderer": "chat_messages", "slot": "main", "order": 40, "enabled": True},
-                    {"id": "composer", "part_id": "ai_chat", "renderer": "composer", "slot": "bottom", "order": 50, "enabled": True},
-                    {"id": "activity_preview", "part_id": "activity_preview", "renderer": "activity_preview", "slot": "right", "order": 60, "enabled": True},
-                    {"id": "right_sidebar", "part_id": "extension_sidebar", "renderer": "right_sidebar", "slot": "right", "order": 70, "enabled": True},
-                    {"id": "settings_modal", "part_id": "settings", "renderer": "settings_modal", "slot": "overlay", "order": 80, "enabled": True},
-                ],
-            },
-            "renderers": [
-                {"id": "title_bar", "component": "TitleBar", "regions": ["title_bar"], "fallback": "hidden"},
-                {"id": "history_board", "component": "HistoryBoard", "regions": ["history"], "fallback": "hidden"},
-                {"id": "chat_header", "component": "ChatHeader", "regions": ["chat_header"], "fallback": "hidden"},
-                {"id": "chat_messages", "component": "ChatMessages", "regions": ["chat_messages"], "fallback": "plain_text"},
-                {"id": "composer", "component": "Composer", "regions": ["composer"], "fallback": "hidden"},
-                {"id": "activity_preview", "component": "ToolPreviewPanel", "regions": ["activity_preview"], "fallback": "hidden"},
-                {"id": "right_sidebar", "component": "RightSidebar", "regions": ["right_sidebar"], "fallback": "hidden"},
-                {"id": "settings_modal", "component": "SettingsModal", "regions": ["settings_modal"], "fallback": "hidden"},
-            ],
-        }
+        shell: dict[str, object] = builtin_ui_catalog()["shell"]
         user_shell = self._load_shell_config()
         for manifest in [*ui_surfaces, user_shell, *extensions]:
             config = manifest.get("config", manifest)
@@ -450,96 +420,7 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        parts: list[dict[str, Any]] = [
-            {
-                "id": "app_chrome",
-                "kind": "shell",
-                "label": "App Chrome",
-                "uses": ["frontend"],
-                "schema": {"type": "object", "properties": {"app": {"type": "object"}, "shell": {"type": "object"}}},
-            },
-            {
-                "id": "conversation_history",
-                "kind": "navigation",
-                "label": "Conversation History",
-                "uses": ["chat"],
-                "contracts": {"conversations": "/api/chat/conversations"},
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "items": {"type": "array", "items": {"type": "object"}},
-                        "active_id": {"type": "string", "nullable": True},
-                    },
-                },
-            },
-            {
-                "id": "ai_chat",
-                "kind": "chat",
-                "label": "AI Chat",
-                "uses": ["chat", "ai_client", "prompt", "memory", "tool", "frontend"],
-                "contracts": {
-                    "conversation": "/api/chat/conversations",
-                    "catalog": "/api/ui/catalog",
-                    "settings": "/api/ui/settings",
-                },
-                "schema": {
-                    "type": "object",
-                    "required": ["conversation", "messages"],
-                    "properties": {
-                        "conversation": {"type": "object", "nullable": True},
-                        "messages": {"type": "array", "items": {"type": "object"}},
-                        "composer": {"type": "object"},
-                    },
-                },
-            },
-            {
-                "id": "activity_preview",
-                "kind": "preview",
-                "label": "Activity Preview",
-                "uses": ["chat", "dev", "tool", "context", "media", "artifact", "extension"],
-                "contracts": {
-                    "preview": "/api/ui/conversations/{conversation_id}/preview",
-                },
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "tool_timeline": {"type": "array", "items": {"type": "object"}},
-                        "plan_steps": {"type": "array", "items": {"type": "object"}},
-                        "approvals": {"type": "array", "items": {"type": "object"}},
-                        "attachments": {"type": "array", "items": {"type": "object"}},
-                        "audio": {"type": "array", "items": {"type": "object"}},
-                    },
-                },
-            },
-            {
-                "id": "extension_sidebar",
-                "kind": "sidebar",
-                "label": "Extension Sidebar",
-                "uses": ["tool", "widget", "frontend", "artifact", "extension"],
-                "contracts": {"catalog": "/api/ui/catalog", "settings": "/api/ui/settings"},
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "items": {"type": "array", "items": {"type": "object"}},
-                        "filters": {"type": "array", "items": {"type": "object"}},
-                    },
-                },
-            },
-            {
-                "id": "settings",
-                "kind": "settings",
-                "label": "Settings",
-                "uses": ["frontend"],
-                "contracts": {"settings": "/api/ui/settings"},
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "sections": {"type": "array", "items": {"type": "object"}},
-                        "values": {"type": "object"},
-                    },
-                },
-            },
-        ]
+        parts: list[dict[str, Any]] = builtin_ui_catalog()["parts"]
         parts.extend(self._config_list(ui_surfaces, "parts"))
         parts.extend(self._config_list(extensions, "parts"))
         return self._dedupe_by_key(parts, "id")
@@ -549,14 +430,7 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        bindings: list[dict[str, Any]] = [
-            {
-                "part_id": "ai_chat",
-                "component": "chat",
-                "requires": ["ai_client"],
-                "optional": ["prompt", "memory", "tool", "agent"],
-            }
-        ]
+        bindings: list[dict[str, Any]] = builtin_ui_catalog()["component_bindings"]
         bindings.extend(self._config_list(ui_surfaces, "component_bindings"))
         bindings.extend(self._config_list(extensions, "component_bindings"))
         return self._dedupe_by_key(bindings, "part_id")
@@ -606,43 +480,7 @@ class FrontendRegistry:
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
         registry = ToolRegistry()
-        items: list[dict[str, Any]] = [
-            {
-                "id": "capability-master",
-                "label": "Capabilities",
-                "category": "widget",
-                "description": "Tool・Skill・Activityをまとめて管理します。",
-                "tags": ["capability", "activity", "safety"],
-                "origin": {
-                    "kind": "builtin",
-                    "path": "domain/capability/",
-                },
-                "panel": {
-                    "kind": "capability_settings",
-                    "title": "Capabilities",
-                    "fields": [
-                        {
-                            "id": "enabled",
-                            "label": "Capabilitiesを使う",
-                            "type": "toggle",
-                            "default": True,
-                        }
-                    ],
-                    "actions": [
-                        {
-                            "id": "capability.catalog",
-                            "label": "カタログを開く",
-                            "method": "GET",
-                            "endpoint": "/api/capabilities/catalog",
-                        }
-                    ],
-                    "notes": [
-                        "Activityを選ぶと、必要なToolとSkillが実行時に共同解決されます。",
-                        "個別ToolはAdvancedの機能マネージャーで管理できます。",
-                    ],
-                },
-            }
-        ]
+        items: list[dict[str, Any]] = builtin_ui_catalog()["sidebar_primary_items"]
 
         try:
             activity_manifests = (
@@ -760,56 +598,7 @@ class FrontendRegistry:
             )
 
         items.extend(
-            [
-                {
-                    "id": "agent-service-capabilities",
-                    "label": "Capabilities",
-                    "category": "system",
-                    "description": "defaultspack core capability catalog.",
-                    "tags": ["agent", "capability", "local-first"],
-                    "origin": {"kind": "builtin", "path": "capabilities/"},
-                    "panel": {
-                        "kind": "info",
-                        "title": "Agent Service Capabilities",
-                        "notes": [
-                            "The core registry exposes capability contracts.",
-                            "Concrete UI entries are supplied by frontend extension packs.",
-                        ],
-                    },
-                },
-                {
-                    "id": "runtime-management",
-                    "label": "Runtime Management",
-                    "category": "system",
-                    "description": "Pack modules, pack requests, and migration state.",
-                    "tags": ["pack", "management", "runtime"],
-                    "origin": {"kind": "builtin", "path": "ecosystem/defaultspack/api_routes"},
-                    "panel": {
-                        "kind": "actions",
-                        "title": "Runtime Management",
-                        "actions": [
-                            {
-                                "id": "list_modules",
-                                "label": "Modules",
-                                "method": "GET",
-                                "endpoint": "/api/defaultspack/modules",
-                            },
-                            {
-                                "id": "list_pack_requests",
-                                "label": "Pack Requests",
-                                "method": "GET",
-                                "endpoint": "/api/defaultspack/pack-requests",
-                            },
-                            {
-                                "id": "migration_status",
-                                "label": "Migration Status",
-                                "method": "GET",
-                                "endpoint": "/api/defaultspack/migration/status",
-                            },
-                        ],
-                    },
-                },
-            ]
+            builtin_ui_catalog()["sidebar_system_items"]
         )
 
         items.extend(self._config_list(ui_surfaces, "sidebar_items"))
@@ -948,12 +737,7 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        renderers = [
-            {"id": "text", "block_types": ["text", "markdown"], "component": "MarkdownBlock", "fallback": "plain_text"},
-            {"id": "code", "block_types": ["code"], "component": "CodeBlock", "fallback": "plain_text"},
-            {"id": "image", "block_types": ["image"], "component": "ImageBlock", "fallback": "link"},
-            {"id": "widget", "block_types": [], "widget_types": ["*"], "component": "WidgetCard", "fallback": "json"},
-        ]
+        renderers = builtin_ui_catalog()["chat_renderers"]
 
         renderers.extend(self._config_list(ui_surfaces, "chat_renderers"))
         renderers.extend(self._config_list(extensions, "chat_renderers"))
@@ -961,58 +745,7 @@ class FrontendRegistry:
         return self._dedupe_by_key(renderers, "id")
 
     def _extension_points(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "id": "parts",
-                "path": "extensions/ui/*/manifest.json config.parts",
-                "description": "Small frontend parts and the component contracts they use.",
-            },
-            {
-                "id": "component_bindings",
-                "path": "extensions/ui/*/manifest.json config.component_bindings",
-                "description": "Declarative component-to-part usage rules.",
-            },
-            {
-                "id": "sidebar_items",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json",
-                "description": "Right sidebar entries and their panel metadata.",
-            },
-            {
-                "id": "settings_sections",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json",
-                "description": "Settings modal sections / fields. Saved into frontend_settings.json.",
-            },
-            {
-                "id": "chat_renderers",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json",
-                "description": "Metadata describing custom block/widget renderers.",
-            },
-            {
-                "id": "composer.inline",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json config.composer.inline",
-                "description": "Small action buttons rendered inside the composer control row.",
-            },
-            {
-                "id": "composer.below",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json config.composer.below",
-                "description": "Secondary action buttons rendered below the composer.",
-            },
-            {
-                "id": "chat.activity",
-                "path": "chat message events/tool_logs",
-                "description": "Provider/tool activity records rendered in message history.",
-            },
-            {
-                "id": "shell_layout",
-                "path": "extensions/ui/*/manifest.json config.shell_layout or user_data/shared/frontend_shell.json",
-                "description": "Declarative layout regions for the replaceable shell.",
-            },
-            {
-                "id": "shell_renderers",
-                "path": "extensions/ui/*/manifest.json config.shell_renderers or packs/frontend_extensions/*.ui.json",
-                "description": "Renderer IDs and component names bound to shell regions.",
-            },
-        ]
+        return builtin_ui_catalog()["extension_points"]
 
     def _preview_from_log(self, log: dict[str, Any]) -> list[dict[str, Any]]:
         timestamp = self._iso_to_ms(log.get("timestamp"))

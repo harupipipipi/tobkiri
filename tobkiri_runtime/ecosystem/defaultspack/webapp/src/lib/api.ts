@@ -3552,7 +3552,7 @@ export const api = {
 
   uiCatalog() {
     return request<UICatalog>(
-      defaultspackContractRoute("api/ui/catalog?include_skills=true"),
+      defaultspackContractRoute("api/ui/full-catalog"),
       undefined,
       isUICatalog,
     );

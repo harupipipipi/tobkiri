@@ -40,6 +40,7 @@ SOURCE_FILES = (
     "ecosystem/defaultspack/update_metadata.v1.json",
     "ecosystem/defaultspack/domain/runtime_surface_v4.py",
     "ecosystem/defaultspack/domain/frontend_settings_catalog.py",
+    "ecosystem/defaultspack/domain/frontend_builtin_catalog.py",
     "ecosystem/defaultspack/domain/frontend_settings_store.py",
 )
 MANIFEST_KEYS = ("schema", "roots", "files")

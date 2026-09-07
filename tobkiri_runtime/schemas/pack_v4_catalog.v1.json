@@ -16262,7 +16262,12 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
               "id": "tobkiri_ui_settings_pack.settings-read",
-              "implementation_digest": "sha256:bb4c08f2fbe6e6f2843471ee3bfa92aae5658922bb6df1e4f4d4a8a2c0bd8364"
+              "implementation_digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b"
+            },
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
+              "id": "tobkiri_ui_settings_pack.catalog-read",
+              "implementation_digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -16292,7 +16297,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:bb4c08f2fbe6e6f2843471ee3bfa92aae5658922bb6df1e4f4d4a8a2c0bd8364",
+          "digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b",
           "kind": "executable",
           "path": "runtime/settings.py"
         }

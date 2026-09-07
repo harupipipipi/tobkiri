@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:66e6e679e69142f28cdce9940d24ab44cbf6839c80b2056db09768147541de3c",
+      "digest": "sha256:0d6c7e186a25e85d1475f89915673baa79f0006a02b97189e43e3e9a5aed88a6",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:bb4c08f2fbe6e6f2843471ee3bfa92aae5658922bb6df1e4f4d4a8a2c0bd8364",
+      "digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b",
       "kind": "executable",
       "path": "runtime/settings.py"
     }
@@ -15,27 +15,29 @@
     {
       "contract_id": "tobkiri.resource.ui.settings.v1",
       "operations": [
-        "tobkiri_ui_settings_pack.settings-read"
+        "tobkiri_ui_settings_pack.settings-read",
+        "tobkiri_ui_settings_pack.catalog-read"
       ],
-      "revision_digest": "sha256:341ce71eded9516b8eb4d9ba2004f7289ea7bd5cfbb541e06c342124b4c43e2e"
+      "revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:341ce71eded9516b8eb4d9ba2004f7289ea7bd5cfbb541e06c342124b4c43e2e",
+      "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:bb4c08f2fbe6e6f2843471ee3bfa92aae5658922bb6df1e4f4d4a8a2c0bd8364",
+      "implementation_digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b",
       "isolation": "dedicated_process",
       "operations": [
-        "tobkiri_ui_settings_pack.settings-read"
+        "tobkiri_ui_settings_pack.settings-read",
+        "tobkiri_ui_settings_pack.catalog-read"
       ],
       "role": "host_capability_provider"
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:9502b5c5a92ff8aa8c35c37e1ff5ad1c6996e80dc52f52a321a5b337cfd716c5",
-    "contract_catalog_digest": "sha256:fba960da46e9fa95d5973bb3a8c13820f39e823a2141986616880adeaca38e03",
-    "source_identity": "sha256:18cbef49c8bbbf01fe589e22ee52b124c1768f804028120e9d657a32f0f05171"
+    "artifact_set_digest": "sha256:282788a87e24741b225b8831de1ad36d9d4c7514ede18cdfe5aa5568b892d77f",
+    "contract_catalog_digest": "sha256:bb08261638c891076ded46cd88078aecd765719786be70102ab95a3d89624b1c",
+    "source_identity": "sha256:15438c5c11839d9dbebccffce76ddb5a30a1513b93d9c454d9b9ed728619f809"
   },
   "migration": {
     "compatibility": "none",
@@ -50,6 +52,17 @@
         "capability:ui.settings.read",
         "host:brokered-execution"
       ],
+      "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+      "owner": "tobkiri_ui_settings_pack",
+      "provider_id": "tobkiri.ui.settings.read",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ui.settings.v1",
+      "effect_ceiling": [
+        "capability:ui.settings.read",
+        "host:brokered-execution"
+      ],
       "operation_id": "tobkiri_ui_settings_pack.settings-read",
       "owner": "tobkiri_ui_settings_pack",
       "provider_id": "tobkiri.ui.settings.read",
@@ -57,7 +70,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:9502b5c5a92ff8aa8c35c37e1ff5ad1c6996e80dc52f52a321a5b337cfd716c5",
+    "artifact_digest": "sha256:282788a87e24741b225b8831de1ad36d9d4c7514ede18cdfe5aa5568b892d77f",
     "display_name": "Tobkiri UI Settings",
     "id": "tobkiri_ui_settings_pack",
     "kind": "host_extension",
@@ -67,7 +80,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:18cbef49c8bbbf01fe589e22ee52b124c1768f804028120e9d657a32f0f05171",
+        "digest": "sha256:15438c5c11839d9dbebccffce76ddb5a30a1513b93d9c454d9b9ed728619f809",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -78,7 +91,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:18cbef49c8bbbf01fe589e22ee52b124c1768f804028120e9d657a32f0f05171",
+    "source_digest": "sha256:15438c5c11839d9dbebccffce76ddb5a30a1513b93d9c454d9b9ed728619f809",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
   },
@@ -86,7 +99,8 @@
     {
       "contract_reference": "tobkiri.resource.ui.settings.v1",
       "operations": [
-        "tobkiri_ui_settings_pack.settings-read"
+        "tobkiri_ui_settings_pack.settings-read",
+        "tobkiri_ui_settings_pack.catalog-read"
       ],
       "owner": "tobkiri_ui_settings_pack",
       "provider_id": "tobkiri.ui.settings.read"

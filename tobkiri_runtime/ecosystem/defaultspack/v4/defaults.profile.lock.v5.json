@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:5d3d0f0f7ded71b5b1db34f74df7f8ce7cd1e11677fd981ca1ff9966e0f8ce25",
-  "profile_definition_digest": "sha256:1fea9d7ae83a5bd6f8a07c017da4de5792a818ed71515083b92d7c0eb41feebe",
-  "catalog_revision": "sha256:63b834486f59b57adde90eb8d1eb3fca1f45ac5a9e0a1a5f0e766e9ff8ec5b96",
-  "bundle_digest": "sha256:73d948eb98688150349242d1ab286947548b9bf817f0c85ea7370ec51d7a1467",
+  "profile_revision": "sha256:2f94d3a1fefb76e9e34c82c70b748e4adecea729599cbb56c5400d7e0fd70ef9",
+  "profile_definition_digest": "sha256:d7e54451641f3d5f03aab9d067503f6b80206de780e6b2c1a4918bb9e3d3cdb5",
+  "catalog_revision": "sha256:cb70778a2405ad2fd5b254aba2f76dccaa929d41efd95d7b4f43b12233130655",
+  "bundle_digest": "sha256:ada0b62cd8e9272a904786aa7371d35cf6199b2c028a4596a59fc4c5423d0768",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -27,7 +27,7 @@
     "pack_id": "runtime.tauri.application.default",
     "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
     "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
-    "definition_digest": "sha256:0194c217f84401bc26545b1226cff4c04f4ebbc29f45659150181e5cd3229766"
+    "definition_digest": "sha256:5aa56b8a683c66dd8d6e69625581979102ecc30ab58e08ae51cdf8c0c472b6d4"
   },
   "effective_set": [
     {
@@ -43,7 +43,7 @@
     {
       "role": "pack",
       "identity": "tobkiri_ui_settings_pack",
-      "artifact_digest": "sha256:9502b5c5a92ff8aa8c35c37e1ff5ad1c6996e80dc52f52a321a5b337cfd716c5"
+      "artifact_digest": "sha256:282788a87e24741b225b8831de1ad36d9d4c7514ede18cdfe5aa5568b892d77f"
     },
     {
       "role": "pack",
@@ -574,8 +574,8 @@
     },
     {
       "pack_id": "tobkiri_ui_settings_pack",
-      "artifact_digest": "sha256:9502b5c5a92ff8aa8c35c37e1ff5ad1c6996e80dc52f52a321a5b337cfd716c5",
-      "executable_catalog_digest": "sha256:adf9bca1f63f389ef575abc309ecfe3bec034adaad0fcbc0ef34ef2d242a0076",
+      "artifact_digest": "sha256:282788a87e24741b225b8831de1ad36d9d4c7514ede18cdfe5aa5568b892d77f",
+      "executable_catalog_digest": "sha256:93c42d0c17eb14af717ca9764be34382f0b292897a9f77e74766d4b86f379fda",
       "variant_id": "tobkiri.ui.settings.read.python",
       "platform": "any",
       "architecture": "any",
@@ -585,9 +585,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:e797b22f45068320c121e3ebf1104bc07560823d38a3fc805030d6f0e5089260",
+  "requested_edges_digest": "sha256:a6c862796947820b779687da30b7396114babb7844c11c705c02f663e0649a55",
   "constraints_digest": "sha256:ca4de2cef8387730639e7b3974080b7b5b79412326c43a006f5b4aa815b78f0f",
-  "closure_digest": "sha256:ee6c2657b948576079bfb980697ce6f799abe87147468dedab624b3043b0bee9",
-  "provenance_digest": "sha256:edb8a7fac23a53106671211ebeac369549e8e11202d50dbc83456213e79c2ef4",
-  "lock_digest": "sha256:8604c1926874de616f9b7eaaaee13df63a40f71ab0999825f849a76c65c3de44"
+  "closure_digest": "sha256:d21f7dd731dbcbf0f738b90cb2235e9b466f18556e41e37622d68666b869cebe",
+  "provenance_digest": "sha256:750d4e391e7a674d3bd98744330b8df70549d4a27117ae7a8b72a158db3b0cea",
+  "lock_digest": "sha256:74557cc3e1b2182c31e7bd67d845f4ae9805d4ea357cda88ebd0e7838dd3f3c9"
 }

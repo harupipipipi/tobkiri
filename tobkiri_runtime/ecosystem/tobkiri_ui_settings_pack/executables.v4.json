@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:adf9bca1f63f389ef575abc309ecfe3bec034adaad0fcbc0ef34ef2d242a0076",
+  "catalog_digest": "sha256:93c42d0c17eb14af717ca9764be34382f0b292897a9f77e74766d4b86f379fda",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:18cbef49c8bbbf01fe589e22ee52b124c1768f804028120e9d657a32f0f05171",
+  "source_identity": "sha256:15438c5c11839d9dbebccffce76ddb5a30a1513b93d9c454d9b9ed728619f809",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:bb4c08f2fbe6e6f2843471ee3bfa92aae5658922bb6df1e4f4d4a8a2c0bd8364",
+      "implementation_digest": "sha256:b90696b4ae041a94b9b33290ee4015d27d02680eee7f1b3aa5afa01161d6b25b",
       "implementation_path": "runtime/settings.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -29,7 +29,26 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:341ce71eded9516b8eb4d9ba2004f7289ea7bd5cfbb541e06c342124b4c43e2e",
+          "revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

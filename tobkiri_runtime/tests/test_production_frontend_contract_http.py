@@ -411,6 +411,33 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         ]
         assert "hidden-test-secret" not in json.dumps(payload)
         assert "opaque:test-secret" not in json.dumps(payload)
+    status, payload, _ = _request(
+        server, "GET", _contract("GET", "/api/ui/full-catalog"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, payload
+    catalog = payload["data"]
+    assert catalog["app"]["name"] == "Tobkiri"
+    assert {region["id"] for region in catalog["shell"]["layout"]["regions"]} == {
+        "title_bar", "history", "chat_header", "chat_messages", "composer",
+        "activity_preview", "right_sidebar", "settings_modal",
+    }
+    assert catalog["settings"]["values"]["general"]["composer_placeholder"] == "Saved placeholder"
+    assert catalog["sidebar"]["items"]
+    assert catalog["chat_rendering"]["renderers"]
+    assert "hidden-test-secret" not in json.dumps(catalog)
+    status, host_payload, _ = _request(
+        server, "GET", _contract("GET", "/api/ui/catalog"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, host_payload
+    assert host_payload["data"]["dynamic_host"]["profile_id"] == "defaults"
+    for query in ("profile_id=other", "full=true", "operation=write"):
+        status, payload, _ = _request(
+            server, "GET", _contract("GET", f"/api/ui/full-catalog?{query}"),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 400, payload
     for query in ("profile_id=other", "operation=write", "approved=true", "full=false"):
         status, payload, _ = _request(
             server, "GET", _contract("GET", f"/api/ui/settings?{query}"),
