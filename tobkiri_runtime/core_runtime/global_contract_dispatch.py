@@ -146,6 +146,7 @@ def invoke_selected_global_provider(
         item
         for item in providers
         if item.get("provider_instance_id") == provider_instance_id
+        and item.get("operation_id") == operation
     ]
     if len(matches) != 1:
         raise GlobalContractUnavailable(

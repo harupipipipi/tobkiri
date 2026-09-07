@@ -1508,10 +1508,12 @@ def capture_production_dispatch(
         ) in edge_specs
     )
     registered_backends = tuple((backends or BackendRegistry(())).registered)
+    owned_packvm_backends: tuple[Any, ...] = ()
     if backends is None:
         authenticated_backend = _authenticated_packvm_backend(packvm_provisioner)
         if authenticated_backend is not None:
             registered_backends += (authenticated_backend,)
+            owned_packvm_backends = (authenticated_backend,)
     target_backend_digests = dict(target_backend_digests or {})
     authority_control = runtime.composition.authority_adapter(authority_store)
     control_targets: dict[tuple[str, str], tuple[str, str, str]] = {}
@@ -2485,11 +2487,22 @@ def capture_production_dispatch(
             projected_backend = None
             backend_error = str(error) or "production backend is unavailable"
         function_principal = binding["function_principal"]
+        function_id = str(function_principal["function_id"])
+        pack_id = str(binding["pack_id"])
+        provider_prefix = f"{pack_id}."
+        provider_instance_id = (
+            function_id.removeprefix(provider_prefix)
+            if function_id.startswith(provider_prefix)
+            else function_id
+        )
+        if not provider_instance_id:
+            raise AuthorityDenied("selected Provider instance identity is invalid")
         providers.setdefault(binding["contract_id"], ())
         providers[binding["contract_id"]] += (
             {
-                "provider_id": function_principal["function_id"],
-                "function_id": function_principal["function_id"],
+                "provider_id": function_id,
+                "provider_instance_id": provider_instance_id,
+                "function_id": function_id,
                 "principal_id": resolved_binding.principal_ref.value,
                 "implementation_digest": resolved_binding.function.implementation_digest,
                 "contract_id": binding["contract_id"],
@@ -2654,6 +2667,11 @@ def capture_production_dispatch(
             *close_callbacks,
             *((workspace_mutation_port.close,) if workspace_mutation_port else ()),
             *((control_session.close,) if control_session is not None else ()),
+            *tuple(
+                backend.close
+                for backend in owned_packvm_backends
+                if callable(getattr(backend, "close", None))
+            ),
         ),
         stop_callbacks=(
             (control_session.cancel_pending_reads,) if control_session is not None else ()

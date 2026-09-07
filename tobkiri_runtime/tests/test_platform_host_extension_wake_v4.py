@@ -166,6 +166,7 @@ class Driver:
         self.last_launch: IsolationLaunch | None = None
         self.attestation_platform: str | None = None
         self.terminated: list[str] = []
+        self.termination_error: Exception | None = None
 
     def capability(self) -> tuple[bool, str | None]:
         return True, None
@@ -204,6 +205,8 @@ class Driver:
         return None
 
     def terminate(self, domain_id: str) -> None:
+        if self.termination_error is not None:
+            raise self.termination_error
         self.terminated.append(domain_id)
 
 
@@ -260,6 +263,29 @@ def test_platform_selection_and_attestation_fail_closed() -> None:
     wrong = replace(selected.variant, backend="other-packvm")
     with pytest.raises(BackendUnavailableError, match="wrong platform"):
         backend.materialize(replace(selected, variant=wrong), "reservation-3")
+
+
+def test_platform_backend_close_terminates_and_retries_failed_cleanup() -> None:
+    driver = Driver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.close",
+    )
+    backend.materialize(binding(), "reservation-close")
+    driver.termination_error = RuntimeError("verified cleanup failed")
+
+    with pytest.raises(BackendUnavailableError, match="could not be terminated"):
+        backend.close()
+
+    assert "domain.vz.close" in backend._domains
+    assert backend._reservations["reservation-close"] == "domain.vz.close"
+    driver.termination_error = None
+    backend.close()
+    backend.close()
+    assert driver.terminated == ["domain.vz.close"]
+    assert backend._domains == {}
+    assert backend._reservations == {}
 
 
 @pytest.mark.parametrize(

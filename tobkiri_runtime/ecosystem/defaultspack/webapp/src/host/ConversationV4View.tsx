@@ -72,6 +72,28 @@ export function conversationV4AssistantText(result: unknown): string | null {
   return null;
 }
 
+/** Extract a bounded error already projected by the Pack v4 result ABI. */
+export function conversationV4ResultError(
+  result: unknown,
+): { code?: string; message: string } | null {
+  const resultRecord = asRecord(result);
+  if (!resultRecord) return null;
+
+  for (const candidate of [resultRecord, asRecord(resultRecord.data)]) {
+    const projected = asRecord(candidate?.error);
+    if (!projected || typeof projected.message !== "string" || !projected.message.trim()) {
+      continue;
+    }
+    return {
+      ...(typeof projected.code === "string" && projected.code.trim()
+        ? { code: projected.code }
+        : {}),
+      message: projected.message,
+    };
+  }
+  return null;
+}
+
 /** Render the minimal, host-owned complete-only Pack v4 conversation surface. */
 export function ConversationV4View({
   item,
@@ -106,6 +128,12 @@ export function ConversationV4View({
         planHash: item.resolved_plan_hash,
         catalogHash,
       });
+      const projectedError = conversationV4ResultError(result);
+      if (projectedError) {
+        throw Object.assign(new Error(projectedError.message), {
+          code: projectedError.code,
+        });
+      }
       const content = conversationV4AssistantText(result);
       if (!content) {
         throw new Error("The conversation completed without an assistant message.");

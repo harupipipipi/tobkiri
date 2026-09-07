@@ -8,6 +8,7 @@ import {
   ConversationV4Unavailable,
   conversationV4AssistantText,
   conversationV4CapabilityPayload,
+  conversationV4ResultError,
   isConversationV4Contribution,
   type ConversationV4Message,
 } from "./ConversationV4View";
@@ -67,6 +68,22 @@ test("ConversationV4View accepts the projected non-streaming completion", () => 
     "A complete-only reply",
   );
   assert.equal(conversationV4AssistantText({ content: [] }), null);
+});
+
+test("ConversationV4View preserves a projected provider failure", () => {
+  assert.deepEqual(
+    conversationV4ResultError({
+      error: {
+        code: "PROVIDER_UNAVAILABLE",
+        message: "The verified AI capability is unavailable.",
+      },
+    }),
+    {
+      code: "PROVIDER_UNAVAILABLE",
+      message: "The verified AI capability is unavailable.",
+    },
+  );
+  assert.equal(conversationV4ResultError({ content: [] }), null);
 });
 
 test("ConversationV4View is selected only by the exact defaultspack chat contribution", () => {

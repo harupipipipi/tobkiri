@@ -366,6 +366,7 @@ class ProductionIsolationBackend:
         self._driver.cancel(request_id)
 
     def terminate(self, domain_id: str) -> None:
+        self._driver.terminate(domain_id)
         with self._request_lock:
             for request_id, target in tuple(self._request_domains.items()):
                 if target == domain_id:
@@ -374,7 +375,20 @@ class ProductionIsolationBackend:
         if attestation is not None:
             self._reservations.pop(attestation.reservation_id, None)
             self._leases.pop(domain_id, None)
-        self._driver.terminate(domain_id)
+
+    def close(self) -> None:
+        """Terminate every tracked domain and retain failed cleanup for retry."""
+
+        failures: list[Exception] = []
+        for domain_id in tuple(self._domains):
+            try:
+                self.terminate(domain_id)
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise BackendUnavailableError(
+                "one or more PackVM domains could not be terminated"
+            ) from failures[0]
 
     def _validate_attestation(
         self,
