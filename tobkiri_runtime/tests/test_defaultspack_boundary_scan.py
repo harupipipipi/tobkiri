@@ -340,5 +340,14 @@ def test_key_edges_use_public_contracts_in_repository_policy():
     assert "domain/capability" not in policy["frontend"]["may_import"]
     assert set(policy["frontend"]["public_imports"]) == {
         "domain/capability/catalog",
+        "domain/frontend_builtin_catalog",
+        "domain/frontend_command_catalog",
+        "domain/frontend_settings_catalog",
         "domain/frontend_settings_store",
     }
+    for name in (
+        "frontend_builtin_catalog",
+        "frontend_command_catalog",
+        "frontend_settings_catalog",
+    ):
+        assert policy[name] == {"may_import": [], "path": f"domain/{name}.py"}
