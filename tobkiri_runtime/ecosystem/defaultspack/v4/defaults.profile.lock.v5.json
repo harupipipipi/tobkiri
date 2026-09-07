@@ -6,8 +6,8 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:29ac2c1d8104daa5d75718ed4b0d82f830a3d5462e3e7df739e9805f9bf70e3f",
   "profile_definition_digest": "sha256:db67a9fee7721d11cdcbea9c24bc655133d3e849c0ba3a37f5f09b70ff79543a",
-  "catalog_revision": "sha256:043cb0edf8606f2425e09491655cf4fc4f445a4a7a679428b1771452625395c8",
-  "bundle_digest": "sha256:0d4301c67c0591c4b2d132303cb7152f477b7c9ac90e2021b90ee0cda852ebeb",
+  "catalog_revision": "sha256:9c173b3dde57083ca3098bde0fe7c1671ae6536aa84cc331631df530efddca8e",
+  "bundle_digest": "sha256:4e0a79cd256aa662af742004cac76d920ff9de13b4197c42d92b8a956843d80e",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -78,7 +78,7 @@
     {
       "role": "pack",
       "identity": "rumi_model_catalog_pack",
-      "artifact_digest": "sha256:a2225a5f1b9d21de2353b72772fa134023113160c51698b687722175d2864f57"
+      "artifact_digest": "sha256:7c581f2f1ebf39c7f8d5d88994aed967250fb244ab1bb78f3a9ff31e8c534439"
     },
     {
       "role": "pack",
@@ -442,8 +442,8 @@
     },
     {
       "pack_id": "rumi_model_catalog_pack",
-      "artifact_digest": "sha256:a2225a5f1b9d21de2353b72772fa134023113160c51698b687722175d2864f57",
-      "executable_catalog_digest": "sha256:75c8e1b2ff19e0e5f94f8cccc6ba5e0acd74f3840c985961ed76dc634e40ae86",
+      "artifact_digest": "sha256:7c581f2f1ebf39c7f8d5d88994aed967250fb244ab1bb78f3a9ff31e8c534439",
+      "executable_catalog_digest": "sha256:40e40b0e293fa56022e7069b18800781f34c0793f2de27abfd50060b16788c1a",
       "variant_id": "rumi_model_catalog_pack.model-catalog.bundled.python",
       "platform": "any",
       "architecture": "any",
@@ -611,7 +611,7 @@
   ],
   "requested_edges_digest": "sha256:8b2be5b477bc8b19c277dfe958a9fd0dec9c155ea04e2b0a80f378e729cdb1dc",
   "constraints_digest": "sha256:a01e27b53d3c7c0ccc9eea892cd31be3dbed976558a35316fa56ceb928263e5b",
-  "closure_digest": "sha256:411f81c1ccdcaa237e9007ed674bfaed1e74e4d097d061066e4f826b31ac700a",
+  "closure_digest": "sha256:2d052f6869bba52cce7356b2f5a1ad1d035b0c1dc3494ab362b016502dc224b3",
   "provenance_digest": "sha256:c1f2da5c14f9bf84f305747c982e828c519452b3c6f5f912f403085dce66b514",
-  "lock_digest": "sha256:71a8d08cfb5dfdda1bf5d2b23d46e85885c9086da8cb303c22e93029989a099f"
+  "lock_digest": "sha256:8b943c0a70d6dd9fc1696e734ee1aa54b6b374d8cd8a941871ac705c9a473aa3"
 }

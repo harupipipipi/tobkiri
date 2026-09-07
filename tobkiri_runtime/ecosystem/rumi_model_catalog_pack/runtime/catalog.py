@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from core_runtime.host_provider_backend_v4 import (
         CapturedHostProviderV4,
         HostProviderCaptureContextV4,
+        HostProviderContributionV4,
         HostProviderInvocationContextV4,
     )
 
@@ -639,7 +640,6 @@ class ModelCatalogHostFactoryV4:
         # only when the Host explicitly captures its own provider factory.
         from core_runtime.host_provider_backend_v4 import (
             CapturedHostProviderV4,
-            HostProviderContributionV4,
         )
 
         if not context.provider_bindings or any(
@@ -673,6 +673,8 @@ def _host_contributions(
     ],
 ) -> list[HostProviderContributionV4]:
     """Project exact catalog bindings into immutable Host contributions."""
+
+    from core_runtime.host_provider_backend_v4 import HostProviderContributionV4
 
     contributions: list[HostProviderContributionV4] = []
     for binding in context.provider_bindings:
