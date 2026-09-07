@@ -119,7 +119,13 @@ def test_catalog_install_approve_enable_and_restart_read_back(captured_session, 
     """The positive lifecycle survives a fresh captured session."""
     session, _state_path, user_data = captured_session
     initial = _invoke(session, "catalog.read")
-    assert initial["count"] == 140
+    source_catalog = json.loads(
+        (Path(__file__).resolve().parents[1] / "schemas" / "pack_v4_catalog.v1.json")
+        .read_text(encoding="utf-8")
+    )
+    expected_pack_ids = set(source_catalog["pack_ids"])
+    assert {row["pack_id"] for row in initial["packs"]} == expected_pack_ids
+    assert initial["count"] == len(expected_pack_ids)
     target = _catalog_pack(initial, pack_id)
     assert target["installed"] is False
     assert target["enabled"] is False
@@ -141,6 +147,9 @@ def test_catalog_install_approve_enable_and_restart_read_back(captured_session, 
     assert enabled["enabled"] is True
 
     restarted = _capture_control_session()
+    restarted_catalog = _invoke(restarted, "catalog.read")
+    assert {row["pack_id"] for row in restarted_catalog["packs"]} == expected_pack_ids
+    assert restarted_catalog["count"] == len(expected_pack_ids)
     status = _invoke(restarted, "pack.status", {"pack_id": pack_id})
     assert status["installed"] is True
     assert status["approved"] is True
