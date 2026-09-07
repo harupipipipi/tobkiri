@@ -357,7 +357,6 @@ def test_capture_flow_reconfirms_valid_artifact_successor_and_persists_restart(
     predecessor_catalog = _packaged_catalog_revision(tmp_path / "predecessor", b"predecessor")
     successor_catalog = _packaged_catalog_revision(tmp_path / "successor", b"successor")
     predecessor = _resolve(predecessor_catalog)
-    successor = _resolve(successor_catalog)
     user_data = tmp_path / "user-data"
     workspace = user_data / "workspaces" / "defaults"
     workspace.mkdir(parents=True)
@@ -380,21 +379,13 @@ def test_capture_flow_reconfirms_valid_artifact_successor_and_persists_restart(
     profile_capture._publish_host_active_pointer(
         active_predecessor, user_data=user_data, replace_existing=False
     )
-    confirmation = {
-        "operation_id": "defaults.activate",
-        "confirmation_digest": "sha256:" + "a" * 64,
-    }
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     monkeypatch.setattr(
         profile_capture,
         "_bundle_root",
         lambda _base=None: successor_catalog.root,
     )
-    monkeypatch.setattr(
-        profile_capture,
-        "_resolve_bootstrap_candidate",
-        lambda **_kwargs: (successor, confirmation),
-    )
+    successor, confirmation = profile_capture._resolve_bootstrap_candidate()
 
     definitions_before = ProfileDefinitionStore(user_data).snapshot()
     pointer_before = (user_data / "profiles" / "active.json").read_bytes()
