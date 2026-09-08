@@ -248,6 +248,7 @@ jobs:
             tests/test_saved_guest_dispatch.py \
             tests/test_saved_backend_binding.py \
             tests/test_saved_bridge_callbacks.py \
+            tests/test_saved_turn_coordinator.py \
             tests/test_saved_conversation_input_contract.py \
             tests/test_saved_conversation_steps.py \
             tests/test_ai_gateway_host_provider_v4.py \

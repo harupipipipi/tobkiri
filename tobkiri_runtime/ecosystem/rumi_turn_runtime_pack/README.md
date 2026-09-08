@@ -28,6 +28,18 @@ coordination, not an execution or approval credential. The execution coordinator
 must still dispatch through its captured Authority/Broker edge and reconcile
 ambiguous outcomes; no AI dispatch is performed by the owner.
 
+`runtime/saved.py` now implements the one-shot coordinator computation. It
+requires an explicitly supplied, same-Profile restricted contract client and
+an invocation guard. Only the claim winner calls the fixed saved Function;
+duplicate calls return the existing snapshot without changing a live executor's
+state. A validated acknowledgement records message references and an outcome
+digest, not transcript content. Lost, invalid or late outcomes require
+reconciliation, and a stale completion never overwrites a concurrent mutation.
+This helper is not yet a registered captured Host Function or HTTP route.
+Per-stage journaling, owner reconciliation, authenticated stop and production
+capture wiring remain incomplete. Tests use real stores with dispatch/AI
+adapters; they are not native, real-Broker coordinator or Provider acceptance.
+
 Durability is not execution recovery: a restored running state does not authorize
 another AI invocation or uncertain write. Reconciliation, provider cancellation,
 full-UI execution integration and native activation remain required. Registration
