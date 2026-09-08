@@ -41,7 +41,7 @@ self-report is a substitute for this contract.
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import hmac
 import math
@@ -443,6 +443,12 @@ class _ActiveRequest:
     launch_binding_digest: str
     guest_challenge: str
     transport: MacOSVZSupervisorTransport
+    cancellation_requested: threading.Event = field(default_factory=threading.Event)
+
+    def require_not_cancelled(self) -> None:
+        """Fence late results even when cancellation acknowledgement is uncertain."""
+        if self.cancellation_requested.is_set():
+            raise BackendUnavailableError("macOS VZ request cancellation was requested")
 
 
 class MacOSVZSupervisorDriver:
@@ -705,7 +711,7 @@ class MacOSVZSupervisorDriver:
             if request_id in self._active_requests:
                 raise BackendUnavailableError("macOS VZ request identity is already active")
             guest_challenge = self._new_guest_challenge(domain_id)
-            self._active_requests[request_id] = _ActiveRequest(
+            active = _ActiveRequest(
                 domain_id=domain_id,
                 request_digest=request_digest,
                 channel_key=session.channel_key,
@@ -713,6 +719,7 @@ class MacOSVZSupervisorDriver:
                 guest_challenge=guest_challenge,
                 transport=session.transport,
             )
+            self._active_requests[request_id] = active
         try:
             response = self._exchange(
                 self._invoke_envelope(
@@ -739,6 +746,7 @@ class MacOSVZSupervisorDriver:
                 guest_challenge=guest_challenge,
                 public_key=session.allocation.guest_public_key,
             )
+            active.require_not_cancelled()
             if (
                 set(guest_data) == {"state", "host_bridge_request"}
                 and guest_data.get("state") == "pending"
@@ -749,6 +757,7 @@ class MacOSVZSupervisorDriver:
                     domain_id,
                     session,
                     dict(guest_data["host_bridge_request"]),
+                    active,
                 )
             return ProviderOutcome(_validated_invoke_outcome(guest_data))
         finally:
@@ -762,6 +771,9 @@ class MacOSVZSupervisorDriver:
             active = self._active_requests.get(request_id)
             if active is None:
                 raise BackendUnavailableError("macOS VZ cancel request is not active")
+            # Fence immediately, not only after the guest acknowledges. A lost
+            # cancellation response cannot authorize a late callback result.
+            active.cancellation_requested.set()
         host_nonce = self._new_host_nonce()
         guest_challenge = self._new_guest_challenge(active.domain_id)
         response = self._exchange(
@@ -883,6 +895,7 @@ class MacOSVZSupervisorDriver:
         domain_id: str,
         session: _DomainSession,
         host_frame: Mapping[str, Any],
+        active: _ActiveRequest,
     ) -> ProviderOutcome:
         outer_domain_id, outer_request_id, outer_request_digest = _request_identity(
             outer_request
@@ -918,10 +931,12 @@ class MacOSVZSupervisorDriver:
             callback = self._capability_bridge
         if callback is None:
             raise BackendUnavailableError("macOS VZ Host capability bridge is unavailable")
+        active.require_not_cancelled()
         try:
             bridge_result = callback(outer_request, bridge_request)
         except Exception as exc:
             raise BackendUnavailableError("macOS VZ Host capability bridge rejected request") from exc
+        active.require_not_cancelled()
         _validate_bridge_result(bridge_result, continuation)
         host_nonce = self._new_host_nonce()
         guest_challenge = self._new_guest_challenge(domain_id)
@@ -965,6 +980,7 @@ class MacOSVZSupervisorDriver:
             guest_challenge=guest_challenge,
             public_key=session.allocation.guest_public_key,
         )
+        active.require_not_cancelled()
         return ProviderOutcome(_validated_invoke_outcome(guest_data))
 
     def _invoke_envelope(

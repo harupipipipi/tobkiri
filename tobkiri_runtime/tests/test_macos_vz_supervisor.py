@@ -659,6 +659,55 @@ def test_concurrent_domains_have_distinct_helpers_and_close_after_cleanup(tmp_pa
     assert catalog.closed
 
 
+def _bridge_result(bridge_request: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return a correctly bound result from the test capability callback."""
+    continuation = bridge_request["continuation"]
+    result = {"status": "ok", "value": {"model": "host-bound"}}
+    return {
+        "kind": "tobkiri.packvm.bridge.result.v1",
+        "protocol": "io.tobkiri.packvm.bridge.v1",
+        "version": 1,
+        "operation_id": "complete",
+        "nonce": continuation["nonce"],
+        "target": continuation["target"],
+        "request_digest": continuation["request_digest"],
+        "result": result,
+        "result_digest": canonical_digest(result),
+    }
+
+
+@pytest.mark.parametrize("lost_ack", [False, True])
+def test_cancel_during_host_callback_fences_late_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_ack: bool,
+) -> None:
+    """No resume is sent after cancellation, including an uncertain guest ACK."""
+    driver, allocator = _driver(tmp_path)
+
+    def callback(outer_request: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if lost_ack:
+            with pytest.raises(BackendUnavailableError):
+                driver.cancel("request-1")
+        else:
+            driver.cancel("request-1")
+        return _bridge_result(request)
+
+    driver.bind_capability_bridge(callback)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.pending_bridge = True
+    original_exchange = transport.exchange
+
+    def exchange(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if lost_ack and request.get("operation") == "cancel":
+            raise BackendUnavailableError("test cancellation response lost")
+        return original_exchange(request)
+
+    monkeypatch.setattr(transport, "exchange", exchange)
+    with pytest.raises(BackendUnavailableError, match="cancellation was requested"):
+        driver.invoke(_request("domain.provider.conversation"))
+    assert not any(item["operation"] == "bridge_result" for item in transport.requests)
+
+
 def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Path) -> None:
     """A strict signed bridge resumes once and its continuation cannot replay."""
 
@@ -670,19 +719,7 @@ def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Pat
         bridge_request: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         observed.append((outer_request, bridge_request))
-        continuation = bridge_request["continuation"]
-        result = {"status": "ok", "value": {"model": "host-bound"}}
-        return {
-            "kind": "tobkiri.packvm.bridge.result.v1",
-            "protocol": "io.tobkiri.packvm.bridge.v1",
-            "version": 1,
-            "operation_id": "complete",
-            "nonce": continuation["nonce"],
-            "target": continuation["target"],
-            "request_digest": continuation["request_digest"],
-            "result": result,
-            "result_digest": canonical_digest(result),
-        }
+        return _bridge_result(bridge_request)
 
     driver.bind_capability_bridge(capability_bridge)
     _launch(driver)
