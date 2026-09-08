@@ -302,7 +302,7 @@ def test_guest_agent_persists_only_a_verified_pending_bridge_then_resumes_once(
     monkeypatch.setattr(
         runner,
         "_invoke",
-        lambda _payload: {
+        lambda _payload, **_kwargs: {
             "ok": True,
             "protocol": runner.PROTOCOL,
             "guest_artifact_identity": _guest_artifact_identity(config),
@@ -315,6 +315,7 @@ def test_guest_agent_persists_only_a_verified_pending_bridge_then_resumes_once(
         payload: dict[str, object],
         stored_bridge: dict[str, object],
         result: dict[str, object],
+        *, guest_deadline: float,
     ) -> dict[str, object]:
         resumed.extend((payload, stored_bridge, result))
         return {
@@ -383,6 +384,99 @@ def test_guest_agent_persists_only_a_verified_pending_bridge_then_resumes_once(
     assert resumed[2] == bridge_result
 
 
+@pytest.mark.parametrize("finish_late", [False, True])
+def test_guest_dispatch_retains_initial_local_deadline_across_host_wait(
+    monkeypatch: pytest.MonkeyPatch, finish_late: bool,
+) -> None:
+    config = _config()
+    ledger = runner._PendingBridgeLedger()
+    bridge = _bridge_request()
+    now = [1000.0]
+    deadlines = []
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
+
+    def initial(payload: dict, *, guest_deadline: float) -> dict:
+        deadlines.append(guest_deadline)
+        now[0] = 1020.0
+        return {"ok": True, "protocol": runner.PROTOCOL,
+                "guest_artifact_identity": _guest_artifact_identity(config), "payload": bridge}
+
+    def resume(*args: object, guest_deadline: float) -> dict:
+        deadlines.append(guest_deadline)
+        now[0] = 1061.0 if finish_late else 1055.0
+        return {"ok": True, "protocol": runner.PROTOCOL,
+                "guest_artifact_identity": _guest_artifact_identity(config), "payload": {"output": "done"}}
+
+    monkeypatch.setattr(runner, "_invoke", initial)
+    monkeypatch.setattr(runner, "_resume_bridge_invocation", resume)
+    response = runner._dispatch_agent_request(
+        _envelope(config, "invoke", "local-budget", "a" * 64,
+                  payload=_invoke_payload("local-budget")), config, ledger,
+    )
+    # Host 123.5 and guest 1000.0 are intentionally unrelated clock origins.
+    assert response["data"]["host_bridge_request"]["deadline_monotonic"] == "123.5"
+    assert ledger._pending[(config.domain_id, "local-budget")].expires_at == 1060.0
+    now[0] = 1050.0
+    request = _envelope(config, "bridge_result", "local-budget", "b" * 64,
+                        host_bridge_result=_host_result(config, "local-budget", bridge))
+    if finish_late:
+        with pytest.raises(TimeoutError, match="deadline expired"):
+            runner._dispatch_agent_request(request, config, ledger)
+    else:
+        assert runner._dispatch_agent_request(request, config, ledger)["data"] == {"output": "done"}
+    assert deadlines == [1060.0, 1060.0]
+    with pytest.raises(ValueError, match="unavailable"):
+        ledger.consume(domain_id=config.domain_id, request_id="local-budget")
+
+
+def test_expired_initial_child_cannot_register_a_fresh_pending_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [1000.0]
+    config = _config()
+    ledger = runner._PendingBridgeLedger()
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
+
+    def late(*args: object, **kwargs: object) -> dict:
+        now[0] = 1060.0
+        return {"payload": _bridge_request()}
+
+    monkeypatch.setattr(runner, "_invoke", late)
+    with pytest.raises(TimeoutError, match="deadline expired"):
+        runner._dispatch_agent_request(
+            _envelope(config, "invoke", "expired", "a" * 64,
+                      payload=_invoke_payload("expired")), config, ledger,
+        )
+    assert ledger._pending == {}
+
+
+def test_original_pending_deadline_expires_without_renewal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
+    ledger = runner._PendingBridgeLedger()
+    ledger.add(domain_id="domain", request={"request_id": "request"},
+               guest_artifact_identity="artifact", bridge_request=_bridge_request(),
+               guest_deadline=1010.0)
+    now[0] = 1010.0
+    with pytest.raises(ValueError, match="unavailable"):
+        ledger.consume(domain_id="domain", request_id="request")
+
+
+def test_expired_resume_cannot_verify_artifact_or_spawn_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runner.time, "monotonic", lambda: 1000.0)
+
+    def forbidden(*args: object) -> None:
+        pytest.fail("expired resume entered artifact execution")
+
+    monkeypatch.setattr(runner, "_verify_invocation_artifact", forbidden)
+    with pytest.raises(TimeoutError, match="deadline expired"):
+        runner._resume_bridge_invocation({}, {}, {}, guest_deadline=1000.0)
+
+
 @pytest.mark.parametrize(
     "field",
     ("request_id", "target_domain", "guest_artifact_identity", "continuation_nonce"),
@@ -400,7 +494,7 @@ def test_guest_agent_rejects_swapped_or_replayed_host_result(
     monkeypatch.setattr(
         runner,
         "_invoke",
-        lambda _payload: {
+        lambda _payload, **_kwargs: {
             "ok": True,
             "protocol": runner.PROTOCOL,
             "guest_artifact_identity": _guest_artifact_identity(config),

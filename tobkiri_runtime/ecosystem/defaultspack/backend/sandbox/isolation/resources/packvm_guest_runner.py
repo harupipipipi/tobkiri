@@ -208,9 +208,12 @@ def main() -> int:
     return 0
 
 
-def _invoke(request: dict[str, object]) -> dict[str, object]:
+def _invoke(
+    request: dict[str, object], *, guest_deadline: float | None = None,
+) -> dict[str, object]:
     """Execute one digest-pinned implementation through the finite PackVM ABI."""
 
+    guest_deadline = _local_guest_deadline(guest_deadline)
     required = {
         "operation",
         "request_id",
@@ -256,6 +259,7 @@ def _invoke(request: dict[str, object]) -> dict[str, object]:
         "operation_id": _identifier(request["operation_id"], "operation_id"),
         "payload": request["payload"],
     }
+    _remaining_guest_budget(guest_deadline)
     process = _spawn_staged_implementation(target, implementation)
     try:
         _register_request(request, process.pid, cancel_token)
@@ -264,7 +268,9 @@ def _invoke(request: dict[str, object]) -> dict[str, object]:
         process.communicate()
         raise
     try:
-        result = _communicate_staged_implementation(process, child_request)
+        result = _communicate_staged_implementation(
+            process, child_request, guest_deadline=guest_deadline,
+        )
         if _looks_like_bridge_request(result):
             result = _validate_bridge_request(result)
     finally:
@@ -297,19 +303,23 @@ def _spawn_staged_implementation(target: Path, implementation: Path) -> subproce
 def _communicate_staged_implementation(
     process: subprocess.Popen[bytes],
     child_request: dict[str, object],
+    *, guest_deadline: float | None = None,
 ) -> dict[str, object]:
     """Run one sandboxed ABI step and return its one bounded object result."""
 
     try:
         from tobkiri_host.bounded_child_io import communicate_bounded
 
+        guest_deadline = _local_guest_deadline(guest_deadline)
         encoded = _bridge_canonical_json(child_request)
         if len(encoded) > MAX_CHILD_REQUEST_BYTES:
             raise ValueError("PackVM invocation payload exceeds size limit")
         stdout = communicate_bounded(
             process, encoded, stdout_limit=MAX_RESULT_BYTES,
-            stderr_limit=MAX_CHILD_STDERR_BYTES, timeout=60.0,
+            stderr_limit=MAX_CHILD_STDERR_BYTES,
+            timeout=_remaining_guest_budget(guest_deadline),
         )
+        _remaining_guest_budget(guest_deadline)
     except BaseException:
         # Do not call communicate() here: cleanup must not buffer the output
         # which just exceeded its budget. This also owns serialization failures
@@ -335,6 +345,27 @@ def _communicate_staged_implementation(
     if not isinstance(result, dict):
         raise ValueError("PackVM implementation result must be an object")
     return result
+
+
+def _local_guest_deadline(value: float | None) -> float:
+    """Capture a guest-local budget, never compare with the Host clock."""
+    now = time.monotonic()
+    if value is None:
+        return now + PENDING_BRIDGE_TTL_SECONDS
+    if type(value) not in (int, float) or not math.isfinite(value):
+        raise ValueError("PackVM guest deadline is invalid")
+    if value > now + PENDING_BRIDGE_TTL_SECONDS:
+        raise ValueError("PackVM guest deadline exceeds its budget")
+    _remaining_guest_budget(value)
+    return value
+
+
+def _remaining_guest_budget(deadline: float) -> float:
+    """Reject late execution without renewing a retained guest deadline."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("PackVM guest execution deadline expired")
+    return remaining
 
 
 def _looks_like_bridge_request(value: dict[str, object]) -> bool:
@@ -817,6 +848,7 @@ class _PendingBridgeLedger:
         request: dict[str, object],
         guest_artifact_identity: str,
         bridge_request: dict[str, object],
+        guest_deadline: float | None = None,
     ) -> None:
         """Persist one exact initial turn until its Host result is received."""
 
@@ -835,7 +867,7 @@ class _PendingBridgeLedger:
                 request=dict(request),
                 guest_artifact_identity=guest_artifact_identity,
                 bridge_request=dict(bridge_request),
-                expires_at=time.monotonic() + PENDING_BRIDGE_TTL_SECONDS,
+                expires_at=_local_guest_deadline(guest_deadline),
             )
 
     def consume(self, *, domain_id: str, request_id: str) -> _PendingBridge:
@@ -1193,7 +1225,9 @@ def _dispatch_agent_request(
             or payload.get("target_domain") != config.domain_id
         ):
             raise ValueError("PackVM guest agent invocation binding is invalid")
-        result = _invoke(dict(payload))
+        guest_deadline = _local_guest_deadline(None)
+        result = _invoke(dict(payload), guest_deadline=guest_deadline)
+        _remaining_guest_budget(guest_deadline)
         bridge = result.get("payload")
         if isinstance(bridge, dict) and _looks_like_bridge_request(bridge):
             checked_bridge = _validate_bridge_request(bridge)
@@ -1202,6 +1236,7 @@ def _dispatch_agent_request(
                 request=dict(payload),
                 guest_artifact_identity=str(result["guest_artifact_identity"]),
                 bridge_request=checked_bridge,
+                guest_deadline=guest_deadline,
             )
             return _agent_success(
                 base,
@@ -1244,7 +1279,9 @@ def _dispatch_agent_request(
             pending.request,
             pending.bridge_request,
             bridge_result,
+            guest_deadline=pending.expires_at,
         )
+        _remaining_guest_budget(pending.expires_at)
         return _agent_success(base, _agent_invoke_outcome(result, config))
     if operation == "attest":
         if request_id != f"attest-{config.domain_id}":
@@ -1540,9 +1577,11 @@ def _resume_bridge_invocation(
     request: dict[str, object],
     bridge_request: dict[str, object],
     bridge_result: dict[str, object],
+    *, guest_deadline: float | None = None,
 ) -> dict[str, object]:
     """Resume exactly once in a fresh Pack sandbox after Host authorization."""
 
+    guest_deadline = _local_guest_deadline(guest_deadline)
     identity = _verify_invocation_artifact(request)
     artifact_digest = _digest(request["artifact_digest"], "artifact_digest")
     materialization_digest = _digest(
@@ -1565,6 +1604,7 @@ def _resume_bridge_invocation(
         },
     }
     cancel_token = str(request["cancel_token"])
+    _remaining_guest_budget(guest_deadline)
     process = _spawn_staged_implementation(target, implementation)
     try:
         _register_request(request, process.pid, cancel_token)
@@ -1573,7 +1613,9 @@ def _resume_bridge_invocation(
         process.communicate()
         raise
     try:
-        result = _communicate_staged_implementation(process, child_request)
+        result = _communicate_staged_implementation(
+            process, child_request, guest_deadline=guest_deadline,
+        )
     finally:
         _unregister_request(str(request["request_id"]), process.pid)
     if _looks_like_bridge_request(result):
