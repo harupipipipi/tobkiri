@@ -5003,7 +5003,7 @@
             {
               "entrypoint_id": "message-manage",
               "id": "rumi_conversation_store_pack.message-manage",
-              "implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116"
+              "implementation_digest": "sha256:d295b1501c25aa8e78d2dec169296a253f6224ba39100ca4fffa9d71a69983b0"
             }
           ],
           "owner": "rumi_conversation_store_pack",
@@ -5109,6 +5109,11 @@
           "digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
           "kind": "executable",
           "path": "runtime/manage_host.py"
+        },
+        {
+          "digest": "sha256:d295b1501c25aa8e78d2dec169296a253f6224ba39100ca4fffa9d71a69983b0",
+          "kind": "executable",
+          "path": "runtime/message_host.py"
         }
       ],
       "secrets": [],

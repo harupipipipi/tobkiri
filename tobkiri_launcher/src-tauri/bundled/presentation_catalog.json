@@ -462,7 +462,7 @@
     "rumi_ai_tool_bridge_pack": "sha256:7a2a0bfc6540cf904dd5528d4b09e532cca830dc9eb3b1d41d7acdd975bb709a",
     "rumi_ai_usage_pack": "sha256:a8a78603afcaad098244271f1d0bf5a83054e40b30bcf1c7d3291074e469646b",
     "rumi_command_protocol_pack": "sha256:0d2c158a915bced33306e8227e1116cd1d00751e1b32a7b90472e5b8f3bafb4c",
-    "rumi_conversation_store_pack": "sha256:339ddd1cf8d665d3a5c4b8b2ba56591dc284e53e0419e4f51791ac610980a734",
+    "rumi_conversation_store_pack": "sha256:eef9260bb9ba62394a1159867dab605d76004938f952c4e983e4a892d49bdb5c",
     "rumi_file_inspect_pack": "sha256:12515b217ae6986b876208f38e0dcd22cfff8c614dbd0465b40482a6878e6090",
     "rumi_git_publish_pack": "sha256:fc6720564854b6679966b598da333ffe341ee8ade65ec5496fb8a4f4be5e2072",
     "rumi_git_read_pack": "sha256:81a7ed67c4daf6728f519c4cae48794745ea0c8c36d7ac1252a758db45fac909",
