@@ -1273,7 +1273,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/ecosystem.json",
-          "sha256": "e9b61d52f8e933a9783859de73f294b5cc468fa499d93c72ad42ce23c87d3df8"
+          "sha256": "2e6ead9c33ea1ae3a18478ebfd1cf978c3feef01373730641da2e49059798b41"
         }
       ]
     },

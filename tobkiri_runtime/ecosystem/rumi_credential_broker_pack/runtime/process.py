@@ -13,7 +13,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 
-from .service import CredentialBrokerService
+from ecosystem.rumi_credential_broker_pack.runtime.service import CredentialBrokerService
 
 
 class CredentialManagementHostFactoryV4:
