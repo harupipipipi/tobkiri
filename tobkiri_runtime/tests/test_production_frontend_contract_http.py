@@ -981,7 +981,7 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
 ) -> None:
     """HTTP/Broker/approval/credential and registry owners; no network or real key."""
     from core_runtime.authority.ui_operator import sign_ui_operator
-    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+    from tobkiri_host.runtime import V4DispatchSession
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
     server, _session, authority = production_server
@@ -999,21 +999,21 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     registry = ProviderRegistry("defaults", user_data_root=root)
     secret = "fixture-secret-provider-configuration"
     failures = []
-    original_invoke = ExactHostProviderBackendV4.invoke
+    original_invoke = V4DispatchSession.invoke
 
-    def observed_invoke(self, envelope):
+    def observed_invoke(self, contract_id, operation_id, payload, **kwargs):
         try:
-            return original_invoke(self, envelope)
+            return original_invoke(self, contract_id, operation_id, payload, **kwargs)
         except Exception as error:
             chain = []
             current = error
             while current is not None:
                 chain.append(f"{type(current).__name__}: {current}")
                 current = current.__cause__
-            failures.append((envelope.operation_id, chain))
+            failures.append((operation_id, chain))
             raise
 
-    monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", observed_invoke)
+    monkeypatch.setattr(V4DispatchSession, "invoke", observed_invoke)
     request = {
         "phase": "prepare", "effect_kind": "provider_configure",
         "request": {
