@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -315,7 +316,7 @@ class FrontendSettingsStore:
 
 
 def _lock_file_handle(handle: Any) -> None:
-    if os.name == "nt":
+    if sys.platform == "win32":
         import msvcrt
 
         _ensure_lock_byte(handle)
@@ -336,7 +337,7 @@ def _lock_file_handle(handle: Any) -> None:
 
 
 def _unlock_file_handle(handle: Any) -> None:
-    if os.name == "nt":
+    if sys.platform == "win32":
         import msvcrt
 
         handle.seek(0)

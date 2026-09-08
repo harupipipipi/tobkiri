@@ -26,8 +26,8 @@ def test_lock_failure_never_enters_recovery_or_mutation(
         calls.append(args)
         raise PermissionError("lock unavailable")
 
-    # Override this module's platform selection, not global os.name/Path.
-    monkeypatch.setattr(settings, "os", SimpleNamespace(name=platform))
+    # Override this module's platform selection, not global sys.platform/Path.
+    monkeypatch.setattr(settings, "sys", SimpleNamespace(platform="win32" if platform == "nt" else "linux"))
     monkeypatch.setattr(settings, "_ensure_lock_byte", lambda _: None)
     monkeypatch.setattr(settings.time, "sleep", lambda _: None)
     module = "msvcrt" if platform == "nt" else "fcntl"
@@ -65,7 +65,7 @@ def test_unlock_error_is_reported_and_file_descriptor_is_closed(
     def denied(*args: object) -> None:
         raise OSError("unlock failed")
 
-    monkeypatch.setattr(settings, "os", SimpleNamespace(name=platform))
+    monkeypatch.setattr(settings, "sys", SimpleNamespace(platform="win32" if platform == "nt" else "linux"))
     monkeypatch.setattr(settings, "_lock_file_handle", acquired)
     monkeypatch.setitem(sys.modules, "msvcrt" if platform == "nt" else "fcntl",
                         SimpleNamespace(flock=denied, locking=denied, LOCK_UN=2, LK_UNLCK=2))
