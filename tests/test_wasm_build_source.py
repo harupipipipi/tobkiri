@@ -1,21 +1,27 @@
 """Build inputs are explicit and verified before compiler initialization."""
 
 import hashlib
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
 
 import pytest
 
-from scripts.wasm.build_shell_policy import build, capture_source
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/wasm/build_shell_policy.py"
+_spec = importlib.util.spec_from_file_location("wasm_build_source_under_test", SCRIPT)
+assert _spec is not None and _spec.loader is not None
+_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_module)
+build = _module.build
+capture_source = _module.capture_source
 
 
 def test_cli_requires_source_and_pin(tmp_path: Path) -> None:
     """The CLI cannot silently fall back to a repository-selected Pack."""
-    script = Path(__file__).resolve().parents[1] / "scripts/wasm/build_shell_policy.py"
     output = tmp_path / "policy.wasm"
     result = subprocess.run(
-        [sys.executable, str(script), "--output", str(output)],
+        [sys.executable, str(SCRIPT), "--output", str(output)],
         capture_output=True, text=True, check=False,
     )
     assert result.returncode == 2
