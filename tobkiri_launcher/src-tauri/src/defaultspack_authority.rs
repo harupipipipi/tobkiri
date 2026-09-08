@@ -3730,7 +3730,9 @@ mod tests {
             "executables.v4.json",
             "host_contract_contributions.v1.json",
             "update_metadata.v1.json",
+            "runtime/application_presentation.py",
             "runtime/conversation.py",
+            "runtime/saved_conversation.py",
             "defaultspack/desktop_app.py",
             "defaultspack/frontend_contract_map.v4.json",
         ] {
