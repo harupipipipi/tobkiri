@@ -141,6 +141,34 @@ def test_protocol_replays_offline_desired_state_through_normal_invocation(
     )["states"][0]["value"] is True
 
 
+def test_independent_command_state_reopens_queue_after_settings_path_change(
+    tmp_path, monkeypatch,
+):
+    """Changing the preferences owner does not hide a retained pending request."""
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(tmp_path / "old-settings.json"),
+    )
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", str(tmp_path / "commands"))
+    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    queued = protocol.enqueue_offline({
+        "command_ref": "defaultspack:deepthink",
+        "args": {"enabled": True},
+        "idempotency_key": "retained-queue",
+        "expected_revision": 0,
+    })
+    assert queued["status"] == "queued"
+    pending = protocol.offline.pending()
+    assert len(pending) == 1
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+        str(tmp_path / "new-owner" / "settings.json"),
+    )
+    reopened = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    assert reopened.offline.pending() == pending
+    assert reopened._event_store_path == protocol._event_store_path
+    assert not (tmp_path / "new-owner").exists()
+
+
 def test_replay_lease_is_atomic_owner_scoped_and_cancellable(
     tmp_path: Path,
     monkeypatch,

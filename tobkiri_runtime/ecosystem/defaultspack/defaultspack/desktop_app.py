@@ -75,6 +75,10 @@ def _configure_persistent_user_state() -> None:
     )
     if not configured_settings:
         os.environ["RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH"] = str(settings_path)
+    # Freeze the established command databases independently of the settings
+    # owner. No directory creation, database opening or migration happens here.
+    if not os.environ.get("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", "").strip():
+        os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"] = str(settings_path.parent)
 
 
 def _ensure_import_path() -> None:

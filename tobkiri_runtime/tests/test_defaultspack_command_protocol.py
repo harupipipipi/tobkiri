@@ -38,6 +38,40 @@ def test_resolved_catalog_projects_all_legacy_commands_to_v1() -> None:
     assert len({item["canonical_id"] for item in catalog["commands"]}) == 55
 
 
+def test_command_state_binding_does_not_resolve_settings_path(tmp_path, monkeypatch):
+    """An explicit owner location takes precedence without opening either DB."""
+    from domain.frontend import command_protocol
+
+    def unexpected_path(*args):
+        raise AssertionError("settings location must not select command state")
+
+    monkeypatch.setattr(
+        command_protocol, "defaultspack_frontend_settings_path", unexpected_path,
+    )
+    configured = tmp_path / "configured"
+    explicit = tmp_path / "explicit"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", str(configured))
+    registry = CommandProtocolRegistry(tmp_path, command_state_dir=explicit)
+    assert registry._event_store_path == explicit / "command_invocation_events.sqlite3"
+    assert registry._offline_queue_path == explicit / "command_offline_queue.sqlite3"
+    registry = CommandProtocolRegistry(tmp_path)
+    assert registry._event_store_path.parent == configured
+    assert registry._offline_queue_path.parent == configured
+    assert not explicit.exists()
+    assert not configured.exists()
+
+
+def test_command_state_legacy_location_is_preserved_without_binding(tmp_path, monkeypatch):
+    """Compatibility startup does not silently abandon existing command DBs."""
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", raising=False)
+    settings = tmp_path / "legacy" / "settings.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings))
+    registry = CommandProtocolRegistry(tmp_path)
+    assert registry._event_store_path.parent == settings.parent
+    assert registry._offline_queue_path.parent == settings.parent
+    assert not settings.parent.exists()
+
+
 def test_pack_generation_reads_the_canonical_v4_manifest(tmp_path: Path) -> None:
     """The command generation pin remains usable without legacy ecosystem.json."""
     for relative in (

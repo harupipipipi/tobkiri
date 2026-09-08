@@ -258,6 +258,36 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                 ),
             )
 
+    def test_command_state_binding_survives_settings_location_change(self):
+        from defaultspack import desktop_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = root / "original" / "settings.json"
+            replacement = root / "replacement" / "settings.json"
+            with patch.dict(os.environ, {
+                "RUMI_USER_DATA": str(root / "user-data"),
+                "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH": str(original),
+            }, clear=True):
+                desktop_app._configure_persistent_user_state()
+                self.assertEqual(
+                    os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"],
+                    str(original.parent),
+                )
+                os.environ["RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH"] = str(replacement)
+                desktop_app._configure_persistent_user_state()
+                self.assertEqual(
+                    os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"],
+                    str(original.parent),
+                )
+                os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"] = str(root / "explicit")
+                desktop_app._configure_persistent_user_state()
+                self.assertEqual(
+                    os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"],
+                    str(root / "explicit"),
+                )
+            self.assertEqual(list(root.iterdir()), [])
+
     def test_surface_can_be_disabled_for_smoke_tests(self):
         from defaultspack.native_webview import open_desktop_surface
 

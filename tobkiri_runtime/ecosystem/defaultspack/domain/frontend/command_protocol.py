@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
 import time
@@ -75,20 +76,27 @@ class CommandProtocolRegistry(CommandCatalogProjection):
         *,
         event_store: InvocationEventStore | None = None,
         offline_queue: OfflineOperationQueue | None = None,
+        command_state_dir: Path | None = None,
     ) -> None:
         self.pack_root = pack_root or Path(__file__).resolve().parents[2]
         self._settings_owner = pack_root if pack_root is not None else None
         self.legacy = SlashCommandRegistry(self.pack_root)
         self.operations = CommandOperationRegistry(self.legacy, self.pack_root)
-        settings_path = defaultspack_frontend_settings_path(self._settings_owner)
+        configured_state = os.environ.get(
+            "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", ""
+        ).strip()
+        # Trusted construction/startup configuration, never an invocation field.
+        # Retain the legacy location when no independent binding was supplied.
+        if command_state_dir is not None:
+            state_dir = Path(command_state_dir).expanduser()
+        elif configured_state:
+            state_dir = Path(configured_state).expanduser()
+        else:
+            state_dir = defaultspack_frontend_settings_path(self._settings_owner).parent
         self._event_store = event_store
         self._offline_queue = offline_queue
-        self._event_store_path = settings_path.with_name(
-            "command_invocation_events.sqlite3"
-        )
-        self._offline_queue_path = settings_path.with_name(
-            "command_offline_queue.sqlite3"
-        )
+        self._event_store_path = state_dir / "command_invocation_events.sqlite3"
+        self._offline_queue_path = state_dir / "command_offline_queue.sqlite3"
 
     @property
     def events(self) -> InvocationEventStore:
