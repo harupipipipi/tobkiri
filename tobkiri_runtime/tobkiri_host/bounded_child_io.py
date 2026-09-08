@@ -16,6 +16,7 @@ def communicate_bounded(
     stdout_limit: int,
     stderr_limit: int,
     timeout: float,
+    deadline: float | None = None,
 ) -> bytes:
     """Drain both pipes within one deadline without buffering unbounded output.
 
@@ -35,7 +36,12 @@ def communicate_bounded(
             or timeout <= 0
         ):
             raise ValueError("child pipe exchange configuration is invalid")
-        deadline = time.monotonic() + timeout
+        if deadline is not None and (
+            type(deadline) not in (int, float) or not math.isfinite(deadline)
+        ):
+            raise ValueError("child pipe deadline is invalid")
+        step_deadline = time.monotonic() + timeout
+        deadline = step_deadline if deadline is None else min(deadline, step_deadline)
         output = bytearray()
         stderr_bytes = 0
         sent = 0

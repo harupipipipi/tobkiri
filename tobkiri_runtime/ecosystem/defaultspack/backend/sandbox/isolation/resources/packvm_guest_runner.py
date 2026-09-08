@@ -318,6 +318,7 @@ def _communicate_staged_implementation(
             process, encoded, stdout_limit=MAX_RESULT_BYTES,
             stderr_limit=MAX_CHILD_STDERR_BYTES,
             timeout=_remaining_guest_budget(guest_deadline),
+            deadline=guest_deadline,
         )
         _remaining_guest_budget(guest_deadline)
     except BaseException:
@@ -344,6 +345,7 @@ def _communicate_staged_implementation(
         raise ValueError("PackVM implementation result is invalid") from None
     if not isinstance(result, dict):
         raise ValueError("PackVM implementation result must be an object")
+    _remaining_guest_budget(guest_deadline)
     return result
 
 

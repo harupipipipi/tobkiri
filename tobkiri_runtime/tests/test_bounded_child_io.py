@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -84,6 +85,14 @@ def test_runner_accepts_exact_json_and_redacts_failed_child_stderr() -> None:
         with pytest.raises(ValueError, match="implementation failed") as error:
             runner._communicate_staged_implementation(process, {})
         assert "secret" not in str(error.value)
+
+
+def test_absolute_deadline_is_not_renewed_by_a_fresh_relative_timeout() -> None:
+    with _child("import time; time.sleep(30)") as process:
+        with pytest.raises(TimeoutError, match="timed out"):
+            communicate_bounded(process, b"input", stdout_limit=10, stderr_limit=10,
+                                timeout=60, deadline=time.monotonic() - 1)
+        assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
 
 
 def test_runner_reaps_child_even_when_serialization_fails_before_io(
