@@ -93,6 +93,11 @@ class _CapturedBackend:
         self.artifact_resolver = None
         self.target_domain_resolver = None
         self.capability_bridge = None
+        self.saved_callbacks = None
+
+    def bind_saved_capability_bridge(self, callback, preflight) -> None:
+        assert self.saved_callbacks is None
+        self.saved_callbacks = (callback, preflight)
 
     def bind_artifact_resolver(self, resolver) -> None:
         assert self.artifact_resolver is None

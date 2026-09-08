@@ -54,6 +54,10 @@ from tobkiri_host.workspace_mutation import (
 )
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
 from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.saved_conversation import (
+    SAVED_CONVERSATION_CONTRACT,
+    SAVED_CONVERSATION_OPERATION,
+)
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
 from tobkiri_protocol.secure_persistence import (
     SecureDirectory,
@@ -2018,6 +2022,57 @@ def capture_production_dispatch(
             response["result_digest"] = canonical_digest(response["result"])
         return response
 
+    from .saved_bridge import REQUIRED_TARGETS, SavedBridgeCallbacks
+
+    def saved_target(outer_request: object, target: tuple[str, str]) -> _CapturedPlanEdge:
+        outer_edge = resolve_bridge_outer(outer_request)
+        if (
+            outer_edge.resolved_binding.operation.contract_id != SAVED_CONVERSATION_CONTRACT
+            or outer_edge.resolved_binding.operation.operation_id != SAVED_CONVERSATION_OPERATION
+            or target not in REQUIRED_TARGETS
+        ):
+            raise AuthorityDenied("saved bridge outer operation is not selected")
+        candidates = tuple(
+            edge for edge in bridge_targets[outer_edge.key]
+            if (edge.resolved_binding.operation.contract_id,
+                edge.resolved_binding.operation.operation_id) == target
+        )
+        if len(candidates) != 1:
+            raise AuthorityDenied("saved bridge target is missing or ambiguous")
+        edge = candidates[0]
+        if not dispatch_holder:
+            raise AuthorityDenied("saved bridge dispatch is not initialized")
+        dispatch_holder[0].assert_current()
+        authority_target_domain(edge.resolved_binding)
+        if target_backend_digests.get(edge.target.principal_id) is None:
+            raise AuthorityDenied("saved bridge target backend is unavailable")
+        return edge
+
+    def require_saved_targets(outer_request: object, targets: tuple[tuple[str, str], ...]) -> None:
+        for target in targets:
+            saved_target(outer_request, target)
+
+    def saved_dispatch(
+        outer_request: object, target: tuple[str, str], payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        edge = saved_target(outer_request, target)
+        if "profile_id" in payload or "_session_id" in payload:
+            raise AuthorityDenied("saved bridge payload cannot select Host identity")
+        arguments = dict(payload)
+        if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1"}:
+            arguments["profile_id"] = profile["profile_id"]
+        runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
+        return invoke_bridge_provider(
+            outer_request, resolve_bridge_outer(outer_request), edge, arguments,
+        )
+
+    saved_callbacks = SavedBridgeCallbacks(saved_dispatch, require_saved_targets)
+    saved_backend_ids = {
+        edge.resolved_binding.variant.backend for edge in captured_edges
+        if edge.resolved_binding.operation.contract_id == SAVED_CONVERSATION_CONTRACT
+        and edge.resolved_binding.operation.operation_id == SAVED_CONVERSATION_OPERATION
+        and edge.resolved_binding.variant.execution_kind is ExecutionKind.PACK_VM
+    }
     packvm_backend_ids = {
         edge.resolved_binding.variant.backend
         for edge in captured_edges
@@ -2040,6 +2095,11 @@ def capture_production_dispatch(
         bridge_binder = getattr(registered_backend, "bind_capability_bridge", None)
         if bridge_targets and callable(bridge_binder):
             bridge_binder(capability_bridge)
+        if registered_backend.status.backend_id in saved_backend_ids:
+            saved_binder = getattr(registered_backend, "bind_saved_capability_bridge", None)
+            if not callable(saved_binder):
+                raise AuthorityDenied("production PackVM backend cannot bind saved callbacks")
+            saved_binder(saved_callbacks, saved_callbacks.preflight)
     registered_backend_ids = {item.status.backend_id for item in registered_backends}
     for backend_id in sorted(packvm_backend_ids - registered_backend_ids):
         registered_backends += (_UnavailablePackVmBackend(backend_id),)
