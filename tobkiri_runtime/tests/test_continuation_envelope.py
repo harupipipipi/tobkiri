@@ -1,0 +1,113 @@
+"""V2 framing cannot change independently captured execution expectations."""
+
+from dataclasses import replace
+import json
+
+import pytest
+
+from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
+from tobkiri_host.continuation_envelope import validate_continuation_request
+from tobkiri_protocol.canonical import canonical_digest, canonical_json
+
+IDENTITY = ChainIdentity("domain", "request", "sha256:" + "a" * 64, 160.0)
+TARGET = ("owned.contract.v1", "owned.operation")
+
+
+def _frame(**extra: object) -> bytes:
+    return canonical_json(
+        {
+            "kind": "tobkiri.packvm.continuation.request.v2",
+            "version": 2,
+            "request_id": IDENTITY.request_id,
+            "binding_digest": IDENTITY.binding_digest,
+            "hop": 0,
+            "nonce": "b" * 48,
+            "previous_digest": None,
+            "target": {"contract_id": TARGET[0], "operation_id": TARGET[1]},
+            "payload": {"message": "hello"},
+            "state": {},
+            **extra,
+        }
+    )
+
+
+def _check(encoded: bytes):
+    return validate_continuation_request(
+        encoded, identity=IDENTITY, hop=0, previous_digest=None, target=TARGET
+    )
+
+
+def test_validated_bytes_enter_the_one_shot_chain() -> None:
+    checked = _check(_frame())
+    assert checked.digest == canonical_digest(json.loads(checked.frame))
+    assert json.loads(checked.payload) == {"message": "hello"}
+    chains = ContinuationChains(clock=lambda: 100.0)
+    chains.start(checked.identity, frame=checked.frame, nonce=checked.nonce)
+    permit = chains.take(IDENTITY, nonce=checked.nonce, result=b"owned-result")
+    assert permit.frame == checked.frame
+    chains.finish(permit)
+    with pytest.raises(ValueError):
+        chains.take(IDENTITY, nonce=checked.nonce, result=b"replay")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"version": 1},
+        {"version": True},
+        {"kind": "tobkiri.packvm.bridge.request.v1"},
+        {"request_id": "other"},
+        {"binding_digest": "sha256:" + "c" * 64},
+        {"hop": 1},
+        {"hop": False},
+        {"previous_digest": "sha256:" + "d" * 64},
+        {"target": {"contract_id": TARGET[0], "operation_id": "other"}},
+        {"nonce": "x" * 48},
+        {"payload": []},
+        {"state": []},
+        {"approved": True},
+        {"profile_id": "other"},
+        {"deadline": 1000},
+    ],
+)
+def test_request_cannot_widen_captured_binding(extra: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        _check(_frame(**extra))
+
+
+def test_predecessor_is_checked_independently() -> None:
+    predecessor = "sha256:" + "d" * 64
+    encoded = _frame(hop=1, previous_digest=predecessor)
+    assert (
+        validate_continuation_request(
+            encoded, identity=IDENTITY, hop=1, previous_digest=predecessor, target=TARGET
+        ).hop
+        == 1
+    )
+    with pytest.raises(ValueError):
+        validate_continuation_request(
+            encoded, identity=IDENTITY, hop=1, previous_digest="sha256:" + "e" * 64, target=TARGET
+        )
+    with pytest.raises(ValueError):
+        validate_continuation_request(
+            _frame(),
+            identity=replace(IDENTITY, binding_digest="sha256:" + "f" * 64),
+            hop=0,
+            previous_digest=None,
+            target=TARGET,
+        )
+
+
+@pytest.mark.parametrize(
+    "encoded",
+    [
+        b'{"version":2,"version":1}',
+        b'{"value":NaN}',
+        b"\xff",
+        b"[" * 20 + b"0" + b"]" * 20,
+        b" " * (64 * 1024 + 1),
+    ],
+)
+def test_ambiguous_or_unbounded_json_is_rejected(encoded: bytes) -> None:
+    with pytest.raises(ValueError):
+        _check(encoded)
