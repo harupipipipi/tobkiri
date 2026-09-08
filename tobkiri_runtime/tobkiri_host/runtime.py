@@ -258,10 +258,7 @@ class V4DispatchSession:
             ),
             context,
             effect_scope=scope,
-            **(
-                {"parent_deadline_monotonic": parent_deadline_monotonic}
-                if parent_deadline_monotonic is not None else {}
-            ),
+            parent_deadline_monotonic=parent_deadline_monotonic,
         )
 
 
