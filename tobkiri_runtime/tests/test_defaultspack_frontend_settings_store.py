@@ -30,6 +30,48 @@ from domain.frontend_settings_catalog import SettingsCatalogInputs  # noqa: E402
 from ecosystem.tobkiri_ui_settings_pack.runtime import store as settings_module  # noqa: E402
 
 
+def test_command_model_state_keeps_explicit_owner_across_nested_services(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Command state reads and model mutations share the supplied owner only."""
+    from domain.frontend.command_protocol import CommandProtocolRegistry
+
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text('{"models":{"deepthink_enabled":false}}', encoding="utf-8")
+    before = legacy.read_bytes()
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(legacy))
+    owner = FrontendSettingsStore(tmp_path / "owned.json")
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT, settings_owner=owner,
+        command_state_dir=tmp_path / "command-state",
+    )
+    changed = protocol.legacy._execute_builtin_rumi_function(
+        "ai_set_deepthink_enabled", {"enabled": True},
+        invocation={"expected_revision": 0, "idempotency_key": "owner-test"},
+    )
+    assert changed is not None and changed.get("enabled") is True
+    state = protocol.query_states()["states"][0]
+    assert state["value"] is True
+    assert state["revision"] == 1
+    assert owner.read_snapshot()["models"]["deepthink_enabled"] is True
+    assert legacy.read_bytes() == before
+
+
+def test_command_state_without_owner_does_not_fall_back_to_legacy_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from domain.frontend.command_protocol import CommandProtocolRegistry
+
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text('{"models":{"deepthink_enabled":true}}', encoding="utf-8")
+    before = legacy.read_bytes()
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(legacy))
+    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT, command_state_dir=tmp_path)
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        protocol.query_states()
+    assert legacy.read_bytes() == before
+
+
 def test_corrupt_diagnostic_is_owned_locked_private_and_preserves_original_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

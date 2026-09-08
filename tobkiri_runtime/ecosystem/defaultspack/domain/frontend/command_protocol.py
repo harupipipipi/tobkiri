@@ -83,7 +83,7 @@ class CommandProtocolRegistry(CommandCatalogProjection):
         self.pack_root = pack_root or Path(__file__).resolve().parents[2]
         self._settings_owner = pack_root if pack_root is not None else None
         self._settings_store = FrontendSettingsStore(owner=settings_owner)
-        self.legacy = SlashCommandRegistry(self.pack_root)
+        self.legacy = SlashCommandRegistry(self.pack_root, settings_owner=settings_owner)
         self.operations = CommandOperationRegistry(self.legacy, self.pack_root)
         configured_state = os.environ.get(
             "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", ""
@@ -852,7 +852,9 @@ class CommandProtocolRegistry(CommandCatalogProjection):
         if not requested or deepthink_ref in requested:
             from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
-            value = ModelRuntimeSettingsService(self.pack_root).get_deepthink_enabled()
+            value = ModelRuntimeSettingsService(
+                self.pack_root, settings_owner=self._settings_store,
+            ).get_deepthink_enabled()
             states.append(
                 {
                     "state_ref": deepthink_ref,
