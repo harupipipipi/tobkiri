@@ -43,6 +43,55 @@ class ValidatedContinuation:
     state: bytes
 
 
+@dataclass(frozen=True)
+class ValidatedResult:
+    """Bounded encoded result matched to one validated request, not a grant."""
+
+    frame: bytes
+    digest: str
+
+
+def validate_continuation_result(
+    encoded: bytes,
+    *,
+    request: ValidatedContinuation,
+) -> ValidatedResult:
+    """Reject swapped results and ambiguous success/error envelopes."""
+    if type(encoded) is not bytes:
+        raise ValueError("continuation result must be encoded bytes")
+    value = strict_loads(encoded, max_bytes=512 * 1024, max_depth=16)
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"kind", "version", "request_digest", "outcome"}
+        or value["kind"] != "tobkiri.packvm.continuation.result.v2"
+        or type(value["version"]) is not int
+        or value["version"] != 2
+        or value["request_digest"] != request.digest
+    ):
+        raise ValueError("continuation result binding is invalid")
+    outcome = value["outcome"]
+    if not isinstance(outcome, dict):
+        raise ValueError("continuation outcome is invalid")
+    if outcome.get("status") == "ok":
+        valid = set(outcome) == {"status", "value"} and isinstance(outcome["value"], dict)
+    elif outcome.get("status") == "error":
+        error = outcome.get("error")
+        valid = (
+            set(outcome) == {"status", "error"}
+            and isinstance(error, dict)
+            and set(error) == {"code", "message"}
+            and isinstance(error["code"], str)
+            and re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", error["code"]) is not None
+            and isinstance(error["message"], str)
+            and len(error["message"]) <= 512
+        )
+    else:
+        valid = False
+    if not valid:
+        raise ValueError("continuation outcome is invalid")
+    return ValidatedResult(canonical_json(value), canonical_digest(value))
+
+
 def validate_continuation_request(
     encoded: bytes,
     *,

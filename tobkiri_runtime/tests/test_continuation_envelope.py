@@ -6,7 +6,10 @@ import json
 import pytest
 
 from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
-from tobkiri_host.continuation_envelope import validate_continuation_request
+from tobkiri_host.continuation_envelope import (
+    validate_continuation_request,
+    validate_continuation_result,
+)
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
 
 IDENTITY = ChainIdentity("domain", "request", "sha256:" + "a" * 64, 160.0)
@@ -111,3 +114,57 @@ def test_predecessor_is_checked_independently() -> None:
 def test_ambiguous_or_unbounded_json_is_rejected(encoded: bytes) -> None:
     with pytest.raises(ValueError):
         _check(encoded)
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        {"status": "ok", "value": {"conversation_revision": 2}},
+        {"status": "error", "error": {"code": "UNAVAILABLE", "message": "Unavailable"}},
+    ],
+)
+def test_result_binds_to_request_and_next_predecessor(outcome: dict[str, object]) -> None:
+    request = _check(_frame())
+    reply = {
+        "kind": "tobkiri.packvm.continuation.result.v2",
+        "version": 2,
+        "request_digest": request.digest,
+        "outcome": outcome,
+    }
+    checked = validate_continuation_result(canonical_json(reply), request=request)
+    next_request = _frame(hop=1, previous_digest=checked.digest, nonce="c" * 48)
+    assert (
+        validate_continuation_request(
+            next_request, identity=IDENTITY, hop=1, previous_digest=checked.digest, target=TARGET
+        ).hop
+        == 1
+    )
+    reply["request_digest"] = "sha256:" + "f" * 64
+    with pytest.raises(ValueError):
+        validate_continuation_result(canonical_json(reply), request=request)
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        {"status": "ok", "value": {}, "error": {}},
+        {"status": "ok"},
+        {"status": "ok", "value": []},
+        {"status": "error", "value": {}},
+        {"status": "pending", "value": {}},
+        {"status": "error", "error": {"code": "private detail", "message": "x"}},
+        {"status": "error", "error": {"code": "ERROR", "message": "x" * 513}},
+    ],
+)
+def test_ambiguous_outcomes_are_not_success(outcome: dict[str, object]) -> None:
+    request = _check(_frame())
+    encoded = canonical_json(
+        {
+            "kind": "tobkiri.packvm.continuation.result.v2",
+            "version": 2,
+            "request_digest": request.digest,
+            "outcome": outcome,
+        }
+    )
+    with pytest.raises(ValueError):
+        validate_continuation_result(encoded, request=request)
