@@ -502,10 +502,13 @@ def test_already_cancelled_parent_never_starts_inner_work() -> None:
         fixture.broker.close()
 
 
-def test_unstopped_cancelled_provider_keeps_admission_charged() -> None:
+def test_unstopped_cancelled_provider_keeps_admission_charged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A no-op cancel cannot free capacity while the provider still runs."""
     cancelled = Event()
     release_provider = Event()
+    resources_released = Event()
 
     class UnstoppableBackend(FakeBackend):
         def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
@@ -517,6 +520,13 @@ def test_unstopped_cancelled_provider_keeps_admission_charged() -> None:
     fixture = make_broker(
         effect=EffectClass.READ, timeout_ms=10000, backend=UnstoppableBackend([])
     )
+    original_release = fixture.admission.release
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        resources_released.set()
+
+    monkeypatch.setattr(fixture.admission, "release", release)
     try:
         with pytest.raises(RequestCancellationRequestedError):
             fixture.broker.invoke(
@@ -527,6 +537,7 @@ def test_unstopped_cancelled_provider_keeps_admission_charged() -> None:
     finally:
         release_provider.set()
         fixture.broker.close()
+    assert resources_released.wait(timeout=10)
     assert fixture.events.count("reservation_released") == 1
     assert "audit_committed" not in fixture.events
 
