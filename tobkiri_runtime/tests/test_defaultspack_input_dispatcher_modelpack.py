@@ -151,7 +151,7 @@ def test_submit_input_defaults_to_chat_message(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-1", "content": [{"type": "text", "text": "hi"}]},
         },
