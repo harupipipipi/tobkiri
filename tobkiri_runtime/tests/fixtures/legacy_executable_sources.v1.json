@@ -3,6 +3,20 @@
   "source_format": "legacy-entrypoint-map",
   "implementation_adapters": [
     {
+      "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+      "legacy": {
+        "pack_id": "rumi_conversation_store_pack",
+        "owner": "rumi_conversation_store_pack",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/store.py",
+        "implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+        "operation_ids": ["rumi_conversation_store_pack.conversation-manage"]
+      },
+      "implementation_path": "runtime/manage_host.py",
+      "implementation_digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981"
+    },
+    {
       "function_id": "rumi_conversation_store_pack.conversation-store.resource",
       "legacy": {
         "pack_id": "rumi_conversation_store_pack",

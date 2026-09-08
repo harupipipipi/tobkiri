@@ -244,7 +244,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57299,
-      "sha256": "4e0a79cd256aa662af742004cac76d920ff9de13b4197c42d92b8a956843d80e",
+      "sha256": "b22105f10e29c075b6cc30806a3b4211d24ad0fbf830860a24bed9aa347f0300",
       "executable": false
     },
     {
@@ -265,7 +265,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 27625,
-      "sha256": "3169bfc883da5e782603746cce14985c24d55268406d08d68909346c6d471787",
+      "sha256": "67fb401f7707f0d3a2db3c7566779ebb4d9857fb7cd866060783c737d98e0e6c",
       "executable": false
     },
     {
@@ -279,7 +279,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 64538,
-      "sha256": "9fb1a853a2c5761b2028368c01621d1ff3f693aed14a12794c18c022622a800c",
+      "sha256": "6737c48dc26e720a946329f3ecdf8218dd6a27398257d588d85c7386cacb6bd8",
       "executable": false
     },
     {
@@ -908,15 +908,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 7008,
-      "sha256": "7544ae95f15ad1ac407aa1c65b62ada6f7c6d0e7aa9b43b2de48b421bed333b8",
+      "size": 7014,
+      "sha256": "81b95ae5ff30300e3511bd1e248fb1fb3c15892bc45142bf0b37f81b61f7b8ff",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 10430,
-      "sha256": "ce69c7a3f5754d3110a05affb990532517e884e296b098c695b7ad4718dd34b1",
+      "size": 10601,
+      "sha256": "339ddd1cf8d665d3a5c4b8b2ba56591dc284e53e0419e4f51791ac610980a734",
       "executable": false
     },
     {
@@ -2427,8 +2427,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
-      "size": 850420,
-      "sha256": "fc17ec2e15ef86fde30b05005a45d1dd7db0dfee241b876bd2afee1734fdeb16",
+      "size": 850754,
+      "sha256": "d204f9b01205811b0e0a03c5d40055b8a68dfc371d90797e7d1c056958b52c3a",
       "executable": false
     },
     {

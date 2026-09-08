@@ -2917,8 +2917,8 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_conversation_store_pack.conversation-store.manage",
-      "implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
-      "implementation_path": "runtime/store.py",
+      "implementation_digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
+      "implementation_path": "runtime/manage_host.py",
       "input_schema": {
         "type": "object"
       },
@@ -2931,8 +2931,8 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
-          "implementation_path": "runtime/store.py",
+          "implementation_digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
+          "implementation_path": "runtime/manage_host.py",
           "input_schema": {
             "type": "object"
           },
@@ -2958,6 +2958,12 @@
           "module": "ecosystem.rumi_conversation_store_pack.runtime.store",
           "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json",
           "symbol": "create_conversation_action"
+        },
+        {
+          "kind": "explicit-implementation-adapter",
+          "legacy_implementation_digest": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+          "legacy_implementation_path": "runtime/store.py",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_conversation_store_pack.conversation-store.manage.python"
@@ -10966,10 +10972,11 @@
   "source": {
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
-    "input_count": 192,
-    "input_digest": "sha256:0e566113492e261fc1a0b3a3789521614e07379643eb0a5ecd8c7561be176dc9",
+    "input_count": 193,
+    "input_digest": "sha256:5c6f84967f24d6fbdaf76e539e2bb5fd26ddf04419545eafd9a4433ce921c5ed",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
+      "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
       "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-manifest.json",
@@ -11167,6 +11174,11 @@
         "digest": "sha256:f7238f1bd17ae48657c627c8e0272857440608a6423d17f0c4ea4c7048e97aea",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py"
+      },
+      {
+        "digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
+        "kind": "explicit-implementation-adapter",
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py"
       },
       {
         "digest": "sha256:c6e3b6d22a3a86a8fe2314796951d4077ca87e19dd03d04743e172249968ea0c",
@@ -11644,7 +11656,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:d2dd73919f3b6d07104fe6c1db9fcf2376571e9c0bb7cca4f24acab4106f0609",
+        "digest": "sha256:5a72d4e733e84d509a76b0d50dd717a682f881db64e604f7e628b4c427cb10b9",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -11779,7 +11791,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:95cc9d4e9afd38c2bd9ef4d512d7face0a8a518973c636ad0a31bab441e51ae4",
+        "digest": "sha256:3f12ed6978277acd6daa4d460ad760ed89bb0a5403d847eb9b6570c4dc2cddb8",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json"
       },
