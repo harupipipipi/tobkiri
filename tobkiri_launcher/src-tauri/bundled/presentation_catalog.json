@@ -109,6 +109,12 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json"
     },
     {
+      "contract_id": "tobkiri.action.turn.reconcile.v1",
+      "digest": "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
+      "revision": "1.0.0",
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json"
+    },
+    {
       "contract_id": "tobkiri.action.turn.saved.v1",
       "digest": "sha256:f0592dcf3a526a13ea7c03a55ed62339938cc57c38b1f0ace993d275e3613bd6",
       "revision": "1.0.0",
@@ -361,7 +367,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:64a23b1990576f1f746fb37f6199cba5460e9fad2b67b6b6ae551e76b87a7ac5",
+  "default_profile_digest": "sha256:9cb47536d8e1b027db0a40a3da9de1915e4e3dc561c2399b3de0e36f412d5d85",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
   "default_selection": {
@@ -381,6 +387,7 @@
           "app.shell.v1",
           "conversation.turn.v1",
           "tobkiri.action.conversation.manage.v1",
+          "tobkiri.action.turn.reconcile.v1",
           "tobkiri.action.turn.saved.v1",
           "tobkiri.action.ui.preferences.v1",
           "tobkiri.resource.ai.model.profile.v1",
@@ -484,6 +491,7 @@
       ],
       "consumes_contracts": [
         "conversation.turn.v1",
+        "tobkiri.action.turn.reconcile.v1",
         "tobkiri.action.turn.saved.v1",
         "tobkiri.resource.turn.v1",
         "tobkiri.resource.command.catalog.v1",
@@ -528,9 +536,9 @@
     "rumi_provider_registry_pack": "sha256:c8404eb247c47985762e3cc72dd012c97245abbaf36d8bb5e4071e6dd73dad7c",
     "rumi_shell_execute_pack": "sha256:90bcae21638775ab38bdb5f7038bb718c69fe08552613b94fffbb31809ca99c5",
     "rumi_shell_policy_pack": "sha256:e592b9ff92762cb0bd7983f86f7fa73da590c1960719daa21f05a0cd8067a34a",
-    "rumi_turn_runtime_pack": "sha256:a786f3c09193f0c462ac38d60855c93590a8cf7a58846adb32f164eb2698eefd",
+    "rumi_turn_runtime_pack": "sha256:0bee8aa7723bd5e51fb57a3d062290768b80a8bf6135fdf510c4b11937c57ebd",
     "rumi_workspace_mount_pack": "sha256:11e99c880a7599703a10d0875c10ce3a2c2c04b04157024938df5021855b63de",
-    "runtime.tauri.application.default": "sha256:4b4c87c205a1e2d47813290e27a258b869965e34b2584c6511575f4ddd287fef",
+    "runtime.tauri.application.default": "sha256:ce7abcb1aefb4647d467fed467ce411df1f0f9b64e19ac23148914ac22f26360",
     "shell.tauri.default": "sha256:13dc6522500ee1b16880aa81e37b9cafb0e7e7bb138b3c3e67df881d0221ab64",
     "tobkiri_host_pack_control": "sha256:6969315ed077df458702e7a878572fbebfcce61030ace1f58863d8c71e83e9b8",
     "tobkiri_ui_settings_pack": "sha256:817cd00b7386d0dada22323698f6f762284726623506dfb2531a062dd653b15a"
