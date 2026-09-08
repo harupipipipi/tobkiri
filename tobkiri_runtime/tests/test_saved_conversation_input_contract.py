@@ -8,12 +8,12 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.contract
-
 from ecosystem.defaultspack.runtime import saved_conversation as saved
 from tobkiri_protocol.errors import SchemaValidationError
 from tobkiri_protocol.validation import validate_document
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+
+pytestmark = pytest.mark.contract
 
 
 def _input() -> dict:
