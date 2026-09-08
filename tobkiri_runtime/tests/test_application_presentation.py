@@ -53,7 +53,15 @@ print(json.dumps(module.tobkiri_packvm_invoke(sys.argv[2], {'kind':'ui', 'model_
 def test_commands_are_presentation_only_and_results_are_detached() -> None:
     module = _module()
     result = module.tobkiri_packvm_invoke(OPERATION, {"kind": "commands"})
-    assert len(result["commands"]) == 55
+    # The sealed source owns 50 commands; legacy runtime discovery adds five
+    # others. A portable read must not silently discover those Host providers.
+    source = OUTPUT.parents[1] / "commands" / "default_commands.json"
+    definitions = json.loads(source.read_text(encoding="utf-8"))
+    assert len(result["commands"]) == len(definitions) == 50
+    assert {item["canonical_id"] for item in result["commands"]} == {
+        "defaultspack:" + str(item.get("id") or item.get("name")).strip()
+        for item in definitions
+    }
     assert all(command["availability"]["status"] == "unavailable" for command in result["commands"])
     expected = json.loads(json.dumps(result))
     result["commands"][0]["availability"]["status"] = "available"
