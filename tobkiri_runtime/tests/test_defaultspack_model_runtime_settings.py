@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -67,7 +68,7 @@ def test_model_runtime_settings_preferred_model_and_thinking_level(tmp_path):
     assert service.get_thinking_level()["level"] == "high"
 
 
-def test_model_runtime_settings_cache_reuses_resolution_and_invalidates_on_update(
+def test_model_runtime_settings_reads_owner_for_each_resolution(
     tmp_path, monkeypatch
 ):
     calls = 0
@@ -85,16 +86,48 @@ def test_model_runtime_settings_cache_reuses_resolution_and_invalidates_on_updat
     second = ModelRuntimeSettingsService(tmp_path).get_settings()
 
     assert first == second
-    assert calls == 1
+    assert calls == 2
 
     service.update_settings({"preferred_model": "stub/fast"})
     refreshed = ModelRuntimeSettingsService(tmp_path).get_settings()
 
     assert refreshed["preferred_model"] == "stub/fast"
-    assert calls == 2
+    assert calls == 3
 
 
-def test_model_runtime_settings_cache_invalidates_on_credential_store_change(
+def test_model_settings_same_size_and_timestamp_replacement_is_visible(tmp_path):
+    """A legacy writer need not change a revision or mtime to publish new values."""
+    service = ModelRuntimeSettingsService(tmp_path)
+    path = service._settings_path
+    path.parent.mkdir(parents=True)
+    first = json.dumps({"models": {"preferred_model": "stub/fast"}})
+    second = json.dumps({"models": {"preferred_model": "stub/slow"}})
+    assert len(first) == len(second)
+    path.write_text(first, encoding="utf-8")
+    original = path.stat()
+    assert service.get_preferred_model() == "stub/fast"
+
+    path.write_text(second, encoding="utf-8")
+    os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns))
+    assert path.stat().st_mtime_ns == original.st_mtime_ns
+    assert path.stat().st_size == original.st_size
+    assert service.get_preferred_model() == "stub/slow"
+
+
+def test_model_settings_owner_response_is_not_cached_or_mutated(tmp_path, monkeypatch):
+    """An owner read, not a filesystem probe, determines current model values."""
+    service = ModelRuntimeSettingsService(tmp_path)
+    snapshots = iter([
+        {"models": {"preferred_model": "stub/fast"}},
+        {"models": {"preferred_model": "stub/slow"}},
+    ])
+    monkeypatch.setattr(service._settings_store, "read", lambda: next(snapshots))
+    first = service.get_settings()
+    first["preferred_model"] = "changed-by-caller"
+    assert service.get_preferred_model() == "stub/slow"
+
+
+def test_model_runtime_settings_refreshes_credential_availability(
     tmp_path, monkeypatch
 ):
     from domain.ai_client.api_key_store import set_provider_api_key
