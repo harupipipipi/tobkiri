@@ -11,8 +11,14 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:4ac98962f1260e696ffef268012a7d1cb682bbcb5a0a6c2cf50f68c77211cf8f");
-  assert.equal(result.runtimeMap.routes.length, 33);
+  assert.equal(result.rawDigest, "sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133");
+  assert.equal(result.runtimeMap.routes.length, 37);
+  for (const method of ["PUT", "DELETE"]) {
+    const route = result.runtimeMap.routes.find((item) => item.method === method);
+    assert.equal(route?.path, "/api/chat/conversation");
+    assert.equal(route?.targets[0].contract_id, "tobkiri.action.conversation.manage.v1");
+    assert.ok(route?.targets[0].allowed_payload_keys.includes("expected_conversation_revision"));
+  }
   for (const path of [
     "/api/ai/profiles", "/api/chat/conversations", "/api/ui/settings",
     "/api/ui/full-catalog", "/api/command-protocol/v1/catalog",

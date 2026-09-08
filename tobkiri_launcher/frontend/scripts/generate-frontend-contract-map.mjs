@@ -12,7 +12,7 @@ const MAP_PATH = resolve(
 const OUTPUT_PATH = resolve(FRONTEND_ROOT, "src/lib/generatedFrontendContractMap.ts");
 const MAP_ARTIFACT_PATH = "defaultspack/frontend_contract_map.v4.json";
 const PINNED_ARTIFACT_DIGEST =
-  "sha256:4ac98962f1260e696ffef268012a7d1cb682bbcb5a0a6c2cf50f68c77211cf8f";
+  "sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133";
 
 const RUNTIME_TARGET_SPECS = [
   {
@@ -164,7 +164,7 @@ function validateSourceMap(map, rawDigest) {
       fail("canonical map route fields are not exact");
     }
     if (
-      (route.method !== "GET" && route.method !== "POST")
+      !["GET", "POST", "PUT", "DELETE"].includes(route.method)
       || typeof route.path !== "string"
       || typeof route.presentation !== "string"
       || !Array.isArray(route.targets)
@@ -315,7 +315,7 @@ export function validateGeneratedFrontendContractMap(
       throw new Error('Generated frontend Contract Map route is invalid.');
     }
     if (
-      (route.method !== 'GET' && route.method !== 'POST')
+      !['GET', 'POST', 'PUT', 'DELETE'].includes(route.method)
       || typeof route.path !== 'string'
       || typeof route.presentation !== 'string'
       || !Array.isArray(route.targets)

@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:4ac98962f1260e696ffef268012a7d1cb682bbcb5a0a6c2cf50f68c77211cf8f
+// Raw source digest: sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:4ac98962f1260e696ffef268012a7d1cb682bbcb5a0a6c2cf50f68c77211cf8f" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:4ac98962f1260e696ffef268012a7d1cb682bbcb5a0a6c2cf50f68c77211cf8f",
+  "artifact_digest": "sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133",
   "routes": [
     {
       "method": "GET",
@@ -95,6 +95,86 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
           "function_id": "rumi_conversation_store_pack.conversation-store.resource",
           "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/conversations",
+      "presentation": "conversation_created",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.create",
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "operation_id": "rumi_conversation_store_pack.conversation-manage",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "allowed_payload_keys": [
+            "id",
+            "expected_revision",
+            "model",
+            "system_prompt_id",
+            "agent_id",
+            "tags",
+            "parent_conversation_id",
+            "conversation_kind",
+            "group_id",
+            "metadata"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat/conversation",
+      "presentation": "conversation_record",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.get",
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "operation_id": "rumi_conversation_store_pack.conversation-resource",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "allowed_payload_keys": [
+            "conversation_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/chat/conversation",
+      "presentation": "conversation_record",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.update",
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "operation_id": "rumi_conversation_store_pack.conversation-manage",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "allowed_payload_keys": [
+            "conversation_id",
+            "updates",
+            "expected_conversation_revision"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/chat/conversation",
+      "presentation": "conversation_deleted",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.delete",
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "operation_id": "rumi_conversation_store_pack.conversation-manage",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "allowed_payload_keys": [
+            "conversation_id",
+            "expected_conversation_revision"
+          ]
         }
       ]
     },
@@ -742,6 +822,78 @@ const EXPECTED_ROUTES = {
       }
     ]
   },
+  "POST /api/chat/conversations": {
+    "presentation": "conversation_created",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.create",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": [
+          "id",
+          "expected_revision",
+          "model",
+          "system_prompt_id",
+          "agent_id",
+          "tags",
+          "parent_conversation_id",
+          "conversation_kind",
+          "group_id",
+          "metadata"
+        ]
+      }
+    ]
+  },
+  "GET /api/chat/conversation": {
+    "presentation": "conversation_record",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.get",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-resource",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "allowed_payload_keys": [
+          "conversation_id"
+        ]
+      }
+    ]
+  },
+  "PUT /api/chat/conversation": {
+    "presentation": "conversation_record",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.update",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": [
+          "conversation_id",
+          "updates",
+          "expected_conversation_revision"
+        ]
+      }
+    ]
+  },
+  "DELETE /api/chat/conversation": {
+    "presentation": "conversation_deleted",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.delete",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": [
+          "conversation_id",
+          "expected_conversation_revision"
+        ]
+      }
+    ]
+  },
   "GET /api/home/dashboard": {
     "presentation": "broker_result",
     "targets": [
@@ -1314,7 +1466,7 @@ export function validateGeneratedFrontendContractMap(
       throw new Error('Generated frontend Contract Map route is invalid.');
     }
     if (
-      (route.method !== 'GET' && route.method !== 'POST')
+      !['GET', 'POST', 'PUT', 'DELETE'].includes(route.method)
       || typeof route.path !== 'string'
       || typeof route.presentation !== 'string'
       || !Array.isArray(route.targets)

@@ -71,7 +71,7 @@ const API_BASE_URL =
   (import.meta as ImportMeta & {env?: Record<string, string>}).env?.VITE_API_BASE_URL ?? '';
 const PANEL_CSRF_STORAGE_KEY = 'rumi-panel-csrf';
 const PANEL_AUTH_EXCHANGE_PATH = '/api/panel/auth/exchange';
-export type FrontendContractMethod = 'GET' | 'POST';
+export type FrontendContractMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 const EXACT_NON_MAP_API_ROUTES = [
   {method: 'POST', path: PANEL_AUTH_EXCHANGE_PATH},
