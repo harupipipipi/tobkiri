@@ -85,7 +85,7 @@ def _portable_module(source: str) -> tuple[list[str], str]:
         assert node.end_lineno is not None
         span = range(node.lineno - 1, node.end_lineno)
         removed.update(span)
-        if is_import:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
             if isinstance(node, ast.ImportFrom) and node.level:
                 raise ValueError("presentation source imported a relative dependency")
             names = [node.module] if isinstance(node, ast.ImportFrom) else [alias.name for alias in node.names]
