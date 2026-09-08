@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from scripts.generate_application_presentation import OUTPUT, render
+from scripts.generate_application_presentation import OUTPUT, _portable_module, render
 
 OPERATION = "defaultspack.presentation.read"
 
@@ -23,6 +23,12 @@ def _module():
 
 def test_generated_artifact_is_current() -> None:
     assert OUTPUT.read_text(encoding="utf-8") == render()
+
+
+@pytest.mark.parametrize("source", ["from core_runtime import di_container", "from .copy import deepcopy"])
+def test_generator_rejects_host_or_relative_imports(source: str) -> None:
+    with pytest.raises(ValueError):
+        _portable_module(source)
 
 
 def test_isolated_single_file_needs_no_host_or_other_pack_files(tmp_path: Path) -> None:

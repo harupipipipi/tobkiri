@@ -2329,8 +2329,8 @@
     {
       "path": "scripts/generate_application_presentation.py",
       "type": "regular-file",
-      "size": 6372,
-      "sha256": "b57a63268e16a546f3e8b5494400805f89a8ae992a2589e14efef4eafcf29f04",
+      "size": 6566,
+      "sha256": "06567d0d1e924a646da06122463c0ccbba1d880f9c087f23710a40384293efbf",
       "executable": false
     },
     {
