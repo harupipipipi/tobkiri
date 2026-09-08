@@ -3,6 +3,19 @@
   "pack_id": "defaultspack",
   "routes": [
     {
+      "method": "GET",
+      "path": "/api/chat/turn",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.read",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-resource",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "allowed_payload_keys": ["turn_id"]
+      }]
+    },
+    {
       "method": "POST",
       "path": "/api/chat/turn",
       "presentation": "broker_result",

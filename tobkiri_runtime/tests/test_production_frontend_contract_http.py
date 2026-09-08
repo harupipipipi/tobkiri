@@ -506,6 +506,24 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             and message["metadata"]["turn_id"] == "turn-1"
             for message in snapshot["data"]["messages"]
         )
+        ledger = next((tmp_path / "user-data").rglob("turns.sqlite3"))
+        ledger_before = ledger.read_bytes()
+        for query in ("turn_id=turn-1&profile_id=other", "turn_id=turn-1&operation=begin_saved"):
+            headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+            status, rejected, _ = _request(
+                server, "GET", _contract("GET", "/api/chat/turn") + "?" + query,
+                headers=headers,
+            )
+            assert status == 400, rejected
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, observed, _ = _request(
+            server, "GET", _contract("GET", "/api/chat/turn") + "?turn_id=turn-1",
+            headers=headers,
+        )
+        assert status == 200, observed
+        assert observed["data"] == payload["data"]["turn"]
+        assert ledger.read_bytes() == ledger_before
+        assert len(ai_calls) == 1
     finally:
         servers.close()
 

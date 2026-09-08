@@ -40,6 +40,25 @@ function requestTarget(input: RequestInfo | URL): string {
   return separator < 0 ? operation : operation.slice(separator + 1);
 }
 
+test("saved turn reconciliation is a read with no replay or caller Profile", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const turn = { id: "turn-1", conversation_id: "conversation-1", status: "waiting", revision: 3 };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("GET /api/chat/turn?turn_id=turn-1")}`);
+    assert.equal(init?.method ?? "GET", "GET");
+    assert.equal(init?.body, undefined);
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: turn }));
+  };
+  assert.deepEqual(await api.getSavedTurn("turn-1", "conversation-1"), turn);
+  await assert.rejects(api.getSavedTurn("turn-1", "other"), /does not match/);
+  await assert.rejects(api.getSavedTurn("../bad", "conversation-1"), /stable turn ID/);
+  assert.equal(calls, 2);
+});
+
 test("saved turn uses exact canonical transport and never retries an uncertain outcome", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

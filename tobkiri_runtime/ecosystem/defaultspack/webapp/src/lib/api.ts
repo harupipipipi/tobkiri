@@ -3516,6 +3516,20 @@ export const api = {
     });
   },
 
+  async getSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for reconciliation.");
+    }
+    const turn = await request<SavedTurnResult["turn"]>(
+      withQuery(defaultspackContractRoute("api/chat/turn"), { turn_id: turnId }),
+      { cache: "no-store" },
+    );
+    if (turn?.id !== turnId || turn.conversation_id !== conversationId) {
+      throw new Error("Saved turn read does not match the pending conversation.");
+    }
+    return turn;
+  },
+
   async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
     const input = { ...value };
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];

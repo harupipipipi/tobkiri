@@ -146,6 +146,26 @@ class DefaultspackHTTPPresentation:
             target.contribution_id, target.contract_id, target.operation_id,
             target.provider_id, target.function_id,
         ) == (
+            "defaults.conversations.turn.read", "tobkiri.resource.turn.v1",
+            "rumi_turn_runtime_pack.turn-resource",
+            "rumi_turn_runtime_pack.turn-runtime.resource",
+            "rumi_turn_runtime_pack.turn-runtime.resource",
+        ):
+            turn_id = payload.get("turn_id")
+            if set(payload) != {"turn_id"} or not isinstance(turn_id, str) or (
+                not turn_id or len(turn_id) > 256 or turn_id.strip() != turn_id
+            ):
+                raise ValueError("turn read requires one stable turn ID")
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("turn read requires a captured Profile")
+            return {"profile_id": profile_id, "operation": "get", "turn_id": turn_id}
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == (
             "defaults.conversations.send", "tobkiri.action.turn.saved.v1",
             "rumi_turn_runtime_pack.turn-saved",
             "rumi_turn_runtime_pack.turn-runtime.saved",

@@ -10110,7 +10110,7 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:9063c36686f8072e108a7dd3933c37734b863e39d797053f9ecd357fd3c93a28",
+        "evidence_digest": "sha256:bf6c71b3444c885f029419e31a8b27dca72021cde218e930dae789d2701c1c0b",
         "line": 15,
         "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
         "rule_id": "legacy_direct_pack_route"
@@ -18406,7 +18406,7 @@
     ]
   },
   "repository": {
-    "commit": "bcd8ef1dd82f94e0cce94160eeff8bf76bc71f9a",
+    "commit": "d096aa32b25fb4214961bf728fe0027825fdf8a7",
     "tree_digest": "fbb029668fe22dc78a4f4a03f2ba691abb43f1e1db7c7ab0f32345c2f9859841"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",

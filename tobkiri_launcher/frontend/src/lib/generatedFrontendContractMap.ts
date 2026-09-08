@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:53ef3d3e73e587a6aa32ca8ebd927bf749299e387694a1137630140b8afd21f2
+// Raw source digest: sha256:083dd643662178b6415c566b83f27fb2e5ad953a044b754ef596f09bd15ebd28
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,14 +28,31 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:53ef3d3e73e587a6aa32ca8ebd927bf749299e387694a1137630140b8afd21f2" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:083dd643662178b6415c566b83f27fb2e5ad953a044b754ef596f09bd15ebd28" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:53ef3d3e73e587a6aa32ca8ebd927bf749299e387694a1137630140b8afd21f2",
+  "artifact_digest": "sha256:083dd643662178b6415c566b83f27fb2e5ad953a044b754ef596f09bd15ebd28",
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/chat/turn",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.turn.read",
+          "contract_id": "tobkiri.resource.turn.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-resource",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "allowed_payload_keys": [
+            "turn_id"
+          ]
+        }
+      ]
+    },
     {
       "method": "POST",
       "path": "/api/chat/turn",
@@ -803,6 +820,21 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
 };
 
 const EXPECTED_ROUTES = {
+  "GET /api/chat/turn": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.turn.read",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-resource",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "allowed_payload_keys": [
+          "turn_id"
+        ]
+      }
+    ]
+  },
   "POST /api/chat/turn": {
     "presentation": "broker_result",
     "targets": [

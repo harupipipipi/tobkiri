@@ -4069,7 +4069,7 @@ export function ChatApp() {
   useEffect(() => {
     if (!activeConversationId || !isConversationPending) return;
     const latestKnown = latestActiveMessage;
-    if (shouldClearPendingAfterConversationRefresh(latestKnown, pendingRequest, Date.now())) {
+    if (!pendingRequest?.savedTurn && shouldClearPendingAfterConversationRefresh(latestKnown, pendingRequest, Date.now())) {
       forgetPendingRequest(activeConversationId);
       replaceChatIdInUrl(activeConversationId, false);
       setIsGenerating(false);
@@ -4077,8 +4077,29 @@ export function ChatApp() {
     }
     if (streamingConversationIdRef.current === activeConversationId) return;
     setIsGenerating(true);
+    let disposed = false;
+    let polling = false;
     const pollPendingConversation = () => {
-      void api.getConversation(activeConversationId).then((conversation) => {
+      if (disposed || polling) return;
+      polling = true;
+      void api.getConversation(activeConversationId).then(async (conversation) => {
+        if (disposed) return;
+        if (pendingRequest?.savedTurn) {
+          if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
+          const turn = await api.getSavedTurn(pendingRequest.operationId, activeConversationId);
+          if (disposed) return;
+          if (turn.status !== "completed") {
+            const status = turn.status === "running"
+              ? "turn台帳は処理中です（実行の生存確認ではありません）"
+              : "turn台帳は未完了です。再実行せず照合を待ちます。";
+            updatePendingRequests((current) => {
+              const entry = current[activeConversationId];
+              return entry && entry.status !== status
+                ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+            });
+            return;
+          }
+        }
         setActiveConversation(conversation);
         const latest = conversation.messages[conversation.messages.length - 1];
         if (shouldClearPendingAfterConversationRefresh(latest, pendingRequest, Date.now())) {
@@ -4088,6 +4109,7 @@ export function ChatApp() {
           void refreshConversations(conversation.id);
         }
       }).catch((pollError) => {
+        if (disposed) return;
         console.error(pollError);
         if (!pendingRequest?.savedTurn && shouldForgetPendingAfterPollError(pollError)) {
           forgetPendingRequest(activeConversationId);
@@ -4098,21 +4120,23 @@ export function ChatApp() {
         }
         updatePendingRequests((current) => {
           const existing = current[activeConversationId];
+          const status = existing?.savedTurn ? "接続を待っています。自動再送せず照合します" : "接続を待っています。同じ送信として再試行できます";
+          if (existing?.status === status) return current;
           return existing ? {
             ...current,
             [activeConversationId]: {
               ...existing,
-              status: "接続を待っています。同じ送信として再試行できます",
+              status,
             },
           } : current;
         });
         setBackendConnectionState("degraded");
         setBackendConnectionNote("送信結果を確認できません。operation IDを保持して接続回復を待っています。");
-      });
+      }).finally(() => { polling = false; });
     };
     pollPendingConversation();
     const interval = window.setInterval(pollPendingConversation, 1500);
-    return () => window.clearInterval(interval);
+    return () => { disposed = true; window.clearInterval(interval); };
   }, [activeConversationId, isConversationPending, latestActivePendingSignature, pendingRequest]);
 
   useEffect(() => {
