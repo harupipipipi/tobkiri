@@ -74,7 +74,7 @@ def test_defaultspack_integrity_scan_strict_passes():
     assert "passed" in result.stdout
 
 
-def test_saved_turn_code_is_sealed_but_does_not_advertise_an_unwired_operation() -> None:
+def test_saved_turn_code_and_registered_variant_share_the_sealed_identity() -> None:
     pack = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
     executables = json.loads((DEFAULTSPACK_ROOT / "executables.v4.json").read_text(encoding="utf-8"))
     path = "runtime/saved_conversation.py"
@@ -84,8 +84,16 @@ def test_saved_turn_code_is_sealed_but_does_not_advertise_an_unwired_operation()
     assert artifacts[0]["digest"] == "sha256:" + hashlib.sha256(
         (DEFAULTSPACK_ROOT / path).read_bytes()
     ).hexdigest()
-    assert all(item["implementation_path"] != path for item in executables["variants"])
-    assert all("saved_complete" not in item["operations"] for item in pack["functions"])
+    variants = [item for item in executables["variants"] if item["implementation_path"] == path]
+    assert len(variants) == 1
+    assert variants[0]["function_id"] == "defaultspack.conversation.saved"
+    assert variants[0]["implementation_digest"] == artifacts[0]["digest"]
+    assert variants[0]["execution_kind"] == "pack_vm"
+    functions = [item for item in pack["functions"] if "saved_complete" in item["operations"]]
+    assert len(functions) == 1
+    assert functions[0]["id"] == "defaultspack.conversation.saved"
+    assert functions[0]["operations"] == ["saved_complete"]
+    assert functions[0]["implementation_digest"] == artifacts[0]["digest"]
 
 
 def test_projection_catalog_order_matches_canonical_independent_of_function_order():
