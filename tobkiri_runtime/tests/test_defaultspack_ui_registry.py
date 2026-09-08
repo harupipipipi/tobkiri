@@ -1044,7 +1044,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             registry = FrontendRegistry(pack_root=pack_root)
 
             with patch(
-                "domain.frontend.registry.os.replace",
+                "domain.frontend_settings_store.os.replace",
                 side_effect=OSError("replace failed"),
             ):
                 with self.assertRaisesRegex(OSError, "replace failed"):
