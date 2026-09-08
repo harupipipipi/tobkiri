@@ -15,8 +15,14 @@ from ecosystem.rumi_provider_registry_pack.runtime.registry import (
 )
 
 
-def _capture(tmp_path: Path, *, readonly: bool = False) -> Any:
-    factory = ProviderRegistryHostFactoryV4(readonly=readonly)
+def _capture(
+    tmp_path: Path, *, readonly: bool = False,
+    configuration_phase: str | None = None,
+    catalog_bindings: tuple[Any, ...] = (),
+) -> Any:
+    factory = ProviderRegistryHostFactoryV4(
+        readonly=readonly, configuration_phase=configuration_phase,
+    )
     bindings = tuple(SimpleNamespace(
         function=SimpleNamespace(
             function_id=factory.function_id, implementation_digest="sha256:hook",
@@ -30,6 +36,7 @@ def _capture(tmp_path: Path, *, readonly: bool = False) -> Any:
     ) for operation in sorted(factory.operations))
     context = SimpleNamespace(
         user_data_root=tmp_path, profile_id="defaults", provider_bindings=bindings,
+        catalog_bindings=catalog_bindings,
         domain_ids={
             (factory.contract_id, operation, "registry-principal"): "registry-domain"
             for operation in factory.operations
@@ -51,6 +58,25 @@ def _save_payload() -> dict[str, Any]:
             "credential_handle": "credential:fixture",
         },
     }
+
+
+@pytest.mark.parametrize("owners", [
+    (), (("generate", "a"),),
+    (("generate", "a"), ("stream", "b")),
+    (("generate", "a"), ("generate", "b"), ("stream", "a")),
+])
+def test_configuration_capture_rejects_missing_or_ambiguous_credential_owner(
+    tmp_path: Path, owners: tuple[tuple[str, str], ...],
+) -> None:
+    bindings = tuple(SimpleNamespace(
+        operation=SimpleNamespace(
+            contract_id=f"tobkiri.service.ai.provider.{operation}.v1",
+        ),
+        artifact=SimpleNamespace(pack_id=owner),
+    ) for operation, owner in owners)
+    with pytest.raises(PermissionError, match="credential owner"):
+        _capture(tmp_path, configuration_phase="execute", catalog_bindings=bindings)
+    assert not (tmp_path / "packs").exists()
 
 
 def test_captured_configuration_save_read_delete_and_revision_conflict(

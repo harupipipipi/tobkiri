@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "runtime/configuration.py",
-      "sha256": "sha256:18e9a9a9406a272f864f932d193d0c77d50f56ec3be8e4788edf7f2ca8294711"
+      "sha256": "sha256:1ac0e5c5a405a8bc0610b626260e9c42a56debb160831d8a8e0e417fa8404d44"
     },
     {
       "path": "runtime/__init__.py",
@@ -34,7 +34,7 @@
     },
     {
       "path": "runtime/process.py",
-      "sha256": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1"
+      "sha256": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
     },
     {
       "path": "runtime/health_process.py",

@@ -252,6 +252,10 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     assert resolved.profile["profile_authority_snapshot_digest"] == SNAPSHOT_DIGEST
     assert {item["pack_id"] for item in resolved.profile["packs"]} == {
         "defaultspack",
+        "rumi_turn_runtime_pack",
+        "rumi_conversation_store_pack",
+        "rumi_credential_broker_pack",
+        "tobkiri_ui_settings_pack",
         "rumi_ai_gateway_pack",
         "rumi_ai_pipeline_pack",
         "rumi_ai_routing_pack",
@@ -833,8 +837,14 @@ def test_bundle_rejects_symlinked_locked_artifact(tmp_path: Path) -> None:
 def test_foundational_conversation_provider_is_exactly_one() -> None:
     catalog = _catalog()
     missing_manifest = copy.deepcopy(catalog.packs["defaultspack"])
-    missing_manifest["functions"] = []
-    missing_manifest["contracts"] = []
+    missing_manifest["functions"] = [
+        item for item in missing_manifest["functions"]
+        if item["id"] != "defaultspack.conversation"
+    ]
+    missing_manifest["contracts"] = [
+        item for item in missing_manifest["contracts"]
+        if item["contract_id"] != "conversation.turn.v1"
+    ]
     missing = replace(
         catalog,
         packs={**catalog.packs, "defaultspack": missing_manifest},

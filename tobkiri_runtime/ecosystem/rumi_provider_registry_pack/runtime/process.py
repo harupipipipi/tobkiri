@@ -76,6 +76,26 @@ class ProviderRegistryHostFactoryV4:
         ):
             raise PermissionError("provider registry bindings are incomplete")
         service = ProviderRegistryService(user_data_root=context.user_data_root)
+        credential_consumer = ""
+        if EXECUTE_OPERATION in self.operations:
+            # Bind the credential to the selected typed AI Provider contracts,
+            # never to a client-supplied or hard-coded foreign Pack identity.
+            owners = {
+                contract: {
+                    item.artifact.pack_id for item in context.catalog_bindings
+                    if item.operation.contract_id == contract
+                }
+                for contract in (
+                    "tobkiri.service.ai.provider.generate.v1",
+                    "tobkiri.service.ai.provider.stream.v1",
+                )
+            }
+            if any(len(items) != 1 for items in owners.values()):
+                raise PermissionError("AI Provider credential owner is unavailable")
+            selected = set.union(*owners.values())
+            if len(selected) != 1:
+                raise PermissionError("AI Provider credential owner is ambiguous")
+            credential_consumer = next(iter(selected))
 
         def invoke(
             operation_id: str,
@@ -98,7 +118,9 @@ class ProviderRegistryHostFactoryV4:
                     consumer_pack_id="rumi_provider_registry_pack",
                     include_credentials=False,
                 )
-                return execute_configuration(registry, client, payload)
+                return execute_configuration(
+                    registry, client, payload, consumer_pack_id=credential_consumer,
+                )
             if self.readonly:
                 if set(payload) - {"profile_id"}:
                     raise PermissionError("provider registry read payload is invalid")

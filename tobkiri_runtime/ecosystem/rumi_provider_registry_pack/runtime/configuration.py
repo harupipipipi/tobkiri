@@ -74,6 +74,8 @@ def execute_configuration(
     registry: ProviderRegistry,
     client: GlobalContractClient,
     payload: Mapping[str, Any],
+    *,
+    consumer_pack_id: str,
 ) -> dict[str, Any]:
     """Execute one frozen setup after Broker approval, with no write retry."""
     if set(payload) != {"request", "plan"}:
@@ -90,7 +92,7 @@ def execute_configuration(
         created = client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
             "operation": "create", "profile_id": registry.profile_id,
             "secret_material": {"api_key": request["key_value"]},
-            "consumer_pack_id": "rumi_provider_adapters_pack",
+            "consumer_pack_id": consumer_pack_id,
             "provider_instance_id": plan["provider_instance_id"],
             "scopes": ["ai.generate", "ai.stream"],
         })
@@ -103,7 +105,7 @@ def execute_configuration(
         not isinstance(handle, str) or not handle.startswith("credential:")
         or created.get("profile_id") != registry.profile_id
         or created.get("provider_instance_id") != plan["provider_instance_id"]
-        or created.get("consumer_pack_id") != "rumi_provider_adapters_pack"
+        or created.get("consumer_pack_id") != consumer_pack_id
     ):
         raise RuntimeError("provider credential save was not confirmed")
     record = {

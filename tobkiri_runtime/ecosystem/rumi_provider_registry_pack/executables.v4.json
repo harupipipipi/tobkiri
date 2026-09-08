@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:de03abe5779ddbc38008dc7fa526c86c5cf1bf49bfdccb64239f40f3d778a37f",
+  "catalog_digest": "sha256:a459862338e221ee00a0d64528fd48054883aaa7ecf0f4f9ea66c0f76461c7e9",
   "pack_id": "rumi_provider_registry_pack",
-  "source_identity": "sha256:d0896e71887da2e0e81eb55c5245150179c40f7708f187db8d3f7837003facaf",
+  "source_identity": "sha256:8f86a2fa4081813de93265e551a0893dfefedd94747a8b9efe1644212a543c9f",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.provider-configure.execute",
-      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
-      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -150,7 +150,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.provider-registry.manage",
-      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -184,7 +184,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [

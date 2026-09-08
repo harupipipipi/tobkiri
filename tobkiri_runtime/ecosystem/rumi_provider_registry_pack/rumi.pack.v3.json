@@ -85,14 +85,14 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "artifact_hash": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "contract_id": "rumi.resource.ai.provider.registry.v1",
       "id": "provider-registry-resource",
       "loader": "process",
       "module": "ecosystem.rumi_provider_registry_pack.runtime.process"
     },
     {
-      "artifact_hash": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "artifact_hash": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "contract_id": "rumi.action.ai.provider.registry.manage.v1",
       "id": "provider-registry-manage",
       "loader": "process",
@@ -127,9 +127,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:a91feb0f94ad950f4439bc31c4954f8385eb316a5f8033eecf77f2b874e4398d",
+            "artifact_digest": "sha256:7f2411f72d05bdb8decc44406e9234ce6d1d381d4318ff9e8b42b05ce0ccde7f",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:d0896e71887da2e0e81eb55c5245150179c40f7708f187db8d3f7837003facaf"
+            "source_identity": "sha256:8f86a2fa4081813de93265e551a0893dfefedd94747a8b9efe1644212a543c9f"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -151,7 +151,7 @@
         "pack_identity": "rumi:ecosystem/rumi_provider_registry_pack",
         "provenance": {
           "build_identity": "rumi_provider_registry_pack:1.0.0",
-          "content_hash": "sha256:9e2aa399d35ce0768e817aa3cafee98fe203e4461ec4e94e57a07cf106d1c8bf",
+          "content_hash": "sha256:5a52befcd639606e4f3ba361572c6409b33d20e5fe45f9e8ad47adb49da0fb40",
           "signature": null,
           "trust_class": "local"
         },
@@ -186,7 +186,7 @@
       "owner": "rumi_provider_registry_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:d0896e71887da2e0e81eb55c5245150179c40f7708f187db8d3f7837003facaf"
+      "source_identity": "sha256:8f86a2fa4081813de93265e551a0893dfefedd94747a8b9efe1644212a543c9f"
     }
   },
   "migration": {
@@ -226,7 +226,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_provider_registry_pack:1.0.0",
-    "content_hash": "sha256:9e2aa399d35ce0768e817aa3cafee98fe203e4461ec4e94e57a07cf106d1c8bf",
+    "content_hash": "sha256:5a52befcd639606e4f3ba361572c6409b33d20e5fe45f9e8ad47adb49da0fb40",
     "signature": null,
     "trust_class": "local"
   },

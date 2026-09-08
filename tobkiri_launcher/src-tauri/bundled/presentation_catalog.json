@@ -560,7 +560,7 @@
     "rumi_model_catalog_pack": "sha256:051654c04c21381a00c99943d6c7d9f54c0daaed494628c11cf7cc1b05277f49",
     "rumi_model_registry_pack": "sha256:d52d6bd397ff54ff53ed5c18fefc8f2e86a679b59a1dc0be3a3179c86cb41029",
     "rumi_provider_adapters_pack": "sha256:667c97aa2f458fdf6036223a77ea7d680975998b58dc3cc6c431d4d49cac4f86",
-    "rumi_provider_registry_pack": "sha256:18d28b88c15c997b444b7f52b97b73ffe989edc56d71b8c07602f22dd210b465",
+    "rumi_provider_registry_pack": "sha256:ee0fe9f3d2309bc0ba84abff2a8d2485fe54e237e60256618923e34a7bb37afe",
     "rumi_shell_execute_pack": "sha256:90bcae21638775ab38bdb5f7038bb718c69fe08552613b94fffbb31809ca99c5",
     "rumi_shell_policy_pack": "sha256:e592b9ff92762cb0bd7983f86f7fa73da590c1960719daa21f05a0cd8067a34a",
     "rumi_turn_runtime_pack": "sha256:0bee8aa7723bd5e51fb57a3d062290768b80a8bf6135fdf510c4b11937c57ebd",

@@ -70,13 +70,17 @@ def test_configuration_saves_once_and_recovers_connection_owner_ack(
         return result
 
     monkeypatch.setattr(registry, "save", save)
-    result = execute_configuration(registry, client, {"request": request, "plan": plan})
+    result = execute_configuration(
+        registry, client, {"request": request, "plan": plan}, consumer_pack_id="fixture.consumer",
+    )
     assert result == {"configured": True, "provider_instance_id": "provider.fixture"}
     assert client.calls == ["create"]
     assert registry.snapshot()["revision"] == 1
     assert request["key_value"] not in registry.path.read_text()
     with pytest.raises(PermissionError):
-        execute_configuration(registry, client, {"request": request, "plan": plan})
+        execute_configuration(
+            registry, client, {"request": request, "plan": plan}, consumer_pack_id="fixture.consumer",
+        )
     assert client.calls == ["create"]
 
 
@@ -93,7 +97,9 @@ def test_configuration_revokes_only_new_unused_handle_on_failed_connection_save(
 
     monkeypatch.setattr(registry, "save", fail)
     with pytest.raises(RuntimeError, match="connection save was not confirmed"):
-        execute_configuration(registry, client, {"request": request, "plan": plan})
+        execute_configuration(
+            registry, client, {"request": request, "plan": plan}, consumer_pack_id="fixture.consumer",
+        )
     assert client.calls == ["create", "revoke"]
     assert not registry.path.exists()
 
