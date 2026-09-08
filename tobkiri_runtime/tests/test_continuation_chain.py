@@ -106,3 +106,34 @@ def test_wrong_binding_nonce_and_concurrent_consumption() -> None:
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         assert sorted(executor.map(lambda _: consume(), range(2))) == [False, True]
+
+
+def test_advance_cannot_extend_deadline_or_reuse_nonce() -> None:
+    now = [100.0]
+    chains = ContinuationChains(clock=lambda: now[0])
+    identity = _identity()
+    chains.start(identity, frame=b"first", nonce=_nonce(0))
+    permit = chains.take(identity, nonce=_nonce(0), result=b"result")
+    now[0] = 159.0
+    chains.advance(permit, frame=b"second", nonce=_nonce(1))
+    now[0] = 160.0
+    with pytest.raises(ValueError):
+        chains.take(identity, nonce=_nonce(1), result=b"late")
+    now[0] = 100.0
+    chains = ContinuationChains(clock=lambda: now[0])
+    chains.start(identity, frame=b"first", nonce=_nonce(0))
+    permit = chains.take(identity, nonce=_nonce(0), result=b"result")
+    with pytest.raises(ValueError, match="nonce"):
+        chains.advance(permit, frame=b"second", nonce=_nonce(0))
+    with pytest.raises(ValueError):
+        chains.advance(permit, frame=b"retry", nonce=_nonce(1))
+
+
+def test_oversize_result_fences_chain_without_retry() -> None:
+    chains = ContinuationChains(clock=lambda: 100.0, max_bytes=5)
+    identity = _identity()
+    chains.start(identity, frame=b"abc", nonce=_nonce(0))
+    with pytest.raises(ValueError, match="byte budget"):
+        chains.take(identity, nonce=_nonce(0), result=b"def")
+    with pytest.raises(ValueError):
+        chains.take(identity, nonce=_nonce(0), result=b"x")

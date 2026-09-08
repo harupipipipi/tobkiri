@@ -4,6 +4,14 @@ Status: implementation plan, not a registered protocol or acceptance evidence.
 The existing v1 `conversation.turn.v1/complete` remains supported and single-hop.
 Do not remove its one-exchange guards to implement saved conversations.
 
+Initial state machinery now exists in `tobkiri_host/continuation_chain.py`, but
+is not connected to either VM boundary. It retains registered identities until
+the original deadline, issues local single-use resume permits, bounds four hops
+and cumulative encoded request/result bytes, and fences cancelled/failed chains.
+It does not authenticate frames, grant execution authority, stop providers or
+provide durable restart recovery. Versioned envelope validation and explicit
+guest-side packaging/integration remain required before using it in production.
+
 ## Observed boundaries
 
 - `ecosystem/defaultspack/runtime/conversation.py` emits a bounded v1 AI request.
