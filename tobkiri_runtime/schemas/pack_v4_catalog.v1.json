@@ -7795,6 +7795,7 @@
                 },
                 "effect_kind": {
                   "enum": [
+                    "provider_configure",
                     "shell_execute",
                     "git_commit",
                     "git_restore",

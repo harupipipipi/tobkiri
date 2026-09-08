@@ -1022,6 +1022,9 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
         },
     }
     path = "/api/ai/provider-key"
+    status, rejected = post(path, {**request, "effect_kind": "shell_execute"})
+    assert status == 400, rejected
+    assert not registry.path.exists()
     status, prepared = post(path, request)
     assert status == 200, (failures, authority.audit_events()[-6:], prepared)
     effect = prepared["data"]

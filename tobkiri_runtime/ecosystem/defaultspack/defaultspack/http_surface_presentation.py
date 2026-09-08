@@ -142,6 +142,21 @@ class DefaultspackHTTPPresentation:
     ) -> Mapping[str, object]:
         """Bind model reads and media paths to the captured Profile."""
 
+        if target.contribution_id == "defaults.providers.configure":
+            phase = payload.get("phase")
+            if phase == "prepare":
+                if (
+                    set(payload) != {"phase", "effect_kind", "request"}
+                    or payload.get("effect_kind") != "provider_configure"
+                    or not isinstance(payload.get("request"), Mapping)
+                ):
+                    raise ValueError("provider configuration request is invalid")
+            elif phase not in {"status", "resume", "cancel"} or set(payload) != {
+                "phase", "effect_id",
+            }:
+                raise ValueError("provider configuration phase is invalid")
+            return dict(payload)
+
         if (
             target.contribution_id, target.contract_id, target.operation_id,
             target.provider_id, target.function_id,
