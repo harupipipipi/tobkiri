@@ -70,7 +70,10 @@ write, without claiming that preflight guarantees later provider availability.
    preparation and uses the earlier of its own operation deadline and the
    parent's original deadline. No application payload supplies this ceiling.
    This is connected v1 deadline propagation, not v2 multi-hop integration or
-   proof that every provider honors cancellation.
+   proof that every provider honors cancellation. Both VM bridge dispatch and
+   Host Provider nested contract clients now forward a Host-created shared
+   cancellation Event as well as that deadline. Neither is serialized into
+   application payloads or accepted from guest JSON.
    The Broker also checks the deadline after receiving a completed Future:
    `Future.result(timeout=0)` alone accepts an already-finished late result.
    Late observations enter the existing cancellation/error path; potential
@@ -123,9 +126,18 @@ write, without claiming that preflight guarantees later provider availability.
   before calling the Host bridge, after its callback returns, and before
   publishing a signed guest result. A lost cancellation acknowledgement does
   not clear the fence. This prevents observed late results from resuming or
-  succeeding; it does not interrupt the nested provider, establish cross-process
-  cancellation ordering, or replace the guest's cancellation ledger. Those
-  requirements remain open for saved-turn execution.
+  succeeding. The same signal now reaches each nested Broker invocation, whose
+  bounded wait requests cancellation using that invocation's own request ID.
+  Already-cancelled parents cannot start nested work. Local calls report
+  `cancellation_requested`, not confirmed termination; failed backend cancel
+  requests report a provider error, and external effects remain ambiguous.
+  Cancellation/timeout does not release admission or request materialization
+  while the provider Future is still running; cleanup is deferred until its
+  actual completion. Broker close remains non-blocking and is not a completion
+  signal. This does not certify every backend's termination, establish
+  cross-process cancellation ordering, or replace the guest's cancellation
+  ledger. A durable saved-turn coordinator and authenticated UI stop operation
+  still need to connect user intent to the correct live request.
 - After cancellation, a late result must not start another hop. Distinguish
   cancellation requested, confirmed termination, uncertain completion and
   already-persisted effects. Never erase saved data to simulate rollback.
