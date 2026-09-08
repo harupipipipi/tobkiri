@@ -93,11 +93,14 @@ write, without claiming that preflight guarantees later provider availability.
   rebinding; independent connections/processes use a write transaction plus an
   exact revision. Terminal identities are retained: capacity exhaustion rejects
   new turns instead of pruning replay protection. Reads do not create storage,
-  and oversized mutations roll back without changing the record. This wrapper
-  is NOT yet a captured Host provider or restart execution coordinator. A
+  and oversized mutations roll back without changing the record. The existing
+  lifecycle/resource/event contracts now register `runtime/host.py`, capturing
+  one exact Profile/root/domain and sharing that durable owner. Read contracts
+  expose snapshots only and cannot mutate lifecycle state. No live Profile was
+  activated by this source registration. There is no restart coordinator yet. A
   recovered `running` record is only a snapshot, never permission to re-execute
-  AI or an uncertain write. Register the lifecycle, resource and event contracts
-  against the same captured durable owner, then implement reconciliation before
+  AI or an uncertain write. Implement reconciliation and captured execution
+  integration before
   exposing saved-send as complete. The legacy `TurnRuntime` and its global pool
   remain in-process and still prune terminal mappings. Do not put execution
   state into the conversation storage Pack.

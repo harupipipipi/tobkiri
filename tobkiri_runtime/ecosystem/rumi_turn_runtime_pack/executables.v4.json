@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:e66c88a04c7b5194fd26c8b2c9c288e3240b1e784bb3d4537ed40b9e7fc154e5",
+  "catalog_digest": "sha256:42d0889254086218961ff8a820b9312d86981a37e4122f4a1d4c6631bcb283c1",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:becaaf1ab657dfe547d318ba0644217450c3f90d976bc0027378962fa092ed70",
+  "source_identity": "sha256:8bacecdd715d63591ec6946c1e99b43d5bf75cde61204a9215d5ab3330cee165",
   "variants": [
     {
       "architecture": "any",
@@ -10,8 +10,8 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
-      "implementation_path": "runtime/turns.py",
+      "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a",
+      "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
         {
@@ -44,8 +44,8 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
-      "implementation_path": "runtime/turns.py",
+      "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a",
+      "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
         {
@@ -78,8 +78,8 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
-      "implementation_path": "runtime/turns.py",
+      "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a",
+      "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
         {

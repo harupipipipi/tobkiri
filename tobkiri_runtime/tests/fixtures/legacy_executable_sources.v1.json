@@ -3,6 +3,54 @@
   "source_format": "legacy-entrypoint-map",
   "implementation_adapters": [
     {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.action.turn.lifecycle.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-lifecycle"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-resource"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.event.turn.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-events"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
+    },
+    {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
       "legacy": {
         "pack_id": "rumi_conversation_store_pack",

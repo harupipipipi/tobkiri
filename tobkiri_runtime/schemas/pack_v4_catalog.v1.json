@@ -15191,7 +15191,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc"
+              "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15224,7 +15224,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc"
+              "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15257,7 +15257,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc"
+              "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15293,9 +15293,19 @@
       ],
       "runtime_artifacts": [
         {
+          "digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a",
+          "kind": "executable",
+          "path": "runtime/host.py"
+        },
+        {
           "digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
           "kind": "executable",
           "path": "runtime/turns.py"
+        },
+        {
+          "digest": "sha256:7c7259427250648c7791d38339099f67198a8e0c82cb991bd1bea5bb53ee3798",
+          "kind": "executable",
+          "path": "runtime/durable.py"
         }
       ],
       "secrets": [],

@@ -105,18 +105,22 @@ class DurableTurnRuntime:
         finally:
             connection.close()
 
-    def list(self, *, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, *, limit: int = 100, conversation_id: str | None = None) -> list[dict[str, Any]]:
         """Read a bounded newest-first page without loading the entire history."""
         if type(limit) is not int or not 1 <= limit <= 200:
             raise ValueError("turn list limit is invalid")
+        if conversation_id is not None and (
+            not isinstance(conversation_id, str) or not _ID.fullmatch(conversation_id)
+        ):
+            raise ValueError("turn conversation filter is invalid")
         if not self.path.exists():
             return []
         self._check_path()
         connection = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
         try:
             rows = connection.execute(
-                "SELECT id, request_id, body FROM turns ORDER BY updated_at DESC, id LIMIT ?",
-                (limit,),
+                "SELECT id, request_id, body FROM turns WHERE (? IS NULL OR json_extract(body, '$.conversation_id') = ?) ORDER BY updated_at DESC, id LIMIT ?",
+                (conversation_id, conversation_id, limit),
             ).fetchall()
             return [self._record(row) for row in rows]
         finally:

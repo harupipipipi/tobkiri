@@ -112,6 +112,9 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
         ("rumi_conversation_store_pack.conversation-store.resource", "rumi_conversation_store_pack", "rumi_conversation_store_pack.conversation-resource", "runtime/host.py"),
         ("rumi_conversation_store_pack.conversation-store.manage", "rumi_conversation_store_pack", "rumi_conversation_store_pack.conversation-manage", "runtime/manage_host.py"),
         ("rumi_conversation_store_pack.conversation-store.message-manage", "rumi_conversation_store_pack", "rumi_conversation_store_pack.message-manage", "runtime/message_host.py"),
+        ("rumi_turn_runtime_pack.turn-runtime.lifecycle", "rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-lifecycle", "runtime/host.py"),
+        ("rumi_turn_runtime_pack.turn-runtime.resource", "rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-resource", "runtime/host.py"),
+        ("rumi_turn_runtime_pack.turn-runtime.events", "rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-events", "runtime/host.py"),
     ):
         record = records[function_id]
         assert record["owner"] == pack_id
