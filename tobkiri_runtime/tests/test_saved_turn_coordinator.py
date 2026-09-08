@@ -3,6 +3,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
+import multiprocessing
+from multiprocessing.connection import Connection
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -30,6 +32,7 @@ class _Session:
         self.conversations, request = _setup(root)
         self.initial = {"request": request}
         self.calls = 0
+        self.ai_calls = 0
         self.transform = lambda value: value
 
     def provider_metadata(self, contract_id: str) -> tuple:
@@ -46,6 +49,8 @@ class _Session:
         self.calls += 1
         intent = application.start(payload["request"])
         for hop in range(4):
+            if hop == 2:
+                self.ai_calls += 1
             outcome = (
                 {"status": "ok", "value": {"status": "ok", "output": "Hi"}}
                 if hop == 2 else _owner(self.conversations, intent, saved_input=self.initial)
@@ -248,6 +253,85 @@ def test_message_edit_cannot_change_the_saved_completion_evidence(tmp_path: Path
     assert result["turn"]["result_reference"] == before["result_reference"]
     assert result["turn"]["result_reference"]["conversation_revision"] == 3
     assert session.calls == 1
+
+
+def _pause_after_owner_commit(root: Path, message_count: int, pipe: Connection) -> None:
+    """Run isolated owners; pause after commit but before the owner ACK."""
+    session = _Session(root)
+    write = session.conversations._write
+
+    def pause(state: dict) -> None:
+        write(state)
+        if len(state["conversations"]["conversation-1"]["messages"]) == message_count:
+            pipe.send({"messages": message_count, "ai_calls": session.ai_calls})
+            pipe.recv()  # The test kills this process while the ACK is withheld.
+
+    session.conversations._write = pause
+    _run(DurableTurnRuntime("defaults", user_data_root=root), session)
+
+
+@pytest.mark.parametrize("message_count", [1, 2])
+def test_process_death_after_owner_commit_reconciles_without_reexecution(
+    tmp_path: Path, message_count: int,
+) -> None:
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import reconcile_saved_turn
+
+    context = multiprocessing.get_context("spawn")
+    parent, child = context.Pipe()
+    process = context.Process(
+        target=_pause_after_owner_commit, args=(tmp_path, message_count, child),
+    )
+    process.start()
+    child.close()
+    try:
+        assert parent.poll(30), "child never reached the committed owner write"
+        assert parent.recv() == {"messages": message_count, "ai_calls": message_count - 1}
+        assert process.is_alive()
+        process.kill()
+        process.join(timeout=10)
+        assert not process.is_alive() and process.exitcode != 0
+    finally:
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=10)
+        parent.close()
+        process.close()
+
+    # Fresh instances read only disk state left by the killed process.
+    conversations = ConversationStore("defaults", user_data_root=tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    before = store.get("turn-1")
+    assert before["status"] == "running"  # No exception handler settled it.
+    owner_bytes = conversations.path.read_bytes()
+
+    class Reader:
+        profile_id = "defaults"
+
+        def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+            assert (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION)
+            assert payload == {
+                "profile_id": "defaults", "operation": "saved_receipt", "turn_id": "turn-1",
+            }
+            return {"receipt": conversations.saved_receipt("turn-1")}
+
+    client = GlobalContractClient(
+        session=Reader(), allowed_contract_ids=frozenset({RECEIPT_CONTRACT}),
+        consumer_pack_id="rumi_turn_runtime_pack",
+    )
+    for _ in range(2):
+        result = reconcile_saved_turn(store, "turn-1", client=client, guard=lambda: None)
+        if message_count == 2:
+            assert result["turn"]["status"] == "completed"
+            assert result["turn"]["revision"] == before["revision"] + 1
+            assert result["turn"]["result_reference"] == conversations.saved_receipt(
+                "turn-1",
+            )["result_reference"]
+        else:
+            assert result == {"status": "existing", "turn": before}
+        assert conversations.path.read_bytes() == owner_bytes
+    messages = conversations.get("conversation-1")["messages"]
+    assert [message["role"] for message in messages] == ["user", "assistant"][:message_count]
 
 
 @pytest.mark.parametrize("field,value", [
