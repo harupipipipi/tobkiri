@@ -234,6 +234,13 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/runtime/application_presentation.py",
+      "type": "regular-file",
+      "size": 97586,
+      "sha256": "50dbc1c561bc5fc3efafc8394c27365a8b57a42986e6dba72354c4cb6cb91482",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/runtime/conversation.py",
       "type": "regular-file",
       "size": 20564,
@@ -2317,6 +2324,13 @@
       "type": "regular-file",
       "size": 22396,
       "sha256": "f1f79175350a36ce15b722041518c55aa98204891796bad2a57f18dfffed34a1",
+      "executable": false
+    },
+    {
+      "path": "scripts/generate_application_presentation.py",
+      "type": "regular-file",
+      "size": 4979,
+      "sha256": "aef7cbf7280c8daa499ca91353c9336561921660b0822ff19b38db7a31dc4169",
       "executable": false
     },
     {
