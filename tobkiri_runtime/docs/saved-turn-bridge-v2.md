@@ -77,9 +77,20 @@ v1 bridge request still follows its dedicated validation path.
 
 The packaging path now uses `scripts/build_packvm_guest_bundle.py` to produce
 a deterministic, uncompressed zipapp. Its exact closure is the existing runner
-as `__main__.py`, the three continuation modules, protocol canonicalization/errors,
+as `__main__.py`, the three continuation modules, bounded child pipe I/O,
+protocol canonicalization/errors,
 and empty package initializers. No Host dispatcher, state owner, credentials or
-third-party dependencies are included. `build_packvm_vz_helper.sh` stages this
+third-party dependencies are included. The pipe helper is now used by the actual
+initial and resumed child execution path: stdout is bounded while reading,
+stderr is counted but never retained (64KiB maximum), and concurrent nonblocking
+stdin/stdout/stderr I/O shares one 60-second step deadline, including waiting
+after pipe EOF. On exchange or serialization failure the runner requests process
+group termination, closes pipes and reaps without an unbounded `communicate()`.
+Termination errors are not suppressed. Real Host subprocess tests cover pipe
+pressure, flooding, timeouts and reaping with a direct-child stop adapter; they
+do not certify Linux guest process-group termination. The per-step deadline is
+not yet the original multi-hop turn deadline; that integration remains required.
+`build_packvm_vz_helper.sh` stages this
 archive before binding the existing guest-runner digest and service template;
 the existing signed provisioning manifest covers all archive bytes. The root
 runner binds the archive itself (not the virtual `__main__.py` path) into each
