@@ -16,7 +16,6 @@ for entry in (ROOT, DEFAULTSPACK):
         sys.path.insert(0, str(entry))
 
 from domain.frontend.command_protocol import CommandProtocolRegistry  # noqa: E402
-from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore  # noqa: E402
 
 ALLOWED_EXECUTION_KINDS = {
     "host_operation",
@@ -33,13 +32,19 @@ SECRET_FRAGMENTS = {
 }
 
 
+class _PackagedCommandRegistry(CommandProtocolRegistry):
+    """Build inventory includes packaged commands, never personal registrations."""
+
+    def _registered_settings_commands(self) -> list[dict[str, Any]]:
+        return []
+
+
 def scan() -> dict[str, Any]:
     """Scan packaged commands independently of the invoking user's settings."""
     with TemporaryDirectory(prefix="tobkiri-command-scan-") as directory:
         root = Path(directory)
-        registry = CommandProtocolRegistry(
+        registry = _PackagedCommandRegistry(
             DEFAULTSPACK,
-            settings_owner=FrontendSettingsStore(root / "settings.json"),
             command_state_dir=root / "commands",
         )
         return _scan_registry(registry)
