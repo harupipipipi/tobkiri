@@ -397,7 +397,7 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_settings_reads_saved_values_and_models_through_real_broker(
-    settings_vertical_server, tmp_path: Path,
+    settings_vertical_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Settings use captured state and a nested model contract, without writes."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
@@ -419,13 +419,35 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     }), encoding="utf-8")
     before = path.read_bytes()
     server, _session, _authority = settings_vertical_server
+    observed: list[RequestEnvelope] = []
+    original_dispatch = _session.broker._dispatch
+
+    def observe_dispatch(backend, envelope, *args, **kwargs):
+        observed.append(envelope)
+        return original_dispatch(backend, envelope, *args, **kwargs)
+
+    monkeypatch.setattr(_session.broker, "_dispatch", observe_dispatch)
     cookie, _csrf, _origin = _authenticate(server)
     for suffix in ("", "?full=true"):
+        observed.clear()
         status, payload, _ = _request(
             server, "GET", _contract("GET", f"/api/ui/settings{suffix}"),
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         assert status == 200, payload
+        assert len(observed) == 3
+        outer, *nested = observed
+        assert outer.operation_id == "tobkiri_ui_settings_pack.settings-read"
+        assert {item.operation_id for item in nested} == {
+            "rumi_model_registry_pack.model-profile-resource",
+            "defaultspack.presentation.read",
+        }
+        assert len({item.context.request_id for item in observed}) == 3
+        assert all(
+            item.cancellation_requested is outer.cancellation_requested
+            and item.deadline_monotonic <= outer.deadline_monotonic
+            for item in nested
+        )
         data = payload["data"]
         assert data["values"]["general"]["composer_placeholder"] == "Saved placeholder"
         fields = {field["id"]: field for section in data["sections"]
