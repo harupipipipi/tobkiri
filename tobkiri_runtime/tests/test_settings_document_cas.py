@@ -31,6 +31,78 @@ def test_data_only_commit_preserves_unknown_values_and_finite_numbers(tmp_path: 
     assert proposal[REVISION_KEY] == 1
 
 
+def test_field_patch_preserves_private_state_without_returning_it(tmp_path):
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    before = store.update(lambda _: {
+        "general": {"language": "en", "private": "not-public"},
+        "unknown": {"credential": "not-public"},
+        STATE_REVISIONS_KEY: {"existing-state": 4},
+        MUTATION_RECEIPTS_KEY: {"existing-receipt": {"private": True}},
+    })
+    patch = {"general": {"language": "ja"}}
+    result = store.compare_and_swap_fields(
+        patch, allowed_fields={"general": frozenset({"language"})},
+        expected_revision=1,
+    )
+    assert result == {"values": patch, "document_revision": 2}
+    assert store.read_snapshot() == {
+        **before, "general": {"language": "ja", "private": "not-public"},
+        REVISION_KEY: 2,
+    }
+    assert json.loads(store.backup_path.read_text()) == before
+    result["values"]["general"]["language"] = "modified-result"
+    assert patch == {"general": {"language": "ja"}}
+    assert store.read_snapshot()["general"]["language"] == "ja"
+
+
+@pytest.mark.parametrize("changes", [
+    {"general": {"private": "forged"}},
+    {"unknown": {"language": "ja"}},
+    {REVISION_KEY: {"language": "ja"}},
+    {STATE_REVISIONS_KEY: {"language": "ja"}},
+    {MUTATION_RECEIPTS_KEY: {"language": "ja"}},
+])
+def test_field_patch_denies_scope_before_opening_storage(tmp_path, changes):
+    store = FrontendSettingsStore(tmp_path / "absent" / "settings.json")
+    with pytest.raises(PermissionError, match="write policy"):
+        store.compare_and_swap_fields(
+            changes, allowed_fields={"general": frozenset({"language"})},
+            expected_revision=0,
+        )
+    assert not store.path.parent.exists()
+
+
+def test_field_patch_rechecks_revision_after_owner_merge(tmp_path, monkeypatch):
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    before = store.update(lambda _: {"general": {"language": "en"}})
+    commit = store.compare_and_swap_document
+
+    def concurrent_commit(document, *, expected_revision):
+        commit({**before, "other": "concurrent"}, expected_revision=1)
+        return commit(document, expected_revision=expected_revision)
+
+    monkeypatch.setattr(store, "compare_and_swap_document", concurrent_commit)
+    with pytest.raises(FrontendSettingsRevisionConflict):
+        store.compare_and_swap_fields(
+            {"general": {"language": "ja"}},
+            allowed_fields={"general": frozenset({"language"})}, expected_revision=1,
+        )
+    assert store.read_snapshot() == {**before, "other": "concurrent", REVISION_KEY: 2}
+
+
+def test_field_patch_does_not_repair_corrupt_primary(tmp_path):
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    store.path.write_bytes(b"broken")
+    store.backup_path.write_text('{}')
+    before = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
+    with pytest.raises(FrontendSettingsCorruptError):
+        store.compare_and_swap_fields(
+            {"general": {"language": "ja"}},
+            allowed_fields={"general": frozenset({"language"})}, expected_revision=0,
+        )
+    assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == before
+
+
 @pytest.mark.parametrize("revision", [True, False, -1, 0.0, "0", None])
 def test_invalid_revision_does_not_create_storage(tmp_path: Path, revision: object) -> None:
     store = FrontendSettingsStore(tmp_path / "absent" / "settings.json")

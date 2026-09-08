@@ -195,6 +195,57 @@ class FrontendSettingsStore:
             self._atomic_write(candidate, preserve_backup=True)
             return candidate
 
+    def compare_and_swap_fields(
+        self,
+        changes: Mapping[str, Mapping[str, Any]],
+        *,
+        allowed_fields: Mapping[str, frozenset[str]],
+        expected_revision: int,
+    ) -> dict[str, Any]:
+        """Merge an owner-authorized field patch without exporting private state.
+
+        ``allowed_fields`` is trusted owner policy, never a request parameter.
+        Field value schemas and caller authorization belong to the captured
+        operation. A read disclosure allowlist alone is not write authorization.
+        This primitive does not register that operation or retry lost replies.
+        """
+        if type(expected_revision) is not int or expected_revision < 0:
+            raise ValueError("settings document revision must be an exact nonnegative integer")
+        if not isinstance(changes, Mapping) or not changes:
+            raise ValueError("settings changes must be a nonempty object")
+        patch = deepcopy(dict(changes))
+        for section, fields in patch.items():
+            if (
+                not isinstance(section, str)
+                or section in {REVISION_KEY, STATE_REVISIONS_KEY, MUTATION_RECEIPTS_KEY}
+                or section not in allowed_fields
+                or not isinstance(fields, dict)
+                or not fields
+                or any(
+                    not isinstance(field, str) or field not in allowed_fields[section]
+                    for field in fields
+                )
+            ):
+                raise PermissionError("settings field is outside owner write policy")
+        decoded = json.loads(json.dumps(patch, allow_nan=False))
+        if decoded != patch:
+            raise ValueError("settings changes require JSON keys and values")
+        snapshot = self.read_snapshot()
+        revision = snapshot.get(REVISION_KEY, 0)
+        if type(revision) is not int or revision < 0:
+            raise FrontendSettingsCorruptError("settings document revision is invalid")
+        if revision != expected_revision:
+            raise FrontendSettingsRevisionConflict("settings.document", expected_revision, revision)
+        for section, fields in decoded.items():
+            current = snapshot.get(section, {})
+            if not isinstance(current, dict):
+                raise FrontendSettingsCorruptError("settings section is invalid")
+            snapshot[section] = {**current, **fields}
+        committed = self.compare_and_swap_document(
+            snapshot, expected_revision=expected_revision,
+        )
+        return {"values": decoded, "document_revision": committed[REVISION_KEY]}
+
     def compare_and_swap_state(
         self,
         state_ref: str,
