@@ -5,10 +5,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from domain.frontend.command_protocol import CommandProtocolRegistry
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from domain.frontend.invocation_events import InvocationEventError
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
+    """Run with a trusted caller-supplied owner, never one from request data."""
     payload = input_data if isinstance(input_data, dict) else {}
     invocation_id = str(payload.get("invocation_id") or "").strip()
     pending_action = str(payload.get("action") or "") == "pending_approvals"
@@ -17,7 +19,7 @@ def run(input_data, context):
     try:
         after_sequence = int(payload.get("after_sequence") or 0)
         limit = int(payload.get("limit") or 500)
-        registry = CommandProtocolRegistry()
+        registry = CommandProtocolRegistry(settings_owner=settings_owner)
         owner_key = registry.owner_key(payload, context or {})
         if pending_action:
             for pending in registry.events.pending_approvals(owner_key=owner_key):
