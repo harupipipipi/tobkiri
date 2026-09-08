@@ -1801,7 +1801,8 @@ def capture_production_dispatch(
         deadline = getattr(outer_request, "deadline_monotonic", None)
         cancellation = getattr(outer_request, "cancellation_requested", None)
         if (
-            type(deadline) not in (int, float)
+            not isinstance(deadline, (int, float))
+            or isinstance(deadline, bool)
             or not math.isfinite(deadline)
             or deadline <= time.monotonic()
             or type(cancellation) is not threading.Event
