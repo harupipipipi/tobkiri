@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 import contextvars
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import hashlib
 import json
 import math
@@ -34,6 +34,7 @@ from .errors import (
     AuthorizationError,
     ProviderExecutionError,
     RequestTimedOutError,
+    RequestCancellationRequestedError,
     ResolutionError,
 )
 from .models import (
@@ -109,6 +110,7 @@ class RequestEnvelope:
     deadline_monotonic: float
     lease: OpaqueInvocationLease
     idempotency_key: str | None
+    cancellation_requested: threading.Event = field(default_factory=threading.Event)
 
 
 @dataclass(frozen=True)
@@ -304,11 +306,17 @@ class RequestBroker:
         effect_scope: Mapping[str, Any],
         allow_lossy_adapters: bool = False,
         parent_deadline_monotonic: float | None = None,
+        parent_cancellation: threading.Event | None = None,
     ) -> Mapping[str, Any]:
         """Resolve, admit, materialize, authorize, dispatch, and validate."""
         with self._lifecycle_lock:
             if self._closed:
                 raise RuntimeError("request broker is closed")
+        if parent_cancellation is not None:
+            if type(parent_cancellation) is not threading.Event:
+                raise ValueError("parent cancellation signal is invalid")
+            if parent_cancellation.is_set():
+                raise RequestCancellationRequestedError("parent cancellation was requested")
         if parent_deadline_monotonic is not None:
             if (
                 type(parent_deadline_monotonic) not in (int, float)
@@ -335,6 +343,7 @@ class RequestBroker:
             effect_scope=effect_scope,
             monotonic_clock=time.monotonic,
             before_dispatch=None,
+            cancellation_requested=parent_cancellation,
         )
 
     def invoke_prepared(
@@ -394,6 +403,7 @@ class RequestBroker:
         effect_scope: Mapping[str, Any],
         monotonic_clock: Callable[[], float],
         before_dispatch: Callable[[], None] | None,
+        cancellation_requested: threading.Event | None = None,
     ) -> Mapping[str, Any]:
         """Run the shared static-auth through dispatch pipeline once."""
 
@@ -480,6 +490,10 @@ class RequestBroker:
                 deadline_monotonic=deadline,
                 lease=lease,
                 idempotency_key=prepared.idempotency_key,
+                cancellation_requested=(
+                    cancellation_requested
+                    if cancellation_requested is not None else threading.Event()
+                ),
             )
             return self._dispatch(
                 backend,
@@ -682,14 +696,26 @@ class RequestBroker:
                 self._audit.mark_dispatched(audit_reservation)
             if before_dispatch is not None:
                 before_dispatch()
+            if envelope.cancellation_requested.is_set():
+                raise RequestCancellationRequestedError("request cancellation was requested")
             operation_context = contextvars.copy_context()
             future = self._executor.submit(
                 operation_context.run,
                 backend.invoke,
                 envelope,
             )
-            remaining = max(0.0, deadline - monotonic_clock())
-            raw = future.result(timeout=remaining)
+            while True:
+                if envelope.cancellation_requested.is_set():
+                    raise RequestCancellationRequestedError("request cancellation was requested")
+                remaining = max(0.0, deadline - monotonic_clock())
+                try:
+                    raw = future.result(timeout=min(remaining, 0.05))
+                    break
+                except TimeoutError:
+                    if future.done() or monotonic_clock() >= deadline:
+                        raise
+            if envelope.cancellation_requested.is_set():
+                raise RequestCancellationRequestedError("request cancellation was requested")
             # Future.result(timeout=0) still returns an already-completed
             # result. Host scheduling delay must not turn a late result into
             # successful execution beyond the original request deadline.
@@ -718,13 +744,18 @@ class RequestBroker:
                     _digest(payload),
                 )
             return payload
-        except TimeoutError as exc:
+        except (TimeoutError, RequestCancellationRequestedError) as exc:
             cancellation_error: Exception | None = None
+            envelope.cancellation_requested.set()
             try:
-                backend.cancel(envelope.context.request_id)
+                if future is not None:
+                    backend.cancel(envelope.context.request_id)
             except Exception as cancel_exc:
                 cancellation_error = cancel_exc
-            ambiguous = binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
+            ambiguous = (
+                future is not None
+                and binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
+            )
             self._record_audit_failure(audit_reservation, ambiguous=ambiguous)
             if ambiguous:
                 raise_ambiguous(
@@ -736,8 +767,10 @@ class RequestBroker:
                 )
             if cancellation_error is not None:
                 raise ProviderExecutionError(
-                    "local execution timed out and authenticated cancellation failed"
+                    "local execution stopped waiting and authenticated cancellation failed"
                 ) from cancellation_error
+            if isinstance(exc, RequestCancellationRequestedError):
+                raise RequestCancellationRequestedError("request cancellation was requested") from exc
             raise RequestTimedOutError("local execution exceeded deadline") from exc
         except AmbiguousEffectError:
             raise

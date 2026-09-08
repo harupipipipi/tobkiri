@@ -1942,6 +1942,9 @@ def capture_production_dispatch(
         parent_deadline = getattr(outer_request, "deadline_monotonic", None)
         if parent_deadline is None:
             raise AuthorityDenied("PackVM capability bridge outer deadline is missing")
+        parent_cancellation = getattr(outer_request, "cancellation_requested", None)
+        if type(parent_cancellation) is not threading.Event:
+            raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
         with caller_session_bindings_lock:
             caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
         try:
@@ -1950,6 +1953,7 @@ def capture_production_dispatch(
                 bridge_edge.resolved_binding.operation.operation_id,
                 {**dict(request), "_session_id": bridge_session_id},
                 parent_deadline_monotonic=parent_deadline,
+                parent_cancellation=parent_cancellation,
             )
             if not isinstance(provider_result, Mapping):
                 raise TypeError("verified Provider capability returned a non-object")

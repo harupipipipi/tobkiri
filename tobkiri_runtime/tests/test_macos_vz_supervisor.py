@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, Mapping
 
@@ -538,6 +539,7 @@ def _request(domain_id: str, request_id: str = "request-1") -> SimpleNamespace:
         context=SimpleNamespace(request_id=request_id), request_digest=_digest(request_id),
         contract_id="conversation.turn.v1", contract_version="1.0.0", operation_id="complete",
         payload={"messages": [{"role": "user", "content": "hello"}]}, deadline_monotonic=50.0,
+        cancellation_requested=Event(),
     )
 
 
@@ -689,6 +691,7 @@ def test_cancel_during_host_callback_fences_late_result(
                 driver.cancel("request-1")
         else:
             driver.cancel("request-1")
+        assert getattr(outer_request, "cancellation_requested").is_set()
         return _bridge_result(request)
 
     driver.bind_capability_bridge(callback)

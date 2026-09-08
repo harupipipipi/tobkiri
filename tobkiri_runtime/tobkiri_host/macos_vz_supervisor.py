@@ -704,6 +704,9 @@ class MacOSVZSupervisorDriver:
         """Invoke only within an authenticated, Host-owned active domain."""
 
         domain_id, request_id, request_digest = _request_identity(request)
+        cancellation_requested = getattr(request, "cancellation_requested", threading.Event())
+        if type(cancellation_requested) is not threading.Event:
+            raise BackendUnavailableError("macOS VZ cancellation signal is invalid")
         with self._lock:
             session = self._domains.get(domain_id)
             if session is None:
@@ -718,6 +721,7 @@ class MacOSVZSupervisorDriver:
                 launch_binding_digest=session.launch_binding_digest,
                 guest_challenge=guest_challenge,
                 transport=session.transport,
+                cancellation_requested=cancellation_requested,
             )
             self._active_requests[request_id] = active
         try:

@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import sys
 from concurrent.futures import Future
-from threading import Barrier, Lock, Thread
+from threading import Barrier, Event, Lock, Thread
 from types import SimpleNamespace
 import time
 from typing import Any, Mapping
@@ -40,6 +40,7 @@ from tobkiri_host.errors import (
     AuthorizationError,
     ProviderExecutionError,
     RequestTimedOutError,
+    RequestCancellationRequestedError,
 )
 from tobkiri_host.materialization import (
     MaterializationCoordinator,
@@ -440,6 +441,65 @@ def test_external_timeout_is_fenced_persisted_and_never_auto_retried() -> None:
     assert fixture.backend.cancelled == ["request-1"]
     assert fixture.authority.fenced == ["request-1"]
     assert fixture.audit.failures == [("ambiguous_effect", True)]
+
+
+@pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
+@pytest.mark.parametrize("cancel_fails", [False, True])
+def test_parent_cancellation_targets_inner_request_without_claiming_termination(
+    effect: EffectClass, cancel_fails: bool,
+) -> None:
+    """A shared Host signal reaches the selected backend's exact inner ID."""
+    cancelled = Event()
+    release_provider = Event()
+
+    class CancellableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            assert request.cancellation_requested is cancelled
+            self.invocations += 1
+            cancelled.set()
+            assert release_provider.wait(timeout=10)
+            return self.outcome
+
+        def cancel(self, request_id: str) -> None:
+            super().cancel(request_id)
+            release_provider.set()
+            if cancel_fails:
+                raise RuntimeError("test cancellation was not acknowledged")
+
+    fixture = make_broker(effect=effect, timeout_ms=10000, backend=CancellableBackend([]))
+    expected_error = (
+        AmbiguousEffectError if effect is EffectClass.EXTERNAL_EFFECT
+        else ProviderExecutionError if cancel_fails
+        else RequestCancellationRequestedError
+    )
+    try:
+        with pytest.raises(expected_error):
+            fixture.broker.invoke(
+                frame(), replace(context(), request_id="inner-request"),
+                effect_scope={}, parent_cancellation=cancelled,
+            )
+    finally:
+        release_provider.set()
+        fixture.broker.close()
+    assert fixture.backend.cancelled == ["inner-request"]
+    assert fixture.backend.invocations == 1
+    assert fixture.authority.fenced == ["inner-request"]
+    assert "audit_committed" not in fixture.events
+
+
+def test_already_cancelled_parent_never_starts_inner_work() -> None:
+    """No admission, authority exercise or provider call follows a prior cancel."""
+    cancelled = Event()
+    cancelled.set()
+    fixture = make_broker()
+    try:
+        with pytest.raises(RequestCancellationRequestedError):
+            fixture.broker.invoke(
+                frame(), context(), effect_scope={}, parent_cancellation=cancelled,
+            )
+        assert fixture.events == []
+    finally:
+        fixture.broker.close()
 
 
 @pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])

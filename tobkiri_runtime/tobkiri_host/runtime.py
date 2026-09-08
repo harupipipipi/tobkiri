@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -218,6 +219,7 @@ class V4DispatchSession:
         *,
         version_range: str | None = None,
         parent_deadline_monotonic: float | None = None,
+        parent_cancellation: threading.Event | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
@@ -255,13 +257,14 @@ class V4DispatchSession:
             operation_id=operation_id,
             payload=arguments,
         )
-        if parent_deadline_monotonic is None:
+        if parent_deadline_monotonic is None and parent_cancellation is None:
             return self.broker.invoke(invocation, context, effect_scope=scope)
         return self.broker.invoke(
             invocation,
             context,
             effect_scope=scope,
             parent_deadline_monotonic=parent_deadline_monotonic,
+            parent_cancellation=parent_cancellation,
         )
 
 
