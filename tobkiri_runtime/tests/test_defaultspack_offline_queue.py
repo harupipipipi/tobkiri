@@ -157,14 +157,16 @@ def test_independent_command_state_reopens_queue_after_settings_path_change(
         "expected_revision": 0,
     })
     assert queued["status"] == "queued"
-    pending = protocol.offline.pending()
+    owner_key = protocol._owner_key({}, None)
+    pending = protocol.offline.pending(owner_key=owner_key)
     assert len(pending) == 1
     monkeypatch.setenv(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "new-owner" / "settings.json"),
     )
     reopened = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
-    assert reopened.offline.pending() == pending
+    assert reopened.offline.pending(owner_key=owner_key) == pending
+    assert reopened.offline.pending(owner_key="another-owner") == []
     assert reopened._event_store_path == protocol._event_store_path
     assert not (tmp_path / "new-owner").exists()
 
