@@ -39,12 +39,23 @@ automatically from application templates. New controls do not expose saved value
 until their public fields are approved in that policy. Password/key/token controls
 remain filtered even when a public field identifier is present.
 
-The settings reader still imports the legacy application shared-settings reader
-for the existing `defaultspack/shared/frontend_settings.json` snapshot. This is
-the remaining cross-Pack implementation dependency. Its ownership/compatibility
-transition is not solved by this change; do not replace it with a foreign-path
-read or hide it behind an import alias. No state migration, repair or write is
-performed by these read contracts.
+Settings persistence now lives in the settings Host Pack's `runtime/store.py`.
+Its read/catalog and display-write factories use that same owner implementation
+at the historical `defaultspack/shared/frontend_settings.json` location. The
+application's former store module is a data-only client, not an import alias or
+another parser/writer. Shared revision/error types and the trusted owner port
+live in `tobkiri_protocol/settings_state.py`; that module has no file IO.
+
+This is a staged source transfer, **not a completed caller or live cutover**.
+Legacy paths are diagnostic metadata and cannot grant access. Unbound legacy
+clients raise `explicit settings owner binding is required`. FrontendRegistry,
+ModelRuntimeSettingsService and CommandProtocol accept an explicit owner port;
+the legacy settings block can receive one only through its separate trusted
+Host context, not request data. Existing standalone callers are not all wired:
+the model/isolated-settings audit currently has 27 failures and 7 passes.
+Do not restore an ambient file fallback or publish a full-document RPC merely
+to make those tests green. Finite captured callers and their tests must be
+connected before this source can be accepted or deployed.
 
 The legacy transition must cover more than the presentation reader:
 
@@ -55,13 +66,14 @@ The legacy transition must cover more than the presentation reader:
   and uses revision/idempotency-aware `mutate_state` for model mutations.
 - `domain/frontend/command_protocol.py` reads registered command declarations
   from the same shared document.
-- `domain/frontend_settings_store.py` currently owns file locking, atomic
+- `tobkiri_ui_settings_pack/runtime/store.py` owns file locking, atomic
   replacement, whole-document/state revisions and mutation receipts together.
 - Optional settings reads in AIClient, chat requests, tool recommendation and
   permissions, trigger decisions, chat debug logging and LINE addressing/output
   policy now use `domain/frontend_settings.py` and the owner's `read_snapshot()`.
-  These nine reads no longer parse the file independently. Their existing
-  unreadable/corrupt-preference fallback remains local compatibility behavior;
+  These nine reads no longer parse the file independently, but their explicit
+  owner binding is still pending. Their existing unreadable/corrupt fallback is
+  local compatibility behavior;
   it must not absorb future captured-contract authorization failures. They do
   not recover from backup or create locks/directories/diagnostics.
 - The model service no longer caches resolved values using filesystem size and
@@ -114,9 +126,9 @@ only changed fields, rejects names outside a separately supplied Host write
 policy before storage access, reads the original document locally and commits
 through the existing document CAS. Its result contains the submitted fields and
 new document revision, not unrelated stored values or receipts. It neither
-repairs corrupt data nor retries conflicts or ambiguous replies. This primitive
-is not yet a registered operation: capture must supply write policy and field
-value validation independently of the request. The public read allowlist must
+repairs corrupt data nor retries conflicts or ambiguous replies. The registered
+display-preference factory below supplies write policy and field validation
+independently of the request. The public read allowlist must
 not be reused as an implicit grant to mutate every readable field.
 
 The canonical catalog now registers `tobkiri.ui.preferences.write` through
@@ -134,8 +146,8 @@ save flow, cancellation while waiting on the legacy store lock, or live owner
 cutover. The current UI expects a full settings projection after saving, while
 this write acknowledgement deliberately returns only changed fields; integration
 must reconcile that difference and propagate revisions, not expose the private
-document to satisfy the old response shape. Settings persistence still has the
-documented cross-Pack import until the actual storage owner migration finishes.
+document to satisfy the old response shape. The storage source transfer has
+removed the cross-Pack import, but has not connected those application callers.
 
 Both settings read and the full catalog's settings projection now include
 `document_revision` from the same single snapshot used for their public values.
