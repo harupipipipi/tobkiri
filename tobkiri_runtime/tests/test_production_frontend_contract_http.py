@@ -210,6 +210,34 @@ class _PresentationPackVmBackend(_ShellPolicyPackVmBackend):
     _execute_abi = staticmethod(_presentation_abi)
 
 
+class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
+    """Explicit guest adapter; Host callbacks and conversation owner stay real."""
+
+    _PACK_ID = "defaultspack"
+    _FUNCTION_ID = "defaultspack.conversation.saved"
+    _CONTRACT_ID = "conversation.saved-turn.v1"
+    _OPERATION_ID = "saved_complete"
+
+    def bind_saved_capability_bridge(self, callback, preflight) -> None:
+        self._saved_callback = callback
+        self._saved_preflight = preflight
+
+    def invoke(self, request: object) -> ProviderOutcome:
+        from ecosystem.defaultspack.runtime import saved_conversation
+        from tests.test_saved_bridge_callbacks import _frame
+
+        assert isinstance(request, RequestEnvelope)
+        assert request.target_domain.value == self._target_domain_id
+        assert request.contract_id == self._CONTRACT_ID
+        assert request.operation_id == self._OPERATION_ID
+        self._saved_preflight(request)
+        intent = saved_conversation.start(request.payload["request"])
+        for _ in range(4):
+            outcome = self._saved_callback(request, _frame(intent, request.context.request_id))
+            intent = saved_conversation.resume(intent["state"], outcome)
+        return ProviderOutcome(intent)
+
+
 def _contract(method: str, target: str) -> str:
     return "/api/contracts/defaultspack/" + quote(f"{method.upper()} {target}", safe="")
 
@@ -394,6 +422,71 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         tmp_path, monkeypatch,
         packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
     )
+
+
+def test_saved_send_http_preserves_authority_and_durable_idempotency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.runtime import V4DispatchSession
+
+    original = V4DispatchSession.invoke
+    ai_calls = []
+
+    def invoke(self, contract_id, operation_id, payload, **kwargs):
+        if (contract_id, operation_id) == READINESS:
+            return {"ready": True, "model_profile_id": "model-profile-1"}
+        if (contract_id, operation_id) == TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Hi"}
+        return original(self, contract_id, operation_id, payload, **kwargs)
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    servers = _captured_production_server(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    )
+    server, _session, _authority = next(servers)
+    try:
+        store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+        store.create({"id": "conversation-1", "model_reference": "model-profile-1"},
+                     expected_revision=0)
+        before = store.path.read_bytes()
+        route = _contract("POST", "/api/chat/turn")
+        body = {"request": {"turn_id": "turn-1", "conversation_id": "conversation-1",
+                            "conversation_revision": 1, "content": "Hello"}}
+        status, payload, _ = _request(server, "POST", route, body=body)
+        assert status in {401, 403}, payload
+        cookie, csrf, origin = _authenticate(server)
+        headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+        for invalid in (
+            {**body, "approved": True}, {**body, "profile_id": "other"},
+            {**body, "state": {}}, {"request": {**body["request"], "outcome": {}}},
+            {"request": {**body["request"], "content": "あ" * 22000}},
+            {"request": {**body["request"], "conversation_revision": True}},
+        ):
+            headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+            status, payload, _ = _request(server, "POST", route, body=invalid, headers=headers)
+            assert status == 400, payload
+        assert store.path.read_bytes() == before
+        assert not ai_calls
+        assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _ = _request(server, "POST", route, body=body, headers=headers)
+        assert status == 200, payload
+        assert payload["data"]["status"] == "completed", payload
+        reference = payload["data"]["turn"]["result_reference"]
+        assert reference["conversation_revision"] == 3
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, repeated, _ = _request(server, "POST", route, body=body, headers=headers)
+        assert status == 200, repeated
+        assert repeated["data"] == {"status": "existing", "turn": payload["data"]["turn"]}
+        assert len(ai_calls) == 1
+        assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]
+    finally:
+        servers.close()
 
 
 def test_preferences_write_uses_captured_owner_and_preserves_private_state(

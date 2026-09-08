@@ -40,6 +40,53 @@ function requestTarget(input: RequestInfo | URL): string {
   return separator < 0 ? operation : operation.slice(separator + 1);
 }
 
+test("saved turn uses exact canonical transport and never retries an uncertain outcome", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
+  const result = { status: "reconciliation_required", turn: { id: "turn-1", conversation_id: "conversation-1", status: "waiting", revision: 3 } };
+  let calls = 0;
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
+    return new Response(JSON.stringify({ success: true, data: result }));
+  };
+  assert.deepEqual(await api.startSavedTurn(input), result);
+  assert.equal(calls, 1);
+  globalThis.fetch = async () => { calls += 1; throw new Error("connection lost"); };
+  await assert.rejects(api.startSavedTurn(input), /connection lost/);
+  assert.equal(calls, 2);
+});
+
+test("saved turn rejects unsupported fields and invalid revisions before sending", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
+  const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
+  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { conversation_revision: 0 },
+    { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) }]) {
+    await assert.rejects(api.startSavedTurn({ ...input, ...patch }), /invalid|unsupported/);
+  }
+  assert.equal(calls, 0);
+});
+
+test("saved turn rejects another conversation outcome without replay", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ success: true, data: {
+      status: "completed", turn: { id: "turn-1", conversation_id: "other" },
+    } }));
+  };
+  await assert.rejects(api.startSavedTurn({ turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 1, content: "hello" }), /unconfirmed/);
+  assert.equal(calls, 1);
+});
+
 test("conversation create pins identity and revision and does not retry conflicts", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

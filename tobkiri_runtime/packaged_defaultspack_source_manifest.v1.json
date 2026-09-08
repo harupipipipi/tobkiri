@@ -89,8 +89,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 22835,
-      "sha256": "6f69830ebc2f583294948915752774c790b577f79041f7241f7ade9d76d55069",
+      "size": 23326,
+      "sha256": "53ef3d3e73e587a6aa32ca8ebd927bf749299e387694a1137630140b8afd21f2",
       "executable": false
     },
     {
@@ -110,8 +110,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 16663,
-      "sha256": "eb3f8e5cd870b5f33b1480b1762b33708f38f5c542417e444cd4a3db62f09680",
+      "size": 17214,
+      "sha256": "9063c36686f8072e108a7dd3933c37734b863e39d797053f9ecd357fd3c93a28",
       "executable": false
     },
     {
@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 847547,
-      "sha256": "de6145e8bf2f56fadc22ac420b1e7f245d777883d7edbd52bc4ae22f98369cd2",
+      "sha256": "00cd91c98a6a104547a02f19b88920108fb9d3d64fa37a34090b46158ec4573a",
       "executable": false
     },
     {

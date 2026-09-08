@@ -19,6 +19,7 @@ from core_runtime.pack_api_server import (
     WorkspaceBindingResolver,
 )
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 from .model_profile_presentation import (
     MODEL_PROFILE_LIST_TARGET,
@@ -140,6 +141,17 @@ class DefaultspackHTTPPresentation:
         workspace_binding_resolver: WorkspaceBindingResolver | None,
     ) -> Mapping[str, object]:
         """Bind model reads and media paths to the captured Profile."""
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == (
+            "defaults.conversations.send", "tobkiri.action.turn.saved.v1",
+            "rumi_turn_runtime_pack.turn-saved",
+            "rumi_turn_runtime_pack.turn-runtime.saved",
+            "rumi_turn_runtime_pack.turn-runtime.saved",
+        ):
+            return validate_saved_conversation_input(payload)
 
         if (
             target.contribution_id,
