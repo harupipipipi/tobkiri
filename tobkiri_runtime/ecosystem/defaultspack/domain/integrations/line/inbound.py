@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import base64
 import hashlib
 import hmac
@@ -261,8 +263,8 @@ def _apply_external_output_context(runtime_context: dict[str, Any]) -> None:
         runtime_context.setdefault("line_target_id", target_id)
 
 
-def _frontend_external_output_settings() -> dict[str, Any]:
-    data = read_optional_frontend_settings()
+def _frontend_external_output_settings(*, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    data = read_optional_frontend_settings(settings_owner=settings_owner)
     if not isinstance(data, dict):
         return {}
     output = data.get("external_output") if isinstance(data.get("external_output"), dict) else {}
@@ -567,8 +569,8 @@ def _require_line_group_mention(endpoint: WebhookEndpoint, external_event) -> bo
     return _truthy(configured)
 
 
-def _line_mention_policy_default() -> Any:
-    data = read_optional_frontend_settings()
+def _line_mention_policy_default(*, settings_owner: SettingsOwnerPort | None = None) -> Any:
+    data = read_optional_frontend_settings(settings_owner=settings_owner)
     if not isinstance(data, dict):
         return True
     line_settings = data.get("line") if isinstance(data.get("line"), dict) else {}

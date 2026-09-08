@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import base64
 import copy
 import importlib
@@ -4235,8 +4237,8 @@ def _tool_selection_selector_model(
     return ""
 
 
-def _read_frontend_settings() -> dict[str, Any]:
-    return read_optional_frontend_settings()
+def _read_frontend_settings(*, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return read_optional_frontend_settings(settings_owner=settings_owner)
 
 
 def _ensure_must_use_has_eligible_tools(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from pathlib import Path
 from typing import Any
 
@@ -103,12 +105,12 @@ class ToolPermissionResolver:
         return value if value in PERMISSION_MODES else DEFAULT_ACTION_PERMISSIONS.get(action_class, "confirm")
 
 
-def _read_frontend_settings(pack_root: Path) -> dict[str, Any]:
-    return read_optional_frontend_settings(pack_root)
+def _read_frontend_settings(pack_root: Path, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return read_optional_frontend_settings(pack_root, settings_owner=settings_owner)
 
 
-def read_frontend_settings(pack_root: Path | None = None) -> dict[str, Any]:
-    return _read_frontend_settings(pack_root or Path(__file__).resolve().parents[2])
+def read_frontend_settings(pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return _read_frontend_settings(pack_root or Path(__file__).resolve().parents[2], settings_owner=settings_owner)
 
 
 def _override_value(container: Any, target_id: str, action_class: str) -> str:

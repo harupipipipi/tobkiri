@@ -1,4 +1,6 @@
 import sys
+
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 import os
 import base64
 import json
@@ -1215,8 +1217,8 @@ def _truthy(value):
     return False
 
 
-def _frontend_debug_settings_enabled():
-    settings = read_optional_frontend_settings()
+def _frontend_debug_settings_enabled(*, settings_owner: SettingsOwnerPort | None = None) -> bool:
+    settings = read_optional_frontend_settings(settings_owner=settings_owner)
     debug = settings.get("debug") if isinstance(settings, dict) else {}
     if not isinstance(debug, dict):
         return False

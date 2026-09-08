@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import math
 import re
 from collections import Counter
@@ -135,8 +137,8 @@ def search_tools(
     ]
 
 
-def _read_frontend_settings(pack_root: Path | None = None) -> dict[str, Any]:
-    return read_optional_frontend_settings(pack_root)
+def _read_frontend_settings(pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return read_optional_frontend_settings(pack_root, settings_owner=settings_owner)
 
 
 def _tool_vector(tool: dict[str, Any]) -> Counter[str]:

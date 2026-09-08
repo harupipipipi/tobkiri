@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -275,8 +277,8 @@ def _public_settings(settings: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _frontend_trigger_config() -> dict[str, Any]:
-    raw = read_optional_frontend_settings()
+def _frontend_trigger_config(*, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    raw = read_optional_frontend_settings(settings_owner=settings_owner)
     triggers = raw.get("triggers") if isinstance(raw, dict) and isinstance(raw.get("triggers"), dict) else {}
     mode = str(triggers.get("mode") or "vector").strip().lower()
     if mode not in {"vector", "llm"}:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import json
 import os
 import re
@@ -431,10 +433,10 @@ class AIClient:
                 routes.setdefault(model_ref, route_refs)
         return routes
 
-    def _settings_data(self):
+    def _settings_data(self, *, settings_owner: SettingsOwnerPort | None = None):
         from domain.frontend_settings import read_optional_frontend_settings
 
-        return read_optional_frontend_settings()
+        return read_optional_frontend_settings(settings_owner=settings_owner)
 
     @staticmethod
     def _jsonish(value, fallback):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import re
 from pathlib import Path
 from typing import Any
@@ -70,7 +72,7 @@ def _line_message_text(event: dict[str, Any]) -> str:
     return str(message.get("text") or "").strip()
 
 
-def _line_addressing_trigger_words(endpoint: WebhookEndpoint) -> list[str]:
+def _line_addressing_trigger_words(endpoint: WebhookEndpoint, *, settings_owner: SettingsOwnerPort | None = None) -> list[str]:
     values: list[str] = []
     response = endpoint.response if isinstance(endpoint.response, dict) else {}
     conversation = endpoint.conversation if isinstance(endpoint.conversation, dict) else {}
@@ -84,7 +86,7 @@ def _line_addressing_trigger_words(endpoint: WebhookEndpoint) -> list[str]:
         ):
             values.extend(_listish(container.get(key)))
     if not values:
-        data = read_optional_frontend_settings()
+        data = read_optional_frontend_settings(settings_owner=settings_owner)
         line_settings = data.get("line") if isinstance(data, dict) and isinstance(data.get("line"), dict) else {}
         for key in ("line_trigger_words", "group_room_trigger_words", "addressing_trigger_words", "trigger_words"):
             values.extend(_listish(line_settings.get(key)))

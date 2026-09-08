@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
@@ -31,7 +33,8 @@ def test_isolated_frontend_settings_selects_cerebras_without_persisting_credenti
         defaultspack_frontend_settings_path,
     )
 
-    service = ModelRuntimeSettingsService(DEFAULTSPACK_ROOT)
+    owner = FrontendSettingsStore(settings_path)
+    service = ModelRuntimeSettingsService(DEFAULTSPACK_ROOT, settings_owner=owner)
     assert service._settings_path == settings_path.resolve()
     assert service.get_preferred_model() == "cerebras/gemma-4-31b"
     assert (
@@ -42,7 +45,14 @@ def test_isolated_frontend_settings_selects_cerebras_without_persisting_credenti
     AIClient._instance = None
     client = AIClient()
     assert client._settings_path() == settings_path.resolve()
-    assert client._settings_data()["models"]["preferred_model"] == "cerebras/gemma-4-31b"
+    assert client._settings_data(settings_owner=owner)["models"]["preferred_model"] == "cerebras/gemma-4-31b"
+    other_path = tmp_path / "other.json"
+    other_path.write_text('{"models":{"preferred_model":"stub/other"}}', encoding="utf-8")
+    other_owner = FrontendSettingsStore(other_path)
+    assert client._settings_data(settings_owner=other_owner)["models"]["preferred_model"] == "stub/other"
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        client._settings_data()
+    assert client._settings_data(settings_owner=owner)["models"]["preferred_model"] == "cerebras/gemma-4-31b"
     AIClient._instance = None
 
     stored = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -72,16 +82,17 @@ def test_all_frontend_settings_consumers_use_isolated_path(tmp_path, monkeypatch
     from domain.integrations.line import addressing, inbound
     from domain.tool import permission_resolver
 
-    assert tool_recommender._read_frontend_settings() == isolated_settings
-    trigger_config = trigger_decision._frontend_trigger_config()
+    owner = FrontendSettingsStore(settings_path)
+    assert tool_recommender._read_frontend_settings(settings_owner=owner) == isolated_settings
+    trigger_config = trigger_decision._frontend_trigger_config(settings_owner=owner)
     assert trigger_config["llm"]["model"] == "isolated/model"
-    assert permission_resolver.read_frontend_settings() == isolated_settings
-    assert run_request._read_frontend_settings() == isolated_settings
-    assert send._frontend_debug_settings_enabled() is True
+    assert permission_resolver.read_frontend_settings(settings_owner=owner) == isolated_settings
+    assert run_request._read_frontend_settings(settings_owner=owner) == isolated_settings
+    assert send._frontend_debug_settings_enabled(settings_owner=owner) is True
     assert addressing._frontend_settings_path() == settings_path.resolve()
     assert inbound._frontend_settings_path() == settings_path.resolve()
-    assert inbound._frontend_external_output_settings() == {"mode": "isolated"}
-    registry = FrontendRegistry(tmp_path / "shared-pack")
+    assert inbound._frontend_external_output_settings(settings_owner=owner) == {"mode": "isolated"}
+    registry = FrontendRegistry(tmp_path / "shared-pack", settings_owner=owner)
     assert registry._settings_path == settings_path.resolve()
 
 
