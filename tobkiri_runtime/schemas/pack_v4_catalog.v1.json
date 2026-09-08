@@ -988,6 +988,101 @@
       "provided_contracts": [
         {
           "cardinality": "one",
+          "contract_id": "tobkiri.resource.ai.readiness.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_ai_gateway_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "ai-gateway-preflight",
+              "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+              "implementation_digest": "sha256:2e8e2a7febc869e4376466f9c4e545b6fc9e76a79a56ef83e043fb524282345e"
+            }
+          ],
+          "owner": "rumi_ai_gateway_pack",
+          "provider_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "required_capabilities": [
+            "ai.gateway.readiness.read"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model_profile_id",
+                "messages"
+              ],
+              "properties": {
+                "model_profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "messages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 2048,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "role",
+                      "content"
+                    ],
+                    "properties": {
+                      "role": {
+                        "enum": [
+                          "system",
+                          "user",
+                          "assistant"
+                        ]
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ready",
+                "model_profile_id",
+                "model_id",
+                "provider_instance_id",
+                "catalog_revision"
+              ],
+              "properties": {
+                "ready": {
+                  "const": true
+                },
+                "model_profile_id": {
+                  "type": "string"
+                },
+                "model_id": {
+                  "type": "string"
+                },
+                "provider_instance_id": {
+                  "type": "string"
+                },
+                "catalog_revision": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
           "contract_id": "tobkiri.resource.ai.routing.diagnostics.v1",
           "failure": "isolate",
           "isolation": "in_process",
@@ -1164,6 +1259,11 @@
           "digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
           "kind": "executable",
           "path": "runtime/gateway.py"
+        },
+        {
+          "digest": "sha256:2e8e2a7febc869e4376466f9c4e545b6fc9e76a79a56ef83e043fb524282345e",
+          "kind": "executable",
+          "path": "runtime/preflight.py"
         }
       ],
       "secrets": [],

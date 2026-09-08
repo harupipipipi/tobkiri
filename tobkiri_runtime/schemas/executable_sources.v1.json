@@ -624,6 +624,181 @@
       ],
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python"
     },
+    "rumi_ai_gateway_pack.ai-gateway.preflight": {
+      "contract_id": "tobkiri.resource.ai.readiness.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "implementation_digest": "sha256:2e8e2a7febc869e4376466f9c4e545b6fc9e76a79a56ef83e043fb524282345e",
+      "implementation_path": "runtime/preflight.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "messages": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "role": {
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant"
+                  ]
+                }
+              },
+              "required": [
+                "role",
+                "content"
+              ],
+              "type": "object"
+            },
+            "maxItems": 2048,
+            "minItems": 1,
+            "type": "array"
+          },
+          "model_profile_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_profile_id",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ai.readiness.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:2e8e2a7febc869e4376466f9c4e545b6fc9e76a79a56ef83e043fb524282345e",
+          "implementation_path": "runtime/preflight.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "messages": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "enum": [
+                        "system",
+                        "user",
+                        "assistant"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "content"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 2048,
+                "minItems": 1,
+                "type": "array"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "model_profile_id",
+              "messages"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "catalog_revision": {
+                "type": "string"
+              },
+              "model_id": {
+                "type": "string"
+              },
+              "model_profile_id": {
+                "type": "string"
+              },
+              "provider_instance_id": {
+                "type": "string"
+              },
+              "ready": {
+                "const": true
+              }
+            },
+            "required": [
+              "ready",
+              "model_profile_id",
+              "model_id",
+              "provider_instance_id",
+              "catalog_revision"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_ai_gateway_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog_revision": {
+            "type": "string"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "model_profile_id": {
+            "type": "string"
+          },
+          "provider_instance_id": {
+            "type": "string"
+          },
+          "ready": {
+            "const": true
+          }
+        },
+        "required": [
+          "ready",
+          "model_profile_id",
+          "model_id",
+          "provider_instance_id",
+          "catalog_revision"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_ai_gateway_pack",
+      "pack_id": "rumi_ai_gateway_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_ai_gateway_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.preflight.python"
+    },
     "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics": {
       "contract_id": "tobkiri.resource.ai.routing.diagnostics.v1",
       "contract_version": "1.0.0",
@@ -11158,7 +11333,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:3a2048842f600ccfc1858fa73eb2ff1ded430e831b2b9c61cb20b7efc4bd2d13",
+    "input_digest": "sha256:e43c3a7609b0ff62e9ba385716bed5fee90d95f174ca1c36bc561f67c08a83a1",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -11865,7 +12040,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:6093256244ada4e3a5ba40591bb8bbc76715dcb690692bcbc792b8a56a9838f5",
+        "digest": "sha256:6424cf3dc30135adc4bc2f35821a85796361e50d75756b61259e8ebe75ab879d",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
