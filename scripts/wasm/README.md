@@ -8,10 +8,16 @@ Install `componentize-py==0.25.0` and `wasmtime==48.0.0` in an isolated Python
 environment, then run its Python interpreter:
 
 ```sh
-python scripts/wasm/build_shell_policy.py --output /tmp/tobkiri-wasm/policy.wasm
+python scripts/wasm/build_shell_policy.py \
+  --source tobkiri_runtime/ecosystem/rumi_shell_policy_pack/runtime/policy.py \
+  --source-sha256 4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51 \
+  --output /tmp/tobkiri-wasm/policy.wasm
 ```
 
-The builder copies the canonical policy source, generates the WIT bindings,
+The caller selects the source and its reviewed SHA-256 pin explicitly; the
+builder does not discover a sibling Pack or choose a runtime provider. When
+the source changes, review it and update the build pin rather than bypassing
+the mismatch. The builder captures the verified bytes once, generates WIT bindings,
 builds with `--stub-wasi`, and rejects any remaining component imports. It does
 not inherit user credentials or HOME during build-time initialization. Its
 `.build.json` records source, adapter, WIT, output digests and tool versions.

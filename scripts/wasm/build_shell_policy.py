@@ -19,12 +19,23 @@ import tempfile
 
 
 TOOLS = {"componentize-py": "0.25.0", "wasmtime": "48.0.0"}
-ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/runtime/policy.py"
+def capture_source(source: Path, expected_sha256: str) -> bytes:
+    """Capture caller-selected source bytes against an explicit build pin."""
+    if len(expected_sha256) != 64 or any(
+        character not in "0123456789abcdef" for character in expected_sha256
+    ):
+        raise ValueError("source SHA-256 must be 64 lowercase hexadecimal characters")
+    if source.is_symlink() or not source.is_file():
+        raise ValueError("source must be a regular Python file, not a symlink")
+    content = source.read_bytes()
+    if hashlib.sha256(content).hexdigest() != expected_sha256:
+        raise ValueError("source SHA-256 does not match the requested build pin")
+    return content
 
 
-def build(output: Path) -> dict[str, object]:
+def build(output: Path, *, source: Path, source_sha256: str) -> dict[str, object]:
     """Build and verify component bytes with pinned, preinstalled tools."""
+    source_bytes = capture_source(source, source_sha256)
     from wasmtime import Config, Engine
     from wasmtime.component import Component
 
@@ -41,7 +52,8 @@ def build(output: Path) -> dict[str, object]:
     directory = Path(__file__).resolve().parent
     with tempfile.TemporaryDirectory(prefix="tobkiri-wasm-build-") as temporary:
         stage = Path(temporary)
-        shutil.copyfile(SOURCE, stage / "policy.py")
+        # Compile the verified capture, never reopen a mutable source path.
+        (stage / "policy.py").write_bytes(source_bytes)
         shutil.copyfile(directory / "pack.wit", stage / "pack.wit")
         shutil.copyfile(directory / "shell_policy_component.py", stage / "app.py")
         # No user credentials, HOME, or environment variables enter preinit.
@@ -96,7 +108,12 @@ def main() -> None:
     """Build one explicit output without modifying runtime selection."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    print(json.dumps(build(parser.parse_args().output), sort_keys=True))
+    parser.add_argument("--source", type=Path, required=True)
+    parser.add_argument("--source-sha256", required=True)
+    args = parser.parse_args()
+    print(json.dumps(build(
+        args.output, source=args.source, source_sha256=args.source_sha256,
+    ), sort_keys=True))
 
 
 if __name__ == "__main__":
