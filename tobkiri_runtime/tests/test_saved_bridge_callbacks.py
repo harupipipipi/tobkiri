@@ -238,6 +238,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     profile["requested_edges"] = [
         item for item in profile["requested_edges"]
         if item["caller_function_id"] != saved_function
+        and not (missing_readiness and item["caller_function_id"] == READINESS[1])
     ]
 
     def edge(caller, target, provider):
@@ -401,6 +402,7 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
                    if item["contract_id"] == "conversation.saved-turn.v1")
     principal = FunctionPrincipal.from_dict(binding["function_principal"])
     backend = _CapturedBackend(_digest("normal-saved-coordinator"))
+    backend.target_executable_digest = principal.function_implementation_digest
     guest_requests = []
 
     def guest(envelope):

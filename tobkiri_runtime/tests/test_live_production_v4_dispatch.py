@@ -253,7 +253,7 @@ def test_production_dispatch_executes_credentialed_provider_request(
                 scoped.setattr(V4DispatchSession, "assert_current", stale_capture)
                 with pytest.raises(AuthorityDenied, match="stale captured Profile"):
                     invocation.assert_current()
-            checked_invocations.append(envelope.request_id)
+            checked_invocations.append(envelope.context.request_id)
         return original_invoke(backend, envelope)
 
     monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", check_invocation)
@@ -438,7 +438,7 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
         }
         # One conversation edge and three application-presentation edges now
         # share this Pack approval; revocation must fence every one of them.
-        assert len(expected_revoked) == 4
+        assert len(expected_revoked) == 5
         assert persisted_grant.grant_id in expected_revoked
         assert set(revoked_grants) == expected_revoked
         assert all(store.is_revoked("grant", grant_id) for grant_id in expected_revoked)
