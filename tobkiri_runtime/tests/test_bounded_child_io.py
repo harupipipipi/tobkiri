@@ -57,10 +57,12 @@ def test_runner_stops_and_reaps_flooding_child_without_retaining_diagnostics(
     monkeypatch.setattr(runner, "MAX_CHILD_STDERR_BYTES", 4096)
     source = f"import os\nwhile True: os.write({1 if pipe == 'stdout' else 2}, b'private-diagnostic'*1000)"
     with _child(source) as process:
+        stopped = _local_stop(monkeypatch, process)
         with pytest.raises(ValueError, match="output exceeds size limit") as error:
             runner._communicate_staged_implementation(process, {})
         assert "private-diagnostic" not in str(error.value)
         assert process.poll() is not None
+        assert stopped == [process.pid]
         assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
 
 
@@ -84,8 +86,40 @@ def test_runner_accepts_exact_json_and_redacts_failed_child_stderr() -> None:
         assert "secret" not in str(error.value)
 
 
-def test_runner_reaps_child_even_when_serialization_fails_before_io() -> None:
+def test_runner_reaps_child_even_when_serialization_fails_before_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with _child("import time; time.sleep(30)") as process:
+        stopped = _local_stop(monkeypatch, process)
         with pytest.raises((TypeError, ValueError)):
             runner._communicate_staged_implementation(process, {"invalid": object()})
         assert process.poll() is not None
+        assert stopped == [process.pid]
+
+
+def _local_stop(monkeypatch: pytest.MonkeyPatch, process: subprocess.Popen[bytes]) -> list[int]:
+    # Real pipe I/O and child reaping; Linux guest process-group policy is a
+    # separate boundary, not something this macOS/Windows Host test emulates.
+    stopped = []
+
+    def stop(pid: int) -> list[str]:
+        assert pid == process.pid
+        stopped.append(pid)
+        process.kill()
+        return ["KILL"]
+
+    monkeypatch.setattr(runner, "_terminate_process_group", stop)
+    return stopped
+
+
+def test_failed_termination_still_closes_pipes_without_claiming_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def denied(pid: int) -> None:
+        raise PermissionError("termination denied")
+
+    monkeypatch.setattr(runner, "_terminate_process_group", denied)
+    with _child("import time; time.sleep(30)") as process:
+        with pytest.raises(PermissionError, match="termination denied"):
+            runner._communicate_staged_implementation(process, {"invalid": object()})
+        assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))

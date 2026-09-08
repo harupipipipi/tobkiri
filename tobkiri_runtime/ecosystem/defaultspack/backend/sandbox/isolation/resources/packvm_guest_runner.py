@@ -314,10 +314,12 @@ def _communicate_staged_implementation(
         # Do not call communicate() here: cleanup must not buffer the output
         # which just exceeded its budget. This also owns serialization failures
         # after spawn, before the pipe exchange could start.
-        _terminate_process_group(process.pid)
-        for stream in (process.stdin, process.stdout, process.stderr):
-            if stream is not None:
-                stream.close()
+        try:
+            _terminate_process_group(process.pid)
+        finally:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
         process.wait(timeout=5.0)
         raise
     if process.returncode != 0:
