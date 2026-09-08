@@ -3,7 +3,7 @@
     {
       "path": "runtime/turns.py",
       "role": "runtime",
-      "sha256": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed"
+      "sha256": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

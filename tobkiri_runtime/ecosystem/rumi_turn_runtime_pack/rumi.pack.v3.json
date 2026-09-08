@@ -94,7 +94,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed",
+      "artifact_hash": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
       "contract_id": "rumi.resource.turn.v1",
       "id": "turn-resource",
       "loader": "python",
@@ -102,7 +102,7 @@
       "symbol": "create_turn_resource"
     },
     {
-      "artifact_hash": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed",
+      "artifact_hash": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
       "contract_id": "rumi.action.turn.lifecycle.v1",
       "id": "turn-lifecycle",
       "loader": "python",
@@ -110,7 +110,7 @@
       "symbol": "create_turn_action"
     },
     {
-      "artifact_hash": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed",
+      "artifact_hash": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
       "contract_id": "rumi.event.turn.v1",
       "id": "turn-events",
       "loader": "python",
@@ -146,9 +146,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:527b3948b0453aa8311b0295ab22b67ffb04b623509dd958f6dcb1fe12dc94e6",
+            "artifact_digest": "sha256:3c76c89f2ea4734e1e16c4b07392f57e083556bdbae678aa2e3372250ba4487a",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:efc055d0765a37ceade0bcdd78f6b960a262d8a47e19cee9cad32d15b56d3d44"
+            "source_identity": "sha256:becaaf1ab657dfe547d318ba0644217450c3f90d976bc0027378962fa092ed70"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -167,7 +167,7 @@
         "pack_identity": "rumi:ecosystem/rumi_turn_runtime_pack",
         "provenance": {
           "build_identity": "rumi_turn_runtime_pack:1.0.0",
-          "content_hash": "sha256:c9a5027c264ea1172198b1d4946c3512c29cfaf911f8e6f6a1cbde1795973eac",
+          "content_hash": "sha256:653f6a74c50a1ab757df1b26dbb31f9e5449114fa792593a38381480ade004d6",
           "signature": null,
           "trust_class": "local"
         },
@@ -201,7 +201,7 @@
       "owner": "rumi_turn_runtime_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:efc055d0765a37ceade0bcdd78f6b960a262d8a47e19cee9cad32d15b56d3d44"
+      "source_identity": "sha256:becaaf1ab657dfe547d318ba0644217450c3f90d976bc0027378962fa092ed70"
     }
   },
   "migration": {
@@ -236,7 +236,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_turn_runtime_pack:1.0.0",
-    "content_hash": "sha256:c9a5027c264ea1172198b1d4946c3512c29cfaf911f8e6f6a1cbde1795973eac",
+    "content_hash": "sha256:653f6a74c50a1ab757df1b26dbb31f9e5449114fa792593a38381480ade004d6",
     "signature": null,
     "trust_class": "local"
   },

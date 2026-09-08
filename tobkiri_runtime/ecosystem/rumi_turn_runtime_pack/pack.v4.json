@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:944270216a0b75fe968d6c12c4ffed09bcd355fb19bf13f50b009d1f3249179c",
+      "digest": "sha256:85c2d76ba06843b44a22b16be08ee60231afe35cce6ddc32fa44555e918620c6",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed",
+      "digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
       "kind": "executable",
       "path": "runtime/turns.py"
     }
@@ -38,7 +38,7 @@
     {
       "contract_revision_digest": "sha256:c65360507f2da991fbea5d83a09e510e9d148287f975b8c8d765c2f1dc1485e6",
       "id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed",
+      "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-events"
@@ -48,7 +48,7 @@
     {
       "contract_revision_digest": "sha256:a7cf23d352ca9838379fd3acc501c52fb5cb7e4b0b708d4d0c5c637a3bb680f5",
       "id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed",
+      "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-lifecycle"
@@ -58,7 +58,7 @@
     {
       "contract_revision_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7",
       "id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:0eefb8b32c083309abf0d20688d7769b8533f726f516891de0fead09bfa792ed",
+      "implementation_digest": "sha256:5c1b82707e40db2b2995072b1700621035a2c012e453ae34c404b2a8549b9bfc",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_turn_runtime_pack.turn-resource"
@@ -67,9 +67,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:527b3948b0453aa8311b0295ab22b67ffb04b623509dd958f6dcb1fe12dc94e6",
-    "contract_catalog_digest": "sha256:2aa6002d35e82549aef11425b6ca5101dbfb94eb84b1376fe25c5ca5aef48930",
-    "source_identity": "sha256:efc055d0765a37ceade0bcdd78f6b960a262d8a47e19cee9cad32d15b56d3d44"
+    "artifact_set_digest": "sha256:3c76c89f2ea4734e1e16c4b07392f57e083556bdbae678aa2e3372250ba4487a",
+    "contract_catalog_digest": "sha256:30a65cc4452bed4243a3fb95af25110cc910582dfa5e9908d81aa38fd67684ed",
+    "source_identity": "sha256:becaaf1ab657dfe547d318ba0644217450c3f90d976bc0027378962fa092ed70"
   },
   "migration": {
     "compatibility": "read_only",
@@ -119,7 +119,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:527b3948b0453aa8311b0295ab22b67ffb04b623509dd958f6dcb1fe12dc94e6",
+    "artifact_digest": "sha256:3c76c89f2ea4734e1e16c4b07392f57e083556bdbae678aa2e3372250ba4487a",
     "display_name": "Rumi Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -129,7 +129,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:efc055d0765a37ceade0bcdd78f6b960a262d8a47e19cee9cad32d15b56d3d44",
+        "digest": "sha256:becaaf1ab657dfe547d318ba0644217450c3f90d976bc0027378962fa092ed70",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -140,7 +140,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:efc055d0765a37ceade0bcdd78f6b960a262d8a47e19cee9cad32d15b56d3d44",
+    "source_digest": "sha256:becaaf1ab657dfe547d318ba0644217450c3f90d976bc0027378962fa092ed70",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
   },

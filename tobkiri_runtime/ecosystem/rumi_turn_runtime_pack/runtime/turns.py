@@ -34,10 +34,23 @@ class TurnRuntime:
     def begin(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Begin one idempotent turn bound to a conversation revision."""
         request_id = _identifier(payload.get("request_id") or uuid.uuid4())
+        profile_id = str(payload.get("profile_id") or "default")
+        conversation_id = _identifier(payload.get("conversation_id"))
+        conversation_revision = payload.get("conversation_revision")
+        if type(conversation_revision) is not int or conversation_revision < 1:
+            raise ValueError("turn requires an exact positive conversation revision")
         with self._lock:
             known = self._request_ids.get(request_id)
             if known is not None:
-                return _copy(self._turns[known])
+                turn = self._turns[known]
+                if (
+                    turn["profile_id"] != profile_id
+                    or turn["conversation_id"] != conversation_id
+                    or turn["conversation_revision"] != conversation_revision
+                    or (payload.get("turn_id") is not None and _identifier(payload["turn_id"]) != known)
+                ):
+                    raise TurnConflict("turn request identity was rebound")
+                return _copy(turn)
             turn_id = _identifier(payload.get("turn_id") or uuid.uuid4())
             if turn_id in self._turns:
                 raise TurnConflict("turn already exists")
@@ -45,11 +58,9 @@ class TurnRuntime:
             turn = {
                 "id": turn_id,
                 "request_id": request_id,
-                "profile_id": str(payload.get("profile_id") or "default"),
-                "conversation_id": _identifier(payload.get("conversation_id")),
-                "conversation_revision": max(
-                    1, int(payload.get("conversation_revision") or 0)
-                ),
+                "profile_id": profile_id,
+                "conversation_id": conversation_id,
+                "conversation_revision": conversation_revision,
                 "status": "queued",
                 "revision": 1,
                 "created_at": now,
@@ -219,7 +230,7 @@ class TurnRuntime:
 
     @staticmethod
     def _assert_revision(turn: Mapping[str, Any], expected: int) -> None:
-        if int(turn["revision"]) != expected:
+        if type(expected) is not int or expected < 1 or int(turn["revision"]) != expected:
             raise TurnConflict("turn revision is stale")
 
     @staticmethod
