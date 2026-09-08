@@ -146,11 +146,14 @@ edge. The HTTP contract map binds `PUT /api/ui/settings` to it, accepting only
 `changes` and `expected_revision`; presentation supplies the captured Profile.
 Real HTTP/Broker tests cover authenticated patches, identity injection denial,
 private-state preservation, stale revision and out-of-policy writes.
-This does not establish UI save flow, lock-wait cancellation or live cutover.
-The current UI expects a full settings projection after saving, while
-this write acknowledgement deliberately returns only changed fields; integration
-must reconcile that difference and propagate revisions, not expose the private
-document to satisfy the old response shape. The storage source transfer has
+ChatApp now propagates the owner revision through its existing save queue and
+merges validated partial acknowledgements rather than replacing all values.
+Acknowledgements must match the submitted fields and next revision. A prior
+queued success advances the owner revision without overwriting later edits;
+reads started before a local save cannot replace its resulting snapshot.
+The full-document PUT fallback is removed. Interactive queue/conflict acceptance,
+explicit stale-draft reconciliation, lock-wait cancellation and live cutover
+remain pending. The storage source transfer has
 removed the cross-Pack import, but has not connected those application callers.
 
 Both settings read and the full catalog's settings projection now include
