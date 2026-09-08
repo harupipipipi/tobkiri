@@ -11,12 +11,15 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+from ecosystem.rumi_turn_runtime_pack.runtime.saved import execute_saved_turn
+from tobkiri_protocol.saved_conversation import SAVED_CONVERSATION_CONTRACT
 
 _PACK = "rumi_turn_runtime_pack"
 _CONTRACTS = {
     "lifecycle": ("tobkiri.action.turn.lifecycle.v1", "turn-lifecycle"),
     "resource": ("tobkiri.resource.turn.v1", "turn-resource"),
     "events": ("tobkiri.event.turn.v1", "turn-events"),
+    "saved": ("tobkiri.action.turn.saved.v1", "turn-saved"),
 }
 _MUTATIONS = {
     "transition": ({"status"}, {"details"}),
@@ -66,7 +69,20 @@ class TurnHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            del invocation  # The captured backend/Broker enforce execution authority.
+            if self.kind == "saved":
+                if operation_id != self.operation_id:
+                    raise PermissionError("saved operation does not match capture")
+                client = invocation.contract_client(
+                    allowed_contract_ids=frozenset({SAVED_CONVERSATION_CONTRACT}),
+                    consumer_pack_id=_PACK,
+                    include_credentials=False,
+                )
+                return execute_saved_turn(
+                    store,
+                    {key: value for key, value in payload.items() if key != "_session_id"},
+                    client=client,
+                    guard=invocation.assert_current,
+                )
             if operation_id != self.operation_id or payload.get("profile_id") != store.profile_id:
                 raise PermissionError("turn request does not match capture")
             action = payload.get("operation")

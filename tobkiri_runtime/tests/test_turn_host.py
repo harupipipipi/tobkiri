@@ -86,6 +86,85 @@ def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) ->
         )
 
 
+def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
+    tmp_path: Path,
+) -> None:
+    from core_runtime.global_contract_dispatch import GlobalContractClient
+    from tests.test_saved_turn_coordinator import _Session
+    from tobkiri_protocol.saved_conversation import SAVED_CONVERSATION_CONTRACT
+
+    session = _Session(tmp_path)
+    calls = []
+    guards = []
+
+    def client(**kwargs: Any) -> GlobalContractClient:
+        calls.append(kwargs)
+        assert kwargs.pop("include_credentials") is False
+        return GlobalContractClient(session=session, **kwargs)
+
+    invocation = SimpleNamespace(
+        contract_client=client, assert_current=lambda: guards.append("checked"),
+    )
+    factory = TurnHostFactoryV4("saved")
+    captured = factory.capture(_context(tmp_path, factory))
+    invoke = captured.contributions[0].invoke
+    result = invoke(factory.operation_id, {**session.initial, "_session_id": "host"}, invocation)
+    assert result["status"] == "completed"
+    assert calls == [{
+        "allowed_contract_ids": frozenset({SAVED_CONVERSATION_CONTRACT}),
+        "consumer_pack_id": "rumi_turn_runtime_pack",
+    }]
+    assert len(guards) == 3
+    assert invoke(factory.operation_id, session.initial, invocation) == {
+        "status": "existing", "turn": result["turn"],
+    }
+    assert session.calls == 1
+
+
+@pytest.mark.parametrize("extra", ["profile_id", "state", "outcome", "approved"])
+def test_saved_factory_rejects_external_authority_and_resume_fields(
+    tmp_path: Path, extra: str,
+) -> None:
+    from core_runtime.global_contract_dispatch import GlobalContractClient
+    from tests.test_saved_turn_coordinator import _Session
+
+    session = _Session(tmp_path)
+
+    def client(**kwargs: Any) -> GlobalContractClient:
+        kwargs.pop("include_credentials")
+        return GlobalContractClient(session=session, **kwargs)
+
+    factory = TurnHostFactoryV4("saved")
+    contribution = factory.capture(_context(tmp_path, factory)).contributions[0]
+    with pytest.raises(ValueError, match="initial fields"):
+        contribution.invoke(factory.operation_id, {**session.initial, extra: "injected"},
+                            SimpleNamespace(contract_client=client, assert_current=lambda: None))
+    assert session.calls == 0
+    assert not list(tmp_path.rglob("turns.sqlite3"))
+
+
+def test_saved_factory_checks_invocation_before_claim(tmp_path: Path) -> None:
+    from core_runtime.global_contract_dispatch import GlobalContractClient
+    from tests.test_saved_turn_coordinator import _Session
+
+    session = _Session(tmp_path)
+
+    def client(**kwargs: Any) -> GlobalContractClient:
+        kwargs.pop("include_credentials")
+        return GlobalContractClient(session=session, **kwargs)
+
+    def expired() -> None:
+        raise PermissionError("expired capture")
+
+    factory = TurnHostFactoryV4("saved")
+    contribution = factory.capture(_context(tmp_path, factory)).contributions[0]
+    with pytest.raises(PermissionError, match="expired capture"):
+        contribution.invoke(factory.operation_id, session.initial,
+                            SimpleNamespace(contract_client=client, assert_current=expired))
+    assert session.calls == 0
+    assert not list(tmp_path.rglob("turns.sqlite3"))
+
+
 def test_captured_begin_retains_input_identity_without_restarting(tmp_path: Path) -> None:
     first_digest = canonical_digest({"request": {"content": "first"}})
     changed_digest = canonical_digest({"request": {"content": "changed"}})

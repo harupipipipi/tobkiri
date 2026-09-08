@@ -16,7 +16,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85"
+      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
@@ -32,7 +32,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85"
+      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
@@ -48,7 +48,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85"
+      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01"
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
@@ -123,6 +123,92 @@
     }
   ],
   "packs": {
+    "rumi_turn_runtime_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-saved"
+          ],
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
     "rumi_ai_gateway_pack": {
       "entries": [
         {

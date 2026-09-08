@@ -2246,7 +2246,7 @@ def capture_production_dispatch(
                 self._presentation_owner_session_id,
             ) = presentation_owner_for(envelope)
             self._client: GlobalContractClient | None = None
-            self._client_binding: tuple[frozenset[str], str] | None = None
+            self._client_binding: tuple[frozenset[str], str, bool] | None = None
 
         @property
         def envelope(self) -> Any:
@@ -2265,9 +2265,12 @@ def capture_production_dispatch(
             *,
             allowed_contract_ids: frozenset[str],
             consumer_pack_id: str,
+            include_credentials: bool = True,
         ) -> GlobalContractClient:
             expected_pack_id = pack_by_principal.get(self._envelope.target_principal.value)
-            binding = (allowed_contract_ids, consumer_pack_id)
+            if type(include_credentials) is not bool:
+                raise AuthorityDenied("Host Provider credential selection is invalid")
+            binding = (allowed_contract_ids, consumer_pack_id, include_credentials)
             if expected_pack_id != consumer_pack_id:
                 raise AuthorityDenied("Host Provider consumer identity is invalid")
             if self._client is not None:
@@ -2287,7 +2290,7 @@ def capture_production_dispatch(
                     credential_key_version=credential_store_binding.key_version,
                     consumer_pack_id=consumer_pack_id,
                 )
-                if credential_store_binding is not None
+                if include_credentials and credential_store_binding is not None
                 else None
             )
             self._client = GlobalContractClient(
@@ -2304,6 +2307,17 @@ def capture_production_dispatch(
             )
             self._client_binding = binding
             return self._client
+
+        def assert_current(self) -> None:
+            """Fence durable coordination with the original Host invocation."""
+            if (
+                self._envelope.cancellation_requested.is_set()
+                or self._envelope.deadline_monotonic <= time.monotonic()
+            ):
+                raise AuthorityDenied("Host Provider invocation is no longer active")
+            if not dispatch_holder:
+                raise AuthorityDenied("Host Provider dispatch is not initialized")
+            dispatch_holder[0].assert_current()
 
     def invocation_context(envelope: Any) -> HostProviderInvocationContextV4:
         return _HostInvocation(envelope)

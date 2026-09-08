@@ -233,6 +233,12 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     profile = deepcopy(definitions.get_profile("defaults").profile)
     runtime = Path(__file__).resolve().parents[1]
     saved_function = "defaultspack.conversation.saved"
+    # This isolated negative fixture controls its own saved edges. Ordinary
+    # Defaults now has coordinator edges, verified separately below.
+    profile["requested_edges"] = [
+        item for item in profile["requested_edges"]
+        if item["caller_function_id"] != saved_function
+    ]
 
     def edge(caller, target, provider):
         pack = provider.split(".")[0]
@@ -364,6 +370,91 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == [
             "Hello",
             "Hi",
+        ]
+    finally:
+        session.close()
+
+
+def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Normal Defaults/Broker/owners; VM, readiness and AI are explicit adapters."""
+    from core_runtime.authority.v4 import AuthorityStore, FunctionPrincipal
+    from core_runtime.bootstrap.profile_capture import (
+        capture_default_profile, prepare_default_profile_confirmation,
+    )
+    from core_runtime.bootstrap.production_v4 import capture_production_dispatch
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_activation_snapshot_loader,
+    )
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import create_runtime_surface_services
+    from tests.test_live_production_v4_dispatch import _CapturedBackend, _bundle_root, _digest
+    from tobkiri_host.backends import BackendRegistry
+    from tobkiri_host.effects import ProviderOutcome
+    from tobkiri_host.runtime import V4DispatchSession
+
+    user_data = tmp_path / "normal-defaults"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    binding = next(item for item in active.resolved.plan["bindings"]
+                   if item["contract_id"] == "conversation.saved-turn.v1")
+    principal = FunctionPrincipal.from_dict(binding["function_principal"])
+    backend = _CapturedBackend(_digest("normal-saved-coordinator"))
+    guest_requests = []
+
+    def guest(envelope):
+        guest_requests.append(envelope)
+        assert envelope.contract_id == "conversation.saved-turn.v1"
+        callback, preflight = backend.saved_callbacks
+        preflight(envelope)
+        intent = saved.start(envelope.payload["request"])
+        for _ in range(4):
+            intent = saved.resume(intent["state"], callback(
+                envelope, _frame(intent, envelope.context.request_id),
+            ))
+        return ProviderOutcome(intent)
+
+    monkeypatch.setattr(backend, "invoke", guest)
+    original = V4DispatchSession.invoke
+    ai_calls = []
+
+    def invoke(self, contract_id, operation_id, payload, **kwargs):
+        if (contract_id, operation_id) == READINESS:
+            return {"ready": True, "model_profile_id": "model-profile-1"}
+        if (contract_id, operation_id) == saved.TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Hi"}
+        return original(self, contract_id, operation_id, payload, **kwargs)
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    session = capture_production_dispatch(
+        active, bundle_root=_bundle_root(),
+        ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
+        authority_store=AuthorityStore(user_data / "authority/v4.sqlite3"),
+        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+        runtime_surface_factory=create_runtime_surface_services,
+        backends=BackendRegistry((backend,)),
+        target_backend_digests={principal.principal_id: backend.status.backend_digest},
+    )
+    store = ConversationStore("defaults", user_data_root=user_data)
+    store.create({"id": "conversation-1", "model_reference": "model-profile-1"},
+                 expected_revision=0)
+    initial = {"_session_id": "session.panel.saved-normal", "request": {
+        "turn_id": "turn-1", "conversation_id": "conversation-1",
+        "conversation_revision": 1, "content": "Hello",
+    }}
+    try:
+        result = session.invoke("tobkiri.action.turn.saved.v1",
+                                "rumi_turn_runtime_pack.turn-saved", initial)
+        assert result["status"] == "completed", result
+        assert result["turn"]["result_reference"]["conversation_revision"] == 3
+        repeated = session.invoke("tobkiri.action.turn.saved.v1",
+                                  "rumi_turn_runtime_pack.turn-saved", initial)
+        assert repeated == {"status": "existing", "turn": result["turn"]}
+        assert len(guest_requests) == len(ai_calls) == 1
+        assert [item["content"] for item in store.get("conversation-1")["messages"]] == [
+            "Hello", "Hi",
         ]
     finally:
         session.close()

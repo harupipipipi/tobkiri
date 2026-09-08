@@ -212,6 +212,51 @@ def test_production_dispatch_executes_credentialed_provider_request(
         expected_revision=0,
     )
     observed: list[tuple[str | None, float]] = []
+    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+
+    original_invoke = ExactHostProviderBackendV4.invoke
+    checked_invocations = []
+
+    def check_invocation(backend, envelope):
+        if envelope.contract_id == "tobkiri.service.ai.provider.generate.v1":
+            invocation = backend._invocation_context(envelope)
+            invocation.assert_current()
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id="rumi_provider_adapters_pack",
+                include_credentials=False,
+            )
+            assert client.host_credential_transport is None
+            assert invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id="rumi_provider_adapters_pack",
+                include_credentials=False,
+            ) is client
+            with pytest.raises(AuthorityDenied, match="binding changed"):
+                invocation.contract_client(
+                    allowed_contract_ids=frozenset(),
+                    consumer_pack_id="rumi_provider_adapters_pack",
+                )
+            cancelled = backend._invocation_context(replace(
+                envelope, cancellation_requested=threading.Event(),
+            ))
+            cancelled.envelope.cancellation_requested.set()
+            with pytest.raises(AuthorityDenied, match="no longer active"):
+                cancelled.assert_current()
+            expired = backend._invocation_context(replace(envelope, deadline_monotonic=0))
+            with pytest.raises(AuthorityDenied, match="no longer active"):
+                expired.assert_current()
+            def stale_capture(_session):
+                raise AuthorityDenied("stale captured Profile")
+
+            with monkeypatch.context() as scoped:
+                scoped.setattr(V4DispatchSession, "assert_current", stale_capture)
+                with pytest.raises(AuthorityDenied, match="stale captured Profile"):
+                    invocation.assert_current()
+            checked_invocations.append(envelope.request_id)
+        return original_invoke(backend, envelope)
+
+    monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", check_invocation)
 
     def open_request(request, *, timeout: float) -> _ProviderResponse:
         observed.append((request.headers.get("Authorization"), timeout))
@@ -281,6 +326,7 @@ def test_production_dispatch_executes_credentialed_provider_request(
         session.close()
 
     assert result["output"] == "production-ok"
+    assert len(checked_invocations) == 1
     assert observed and observed[0][0] == "Bearer production-secret-sentinel"
     assert 0 < observed[0][1] <= 30.0
     assert "production-secret-sentinel" not in json.dumps(result)

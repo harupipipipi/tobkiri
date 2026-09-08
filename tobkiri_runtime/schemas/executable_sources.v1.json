@@ -9935,7 +9935,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -9949,7 +9949,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -9994,7 +9994,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -10008,7 +10008,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -10053,7 +10053,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -10067,7 +10067,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -10103,6 +10103,181 @@
         }
       ],
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.resource.python"
+    },
+    "rumi_turn_runtime_pack.turn-runtime.saved": {
+      "contract_id": "tobkiri.action.turn.saved.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "$defs": {
+          "identifier": {
+            "maxLength": 256,
+            "minLength": 1,
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            },
+            "pattern": "^[A-Za-z0-9]",
+            "type": "string"
+          }
+        },
+        "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+        "properties": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "conversation_id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "conversation_revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "turn_id": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "required": [
+              "turn_id",
+              "conversation_id",
+              "conversation_revision",
+              "content"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "title": "Saved conversation initial input",
+        "type": "object"
+      },
+      "operation_id": "rumi_turn_runtime_pack.turn-saved",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_turn_runtime_pack.turn-saved",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "$defs": {
+              "identifier": {
+                "maxLength": 256,
+                "minLength": 1,
+                "not": {
+                  "pattern": "[^A-Za-z0-9._:-]"
+                },
+                "pattern": "^[A-Za-z0-9]",
+                "type": "string"
+              }
+            },
+            "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "properties": {
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "conversation_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "turn_id": {
+                    "$ref": "#/$defs/identifier"
+                  }
+                },
+                "required": [
+                  "turn_id",
+                  "conversation_id",
+                  "conversation_revision",
+                  "content"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request"
+            ],
+            "title": "Saved conversation initial input",
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_turn_runtime_pack.turn-saved",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_turn_runtime_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_turn_runtime_pack",
+      "pack_id": "rumi_turn_runtime_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_turn_runtime_pack.turn-saved",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_turn_runtime_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.saved.python"
     },
     "rumi_workspace_mount_pack.workspace-mount.manage": {
       "contract_id": "tobkiri.action.workspace.mount.v1",
@@ -11821,7 +11996,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:f0d4eb17589991bb7435d16cf0e61d320209ad7e1a7c7580481d91c5e506d5e1",
+    "input_digest": "sha256:4b42c7b31965ed6e8fceb8b82ae29b5efdcfff884101b15bd988162619bb7db3",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12038,17 +12213,17 @@
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/message_host.py"
       },
       {
-        "digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+        "digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+        "digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:de0f6ae36ac570da5411495a903eaef649bedc16b7d98c6594287fac71763b85",
+        "digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
@@ -12528,7 +12703,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:d2c4021257894ae444dfc3cc16c1ba99072bcff1cd7d976e727cd2cb1d274ff8",
+        "digest": "sha256:78c264e78e2fe0e8b9af6164a4e6c5b2b553101ffcee6d16423e013ef84d680b",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -12998,7 +13173,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:ddf365f7a308d9c140608e1ea5fa2ef489814c65389b9e1b211a39e017ffb4d1",
+        "digest": "sha256:30541ad52bf1894e417521d49b9136813983c720e52a2f71f153e79bc3017b4f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },
