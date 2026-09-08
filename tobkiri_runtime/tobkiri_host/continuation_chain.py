@@ -145,13 +145,23 @@ class ContinuationChains:
             entry.seen_nonces.add(nonce)
             entry.terminal = False
 
-    def finish(self, permit: ResumePermit) -> None:
+    def check_resume(self, permit: ResumePermit) -> None:
+        """Recheck the original deadline and cancellation before child execution."""
+        with self._lock:
+            self._inflight(permit)
+
+    def finish(self, permit: ResumePermit, *, result: bytes | None = None) -> None:
         """Finish while retaining a replay tombstone through the original deadline."""
         with self._lock:
             entry = self._inflight(permit)
             entry.terminal = True
             entry.permit = None
             entry.frame = b""
+            if result is not None:
+                self._validate_frame(result, entry.nonce)
+                if entry.used_bytes + len(result) > self._max_bytes:
+                    raise ValueError("continuation final result exceeds the byte budget")
+                entry.used_bytes += len(result)
 
     def cancel(self, identity: ChainIdentity) -> None:
         """Fence a registered chain; stopping nested execution is the caller's job."""

@@ -18,6 +18,7 @@ _SOURCES = {
     "__main__.py": "ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
     "tobkiri_host/continuation_chain.py": "tobkiri_host/continuation_chain.py",
     "tobkiri_host/continuation_envelope.py": "tobkiri_host/continuation_envelope.py",
+    "tobkiri_host/continuation_session.py": "tobkiri_host/continuation_session.py",
     "tobkiri_protocol/canonical.py": "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py": "tobkiri_protocol/errors.py",
 }

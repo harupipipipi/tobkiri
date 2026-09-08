@@ -13,6 +13,7 @@
     "composition.py",
     "continuation_chain.py",
     "continuation_envelope.py",
+    "continuation_session.py",
     "contracts.py",
     "credential_store.py",
     "effects.py",

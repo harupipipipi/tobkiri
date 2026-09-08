@@ -22,6 +22,7 @@ MEMBERS = {
     "tobkiri_host/__init__.py",
     "tobkiri_host/continuation_chain.py",
     "tobkiri_host/continuation_envelope.py",
+    "tobkiri_host/continuation_session.py",
     "tobkiri_protocol/__init__.py",
     "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py",
@@ -74,8 +75,10 @@ import json, sys
 sys.path.insert(0, sys.argv[1])
 from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
 from tobkiri_host.continuation_envelope import seal_continuation_intent
+from tobkiri_host.continuation_session import ContinuationSession
 from tobkiri_protocol.canonical import canonical_json
 identity = ChainIdentity('domain', 'request', 'sha256:' + 'a' * 64, 60.0)
+assert ContinuationSession.__module__ == 'tobkiri_host.continuation_session'
 intent = {'kind': 'tobkiri.packvm.continuation.intent.v2', 'hop': 0,
           'target': {'contract_id': 'owner.v1', 'operation_id': 'read'},
           'payload': {}, 'state': {}}

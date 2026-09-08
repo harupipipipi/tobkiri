@@ -2329,8 +2329,8 @@
     {
       "path": "scripts/build_packvm_guest_bundle.py",
       "type": "regular-file",
-      "size": 3869,
-      "sha256": "640b3effd099bcc27a9b446e7742439db0475dd8944153cd00978dc60754cb4f",
+      "size": 3953,
+      "sha256": "0dd4ecbb27e48c7dca4479b168de0a993f839420d0018d4e698b29bb534364f5",
       "executable": false
     },
     {

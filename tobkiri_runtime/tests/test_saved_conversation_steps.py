@@ -14,11 +14,8 @@ import pytest
 from ecosystem.defaultspack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
-from tobkiri_host.continuation_envelope import (
-    seal_continuation_intent,
-    validate_continuation_result,
-)
-from tobkiri_protocol.canonical import canonical_json
+from tobkiri_host.continuation_session import ContinuationSession
+from tobkiri_protocol.canonical import canonical_digest, canonical_json
 
 
 def _setup(tmp_path: Path) -> tuple[ConversationStore, dict[str, Any]]:
@@ -51,6 +48,7 @@ def test_four_steps_preserve_owner_revisions_and_validate_v2_frames(tmp_path: Pa
     store, request = _setup(tmp_path)
     identity = ChainIdentity("domain", "host-request", "sha256:" + "a" * 64, 60.0)
     chains = ContinuationChains(clock=lambda: 1.0)
+    session = ContinuationSession(identity, saved.TARGETS, chains=chains)
     intent = saved.start(request)
     previous = None
     permit = None
@@ -59,18 +57,11 @@ def test_four_steps_preserve_owner_revisions_and_validate_v2_frames(tmp_path: Pa
         assert intent["hop"] == hop
         assert tuple(intent["target"].values()) == saved.TARGETS[hop]
         assert "profile_id" not in intent["payload"]
-        checked = seal_continuation_intent(
-            canonical_json(intent),
-            identity=identity,
-            hop=hop,
-            nonce=str(hop) * 48,
-            previous_digest=previous,
-            target=saved.TARGETS[hop],
-        )
         if permit is None:
-            chains.start(identity, frame=checked.frame, nonce=checked.nonce)
+            frame = session.start(canonical_json(intent), nonce=str(hop) * 48)
         else:
-            chains.advance(permit, frame=checked.frame, nonce=checked.nonce)
+            frame = session.advance(permit, canonical_json(intent), nonce=str(hop) * 48)
+        assert json.loads(frame)["previous_digest"] == previous
         calls.append(deepcopy(intent["payload"]))
         if hop == 2:
             assert intent["payload"]["messages"] == [{"role": "user", "content": "Hello"}]
@@ -81,14 +72,13 @@ def test_four_steps_preserve_owner_revisions_and_validate_v2_frames(tmp_path: Pa
         result = {
             "kind": "tobkiri.packvm.continuation.result.v2",
             "version": 2,
-            "request_digest": checked.digest,
+            "request_digest": canonical_digest(json.loads(frame)),
             "outcome": outcome,
         }
-        verified = validate_continuation_result(canonical_json(result), request=checked)
-        permit = chains.take(identity, nonce=checked.nonce, result=verified.frame)
-        previous = verified.digest
-        intent = saved.resume(intent["state"], outcome)
-    chains.finish(permit)
+        permit = session.receive(canonical_json(result))
+        previous = canonical_digest(result)
+        intent = saved.tobkiri_packvm_invoke("saved_complete", session.resume_arguments(permit))
+    session.finish(permit, canonical_json(intent))
     assert intent["status"] == "ok"
     assert intent["conversation_revision"] == 3
     assert [call.get("expected_conversation_revision") for call in calls] == [None, 1, None, 2]
@@ -100,7 +90,7 @@ def test_four_steps_preserve_owner_revisions_and_validate_v2_frames(tmp_path: Pa
     assert messages[1]["parent_id"] == messages[0]["id"]
     assert intent["message"] == messages[1]
     with pytest.raises(ValueError):
-        chains.start(identity, frame=checked.frame, nonce=checked.nonce)
+        chains.start(identity, frame=frame, nonce="3" * 48)
 
 
 @pytest.mark.parametrize("stage", [0, 1, 2, 3])
