@@ -69,9 +69,13 @@ The legacy transition must cover more than the presentation reader:
   settings documents and are not an owner revision. Each resolution now reads
   the current owner snapshot and credential availability without retaining a
   second global settings cache. Captured owner binding is still pending.
-  The command registry derives its separate event/offline database paths
-  from the settings path; those databases are not settings-owner state and must
-  retain an explicit independent location when the settings client loses paths.
+  The command registry accepts a trusted `command_state_dir` constructor binding
+  or `RUMI_DEFAULTSPACK_COMMAND_STATE_DIR` startup binding for its separate
+  event/offline databases. Desktop startup fixes the existing location without
+  creating, moving or opening state. An explicit command binding takes priority
+  over preferences paths. Unbound legacy startup still retains the historical
+  settings-sibling location; final captured Profile startup must persist the
+  independent binding across process restarts before removing that fallback.
 
 A transition that relocates only public-value reads would split these owners
 and can return stale defaults while old writers continue updating the original
