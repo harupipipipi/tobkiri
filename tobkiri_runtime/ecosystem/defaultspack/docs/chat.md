@@ -1,5 +1,34 @@
 # Chat API
 
+## Captured full-UI integration
+
+The canonical map currently connects conversation listing and creation to
+`rumi_conversation_store_pack`, not the legacy handlers documented below.
+The wire endpoint is `/api/contracts/defaultspack/` followed by the URL-encoded
+method and target, for example `POST%20%2Fapi%2Fchat%2Fconversations`.
+Normal panel authentication, CSRF, request identity, captured Profile grants
+and Broker checks remain required.
+
+- `GET /api/chat/conversations` returns `conversations`, `total` and
+  `store_revision` from the captured owner snapshot.
+- `POST /api/chat/conversations` requires `id` (canonical UUID) and
+  `expected_revision` (that snapshot's nonnegative integer revision), alongside
+  the UI's optional model/prompt/agent/tags/parent/kind/group/metadata fields.
+  The result is the real created conversation, including its
+  `conversation_revision` and the UI's `model` alias for `model_reference`.
+- A repeated ID or stale revision is rejected without another write. The UI
+  does not automatically retry conflicts. A transport failure is not proof that
+  creation failed; refresh history before deciding whether another create is needed.
+- Clients cannot provide `profile_id`, `approved`, owner operation, messages or
+  a manufactured conversation revision. A new source Profile action edge needs
+  normal activation review; existing live Profiles are not changed by this code.
+
+Detail/update/delete and message/stream/stop integration are still pending.
+The following sections describe legacy APIs and are not evidence that those
+operations are available through the captured full-UI map.
+
+## Legacy API reference
+
 defaults Pack のチャット機能の全 API リファレンスです。handler は `blocks/chat/` に、ドメインロジックは `domain/chat/store.py`（ChatStore）に実装されています。
 
 ecosystem.json の chat コンポーネントは 18 個の handler を provides しています: `create_conversation`, `get_conversation`, `list_conversations`, `update_conversation`, `delete_conversation`, `export_conversation`, `send`, `stream`, `add_message`, `get_message`, `update_message`, `delete_message`, `branch`, `search`, `stop`, `regenerate`, `summarize_and_trim`, `auto_trim`。
