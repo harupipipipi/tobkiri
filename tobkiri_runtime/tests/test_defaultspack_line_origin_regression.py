@@ -168,7 +168,8 @@ def test_line_route_sends_webhook_acknowledgement_when_reply_token_and_access_to
     calls: list[dict[str, Any]] = []
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["context"] = context
         return {
             "status": "ok",
@@ -565,7 +566,8 @@ def test_line_route_does_not_acknowledge_normal_line_reply_mode(monkeypatch, tmp
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     calls: list[dict[str, Any]] = []
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         return {
             "status": "ok",
             "assistant_text": "normal reply",
@@ -613,7 +615,8 @@ def test_line_route_preserves_top_level_destination_and_endpoint_policy(monkeypa
     _remember_line_group(monkeypatch, tmp_path)
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision=None, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision=None, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["event"] = event
         captured["input_profile_id"] = input_profile_id
         captured["audience_policy"] = audience_policy
@@ -679,7 +682,8 @@ def test_line_route_applies_endpoint_response_context(monkeypatch, tmp_path):
     captured: dict[str, Any] = {}
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["input_profile_id"] = input_profile_id
         captured["audience_decision"] = audience_decision
         captured["context"] = context
@@ -738,7 +742,8 @@ def test_line_route_builds_line_biz_prompt_from_chat_url(monkeypatch, tmp_path):
     captured: dict[str, Any] = {}
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["context"] = context
         captured["audience_decision"] = audience_decision
         captured["mentioned"] = mentioned
@@ -852,7 +857,8 @@ def test_line_computer_use_background_processing_is_opt_in(monkeypatch, tmp_path
     finished = threading.Event()
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         started.set()
         release.wait(timeout=5)
         captured["input_profile_id"] = input_profile_id
@@ -916,7 +922,8 @@ def test_line_background_processing_flag_does_not_affect_normal_line_mode(monkey
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["called"] = True
         return {
             "status": "ok",
@@ -1058,7 +1065,8 @@ def test_line_default_group_message_dispatches_for_hash_trigger(monkeypatch, tmp
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["event"] = event
         captured["mentioned"] = mentioned
         captured["context"] = context
@@ -1112,7 +1120,8 @@ def test_line_default_group_message_dispatches_for_multiword_trigger_case_insens
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["mentioned"] = mentioned
         captured["event"] = event
         return {
@@ -1187,7 +1196,8 @@ def test_line_direct_user_message_still_dispatches_without_mention(monkeypatch, 
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["called"] = True
         captured["mentioned"] = mentioned
         captured["event"] = event
@@ -1235,7 +1245,8 @@ def test_line_computer_use_group_message_dispatches_when_saved_group_mentions_bo
     _remember_line_group(monkeypatch, tmp_path)
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["event"] = event
         captured["audience_policy"] = audience_policy
         captured["audience_decision"] = audience_decision
@@ -1453,7 +1464,8 @@ def test_line_route_frontend_push_to_saved_origin_reaches_adapter(monkeypatch, t
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings_path))
     calls: list[dict[str, Any]] = []
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         assert audience_decision.allowed is True
         assert context["send_mode"] == "push_to_saved_origin"
         return {
