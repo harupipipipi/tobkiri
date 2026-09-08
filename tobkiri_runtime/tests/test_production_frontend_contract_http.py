@@ -109,6 +109,15 @@ class _ShellPolicyPackVmBackend:
         self._artifact_resolver = None
         self._target_domain_resolver = None
         self._target_domain_id: str | None = None
+        self._saved_callback = None
+        self._saved_preflight = None
+
+    def bind_saved_capability_bridge(self, callback, preflight) -> None:
+        """Accept capture wiring without widening this adapter's supported ABI."""
+        assert self._saved_callback is None and self._saved_preflight is None
+        assert callable(callback) and callable(preflight)
+        self._saved_callback = callback
+        self._saved_preflight = preflight
 
     def supports(self, binding: object) -> bool:
         """Admit only the exact shell-policy Function pinned by the Plan."""
@@ -217,10 +226,6 @@ class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
     _FUNCTION_ID = "defaultspack.conversation.saved"
     _CONTRACT_ID = "conversation.saved-turn.v1"
     _OPERATION_ID = "saved_complete"
-
-    def bind_saved_capability_bridge(self, callback, preflight) -> None:
-        self._saved_callback = callback
-        self._saved_preflight = preflight
 
     def invoke(self, request: object) -> ProviderOutcome:
         from ecosystem.defaultspack.runtime import saved_conversation
