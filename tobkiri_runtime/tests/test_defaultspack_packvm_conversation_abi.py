@@ -52,7 +52,7 @@ result = module.tobkiri_packvm_invoke(
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 """
     process = subprocess.run(
-        (sys.executable, "-I", "-S", "-c", script, str(source)),
+        (sys.executable, "-B", "-I", "-S", "-c", script, str(source)),
         capture_output=True,
         check=False,
         text=True,
