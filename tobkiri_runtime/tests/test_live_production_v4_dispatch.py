@@ -377,7 +377,24 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
             artifact_digest=target.parent_artifact_digest,
             reason="test exact Pack approval revoke",
         )
-        assert revoked_grants == (persisted_grant.grant_id,)
+        expected_revoked = {
+            grant.grant_id
+            for grant in persisted
+            if grant.target.parent_artifact_digest == target.parent_artifact_digest
+            and grant.profile_id == current_context.profile_id
+            and grant.activation_id == current_context.activation_id
+        }
+        # One conversation edge and three application-presentation edges now
+        # share this Pack approval; revocation must fence every one of them.
+        assert len(expected_revoked) == 4
+        assert persisted_grant.grant_id in expected_revoked
+        assert set(revoked_grants) == expected_revoked
+        assert all(store.is_revoked("grant", grant_id) for grant_id in expected_revoked)
+        assert all(
+            not store.is_revoked("grant", grant.grant_id)
+            for grant in persisted
+            if grant.grant_id not in expected_revoked
+        )
         with pytest.raises(AuthorizationError, match="static authorization failed"):
             session.invoke(
                 "conversation.turn.v1",
