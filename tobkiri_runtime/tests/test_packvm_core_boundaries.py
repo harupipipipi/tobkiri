@@ -91,6 +91,38 @@ def test_guest_child_preserves_bridge_request_before_host_round_trip() -> None:
     assert packvm_guest_runner._host_invoke_result(bridge_request) is bridge_request
 
 
+@pytest.mark.parametrize(("contract", "operation", "accepted"), [
+    ("conversation.saved-turn.v1", "saved_complete", True),
+    ("conversation.turn.v1", "saved_complete", False),
+    ("conversation.saved-turn.v1", "complete", False),
+])
+def test_child_allows_v2_intent_only_for_reserved_saved_abi(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    contract: str, operation: str, accepted: bool,
+) -> None:
+    """Execute the real child entrypoint with test stdio, not a Linux sandbox."""
+    implementation = tmp_path / "intent.py"
+    implementation.write_text(
+        "def tobkiri_packvm_invoke(operation_id, payload):\n"
+        "    return {'kind': 'tobkiri.packvm.continuation.intent.v2', 'hop': 0}\n",
+        encoding="utf-8",
+    )
+    output = io.BytesIO()
+    monkeypatch.setattr(packvm_guest_runner.os, "geteuid", lambda: 65534)
+    monkeypatch.setattr(packvm_guest_runner.sys, "platform", "darwin")
+    monkeypatch.setattr(packvm_guest_runner.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(
+        json.dumps({"contract_id": contract, "operation_id": operation, "payload": {}}).encode()
+    )))
+    monkeypatch.setattr(packvm_guest_runner.sys, "stdout", SimpleNamespace(buffer=output))
+    monkeypatch.setattr(packvm_guest_runner.sys, "stderr", io.StringIO())
+    assert packvm_guest_runner._execute_staged_module(implementation) == (0 if accepted else 1)
+    if accepted:
+        # Root sealing must still reject this deliberately incomplete intent.
+        assert json.loads(output.getvalue())["kind"] == "tobkiri.packvm.continuation.intent.v2"
+    else:
+        assert output.getvalue() == b""
+
+
 @pytest.mark.parametrize("kind", [
     "tobkiri.packvm.continuation.intent.v2",
     "tobkiri.packvm.continuation.request.v2",
