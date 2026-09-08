@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "26060d57720bc591ac8be7efceb61f83818146525841b3a583b4c401a7f7ad99",
+    "digest": "bb75d3b5dbe082f8a85c7e61439b903c0c08c80ba54310d1a8fb3c498d3e01d7",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 337693,
-        "sha256": "43a2db63102f079c3db3fbc7b709d2bae2cdff3787287d61c562ed5a10dbdc91"
+        "size": 338289,
+        "sha256": "b7c54630d8326f8c76ceba013bbab1e3e9e970555ae2f0a8a809c0d200c4e6db"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -1465,13 +1465,13 @@
       },
       {
         "path": "src/lib/pendingChat.test.ts",
-        "size": 3071,
-        "sha256": "82856feeb055f6546b83d241e870c8f77c5b5a19c04684df26785c81e26257fc"
+        "size": 4924,
+        "sha256": "10a80c2af92cceca68955d1733031dd4a2da06258cd88ac7270ab8d507503f5d"
       },
       {
         "path": "src/lib/pendingChat.ts",
-        "size": 1970,
-        "sha256": "d0af0c3d0336c97433debed5896763c4e5234f9d1edfdaf1759f524cf9ebf14e"
+        "size": 4104,
+        "sha256": "474f2898724f222a01e47c9364bc7b31cb9fd3945f2cc55a471891c13b406c46"
       },
       {
         "path": "src/lib/placement.test.ts",
@@ -1876,7 +1876,7 @@
     ]
   },
   "bundle": {
-    "digest": "20c8771a1bf4ccd412143b71fd6d5246f33879a85f3d4afe011c9bca26f38c1a",
+    "digest": "b9b1215b6bead4ac27e8d0cb6ebf59b060fa4f561ea69145405a1a43bb5a92c4",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1890,8 +1890,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2206840,
-        "sha256": "48aa4d9a9ff042a0e4ebd6fa170d2cf14653da01287c761fb685cf753cc2c2bb"
+        "size": 2208010,
+        "sha256": "918ae64d386f823d6044ee54eb0909e02d4f83a9dabb016aae0d5f15352757fc"
       },
       {
         "path": "shell-rolldown-runtime.js",

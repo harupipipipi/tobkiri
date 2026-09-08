@@ -115,7 +115,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnSnapshotState, savedTurnSnapshotNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -4082,7 +4082,7 @@ export function ChatApp() {
     const pollPendingConversation = () => {
       if (disposed || polling) return;
       polling = true;
-      void api.getConversation(activeConversationId).then(async (conversation) => {
+      void (async () => {
         if (disposed) return;
         if (pendingRequest?.savedTurn) {
           if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
@@ -4103,7 +4103,25 @@ export function ChatApp() {
             });
             return;
           }
+          const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+            if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+            throw error;
+          });
+          if (disposed) return;
+          const state = savedTurnSnapshotState(turn, conversation, activeConversationId, pendingRequest.operationId);
+          if (state === "pending") {
+            throw new Error("保存結果と現在の会話を照合できません。自動再送はしません。");
+          }
+          setActiveConversation(conversation);
+          setError(savedTurnSnapshotNotice(state));
+          forgetPendingRequest(activeConversationId);
+          replaceChatIdInUrl(activeConversationId, false);
+          setIsGenerating(false);
+          void refreshConversations(activeConversationId);
+          return;
         }
+        const conversation = await api.getConversation(activeConversationId);
+        if (disposed) return;
         setActiveConversation(conversation);
         const latest = conversation.messages[conversation.messages.length - 1];
         if (shouldClearPendingAfterConversationRefresh(latest, pendingRequest, Date.now())) {
@@ -4112,7 +4130,7 @@ export function ChatApp() {
           setIsGenerating(false);
           void refreshConversations(conversation.id);
         }
-      }).catch((pollError) => {
+      })().catch((pollError) => {
         if (disposed) return;
         console.error(pollError);
         if (!pendingRequest?.savedTurn && shouldForgetPendingAfterPollError(pollError)) {
@@ -6632,16 +6650,11 @@ export function ChatApp() {
         throw new Error("送信結果の照合が必要です。自動再送はしません。");
       }
       const snapshot = await api.getConversation(conversation.id);
-      const reference = result.turn.result_reference;
-      if (snapshot.id !== conversation.id
-        || reference.conversation_id !== conversation.id
-        || (snapshot.conversation_revision ?? 0) < reference.conversation_revision
-        || !snapshot.messages.some((message) => message.id === reference.user_message_id
-          && message.role === "user" && message.metadata?.turn_id === operationId)
-        || !snapshot.messages.some((message) => message.id === reference.assistant_message_id
-          && message.role === "assistant" && message.metadata?.turn_id === operationId)) {
+      const snapshotState = savedTurnSnapshotState(result.turn, snapshot, conversation.id, operationId);
+      if (snapshotState === "pending") {
         throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
       }
+      setError(savedTurnSnapshotNotice(snapshotState));
       setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
       setConversations((current) => [
         { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),

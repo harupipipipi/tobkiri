@@ -236,23 +236,37 @@ def test_assistant_commit_before_owner_reply_is_recovered_after_reopen(
     assert session.calls == 1
 
 
-def test_message_edit_cannot_change_the_saved_completion_evidence(tmp_path: Path) -> None:
+@pytest.mark.parametrize("change", ["edit", "delete_message", "replace", "delete_conversation"])
+def test_conversation_changes_cannot_rewrite_or_resurrect_saved_completion(
+    tmp_path: Path, change: str,
+) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     session.transform = lambda _: (_ for _ in ()).throw(TimeoutError())
     _run(store, session)
     before = session.conversations.saved_receipt("turn-1")
-    session.conversations.mutate_message(
-        "conversation-1", before["assistant_message_id"],
-        expected_conversation_revision=3,
-        patch={"content": "edited after completion", "metadata": {"turn_id": "forged"}},
-    )
+    if change == "delete_conversation":
+        session.conversations.delete("conversation-1", expected_conversation_revision=3)
+    elif change == "replace":
+        session.conversations.replace_messages(
+            "conversation-1", [], expected_conversation_revision=3,
+        )
+    else:
+        session.conversations.mutate_message(
+            "conversation-1", before["assistant_message_id"],
+            expected_conversation_revision=3, delete=change == "delete_message",
+            patch={"content": "edited after completion", "metadata": {"turn_id": "forged"}},
+        )
+    changed_bytes = session.conversations.path.read_bytes()
     assert session.conversations.saved_receipt("turn-1") == before
     result = _run(store, session)
     assert result["status"] == "completed"
     assert result["turn"]["result_reference"] == before["result_reference"]
     assert result["turn"]["result_reference"]["conversation_revision"] == 3
     assert session.calls == 1
+    assert session.conversations.path.read_bytes() == changed_bytes
+    if change == "delete_conversation":
+        assert session.conversations.get("conversation-1") is None
 
 
 def _pause_after_owner_commit(root: Path, message_count: int, pipe: Connection) -> None:
