@@ -30,8 +30,24 @@ from transport.registry import (  # noqa: E402
 )
 
 
-def test_resolved_catalog_projects_all_legacy_commands_to_v1() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def _owner_bound_protocol(tmp_path: Path) -> CommandProtocolRegistry:
+    """Bind the settings owner explicitly to this test's isolated location."""
+    from domain.frontend_settings_store import defaultspack_frontend_settings_path
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    path = defaultspack_frontend_settings_path(DEFAULTSPACK_ROOT)
+    # Existing tests choose a temporary compatibility path through the environment.
+    # Otherwise the test owns a new empty store; never read real user settings.
+    if not path.is_relative_to(tmp_path):
+        path = tmp_path / "frontend_settings.json"
+    return CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT, settings_owner=FrontendSettingsStore(path),
+        command_state_dir=tmp_path / "command-state",
+    )
+
+
+def test_resolved_catalog_projects_all_legacy_commands_to_v1(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
 
     assert catalog["api_version"] == "tobkiri.commands/v1"
     assert len(catalog["commands"]) == 55
@@ -103,7 +119,7 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     catalog = protocol.catalog()
     matrix = protocol.conformance_matrix()
@@ -179,8 +195,8 @@ def test_owner_scope_comes_only_from_trusted_context() -> None:
         )
 
 
-def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
     unavailable = [
         item
         for item in catalog["commands"]
@@ -204,8 +220,8 @@ def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter() -> No
     assert not any(item["code"] == "handler_missing" for item in catalog["diagnostics"])
 
 
-def test_all_55_commands_have_authority_and_completion_conformance() -> None:
-    matrix = CommandProtocolRegistry(DEFAULTSPACK_ROOT).conformance_matrix()
+def test_all_55_commands_have_authority_and_completion_conformance(tmp_path: Path) -> None:
+    matrix = _owner_bound_protocol(tmp_path).conformance_matrix()
 
     assert len(matrix) == 55
     assert len({item["command_id"] for item in matrix}) == 55
@@ -226,7 +242,7 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     enabled = protocol.invoke(
         {
@@ -256,8 +272,8 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
     assert disabled["state_changes"][0]["revision"] == 2
 
 
-def test_home_title_invocation_returns_frontend_action() -> None:
-    result = CommandProtocolRegistry(DEFAULTSPACK_ROOT).invoke(
+def test_home_title_invocation_returns_frontend_action(tmp_path: Path) -> None:
+    result = _owner_bound_protocol(tmp_path).invoke(
         {
             "command_ref": "defaultspack:home_title",
             "args": {"value": "My Tobkiri"},
@@ -279,7 +295,7 @@ def test_protocol_invocation_events_can_resume_after_last_event_id(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     result = protocol.invoke(
         {
@@ -318,8 +334,8 @@ def test_provider_datasource_uses_same_option_item_contract() -> None:
     assert all("model_count" in item["metadata"] for item in result["items"])
 
 
-def test_protocol_schema_rejects_unknown_normative_fields_and_major() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def test_protocol_schema_rejects_unknown_normative_fields_and_major(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
     catalog["unexpected"] = True
     try:
         validate_protocol_document(catalog)
@@ -359,7 +375,7 @@ def test_settings_registered_command_is_resolved_and_invoked_through_protocol(
         encoding="utf-8",
     )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings_path))
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     command = next(
         item
@@ -419,7 +435,7 @@ def test_high_risk_command_requires_the_captured_host_adapter(
         ["git", "-C", str(workspace), "commit", "-qm", "seed"],
         check=True,
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
     durable_secret = "durable-raw-execution-secret-62e6099b"
     payload = {
         "command_ref": "defaultspack:terminal",
@@ -817,7 +833,7 @@ def test_invocation_id_is_idempotent_and_conflict_safe(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    registry = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    registry = _owner_bound_protocol(tmp_path)
     payload = {
         "command_ref": "defaultspack:help",
         "invocation_id": "inv-idempotent",
