@@ -57,6 +57,16 @@ The legacy transition must cover more than the presentation reader:
   from the same shared document.
 - `domain/frontend_settings_store.py` currently owns file locking, atomic
   replacement, whole-document/state revisions and mutation receipts together.
+- Optional settings reads in AIClient, chat requests, tool recommendation and
+  permissions, trigger decisions, chat debug logging and LINE addressing/output
+  policy now use `domain/frontend_settings.py` and the owner's `read_snapshot()`.
+  These nine reads no longer parse the file independently. Their existing
+  unreadable/corrupt-preference fallback remains local compatibility behavior;
+  it must not absorb future captured-contract authorization failures. They do
+  not recover from backup or create locks/directories/diagnostics.
+- Model and command cache signatures still observe the settings path. Moving
+  only the snapshot method would leave these filesystem dependencies behind;
+  the captured owner cutover must replace those signatures with owner revisions.
 
 A transition that relocates only public-value reads would split these owners
 and can return stale defaults while old writers continue updating the original

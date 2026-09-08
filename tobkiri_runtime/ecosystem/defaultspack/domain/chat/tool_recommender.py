@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 import math
 import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 
 
 TOOL_ASSIST_DEFAULT_MODE = "auto"
@@ -137,12 +136,7 @@ def search_tools(
 
 
 def _read_frontend_settings(pack_root: Path | None = None) -> dict[str, Any]:
-    path = frontend_settings_path(pack_root)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return read_optional_frontend_settings(pack_root)
 
 
 def _tool_vector(tool: dict[str, Any]) -> Counter[str]:

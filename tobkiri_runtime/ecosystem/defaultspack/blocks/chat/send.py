@@ -14,7 +14,7 @@ from domain.chat.store import ChatStore
 from domain.chat.message_converter import convert_to_standard
 from domain.chat.message_builder import build_assistant_message
 from domain.dev.inspector import Inspector
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.prompt.manager import get_manager
 from blocks.chat._context_helpers import extract_user_text, enrich_messages
 from domain.tool.registry import ToolRegistry
@@ -1216,11 +1216,7 @@ def _truthy(value):
 
 
 def _frontend_debug_settings_enabled():
-    try:
-        settings_path = frontend_settings_path()
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    except Exception:
-        return False
+    settings = read_optional_frontend_settings()
     debug = settings.get("debug") if isinstance(settings, dict) else {}
     if not isinstance(debug, dict):
         return False

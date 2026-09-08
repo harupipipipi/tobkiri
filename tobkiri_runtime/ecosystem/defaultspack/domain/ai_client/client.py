@@ -432,10 +432,9 @@ class AIClient:
         return routes
 
     def _settings_data(self):
-        try:
-            return json.loads(self._settings_path().read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
+        from domain.frontend_settings import read_optional_frontend_settings
+
+        return read_optional_frontend_settings()
 
     @staticmethod
     def _jsonish(value, fallback):

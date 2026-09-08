@@ -21,7 +21,10 @@ from domain.external.response import RumiResponse
 from domain.external.response_planner import ResponsePlanner
 from domain.external.source_store import ExternalSourceStore
 from domain.external.targeting import origin_from_external_event
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import (
+    frontend_settings_path,
+    read_optional_frontend_settings,
+)
 from domain.integrations.http_client import post_json
 from domain.integrations.secrets import get_integration_secret, load_integration_secrets_into_env
 from domain.integrations.line.addressing import decide_line_addressing
@@ -259,11 +262,7 @@ def _apply_external_output_context(runtime_context: dict[str, Any]) -> None:
 
 
 def _frontend_external_output_settings() -> dict[str, Any]:
-    path = _frontend_settings_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    data = read_optional_frontend_settings()
     if not isinstance(data, dict):
         return {}
     output = data.get("external_output") if isinstance(data.get("external_output"), dict) else {}
@@ -569,11 +568,7 @@ def _require_line_group_mention(endpoint: WebhookEndpoint, external_event) -> bo
 
 
 def _line_mention_policy_default() -> Any:
-    try:
-        path = _frontend_settings_path()
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return True
+    data = read_optional_frontend_settings()
     if not isinstance(data, dict):
         return True
     line_settings = data.get("line") if isinstance(data.get("line"), dict) else {}

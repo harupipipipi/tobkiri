@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
 
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import (
+    frontend_settings_path,
+    read_optional_frontend_settings,
+)
 from domain.webhook.endpoint import WebhookEndpoint
 
 
@@ -82,10 +84,7 @@ def _line_addressing_trigger_words(endpoint: WebhookEndpoint) -> list[str]:
         ):
             values.extend(_listish(container.get(key)))
     if not values:
-        try:
-            data = json.loads(_frontend_settings_path().read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
+        data = read_optional_frontend_settings()
         line_settings = data.get("line") if isinstance(data, dict) and isinstance(data.get("line"), dict) else {}
         for key in ("line_trigger_words", "group_room_trigger_words", "addressing_trigger_words", "trigger_words"):
             values.extend(_listish(line_settings.get(key)))

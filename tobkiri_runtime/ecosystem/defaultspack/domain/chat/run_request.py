@@ -52,7 +52,7 @@ from domain.chat.tool_selection_preview import (
     ToolSelectionPreviewStore,
     preview_payload_bindings,
 )
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.human_operator.constants import HUMAN_OPERATOR_TOOL_NAME, is_human_operator_model
 from domain.vision.image_bridge import (
     apply_vision_bridge_to_messages,
@@ -4236,12 +4236,7 @@ def _tool_selection_selector_model(
 
 
 def _read_frontend_settings() -> dict[str, Any]:
-    path = frontend_settings_path()
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return read_optional_frontend_settings()
 
 
 def _ensure_must_use_has_eligible_tools(

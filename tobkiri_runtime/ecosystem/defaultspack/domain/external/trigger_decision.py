@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from domain.external.event import ExternalEvent
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.input.envelope import RumiInputEnvelope
 
 
@@ -276,11 +276,7 @@ def _public_settings(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 def _frontend_trigger_config() -> dict[str, Any]:
-    path = frontend_settings_path()
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        raw = {}
+    raw = read_optional_frontend_settings()
     triggers = raw.get("triggers") if isinstance(raw, dict) and isinstance(raw.get("triggers"), dict) else {}
     mode = str(triggers.get("mode") or "vector").strip().lower()
     if mode not in {"vector", "llm"}:
