@@ -249,13 +249,16 @@ class V4DispatchSession:
             # expose the original three-argument callback.  Production
             # capture always supplies the context-aware form above.
             scope = self.effect_scope_for(contract_id, operation_id, arguments)
+        invocation = InvocationFrame(
+            contract_id=contract_id,
+            version_range=version_range,
+            operation_id=operation_id,
+            payload=arguments,
+        )
+        if parent_deadline_monotonic is None:
+            return self.broker.invoke(invocation, context, effect_scope=scope)
         return self.broker.invoke(
-            InvocationFrame(
-                contract_id=contract_id,
-                version_range=version_range,
-                operation_id=operation_id,
-                payload=arguments,
-            ),
+            invocation,
             context,
             effect_scope=scope,
             parent_deadline_monotonic=parent_deadline_monotonic,
