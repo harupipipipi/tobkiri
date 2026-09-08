@@ -160,7 +160,8 @@ def test_saved_host_registration_has_separate_execution_capability() -> None:
     variants = json.loads((pack_root / "executables.v4.json").read_text())["variants"]
     variant = next(item for item in variants
                    if item["function_id"] == "rumi_turn_runtime_pack.turn-runtime.saved")
-    assert variant["execution_kind"] == "host_brokered"
+    assert variant["execution_kind"] == "host_extension"
+    assert variant["backend"] == "tobkiri.python-host-v4"
     assert variant["implementation_path"] == "runtime/host.py"
     schema = json.loads(
         (root / "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json").read_text()
