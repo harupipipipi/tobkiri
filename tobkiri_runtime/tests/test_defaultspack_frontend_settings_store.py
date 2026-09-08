@@ -386,6 +386,48 @@ def test_state_mutation_rejects_stale_revision_and_key_reuse(tmp_path: Path) -> 
         )
 
 
+def test_idempotency_receipt_cannot_replay_for_another_state(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    store.mutate_state(
+        "state:first", lambda current: (current, {"enabled": True}),
+        idempotency_key="same-key-123", request_fingerprint="same-payload",
+    )
+    original = store.path.read_bytes()
+
+    def forbidden(current: dict) -> tuple[dict, dict]:
+        pytest.fail("a retained identity must not execute another mutation")
+
+    with pytest.raises(FrontendSettingsIdempotencyConflict):
+        store.mutate_state(
+            "state:second", forbidden,
+            idempotency_key="same-key-123", request_fingerprint="same-payload",
+        )
+    assert store.path.read_bytes() == original
+
+
+@pytest.mark.parametrize("receipts", [
+    None, [], "invalid", {"same-key-123": None},
+    {"same-key-123": {"fingerprint": "same-payload", "result": []}},
+])
+def test_corrupt_receipt_never_becomes_permission_to_repeat_a_write(
+    tmp_path: Path, receipts: object,
+) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    original = json.dumps({"_mutation_receipts": receipts, "custom": {"keep": 1}}).encode()
+    store.path.write_bytes(original)
+
+    def forbidden(current: dict) -> tuple[dict, dict]:
+        pytest.fail("corrupt receipts must not permit mutation")
+
+    with pytest.raises(FrontendSettingsCorruptError):
+        store.mutate_state(
+            "state:first", forbidden,
+            idempotency_key="same-key-123", request_fingerprint="same-payload",
+        )
+    assert store.path.read_bytes() == original
+    assert not store.backup_path.exists()
+
+
 def test_settings_endpoint_field_patch_preserves_unrelated_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

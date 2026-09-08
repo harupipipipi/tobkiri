@@ -182,19 +182,24 @@ class FrontendSettingsStore:
             current = self._read_locked(recover=True)
             receipts = current.get(MUTATION_RECEIPTS_KEY, {})
             if not isinstance(receipts, dict):
-                receipts = {}
-            if normalized_key:
-                previous = receipts.get(normalized_key)
-                if isinstance(previous, dict):
-                    if str(previous.get("fingerprint") or "") != request_fingerprint:
-                        raise FrontendSettingsIdempotencyConflict(
-                            "idempotency_key was already used for a different mutation"
-                        )
-                    previous_result = previous.get("result")
-                    if isinstance(previous_result, dict):
-                        replay = deepcopy(previous_result)
-                        replay["idempotent_replay"] = True
-                        return replay
+                raise FrontendSettingsCorruptError("settings mutation receipts are corrupt")
+            if normalized_key and normalized_key in receipts:
+                previous = receipts[normalized_key]
+                if not isinstance(previous, dict) or not isinstance(
+                    previous.get("result"), dict
+                ):
+                    raise FrontendSettingsCorruptError("settings mutation receipt is corrupt")
+                previous_result = previous["result"]
+                if (
+                    previous.get("fingerprint") != request_fingerprint
+                    or previous_result.get("state_ref") != normalized_ref
+                ):
+                    raise FrontendSettingsIdempotencyConflict(
+                        "idempotency_key was already used for a different mutation"
+                    )
+                replay = deepcopy(previous_result)
+                replay["idempotent_replay"] = True
+                return replay
 
             revisions = current.get(STATE_REVISIONS_KEY, {})
             if not isinstance(revisions, dict):
