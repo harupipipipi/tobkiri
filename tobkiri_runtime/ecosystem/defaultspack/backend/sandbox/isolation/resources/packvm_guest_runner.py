@@ -249,7 +249,7 @@ def _invoke(request: dict[str, object]) -> dict[str, object]:
     manifest = _load_manifest(target)
     implementation_path = _relative_path(manifest.get("implementation_path"))
     implementation = target.joinpath(*PurePosixPath(implementation_path).parts)
-    child_request = {
+    child_request: dict[str, object] = {
         "contract_id": _identifier(request["contract_id"], "contract_id"),
         "operation_id": _identifier(request["operation_id"], "operation_id"),
         "payload": request["payload"],
@@ -1166,6 +1166,8 @@ def _dispatch_agent_request(
     _emit_vsock_console_phase("vsock-envelope-validated")
     operation = base["operation"]
     request_id = base["request_id"]
+    if not isinstance(request_id, str):
+        raise ValueError("PackVM guest agent request identity is invalid")
     if operation == "invoke":
         payload = base["payload"]
         if not isinstance(payload, dict):
@@ -1539,7 +1541,7 @@ def _resume_bridge_invocation(
     manifest = _load_manifest(target)
     implementation_path = _relative_path(manifest.get("implementation_path"))
     implementation = target.joinpath(*PurePosixPath(implementation_path).parts)
-    child_request = {
+    child_request: dict[str, object] = {
         "contract_id": _identifier(request["contract_id"], "contract_id"),
         "operation_id": _identifier(request["operation_id"], "operation_id"),
         "payload": {
@@ -1675,7 +1677,7 @@ def _resolved_child_process_syscalls(
 
     machine_name = machine if machine is not None else platform.machine()
     architecture = machine_name.strip().casefold()
-    required = _REQUIRED_CHILD_PROCESS_SYSCALLS
+    required: tuple[bytes, ...] = _REQUIRED_CHILD_PROCESS_SYSCALLS
     if architecture not in _FORK_VFORK_ABSENT_LINUX_ABIS:
         required += _FORK_VFORK_CHILD_PROCESS_SYSCALLS
 
