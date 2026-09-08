@@ -27,6 +27,7 @@ from domain.ai_client.rumi_process import (
 from domain.frontend_settings_store import (
     FrontendSettingsStore,
     defaultspack_frontend_settings_path,
+    settings_state_revision,
 )
 
 
@@ -289,11 +290,12 @@ class ModelRuntimeSettingsService:
         }
 
     def get_deepthink_enabled(self) -> dict[str, Any]:
-        settings = self.get_settings()
+        snapshot = self._read_all()
+        settings = snapshot["models"]
         return {
             "enabled": bool(settings.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)),
             "state_ref": DEEPTHINK_STATE_REF,
-            "revision": self._settings_store.state_revision(DEEPTHINK_STATE_REF),
+            "revision": settings_state_revision(snapshot, DEEPTHINK_STATE_REF),
             "warning": "DeepThinkが有効なタスクには数時間かかる可能性があります。",
         }
 

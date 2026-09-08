@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 from copy import deepcopy
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -17,6 +17,15 @@ REVISION_KEY = "_settings_revision"
 STATE_REVISIONS_KEY = "_state_revisions"
 MUTATION_RECEIPTS_KEY = "_mutation_receipts"
 MAX_MUTATION_RECEIPTS = 64
+
+
+def settings_state_revision(snapshot: Mapping[str, Any], state_ref: str) -> int:
+    """Read a logical revision from the same snapshot as its associated value."""
+    revisions = snapshot.get(STATE_REVISIONS_KEY, {})
+    if not isinstance(revisions, dict):
+        return 0
+    revision = revisions.get(str(state_ref or "").strip(), 0)
+    return revision if type(revision) is int and revision >= 0 else 0
 
 
 class FrontendSettingsRevisionConflict(RuntimeError):
@@ -240,11 +249,7 @@ class FrontendSettingsStore:
             return settled
 
     def state_revision(self, state_ref: str) -> int:
-        value = self.read().get(STATE_REVISIONS_KEY, {})
-        if not isinstance(value, dict):
-            return 0
-        revision = value.get(str(state_ref or "").strip(), 0)
-        return revision if isinstance(revision, int) and not isinstance(revision, bool) else 0
+        return settings_state_revision(self.read(), state_ref)
 
     @contextmanager
     def _locked(self) -> Iterator[None]:

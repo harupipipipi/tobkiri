@@ -321,6 +321,42 @@ def test_state_mutation_is_revisioned_and_idempotent(tmp_path: Path) -> None:
     assert store.state_revision("defaultspack:models.deepthink_enabled") == 1
 
 
+def test_deepthink_value_and_revision_use_one_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ModelRuntimeSettingsService(pack_root=tmp_path)
+    state_ref = "defaultspack:models.deepthink_enabled"
+    snapshots = iter([
+        {"models": {"deepthink_enabled": False}, "_state_revisions": {state_ref: 3}},
+        {"models": {"deepthink_enabled": True}, "_state_revisions": {state_ref: 4}},
+    ])
+    reads = []
+
+    def read() -> dict:
+        snapshot = next(snapshots)
+        reads.append(snapshot)
+        return snapshot
+
+    monkeypatch.setattr(service._settings_store, "read", read)
+    # Keep this interleaving test focused on snapshot identity; actual model
+    # normalization is exercised by the service and endpoint regressions.
+    monkeypatch.setattr(service, "default_model_settings", lambda: {})
+    monkeypatch.setattr(service, "refresh_models_settings", lambda value: value)
+    first = service.get_deepthink_enabled()
+    assert (first["enabled"], first["revision"]) == (False, 3)
+    assert len(reads) == 1
+    second = service.get_deepthink_enabled()
+    assert (second["enabled"], second["revision"]) == (True, 4)
+    assert len(reads) == 2
+
+
+@pytest.mark.parametrize("revision", [None, True, -1, "3", 1.0, {}, []])
+def test_snapshot_revision_rejects_non_revision_values(revision: object) -> None:
+    assert settings_module.settings_state_revision(
+        {"_state_revisions": {"state": revision}}, "state"
+    ) == 0
+
+
 def test_state_mutation_rejects_stale_revision_and_key_reuse(tmp_path: Path) -> None:
     store = FrontendSettingsStore(tmp_path / "frontend_settings.json")
 
