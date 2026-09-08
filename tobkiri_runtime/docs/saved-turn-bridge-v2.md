@@ -12,6 +12,20 @@ It does not authenticate frames, grant execution authority, stop providers or
 provide durable restart recovery. Versioned envelope validation and explicit
 guest-side packaging/integration remain required before using it in production.
 
+`tobkiri_host/continuation_envelope.py` now defines strict v2 request/result
+validation, still unconnected. Requests carry exactly `kind`, `version`,
+`request_id`, `binding_digest`, `hop`, `nonce`, `previous_digest`, `target`,
+`payload` and `state`. The expected identity/hop/predecessor/target are supplied
+independently from authenticated state. Request bytes are limited to64KiB and
+depth16. Replies carry exactly `kind`, `version`, `request_digest` and `outcome`,
+with a512KiB/depth16 limit and exclusive `ok/value` or `error/error` variants.
+The next predecessor is the canonical digest of the verified prior reply.
+Decoded contents are retained as immutable canonical bytes. Duplicate keys,
+invalid Unicode, non-finite values and excess depth/size are rejected by the
+existing strict protocol parser. This validates format and binding only: an
+`ok` transport outcome is not proof of a successful owner action, and an error
+must not automatically advance the saved-turn application workflow.
+
 ## Observed boundaries
 
 - `ecosystem/defaultspack/runtime/conversation.py` emits a bounded v1 AI request.
