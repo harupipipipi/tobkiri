@@ -36,6 +36,12 @@ and Broker checks remain required.
   deletion returns `deleted: true`; stale updates/deletes leave storage unchanged.
 
 Message/stream/stop integration is still pending.
+The isolated Conversation `complete` ABI now preserves an explicitly selected
+`model` as a bounded `model_reference` in its digest-pinned AI request. Both guest
+and Host reject malformed references. Profile identity, credentials, arbitrary
+requirements and targets are still not forwarded from the outer UI payload;
+the existing gateway resolves the reference through its captured contracts.
+This bridge behavior alone does not connect the full UI's message/stream routes.
 The following sections describe legacy APIs and are not evidence that those
 operations are available through the captured full-UI map.
 
