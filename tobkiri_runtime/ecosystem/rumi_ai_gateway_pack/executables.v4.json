@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:1ec1ff8b5b122bae09528ddd1cdd1da67eb2140bfc4b16fa5ba4d4b218f8f90f",
+  "catalog_digest": "sha256:2747000e9d8a97a02f21de69344f1d7143e5fe6d0579f245fadcb8c2cd72da0f",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:bb0837f09f72df5a9853aa6bea0f388d7d1c8984b588ab57d20242e154aef0ce",
+  "source_identity": "sha256:e07927611e6ce14d0085a835d7ff42644b5970f291e486f360271915b45509ea",
   "variants": [
     {
       "architecture": "any",
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-      "implementation_digest": "sha256:2e8e2a7febc869e4376466f9c4e545b6fc9e76a79a56ef83e043fb524282345e",
+      "implementation_digest": "sha256:4a6dbf70211a036cb7198b87bf03fbf2c2a7b86f7ce252a02511f2fd248a136b",
       "implementation_path": "runtime/preflight.py",
       "materialization_mode": "on_demand",
       "operations": [

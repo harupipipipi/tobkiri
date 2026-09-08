@@ -47,7 +47,8 @@ class _CapturedDispatch:
 
     def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
         if contract_id == GENERATE_PROVIDER_CONTRACT and self._configured_provider:
-            return ({"provider_instance_id": "provider.fixture"},)
+            return ({"provider_instance_id": "provider.fixture",
+                     "operation_id": "rumi_provider_adapters_pack.provider-generate"},)
         return ()
 
     def invoke(
@@ -230,6 +231,21 @@ def test_preflight_missing_provider_is_not_reported_ready() -> None:
         contribution.invoke(FUNCTION_ID, {
             "model_profile_id": "model-profile", "messages": [{"role": "user", "content": "Hi"}],
         }, _Invocation(_PreflightDispatch(configured_provider=False)))
+
+
+def test_preflight_missing_exact_provider_operation_is_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core_runtime.global_contract_dispatch import GlobalContractUnavailable
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    monkeypatch.setattr(dispatch, "provider_metadata", lambda contract: (
+        ({"provider_instance_id": "provider.fixture"},) if contract == GENERATE_PROVIDER_CONTRACT else ()
+    ))
+    with pytest.raises(GlobalContractUnavailable, match="selected provider operation"):
+        contribution.invoke(FUNCTION_ID, {
+            "model_profile_id": "model-profile", "messages": [{"role": "user", "content": "Hi"}],
+        }, _Invocation(dispatch))
+    assert not any(contract == GENERATE_PROVIDER_CONTRACT for contract, _, _ in dispatch.calls)
 
 
 @pytest.mark.parametrize("contract", [GENERATE_PROVIDER_CONTRACT, USAGE_CONTRACT, FAILOVER_CONTRACT])

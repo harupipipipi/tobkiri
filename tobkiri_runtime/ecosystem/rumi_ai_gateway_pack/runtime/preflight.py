@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping
 
-from core_runtime.global_contract_dispatch import GlobalContractClient, V4ContractDispatch
+from core_runtime.global_contract_dispatch import (
+    GlobalContractClient, GlobalContractUnavailable, V4ContractDispatch,
+)
 from tobkiri_protocol.canonical import canonical_json
 
 from . import gateway
@@ -70,6 +72,11 @@ def create_preflight_operation(
                 or len(canonical_json(dict(payload))) > 60 * 1024):
             raise ValueError("AI preflight input is invalid")
         resolved = resolve("resolve", payload)
+        selected = [item for item in readonly.providers(gateway.GENERATE_PROVIDER_CONTRACT)
+                    if item.get("provider_instance_id") == resolved.get("provider_instance_id")
+                    and item.get("operation_id") == gateway.GENERATE_PROVIDER_OPERATION]
+        if len(selected) != 1:
+            raise GlobalContractUnavailable("AI preflight selected provider operation is unavailable")
         # Expose neither credential material nor execution handles/pricing internals.
         result = {key: resolved[key] for key in ("model_id", "provider_instance_id", "catalog_revision")}
         if any(not isinstance(value, str) or not value or len(value) > 512 for value in result.values()):
