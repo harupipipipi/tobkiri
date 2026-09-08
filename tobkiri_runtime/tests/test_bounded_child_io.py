@@ -96,6 +96,31 @@ def test_absolute_deadline_is_not_renewed_by_a_fresh_relative_timeout() -> None:
         assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
 
 
+@pytest.mark.parametrize("encoded", [
+    b'{"private-key":1,"private-key":2}',
+    b'{"nested":{"private-key":1,"private-key":2}}',
+    b'{"value":NaN}',
+    b'{"value":Infinity}',
+    b'{"value":1.5}',
+    b'{"value":9007199254740992}',
+    b'{"value":"\\ud800"}',
+    b'{"value":"\xff"}',
+    b'{"value":' + b'[' * 70 + b'0' + b']' * 70 + b'}',
+    b'{"value":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}',
+])
+def test_child_result_is_strict_before_normalization_and_redacts_parser_errors(
+    encoded: bytes,
+) -> None:
+    """Use actual pipe bytes; a dict fixture would already lose duplicate keys."""
+    source = f"import sys; sys.stdin.buffer.read(); sys.stdout.buffer.write({encoded!r})"
+    with _child(source) as process:
+        with pytest.raises(ValueError) as error:
+            runner._communicate_staged_implementation(process, {})
+        assert str(error.value) == "PackVM implementation result is invalid"
+        assert process.returncode == 0
+        assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
+
+
 def test_runner_reaps_child_even_when_serialization_fails_before_io(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

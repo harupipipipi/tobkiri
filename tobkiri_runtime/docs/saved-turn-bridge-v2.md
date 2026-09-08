@@ -109,6 +109,13 @@ computation. Host wait consumes this same guest budget. The Host's original
 monotonic value remains unchanged in the signed bridge and is enforced by the
 Host independently: its clock origin is not assumed equal to the guest's. This
 is connected v1 deadline handling, not a registered v2 multi-hop dispatch path.
+The parent also applies the shared strict JSON parser directly to received
+child stdout, before dictionary normalization or bridge validation. Duplicate
+keys, invalid Unicode, non-finite/floating-point numbers, unsafe integers and
+excessive depth are rejected with a fixed error that does not expose parser
+diagnostics. Actual-pipe tests cover both ordinary excessive depth and parser
+recursion overflow. This closes a byte-validation gap in both initial and
+resumed execution; it does not register or connect the v2 transport.
 `build_packvm_vz_helper.sh` stages this
 archive before binding the existing guest-runner digest and service template;
 the existing signed provisioning manifest covers all archive bytes. The root

@@ -333,8 +333,12 @@ def _communicate_staged_implementation(
     if len(stdout) > MAX_RESULT_BYTES:
         raise ValueError("PackVM invocation result exceeds size limit")
     try:
-        result = json.loads(stdout)
-    except json.JSONDecodeError:
+        from tobkiri_protocol.canonical import strict_loads
+
+        result = strict_loads(stdout, max_bytes=MAX_RESULT_BYTES)
+    except (ValueError, RecursionError):
+        # Reject ambiguous bytes before normalization can erase duplicate
+        # keys. Parser diagnostics can contain artifact-controlled secrets.
         raise ValueError("PackVM implementation result is invalid") from None
     if not isinstance(result, dict):
         raise ValueError("PackVM implementation result must be an object")
