@@ -10864,7 +10864,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+      "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -10878,7 +10878,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+          "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -10915,7 +10915,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.preferences.write",
-      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+      "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "additionalProperties": false,
@@ -10997,7 +10997,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+          "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "additionalProperties": false,
@@ -11228,7 +11228,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+      "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -11242,7 +11242,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+          "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"

@@ -22,6 +22,7 @@ from ecosystem.tobkiri_ui_settings_pack.runtime.settings import (
     PRESENTATION_CONTRACT,
     PRESENTATION_OPERATION,
     SettingsReadHostFactoryV4,
+    FrontendSettingsStore,
     _values,
 )
 from scripts.generate_application_presentation import OUTPUT
@@ -50,6 +51,43 @@ class Client:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module.tobkiri_packvm_invoke(operation, payload)
+
+
+def test_settings_values_and_revision_come_from_one_owner_snapshot(tmp_path, monkeypatch):
+    reads = []
+
+    def snapshot(store):
+        reads.append(store.path)
+        assert len(reads) == 1
+        return {"general": {"language": "ja"}, "_settings_revision": 23}
+
+    monkeypatch.setattr(FrontendSettingsStore, "read_snapshot", snapshot)
+    captured = SettingsReadHostFactoryV4().capture(
+        _context(tmp_path, FUNCTION_ID, CONTRACT_ID, OPERATION_ID)
+    )
+    result = captured.contributions[0].invoke(
+        OPERATION_ID, {"profile_id": "defaults"}, Client(),
+    )
+    assert result["values"]["general"]["language"] == "ja"
+    assert result["document_revision"] == 23
+    assert "_settings_revision" not in result["values"]
+    assert len(reads) == 1
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("revision", [True, False, -1, "0", 0.0, None])
+def test_settings_read_rejects_invalid_owner_revision(tmp_path, monkeypatch, revision):
+    monkeypatch.setattr(
+        FrontendSettingsStore, "read_snapshot", lambda _: {"_settings_revision": revision},
+    )
+    captured = SettingsReadHostFactoryV4().capture(
+        _context(tmp_path, FUNCTION_ID, CONTRACT_ID, OPERATION_ID)
+    )
+    with pytest.raises(ValueError, match="document revision is invalid"):
+        captured.contributions[0].invoke(
+            OPERATION_ID, {"profile_id": "defaults"}, Client(),
+        )
+    assert list(tmp_path.iterdir()) == []
 
 
 def _context(root, function, contract, operation, *, high_risk=False):

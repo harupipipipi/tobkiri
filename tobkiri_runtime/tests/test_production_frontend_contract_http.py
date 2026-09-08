@@ -413,6 +413,7 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         "general": {"composer_placeholder": "Saved placeholder"},
+        "_settings_revision": 7,
         "models": {"google_api_key": "hidden-test-secret"},
         "apis": {"api_keys": [{"value": "hidden-test-secret"}]},
         "_mutation_receipts": {"hidden-test-secret": {}},
@@ -450,6 +451,7 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         )
         data = payload["data"]
         assert data["values"]["general"]["composer_placeholder"] == "Saved placeholder"
+        assert data["document_revision"] == 7
         fields = {field["id"]: field for section in data["sections"]
                   if section["id"] == "models" for field in section["fields"]}
         assert fields["preferred_model"]["options"] == [
@@ -464,6 +466,7 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     assert status == 200, payload
     catalog = payload["data"]
     assert catalog["app"]["name"] == "Tobkiri"
+    assert catalog["settings"]["document_revision"] == 7
     assert {region["id"] for region in catalog["shell"]["layout"]["regions"]} == {
         "title_bar", "history", "chat_header", "chat_messages", "composer",
         "activity_preview", "right_sidebar", "settings_modal",

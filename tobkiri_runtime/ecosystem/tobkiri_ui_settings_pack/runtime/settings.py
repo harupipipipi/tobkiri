@@ -158,7 +158,15 @@ class SettingsReadHostFactoryV4:
             definitions = presentation["definitions"]
             if not isinstance(sections, list) or not isinstance(definitions, dict):
                 raise ValueError("application presentation is invalid")
-            settings = {"sections": sections, "values": _values(sections, store.read_snapshot())}
+            snapshot = store.read_snapshot()
+            revision = snapshot.get("_settings_revision", 0)
+            if type(revision) is not int or revision < 0:
+                raise ValueError("saved settings document revision is invalid")
+            settings = {
+                "sections": sections,
+                "values": _values(sections, snapshot),
+                "document_revision": revision,
+            }
             if operation_id == OPERATION_ID:
                 return settings
             return {
