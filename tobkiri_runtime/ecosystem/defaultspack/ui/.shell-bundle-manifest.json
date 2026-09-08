@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "d2e7cb5a50ae8d73bb732f4260b88aabb7003b4906f2f9ef013c897a42a6ca4a",
+    "digest": "bfd5e71c58636eecce2bfad563526dd5511e08b315547cc474bc5f0036c14498",
     "entries": [
       {
         "path": "index.html",
@@ -1115,13 +1115,13 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 112757,
-        "sha256": "a9a4628ecb0b29ee17d33a7e12b29002b7e550fe0d23d62e9874b8ecd80ef202"
+        "size": 114321,
+        "sha256": "01ecf799cd35d0f8081b6492a8f1be1b8c2d2d2d14e9a779c11a1ded2296b442"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 173997,
-        "sha256": "757831b136e86d7b2118587462b52333bb7ad58f052caab22e0ba55a460024dc"
+        "size": 174578,
+        "sha256": "682847c47a7f00bb0533f41296ae50733c96828cca8f6233046633f8ba9fa814"
       },
       {
         "path": "src/lib/approvalPresentation.ts",
@@ -1876,7 +1876,7 @@
     ]
   },
   "bundle": {
-    "digest": "729bf12b96ea868fce0e27f80d9913cdcf7a1ada14fa3b5708a0386123127c38",
+    "digest": "d626fea9087c60e59e25d1a0250df73d34349a565eb693103a70f836add84096",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1890,8 +1890,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2209255,
-        "sha256": "67ae6b6ec0baa1a58fad8d04b97ac46f4d8b60682687086af2bc48784a44b0a0"
+        "size": 2209497,
+        "sha256": "5b2c9a50d820223fc45f5a28edcbf0d783ff4408886fa420febe75720d7dae96"
       },
       {
         "path": "shell-rolldown-runtime.js",
