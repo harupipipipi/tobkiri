@@ -391,7 +391,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:00e975e058b8486c874a3cf096ef07e4c9e0468ee24e8f72a3c7fdf8f5404a8a",
+  "default_profile_digest": "sha256:c4afd1784f11f7998be2d21db359e16d5d3da1b645e28057942b2821b6c84a26",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
   "default_selection": {
@@ -560,7 +560,7 @@
     "rumi_model_catalog_pack": "sha256:051654c04c21381a00c99943d6c7d9f54c0daaed494628c11cf7cc1b05277f49",
     "rumi_model_registry_pack": "sha256:d52d6bd397ff54ff53ed5c18fefc8f2e86a679b59a1dc0be3a3179c86cb41029",
     "rumi_provider_adapters_pack": "sha256:667c97aa2f458fdf6036223a77ea7d680975998b58dc3cc6c431d4d49cac4f86",
-    "rumi_provider_registry_pack": "sha256:b2c03ef711b225935b67b6057b3997944cf49db5f0aaffecee7eba06282e94cb",
+    "rumi_provider_registry_pack": "sha256:18d28b88c15c997b444b7f52b97b73ffe989edc56d71b8c07602f22dd210b465",
     "rumi_shell_execute_pack": "sha256:90bcae21638775ab38bdb5f7038bb718c69fe08552613b94fffbb31809ca99c5",
     "rumi_shell_policy_pack": "sha256:e592b9ff92762cb0bd7983f86f7fa73da590c1960719daa21f05a0cd8067a34a",
     "rumi_turn_runtime_pack": "sha256:0bee8aa7723bd5e51fb57a3d062290768b80a8bf6135fdf510c4b11937c57ebd",

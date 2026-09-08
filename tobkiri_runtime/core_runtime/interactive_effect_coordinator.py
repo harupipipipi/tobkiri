@@ -380,18 +380,18 @@ def _execute_payload(
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
     if spec.kind == "provider_configure":
-        plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
+        configuration_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
         if (
-            set(plan) != {
+            set(configuration_plan) != {
                 "profile_id", "provider_instance_id", "adapter_id", "endpoint",
                 "expected_revision", "request_digest",
             }
-            or plan.get("request_digest") != canonical_digest(dict(request))
-            or type(plan.get("expected_revision")) is not int
-            or plan["expected_revision"] < 0
+            or configuration_plan.get("request_digest") != canonical_digest(dict(request))
+            or type(configuration_plan.get("expected_revision")) is not int
+            or configuration_plan["expected_revision"] < 0
         ):
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
-        return {"request": dict(request), "plan": plan}
+        return {"request": dict(request), "plan": configuration_plan}
     if spec.kind == "shell_execute":
         plan = prepared_result.get("redacted_plan")
         digest = prepared_result.get("plan_digest")

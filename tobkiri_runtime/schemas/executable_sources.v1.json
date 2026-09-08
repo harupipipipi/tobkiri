@@ -7442,6 +7442,108 @@
       ],
       "variant_id": "rumi_provider_adapters_pack.provider.compatibility.stream.python"
     },
+    "rumi_provider_registry_pack.provider-configure.execute": {
+      "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_registry_pack.provider-configure.execute",
+      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "implementation_path": "runtime/process.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_registry_pack.provider-configure",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_provider_registry_pack.provider-configure",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+          "implementation_path": "runtime/process.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_provider_registry_pack.provider-configure",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_registry_pack",
+      "pack_id": "rumi_provider_registry_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_provider_registry_pack.provider-configure",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_provider_registry_pack.provider-configure.execute.python"
+    },
+    "rumi_provider_registry_pack.provider-configure.prepare": {
+      "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
+      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+      "implementation_path": "runtime/process.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_provider_registry_pack.provider-configure-prepare",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_provider_registry_pack.provider-configure-prepare",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
+          "implementation_path": "runtime/process.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_provider_registry_pack.provider-configure-prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_provider_registry_pack",
+      "pack_id": "rumi_provider_registry_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_provider_registry_pack.provider-configure-prepare",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_provider_registry_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_provider_registry_pack.provider-configure.prepare.python"
+    },
     "rumi_provider_registry_pack.provider-registry.health": {
       "contract_id": "tobkiri.resource.ai.provider.health.v1",
       "contract_version": "1.0.0",
@@ -7554,52 +7656,13 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.provider-registry.manage",
-      "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
+      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
       },
+      "operation_id": "rumi_provider_registry_pack.provider-registry-manage",
       "operations": [
-        {
-          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "rumi_provider_registry_pack.provider-configure",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
-          "implementation_path": "runtime/process.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "rumi_provider_registry_pack.provider-configure",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "rumi_provider_registry_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "rumi_provider_registry_pack.provider-configure-prepare",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
-          "implementation_path": "runtime/process.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "rumi_provider_registry_pack.provider-configure-prepare",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "rumi_provider_registry_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "contract_version": "1.0.0",
@@ -7607,7 +7670,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
+          "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -7634,18 +7697,6 @@
           "module": "ecosystem.rumi_provider_registry_pack.runtime.process",
           "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json",
           "symbol": ""
-        },
-        {
-          "entrypoint_id": "rumi_provider_registry_pack.provider-configure",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "rumi_provider_registry_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "entrypoint_id": "rumi_provider_registry_pack.provider-configure-prepare",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "rumi_provider_registry_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_provider_registry_pack.provider-registry.manage.python"
@@ -7658,7 +7709,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-      "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
+      "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -7671,7 +7722,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
+          "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -7692,7 +7743,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
+          "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -7712,7 +7763,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:be4913347b24bba8585cec588c850495e286f35a1ed5952ce09736cb36ca3ce5",
+          "implementation_digest": "sha256:8cb05f04f90927dfe77f5150880eb8f05d29f9e686cdcd69ada9f9e751f8e5c1",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -12154,7 +12205,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:e4dc326a05ca0888a74e1b1771b18d6072cf1491e315a6c8ebc92cc1b5cf697c",
+    "input_digest": "sha256:bc95fa6398d80a29f12717221322999084db8f4c45b86433b840f67fcfe39e75",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12711,7 +12762,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:c4f8a8c1c6d82e89a51ed2033629dc3d3522918bb70ddfb9299926cd671a1742",
+        "digest": "sha256:9e2aa399d35ce0768e817aa3cafee98fe203e4461ec4e94e57a07cf106d1c8bf",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/artifact-manifest.json"
       },
@@ -12861,7 +12912,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:0fb3ee3a72f9884a0f584068bd5ad21fdd52d638294198bff3e27ae8c47becc3",
+        "digest": "sha256:17d751da0208ba1131d9d8b0f3be73a5df902898454e4dac176043f389bcbf57",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -13191,7 +13242,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:62af33e31bc9e07225439d0d3c430511c06713f4a4d4a3ebaeb2050b85907341",
+        "digest": "sha256:70b0ad8fcdff58b80939cc6a9cf4b5982dbd42957d085492fbd4e4ea3ccd30c4",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json"
       },

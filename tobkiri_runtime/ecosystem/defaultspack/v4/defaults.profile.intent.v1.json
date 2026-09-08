@@ -141,7 +141,7 @@
     },
     {
       "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "target_provider_id": "rumi_provider_registry_pack.provider-registry.manage",
+      "target_provider_id": "rumi_provider_registry_pack.provider-configure.prepare",
       "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
       "operation_id": "rumi_provider_registry_pack.provider-configure-prepare",
       "authority_mode": "profile_grant",
@@ -162,7 +162,7 @@
     },
     {
       "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "target_provider_id": "rumi_provider_registry_pack.provider-registry.manage",
+      "target_provider_id": "rumi_provider_registry_pack.provider-configure.execute",
       "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
       "operation_id": "rumi_provider_registry_pack.provider-configure",
       "authority_mode": "interactive_only",
@@ -182,7 +182,7 @@
       }
     },
     {
-      "caller_function_id": "rumi_provider_registry_pack.provider-registry.manage",
+      "caller_function_id": "rumi_provider_registry_pack.provider-configure.execute",
       "target_provider_id": "rumi_credential_broker_pack.credential-broker.manage",
       "contract_id": "tobkiri.action.credential.manage.v1",
       "operation_id": "rumi_credential_broker_pack.credential-manage",

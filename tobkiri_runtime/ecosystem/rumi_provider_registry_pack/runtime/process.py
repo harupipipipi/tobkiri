@@ -28,7 +28,13 @@ from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegis
 class ProviderRegistryHostFactoryV4:
     """Capture Profile-bound registry operations for authenticated Host dispatch."""
 
-    def __init__(self, *, readonly: bool = True) -> None:
+    def __init__(
+        self, *, readonly: bool = True, configuration_phase: str | None = None,
+    ) -> None:
+        if configuration_phase not in {None, "prepare", "execute"}:
+            raise ValueError("provider configuration phase is invalid")
+        if configuration_phase is not None:
+            readonly = False
         self.readonly = readonly
         self.function_id = (
             "rumi_provider_registry_pack.provider-registry."
@@ -44,8 +50,13 @@ class ProviderRegistryHostFactoryV4:
         )
         self.operations = (
             frozenset({base_operation, base_operation + ".generate", base_operation + ".stream"})
-            if readonly else frozenset({base_operation, PREPARE_OPERATION, EXECUTE_OPERATION})
+            if readonly else frozenset({base_operation})
         )
+        if configuration_phase is not None:
+            self.function_id = "rumi_provider_registry_pack.provider-configure." + configuration_phase
+            self.operations = frozenset({
+                PREPARE_OPERATION if configuration_phase == "prepare" else EXECUTE_OPERATION,
+            })
 
     def capture(
         self,
@@ -149,6 +160,8 @@ HOST_PROVIDER_FACTORY = {
     for factory in (
         ProviderRegistryHostFactoryV4(),
         ProviderRegistryHostFactoryV4(readonly=False),
+        ProviderRegistryHostFactoryV4(configuration_phase="prepare"),
+        ProviderRegistryHostFactoryV4(configuration_phase="execute"),
     )
 }
 

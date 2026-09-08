@@ -133,7 +133,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:baf4e854801e556bcab765d460c9532675cb7e7f144ad0cb13678214beaca839",
+    "source_digest": "sha256:e8c3501de19540035d2bab823cd43f7b9df268a6265a78be673a0bd73403843b",
     "repository_commit": "working-tree",
     "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
     "generator": "tobkiri-profile-artifacts",
@@ -207,7 +207,7 @@
     },
     {
       "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "target_provider_id": "rumi_provider_registry_pack.provider-registry.manage",
+      "target_provider_id": "rumi_provider_registry_pack.provider-configure.prepare",
       "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
       "operation_id": "rumi_provider_registry_pack.provider-configure-prepare",
       "authority_mode": "profile_grant",
@@ -229,7 +229,7 @@
     },
     {
       "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "target_provider_id": "rumi_provider_registry_pack.provider-registry.manage",
+      "target_provider_id": "rumi_provider_registry_pack.provider-configure.execute",
       "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
       "operation_id": "rumi_provider_registry_pack.provider-configure",
       "authority_mode": "interactive_only",
@@ -250,7 +250,7 @@
       }
     },
     {
-      "caller_function_id": "rumi_provider_registry_pack.provider-registry.manage",
+      "caller_function_id": "rumi_provider_registry_pack.provider-configure.execute",
       "target_provider_id": "rumi_credential_broker_pack.credential-broker.manage",
       "contract_id": "tobkiri.action.credential.manage.v1",
       "operation_id": "rumi_credential_broker_pack.credential-manage",
