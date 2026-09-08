@@ -8,6 +8,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.contract
+
 from ecosystem.defaultspack.runtime import saved_conversation as saved
 from tobkiri_protocol.errors import SchemaValidationError
 from tobkiri_protocol.validation import validate_document
