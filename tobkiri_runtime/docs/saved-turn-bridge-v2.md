@@ -65,6 +65,12 @@ predecessor from retained authenticated state, independently validate the fixed
 target sequence, and consume the result before resuming a fresh sandbox child.
 External callers must not be allowed to submit resume state.
 
+The saved-turn file is now explicitly digest-pinned as an executable artifact
+in the canonical Pack source, artifact index and generated bundle. It has no
+Function variant or published operation yet. Sealing these source bytes fixes
+the integrity scanner's unlisted-runtime-file error; it does not make the
+unfinished saved-turn dispatcher available or grant a live Profile binding.
+
 `continuation_envelope.seal_continuation_intent` now converts that exact intent
 shape into a validated request using independently supplied root identity, hop,
 target, nonce and predecessor. Extra application-supplied framing fields are

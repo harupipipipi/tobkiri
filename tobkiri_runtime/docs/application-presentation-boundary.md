@@ -49,7 +49,8 @@ performed by these read contracts.
 The legacy transition must cover more than the presentation reader:
 
 - `domain/frontend/registry.py` updates the shared document and can migrate
-  keyboard-navigation fields while reading; corrupt-data backup also writes.
+  keyboard-navigation fields while reading; it requests corrupt-data preservation
+  from the store rather than opening or replacing settings files itself.
 - `domain/ai_client/model_runtime_settings.py` updates the `models` namespace
   and uses revision/idempotency-aware `mutate_state` for model mutations.
 - `domain/frontend/command_protocol.py` reads registered command declarations
@@ -80,6 +81,15 @@ alone does not provide that evidence. No live cutover is authorized by source
 development or isolated tests. A reviewed typed operation must also replace
 legacy callable transforms: arbitrary Python callbacks cannot cross the Pack
 boundary as a write capability.
+
+UI recovery now calls `read(preserve_corrupt=True)`. Unrecoverable bytes are
+preserved by the store under the same transaction lock, with a full-digest
+filename and the original permissions. Existing differing backup bytes are not
+overwritten. Ordinary `read()` and read-only `read_snapshot()` do not create
+diagnostic copies; the latter still cannot repair state. The registry's duplicate
+raw writer and unused replacement helper were removed, and both valid JSON and
+diagnostic bytes use one store-owned atomic writer. This consolidates I/O but
+does not yet migrate ownership or authorize a new live settings operation.
 
 The isolated ABI and captured-consumer tests are not native startup, real AI
 conversation, live Profile activation, streaming, cancellation or DMG acceptance.
