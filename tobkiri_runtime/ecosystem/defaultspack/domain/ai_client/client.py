@@ -1144,7 +1144,7 @@ class AIClient:
         )
         return store.get(model)
 
-    def _complete_model_pack(self, model_pack, messages, tools=None, params=None):
+    def _complete_model_pack(self, model_pack, messages, tools=None, params=None, *, settings_owner: SettingsOwnerPort | None = None):
         params = dict(params or {})
         if (
             str(getattr(model_pack, "id", "") or "").strip() == rumi_process.RUMI_MODEL_PACK_ID
@@ -1155,6 +1155,7 @@ class AIClient:
                     base_model=str(params.get("rumi_base_model_override")).strip()
                 )
             )
+        settings = self._settings_data(settings_owner=settings_owner).get("models")
         selection = select_model_pack(
             model_pack,
             {
@@ -1166,9 +1167,7 @@ class AIClient:
                 if isinstance((params or {}).get("task_hints"), dict)
                 else {},
             },
-            settings=self._settings_data().get("models")
-            if isinstance(self._settings_data().get("models"), dict)
-            else {},
+            settings=settings if isinstance(settings, dict) else {},
         )
         if selection is None or not selection.ordered_members:
             raise RuntimeError("model pack has no runnable members")

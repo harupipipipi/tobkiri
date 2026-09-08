@@ -1033,7 +1033,9 @@ def test_builtin_rumi_model_pack_uses_available_runtime_model(monkeypatch, tmp_p
     assert [call["model"] for call in provider.calls] == ["gemini-2.5-flash"]
 
 
-def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monkeypatch):
+def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     client = AIClient()
     captured = []
 
@@ -1058,6 +1060,7 @@ def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monk
                 "deepthink_enabled": deepthink_enabled,
                 "rumi_base_model_override": "anthropic/explicit-override",
             },
+            settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
         )
         assert response["content"][0]["text"] == "ok"
 
@@ -1258,6 +1261,8 @@ def test_model_switch_updates_conversation_default(monkeypatch, tmp_path):
 
 
 def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation(tmp_path)
     dispatch_input(
@@ -1275,6 +1280,7 @@ def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
     prepared = prepare_chat_run(
         {"conversation_id": conversation["id"], "message": {"role": "user", "content": "hello"}},
         {},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     assert prepared.model == "demo/route-once"
