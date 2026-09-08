@@ -383,6 +383,7 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
     from core_runtime.authority.v4 import AuthorityStore, FunctionPrincipal
     from core_runtime.bootstrap.profile_capture import (
         capture_default_profile, prepare_default_profile_confirmation,
+        profile_capture_scope,
     )
     from core_runtime.bootstrap.production_v4 import capture_production_dispatch
     from ecosystem.defaultspack.defaultspack.runtime_composition import (
@@ -447,12 +448,17 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         "conversation_revision": 1, "content": "Hello",
     }}
     try:
-        result = session.invoke("tobkiri.action.turn.saved.v1",
-                                "rumi_turn_runtime_pack.turn-saved", initial)
+        # Match the production HTTP boundary: each request has its own capture
+        # scope, propagated by Broker to nested owner calls. Never share one
+        # between the initial submission and its duplicate or extend deadlines.
+        with profile_capture_scope():
+            result = session.invoke("tobkiri.action.turn.saved.v1",
+                                    "rumi_turn_runtime_pack.turn-saved", initial)
         assert result["status"] == "completed", result
         assert result["turn"]["result_reference"]["conversation_revision"] == 3
-        repeated = session.invoke("tobkiri.action.turn.saved.v1",
-                                  "rumi_turn_runtime_pack.turn-saved", initial)
+        with profile_capture_scope():
+            repeated = session.invoke("tobkiri.action.turn.saved.v1",
+                                      "rumi_turn_runtime_pack.turn-saved", initial)
         assert repeated == {"status": "existing", "turn": result["turn"]}
         assert len(guest_requests) == len(ai_calls) == 1
         assert [item["content"] for item in store.get("conversation-1")["messages"]] == [
