@@ -1,16 +1,17 @@
 # Saved-turn bridge v2 implementation contract
 
-Status: implementation plan, not a registered protocol or acceptance evidence.
+Status: guest source dispatch exists; Host dispatch, registration and native
+acceptance remain incomplete. This document is not release acceptance evidence.
 The existing v1 `conversation.turn.v1/complete` remains supported and single-hop.
 Do not remove its one-exchange guards to implement saved conversations.
 
-Initial state machinery now exists in `tobkiri_host/continuation_chain.py`, but
-is not connected to either VM boundary. It retains registered identities until
+State machinery in `tobkiri_host/continuation_chain.py` is now used by the
+root guest saved-turn dispatcher, but not by the Host boundary. It retains identities until
 the original deadline, issues local single-use resume permits, bounds four hops
 and cumulative encoded request/result bytes, and fences cancelled/failed chains.
 It does not authenticate frames, grant execution authority, stop providers or
-provide durable restart recovery. Versioned envelope validation and explicit
-guest-side dispatch integration remain required before using it in production.
+provide durable restart recovery. Host validation, captured Broker dispatch and
+durable orchestration remain required before using it in production.
 
 `tobkiri_host/continuation_session.py` couples the codecs and shared chain ledger:
 it captures the bounded target plan, registers before returning the first frame,
@@ -25,7 +26,7 @@ deadline must use the ledger's local clock: Host and guest monotonic clocks
 cannot be assumed interchangeable when wiring the VM boundary.
 
 `tobkiri_host/continuation_envelope.py` now defines strict v2 request/result
-validation, still unconnected. Requests carry exactly `kind`, `version`,
+validation, now used by guest source dispatch. Requests carry exactly `kind`, `version`,
 `request_id`, `binding_digest`, `hop`, `nonce`, `previous_digest`, `target`,
 `payload` and `state`. The expected identity/hop/predecessor/target are supplied
 independently from authenticated state. Request bytes are limited to64KiB and
@@ -40,6 +41,24 @@ must not automatically advance the saved-turn application workflow.
 
 ## Observed boundaries
 
+- `tobkiri_host/saved_guest_dispatch.py` reserves each saved identity before
+  initial execution and retains pending, in-flight and terminal state through
+  one guest-local 60-second deadline. It seals the fixed four-target plan,
+  consumes each bound result once and passes only state/outcome into a newly
+  verified sandbox child. Guards before spawn and after process registration
+  fence cancellation; registered children also use the existing process-stop
+  path. Late results cannot register another action. Tests cover real signed
+  agent socket exchanges and conversation-owner writes with explicit sandbox
+  and AI adapters; they do not prove a deployed Linux VM or real Provider call.
+- The new pending `host_bridge_request` uses kind
+  `tobkiri.packvm.bridge.host-request.v2`, protocol `io.tobkiri.packvm.bridge.v2`,
+  exact integer version 2, request/domain/artifact/request-digest identities,
+  binding_digest (canonical digest of authenticated launch binding_digests),
+  the original Host deadline text, bridge_request and its canonical digest.
+  Host results use kind `tobkiri.packvm.bridge.host-result.v2` and the same
+  identities and request-frame digest, replacing deadline/frame with
+  bridge_result (the strict v2 continuation result). The existing Host rejects
+  this unimplemented version; do not reinterpret it as a v1 request or success.
 - The Swift direct helper now retains exclusive exchange tickets across pending
   replies: the exact reserved saved contract/version/operation gets at most four
   bridges; other operations keep the one-bridge limit. A helper-local 60-second
@@ -67,11 +86,11 @@ The pure application computation now exists in
 `ecosystem/defaultspack/runtime/saved_conversation.py`. Its `saved_complete`
 ABI accepts either `{request}` or root-created `{state, outcome}` and emits
 `tobkiri.packvm.continuation.intent.v2` containing `hop`, `target`, `payload`
-and `state`. These intents are deliberately **not registered or connected** to
-the v1 guest runner. They must never be treated as terminal success by a v1
-wrapper. The v2 root integration must add request/binding identity, nonce and
-predecessor from retained authenticated state, independently validate the fixed
-target sequence, and consume the result before resuming a fresh sandbox child.
+and `state`. These intents are **not registered as a public Function**. Only the
+explicit saved contract/operation can emit them through the child ABI; the
+guest root adds request/binding identity, nonce and predecessor from retained
+state, validates the fixed target sequence, and consumes a result before
+resuming a fresh sandbox child. They are never terminal success in the v1 path.
 External callers must not be allowed to submit resume state.
 
 The saved-turn file is now explicitly digest-pinned as an executable artifact
@@ -94,7 +113,8 @@ The packaging path now uses `scripts/build_packvm_guest_bundle.py` to produce
 a deterministic, uncompressed zipapp. Its exact closure is the existing runner
 as `__main__.py`, the three continuation modules, bounded child pipe I/O,
 protocol canonicalization/errors and dependency-free saved-input validation,
-and empty package initializers. No Host dispatcher, state owner, credentials or
+the fixed saved guest dispatcher and empty package initializers. No Host
+Authority/Broker dispatcher, state owner, credentials or
 third-party dependencies are included. The pipe helper is now used by the actual
 initial and resumed child execution path: stdout is bounded while reading,
 stderr is counted but never retained (64KiB maximum), and concurrent nonblocking

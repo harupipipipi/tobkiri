@@ -1,6 +1,6 @@
 """Bounded Host-owned continuation state; not a dispatch or authority API.
 
-Not yet wired to PackVM. Callers must authenticate/version-check frames and
+Used by saved guest dispatch; Host integration is pending. Callers must authenticate/version-check frames and
 capture the complete request/domain/activation binding before registering a
 chain. Register before dispatching its first effect. Payloads are immutable
 encoded bytes; this module does not interpret or authorize their contents.

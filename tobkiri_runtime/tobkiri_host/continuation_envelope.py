@@ -1,6 +1,6 @@
 """Strict v2 request framing, not a substitute for signed transport or Broker.
 
-This codec is groundwork only; existing v1 guest/Host dispatch is unchanged.
+The saved guest dispatcher uses this codec; existing v1 guest/Host dispatch is unchanged.
 Expected identities, stage, predecessor and target must come from authenticated
 Host state, never from the frame being checked.
 """
