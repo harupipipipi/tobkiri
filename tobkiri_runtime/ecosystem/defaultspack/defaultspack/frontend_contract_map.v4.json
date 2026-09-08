@@ -50,6 +50,19 @@
       ]
     },
     {
+      "method": "PUT",
+      "path": "/api/ui/settings",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.ui.preferences.write",
+        "contract_id": "tobkiri.action.ui.preferences.v1",
+        "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+        "provider_id": "tobkiri.ui.preferences.write",
+        "function_id": "tobkiri.ui.preferences.write",
+        "allowed_payload_keys": ["changes", "expected_revision"]
+      }]
+    },
+    {
       "method": "GET",
       "path": "/api/chat/conversations",
       "presentation": "conversation_list",

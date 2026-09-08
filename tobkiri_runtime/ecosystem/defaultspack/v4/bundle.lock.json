@@ -1374,7 +1374,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:b66f184d3608cb751f2941250382cf0ccd9fcc3c43bf227bfe19a569b864a2fb"
+      "digest": "sha256:7462547ca65feb6fd239524eab2a6672c1f71083e5557baac9a561cb693a42c6"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1444,7 +1444,7 @@
     {
       "path": "defaults.profile.v4.json",
       "kind": "profile",
-      "digest": "sha256:ab7f412c2074822db9c16cf489e8230b50636b72531a21af96e66a909c94464c"
+      "digest": "sha256:dfe86b7bf621ad19f00796dcb9dbdf9f0a3837336ad8bec7ff087b4dbfe556ad"
     }
   ]
 }

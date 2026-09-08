@@ -147,6 +147,24 @@ class DefaultspackHTTPPresentation:
             target.operation_id,
             target.provider_id,
             target.function_id,
+        ) == (
+            "defaults.ui.preferences.write",
+            "tobkiri.action.ui.preferences.v1",
+            "tobkiri_ui_settings_pack.preferences-write",
+            "tobkiri.ui.preferences.write",
+            "tobkiri.ui.preferences.write",
+        ):
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or set(payload) != {"changes", "expected_revision"}:
+                raise ValueError("preferences write requires captured identity")
+            return {**dict(payload), "profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
         ) in {
             (
                 "defaults.ui.settings.read",

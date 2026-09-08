@@ -396,6 +396,49 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
+def test_preferences_write_uses_captured_owner_and_preserves_private_state(
+    settings_vertical_server, tmp_path: Path,
+) -> None:
+    """Authenticated display patches cross the real Broker, not a local writer."""
+    server, _session, _authority = settings_vertical_server
+    storage = tmp_path / "user-data/defaultspack/shared/frontend_settings.json"
+    storage.parent.mkdir(parents=True, exist_ok=True)
+    original = {
+        "general": {"composer_placeholder": "Before", "private": "owner-only"},
+        "models": {"google_api_key": "private-test-value"},
+        "_settings_revision": 7,
+    }
+    storage.write_text(json.dumps(original), encoding="utf-8")
+    before = storage.read_bytes()
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+    route = _contract("PUT", "/api/ui/settings")
+    body = {"changes": {"general": {"composer_placeholder": "After"}}, "expected_revision": 7}
+    status, payload, _ = _request(server, "PUT", route, body=body)
+    assert status in {401, 403}, payload
+    for extra in ({"profile_id": "other"}, {"approved": True}, {"path": str(storage)}):
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _ = _request(server, "PUT", route, body={**body, **extra}, headers=headers)
+        assert status == 400, payload
+    assert storage.read_bytes() == before
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, payload, _ = _request(server, "PUT", route, body=body, headers=headers)
+    assert status == 200, payload
+    assert payload["data"] == {"values": body["changes"], "document_revision": 8}
+    persisted = json.loads(storage.read_text(encoding="utf-8"))
+    assert persisted["general"] == {"composer_placeholder": "After", "private": "owner-only"}
+    assert persisted["models"] == original["models"]
+    after = storage.read_bytes()
+    for invalid in (
+        body,
+        {"changes": {"models": {"google_api_key": "replacement"}}, "expected_revision": 8},
+    ):
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _ = _request(server, "PUT", route, body=invalid, headers=headers)
+        assert status != 200, payload
+        assert storage.read_bytes() == after
+
+
 def test_settings_reads_saved_values_and_models_through_real_broker(
     settings_vertical_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
