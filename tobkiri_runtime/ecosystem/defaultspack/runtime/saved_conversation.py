@@ -257,8 +257,10 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
         elif hop in (1, 3):
             expected = _message(state, "user" if hop == 1 else "assistant")
             message = value["message"]
-            if value.get("action") != "message_appended" or any(
-                message.get(key) != item for key, item in expected.items()
+            if (
+                not isinstance(message, dict)
+                or value.get("action") != "message_appended"
+                or any(message.get(key) != item for key, item in expected.items())
             ):
                 raise ValueError("message owner acknowledgement mismatch")
             revision = _revision(value["conversation_revision"])

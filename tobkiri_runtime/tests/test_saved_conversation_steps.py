@@ -157,7 +157,7 @@ def test_stale_read_and_duplicate_turn_never_write_or_call_ai(tmp_path: Path) ->
     assert len(store.get("conversation-1")["messages"]) == 1
 
 
-@pytest.mark.parametrize("change", ["id", "content", "parent_id", "revision", "action"])
+@pytest.mark.parametrize("change", ["id", "content", "parent_id", "revision", "action", "shape"])
 def test_wrong_write_acknowledgement_stops_with_uncertain_persistence(
     tmp_path: Path, change: str
 ) -> None:
@@ -169,6 +169,8 @@ def test_wrong_write_acknowledgement_stops_with_uncertain_persistence(
         outcome["value"]["conversation_revision"] = 1
     elif change == "action":
         outcome["value"]["action"] = "created"
+    elif change == "shape":
+        outcome["value"]["message"] = []
     else:
         outcome["value"]["message"][change] = "wrong"
     result = saved.resume(append["state"], outcome)
