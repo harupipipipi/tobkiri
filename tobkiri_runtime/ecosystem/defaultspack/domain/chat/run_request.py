@@ -296,7 +296,8 @@ def _resolve_template_tool_policy(
 
 
 def prepare_chat_run(
-    input_data: dict[str, Any], context: dict[str, Any] | None = None
+    input_data: dict[str, Any], context: dict[str, Any] | None = None, *,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> PreparedChatRun:
     validation_error = validate_chat_run_input(input_data if isinstance(input_data, dict) else {})
     if validation_error:
@@ -413,7 +414,7 @@ def prepare_chat_run(
     params.pop("tool_selection", None)
     if requested_model:
         model = requested_model
-    model_settings_service = ModelRuntimeSettingsService()
+    model_settings_service = ModelRuntimeSettingsService(settings_owner=settings_owner)
     model_settings = model_settings_service.get_settings()
     route_override = _consume_turn_model_route_override(
         store, conversation_id, conversation, metadata
@@ -623,7 +624,8 @@ def prepare_chat_run(
     )
 
     raw_tools, provider_tools, tool_context = _available_tools(
-        request_context, tool_resolution_input, user_text=user_text
+        request_context, tool_resolution_input, user_text=user_text,
+        settings_owner=settings_owner,
     )
     if frontend_precision:
         tool_context["frontend_precision"] = frontend_precision
@@ -732,7 +734,7 @@ def prepare_chat_run(
         settings=(
             tool_context.get("capability_settings_snapshot")
             if isinstance(tool_context.get("capability_settings_snapshot"), dict)
-            else _read_frontend_settings()
+            else _read_frontend_settings(settings_owner=settings_owner)
         ),
         runtime_profile=(
             tool_context.get("runtime_profile")
@@ -3825,6 +3827,7 @@ def _available_tools(
     input_data: dict[str, Any],
     *,
     user_text: str = "",
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     selection = _normalize_tool_selection(input_data)
     caller_provider_tools = _caller_provider_tool_definitions(input_data)
@@ -3867,7 +3870,7 @@ def _available_tools(
     settings: dict[str, Any] = {}
     profile_filtered: list[dict[str, Any]] = []
     try:
-        settings = _read_frontend_settings()
+        settings = _read_frontend_settings(settings_owner=settings_owner)
         registry_tools = ToolRegistry().list_tools()
         profile_filtered = filter_tool_definitions_for_runtime_profile(
             registry_tools,

@@ -291,6 +291,7 @@ def test_line_computer_use_fake_receive_acknowledges_and_preserves_japanese_prom
 def test_line_runtime_prompt_is_hidden_from_stored_user_message(monkeypatch, tmp_path):
     from domain.chat.run_request import prepare_chat_run  # noqa: E402
     from domain.chat.store import ChatStore  # noqa: E402
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
     store = ChatStore()
@@ -322,6 +323,7 @@ def test_line_runtime_prompt_is_hidden_from_stored_user_message(monkeypatch, tmp
             "tools": ["computer_use", "browser_computer"],
         },
         {"external_chat_history_mode": "current_turn"},
+        settings_owner=FrontendSettingsStore(tmp_path / "frontend_settings.json"),
     )
 
     assert prepared.user_message["raw_text"] == source_text
