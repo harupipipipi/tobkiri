@@ -644,7 +644,7 @@ def test_agent_bridge_result_unwraps_the_runner_completion(
         expires_at=packvm_guest_runner.time.monotonic() + 60.0,
     )
 
-    class Ledger:
+    class Ledger(packvm_guest_runner._PendingBridgeLedger):
         def consume(self, **_kwargs: object) -> packvm_guest_runner._PendingBridge:
             return pending
 

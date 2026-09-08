@@ -80,6 +80,16 @@ def test_expiry_rejects_late_first_intent_without_renewing_budget() -> None:
         ledger.begin(request(), "sha256:" + "c" * 64, delayed)
 
 
+@pytest.mark.parametrize("malformed", [None, [], "invalid"])
+def test_nonobject_result_fences_the_pending_request(malformed: object) -> None:
+    ledger = SavedGuestTurns(clock=lambda: 10.0)
+    pending = ledger.begin(request(), "sha256:" + "c" * 64, initial)
+    with pytest.raises(ValueError, match="binding"):
+        ledger.resume("domain", "turn", malformed, initial)
+    with pytest.raises(ValueError, match="unavailable"):
+        ledger.resume("domain", "turn", result(pending), initial)
+
+
 def test_wrong_initial_target_cannot_be_sealed_or_retried() -> None:
     ledger = SavedGuestTurns(clock=lambda: 10.0)
     def wrong(*args: Any) -> dict:

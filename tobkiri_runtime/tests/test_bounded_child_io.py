@@ -51,6 +51,43 @@ def test_bidirectional_pipe_pressure_drains_stderr_and_preserves_exact_stdout() 
         assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
 
 
+def test_saved_cancel_after_registration_stops_before_sending_abi_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Close the cancel-before-registration race with a post-registration guard."""
+    digest = "sha256:" + "a" * 64
+    request = {"request_id": "cancel-race", "artifact_digest": digest,
+               "materialization_digest": digest, "contract_id": "conversation.saved-turn.v1",
+               "operation_id": "saved_complete", "cancel_token": "b" * 64}
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(runner, "ARTIFACT_ROOT", tmp_path)
+    monkeypatch.setattr(runner, "_verify_invocation_artifact", lambda request: digest)
+    monkeypatch.setattr(runner, "_load_manifest", lambda target: {
+        "implementation_path": "runtime/test.py",
+    })
+    registered = []
+    cleaned = []
+    monkeypatch.setattr(runner, "_register_request", lambda *args: registered.append(True))
+    monkeypatch.setattr(runner, "_unregister_request", lambda *args: cleaned.append(True))
+    def guard() -> None:
+        if registered:
+            raise ValueError("cancelled before input")
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("cancelled child must not receive ABI input")
+    monkeypatch.setattr(runner, "_communicate_staged_implementation", forbidden)
+    with _child("import os\nwhile True: os.write(2, b'private'*1000)") as process:
+        stopped = _local_stop(monkeypatch, process)
+        monkeypatch.setattr(runner, "_spawn_staged_implementation", lambda *args: process)
+        with pytest.raises(ValueError, match="cancelled before input"):
+            runner._execute_invocation_step(
+                request, {}, runner.time.monotonic() + 60, execution_guard=guard,
+            )
+        assert stopped == [process.pid]
+        assert cleaned == [True]
+        assert process.returncode is not None
+        assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
+
+
 @pytest.mark.parametrize("pipe", ["stdout", "stderr"])
 def test_runner_stops_and_reaps_flooding_child_without_retaining_diagnostics(
     monkeypatch: pytest.MonkeyPatch, pipe: str,

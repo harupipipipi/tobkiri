@@ -85,7 +85,7 @@ class SavedGuestTurns:
             raise
 
     def resume(
-        self, domain_id: str, request_id: str, result: dict[str, Any], execute: Execute,
+        self, domain_id: str, request_id: str, result: object, execute: Execute,
     ) -> dict[str, Any]:
         """Consume a bound Host result once, then execute one fresh sandbox step."""
         with self._lock:
@@ -99,7 +99,7 @@ class SavedGuestTurns:
                 self._check(turn)
                 expected = self._binding(turn, "host-result")
                 expected["bridge_request_digest"] = turn.pending_digest
-                if set(result) != set(expected) | {"bridge_result"} or any(
+                if not isinstance(result, dict) or set(result) != set(expected) | {"bridge_result"} or any(
                     result[key] != value for key, value in expected.items()
                 ) or type(result.get("version")) is not int:
                     raise ValueError("saved guest Host result binding is invalid")

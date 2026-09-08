@@ -235,7 +235,8 @@ def _invoke(
     for field in ("request_id", "target_domain", "contract_version"):
         if not isinstance(request[field], str) or not request[field]:
             raise ValueError(f"PackVM invocation {field} is invalid")
-    if not isinstance(request["payload"], dict):
+    invocation_payload = request["payload"]
+    if not isinstance(invocation_payload, dict):
         raise ValueError("PackVM invocation payload must be an object")
     from tobkiri_protocol.saved_conversation import (
         SAVED_CONVERSATION_CONTRACT,
@@ -249,7 +250,7 @@ def _invoke(
             or request["contract_version"] != "1.0.0"
         ):
             raise ValueError("PackVM saved conversation operation is invalid")
-        request = {**request, "payload": validate_saved_conversation_input(request["payload"])}
+        invocation_payload = validate_saved_conversation_input(invocation_payload)
     _digest(request["request_digest"], "request_digest")
     _normalise_bridge_deadline(request["deadline_monotonic"])
     cancel_token = str(request["cancel_token"] or "")
@@ -258,7 +259,7 @@ def _invoke(
     if os.geteuid() != 0:
         raise ValueError("PackVM invocation requires the root-owned supervisor")
     return _execute_invocation_step(
-        request, request["payload"], guest_deadline, execution_guard=execution_guard,
+        request, invocation_payload, guest_deadline, execution_guard=execution_guard,
     )
 
 
@@ -1329,9 +1330,6 @@ def _dispatch_agent_request(
     if operation == "bridge_result":
         host_bridge_result = base["host_bridge_result"]
         if ledger.saved.contains(config.domain_id, request_id):
-            if not isinstance(host_bridge_result, dict):
-                raise ValueError("saved guest Host result must be an object")
-
             def resumed_step(
                 captured: dict[str, Any], arguments: dict[str, Any], deadline: float,
                 guard: Callable[[], None],
