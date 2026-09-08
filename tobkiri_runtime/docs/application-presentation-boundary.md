@@ -46,5 +46,23 @@ transition is not solved by this change; do not replace it with a foreign-path
 read or hide it behind an import alias. No state migration, repair or write is
 performed by these read contracts.
 
+The legacy transition must cover more than the presentation reader:
+
+- `domain/frontend/registry.py` updates the shared document and can migrate
+  keyboard-navigation fields while reading; corrupt-data backup also writes.
+- `domain/ai_client/model_runtime_settings.py` updates the `models` namespace
+  and uses revision/idempotency-aware `mutate_state` for model mutations.
+- `domain/frontend/command_protocol.py` reads registered command declarations
+  from the same shared document.
+- `domain/frontend_settings_store.py` currently owns file locking, atomic
+  replacement, whole-document/state revisions and mutation receipts together.
+
+A transition that relocates only public-value reads would split these owners
+and can return stale defaults while old writers continue updating the original
+document. Reads, writes, recovery and migration need a single explicit cutover
+and captured authorization; copying a snapshot without fencing the old writers
+does not establish that cutover. This inventory is a design constraint, not an
+implemented migration or permission to modify the live shared file.
+
 The isolated ABI and captured-consumer tests are not native startup, real AI
 conversation, live Profile activation, streaming, cancellation or DMG acceptance.

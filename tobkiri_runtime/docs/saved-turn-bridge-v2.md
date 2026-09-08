@@ -71,6 +71,10 @@ write, without claiming that preflight guarantees later provider availability.
    parent's original deadline. No application payload supplies this ceiling.
    This is connected v1 deadline propagation, not v2 multi-hop integration or
    proof that every provider honors cancellation.
+   The Broker also checks the deadline after receiving a completed Future:
+   `Future.result(timeout=0)` alone accepts an already-finished late result.
+   Late observations enter the existing cancellation/error path; potential
+   external effects remain ambiguous and require reconciliation.
 2. Keep the current hop and predecessor digest in the root guest ledger. Consume
    a continuation before resuming; advance through an explicit method rather
    than reusing initial registration with a fresh TTL.
