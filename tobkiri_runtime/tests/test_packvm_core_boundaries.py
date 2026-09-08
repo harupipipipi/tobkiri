@@ -614,7 +614,7 @@ def test_agent_direct_invoke_unwraps_the_runner_completion(
     monkeypatch.setattr(
         packvm_guest_runner,
         "_invoke",
-        lambda _request: _runner_completion(config, outcome),
+        lambda _request, **_kwargs: _runner_completion(config, outcome),
     )
 
     response = packvm_guest_runner._dispatch_agent_request({}, config, object())
@@ -641,7 +641,7 @@ def test_agent_bridge_result_unwraps_the_runner_completion(
         request={"request_digest": _digest("request")},
         guest_artifact_identity=_digest("guest"),
         bridge_request={"continuation": {}},
-        expires_at=1.0,
+        expires_at=packvm_guest_runner.time.monotonic() + 60.0,
     )
 
     class Ledger:
@@ -653,7 +653,7 @@ def test_agent_bridge_result_unwraps_the_runner_completion(
     monkeypatch.setattr(
         packvm_guest_runner,
         "_resume_bridge_invocation",
-        lambda *_args: _runner_completion(config, outcome),
+        lambda *_args, **_kwargs: _runner_completion(config, outcome),
     )
 
     response = packvm_guest_runner._dispatch_agent_request({}, config, Ledger())
