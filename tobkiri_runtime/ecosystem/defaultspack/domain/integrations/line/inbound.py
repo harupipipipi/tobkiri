@@ -149,6 +149,7 @@ def _handle_event(
             audience_decision=decision,
             context=runtime_context,
             mentioned=addressed if require_group_mention else mentioned,
+            settings_owner=settings_owner,
         ), acknowledgement)
     return _with_line_acknowledgement(_dispatch_line_event(
         external_event,
@@ -157,6 +158,7 @@ def _handle_event(
         audience_decision=decision,
         context=runtime_context,
         mentioned=addressed if require_group_mention else mentioned,
+        settings_owner=settings_owner,
     ), acknowledgement)
 
 
@@ -168,6 +170,7 @@ def _dispatch_line_event(
     audience_decision,
     context: dict[str, Any],
     mentioned: bool = False,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> Dict[str, Any]:
     result = dispatch_external_event(
         external_event,
@@ -177,6 +180,7 @@ def _dispatch_line_event(
         context=context,
         send_response=True,
         mentioned=mentioned,
+        settings_owner=settings_owner,
     )
     plan = result.get("response_plan") if isinstance(result.get("response_plan"), dict) else ResponsePlanner("line").plan(RumiResponse.from_result(result))
     reply = _send_response_plan(plan, external_event, context=context)
@@ -191,6 +195,7 @@ def _dispatch_line_event_in_background(
     audience_decision,
     context: dict[str, Any],
     mentioned: bool = False,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> Dict[str, Any]:
     event_id = str((external_event.event or {}).get("id") or "").strip()
     background_context = dict(context or {})
@@ -205,6 +210,7 @@ def _dispatch_line_event_in_background(
                 audience_decision=audience_decision,
                 context=background_context,
                 mentioned=mentioned,
+                settings_owner=settings_owner,
             )
         except Exception:
             _LOGGER.exception("LINE background event processing failed event_id=%s", event_id or "<missing>")

@@ -46,13 +46,16 @@ class TriggerDecisionService:
         self.default_action = str(self.config.get("default_action") or "fire").strip().lower() or "fire"
 
     @classmethod
-    def from_profile(cls, profile: Any, context: dict[str, Any] | None = None) -> "TriggerDecisionService":
+    def from_profile(
+        cls, profile: Any, context: dict[str, Any] | None = None, *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> "TriggerDecisionService":
         context = context if isinstance(context, dict) else {}
         override = context.get("trigger_decision_config")
         if isinstance(override, dict):
             return cls(override)
         spec = getattr(profile, "spec", profile if isinstance(profile, dict) else {})
-        frontend_config = _frontend_trigger_config()
+        frontend_config = _frontend_trigger_config(settings_owner=settings_owner)
         profile_config = spec.get("trigger_decision") if isinstance(spec, dict) and isinstance(spec.get("trigger_decision"), dict) else {}
         if not profile_config and isinstance(spec, dict) and isinstance(spec.get("trigger"), dict):
             profile_config = spec.get("trigger") or {}
