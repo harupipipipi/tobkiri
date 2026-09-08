@@ -656,7 +656,17 @@ class RequestBroker:
         before_dispatch: Callable[[], None] | None,
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
-        try:
+        dispatch_lock = threading.Lock()
+        cancelled = False
+        provider_started = False
+
+        def invoke_at_boundary() -> object:
+            nonlocal provider_started
+            # Executor queue time is untrusted elapsed time: a lease checked
+            # before submit can expire or be revoked while the worker is busy.
+            with dispatch_lock:
+                if cancelled or monotonic_clock() >= deadline:
+                    raise RequestTimedOutError("deadline expired before dispatch")
             self._authority.recheck_effect_boundary(
                 envelope.context,
                 envelope.target_principal,
@@ -666,11 +676,19 @@ class RequestBroker:
                 self._audit.mark_dispatched(audit_reservation)
             if before_dispatch is not None:
                 before_dispatch()
+            # Cancellation may win while Authority/audit/pending-effect guards
+            # run. Never start a provider after the waiting caller has fenced it.
+            with dispatch_lock:
+                if cancelled or monotonic_clock() >= deadline:
+                    raise RequestTimedOutError("deadline expired before dispatch")
+                provider_started = True
+            return backend.invoke(envelope)
+
+        try:
             operation_context = contextvars.copy_context()
             future = self._executor.submit(
                 operation_context.run,
-                backend.invoke,
-                envelope,
+                invoke_at_boundary,
             )
             remaining = max(0.0, deadline - monotonic_clock())
             raw = future.result(timeout=remaining)
@@ -698,12 +716,21 @@ class RequestBroker:
                 )
             return payload
         except TimeoutError as exc:
+            with dispatch_lock:
+                cancelled = True
+                started = provider_started
+            if future is not None:
+                future.cancel()
             cancellation_error: Exception | None = None
             try:
-                backend.cancel(envelope.context.request_id)
+                if started:
+                    backend.cancel(envelope.context.request_id)
             except Exception as cancel_exc:
                 cancellation_error = cancel_exc
-            ambiguous = binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
+            ambiguous = (
+                started
+                and binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
+            )
             self._record_audit_failure(audit_reservation, ambiguous=ambiguous)
             if ambiguous:
                 raise_ambiguous(
@@ -719,6 +746,9 @@ class RequestBroker:
                 ) from cancellation_error
             raise RequestTimedOutError("local execution exceeded deadline") from exc
         except AmbiguousEffectError:
+            raise
+        except RequestTimedOutError:
+            self._record_audit_failure(audit_reservation, ambiguous=False)
             raise
         except Exception as exc:
             self._record_audit_failure(audit_reservation, ambiguous=False)
