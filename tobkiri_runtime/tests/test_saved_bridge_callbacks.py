@@ -376,8 +376,9 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         session.close()
 
 
+@pytest.mark.parametrize("lost_reply", [None, "guest", "owner"])
 def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_reply: str | None,
 ) -> None:
     """Normal Defaults/Broker/owners; VM, readiness and AI are explicit adapters."""
     from core_runtime.authority.v4 import AuthorityStore, FunctionPrincipal
@@ -416,6 +417,8 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
             intent = saved.resume(intent["state"], callback(
                 envelope, _frame(intent, envelope.context.request_id),
             ))
+        if lost_reply == "guest":
+            raise RuntimeError("guest reply lost after final owner commit")
         return ProviderOutcome(intent)
 
     monkeypatch.setattr(backend, "invoke", guest)
@@ -428,7 +431,14 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         if (contract_id, operation_id) == saved.TARGETS[2]:
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi"}
-        return original(self, contract_id, operation_id, payload, **kwargs)
+        result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (
+            lost_reply == "owner" and (contract_id, operation_id) == saved.TARGETS[3]
+            and payload.get("operation") == "append_saved"
+            and payload["message"]["role"] == "assistant"
+        ):
+            raise RuntimeError("owner reply lost after final commit")
+        return result
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     session = capture_production_dispatch(
@@ -454,12 +464,17 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         with profile_capture_scope():
             result = session.invoke("tobkiri.action.turn.saved.v1",
                                     "rumi_turn_runtime_pack.turn-saved", initial)
-        assert result["status"] == "completed", result
-        assert result["turn"]["result_reference"]["conversation_revision"] == 3
+        assert result["status"] == (
+            "reconciliation_required" if lost_reply else "completed"
+        ), result
         with profile_capture_scope():
             repeated = session.invoke("tobkiri.action.turn.saved.v1",
                                       "rumi_turn_runtime_pack.turn-saved", initial)
-        assert repeated == {"status": "existing", "turn": result["turn"]}
+        if lost_reply:
+            assert repeated["status"] == "completed", repeated
+            assert repeated["turn"]["result_reference"]["conversation_revision"] == 3
+        else:
+            assert repeated == {"status": "existing", "turn": result["turn"]}
         assert len(guest_requests) == len(ai_calls) == 1
         assert [item["content"] for item in store.get("conversation-1")["messages"]] == [
             "Hello", "Hi",
