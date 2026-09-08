@@ -109,6 +109,16 @@ revision checks. The captured settings owner must expose reviewed namespace/
 field projections and mutations, keep control metadata local, and merge changes
 under its own transaction. Local CAS tests do not establish those permissions.
 
+`compare_and_swap_fields` now provides the owner-side merge primitive: it takes
+only changed fields, rejects names outside a separately supplied Host write
+policy before storage access, reads the original document locally and commits
+through the existing document CAS. Its result contains the submitted fields and
+new document revision, not unrelated stored values or receipts. It neither
+repairs corrupt data nor retries conflicts or ambiguous replies. This primitive
+is not yet a registered operation: capture must supply write policy and field
+value validation independently of the request. The public read allowlist must
+not be reused as an implicit grant to mutate every readable field.
+
 UI recovery now calls `read(preserve_corrupt=True)`. Unrecoverable bytes are
 preserved by the store under the same transaction lock, with a full-digest
 filename and the original permissions. Existing differing backup bytes are not
