@@ -64,9 +64,12 @@ The legacy transition must cover more than the presentation reader:
   unreadable/corrupt-preference fallback remains local compatibility behavior;
   it must not absorb future captured-contract authorization failures. They do
   not recover from backup or create locks/directories/diagnostics.
-- Model and command cache signatures still observe the settings path. Moving
-  only the snapshot method would leave these filesystem dependencies behind;
-  the captured owner cutover must replace those signatures with owner revisions.
+- The model cache signature still observes the primary and backup paths.
+  Moving only the snapshot method would leave these filesystem dependencies
+  behind; the captured owner cutover must use an owner snapshot/revision instead.
+  The command registry also derives its separate event/offline database paths
+  from the settings path; those databases are not settings-owner state and must
+  retain an explicit independent location when the settings client loses paths.
 
 A transition that relocates only public-value reads would split these owners
 and can return stale defaults while old writers continue updating the original
@@ -91,6 +94,14 @@ alone does not provide that evidence. No live cutover is authorized by source
 development or isolated tests. A reviewed typed operation must also replace
 legacy callable transforms: arbitrary Python callbacks cannot cross the Pack
 boundary as a write capability.
+
+The local data-only document/state CAS port is not a public PackVM API. A full
+legacy document can contain private fields, arbitrary extension namespaces and
+internal receipts. Exporting that document to the application and accepting an
+arbitrary replacement would bypass the disclosure boundary above, even with
+revision checks. The captured settings owner must expose reviewed namespace/
+field projections and mutations, keep control metadata local, and merge changes
+under its own transaction. Local CAS tests do not establish those permissions.
 
 UI recovery now calls `read(preserve_corrupt=True)`. Unrecoverable bytes are
 preserved by the store under the same transaction lock, with a full-digest
