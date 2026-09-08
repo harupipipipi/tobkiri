@@ -429,8 +429,9 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
+@pytest.mark.parametrize("lose_owner_reply", [False, True])
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lose_owner_reply: bool,
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
     from core_runtime.bootstrap.saved_bridge import READINESS
@@ -447,7 +448,14 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi"}
-        return original(self, contract_id, operation_id, payload, **kwargs)
+        result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (
+            lose_owner_reply and (contract_id, operation_id) == TARGETS[3]
+            and payload.get("operation") == "append_saved"
+            and payload["message"]["role"] == "assistant"
+        ):
+            raise RuntimeError("owner reply lost after commit")
+        return result
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     servers = _captured_production_server(
@@ -481,13 +489,19 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, payload, _ = _request(server, "POST", route, body=body, headers=headers)
         assert status == 200, payload
-        assert payload["data"]["status"] == "completed", payload
-        reference = payload["data"]["turn"]["result_reference"]
-        assert reference["conversation_revision"] == 3
+        assert payload["data"]["status"] == (
+            "reconciliation_required" if lose_owner_reply else "completed"
+        ), payload
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, repeated, _ = _request(server, "POST", route, body=body, headers=headers)
         assert status == 200, repeated
-        assert repeated["data"] == {"status": "existing", "turn": payload["data"]["turn"]}
+        if lose_owner_reply:
+            assert repeated["data"]["status"] == "completed", repeated
+        else:
+            assert repeated["data"] == {"status": "existing", "turn": payload["data"]["turn"]}
+        completed_turn = repeated["data"]["turn"]
+        reference = completed_turn["result_reference"]
+        assert reference["conversation_revision"] == 3
         assert len(ai_calls) == 1
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
@@ -521,7 +535,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             headers=headers,
         )
         assert status == 200, observed
-        assert observed["data"] == payload["data"]["turn"]
+        assert observed["data"] == completed_turn
         assert ledger.read_bytes() == ledger_before
         assert len(ai_calls) == 1
     finally:
