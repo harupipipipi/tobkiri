@@ -1,7 +1,7 @@
 # Saved-turn bridge v2 implementation contract
 
-Status: guest/Host source exchange exists; production captured Broker/preflight
-binding, caller-edge/UI wiring and native acceptance remain incomplete. This document is
+Status: guest/Host source exchange and conditional captured Broker/preflight
+binding exist; Defaults caller-edge/UI wiring, durable coordination and native acceptance remain incomplete. This document is
 not release acceptance evidence.
 The existing v1 `conversation.turn.v1/complete` remains supported and single-hop.
 Do not remove its one-exchange guards to implement saved conversations.
@@ -11,8 +11,8 @@ root guest dispatcher and the independent Host exchange. It retains identities u
 the original deadline, issues local single-use resume permits, bounds four hops
 and cumulative encoded request/result bytes, and fences cancelled/failed chains.
 It does not authenticate frames, grant execution authority, stop providers or
-provide durable restart recovery. Production captured Broker dispatch and
-durable orchestration remain required before using it in production.
+provide durable restart recovery. Production caller-edge selection and durable
+orchestration remain required before using it in the full UI.
 
 `tobkiri_host/continuation_session.py` couples the codecs and shared chain ledger:
 it captures the bounded target plan, registers before returning the first frame,
@@ -48,8 +48,9 @@ must not automatically advance the saved-turn application workflow.
   owned model resolution and routing, checks the exact selected Provider
   operation, and blocks generation, billing and other effectful dependencies.
   This is route readiness, not a live credential/network/approval proof. The
-  saved caller edge, context resolution and production preflight callback still
-  need connection; no live Profile activation is implied by publication.
+  production saved preflight now calls this operation when its exact caller
+  edge is captured. Defaults selection and broader context resolution remain
+  pending; no live Profile activation is implied by publication.
 - `saved_host_exchange.py` independently checks wrapper identities, launch
   binding digest, original Host deadline text, fixed targets, hop, predecessor
   and frame digest. The direct VZ driver authenticates each helper HMAC and guest
@@ -60,12 +61,26 @@ must not automatically advance the saved-turn application workflow.
   checked around each callback and transport response. The Host clock is never
   compared to a guest clock value.
 - `bind_saved_capability_bridge(callback, preflight)` is a separate Host-owned
-  registration, frozen before domain launch. Until production bootstrap binds
-  captured readiness and Broker implementations, saved invokes fail before
-  guest dispatch. The v1 callback is not reused as an implicit v2 permission.
+  registration, frozen before domain launch. Production bootstrap now binds
+  dedicated callbacks only for captured saved PackVM edges; unsupported
+  backends reject that capture. Missing targets reject before guest dispatch.
+  The v1 callback is not reused as an implicit v2 permission.
   Tests inject readiness/dispatch and VM transport while exercising real
   HMAC/Ed25519 verification, both independent exchanges and conversation-owner
   writes. That is not production Authority/Broker or real Provider acceptance.
+- `core_runtime/bootstrap/saved_bridge.py` independently limits conversation
+  reads/writes to the initial conversation, stable turn/message IDs and user
+  text. It preflights every target, owned revision, resolved text context and AI
+  route before append. It re-reads the owner to check the selected parent and
+  revision before user append, then model/history before AI. Each call uses the
+  captured outer identity, a Host-created session and the original deadline/
+  cancellation through Broker. Request payloads cannot set Profile/session.
+  Unresolved prompt/agent/tool/parts/widget context fails before user persistence.
+  Callback policy tests use the real owner; an additional isolated signed
+  Profile test uses actual production capture and Broker for owner reads/writes,
+  with explicit VM, readiness and AI-response adapters. It proves neither live
+  Defaults selection nor real AI/credential/network readiness. The preflight
+  module's import now also works under the verified Host hook loader.
 - `tobkiri_host/saved_guest_dispatch.py` reserves each saved identity before
   initial execution and retains pending, in-flight and terminal state through
   one guest-local 60-second deadline. It seals the fixed four-target plan,
