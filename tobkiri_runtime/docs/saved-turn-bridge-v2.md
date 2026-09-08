@@ -145,6 +145,21 @@ write, without claiming that preflight guarantees later provider availability.
   ordered sequence, and a terminal persisted/error/cancelled state. Wrapping a
   completed result in SSE, or replaying a buffered list, is not streaming proof.
 
+## Credentialed HTTP boundary
+
+The Host credential transport retains the authenticated request envelope.
+Its HTTP budget is bounded by both the supplied wall-clock deadline and the
+original Host monotonic deadline; a payload cannot extend the latter. Before
+resolving material, immediately before opening the request, and after consuming
+the response, it checks the captured cancellation/deadline and durable authority.
+A cancelled or late response is denied rather than audited as completed. Material
+cleanup and single-use consumption remain in place.
+
+These checks do not interrupt an already-blocked socket or undo a remote effect.
+In-flight I/O still needs provider-specific termination/reconciliation; Broker
+resource charges remain retained until the provider Future actually finishes.
+This transport fence is not a UI stop operation or streaming implementation.
+
 ## Implementation and acceptance order
 
 1. Define and test versioned bounded envelopes and root-owned chain state;
