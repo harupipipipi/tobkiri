@@ -1939,6 +1939,9 @@ def capture_production_dispatch(
         # This session identity is generated in the Host.  The guest nonce
         # binds its continuation but never becomes an Authority session id.
         bridge_session_id = f"session.packvm-bridge.{request_id}.{secrets.token_hex(16)}"
+        parent_deadline = getattr(outer_request, "deadline_monotonic", None)
+        if parent_deadline is None:
+            raise AuthorityDenied("PackVM capability bridge outer deadline is missing")
         with caller_session_bindings_lock:
             caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
         try:
@@ -1946,6 +1949,7 @@ def capture_production_dispatch(
                 bridge_edge.resolved_binding.operation.contract_id,
                 bridge_edge.resolved_binding.operation.operation_id,
                 {**dict(request), "_session_id": bridge_session_id},
+                parent_deadline_monotonic=parent_deadline,
             )
             if not isinstance(provider_result, Mapping):
                 raise TypeError("verified Provider capability returned a non-object")

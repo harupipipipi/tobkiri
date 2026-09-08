@@ -217,12 +217,15 @@ class V4DispatchSession:
         payload: Mapping[str, Any],
         *,
         version_range: str | None = None,
+        parent_deadline_monotonic: float | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
         An omitted compatibility requirement is bound to the exact Contract
         version in the immutable plan.  A caller-supplied range remains a
         strict additional constraint and can never select another Provider.
+        The optional parent deadline is a Host-only absolute ceiling, never
+        derived from application payload fields or renewed for nested work.
         """
         arguments = dict(payload)
         session_id = str(arguments.pop("_session_id", "")).strip()
@@ -255,6 +258,10 @@ class V4DispatchSession:
             ),
             context,
             effect_scope=scope,
+            **(
+                {"parent_deadline_monotonic": parent_deadline_monotonic}
+                if parent_deadline_monotonic is not None else {}
+            ),
         )
 
 

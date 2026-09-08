@@ -536,6 +536,7 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
         }
         bridge_request = _ai_bridge_request(request)
         outer = SimpleNamespace(
+            deadline_monotonic=time.monotonic() + 30,
             context=context,
             target_principal=OpaqueAuthorityRef(target.principal_id),
             target_domain=OpaqueAuthorityRef(context.target_domain_id),
@@ -551,9 +552,11 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             payload: dict[str, object],
             *,
             version_range: str | None = None,
+            parent_deadline_monotonic: float | None = None,
         ) -> dict[str, object]:
             assert self is session
             assert version_range is None
+            assert parent_deadline_monotonic == outer.deadline_monotonic
             invocations.append((contract_id, operation_id, dict(payload)))
             return {"content": "verified completion"}
 
@@ -590,6 +593,7 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             payload: dict[str, object],
             *,
             version_range: str | None = None,
+            parent_deadline_monotonic: float | None = None,
         ) -> dict[str, object]:
             del self, contract_id, operation_id, payload, version_range
             raise GlobalContractInvocationError(

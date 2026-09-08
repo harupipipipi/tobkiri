@@ -303,16 +303,32 @@ class RequestBroker:
         *,
         effect_scope: Mapping[str, Any],
         allow_lossy_adapters: bool = False,
+        parent_deadline_monotonic: float | None = None,
     ) -> Mapping[str, Any]:
         """Resolve, admit, materialize, authorize, dispatch, and validate."""
         with self._lifecycle_lock:
             if self._closed:
                 raise RuntimeError("request broker is closed")
+        if parent_deadline_monotonic is not None:
+            if (
+                type(parent_deadline_monotonic) not in (int, float)
+                or not math.isfinite(parent_deadline_monotonic)
+            ):
+                raise ValueError("parent request deadline is invalid")
+            if parent_deadline_monotonic <= time.monotonic():
+                raise RequestTimedOutError("parent request deadline expired")
         prepared = self._prepare_invocation(
             frame,
             context,
             allow_lossy_adapters=allow_lossy_adapters,
         )
+        if parent_deadline_monotonic is not None:
+            prepared = replace(
+                prepared,
+                deadline_monotonic=min(
+                    prepared.deadline_monotonic, parent_deadline_monotonic
+                ),
+            )
         return self._execute_prepared(
             prepared,
             context,
