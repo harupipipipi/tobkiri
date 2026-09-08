@@ -10,6 +10,7 @@ import pytest
 
 from ecosystem.rumi_turn_runtime_pack.runtime.host import TurnHostFactoryV4
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
+from tobkiri_protocol.canonical import canonical_digest
 
 
 def _context(root: Path, factory: TurnHostFactoryV4) -> Any:
@@ -83,6 +84,18 @@ def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) ->
             expected_revision=before["revision"],
             status="cancelled",
         )
+
+
+def test_captured_begin_retains_input_identity_without_restarting(tmp_path: Path) -> None:
+    first_digest = canonical_digest({"request": {"content": "first"}})
+    changed_digest = canonical_digest({"request": {"content": "changed"}})
+    before = _invoke(tmp_path, "lifecycle", **BEGIN, input_digest=first_digest)
+    assert before["input_digest"] == first_digest
+    assert _invoke(tmp_path, "lifecycle", **BEGIN, input_digest=first_digest) == before
+    with pytest.raises(TurnConflict, match="input identity"):
+        _invoke(tmp_path, "lifecycle", **BEGIN, input_digest=changed_digest)
+    assert _invoke(tmp_path, "resource", operation="get", turn_id="turn") == before
+    assert before["status"] == "queued"
 
 
 @pytest.mark.parametrize(

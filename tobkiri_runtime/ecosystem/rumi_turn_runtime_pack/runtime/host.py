@@ -97,7 +97,8 @@ class TurnHostFactoryV4:
                 raise PermissionError("turn read operation is not permitted")
             if action == "begin":
                 _fields(
-                    values, {"turn_id", "request_id", "conversation_id", "conversation_revision"}
+                    values, {"turn_id", "request_id", "conversation_id", "conversation_revision"},
+                    {"input_digest"},
                 )
                 return store.begin(values)
             if action not in _MUTATIONS:

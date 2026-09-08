@@ -1,6 +1,6 @@
 """Explicitly rooted SQLite persistence for the existing turn lifecycle owner.
 
-This store is not yet a captured Host provider. It never starts or restarts AI
+The captured Host provider uses this store. It never starts or restarts AI
 execution. Restored nonterminal records require explicit reconciliation by the
 future execution coordinator.
 """
@@ -18,6 +18,7 @@ from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict, TurnRun
 
 _MAX_RECORD_BYTES = 1024 * 1024
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ACTIONS = {
     "transition": {"status", "details"},
     "steer": {"guidance"},
@@ -55,6 +56,7 @@ class DurableTurnRuntime:
             "request_id",
             "conversation_id",
             "conversation_revision",
+            "input_digest",
         }
         if set(payload) - allowed or (
             "profile_id" in payload and payload["profile_id"] != self.profile_id
@@ -63,9 +65,13 @@ class DurableTurnRuntime:
         for field in ("turn_id", "request_id", "conversation_id"):
             if not isinstance(payload.get(field), str) or not _ID.fullmatch(payload[field]):
                 raise ValueError("durable begin requires explicit stable identities")
+        if "input_digest" in payload:
+            _input_digest(payload["input_digest"])
         bound = {**payload, "profile_id": self.profile_id}
         # Validate before creating a new database, including the exact revision.
         candidate = TurnRuntime().begin(bound)
+        if "input_digest" in payload:
+            candidate["input_digest"] = payload["input_digest"]
         connection = self._connect_write()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -74,6 +80,8 @@ class DurableTurnRuntime:
                 (candidate["request_id"],),
             ).fetchone()
             if row is not None:
+                if self._record(row).get("input_digest") != candidate.get("input_digest"):
+                    raise TurnConflict("turn input identity was rebound")
                 runtime = self._restore(row)
                 return runtime.begin(bound)
             if (
@@ -187,6 +195,8 @@ class DurableTurnRuntime:
             raise ValueError("persisted turn Profile is invalid")
         if record.get("id") != turn_id or record.get("request_id") != request_id:
             raise ValueError("persisted turn identity does not match its index")
+        if "input_digest" in record:
+            _input_digest(record["input_digest"])
         for field in ("id", "request_id", "conversation_id"):
             value = record.get(field)
             if not isinstance(value, str) or not _ID.fullmatch(value):
@@ -227,3 +237,9 @@ class DurableTurnRuntime:
             "INSERT INTO turns(id, request_id, updated_at, body) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, body=excluded.body",
             (record["id"], record["request_id"], record["updated_at"], body),
         )
+
+
+def _input_digest(value: object) -> None:
+    """Validate an input identity, never an execution or approval credential."""
+    if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+        raise ValueError("turn input digest is invalid")

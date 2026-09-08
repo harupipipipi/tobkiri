@@ -236,6 +236,16 @@ write, without claiming that preflight guarantees later provider availability.
   exposing saved-send as complete. The legacy `TurnRuntime` and its global pool
   remain in-process and still prune terminal mappings. Do not put execution
   state into the conversation storage Pack.
+  The durable begin operation now accepts an optional `input_digest` binding.
+  When present, it survives transitions and process restart and cannot be
+  changed, omitted on replay, or retroactively attached to a legacy record.
+  Malformed digests are rejected before creating storage. The future saved-turn
+  coordinator must compute this digest from the validated complete initial
+  input (including text) before begin; the lifecycle owner only retains the
+  supplied identity and cannot verify absent input bytes. A digest is neither
+  an approval credential nor an execution/retry permission. Legacy callers
+  without this binding retain their existing behavior, so this optional field
+  does not yet close saved-send's mandatory input-binding requirement.
 - Cancellation must reach the currently executing nested Broker request as
   well as the guest continuation. Dropping an HTTP response or cancelling only
   a pending guest nonce does not prove provider execution stopped.

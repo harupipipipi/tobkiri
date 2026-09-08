@@ -1,28 +1,28 @@
 {
-  "artifact_set_digest": "sha256:d4fa09f635a704aca79693eaf348a59eeb30c093de48594d1a842cc53e1e7268",
+  "artifact_set_digest": "sha256:074e5c590459676180a795f6ac4cfd718081c4b398d2dcb293db2e71cf5dc429",
   "artifacts": [
     {
-      "digest": "sha256:058c0099a395525970ddb8d29778fc66219035fa6ef468166c306c80246daa7e",
+      "digest": "sha256:5af107548afa408e9c2e1058f08c3513c48f2bb87e8ab99f10ce7637121ba182",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:cfaa8f19a4bfc0f50bf4b765f552721fa358b28c45589831d8be25ec8676e8dc",
+      "digest": "sha256:15d597333542bb8a12cd93d1267cbd051d334f38fea7aced58064eb241b9383b",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:388cb1d2115ef3bee10f8487fd26fef0e2a6262579f9cf60343d91ce43bae020",
+      "digest": "sha256:6d08e2871903993026b1e6b0126b264ac3c3c0674d61183a59e86a75367d94ff",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:7c7259427250648c7791d38339099f67198a8e0c82cb991bd1bea5bb53ee3798",
+      "digest": "sha256:7035cd40aa0298b1f60ba273cb4f09cf10350cdc4b45700b1cebedd7cbdaf237",
       "path": "runtime/durable.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a",
+      "digest": "sha256:76e785f8497430767d26e93fa525f446a5e9f1a4ac4153848e83e6705155c23a",
       "path": "runtime/host.py",
       "role": "runtime"
     },
@@ -35,8 +35,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:a1f419f7c182db1337b26f756a41286a73c321e21cd43687e9f90a880ab35ca8"
+    "signed_digest": "sha256:2da0da95af45560385bc28bdaab392ae12f84222ce1e54eeb6c72ad51f71dd8c"
   },
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:8bacecdd715d63591ec6946c1e99b43d5bf75cde61204a9215d5ab3330cee165"
+  "source_identity": "sha256:652069b30989b16d1acf4041a8983ba2e286d70edb3d18fb9ef0738391a4c5c6"
 }

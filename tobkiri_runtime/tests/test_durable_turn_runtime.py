@@ -41,9 +41,13 @@ def test_absent_reads_and_invalid_begin_do_not_create_storage(tmp_path: Path) ->
     assert not store.path.parent.exists()
 
 
-def test_restart_returns_running_snapshot_without_new_event(tmp_path: Path) -> None:
+@pytest.mark.parametrize("input_digest", [None, "sha256:" + "a" * 64])
+def test_restart_returns_running_snapshot_without_new_event(
+    tmp_path: Path, input_digest: str | None,
+) -> None:
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
-    store.begin(PAYLOAD)
+    payload = {**PAYLOAD, **({"input_digest": input_digest} if input_digest else {})}
+    store.begin(payload)
     running = store.mutate("transition", "turn", expected_revision=1, status="running")
     script = (
         "import json,sys; from pathlib import Path; "
@@ -52,7 +56,7 @@ def test_restart_returns_running_snapshot_without_new_event(tmp_path: Path) -> N
         "print(json.dumps(s.begin(json.loads(sys.argv[2]))))"
     )
     result = subprocess.run(
-        [sys.executable, "-B", "-c", script, str(tmp_path), json.dumps(PAYLOAD)],
+        [sys.executable, "-B", "-c", script, str(tmp_path), json.dumps(payload)],
         check=True,
         capture_output=True,
         text=True,
@@ -79,6 +83,31 @@ def test_rebinding_remains_denied_after_reopen(tmp_path: Path, patch: dict) -> N
     with pytest.raises(TurnConflict):
         reopened.begin({**PAYLOAD, **patch})
     assert reopened.list() == [before]
+
+
+@pytest.mark.parametrize("initial,retry", [
+    (None, "sha256:" + "a" * 64),
+    ("sha256:" + "a" * 64, None),
+    ("sha256:" + "a" * 64, "sha256:" + "b" * 64),
+])
+def test_input_binding_cannot_be_added_removed_or_replaced_after_begin(
+    tmp_path: Path, initial: str | None, retry: str | None,
+) -> None:
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    before = store.begin({**PAYLOAD, **({"input_digest": initial} if initial else {})})
+    reopened = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    with pytest.raises(TurnConflict, match="input identity"):
+        reopened.begin({**PAYLOAD, **({"input_digest": retry} if retry else {})})
+    assert reopened.get("turn") == before
+
+
+@pytest.mark.parametrize("digest", [None, True, "", "a" * 64, "sha256:" + "A" * 64,
+                                     "sha256:" + "a" * 64 + "\n"])
+def test_invalid_input_digest_does_not_create_storage(tmp_path: Path, digest: object) -> None:
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    with pytest.raises(ValueError, match="input digest"):
+        store.begin({**PAYLOAD, "input_digest": digest})
+    assert not store.path.parent.exists()
 
 
 def test_two_independent_connections_have_one_revision_winner(tmp_path: Path) -> None:

@@ -15300,7 +15300,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
+              "implementation_digest": "sha256:76e785f8497430767d26e93fa525f446a5e9f1a4ac4153848e83e6705155c23a"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15333,7 +15333,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
+              "implementation_digest": "sha256:76e785f8497430767d26e93fa525f446a5e9f1a4ac4153848e83e6705155c23a"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15366,7 +15366,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a"
+              "implementation_digest": "sha256:76e785f8497430767d26e93fa525f446a5e9f1a4ac4153848e83e6705155c23a"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15402,7 +15402,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:7f5af9ab8be7f124ab0f7ff3003b3169a240edcf53416f0773ef0216bf5ce12a",
+          "digest": "sha256:76e785f8497430767d26e93fa525f446a5e9f1a4ac4153848e83e6705155c23a",
           "kind": "executable",
           "path": "runtime/host.py"
         },
@@ -15412,7 +15412,7 @@
           "path": "runtime/turns.py"
         },
         {
-          "digest": "sha256:7c7259427250648c7791d38339099f67198a8e0c82cb991bd1bea5bb53ee3798",
+          "digest": "sha256:7035cd40aa0298b1f60ba273cb4f09cf10350cdc4b45700b1cebedd7cbdaf237",
           "kind": "executable",
           "path": "runtime/durable.py"
         }
