@@ -3,6 +3,7 @@ import type { ChatMessage } from "./api";
 export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;
+  savedTurn?: boolean;
   requestFingerprint?: string;
   startedAt: number;
   status: string;
@@ -37,6 +38,13 @@ export function shouldClearPendingAfterConversationRefresh(
   now = Date.now(),
 ): boolean {
   if (!latest || !request) return false;
+  if (request.savedTurn) {
+    return latest.role === "assistant"
+      && latest.conversation_id === request.conversationId
+      && Boolean(request.operationId)
+      && latest.metadata?.turn_id === request.operationId
+      && !isAssistantMessageStillRunning(latest);
+  }
   if (latest.role !== "user") return !isAssistantMessageStillRunning(latest);
   return now - request.startedAt >= PENDING_USER_ONLY_GRACE_MS;
 }

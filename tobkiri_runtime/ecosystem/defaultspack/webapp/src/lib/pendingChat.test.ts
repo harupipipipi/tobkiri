@@ -49,6 +49,23 @@ test("completed assistant clears pending", () => {
   assert.equal(shouldClearPendingAfterConversationRefresh(latest, pending(1000), 2000), true);
 });
 
+test("saved turns require their own assistant acknowledgement, never elapsed grace", () => {
+  const request = { ...pending(1000), savedTurn: true, operationId: "turn-1" };
+  const late = 1000 + 24 * 60 * 60_000;
+  for (const patch of [
+    { role: "user", metadata: { turn_id: "turn-1" } },
+    { metadata: { turn_id: "older-turn" } },
+    { conversation_id: "other", metadata: { turn_id: "turn-1" } },
+    { metadata: { turn_id: "turn-1" }, finish_reason: "streaming" },
+    { metadata: null },
+  ]) {
+    assert.equal(shouldClearPendingAfterConversationRefresh(message(patch), request, late), false);
+  }
+  assert.equal(shouldClearPendingAfterConversationRefresh(message({
+    metadata: { turn_id: "turn-1" }, finish_reason: "stop",
+  }), request, late), true);
+});
+
 test("stale user-only pending is cleared after reload grace", () => {
   const latest = message({ role: "user" });
 

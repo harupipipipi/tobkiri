@@ -2968,7 +2968,7 @@ export function ChatApp() {
   }, [droppedWidgets, input, isGenerating, selectedToolIds, setStoredSelectedToolIds]);
   const pendingRequest = activeConversationId ? pendingRequests[activeConversationId] : null;
   const isConversationPending = Boolean(
-    pendingRequest && Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS,
+    pendingRequest && (pendingRequest.savedTurn || Date.now() - pendingRequest.startedAt < PENDING_CHAT_REQUEST_TTL_MS),
   );
   const rawBrowserApproval = pendingBrowserApproval(messages);
   const rawAuthorityApproval = pendingAuthorityApproval(messages);
@@ -4089,7 +4089,7 @@ export function ChatApp() {
         }
       }).catch((pollError) => {
         console.error(pollError);
-        if (shouldForgetPendingAfterPollError(pollError)) {
+        if (!pendingRequest?.savedTurn && shouldForgetPendingAfterPollError(pollError)) {
           forgetPendingRequest(activeConversationId);
           replaceChatIdInUrl(activeConversationId, false);
           setIsGenerating(false);
@@ -4117,7 +4117,7 @@ export function ChatApp() {
 
   useEffect(() => {
     const staleIds = Object.entries(pendingRequests)
-      .filter(([, request]) => Date.now() - request.startedAt >= PENDING_CHAT_REQUEST_TTL_MS)
+      .filter(([, request]) => !request.savedTurn && Date.now() - request.startedAt >= PENDING_CHAT_REQUEST_TTL_MS)
       .map(([id]) => id);
     if (staleIds.length === 0) return;
     updatePendingRequests((current) => {
@@ -4165,6 +4165,10 @@ export function ChatApp() {
 
   const handleStopGenerating = () => {
     const conversationId = activeConversationId;
+    if (conversationId && pendingRequests[conversationId]?.savedTurn) {
+      setError("保存付き送信の停止確認は未対応です。停止済みとは扱わず、結果の照合を続けます。");
+      return;
+    }
     if (conversationId) {
       void api.stopMessage(conversationId).catch(console.error);
     }
@@ -6382,6 +6386,10 @@ export function ChatApp() {
 
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
+    if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
+      setError("前の送信結果を確認中です。新しいturnとして再送しません。");
+      return;
+    }
     if (activeConversation?.metadata?.shared_read_only === true) {
       setError("This imported conversation is read-only. Import a continue copy to send messages.");
       return;
@@ -6516,10 +6524,19 @@ export function ChatApp() {
       ?? null;
     const rumiDataPathForSubmit = pendingNewTaskContext?.rumiDataPath ?? activeContextForSubmit.rumiDataPath ?? null;
     const isCodingWorkspaceSubmit = mode === "coding" || Boolean(workspaceIdForSubmit);
-    let submittedConversationRuntimeId: string | null = null;
-    let markInterruptedAssistant: ((streamError: ChatStreamInterruptedError) => void) | null = null;
+    let savedSubmissionStarted = false;
 
     try {
+      if (submittedAttachments.length || submittedToolIds.length || submittedSkillIds.length
+        || submittedMentions.length || submittedDroppedWidgets.length || isCodingWorkspaceSubmit
+        || groupIdForSubmit || rumiDataPathForSubmit || deepthinkEnabled
+        || (activeProfile?.supports_thinking && selectedThinkingLevel)
+        || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
+        || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
+        || toolSelectionRequest.mode !== "none"
+        || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
+        throw new Error("保存付き送信は現在テキストのみです。添付・ツール・特殊contextは未対応のため、保存前に停止しました。ツールをオフにして送信してください。");
+      }
       let conversation = activeConversation;
       if (!conversation) {
         conversation = await api.createConversation({
@@ -6542,18 +6559,9 @@ export function ChatApp() {
         });
         setPendingNewTaskContext(null);
         setActiveConversationId(conversation.id);
+        setActiveConversation(conversation);
       }
-      const isOperationsMode = isOperationsConversation(conversation);
-      const isMimoCodingMode = isMimoCodingConversation(conversation);
-      const workspaceIdForRuntime = workspaceIdForSubmit ?? (isMimoCodingMode ? selectedCodingWorkspaceId : null);
-      const workspaceRecordForRuntime = workspaceIdForRuntime
-        ? codingWorkspaces.find((workspace) => workspace.workspace_id === workspaceIdForRuntime) ?? null
-        : null;
-      const workspaceLabelForRuntime = workspaceLabelForSubmit ?? workspaceRecordForRuntime?.label ?? null;
-      const workspaceRootForRuntime = workspaceRootForSubmit ?? workspaceRecordForRuntime?.root_path ?? null;
-      const shouldAttachWorkspaceToRuntime = isCodingWorkspaceSubmit || isMimoCodingMode;
       submittedConversationId = conversation.id;
-      submittedConversationRuntimeId = conversation.id;
       const requestStartedAt = Date.now();
       const requestFingerprint = JSON.stringify({
         text: userText,
@@ -6562,6 +6570,9 @@ export function ChatApp() {
         )),
       });
       const recoverablePending = pendingRequests[conversation.id];
+      if (!Number.isSafeInteger(conversation.conversation_revision) || (conversation.conversation_revision ?? 0) < 1) {
+        throw new Error("会話のrevisionが未確認です。会話を開き直してください。");
+      }
       const operationId = recoverablePending?.requestFingerprint === requestFingerprint
         && recoverablePending.operationId
         ? recoverablePending.operationId
@@ -6572,6 +6583,7 @@ export function ChatApp() {
         conversationId: conversation.id,
         operationId,
         requestFingerprint,
+        savedTurn: true,
         startedAt: requestStartedAt,
         status: `${activeProfile?.display_name ?? preferredModel} が思考中`,
         toolNames: [],
@@ -6579,381 +6591,51 @@ export function ChatApp() {
       });
       replaceChatIdInUrl(conversation.id, true);
 
-      const title =
-        conversation.title === "New Conversation"
-          ? deriveConversationTitle(userText)
-          : conversation.title;
-      const optimisticConversation = {
-        ...conversation,
-        title,
-        updated_at: Date.now(),
-        messages: [
-          ...conversation.messages,
-          optimisticUserMessage(
-            conversation.id,
-            userText,
-            submittedMentions.length > 0 ? { mentions: submittedMentions } : undefined,
-          ),
-        ],
-      };
-      setActiveConversation(optimisticConversation);
-      setConversations((current) => {
-        const item = {
-          ...optimisticConversation,
-          messages: [],
-        };
-        const withoutCurrent = current.filter((candidate) => candidate.id !== conversation.id);
-        return [item, ...withoutCurrent];
-      });
-      const assistantDraft = optimisticAssistantMessage(conversation.id, preferredModel || "stub/default");
-      const abortController = new AbortController();
-      currentAbortControllerRef.current = abortController;
+      // Keep the captured revision and identity; a lost reply never starts a new turn.
+      savedSubmissionStarted = true;
       streamingConversationIdRef.current = conversation.id;
-      let finalStreamMessageId: string | null = null;
-      let finalStreamActivityEvents: ChatActivityEvent[] = [];
-      const updateStreamingAssistant = (delta: string) => {
-        if (finalStreamMessageId) return;
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const existing = current.messages.find((message) => message.id === assistantDraft.id);
-          if (!existing) {
-            return {
-              ...current,
-              messages: [
-                ...current.messages,
-                {
-                  ...assistantDraft,
-                  content: [{ type: "text", text: delta }],
-                  raw_text: delta,
-                },
-              ],
-            };
-          }
-          return {
-            ...current,
-            messages: current.messages.map((message) => {
-              if (message.id !== assistantDraft.id) return message;
-              const nextText = `${message.raw_text ?? ""}${delta}`;
-              return {
-                ...message,
-                content: [{ type: "text", text: nextText }],
-                raw_text: nextText,
-              };
-            }),
-          };
-        });
-      };
-      const updateStreamingThinking = (delta: string) => {
-        if (finalStreamMessageId) return;
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const existing = current.messages.find((message) => message.id === assistantDraft.id);
-          const nextThinking = (message: ChatMessage) => {
-            const metadata = { ...(message.metadata ?? {}) };
-            const thinking = metadata.thinking as Record<string, unknown> | undefined;
-            metadata.thinking = {
-              ...(thinking ?? {}),
-              state: "streaming",
-              transcript: `${String(thinking?.transcript ?? "")}${delta}`,
-            };
-            return { ...message, metadata };
-          };
-          if (!existing) {
-            return {
-              ...current,
-              messages: [...current.messages, nextThinking(assistantDraft)],
-            };
-          }
-          return {
-            ...current,
-            messages: current.messages.map((message) => message.id === assistantDraft.id ? nextThinking(message) : message),
-          };
-        });
-      };
-      const updateStreamingActivity = (streamEvent: ChatStreamEvent) => {
-        if (!isActivityStreamEvent(streamEvent)) return;
-        const eventTimestamp = Date.now();
-        const activityEvent: ChatActivityEvent = { timestamp: eventTimestamp, ...streamEvent };
-        const finalizedMessageIdAtEvent = finalStreamMessageId;
-        if (finalizedMessageIdAtEvent) {
-          finalStreamActivityEvents = upsertStreamActivityEvent(finalStreamActivityEvents, activityEvent);
-        }
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const targetMessageId = finalizedMessageIdAtEvent ?? assistantDraft.id;
-          const existing = current.messages.find((message) => message.id === targetMessageId);
-          const appendEvent = (message: ChatMessage): ChatMessage => ({
-            ...message,
-            events: upsertStreamActivityEvent(message.events ?? [], activityEvent),
-          });
-          if (!existing) {
-            if (finalizedMessageIdAtEvent) return current;
-            return {
-              ...current,
-              messages: [...current.messages, appendEvent(assistantDraft)],
-            };
-          }
-          return {
-            ...current,
-            messages: current.messages.map((message) => message.id === targetMessageId ? appendEvent(message) : message),
-          };
-        });
-
-        if (activityEvent.phase === "conversation_steer") {
-          const processed = Array.isArray(activityEvent.processed)
-            ? activityEvent.processed.filter(isConversationSteerItem)
-            : [];
-          if (processed.length > 0) {
-            setSteerItems((current) => {
-              const byId = new Map(current.map((item) => [item.id, item]));
-              for (const item of processed) byId.set(item.id, item);
-              return Array.from(byId.values());
-            });
-            setModelSteerStatus({ kind: "success", message: "ステアを反映しました" });
-          }
-        }
-
-        const status = typeof activityEvent.message === "string" && activityEvent.message.trim()
-          ? activityEvent.message.trim()
-          : pendingRequests[conversation.id]?.status ?? `${activeProfile?.display_name ?? preferredModel} が思考中`;
-        const toolName = typeof activityEvent.tool_name === "string" ? activityEvent.tool_name.trim() : "";
-        if (finalizedMessageIdAtEvent) return;
-        updatePendingRequests((current) => {
-          const existing = current[conversation.id] ?? {
-            conversationId: conversation.id,
-            startedAt: requestStartedAt,
-            status,
-            toolNames: [],
-            toolStartedAt: {},
-          };
-          const toolNames = toolName ? [...new Set([...existing.toolNames, toolName])] : existing.toolNames;
-          const toolStartedAt = { ...(existing.toolStartedAt ?? {}) };
-          if (toolName && toolStartedAt[toolName] === undefined) {
-            toolStartedAt[toolName] = eventTimestamp;
-          }
-          return {
-            ...current,
-            [conversation.id]: {
-              ...existing,
-              status,
-              toolNames,
-              toolStartedAt,
-            },
-          };
-        });
-      };
-      const replaceStreamingAssistant = (message: ChatMessage) => {
-        finalStreamMessageId = message.id;
-        const completedAt = Date.now();
-        const enhancedMessage: ChatMessage = {
-          ...message,
-          metadata: {
-            ...(message.metadata ?? {}),
-            timing: {
-              ...((message.metadata?.timing && typeof message.metadata.timing === "object") ? message.metadata.timing as Record<string, unknown> : {}),
-              thinking_started_at: requestStartedAt,
-              completed_at: completedAt,
-              thinking_duration_ms: completedAt - requestStartedAt,
-              thinking_duration_label: boundedDurationLabel(requestStartedAt, completedAt),
-            },
-          },
-        };
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const withoutDraft = current.messages.filter((candidate) => candidate.id !== assistantDraft.id);
-          const existingFinalMessage = withoutDraft.find((candidate) => candidate.id === enhancedMessage.id);
-          const baseMergedMessage = mergeStreamingFinalMessage(existingFinalMessage, enhancedMessage);
-          const mergedMessage = {
-            ...baseMergedMessage,
-            events: mergeChatActivityEvents(baseMergedMessage.events, finalStreamActivityEvents),
-          };
-          return {
-            ...current,
-            messages: existingFinalMessage
-              ? withoutDraft.map((candidate) => candidate.id === enhancedMessage.id ? mergedMessage : candidate)
-              : [...withoutDraft, mergedMessage],
-          };
-        });
-        forgetPendingRequest(conversation.id);
-        replaceChatIdInUrl(conversation.id, false);
-        setIsGenerating(false);
-      };
-      markInterruptedAssistant = (streamError: ChatStreamInterruptedError) => {
-        const completedAt = Date.now();
-        setActiveConversation((current) => {
-          if (!current || current.id !== conversation.id) return current;
-          const existing = current.messages.find((message) => message.id === assistantDraft.id);
-          const existingMetadata = existing?.metadata && typeof existing.metadata === "object"
-            ? existing.metadata as Record<string, unknown>
-            : {};
-          const existingThinking = existingMetadata.thinking && typeof existingMetadata.thinking === "object"
-            ? existingMetadata.thinking as Record<string, unknown>
-            : {};
-          const nextText = String(existing?.raw_text ?? "") || streamError.partialText;
-          const nextTranscript = `${String(existingThinking.transcript ?? "")}${streamError.thinkingText}`;
-          const interruptedMessage: ChatMessage = {
-            ...(existing ?? assistantDraft),
-            content: nextText ? [{ type: "text", text: nextText }] : existing?.content ?? assistantDraft.content,
-            raw_text: nextText,
-            finish_reason: "interrupted",
-            metadata: {
-              ...existingMetadata,
-              thinking: {
-                ...existingThinking,
-                state: "interrupted",
-                transcript: nextTranscript || undefined,
-              },
-              transport: {
-                status: "interrupted",
-                reason: streamError.message,
-                saw_activity: streamError.sawActivity,
-              },
-              timing: {
-                ...((existingMetadata.timing && typeof existingMetadata.timing === "object") ? existingMetadata.timing as Record<string, unknown> : {}),
-                thinking_started_at: requestStartedAt,
-                completed_at: completedAt,
-                thinking_duration_ms: completedAt - requestStartedAt,
-                thinking_duration_label: boundedDurationLabel(requestStartedAt, completedAt),
-              },
-            },
-          };
-          const hasExisting = current.messages.some((message) => message.id === assistantDraft.id);
-          return {
-            ...current,
-            messages: hasExisting
-              ? current.messages.map((message) => message.id === assistantDraft.id ? interruptedMessage : message)
-              : [...current.messages, interruptedMessage],
-          };
-        });
-      };
-
-      const operationsModelAllowlist = settingList(settingsValues.operations_company?.model_allowlist);
-      const operationsToolDenylist = settingList(settingsValues.operations_company?.tool_denylist);
-      const operationsToolAllowlist = operationsStatus?.manifest.tool_policy?.allowlist ?? [];
-      const operationsPolicy = isOperationsMode
-        ? {
-            profile_id: "defaultspack.operations_company",
-            non_stop: true,
-            allow_shell: false,
-            allow_file_write: true,
-            write_actions_require_approval: true,
-            normal_status_silent: settingsValues.operations_company?.normal_status_silent !== false,
-            max_concurrent_children: Math.max(1, Math.min(12, settingNumber(settingsValues.operations_company?.max_concurrent_children, 3))),
-            ...(operationsModelAllowlist.length ? { model_allowlist: operationsModelAllowlist } : {}),
-            ...(operationsToolAllowlist.length ? { tool_allowlist: operationsToolAllowlist } : {}),
-            ...(operationsToolDenylist.length ? { tool_denylist: operationsToolDenylist } : {}),
-          }
-        : {};
-      const mimoCodingModelAllowlist = settingList(settingsValues.mimo_coding_company?.model_allowlist);
-      const mimoCodingToolAllowlist = mimoCodingStatus?.manifest.tool_policy?.allowlist ?? [];
-      const mimoCodingPolicy = isMimoCodingMode
-        ? {
-            profile_id: "defaultspack.mimo_coding_company",
-            non_stop: true,
-            allow_shell: true,
-            allow_file_write: true,
-            write_actions_require_approval: false,
-            delete_actions_require_approval: true,
-            terminal_actions_require_approval: false,
-            normal_status_silent: true,
-            max_concurrent_children: 6,
-            ...mimoCodingMaxToolCallsPayload(),
-            ...(mimoCodingModelAllowlist.length ? { model_allowlist: mimoCodingModelAllowlist } : {}),
-            ...(mimoCodingToolAllowlist.length ? { tool_allowlist: mimoCodingToolAllowlist } : {}),
-          }
-        : {};
-      const templateRequestPayload = {
-        params: {
-          ...templateAiInputParams,
-          ...(Object.keys(effectiveStructuredComposerValues).length ? { composer_fields: effectiveStructuredComposerValues } : {}),
-        },
-        toolPolicy: {
-          ...templatePolicyReferencePayload,
-          ...(composerInputMetadata?.id ? { composer_input_id: composerInputMetadata.id } : {}),
-        },
-      };
-      const shouldSendExplicitToolSelection = toolSelectionRequest.mode === "manual" && submittedToolIds.length > 0;
-
-      await api.streamMessage(conversation.id, userText, {
-        idempotency_key: operationId,
-        params: templateRequestPayload.params,
-        thinking_level: activeProfile?.supports_thinking ? selectedThinkingLevel : null,
-        deepthink_enabled: deepthinkEnabled,
-        tool_selection: toolSelectionRequest,
-        tool_policy: {
-          ...templateRequestPayload.toolPolicy,
-          action_approval_mode: actionApprovalMode,
-          ...(ultraYoloMode ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
-          ...(ultraYoloMode ? { full_access: true } : {}),
-          ...operationsPolicy,
-          ...mimoCodingPolicy,
-          ...(shouldAttachWorkspaceToRuntime && workspaceIdForRuntime ? { workspace_id: workspaceIdForRuntime } : {}),
-          ...(effectiveDisabledToolIds.length ? { disabled_tools: effectiveDisabledToolIds } : {}),
-          ...(shouldSendExplicitToolSelection ? { selected_tools: submittedToolIds } : {}),
-        },
-        attachments: submittedAttachments,
-        tools: shouldSendExplicitToolSelection ? submittedToolIds : undefined,
-        metadata: {
-          mode: isOperationsMode ? "operations_company" : isMimoCodingMode ? "mimo_coding_company" : isCodingWorkspaceSubmit ? "coding" : mode,
-          ...(groupIdForSubmit ? { group_id: groupIdForSubmit } : {}),
-          ...(rumiDataPathForSubmit ? { rumi_data_path: rumiDataPathForSubmit } : {}),
-          ...(isOperationsMode ? {
-            profile_id: "defaultspack.operations_company",
-            agent_id: "client_manager",
-            conversation_strategy: "one_agent_one_conversation",
-            internal_channel: "ops-company",
-          } : {}),
-          ...(isMimoCodingMode ? {
-            profile_id: "defaultspack.mimo_coding_company",
-            agent_id: "client_manager",
-            conversation_strategy: "one_agent_one_conversation",
-            internal_channel: "mimo-coding-company",
-          } : {}),
-          ...(shouldAttachWorkspaceToRuntime && workspaceIdForRuntime ? {
-            workspace_id: workspaceIdForRuntime,
-            workspace_label: workspaceLabelForRuntime,
-            workspace_root: workspaceRootForRuntime,
-          } : {}),
-          ...templateRequestPayload.toolPolicy,
-          ...(Object.keys(effectiveStructuredComposerValues).length ? { structured_input: effectiveStructuredComposerValues } : {}),
-          attachments: submittedAttachments.map(({ name, size, type, truncated, source, sourcePath }) => ({ name, size, type, truncated, source, sourcePath })),
-          ...(shouldSendExplicitToolSelection ? { selected_tools: submittedToolIds } : {}),
-          ...(submittedSkillIds.length ? { skills: submittedSkillIds, skill_mentions: submittedSkillIds.map((skillId) => ({ id: skillId, label: composerSkillById.get(skillId)?.label ?? skillId })) } : {}),
-          ...(submittedMentions.length ? { mentions: submittedMentions } : {}),
-          dropped_widgets: submittedDroppedWidgets
-            .filter((widget) => widget.widgetKind === "tool_toggle" || widget.type === "tool" ? submittedToolIdSet.has(widget.sourceItemId || widget.id) : widget.enabled !== false)
-            .map(({ id, type, label, widgetKind, sourceItemId, metadata }) => ({
-              id,
-              type,
-              label,
-              widgetKind,
-              sourceItemId,
-              metadata: publicComposerWidgetMetadata(metadata),
-            })),
-        },
-      }, {
-        onEvent: updateStreamingActivity,
-        onDelta: updateStreamingAssistant,
-        onThinkingDelta: updateStreamingThinking,
-        onMessage: replaceStreamingAssistant,
-        signal: abortController.signal,
+      const result = await api.startSavedTurn({
+        turn_id: operationId,
+        conversation_id: conversation.id,
+        conversation_revision: conversation.conversation_revision!,
+        content: userText,
       });
+      if (result.turn.status !== "completed" || !result.turn.result_reference) {
+        throw new Error("送信結果の照合が必要です。自動再送はしません。");
+      }
+      const snapshot = await api.getConversation(conversation.id);
+      const reference = result.turn.result_reference;
+      if (snapshot.id !== conversation.id
+        || reference.conversation_id !== conversation.id
+        || (snapshot.conversation_revision ?? 0) < reference.conversation_revision
+        || !snapshot.messages.some((message) => message.id === reference.user_message_id
+          && message.role === "user" && message.metadata?.turn_id === operationId)
+        || !snapshot.messages.some((message) => message.id === reference.assistant_message_id
+          && message.role === "assistant" && message.metadata?.turn_id === operationId)) {
+        throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
+      }
+      setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
+      setConversations((current) => [
+        { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),
+      ]);
+      forgetPendingRequest(conversation.id);
+      replaceChatIdInUrl(conversation.id, false);
       setAttachedFiles([]);
       setDroppedWidgets([]);
       setRetryableSubmission(null);
       dismissedComposerMentionToolsRef.current.clear();
       toolSelectionController.clearTurnStateAfterSend({ keepSelectedTools: shouldKeepSelectedToolsAfterSend });
-      forgetPendingRequest(conversation.id);
-      replaceChatIdInUrl(conversation.id, false);
-
-      if (title !== conversation.title) {
-        await api.updateConversation(conversation.id, { title }, conversation.conversation_revision);
-      }
-
-      await refreshConversations(conversation.id);
-      await refreshSteerQueue(conversation.id).catch(console.error);
     } catch (submitError) {
       console.error("Chat error:", submitError);
+      if (savedSubmissionStarted && submittedConversationId) {
+        setRetryableSubmission(null);
+        setError(submitError instanceof Error ? submitError.message : "送信結果を確認できません。再送せず照合を待ちます。");
+        updatePendingRequests((current) => {
+          const entry = current[submittedConversationId!];
+          return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）" } } : current;
+        });
+        return;
+      }
       if (isCancelledStreamError(submitError)) {
         if (submittedConversationId) {
           forgetPendingRequest(submittedConversationId);
@@ -6961,58 +6643,6 @@ export function ChatApp() {
           await refreshConversations(submittedConversationId).catch(console.error);
         }
         setError(null);
-        return;
-      }
-      if (submitError instanceof ChatStreamInterruptedError) {
-        const interruptedConversationId = submittedConversationId ?? submittedConversationRuntimeId;
-        markInterruptedAssistant?.(submitError);
-        if (interruptedConversationId) {
-          // A stream close is transport-ambiguous: the backend may already
-          // have committed the turn. Keep the persisted operation id and
-          // pending URL so a retry replays this logical send.
-          updatePendingRequests((current) => {
-            const existing = current[interruptedConversationId];
-            return existing
-              ? {
-                  ...current,
-                  [interruptedConversationId]: {
-                    ...existing,
-                    status: "応答ストリームが切れました。再試行すると結果を確認します",
-                  },
-                }
-              : current;
-          });
-        }
-        setBackendConnectionState("degraded");
-        setBackendConnectionNote("応答 stream が途中で閉じました。ここまで届いた内容を保持しつつ、backend の回復を待っています。");
-        void reportClientDiagnostic({
-          source: "webapp",
-          category: "stream_interrupted",
-          level: "warning",
-          message: "The frontend preserved a partial assistant response after the stream was interrupted.",
-          fingerprint: `stream-interrupted:${interruptedConversationId ?? "new"}:${submitError.message}`,
-          conversationId: interruptedConversationId,
-          detail: {
-            error: submitError.message,
-            partialTextLength: submitError.partialText.length,
-            thinkingTextLength: submitError.thinkingText.length,
-            sawActivity: submitError.sawActivity,
-          },
-        });
-        const interruptionMessage = submitError.partialText.trim()
-          ? "応答ストリームが途中で切れたため、ここまで届いた内容を保護して着地しました。"
-          : "応答ストリームが途中で切れました。画面は保護したまま、再接続の余地を残しています。";
-        setRetryableSubmission({
-          input: inputForSubmit,
-          attachments: submittedAttachments,
-          droppedWidgets: droppedWidgetsForSubmit,
-          toolSelectionRequest,
-          skipReview: true,
-          errorMessage: interruptionMessage,
-        });
-        setError(interruptionMessage);
-        dismissedComposerMentionToolsRef.current.clear();
-        setIsNewChatLaunching(false);
         return;
       }
       const preserveOperationForRetry = isLikelyTransportFailure(submitError);
