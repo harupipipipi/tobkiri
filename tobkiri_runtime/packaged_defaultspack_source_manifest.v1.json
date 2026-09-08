@@ -272,7 +272,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57299,
-      "sha256": "73db99430e34b663a1fb9d539d03f6c6510a833e0f42c4df2e076f95799b8fb5",
+      "sha256": "28261e076872f9ee4c47eee08a3978cdf1c6307d1499b9c64a68d27a4ac5e97b",
       "executable": false
     },
     {
@@ -293,7 +293,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 28719,
-      "sha256": "a7f20fa47d12c6f50556021daf1f36dd4e216ce27d752c2c1b373079b4381642",
+      "sha256": "34c087332f0f7065d0d1938d4d709272705c9a0b29ac0edb518f7644fa5112eb",
       "executable": false
     },
     {
@@ -307,7 +307,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 64723,
-      "sha256": "a99182314673abfc985a62a599e1f465dde722c215c4afdac9ee8360800a4e86",
+      "sha256": "abbfaaa2ad4236c3f6cf6fdf0f53e0052ee1f656ad31bdb82a6457e5ad5ce187",
       "executable": false
     },
     {
@@ -433,14 +433,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.executables.v4.json",
       "type": "regular-file",
       "size": 7325,
-      "sha256": "c38b02556f6e59e5d5516ffafa7e80a1265de35c16ff1460e93f3c253750b337",
+      "sha256": "d8064b9f20a2cb7d864231755e0bbebdbc6ac794e286c0bcbd7f2c7e787bc90a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.pack.v4.json",
       "type": "regular-file",
       "size": 10696,
-      "sha256": "ac5b7cc49e1b5116fc61450b06f32c0e4323fe5251153dfc65cfcc0c0696cdba",
+      "sha256": "f0ccc26d9bc075f5b1edde5c0046f5cf3fb1a12f31adc0433ad58c38030ee558",
       "executable": false
     },
     {
@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 846787,
-      "sha256": "e9704c3c2b34e1ac3e85251ff4ee5fecd056e7690c19d94439e6421c29398772",
+      "sha256": "0ba19164ccfc9f9b8d4e7f32d21df1fd9cfc401de7d43280ab7eb3fa9b3a88b4",
       "executable": false
     },
     {

@@ -1095,7 +1095,7 @@
             {
               "entrypoint_id": "ai-gateway-preflight",
               "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-            "implementation_digest": "sha256:4a6dbf70211a036cb7198b87bf03fbf2c2a7b86f7ce252a02511f2fd248a136b"
+              "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -1356,7 +1356,7 @@
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:4a6dbf70211a036cb7198b87bf03fbf2c2a7b86f7ce252a02511f2fd248a136b",
+          "digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
           "kind": "executable",
           "path": "runtime/preflight.py"
         }

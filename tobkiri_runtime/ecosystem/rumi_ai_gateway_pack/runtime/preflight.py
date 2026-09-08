@@ -9,7 +9,7 @@ from core_runtime.global_contract_dispatch import (
 )
 from tobkiri_protocol.canonical import canonical_json
 
-from . import gateway
+from ecosystem.rumi_ai_gateway_pack.runtime import gateway
 
 CONTRACT_ID = "tobkiri.resource.ai.readiness.v1"
 FUNCTION_ID = "rumi_ai_gateway_pack.ai-gateway.preflight"

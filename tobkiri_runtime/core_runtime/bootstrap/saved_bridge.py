@@ -161,6 +161,14 @@ class SavedBridgeCallbacks:
                 raise AuthorityDenied("saved bridge conversation read is out of scope")
         elif hop in (1, 3):
             self._check_append(request, payload, hop)
+            if hop == 1:
+                conversation = self._conversation(outer, request)
+                if (
+                    payload["expected_conversation_revision"] != request["conversation_revision"]
+                    or conversation.get("conversation_revision") != request["conversation_revision"]
+                    or payload["message"]["parent_id"] != conversation.get("current_node_id")
+                ):
+                    raise AuthorityDenied("saved bridge selected branch changed")
         else:
             conversation = self._conversation(outer, request)
             if (

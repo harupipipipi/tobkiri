@@ -93,6 +93,7 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
     # The Host independently re-reads owned history/model immediately before AI.
     assert [target for target, _ in calls[2:]] == [
         saved.TARGETS[0],
+        saved.TARGETS[0],
         saved.TARGETS[1],
         saved.TARGETS[0],
         saved.TARGETS[2],
@@ -365,3 +366,23 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         ]
     finally:
         session.close()
+
+
+def test_user_append_cannot_reparent_the_selected_branch(tmp_path: Path) -> None:
+    store, outer, calls, callbacks = _setup(tmp_path)
+    for index in (1, 2):
+        store.append_message(
+            "conversation-1",
+            {"id": f"old-{index}", "role": "user", "content": "Earlier", "status": "complete"},
+            expected_conversation_revision=index,
+        )
+    outer.payload["request"]["conversation_revision"] = 3
+    intent = saved.start(outer.payload["request"])
+    intent = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
+    frame = _frame(intent)
+    frame["payload"]["message"]["parent_id"] = "old-1"
+    before = store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="selected branch changed"):
+        callbacks(outer, frame)
+    assert store.path.read_bytes() == before
+    assert all(target == saved.TARGETS[0] for target, _ in calls)

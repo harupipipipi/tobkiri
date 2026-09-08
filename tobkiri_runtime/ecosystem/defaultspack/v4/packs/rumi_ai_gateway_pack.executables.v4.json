@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:2448e437b39d769a34509b10b06807a4eab89d7fb47594939d6dc5965deae629",
+  "source_identity": "sha256:db28e25e2929963b44d6651ab375537ceef383b64ef71ce9f57c8b15e479517d",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.preflight.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
       "implementation_path": "runtime/preflight.py",
-      "implementation_digest": "sha256:4a6dbf70211a036cb7198b87bf03fbf2c2a7b86f7ce252a02511f2fd248a136b",
+      "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -202,6 +202,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:2747000e9d8a97a02f21de69344f1d7143e5fe6d0579f245fadcb8c2cd72da0f",
-  "catalog_digest": "sha256:c177d38744e2d98e7d3671e704237fcb2fedbd62eead6be5004289988b399375"
+  "materialization_catalog_digest": "sha256:0359394b25475b257a463b3621ec836f38efbeaf2e4cd1a982922b18e1fe505c",
+  "catalog_digest": "sha256:21791115aa64fd2ab5e246ccff079223bf418f38b62fc199f2579c70102fc507"
 }
