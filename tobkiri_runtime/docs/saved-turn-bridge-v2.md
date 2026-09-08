@@ -94,7 +94,13 @@ after pipe EOF. On exchange or serialization failure the runner requests process
 group termination, closes pipes and reaps without an unbounded `communicate()`.
 Termination errors are not suppressed. Real Host subprocess tests cover pipe
 pressure, flooding, timeouts and reaping with a direct-child stop adapter; they
-do not certify Linux guest process-group termination. The authenticated guest
+do not certify Linux guest process-group termination. Initial and resumed child
+registration failures now use the same stop/close/bounded-wait cleanup, including
+interruptions outside `Exception`. They never drain artifact output with
+`communicate()` before registration. Tests exercise both entrypoints with a real
+child flooding stderr and verify closed pipes and a reaped direct child. This
+does not claim recovery of a partially written request registration record.
+The authenticated guest
 dispatcher now captures one guest-local deadline before initial execution and
 retains it through the pending Host exchange and resumed child. Artifact checking,
 pipe exchange (including the absolute deadline), and late result observation use
