@@ -91,5 +91,18 @@ raw writer and unused replacement helper were removed, and both valid JSON and
 diagnostic bytes use one store-owned atomic writer. This consolidates I/O but
 does not yet migrate ownership or authorize a new live settings operation.
 
+The DeepThink state read now derives the value and logical revision from one
+store snapshot. A second read (or an independently cached value paired with a
+new revision) could describe a state that never existed during concurrent
+updates. The shared pure revision reader rejects negative and non-integer
+revision values consistently with the mutation path.
+
+Retained mutation receipts now bind their result's exact state reference as
+well as the request fingerprint. A reused key cannot return another resource's
+result. A corrupt receipt collection or selected receipt rejects mutation
+instead of discarding replay evidence and running the callback again. This
+does not repair the record, change the existing 64-receipt retention limit,
+provide indefinite replay protection or migrate the storage owner.
+
 The isolated ABI and captured-consumer tests are not native startup, real AI
 conversation, live Profile activation, streaming, cancellation or DMG acceptance.
