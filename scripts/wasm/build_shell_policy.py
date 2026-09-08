@@ -19,6 +19,8 @@ import tempfile
 
 
 TOOLS = {"componentize-py": "0.25.0", "wasmtime": "48.0.0"}
+
+
 def capture_source(source: Path, expected_sha256: str) -> bytes:
     """Capture caller-selected source bytes against an explicit build pin."""
     if len(expected_sha256) != 64 or any(

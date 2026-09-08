@@ -2,10 +2,26 @@
 
 import hashlib
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
 from scripts.wasm.build_shell_policy import build, capture_source
+
+
+def test_cli_requires_source_and_pin(tmp_path: Path) -> None:
+    """The CLI cannot silently fall back to a repository-selected Pack."""
+    script = Path(__file__).resolve().parents[1] / "scripts/wasm/build_shell_policy.py"
+    output = tmp_path / "policy.wasm"
+    result = subprocess.run(
+        [sys.executable, str(script), "--output", str(output)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
+    assert "--source" in result.stderr
+    assert "--source-sha256" in result.stderr
+    assert not output.exists()
 
 
 def test_capture_pins_bytes_without_reopening_source(tmp_path: Path) -> None:
