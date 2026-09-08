@@ -91,7 +91,7 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
 ) -> None:
     from core_runtime.global_contract_dispatch import GlobalContractClient
     from tests.test_saved_turn_coordinator import _Session
-    from tobkiri_protocol.saved_conversation import SAVED_CONVERSATION_CONTRACT
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import SAVED_CONTRACTS
 
     session = _Session(tmp_path)
     calls = []
@@ -111,7 +111,7 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
     result = invoke(factory.operation_id, {**session.initial, "_session_id": "host"}, invocation)
     assert result["status"] == "completed"
     assert calls == [{
-        "allowed_contract_ids": frozenset({SAVED_CONVERSATION_CONTRACT}),
+        "allowed_contract_ids": SAVED_CONTRACTS,
         "consumer_pack_id": "rumi_turn_runtime_pack",
     }]
     assert len(guards) == 3

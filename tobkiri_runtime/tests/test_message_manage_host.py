@@ -22,6 +22,7 @@ def _context(root: Path) -> Any:
     return SimpleNamespace(
         profile_id="defaults",
         user_data_root=root,
+        catalog_bindings=(),
         provider_bindings=(
             SimpleNamespace(
                 function=SimpleNamespace(function_id=FUNCTION_ID, implementation_digest="impl"),
@@ -45,6 +46,40 @@ def _payload(**extra: object) -> dict[str, object]:
         "message": {"id": "user-1", "role": "user", "content": "Hello"},
         **extra,
     }
+
+
+@pytest.mark.parametrize("caller", ["saved-principal", "ordinary-principal"])
+def test_saved_append_receipt_requires_captured_saved_caller(tmp_path: Path, caller: str) -> None:
+    from ecosystem.defaultspack.runtime import saved_conversation
+    from tests.test_saved_conversation_steps import _setup
+
+    store, request = _setup(tmp_path)
+    context = _context(tmp_path)
+    context.catalog_bindings = (SimpleNamespace(
+        function=SimpleNamespace(function_id="defaultspack.conversation.saved"),
+        principal_ref=SimpleNamespace(value="saved-principal"),
+    ),)
+    invoke = MessageManageHostFactoryV4().capture(context).contributions[0].invoke
+    intent = saved_conversation.start(request)
+    intent = saved_conversation.resume(intent["state"], {
+        "status": "ok", "value": {"conversation": store.get("conversation-1")},
+    })
+    payload = {
+        **intent["payload"], "profile_id": "defaults", "operation": "append_saved",
+        "saved_input": {"request": request},
+    }
+    invocation = SimpleNamespace(envelope=SimpleNamespace(
+        context=SimpleNamespace(caller_principal=SimpleNamespace(value=caller)),
+    ))
+    if caller == "ordinary-principal":
+        before = store.path.read_bytes()
+        with pytest.raises(PermissionError, match="captured saved caller"):
+            invoke(OPERATION_ID, payload, invocation)
+        assert store.path.read_bytes() == before
+        assert store.saved_receipt("turn-1") is None
+    else:
+        assert invoke(OPERATION_ID, payload, invocation)["conversation_revision"] == 2
+        assert store.saved_receipt("turn-1")["user_revision"] == 2
 
 
 def test_message_actions_round_trip_and_replay(tmp_path: Path) -> None:

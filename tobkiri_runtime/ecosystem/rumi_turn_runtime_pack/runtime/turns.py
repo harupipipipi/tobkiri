@@ -101,6 +101,7 @@ class TurnRuntime:
         *,
         expected_revision: int,
         details: Mapping[str, Any] | None = None,
+        reconciled_saved: bool = False,
     ) -> dict[str, Any]:
         """Apply an allowed lifecycle transition at an exact revision."""
         status = str(status).strip().lower()
@@ -108,7 +109,12 @@ class TurnRuntime:
             turn = self._required(turn_id)
             self._assert_revision(turn, expected_revision)
             allowed = _ALLOWED.get(turn["status"], set())
-            if status not in allowed:
+            saved_completion = (
+                reconciled_saved is True and status == "completed"
+                and turn["status"] == "waiting" and turn.get("input_digest")
+                and turn["request_id"].startswith("saved-turn.")
+            )
+            if status not in allowed and not saved_completion:
                 raise TurnConflict("turn lifecycle transition is invalid")
             safe_details = _copy(details or {})
             turn["status"] = status

@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:60f413519b92ca7193b519a614a2cda1135f367556f38320f68e6be3ffd2f040",
+  "source_identity": "sha256:7bffad4f7e8864176a062e95f32b22a32c66da107cdc0289db82b14773593e15",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
+      "implementation_digest": "sha256:6874806c3d126c6999049528f8e878dd7340451ab25a8e8f0397abb50c620321",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
+      "implementation_digest": "sha256:6874806c3d126c6999049528f8e878dd7340451ab25a8e8f0397abb50c620321",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.resource.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
+      "implementation_digest": "sha256:6874806c3d126c6999049528f8e878dd7340451ab25a8e8f0397abb50c620321",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -109,7 +109,7 @@
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.saved.python",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
+      "implementation_digest": "sha256:6874806c3d126c6999049528f8e878dd7340451ab25a8e8f0397abb50c620321",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -202,6 +202,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:351e5522e94a0290c72f5d7044c6b9119358004c41bac65a431cccf926cc245c",
-  "catalog_digest": "sha256:a5952e35b9e1f81d692317dbb91bda54e2a22c613eb0702f34e650c6b512a4cc"
+  "materialization_catalog_digest": "sha256:b7334d8de6fb7e33d0bd4cf66b92445b1f698c5999fde0fc1f996bb02deb9458",
+  "catalog_digest": "sha256:d748aa6ef148ed8ea695156986f6cfa39bcccbb965d6a7c8bdc8e50cf0d3d322"
 }

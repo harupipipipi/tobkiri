@@ -218,6 +218,45 @@ class DurableTurnRuntime:
         finally:
             connection.close()
 
+    def reconcile_saved(
+        self, turn_id: str, *, expected_revision: int, input_digest: str,
+        result_reference: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Commit coordinator-verified owner evidence without starting execution.
+
+        This method is intentionally absent from the public lifecycle adapter.
+        The coordinator must obtain the reference through its captured reader.
+        """
+        _input_digest(input_digest)
+        if not self.path.exists():
+            raise KeyError("turn is unknown")
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id = ?", (turn_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError("turn is unknown")
+            record = self._record(row)
+            if (
+                record.get("input_digest") != input_digest
+                or not record["request_id"].startswith("saved-turn.")
+                or record["status"] not in {"running", "waiting"}
+            ):
+                raise TurnConflict("saved receipt does not match the durable turn")
+            runtime = self._restore(row)
+            result = runtime.transition(
+                turn_id, "completed", expected_revision=expected_revision,
+                details={"result_reference": dict(result_reference), "reconciled": True},
+                reconciled_saved=True,
+            )
+            self._save(connection, result)
+            connection.commit()
+            return result
+        finally:
+            connection.close()
+
     def _connect_write(self) -> sqlite3.Connection:
         self._check_path()
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

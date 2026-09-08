@@ -31,7 +31,10 @@ def _setup(tmp_path: Path) -> tuple[ConversationStore, dict[str, Any]]:
     }
 
 
-def _owner(store: ConversationStore, intent: dict[str, Any]) -> dict[str, Any]:
+def _owner(
+    store: ConversationStore, intent: dict[str, Any], *,
+    saved_input: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     payload = intent["payload"]
     if intent["hop"] == 0:
         value = {"conversation": store.get(payload["conversation_id"])}
@@ -40,6 +43,7 @@ def _owner(store: ConversationStore, intent: dict[str, Any]) -> dict[str, Any]:
             payload["conversation_id"],
             payload["message"],
             expected_conversation_revision=payload["expected_conversation_revision"],
+            saved_input=saved_input,
         )
     return {"status": "ok", "value": value}
 

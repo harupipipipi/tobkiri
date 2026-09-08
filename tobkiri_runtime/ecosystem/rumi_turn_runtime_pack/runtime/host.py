@@ -11,8 +11,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
-from ecosystem.rumi_turn_runtime_pack.runtime.saved import execute_saved_turn
-from tobkiri_protocol.saved_conversation import SAVED_CONVERSATION_CONTRACT
+from ecosystem.rumi_turn_runtime_pack.runtime.saved import SAVED_CONTRACTS, execute_saved_turn
 
 _PACK = "rumi_turn_runtime_pack"
 _CONTRACTS = {
@@ -73,7 +72,7 @@ class TurnHostFactoryV4:
                 if operation_id != self.operation_id:
                     raise PermissionError("saved operation does not match capture")
                 client = invocation.contract_client(
-                    allowed_contract_ids=frozenset({SAVED_CONVERSATION_CONTRACT}),
+                    allowed_contract_ids=SAVED_CONTRACTS,
                     consumer_pack_id=_PACK,
                     include_credentials=False,
                 )

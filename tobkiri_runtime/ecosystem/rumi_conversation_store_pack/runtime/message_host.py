@@ -17,6 +17,7 @@ CONTRACT_ID = "tobkiri.action.message.manage.v1"
 OPERATION_ID = "rumi_conversation_store_pack.message-manage"
 _FIELDS = {
     "append": {"message"},
+    "append_saved": {"message", "saved_input"},
     "update": {"message_id", "patch"},
     "delete": {"message_id"},
     "replace": {"messages"},
@@ -62,13 +63,16 @@ class MessageManageHostFactoryV4:
         if domain_id is None:
             raise PermissionError("message action domain is unavailable")
         store = ConversationStore(context.profile_id, user_data_root=context.user_data_root)
+        saved_callers = frozenset(
+            item.principal_ref.value for item in context.catalog_bindings
+            if item.function.function_id == "defaultspack.conversation.saved"
+        )
 
         def invoke(
             operation_id: str,
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            del invocation  # The Host Authority/Broker authorize before dispatch.
             if operation_id != OPERATION_ID or payload.get("profile_id") != context.profile_id:
                 raise PermissionError("message action request is invalid")
             action = payload.get("operation")
@@ -86,11 +90,17 @@ class MessageManageHostFactoryV4:
             if type(revision) is not int or revision < 1:
                 raise ValueError("message action requires an exact positive revision")
             conversation_id = _identifier(payload["conversation_id"])
-            if action == "append":
+            if action == "append_saved":
+                if invocation.envelope.context.caller_principal.value not in saved_callers:
+                    raise PermissionError("saved receipts require the captured saved caller")
+                if not isinstance(payload["saved_input"], Mapping):
+                    raise ValueError("saved append requires an input binding")
+            if action in {"append", "append_saved"}:
                 return store.append_message(
                     conversation_id,
                     _message(payload["message"]),
                     expected_conversation_revision=revision,
+                    saved_input=payload["saved_input"] if action == "append_saved" else None,
                 )
             if action == "replace":
                 messages = payload["messages"]

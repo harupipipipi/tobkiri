@@ -12,7 +12,9 @@ import pytest
 from core_runtime.global_contract_dispatch import GlobalContractClient
 from ecosystem.defaultspack.runtime import saved_conversation as application
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
-from ecosystem.rumi_turn_runtime_pack.runtime.saved import execute_saved_turn
+from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+    RECEIPT_CONTRACT, RECEIPT_OPERATION, SAVED_CONTRACTS, execute_saved_turn,
+)
 from tests.test_saved_conversation_steps import _owner, _setup
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT as CONTRACT,
@@ -34,6 +36,11 @@ class _Session:
         return ()
 
     def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+        if (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION):
+            assert payload == {
+                "profile_id": "defaults", "operation": "saved_receipt", "turn_id": "turn-1",
+            }
+            return {"receipt": self.conversations.saved_receipt(payload["turn_id"])}
         assert (contract_id, operation) == (CONTRACT, OPERATION)
         assert payload == self.initial
         self.calls += 1
@@ -41,7 +48,7 @@ class _Session:
         for hop in range(4):
             outcome = (
                 {"status": "ok", "value": {"status": "ok", "output": "Hi"}}
-                if hop == 2 else _owner(self.conversations, intent)
+                if hop == 2 else _owner(self.conversations, intent, saved_input=self.initial)
             )
             intent = application.resume(intent["state"], outcome)
         return self.transform(intent)
@@ -49,7 +56,7 @@ class _Session:
 
 def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None) -> dict:
     client = GlobalContractClient(
-        session=session, allowed_contract_ids=frozenset({CONTRACT}),
+        session=session, allowed_contract_ids=SAVED_CONTRACTS,
         consumer_pack_id="rumi_turn_runtime_pack",
     )
     return execute_saved_turn(store, session.initial, client=client, guard=guard)
@@ -88,7 +95,10 @@ def test_lost_result_never_replays_committed_messages(tmp_path: Path) -> None:
     assert result["turn"]["status"] == "waiting"
     assert "private provider diagnostic" not in json.dumps(result)
     assert len(session.conversations.get("conversation-1")["messages"]) == 2
-    assert _run(store, session)["status"] == "existing"
+    reopened = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    recovered = _run(reopened, session)
+    assert recovered["status"] == "completed"
+    assert recovered["turn"]["result_reference"]["conversation_revision"] == 3
     assert session.calls == 1
 
 
@@ -106,7 +116,9 @@ def test_invalid_acknowledgement_never_marks_completed(
     result = _run(store, session)
     assert result["status"] == "reconciliation_required"
     assert result["turn"]["result_reference"] is None
-    assert _run(store, session)["status"] == "existing"
+    # A forged guest ACK is rejected; only a new, captured owner read can
+    # establish that the independent commit actually succeeded.
+    assert _run(store, session)["status"] == "completed"
     assert session.calls == 1
 
 
@@ -135,7 +147,7 @@ def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
     assert session.calls == (1 if guard_call == 3 else 0)
 
 
-def test_duplicate_request_does_not_rewrite_or_reexecute_live_turn(tmp_path: Path) -> None:
+def test_duplicate_request_can_reconcile_commit_without_reexecuting_live_turn(tmp_path: Path) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     entered, release = Event(), Event()
@@ -152,9 +164,9 @@ def test_duplicate_request_does_not_rewrite_or_reexecute_live_turn(tmp_path: Pat
             assert entered.wait(timeout=10)
             before = deepcopy(store.get("turn-1"))
             repeated = _run(store, session)
-            assert repeated == {"status": "existing", "turn": before}
+            assert repeated["status"] == "completed"
             assert before["status"] == "running"
-            assert store.get("turn-1") == before
+            assert store.get("turn-1")["revision"] == before["revision"] + 1
         finally:
             release.set()
         assert running.result(timeout=10)["status"] == "completed"
@@ -184,7 +196,7 @@ def test_mismatched_client_is_rejected_before_claim(tmp_path: Path, change: str)
         session.profile_id = "other"
     client = GlobalContractClient(
         session=session,
-        allowed_contract_ids=frozenset({CONTRACT, "extra"} if change == "contracts" else {CONTRACT}),
+        allowed_contract_ids=SAVED_CONTRACTS | ({"extra"} if change == "contracts" else set()),
         consumer_pack_id="other" if change == "consumer" else "rumi_turn_runtime_pack",
         host_credential_transport=object() if change == "credential" else None,
     )
@@ -192,3 +204,47 @@ def test_mismatched_client_is_rejected_before_claim(tmp_path: Path, change: str)
         execute_saved_turn(store, session.initial, client=client, guard=lambda: None)
     assert not store.path.exists()
     assert session.calls == 0
+
+
+def test_assistant_commit_before_owner_reply_is_recovered_after_reopen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    write = session.conversations._write
+
+    def lost_reply(state: dict) -> None:
+        write(state)
+        if len(state["conversations"]["conversation-1"]["messages"]) == 2:
+            raise OSError("owner reply lost after commit")
+
+    monkeypatch.setattr(session.conversations, "_write", lost_reply)
+    assert _run(store, session)["status"] == "reconciliation_required"
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+
+    session.conversations = ConversationStore("defaults", user_data_root=tmp_path)
+    receipt = session.conversations.saved_receipt("turn-1")
+    assert "Hello" not in json.dumps(receipt) and "Hi" not in json.dumps(receipt)
+    result = _run(DurableTurnRuntime("defaults", user_data_root=tmp_path), session)
+    assert result["status"] == "completed"
+    assert result["turn"]["result_reference"] == receipt["result_reference"]
+    assert session.calls == 1
+
+
+def test_message_edit_cannot_change_the_saved_completion_evidence(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    session.transform = lambda _: (_ for _ in ()).throw(TimeoutError())
+    _run(store, session)
+    before = session.conversations.saved_receipt("turn-1")
+    session.conversations.mutate_message(
+        "conversation-1", before["assistant_message_id"],
+        expected_conversation_revision=3,
+        patch={"content": "edited after completion", "metadata": {"turn_id": "forged"}},
+    )
+    assert session.conversations.saved_receipt("turn-1") == before
+    result = _run(store, session)
+    assert result["status"] == "completed"
+    assert result["turn"]["result_reference"] == before["result_reference"]
+    assert result["turn"]["result_reference"]["conversation_revision"] == 3
+    assert session.calls == 1

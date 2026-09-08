@@ -57,6 +57,7 @@ from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT,
     SAVED_CONVERSATION_OPERATION,
+    validate_saved_conversation_input,
 )
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
 from tobkiri_protocol.secure_persistence import (
@@ -2059,6 +2060,11 @@ def capture_production_dispatch(
         if "profile_id" in payload or "_session_id" in payload:
             raise AuthorityDenied("saved bridge payload cannot select Host identity")
         arguments = dict(payload)
+        if target[0] == "tobkiri.action.message.manage.v1" and payload.get("operation") == "append":
+            arguments["operation"] = "append_saved"
+            arguments["saved_input"] = validate_saved_conversation_input(
+                getattr(outer_request, "payload", None)
+            )
         if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1"}:
             arguments["profile_id"] = profile["profile_id"]
         runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
