@@ -25,6 +25,7 @@ from core_runtime.authority.v4 import (
     HostExtensionTrustRecord,
     InteractiveApprovalDecision,
     InteractiveApprovalRequest,
+    InteractiveApprovalSettlement,
     InvocationContext,
     InvocationLease,
     LeaseState,
@@ -209,6 +210,41 @@ class AuthorityV4Adapter:
     ) -> InteractiveApprovalStatus:
         """Approve once after Host-side phrase and UI-provenance verification."""
 
+        return self.approve_interactive_approvals((command,))[0]
+
+    def approve_interactive_approvals(
+        self,
+        commands: tuple[InteractiveApprovalDecisionCommand, ...],
+    ) -> tuple[InteractiveApprovalStatus, ...]:
+        """Commit selected, individually authenticated one-shot decisions atomically.
+
+        Every item still requires the native operator's exact snapshot signature.
+        No client-approved flag, scope expansion, or synthetic operator is accepted.
+        """
+
+        if not commands or len(commands) > 64:
+            raise AuthorityDenied("approval selection must contain 1 to 64 items")
+        if len({command.request_id for command in commands}) != len(commands):
+            raise AuthorityDenied("approval selection contains duplicates")
+        owner = commands[0].context
+        if any(
+            command.context.profile_id != owner.profile_id
+            or command.context.caller_principal != owner.caller_principal
+            or command.context.caller_session_id != owner.caller_session_id
+            or command.actor_id != commands[0].actor_id
+            for command in commands
+        ):
+            raise AuthorityDenied("approval selection has different owners")
+        prepared = tuple(
+            self._prepare_interactive_approval(command) for command in commands
+        )
+        self._kernel.settle_interactive_approvals(tuple(item[0] for item in prepared))
+        return tuple(item[1] for item in prepared)
+
+    def _prepare_interactive_approval(
+        self,
+        command: InteractiveApprovalDecisionCommand,
+    ) -> tuple[InteractiveApprovalSettlement, InteractiveApprovalStatus]:
         request, state = self._interactive_approval_for_presentation(
             command.context,
             command.request_id,
@@ -267,13 +303,12 @@ class AuthorityV4Adapter:
             max_uses=1,
             session_id=request.caller_session_id,
         )
-        self._kernel.settle_interactive_approval(
-            decision,
-            approval=approval,
-            grant=grant,
-            confirmation_text=command.confirmation_text,
+        return (
+            InteractiveApprovalSettlement(
+                decision, approval, grant, command.confirmation_text
+            ),
+            self._interactive_status(request, "approved"),
         )
-        return self._interactive_status(request, "approved")
 
     def interactive_approval_status(
         self,

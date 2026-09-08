@@ -1375,3 +1375,13 @@ class SuccessorEvidence:
                 not self.new_revoked,
             )
         )
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalSettlement:
+    """Host-only decision material; never an authority-bearing client DTO."""
+
+    decision: InteractiveApprovalDecision
+    approval: ApprovalRecord | None = None
+    grant: GrantRecord | None = None
+    confirmation_text: str | None = field(default=None, repr=False)
