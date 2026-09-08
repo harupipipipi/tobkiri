@@ -450,6 +450,17 @@ class RequestBroker:
             min(30.0, remaining),
         )
         lease_issued = False
+        background_requests: list[Future[object]] = []
+
+        def release_resources(_completed: Future[object] | None = None) -> None:
+            if isinstance(backend, RequestScopedBackend):
+                try:
+                    backend.release_materialization(ticket.reservation.reservation_id)
+                except Exception:
+                    self._authority.fence_request(context.request_id)
+                    raise
+            self._admission.release(ticket)
+
         try:
             workload_key = WorkloadInstanceKey(
                 profile_id=context.profile_id,
@@ -503,19 +514,21 @@ class RequestBroker:
                 deadline,
                 monotonic_clock,
                 before_dispatch,
+                background_requests,
             )
         except Exception:
             if lease_issued:
                 self._authority.fence_request(context.request_id)
             raise
         finally:
-            if isinstance(backend, RequestScopedBackend):
-                try:
-                    backend.release_materialization(ticket.reservation.reservation_id)
-                except Exception:
-                    self._authority.fence_request(context.request_id)
-                    raise
-            self._admission.release(ticket)
+            if background_requests:
+                # Cancellation acknowledgement is not proof the invocation
+                # stopped. Keep admission and materialization charged until
+                # the provider Future actually exits, even after returning
+                # an error or reconciliation record to the caller.
+                background_requests[0].add_done_callback(release_resources)
+            else:
+                release_resources()
 
     def prepare(
         self,
@@ -684,6 +697,7 @@ class RequestBroker:
         deadline: float,
         monotonic_clock: Callable[[], float],
         before_dispatch: Callable[[], None] | None,
+        background_requests: list[Future[object]],
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
         try:
@@ -785,6 +799,8 @@ class RequestBroker:
             # invocation has completed or started running.
             if future is not None:
                 future.cancel()
+                if not future.done():
+                    background_requests.append(future)
 
     def _record_audit_failure(
         self,

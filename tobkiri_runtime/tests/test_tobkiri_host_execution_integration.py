@@ -502,6 +502,35 @@ def test_already_cancelled_parent_never_starts_inner_work() -> None:
         fixture.broker.close()
 
 
+def test_unstopped_cancelled_provider_keeps_admission_charged() -> None:
+    """A no-op cancel cannot free capacity while the provider still runs."""
+    cancelled = Event()
+    release_provider = Event()
+
+    class UnstoppableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            cancelled.set()
+            assert release_provider.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ, timeout_ms=10000, backend=UnstoppableBackend([])
+    )
+    try:
+        with pytest.raises(RequestCancellationRequestedError):
+            fixture.broker.invoke(
+                frame(), context(), effect_scope={}, parent_cancellation=cancelled,
+            )
+        assert fixture.backend.cancelled == ["request-1"]
+        assert "reservation_released" not in fixture.events
+    finally:
+        release_provider.set()
+        fixture.broker.close()
+    assert fixture.events.count("reservation_released") == 1
+    assert "audit_committed" not in fixture.events
+
+
 @pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
 def test_completed_future_cannot_publish_a_late_result(
     monkeypatch: pytest.MonkeyPatch, effect: EffectClass,
