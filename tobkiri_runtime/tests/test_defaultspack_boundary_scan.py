@@ -349,6 +349,7 @@ def test_key_edges_use_public_contracts_in_repository_policy():
         "domain/frontend_builtin_catalog",
         "domain/frontend_command_catalog",
         "domain/frontend_settings_catalog",
+        "domain/frontend_settings_client",
         "domain/frontend_settings_store",
     }
     for name in (
