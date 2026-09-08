@@ -238,7 +238,8 @@ def test_line_computer_use_fake_receive_acknowledges_and_preserves_japanese_prom
     calls: list[dict[str, Any]] = []
     captured: dict[str, Any] = {}
 
-    def fake_send_run(request, context):
+    def fake_send_run(request, context, *, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["request"] = request
         captured["context"] = context
         return {
@@ -488,7 +489,8 @@ def test_line_computer_use_fake_webhook_runs_three_browser_tasks_and_acknowledge
     captured_lock = threading.Lock()
     completed = threading.Event()
 
-    def fake_send_run(request, context):
+    def fake_send_run(request, context, *, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         with captured_lock:
             captured_invocations.append((request, context))
             if len(captured_invocations) >= 3:

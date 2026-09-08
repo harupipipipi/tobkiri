@@ -17,6 +17,31 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
+def test_owner_bound_actions_preserve_custom_handlers_without_global_binding(tmp_path, monkeypatch):
+    from domain.input import action_registry
+    from domain.input.actions.chat_message import handle
+
+    def custom(envelope, context):
+        return {"status": "custom"}
+
+    shared = action_registry.InputActionRegistry([
+        action_registry.InputActionSpec("chat.message", handle),
+        action_registry.InputActionSpec("custom", custom),
+    ])
+    monkeypatch.setattr(action_registry, "_DEFAULT_REGISTRY", shared)
+    first = FrontendSettingsStore(tmp_path / "first.json")
+    second = FrontendSettingsStore(tmp_path / "second.json")
+    bound_first = action_registry.get_input_action_registry(settings_owner=first)
+    bound_second = action_registry.get_input_action_registry(settings_owner=second)
+    assert bound_first.resolve("custom") is custom
+    assert bound_first.list_actions() == shared.list_actions()
+    assert bound_first.resolve("chat.message").keywords["settings_owner"] is first
+    assert bound_second.resolve("chat.message").keywords["settings_owner"] is second
+    assert action_registry.get_input_action_registry() is shared
+    assert shared.resolve("chat.message") is handle
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_isolated_frontend_settings_selects_cerebras_without_persisting_credential(tmp_path, monkeypatch):
     """All model-selection consumers use the debug run's secret-free settings."""
     settings_path = tmp_path / "isolated" / "frontend_settings.json"
