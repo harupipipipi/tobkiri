@@ -103,9 +103,13 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
     assert payload["source"]["input_paths"] == [
         item["path"] for item in payload["source"]["inputs"]
     ]
-    assert len(records) == 176
-    assert sum(len(record["operations"]) for record in records.values()) == 238
+    assert len(records) == 180
+    assert sum(len(record["operations"]) for record in records.values()) == 242
     for function_id, pack_id, operation_id, implementation_path in (
+        ("defaultspack.conversation.saved", "defaultspack", "saved_complete", "runtime/saved_conversation.py"),
+        ("rumi_ai_gateway_pack.ai-gateway.preflight", "rumi_ai_gateway_pack", "rumi_ai_gateway_pack.ai-gateway.preflight", "runtime/preflight.py"),
+        ("tobkiri.ui.preferences.write", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.preferences-write", "runtime/preferences.py"),
+        ("rumi_turn_runtime_pack.turn-runtime.saved", "rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-saved", "runtime/host.py"),
         ("defaultspack.application-presentation", "defaultspack", "defaultspack.presentation.read", "runtime/application_presentation.py"),
         ("rumi_command_protocol_pack.catalog.read", "rumi_command_protocol_pack", "command.catalog.read", "runtime/catalog.py"),
         ("tobkiri.ui.settings.read", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.settings-read", "runtime/settings.py"),
