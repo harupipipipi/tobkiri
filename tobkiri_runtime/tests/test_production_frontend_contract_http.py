@@ -490,6 +490,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert repeated["data"] == {"status": "existing", "turn": payload["data"]["turn"]}
         assert len(ai_calls) == 1
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, snapshot, _ = _request(
             server, "GET",
             _contract("GET", "/api/chat/conversation") + "?conversation_id=conversation-1",
