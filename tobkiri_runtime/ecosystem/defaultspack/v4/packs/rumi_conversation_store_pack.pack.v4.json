@@ -144,22 +144,6 @@
       "effect_ceiling": []
     },
     {
-      "operation_id": "rumi_conversation_store_pack.message-manage",
-      "owner": "rumi_conversation_store_pack",
-      "contract_reference": "tobkiri.action.message.manage.v1",
-      "provider_id": "rumi_conversation_store_pack.conversation-store.message-manage",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "rumi_conversation_store_pack.message-resource",
-      "owner": "rumi_conversation_store_pack",
-      "contract_reference": "tobkiri.resource.message.v1",
-      "provider_id": "rumi_conversation_store_pack.conversation-store.message-resource",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
       "operation_id": "rumi_conversation_store_pack.conversation-migrate",
       "owner": "rumi_conversation_store_pack",
       "contract_reference": "tobkiri.action.conversation.migrate.v1",
@@ -172,6 +156,22 @@
       "owner": "rumi_conversation_store_pack",
       "contract_reference": "tobkiri.resource.conversation.v1",
       "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.message-manage",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.action.message.manage.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.message-manage",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_conversation_store_pack.message-resource",
+      "owner": "rumi_conversation_store_pack",
+      "contract_reference": "tobkiri.resource.message.v1",
+      "provider_id": "rumi_conversation_store_pack.conversation-store.message-resource",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
     }
@@ -191,18 +191,18 @@
     "source_digest": "sha256:cd0f4753e91b9996a594f06b38d987a88ea96da813ffe55dcdb9e9532a78bbc9",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:48c18afe3ee36c17b2abe19121f629fb38eff048d6c3fed756fb683fac0abb5f",
+    "content_root_digest": "sha256:df739ebc111c6509c3b4369ec9ebf4e20207611572ec76964ad78b0333f91879",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
+    "generator_digest": "sha256:0fcdb93f2292662159280ae5313f3d8c1268744b4cf2e6e67297d8deda0f44f7",
     "input_inventory_digest": "sha256:dc6f4b4476a2e257b0561d451c8bfcef396fe9049ffd30c56112ee2c92aee0d3",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943"
+        "digest": "sha256:0fcdb93f2292662159280ae5313f3d8c1268744b4cf2e6e67297d8deda0f44f7"
       },
       {
         "path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",

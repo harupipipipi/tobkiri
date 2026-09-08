@@ -177,6 +177,7 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
         "executables.v4.json",
         "host_contract_contributions.v1.json",
         "runtime/conversation.py",
+        "runtime/application_presentation.py",
         "update_metadata.v1.json",
     }
     executable_sidecars = [

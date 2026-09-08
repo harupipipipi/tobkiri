@@ -73,6 +73,24 @@ def test_defaultspack_integrity_scan_strict_passes():
     assert "passed" in result.stdout
 
 
+def test_projection_catalog_order_matches_canonical_independent_of_function_order():
+    """Multiple Functions must not reorder the canonical operation catalog."""
+    from scripts.generate_defaultspack_v4_bundle import _normalize_pack
+
+    canonical = json.loads(
+        (DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8")
+    )
+    expected_operations = canonical["operation_catalog"]
+    expected_providers = canonical["provider_catalog"]
+    assert len(canonical["functions"]) > 1
+    canonical["functions"].reverse()
+
+    projection = _normalize_pack(canonical)
+
+    assert projection["operation_catalog"] == expected_operations
+    assert projection["provider_catalog"] == expected_providers
+
+
 def test_v4_integrity_rejects_byte_identical_defaultspack_projection(tmp_path):
     pack_root = _copy_v4_pack(tmp_path)
     _bundled_defaultspack_projection(pack_root).write_bytes(

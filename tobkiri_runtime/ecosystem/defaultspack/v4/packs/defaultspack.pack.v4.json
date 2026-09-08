@@ -77,18 +77,18 @@
   },
   "operation_catalog": [
     {
-      "operation_id": "defaultspack.presentation.read",
-      "owner": "defaultspack",
-      "contract_reference": "tobkiri.resource.application.presentation.v1",
-      "provider_id": "defaultspack.application-presentation",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
       "operation_id": "complete",
       "owner": "defaultspack",
       "contract_reference": "conversation.turn.v1",
       "provider_id": "defaultspack.conversation",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "defaultspack.presentation.read",
+      "owner": "defaultspack",
+      "contract_reference": "tobkiri.resource.application.presentation.v1",
+      "provider_id": "defaultspack.application-presentation",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
     }
@@ -108,18 +108,18 @@
     "source_digest": "sha256:b7a791972efb460f01664981b797db9b7fa1a5816a843f289ad7a1d32d4ab57c",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:fa00b75c1c0b582dbba0b0254ff5ec1a72f78ca7af9078a4a05593a2e6c13ad8",
+    "content_root_digest": "sha256:e79687afd53c77ff80ad4f6aa6e2d3c4fccc619efbfb4bc4036a640bc68e2ea5",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
+    "generator_digest": "sha256:0fcdb93f2292662159280ae5313f3d8c1268744b4cf2e6e67297d8deda0f44f7",
     "input_inventory_digest": "sha256:e844e764d7cad82849dc7d75761e1c448005ea91fe212c877dd8c0e2a43858e3",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943"
+        "digest": "sha256:0fcdb93f2292662159280ae5313f3d8c1268744b4cf2e6e67297d8deda0f44f7"
       },
       {
         "path": "ecosystem/defaultspack/pack.v4.json",

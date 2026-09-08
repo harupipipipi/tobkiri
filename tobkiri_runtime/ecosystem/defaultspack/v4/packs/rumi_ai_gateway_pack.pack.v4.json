@@ -90,18 +90,18 @@
   },
   "operation_catalog": [
     {
-      "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "owner": "rumi_ai_gateway_pack",
-      "contract_reference": "tobkiri.service.ai.generate.v1",
-      "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
       "operation_id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
       "owner": "rumi_ai_gateway_pack",
       "contract_reference": "tobkiri.resource.ai.routing.diagnostics.v1",
       "provider_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "owner": "rumi_ai_gateway_pack",
+      "contract_reference": "tobkiri.service.ai.generate.v1",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
     },
@@ -129,18 +129,18 @@
     "source_digest": "sha256:63d6f6ddf8a56b6caa36739ac9ca825456db085ed406cfeae3352c5cc368f988",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:8ded9f7702e4e2e9e3dddbd73ba992cc001319007771eab8c03ef848f101dbc6",
+    "content_root_digest": "sha256:d19e6b466e9cbb3ef31d2cf1d7cc7adc105f51871806ceaa120084cde0785d89",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
+    "generator_digest": "sha256:0fcdb93f2292662159280ae5313f3d8c1268744b4cf2e6e67297d8deda0f44f7",
     "input_inventory_digest": "sha256:3ed7350f2f4579058a9c1a55a1949dcae0a10b3d4f51a682f4a1e06a5476478e",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943"
+        "digest": "sha256:0fcdb93f2292662159280ae5313f3d8c1268744b4cf2e6e67297d8deda0f44f7"
       },
       {
         "path": "ecosystem/rumi_ai_gateway_pack/pack.v4.json",

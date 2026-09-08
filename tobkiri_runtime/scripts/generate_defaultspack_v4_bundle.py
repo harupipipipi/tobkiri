@@ -289,8 +289,8 @@ def _normalize_pack(document: dict[str, Any]) -> dict[str, Any]:
                 }
             )
     document["requirements"] = _requirements(document["pack"]["kind"], document.get("requirements"))
-    document["operation_catalog"] = operations
-    document["provider_catalog"] = providers
+    document["operation_catalog"] = sorted(operations, key=lambda item: item["operation_id"])
+    document["provider_catalog"] = sorted(providers, key=lambda item: item["provider_id"])
     identity_source = {
         key: document[key]
         for key in (
