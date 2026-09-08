@@ -97,6 +97,8 @@ class TurnHostFactoryV4:
                 raise PermissionError("turn read operation is not permitted")
             if action == "begin_saved":
                 return store.begin_saved(values)
+            if action == "claim_saved":
+                return store.claim_saved(values)
             if action == "begin":
                 _fields(
                     values, {"turn_id", "request_id", "conversation_id", "conversation_revision"},

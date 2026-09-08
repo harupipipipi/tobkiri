@@ -65,6 +65,32 @@ class DurableTurnRuntime:
             "input_digest": canonical_digest(initial),
         })
 
+    def claim_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Acquire a saved turn once, without invoking or authorizing execution.
+
+        Only a queued record can be claimed. The revision comparison and
+        transition commit under the same SQLite lock in ``mutate``. A lost
+        claim reply is deliberately not recoverable as another claim: callers
+        must reconcile the existing turn instead of replaying side effects.
+        Guidance racing with the claim also returns a non-claim snapshot; this
+        method never spins or retries an ambiguous mutation.
+        """
+        record = self.begin_saved(payload)
+        if record["status"] != "queued":
+            return {"claimed": False, "turn": record}
+        try:
+            record = self.mutate(
+                "transition",
+                record["id"],
+                expected_revision=record["revision"],
+                status="running",
+                details={"phase": "saved_execution_claimed"},
+            )
+        except TurnConflict:
+            # Revalidate the complete input binding on the readback too.
+            return {"claimed": False, "turn": self.begin_saved(payload)}
+        return {"claimed": True, "turn": record}
+
     def begin(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Begin or recover the same persisted request without re-executing it."""
         allowed = {

@@ -21,6 +21,112 @@ PAYLOAD = {
     "conversation_revision": 1,
 }
 
+SAVED_PAYLOAD = {
+    "request": {
+        "turn_id": "turn",
+        "conversation_id": "conversation",
+        "conversation_revision": 1,
+        "content": "Hello",
+    }
+}
+
+
+def test_saved_claim_has_one_winner_across_independent_stores(tmp_path: Path) -> None:
+    barrier = Barrier(2)
+
+    def claim() -> dict:
+        store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+        barrier.wait(timeout=10)
+        return store.claim_saved(SAVED_PAYLOAD)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: claim(), range(2)))
+    assert sorted(result["claimed"] for result in results) == [False, True]
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    record = store.get("turn")
+    assert record["status"] == "running"
+    assert record["revision"] == 2
+    assert len(record["events"]) == 2
+    assert store.claim_saved(SAVED_PAYLOAD) == {"claimed": False, "turn": record}
+
+
+@pytest.mark.parametrize("status", ["running", "waiting", "completed", "failed", "cancelled"])
+def test_saved_claim_never_reclaims_started_or_terminal_turns(
+    tmp_path: Path, status: str,
+) -> None:
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    claimed = store.claim_saved(SAVED_PAYLOAD)
+    assert claimed["claimed"] is True
+    record = claimed["turn"]
+    if status != "running":
+        record = store.mutate("transition", "turn", expected_revision=2, status=status)
+    reopened = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    assert reopened.claim_saved(SAVED_PAYLOAD) == {"claimed": False, "turn": record}
+    with pytest.raises(TurnConflict, match="input identity"):
+        reopened.claim_saved({"request": {**SAVED_PAYLOAD["request"], "content": "Changed"}})
+    assert reopened.get("turn") == record
+
+
+def test_saved_claim_lost_reply_is_not_reissued_after_process_exit(tmp_path: Path) -> None:
+    script = (
+        "import json,sys; from pathlib import Path; "
+        "from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime; "
+        "s=DurableTurnRuntime('defaults', user_data_root=Path(sys.argv[1])); "
+        "assert s.claim_saved(json.loads(sys.argv[2]))['claimed']"
+    )
+    subprocess.run(
+        [sys.executable, "-B", "-c", script, str(tmp_path), json.dumps(SAVED_PAYLOAD)],
+        check=True, capture_output=True, timeout=20,
+    )
+    reopened = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    before = reopened.get("turn")
+    assert reopened.claim_saved(SAVED_PAYLOAD) == {"claimed": False, "turn": before}
+
+
+def test_invalid_saved_claim_does_not_create_storage(tmp_path: Path) -> None:
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    with pytest.raises(ValueError):
+        store.claim_saved({**SAVED_PAYLOAD, "approved": True})
+    assert not store.path.exists()
+
+
+def test_saved_claim_does_not_retry_after_ambiguous_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    mutate = store.mutate
+    calls = []
+
+    def lose_reply(*args, **kwargs):
+        calls.append(args)
+        mutate(*args, **kwargs)
+        raise sqlite3.OperationalError("reply lost after commit")
+
+    monkeypatch.setattr(store, "mutate", lose_reply)
+    with pytest.raises(sqlite3.OperationalError, match="reply lost"):
+        store.claim_saved(SAVED_PAYLOAD)
+    assert len(calls) == 1
+    reopened = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    assert reopened.claim_saved(SAVED_PAYLOAD)["claimed"] is False
+
+
+def test_guidance_race_does_not_cause_an_implicit_claim_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    mutate = store.mutate
+
+    def race(*args, **kwargs):
+        mutate("steer", "turn", expected_revision=1, guidance={"text": "wait"})
+        return mutate(*args, **kwargs)
+
+    monkeypatch.setattr(store, "mutate", race)
+    result = store.claim_saved(SAVED_PAYLOAD)
+    assert result["claimed"] is False
+    assert result["turn"]["status"] == "queued"
+    assert result["turn"]["revision"] == 2
+    assert len(result["turn"]["events"]) == 2
+
 
 def test_absent_reads_and_invalid_begin_do_not_create_storage(tmp_path: Path) -> None:
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)

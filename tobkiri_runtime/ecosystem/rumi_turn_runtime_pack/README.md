@@ -18,6 +18,16 @@ Durable terminal request identities are not pruned; capacity exhaustion rejects
 new turns rather than admitting a replay. The legacy in-process factory still
 prunes terminal mappings and must not be used for saved-send recovery.
 
+The lifecycle `claim_saved` operation accepts the same exact `{request}` input
+as `begin_saved`. It binds the input and atomically changes queued to running at
+the observed revision, returning `{claimed, turn}`. Only the winning call returns
+`claimed: true`; retries, including a lost reply followed by process restart,
+return the existing state without reissuing a claim. A concurrent guidance
+update can return `claimed: false` with a queued snapshot. This is scheduling
+coordination, not an execution or approval credential. The execution coordinator
+must still dispatch through its captured Authority/Broker edge and reconcile
+ambiguous outcomes; no AI dispatch is performed by the owner.
+
 Durability is not execution recovery: a restored running state does not authorize
 another AI invocation or uncertain write. Reconciliation, provider cancellation,
 full-UI execution integration and native activation remain required. Registration

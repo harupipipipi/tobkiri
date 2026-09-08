@@ -121,18 +121,35 @@ def test_saved_begin_computes_identity_and_never_restarts_running_turn(tmp_path:
     assert _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn") == running
 
 
+def test_saved_claim_is_durable_across_host_recapture(tmp_path: Path) -> None:
+    first = _invoke(tmp_path, "lifecycle", operation="claim_saved", **SAVED_INPUT)
+    assert first["claimed"] is True
+    assert first["turn"]["status"] == "running"
+    assert "original private text" not in json.dumps(first)
+    assert _invoke(tmp_path, "lifecycle", operation="claim_saved", **SAVED_INPUT) == {
+        "claimed": False, "turn": first["turn"],
+    }
+    assert _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn") == first["turn"]
+
+
+@pytest.mark.parametrize("operation", ["begin_saved", "claim_saved"])
 @pytest.mark.parametrize("field", ["input_digest", "request_id", "state", "outcome", "target"])
-def test_saved_begin_cannot_accept_caller_execution_identity(tmp_path: Path, field: str) -> None:
+def test_saved_begin_cannot_accept_caller_execution_identity(
+    tmp_path: Path, field: str, operation: str,
+) -> None:
     with pytest.raises(ValueError):
-        _invoke(tmp_path, "lifecycle", operation="begin_saved", **SAVED_INPUT,
+        _invoke(tmp_path, "lifecycle", operation=operation, **SAVED_INPUT,
                 **{field: "caller-supplied"})
     assert not list(tmp_path.iterdir())
 
 
+@pytest.mark.parametrize("operation", ["begin_saved", "claim_saved"])
 @pytest.mark.parametrize("kind", ["resource", "events"])
-def test_saved_begin_remains_denied_on_read_contracts(tmp_path: Path, kind: str) -> None:
+def test_saved_begin_remains_denied_on_read_contracts(
+    tmp_path: Path, kind: str, operation: str,
+) -> None:
     with pytest.raises(PermissionError):
-        _invoke(tmp_path, kind, operation="begin_saved", **SAVED_INPUT)
+        _invoke(tmp_path, kind, operation=operation, **SAVED_INPUT)
     assert not list(tmp_path.iterdir())
 
 
