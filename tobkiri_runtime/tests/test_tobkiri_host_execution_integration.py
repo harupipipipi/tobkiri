@@ -12,6 +12,7 @@ import subprocess
 import sys
 from concurrent.futures import Future
 from threading import Barrier, Lock, Thread
+from types import SimpleNamespace
 import time
 from typing import Any, Mapping
 
@@ -439,6 +440,40 @@ def test_external_timeout_is_fenced_persisted_and_never_auto_retried() -> None:
     assert fixture.backend.cancelled == ["request-1"]
     assert fixture.authority.fenced == ["request-1"]
     assert fixture.audit.failures == [("ambiguous_effect", True)]
+
+
+@pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
+def test_completed_future_cannot_publish_a_late_result(
+    monkeypatch: pytest.MonkeyPatch, effect: EffectClass,
+) -> None:
+    """A result ready before observation still cannot outlive its deadline."""
+    import tobkiri_host.broker as broker_module
+
+    clock = [100.0]
+    monkeypatch.setattr(
+        broker_module, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+    fixture = make_broker(effect=effect)
+
+    def submit(function, *arguments):
+        future = Future()
+        future.set_result(function(*arguments))
+        # Model the Host being scheduled only after the deadline. The Future
+        # is already done, so Future.result(timeout=0) cannot enforce expiry.
+        clock[0] += 1.0
+        return future
+
+    monkeypatch.setattr(fixture.broker._executor, "submit", submit)
+    error_type = AmbiguousEffectError if effect is EffectClass.EXTERNAL_EFFECT else RequestTimedOutError
+    try:
+        with pytest.raises(error_type):
+            fixture.broker.invoke(frame(), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.invocations == 1
+    assert fixture.backend.cancelled == ["request-1"]
+    assert fixture.authority.fenced == ["request-1"]
+    assert "audit_committed" not in fixture.events
 
 
 def test_local_timeout_kills_process_group_before_side_effect(tmp_path: Path) -> None:

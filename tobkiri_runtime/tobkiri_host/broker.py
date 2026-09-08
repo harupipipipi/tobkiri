@@ -690,6 +690,11 @@ class RequestBroker:
             )
             remaining = max(0.0, deadline - monotonic_clock())
             raw = future.result(timeout=remaining)
+            # Future.result(timeout=0) still returns an already-completed
+            # result. Host scheduling delay must not turn a late result into
+            # successful execution beyond the original request deadline.
+            if monotonic_clock() >= deadline:
+                raise TimeoutError("provider result arrived after request deadline")
             if not isinstance(raw, ProviderOutcome):
                 raise TypeError("provider did not return ProviderOutcome")
             if raw.disposition in {
