@@ -32,6 +32,7 @@ import time
 from typing import Callable, Mapping, Protocol
 
 
+
 PROTOCOL = "io.tobkiri.packvm-supervisor.v1"
 BUILD_ID = "tobkiri-packvm-runner-4"
 ARTIFACT_ROOT = Path("/var/lib/tobkiri-packvm/artifacts")
@@ -49,6 +50,7 @@ MAX_ARTIFACT_SEED_BYTES = (
     MAX_TOTAL_BYTES + MAX_ARTIFACT_METADATA_BYTES + len(ARTIFACT_SEED_MAGIC) + 8
 )
 MAX_RESULT_BYTES = 16 * 1024 * 1024
+MAX_CHILD_STDERR_BYTES = 64 * 1024
 CANCEL_GRACE_SECONDS = 0.25
 PACK_UID = 65534
 PACK_GID = 65534
@@ -298,15 +300,26 @@ def _communicate_staged_implementation(
 ) -> dict[str, object]:
     """Run one sandboxed ABI step and return its one bounded object result."""
 
-    encoded = _bridge_canonical_json(child_request)
-    if len(encoded) > MAX_CHILD_REQUEST_BYTES:
-        raise ValueError("PackVM invocation payload exceeds size limit")
     try:
-        stdout, _ = process.communicate(encoded, timeout=60.0)
-    except subprocess.TimeoutExpired as exc:
+        from tobkiri_host.bounded_child_io import communicate_bounded
+
+        encoded = _bridge_canonical_json(child_request)
+        if len(encoded) > MAX_CHILD_REQUEST_BYTES:
+            raise ValueError("PackVM invocation payload exceeds size limit")
+        stdout = communicate_bounded(
+            process, encoded, stdout_limit=MAX_RESULT_BYTES,
+            stderr_limit=MAX_CHILD_STDERR_BYTES, timeout=60.0,
+        )
+    except BaseException:
+        # Do not call communicate() here: cleanup must not buffer the output
+        # which just exceeded its budget. This also owns serialization failures
+        # after spawn, before the pipe exchange could start.
         _terminate_process_group(process.pid)
-        process.communicate()
-        raise ValueError("PackVM invocation timed out") from exc
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+        process.wait(timeout=5.0)
+        raise
     if process.returncode != 0:
         # Child stderr is artifact-controlled.  Do not include it in errors
         # that cross the authenticated supervisor boundary.

@@ -8,6 +8,7 @@
     "artifact_materialization.py",
     "authority_v4.py",
     "backends.py",
+    "bounded_child_io.py",
     "broker.py",
     "canonical-files.v1.json",
     "composition.py",

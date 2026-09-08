@@ -15,6 +15,7 @@ import tempfile
 import zipfile
 
 _SOURCES = {
+    "tobkiri_host/bounded_child_io.py": "tobkiri_host/bounded_child_io.py",
     "__main__.py": "ecosystem/defaultspack/backend/sandbox/isolation/resources/packvm_guest_runner.py",
     "tobkiri_host/continuation_chain.py": "tobkiri_host/continuation_chain.py",
     "tobkiri_host/continuation_envelope.py": "tobkiri_host/continuation_envelope.py",

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MEMBERS = {
     "__main__.py",
     "tobkiri_host/__init__.py",
+    "tobkiri_host/bounded_child_io.py",
     "tobkiri_host/continuation_chain.py",
     "tobkiri_host/continuation_envelope.py",
     "tobkiri_host/continuation_session.py",

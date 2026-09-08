@@ -485,15 +485,24 @@ def test_vsock_console_milestones_are_fixed_and_nonsecret(
     assert closed == [41, 41, 41, 41, 41]
 
 
-def test_child_abi_request_limit_stays_within_the_sandbox_memory_limit() -> None:
+def test_child_abi_request_limit_stays_within_the_sandbox_memory_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Artifact seed admission is separate from the bounded child ABI frame."""
 
     class Child:
         returncode = 0
+        pid = 12345
+        stdin = stdout = stderr = None
+
+        def wait(self, **_kwargs: object) -> int:
+            return 0
 
         def communicate(self, *_args: object, **_kwargs: object) -> tuple[bytes, bytes]:
             pytest.fail("oversized child input must be rejected before spawn I/O")
 
+    stopped = []
+    monkeypatch.setattr(packvm_guest_runner, "_terminate_process_group", stopped.append)
     with pytest.raises(ValueError, match="payload exceeds size limit"):
         packvm_guest_runner._communicate_staged_implementation(
             Child(),  # type: ignore[arg-type]
@@ -505,6 +514,7 @@ def test_child_abi_request_limit_stays_within_the_sandbox_memory_limit() -> None
         )
 
     assert packvm_guest_runner.MAX_CHILD_REQUEST_BYTES < packvm_guest_runner.MAX_REQUEST_BYTES
+    assert stopped == [12345]
 
 
 def test_child_entrypoint_rejects_oversized_abi_input_before_json_decode(
