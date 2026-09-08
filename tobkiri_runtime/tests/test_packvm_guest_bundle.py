@@ -13,7 +13,7 @@ import zipfile
 
 import pytest
 
-from scripts.build_packvm_guest_bundle import build_guest_bundle
+from scripts.build_packvm_guest_bundle import build_guest_bundle, main
 from ecosystem.defaultspack.backend.sandbox.isolation.resources import packvm_guest_runner
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -149,3 +149,36 @@ def test_packaging_invokes_bundle_builder_before_runner_digest_is_bound() -> Non
     assert script.index("scripts/build_packvm_guest_bundle.py") < script.index(
         'service["guest_runner_sha256"] ='
     )
+
+
+def test_cli_verification_rejects_changed_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "runner.py"
+    arguments = ["builder", "--runtime-root", str(ROOT), "--output", str(output)]
+    monkeypatch.setattr(sys, "argv", arguments)
+    assert main() == 0
+    monkeypatch.setattr(sys, "argv", [*arguments, "--check"])
+    assert main() == 0
+    output.chmod(0o600)
+    output.write_bytes(output.read_bytes() + b"unexpected trailing input")
+    with pytest.raises(ValueError, match="canonical source closure"):
+        main()
+
+
+def test_cli_refuses_output_link_without_touching_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "preserved.py"
+    target.write_bytes(b"preserved")
+    output = tmp_path / "runner.py"
+    try:
+        output.symlink_to(target)
+    except OSError:
+        pytest.skip("symbolic links unavailable on this test host")
+    monkeypatch.setattr(
+        sys, "argv", ["builder", "--runtime-root", str(ROOT), "--output", str(output)]
+    )
+    with pytest.raises(ValueError, match="symlink"):
+        main()
+    assert target.read_bytes() == b"preserved"
