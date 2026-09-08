@@ -1,16 +1,17 @@
 # Saved-turn bridge v2 implementation contract
 
-Status: guest source dispatch exists; Host dispatch, registration and native
-acceptance remain incomplete. This document is not release acceptance evidence.
+Status: guest/Host source exchange exists; production captured Broker/preflight
+binding, registration and native acceptance remain incomplete. This document is
+not release acceptance evidence.
 The existing v1 `conversation.turn.v1/complete` remains supported and single-hop.
 Do not remove its one-exchange guards to implement saved conversations.
 
 State machinery in `tobkiri_host/continuation_chain.py` is now used by the
-root guest saved-turn dispatcher, but not by the Host boundary. It retains identities until
+root guest dispatcher and the independent Host exchange. It retains identities until
 the original deadline, issues local single-use resume permits, bounds four hops
 and cumulative encoded request/result bytes, and fences cancelled/failed chains.
 It does not authenticate frames, grant execution authority, stop providers or
-provide durable restart recovery. Host validation, captured Broker dispatch and
+provide durable restart recovery. Production captured Broker dispatch and
 durable orchestration remain required before using it in production.
 
 `tobkiri_host/continuation_session.py` couples the codecs and shared chain ledger:
@@ -41,6 +42,22 @@ must not automatically advance the saved-turn application workflow.
 
 ## Observed boundaries
 
+- `saved_host_exchange.py` independently checks wrapper identities, launch
+  binding digest, original Host deadline text, fixed targets, hop, predecessor
+  and frame digest. The direct VZ driver authenticates each helper HMAC and guest
+  Ed25519 response before passing it to this exchange. A separate Host chain
+  accounts for all frame/result/terminal bytes and retains consumed identities;
+  the existing domain nonce ledger also rejects replay. Early success and
+  continuation after a Host error are rejected. Host cancellation/deadline are
+  checked around each callback and transport response. The Host clock is never
+  compared to a guest clock value.
+- `bind_saved_capability_bridge(callback, preflight)` is a separate Host-owned
+  registration, frozen before domain launch. Until production bootstrap binds
+  captured readiness and Broker implementations, saved invokes fail before
+  guest dispatch. The v1 callback is not reused as an implicit v2 permission.
+  Tests inject readiness/dispatch and VM transport while exercising real
+  HMAC/Ed25519 verification, both independent exchanges and conversation-owner
+  writes. That is not production Authority/Broker or real Provider acceptance.
 - `tobkiri_host/saved_guest_dispatch.py` reserves each saved identity before
   initial execution and retains pending, in-flight and terminal state through
   one guest-local 60-second deadline. It seals the fixed four-target plan,
@@ -57,8 +74,9 @@ must not automatically advance the saved-turn application workflow.
   the original Host deadline text, bridge_request and its canonical digest.
   Host results use kind `tobkiri.packvm.bridge.host-result.v2` and the same
   identities and request-frame digest, replacing deadline/frame with
-  bridge_result (the strict v2 continuation result). The existing Host rejects
-  this unimplemented version; do not reinterpret it as a v1 request or success.
+  bridge_result (the strict v2 continuation result). The Host has a dedicated
+  source handler, disabled without its captured callback/preflight binding;
+  never reinterpret this version as a v1 request or success.
 - The Swift direct helper now retains exclusive exchange tickets across pending
   replies: the exact reserved saved contract/version/operation gets at most four
   bridges; other operations keep the one-bridge limit. A helper-local 60-second
@@ -104,7 +122,7 @@ shape into a validated request using independently supplied root identity, hop,
 target, nonce and predecessor. Extra application-supplied framing fields are
 rejected. The four-step owner test uses this implementation instead of creating
 request frames itself. Guest source dispatch now uses it as described above;
-deployment into the guest VM and Host-side dispatch remain unverified/unimplemented.
+deployment into the guest VM and production Broker binding remain incomplete.
 Both the v1 guest wrapper and the Host final-outcome validator now reject the
 reserved `tobkiri.packvm.*` namespace as terminal application data; an unsupported
 v2 intent cannot masquerade as a completed v1 invocation. The existing initial
