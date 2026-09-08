@@ -24,6 +24,7 @@ from domain.ai_client.rumi_process import (
     ensure_default_rumi_model_pack,
     resolve_rumi_base_model,
 )
+from domain.frontend_settings_client import update_settings_document, update_settings_state
 from domain.frontend_settings_store import (
     FrontendSettingsStore,
     defaultspack_frontend_settings_path,
@@ -136,7 +137,7 @@ class ModelRuntimeSettingsService:
             all_settings["models"] = dict(result)
             return all_settings
 
-        self._settings_store.update(merge)
+        update_settings_document(self._settings_store, merge)
         _invalidate_settings_cache(self._settings_path, self._pack_root)
         return result
 
@@ -339,7 +340,8 @@ class ModelRuntimeSettingsService:
             sort_keys=True,
             separators=(",", ":"),
         )
-        updated = self._settings_store.mutate_state(
+        updated = update_settings_state(
+            self._settings_store,
             DEEPTHINK_STATE_REF,
             mutate,
             expected_revision=expected_revision,

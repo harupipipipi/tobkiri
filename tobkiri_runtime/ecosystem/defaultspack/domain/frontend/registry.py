@@ -30,6 +30,7 @@ from domain.external.io_templates import external_io_template_catalog
 from domain.external.output_profile_registry import OutputProfileRegistry
 from domain.external.source_store import ExternalSourceStore, external_source_key
 from domain.external.token_store import external_token_status
+from domain.frontend_settings_client import update_settings_document
 from domain.frontend_settings_store import (
     FrontendSettingsCorruptError,
     FrontendSettingsStore,
@@ -209,7 +210,7 @@ class FrontendRegistry:
                 self._deep_merge(values, sanitized_patch)
             )
 
-        return self._settings_store.update(merge)
+        return update_settings_document(self._settings_store, merge)
 
     def build_conversation_preview(self, conversation_id: str) -> dict[str, Any]:
         store = ChatStore()
@@ -1561,7 +1562,8 @@ class FrontendRegistry:
             return self._refresh_derived_settings(values)
         saved, migrated = self._migrate_legacy_keyboard_navigation(saved)
         if migrated:
-            saved = self._settings_store.update(
+            saved = update_settings_document(
+                self._settings_store,
                 lambda current: self._migrate_legacy_keyboard_navigation(current)[0]
             )
         if saved:

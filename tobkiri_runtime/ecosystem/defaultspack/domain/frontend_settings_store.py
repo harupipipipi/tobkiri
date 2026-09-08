@@ -154,6 +154,93 @@ class FrontendSettingsStore:
             self._atomic_write(updated, preserve_backup=True)
             return updated
 
+    def compare_and_swap_document(
+        self, document: Mapping[str, Any], *, expected_revision: int,
+    ) -> dict[str, Any]:
+        """Commit JSON values computed outside the owner at an exact revision.
+
+        This is the data-only replacement for passing update callbacks across
+        a future settings-owner contract. The owner retains its revision and
+        state/receipt metadata; callers cannot replace those control fields.
+        This method neither grants authority nor performs a live owner cutover.
+        """
+        if type(expected_revision) is not int or expected_revision < 0:
+            raise ValueError("settings document revision must be an exact nonnegative integer")
+        if not isinstance(document, Mapping):
+            raise ValueError("settings document must be an object")
+        candidate = deepcopy(dict(document))
+        # Reject non-JSON values and non-finite numbers before opening storage.
+        encoded = json.dumps(candidate, ensure_ascii=False, allow_nan=False)
+        decoded = json.loads(encoded)
+        if decoded != candidate:
+            raise ValueError("settings document requires JSON keys and values")
+        candidate = decoded
+        with self._locked():
+            # Recovery is a separate write operation. A stale CAS must not
+            # repair/replace the primary before deciding its revision conflict.
+            current = self._read_locked(recover=False)
+            revision = current.get(REVISION_KEY, 0)
+            if type(revision) is not int or revision < 0:
+                raise FrontendSettingsCorruptError("settings document revision is invalid")
+            if revision != expected_revision:
+                raise FrontendSettingsRevisionConflict("settings.document", expected_revision, revision)
+            for key in (REVISION_KEY, STATE_REVISIONS_KEY, MUTATION_RECEIPTS_KEY):
+                # Absent keys may stay absent, but deletion or replacement of
+                # an existing control field is not a document update.
+                if (key in candidate) != (key in current) or json.dumps(
+                    candidate.get(key), sort_keys=True, allow_nan=False
+                ) != json.dumps(current.get(key), sort_keys=True, allow_nan=False):
+                    raise ValueError("settings document cannot change owner metadata")
+            candidate[REVISION_KEY] = revision + 1
+            self._atomic_write(candidate, preserve_backup=True)
+            return candidate
+
+    def compare_and_swap_state(
+        self,
+        state_ref: str,
+        document: Mapping[str, Any],
+        result: Mapping[str, Any],
+        *,
+        expected_document_revision: int,
+        expected_revision: int | None = None,
+        idempotency_key: str | None = None,
+        request_fingerprint: str = "",
+    ) -> dict[str, Any]:
+        """Commit data-only state proposals using existing receipt semantics.
+
+        Only this owner creates the local transform. No callback is received
+        from a future contract caller. Receipt replay is checked by mutate_state
+        before the document CAS, preserving an acknowledged retry's result.
+        """
+        if type(expected_document_revision) is not int or expected_document_revision < 0:
+            raise ValueError("settings document revision must be an exact nonnegative integer")
+        candidate = deepcopy(dict(document))
+        response = deepcopy(dict(result))
+        decoded = json.loads(json.dumps([candidate, response], allow_nan=False))
+        if decoded != [candidate, response]:
+            raise ValueError("settings state proposal requires JSON keys and values")
+        candidate, response = decoded
+
+        def apply(current: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            revision = current.get(REVISION_KEY, 0)
+            if type(revision) is not int or revision < 0:
+                raise FrontendSettingsCorruptError("settings document revision is invalid")
+            if revision != expected_document_revision:
+                raise FrontendSettingsRevisionConflict(
+                    "settings.document", expected_document_revision, revision
+                )
+            for key in (REVISION_KEY, STATE_REVISIONS_KEY, MUTATION_RECEIPTS_KEY):
+                if (key in candidate) != (key in current) or json.dumps(
+                    candidate.get(key), sort_keys=True, allow_nan=False
+                ) != json.dumps(current.get(key), sort_keys=True, allow_nan=False):
+                    raise ValueError("settings document cannot change owner metadata")
+            return candidate, response
+
+        return self.mutate_state(
+            state_ref, apply, expected_revision=expected_revision,
+            idempotency_key=idempotency_key, request_fingerprint=request_fingerprint,
+        )
+
     def mutate_state(
         self,
         state_ref: str,

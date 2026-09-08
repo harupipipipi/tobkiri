@@ -187,8 +187,8 @@
     {
       "path": "ecosystem/defaultspack/domain/frontend_settings_store.py",
       "type": "regular-file",
-      "size": 14950,
-      "sha256": "a7d9ccd7b1cf90d3b6ca2523f726bdabc4a3dd4b9359bd81fae4d00588280518",
+      "size": 19759,
+      "sha256": "531b7d08f4596a91265aec50a7b6cb4fb38c978cab034d7f3284c37ce07c9cfe",
       "executable": false
     },
     {
@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 847095,
-      "sha256": "946874783dbbe6b4fa6455f69a2215adbd89f4acd18b7fcc905fcbcf498237ee",
+      "sha256": "7c7a05e93a7269ad800ca7cc88101e99e5714eb7fb6dc29ac69a77847ddf3ce8",
       "executable": false
     },
     {
