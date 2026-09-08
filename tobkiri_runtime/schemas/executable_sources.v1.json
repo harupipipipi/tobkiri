@@ -1,5 +1,166 @@
 {
   "packs": {
+    "defaultspack.application-presentation": {
+      "contract_id": "tobkiri.resource.application.presentation.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "defaultspack.application-presentation",
+      "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+      "implementation_path": "runtime/application_presentation.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "_session_id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "ui",
+              "commands"
+            ]
+          },
+          "model_options": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "value": {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label"
+              ],
+              "type": "object"
+            },
+            "maxItems": 256,
+            "type": "array"
+          },
+          "profile_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "operation_id": "defaultspack.presentation.read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "defaultspack.presentation.read",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+          "implementation_path": "runtime/application_presentation.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "ui",
+                  "commands"
+                ]
+              },
+              "model_options": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "value": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              },
+              "profile_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "defaultspack.presentation.read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "defaultspack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "defaultspack",
+      "pack_id": "defaultspack",
+      "source": [
+        {
+          "entrypoint_id": "defaultspack.presentation.read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "defaultspack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "defaultspack.application-presentation.python"
+    },
     "defaultspack.conversation": {
       "contract_id": "conversation.turn.v1",
       "contract_version": "1.0.0",
@@ -1755,7 +1916,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_command_protocol_pack.catalog.read",
-      "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+      "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
       "implementation_path": "runtime/catalog.py",
       "input_schema": {
         "type": "object"
@@ -1769,7 +1930,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+          "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -10353,7 +10514,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -10367,7 +10528,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -10404,7 +10565,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -10418,7 +10579,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -10997,7 +11158,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:14f10c552ab09173e0f7ba9436b1e5f89f938a15cc9cbf111cf4757edf5d8c9d",
+    "input_digest": "sha256:9fc34361a4f6d5303474d89e7a249d3dac755885b2a12356f89c9ca7cf8bdab8",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -11704,7 +11865,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:531fad823d0b61dd78aae8f188182e0a9e97db08cc7921c045782f7e9e454890",
+        "digest": "sha256:8a159d4b2e2225d8ac7a637737ce27400f460889f196ab9fecf7410f9dc84952",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

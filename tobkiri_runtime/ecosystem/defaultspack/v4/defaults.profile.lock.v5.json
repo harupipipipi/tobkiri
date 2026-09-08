@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:2a3667a9dbace865bd9fcdc5b95371d08b2d1503e9e47a8206dbcc06684c92e7",
-  "profile_definition_digest": "sha256:2f4db5f4a7c1ffb493e6eecebc29d526fc049135a3b5f60bfc458d735544285d",
-  "catalog_revision": "sha256:7b7b3334bcbae03c7a11614650d1ff6d7bbb90e9bc52f9d221a8967402f836ef",
-  "bundle_digest": "sha256:8f04a6b475d8d1575e40bac52438cf57c59986f981447d00ea79e232511578ef",
+  "profile_revision": "sha256:1fc3a77a5e34d0cb693777acd2010de8a0e90483966d8d6954b1cf58bda5e8c3",
+  "profile_definition_digest": "sha256:0d83085f45a539310c7eb062e787c0ff73988421ebd553e5cb46a73dde54bcce",
+  "catalog_revision": "sha256:6b5ccbb1adf644324fd9c798ab299f9f6b932a85fd849d9f9b595a1ba1685597",
+  "bundle_digest": "sha256:ee48e4df586e262769db17679215249f0aa74fa08f33a3ef453e0d7985788ead",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -43,7 +43,7 @@
     {
       "role": "pack",
       "identity": "tobkiri_ui_settings_pack",
-      "artifact_digest": "sha256:ad0175f8d2d0f91d4b7fbc22cd59e48db144e4b899776411d0422fa963d4ffd4"
+      "artifact_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448"
     },
     {
       "role": "pack",
@@ -53,7 +53,7 @@
     {
       "role": "pack",
       "identity": "defaultspack",
-      "artifact_digest": "sha256:ba86077bb0c6e66c573b20f8099e84491a3cb93e341eb07340b768d6c530acdd"
+      "artifact_digest": "sha256:349295a467b723ea85eb3e2c61066342a63426753c1bc0ae3c04667ba174b666"
     },
     {
       "role": "pack",
@@ -143,7 +143,7 @@
     {
       "role": "pack",
       "identity": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:cae24e4d755b4716158d63c28177e9327551d455084a57c114289006328ca4ba"
+      "artifact_digest": "sha256:ef629bb05eab8667474b78094ffd8dea902f320b84f81ad9b0a761e558a72097"
     },
     {
       "role": "pack",
@@ -166,8 +166,20 @@
   "variant_pins": [
     {
       "pack_id": "defaultspack",
-      "artifact_digest": "sha256:ba86077bb0c6e66c573b20f8099e84491a3cb93e341eb07340b768d6c530acdd",
-      "executable_catalog_digest": "sha256:80f87698b7c76b815f8cd37d54cd2db5e8450e06f9f96e688feea00a5544f696",
+      "artifact_digest": "sha256:349295a467b723ea85eb3e2c61066342a63426753c1bc0ae3c04667ba174b666",
+      "executable_catalog_digest": "sha256:7e5f7e155f8a1464a08184e7d97701fbe81d92bb7662ef3fa15d157e68ae7ad7",
+      "variant_id": "defaultspack.application-presentation.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_kind": "pack_vm",
+      "domain_kind": "pack_vm"
+    },
+    {
+      "pack_id": "defaultspack",
+      "artifact_digest": "sha256:349295a467b723ea85eb3e2c61066342a63426753c1bc0ae3c04667ba174b666",
+      "executable_catalog_digest": "sha256:7e5f7e155f8a1464a08184e7d97701fbe81d92bb7662ef3fa15d157e68ae7ad7",
       "variant_id": "defaultspack.conversation.python",
       "platform": "any",
       "architecture": "any",
@@ -274,8 +286,8 @@
     },
     {
       "pack_id": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:cae24e4d755b4716158d63c28177e9327551d455084a57c114289006328ca4ba",
-      "executable_catalog_digest": "sha256:31cd48a7c7ba6080eeb50e49c59ed53612c0d296a4d94bb01c6e0408efece02c",
+      "artifact_digest": "sha256:ef629bb05eab8667474b78094ffd8dea902f320b84f81ad9b0a761e558a72097",
+      "executable_catalog_digest": "sha256:a68876ada1afe9e6942c4883c46812fae1bc2d8b5a8af8cb4d8ef6e87c53f85c",
       "variant_id": "rumi_command_protocol_pack.catalog.read.python",
       "platform": "any",
       "architecture": "any",
@@ -286,8 +298,8 @@
     },
     {
       "pack_id": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:cae24e4d755b4716158d63c28177e9327551d455084a57c114289006328ca4ba",
-      "executable_catalog_digest": "sha256:31cd48a7c7ba6080eeb50e49c59ed53612c0d296a4d94bb01c6e0408efece02c",
+      "artifact_digest": "sha256:ef629bb05eab8667474b78094ffd8dea902f320b84f81ad9b0a761e558a72097",
+      "executable_catalog_digest": "sha256:a68876ada1afe9e6942c4883c46812fae1bc2d8b5a8af8cb4d8ef6e87c53f85c",
       "variant_id": "rumi_command_protocol_pack.high-risk-command.service.python",
       "platform": "any",
       "architecture": "any",
@@ -598,8 +610,8 @@
     },
     {
       "pack_id": "tobkiri_ui_settings_pack",
-      "artifact_digest": "sha256:ad0175f8d2d0f91d4b7fbc22cd59e48db144e4b899776411d0422fa963d4ffd4",
-      "executable_catalog_digest": "sha256:2919f67f3500761e7c10ef845b2b5a4f8c99fc08d976bf23178df83d48746962",
+      "artifact_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448",
+      "executable_catalog_digest": "sha256:39a4c49df918cb5956c3dfeab038bd283b24a0cdc8a4fecaa50dbab514c54271",
       "variant_id": "tobkiri.ui.catalog.read.python",
       "platform": "any",
       "architecture": "any",
@@ -610,8 +622,8 @@
     },
     {
       "pack_id": "tobkiri_ui_settings_pack",
-      "artifact_digest": "sha256:ad0175f8d2d0f91d4b7fbc22cd59e48db144e4b899776411d0422fa963d4ffd4",
-      "executable_catalog_digest": "sha256:2919f67f3500761e7c10ef845b2b5a4f8c99fc08d976bf23178df83d48746962",
+      "artifact_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448",
+      "executable_catalog_digest": "sha256:39a4c49df918cb5956c3dfeab038bd283b24a0cdc8a4fecaa50dbab514c54271",
       "variant_id": "tobkiri.ui.settings.read.python",
       "platform": "any",
       "architecture": "any",
@@ -621,9 +633,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:b23b2b966267a93b91e88ad8102760b83468e770cb236a1353165552a1b1b3b1",
-  "constraints_digest": "sha256:a01e27b53d3c7c0ccc9eea892cd31be3dbed976558a35316fa56ceb928263e5b",
-  "closure_digest": "sha256:3f8e4e03866a5b1cab64c4c7207b8cf0bcb758ac7595da00b7f70429e4f143bc",
-  "provenance_digest": "sha256:a37b8ef0d649f4504a9c72ad0589882eaeccf430804bdd0c145375baaaad0803",
-  "lock_digest": "sha256:7a2aed772ee26ac189835a7905e209b82def9e5b4cbe4084bf58e3a8c9e2d6f4"
+  "requested_edges_digest": "sha256:4d91c01ab604753cde43364c215104c5014d97bc73a2298d3d17db76da4d2d8c",
+  "constraints_digest": "sha256:35e1ac0c7fbfcd9b6eeefa4346f3be64620f78c19ab7465d87d5ac6edbef2d2d",
+  "closure_digest": "sha256:4c90c71e7fece84d730cdef1d77a7b9eaa3e4a8fce0d1b00d25bc200c2fd6c3e",
+  "provenance_digest": "sha256:d3def32b1ea494cdd1ff4ead9b4959fbbd58b29b3c821559ede9ef7508d46e0a",
+  "lock_digest": "sha256:16738007520a0401da39b8455ee35fd5f55c9d4f03f8848beea0b7a41727e18e"
 }

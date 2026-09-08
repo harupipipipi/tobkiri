@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
 from typing import Any, Mapping
 
 from core_runtime.host_provider_backend_v4 import (
@@ -11,12 +13,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from ecosystem.defaultspack.domain.frontend_settings_catalog import (
-    SettingsCatalogInputs,
-    SettingsSections,
-)
 from ecosystem.defaultspack.domain.frontend_settings_store import FrontendSettingsStore
-from ecosystem.defaultspack.domain.frontend_builtin_catalog import builtin_ui_catalog
 
 PACK_ID = "tobkiri_ui_settings_pack"
 FUNCTION_ID = "tobkiri.ui.settings.read"
@@ -26,6 +23,8 @@ OPERATION_ID = "tobkiri_ui_settings_pack.settings-read"
 CATALOG_OPERATION_ID = "tobkiri_ui_settings_pack.catalog-read"
 MODEL_CONTRACT = "tobkiri.resource.ai.model.profile.v1"
 MODEL_OPERATION = "rumi_model_registry_pack.model-profile-resource"
+PRESENTATION_CONTRACT = "tobkiri.resource.application.presentation.v1"
+PRESENTATION_OPERATION = "defaultspack.presentation.read"
 
 
 def _model_options(result: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -54,6 +53,9 @@ def _values(
     # Only settings represented by known controls are exposed. Internal
     # receipts, arbitrary saved namespaces and credential controls stay local.
     values: dict[str, dict[str, Any]] = {}
+    # This is Host-owned disclosure policy, not supplied by the PackVM UI.
+    # New public saved fields require an explicit reviewed policy change.
+    public_fields = json.loads((Path(__file__).with_name("public-settings-fields.v1.json")).read_text(encoding="utf-8"))
     for section in sections:
         identifier = section["id"]
         saved = snapshot.get(identifier, {})
@@ -62,7 +64,7 @@ def _values(
         current: dict[str, Any] = {}
         for field in section["fields"]:
             name = field["id"]
-            if field.get("type") in {"password", "api_keys", "external_tokens"}:
+            if name not in public_fields.get(identifier, []) or field.get("type") in {"password", "api_keys", "external_tokens"}:
                 continue
             if name in saved:
                 current[name] = deepcopy(saved[name])
@@ -120,7 +122,7 @@ class SettingsReadHostFactoryV4:
             ):
                 raise PermissionError("settings read request is invalid")
             client = invocation.contract_client(
-                allowed_contract_ids=frozenset({MODEL_CONTRACT}),
+                allowed_contract_ids=frozenset({MODEL_CONTRACT, PRESENTATION_CONTRACT}),
                 consumer_pack_id=PACK_ID,
             )
             models = client.invoke(
@@ -128,20 +130,19 @@ class SettingsReadHostFactoryV4:
                 MODEL_OPERATION,
                 {"profile_id": context.profile_id, "operation": "list"},
             )
-            inputs = SettingsCatalogInputs(
-                input_templates=[],
-                output_templates=[],
-                input_profile_options=[],
-                output_profile_options=[],
-                model_options=_model_options(models),
-                model_route_options=_model_options(models),
-                api_key_status=[],
+            presentation = client.invoke(
+                PRESENTATION_CONTRACT, PRESENTATION_OPERATION,
+                {"profile_id": context.profile_id, "kind": "ui", "model_options": _model_options(models)},
             )
-            sections = SettingsSections().build([], [], template_catalog={}, inputs=inputs)
+            if not isinstance(presentation, Mapping) or set(presentation) != {"sections", "definitions"}:
+                raise ValueError("application presentation is unavailable")
+            sections = presentation["sections"]
+            definitions = presentation["definitions"]
+            if not isinstance(sections, list) or not isinstance(definitions, dict):
+                raise ValueError("application presentation is invalid")
             settings = {"sections": sections, "values": _values(sections, store.read_snapshot())}
             if operation_id == OPERATION_ID:
                 return settings
-            definitions = builtin_ui_catalog()
             return {
                 "app": {"id": "defaultspack", "name": "Tobkiri"},
                 "shell": definitions["shell"],

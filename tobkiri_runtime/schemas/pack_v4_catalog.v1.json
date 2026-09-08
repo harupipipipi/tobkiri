@@ -216,6 +216,94 @@
       "provided_contracts": [
         {
           "cardinality": "one",
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "failure": "fail_closed",
+          "security": "sensitive",
+          "isolation": "sandbox",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "4.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "defaultspack.presentation.read",
+              "id": "defaultspack.presentation.read",
+              "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a"
+            }
+          ],
+          "owner": "defaultspack",
+          "provider_id": "defaultspack.application-presentation",
+          "required_capabilities": [],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "ui",
+                    "commands"
+                  ]
+                },
+                "model_options": {
+                  "type": "array",
+                  "maxItems": 256,
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "value",
+                      "label"
+                    ],
+                    "properties": {
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "profile_id": {
+                  "type": "string"
+                },
+                "_session_id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
           "contract_id": "conversation.turn.v1",
           "failure": "fail_closed",
           "isolation": "sandbox",
@@ -314,6 +402,11 @@
           "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
           "kind": "executable",
           "path": "runtime/conversation.py"
+        },
+        {
+          "digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+          "kind": "executable",
+          "path": "runtime/application_presentation.py"
         },
         {
           "digest": "sha256:b51f935fa4438007fd0d19eeb7ff3b44b410751c94a987baac8e6306b07615d0",
@@ -2841,7 +2934,7 @@
         {
           "contract_id": "tobkiri.resource.command.catalog.v1",
           "function_id": "rumi_command_protocol_pack.catalog.read",
-          "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+          "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
           "operation_ids": [
             "command.catalog.read"
           ]
@@ -2947,7 +3040,7 @@
             {
               "entrypoint_id": "command.catalog.read",
               "id": "command.catalog.read",
-              "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174"
+              "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e"
             }
           ],
           "owner": "rumi_command_protocol_pack",
@@ -2973,6 +3066,12 @@
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -2982,9 +3081,14 @@
           "path": "runtime/high_risk_adapter.py"
         },
         {
-          "digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+          "digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
           "kind": "executable",
           "path": "runtime/catalog.py"
+        },
+        {
+          "digest": "sha256:745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a",
+          "kind": "schema",
+          "path": "schemas/command-protocol-v1.schema.json"
         }
       ],
       "secrets": [],
@@ -16303,7 +16407,7 @@
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.settings.read",
-          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
           "operation_ids": [
             "tobkiri_ui_settings_pack.settings-read"
           ]
@@ -16311,7 +16415,7 @@
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.catalog.read",
-          "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
           "operation_ids": [
             "tobkiri_ui_settings_pack.catalog-read"
           ]
@@ -16346,12 +16450,12 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
               "id": "tobkiri_ui_settings_pack.settings-read",
-              "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45"
+              "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0"
             },
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
               "id": "tobkiri_ui_settings_pack.catalog-read",
-              "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45"
+              "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -16377,13 +16481,24 @@
           "contract_id": "tobkiri.resource.ai.model.profile.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+          "digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
           "kind": "executable",
           "path": "runtime/settings.py"
+        },
+        {
+          "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",
+          "kind": "asset",
+          "path": "runtime/public-settings-fields.v1.json"
         }
       ],
       "secrets": [],

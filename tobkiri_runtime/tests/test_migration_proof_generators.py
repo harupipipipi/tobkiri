@@ -103,9 +103,10 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
     assert payload["source"]["input_paths"] == [
         item["path"] for item in payload["source"]["inputs"]
     ]
-    assert len(records) == 175
-    assert sum(len(record["operations"]) for record in records.values()) == 237
+    assert len(records) == 176
+    assert sum(len(record["operations"]) for record in records.values()) == 238
     for function_id, pack_id, operation_id, implementation_path in (
+        ("defaultspack.application-presentation", "defaultspack", "defaultspack.presentation.read", "runtime/application_presentation.py"),
         ("rumi_command_protocol_pack.catalog.read", "rumi_command_protocol_pack", "command.catalog.read", "runtime/catalog.py"),
         ("tobkiri.ui.settings.read", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.settings-read", "runtime/settings.py"),
         ("tobkiri.ui.catalog.read", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.catalog-read", "runtime/settings.py"),

@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:33ac5da657bde9600d657390859b636532733c5ec19e709e61761ec031d9e2f6",
+      "digest": "sha256:e20b3971409ecd083ea4174eeb7d86f6218844d0d8bb5a32dbe070c85d2f28ae",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+      "digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
       "kind": "executable",
       "path": "runtime/catalog.py"
     },
@@ -14,6 +14,11 @@
       "digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
       "kind": "executable",
       "path": "runtime/high_risk_adapter.py"
+    },
+    {
+      "digest": "sha256:745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a",
+      "kind": "schema",
+      "path": "schemas/command-protocol-v1.schema.json"
     }
   ],
   "contracts": [
@@ -36,7 +41,7 @@
     {
       "contract_revision_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
       "id": "rumi_command_protocol_pack.catalog.read",
-      "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+      "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
       "isolation": "dedicated_process",
       "operations": [
         "command.catalog.read"
@@ -55,8 +60,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:a2913b82c915e4774c72fa9a2aaa984d576e2edab6034845c41180ff0a11f767",
-    "artifact_set_digest": "sha256:cd964f62c79471fea1e5a93308cd6e16afa93d256d2ecc39cbab7f02d18b72ca",
+    "source_identity": "sha256:3f5572584cdfe32d25ea61501979eee18e91868be73c3ed58d84d3105eed70b2",
+    "artifact_set_digest": "sha256:fc0f4b17f5b33dc0c448e70f34b1cbf15ed42ddb5b28761925b44362ccc7a138",
     "contract_catalog_digest": "sha256:bd11d2a3cf7065d67228939c782562e16695cbd1373d3d0dbce851b3b5e06ac8"
   },
   "migration": {
@@ -87,7 +92,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:cae24e4d755b4716158d63c28177e9327551d455084a57c114289006328ca4ba",
+    "artifact_digest": "sha256:ef629bb05eab8667474b78094ffd8dea902f320b84f81ad9b0a761e558a72097",
     "display_name": "Tobkiri Command Protocol",
     "id": "rumi_command_protocol_pack",
     "kind": "host_extension",
@@ -98,15 +103,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_command_protocol_pack/pack.v4.json",
-    "source_digest": "sha256:a2913b82c915e4774c72fa9a2aaa984d576e2edab6034845c41180ff0a11f767",
+    "source_digest": "sha256:3f5572584cdfe32d25ea61501979eee18e91868be73c3ed58d84d3105eed70b2",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:1af1aef9c2a257d1789f66b5cee29c766120dcd3ee8f075baab348292f02731e",
+    "content_root_digest": "sha256:220c2605e9530b8c28dd1333c18f715ce62b38187e8694ae595ea030a92db172",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
-    "input_inventory_digest": "sha256:b1b789bd8595494ff6fd340c946221423749fcbed2bae69218d2c1e0f7a797f6",
+    "input_inventory_digest": "sha256:237b42348bac9af3f1d03097bc2c5c600f287661298483152a0747aad251efa5",
     "normative": true,
     "evidence": [
       {
@@ -117,7 +122,7 @@
       {
         "path": "ecosystem/rumi_command_protocol_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:a2913b82c915e4774c72fa9a2aaa984d576e2edab6034845c41180ff0a11f767"
+        "digest": "sha256:3f5572584cdfe32d25ea61501979eee18e91868be73c3ed58d84d3105eed70b2"
       }
     ]
   },
@@ -149,6 +154,12 @@
       {
         "cardinality": "one",
         "contract_id": "tobkiri.service.interactive-effect.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.application.presentation.v1",
         "optional": false,
         "version_range": ">=1.0.0 <2.0.0"
       }

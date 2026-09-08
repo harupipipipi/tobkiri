@@ -126,6 +126,81 @@
     "defaultspack": {
       "entries": [
         {
+          "function_id": "defaultspack.application-presentation",
+          "operation_ids": [
+            "defaultspack.presentation.read"
+          ],
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/application_presentation.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "ui",
+                    "commands"
+                  ]
+                },
+                "model_options": {
+                  "type": "array",
+                  "maxItems": 256,
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "value",
+                      "label"
+                    ],
+                    "properties": {
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "profile_id": {
+                  "type": "string"
+                },
+                "_session_id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
           "function_id": "defaultspack.conversation",
           "operation_ids": ["complete"],
           "contract_id": "conversation.turn.v1",

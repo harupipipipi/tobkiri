@@ -1,23 +1,28 @@
 {
-  "artifact_set_digest": "sha256:ad0175f8d2d0f91d4b7fbc22cd59e48db144e4b899776411d0422fa963d4ffd4",
+  "artifact_set_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448",
   "artifacts": [
     {
-      "digest": "sha256:0689ced4b3550f74efe3643237fa9d63396db8d60e70a3ff1bd24d711a0ddd95",
+      "digest": "sha256:56e678d2d0cea6adb364c22d70d8e301eede66320e0b78d97273ee05068c9097",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:efc8fcd784133647a54eb381e1d3e5f531d8fc023b7c43074b585599d11dc128",
+      "digest": "sha256:760a15d091cb5064ea8b821213a9c77ae8baedc6b7dbaa8f25fdca013755922e",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:d4bf44cebd25ff8a72caae043d74d138ea46ad564face68d15a44af791a20f85",
+      "digest": "sha256:1002cf0c362f703351443c1ab8d461cd2a3715e606e0d403a56327c1feed0342",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",
+      "path": "runtime/public-settings-fields.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "path": "runtime/settings.py",
       "role": "runtime"
     }
@@ -25,8 +30,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:f63b0a9ebb12fb1ee20f3b0290c32fd33d75f9dd80758ac6315959688a0900f2"
+    "signed_digest": "sha256:15219c4355ddfc1bba946b7f424849d4c60cf2664dd78908c8d8912886f3d582"
   },
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:6a4a2d44a355d7bfb8562bb0e415531ad8818cc4dadebc820283c550f37a0387"
+  "source_identity": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b"
 }

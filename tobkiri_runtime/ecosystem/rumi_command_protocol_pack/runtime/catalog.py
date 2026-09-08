@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -15,11 +16,17 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from ecosystem.defaultspack.domain import frontend_command_catalog as projection
 
 FUNCTION_ID = "rumi_command_protocol_pack.catalog.read"
 CONTRACT_ID = "tobkiri.resource.command.catalog.v1"
 OPERATION_ID = "command.catalog.read"
+PRESENTATION_CONTRACT = "tobkiri.resource.application.presentation.v1"
+PRESENTATION_OPERATION = "defaultspack.presentation.read"
+_APPROVAL_COMMANDS = {
+    "host:request_commit_approval", "host:request_push_approval",
+    "host:request_terminal_approval", "host:request_patch_approval",
+    "host:request_restore_approval",
+}
 _HIGH_RISK_TARGET = (
     "rumi_command_protocol_pack.high-risk-command.service",
     "tobkiri.service.command.high-risk.v1",
@@ -27,31 +34,35 @@ _HIGH_RISK_TARGET = (
 )
 
 
-def _catalog(high_risk_available: bool) -> dict[str, Any]:
-    root = Path(projection.__file__).resolve().parents[1]
-    source = root / "commands" / "default_commands.json"
-    schema_path = root / "schemas" / "command-protocol-v1.schema.json"
-    source_commands = json.loads(source.read_text(encoding="utf-8"))
-    if not isinstance(source_commands, list):
-        raise ValueError("sealed command catalog must be a list")
-    digest = hashlib.sha256()
-    for path in (root / "pack.v4.json", source, schema_path):
-        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
-        digest.update(path.read_bytes())
-    generation = max(1, int.from_bytes(digest.digest()[:4], "big"))
-    reader = projection.CommandCatalogProjection()
-    diagnostics = reader._identity_collisions(source_commands)
-    commands = []
-    for source_command in source_commands:
-        command = reader._resolve_command(source_command, diagnostics, generation)
+def _catalog(definitions: Mapping[str, Any], high_risk_available: bool) -> dict[str, Any]:
+    if set(definitions) != {"commands", "diagnostics", "pack_generation"}:
+        raise ValueError("command presentation fields are invalid")
+    generation = definitions["pack_generation"]
+    if type(generation) is not int or generation < 1:
+        raise ValueError("command presentation generation is invalid")
+    commands = deepcopy(definitions["commands"])
+    diagnostics = deepcopy(definitions["diagnostics"])
+    if not isinstance(commands, list) or len(commands) > 256 or not isinstance(diagnostics, list):
+        raise ValueError("command presentation collections are invalid")
+    for command in commands:
+        if not isinstance(command, dict) or not isinstance(command.get("execution"), dict):
+            raise ValueError("command presentation record is invalid")
         operation_ref = command["execution"].get("operation_ref")
-        if not (high_risk_available and operation_ref in projection.OPERATION_AUTHORITY):
-            command["availability"] = {
+        if operation_ref in _APPROVAL_COMMANDS:
+            # UI metadata cannot weaken the Host owner's approval requirements.
+            command["authorization"] = {
+                "risk": "high", "permissions": ["host.process.exec_guarded"],
+                "approval_required": True, "approval_policy": "required",
+                "executor_policy_ref": "tobkiri.command.human_approved",
+            }
+        command["availability"] = (
+            {"status": "available"}
+            if high_risk_available and operation_ref in _APPROVAL_COMMANDS else {
                 "status": "unavailable",
                 "reason_code": "canonical_binding_missing",
                 "reason": "This command's canonical execution binding is not connected.",
             }
-        commands.append(command)
+        )
     serialized = json.dumps(commands, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     result = {
         "api_version": "tobkiri.commands/v1",
@@ -71,8 +82,8 @@ def _catalog(high_risk_available: bool) -> dict[str, Any]:
         "state_snapshots": [],
         "diagnostics": diagnostics,
     }
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    Draft202012Validator(schema).validate(result)
+    schema_path = Path(__file__).resolve().parents[1] / "schemas" / "command-protocol-v1.schema.json"
+    Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8"))).validate(result)
     return result
 
 
@@ -107,14 +118,23 @@ class CommandCatalogHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            del invocation
             if (
                 operation_id != OPERATION_ID
                 or payload.get("profile_id") != context.profile_id
                 or set(payload) - {"profile_id", "_session_id"}
             ):
                 raise PermissionError("command catalog request is invalid")
-            return _catalog(high_risk_available)
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({PRESENTATION_CONTRACT}),
+                consumer_pack_id="rumi_command_protocol_pack",
+            )
+            definitions = client.invoke(
+                PRESENTATION_CONTRACT, PRESENTATION_OPERATION,
+                {"profile_id": context.profile_id, "kind": "commands"},
+            )
+            if not isinstance(definitions, Mapping):
+                raise ValueError("command presentation is unavailable")
+            return _catalog(definitions, high_risk_available)
 
         return CapturedHostProviderV4(
             (

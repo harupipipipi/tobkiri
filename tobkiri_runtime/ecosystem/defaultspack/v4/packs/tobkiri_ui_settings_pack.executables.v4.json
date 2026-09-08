@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:d4bf44cebd25ff8a72caae043d74d138ea46ad564face68d15a44af791a20f85",
+  "source_identity": "sha256:1002cf0c362f703351443c1ab8d461cd2a3715e606e0d403a56327c1feed0342",
   "variants": [
     {
       "variant_id": "tobkiri.ui.catalog.read.python",
       "function_id": "tobkiri.ui.catalog.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "tobkiri.ui.settings.read.python",
       "function_id": "tobkiri.ui.settings.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -72,6 +72,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:2919f67f3500761e7c10ef845b2b5a4f8c99fc08d976bf23178df83d48746962",
-  "catalog_digest": "sha256:3f3713b8af2b22ccd3103e1c8d5158f32fd242777a4d47dbfe5f498013c237b2"
+  "materialization_catalog_digest": "sha256:39a4c49df918cb5956c3dfeab038bd283b24a0cdc8a4fecaa50dbab514c54271",
+  "catalog_digest": "sha256:c4d6ec5b0a6dfc2d00b47e121a1f862038c9073e9a1dccd1346451675b2182d7"
 }

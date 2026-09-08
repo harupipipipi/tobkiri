@@ -1,12 +1,17 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:efc8fcd784133647a54eb381e1d3e5f531d8fc023b7c43074b585599d11dc128",
+      "digest": "sha256:760a15d091cb5064ea8b821213a9c77ae8baedc6b7dbaa8f25fdca013755922e",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",
+      "kind": "asset",
+      "path": "runtime/public-settings-fields.v1.json"
+    },
+    {
+      "digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "kind": "executable",
       "path": "runtime/settings.py"
     }
@@ -25,7 +30,7 @@
     {
       "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.catalog-read"
@@ -35,7 +40,7 @@
     {
       "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:47373061a92882620b158843f4f9263086a4c6cf1ffb4024f5467fc65cb29f45",
+      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.settings-read"
@@ -44,9 +49,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:ad0175f8d2d0f91d4b7fbc22cd59e48db144e4b899776411d0422fa963d4ffd4",
-    "contract_catalog_digest": "sha256:0689ced4b3550f74efe3643237fa9d63396db8d60e70a3ff1bd24d711a0ddd95",
-    "source_identity": "sha256:6a4a2d44a355d7bfb8562bb0e415531ad8818cc4dadebc820283c550f37a0387"
+    "artifact_set_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448",
+    "contract_catalog_digest": "sha256:56e678d2d0cea6adb364c22d70d8e301eede66320e0b78d97273ee05068c9097",
+    "source_identity": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b"
   },
   "migration": {
     "compatibility": "none",
@@ -79,7 +84,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ad0175f8d2d0f91d4b7fbc22cd59e48db144e4b899776411d0422fa963d4ffd4",
+    "artifact_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448",
     "display_name": "Tobkiri UI Settings",
     "id": "tobkiri_ui_settings_pack",
     "kind": "host_extension",
@@ -89,7 +94,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:6a4a2d44a355d7bfb8562bb0e415531ad8818cc4dadebc820283c550f37a0387",
+        "digest": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -100,7 +105,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:6a4a2d44a355d7bfb8562bb0e415531ad8818cc4dadebc820283c550f37a0387",
+    "source_digest": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
   },
@@ -131,6 +136,12 @@
       {
         "cardinality": "one",
         "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.application.presentation.v1",
         "optional": false,
         "version_range": ">=1.0.0 <2.0.0"
       }

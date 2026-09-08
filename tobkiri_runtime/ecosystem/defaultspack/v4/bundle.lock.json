@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:aafbe0989f8ccd776709b2ab9b5cce4fd51fa98270b8c807023649f88cd26bdb"
+      "digest": "sha256:883f3dffddd9a57268e1afa911686327d6a37c0462db11af99799f1decda8505"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:21b1c20df9a707ac23ad4374ca09fadf4f79ddfd747a2e143fb7f540291d7f83"
+      "digest": "sha256:44f358094db412454a69e918f20d21a7a70fa3e0b9377cc47f1ceb1f87c228ee"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -289,12 +289,12 @@
     {
       "path": "packs/rumi_command_protocol_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:33ac5da657bde9600d657390859b636532733c5ec19e709e61761ec031d9e2f6"
+      "digest": "sha256:e20b3971409ecd083ea4174eeb7d86f6218844d0d8bb5a32dbe070c85d2f28ae"
     },
     {
       "path": "packs/rumi_command_protocol_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:0d2c158a915bced33306e8227e1116cd1d00751e1b32a7b90472e5b8f3bafb4c"
+      "digest": "sha256:06a5899b12a7d236cebbc70ad0e2e1477d5a99822e9ec722928e547b983bed2e"
     },
     {
       "path": "packs/rumi_company_agent_adapter_pack.executables.v4.json",
@@ -1409,12 +1409,12 @@
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:94a2b85ea72d42567d433c084ecad1b997e0641bc4c75de4b486c6529c27cc1e"
+      "digest": "sha256:a0ffee28a8443da3af095b8ce5adec53935a785e626fda2897327f8fc77c215c"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:334fb9de9f7a5d19029e5bd2125c805a736855f68607a7c01e9080687a00fa76"
+      "digest": "sha256:282a5ec2efa76094488d5cd6f87af3bb4bfdb06e9f7b9033145e708335c845ac"
     },
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
@@ -1444,7 +1444,7 @@
     {
       "path": "defaults.profile.v4.json",
       "kind": "profile",
-      "digest": "sha256:7b5a816ee65e71b97d355857fb4779dd5f2849fa423db4e9782031d1264fe297"
+      "digest": "sha256:f4012ea11e0659837741dbe3852bbbfa9d2c3480223d84af381fab65ed9b9d1c"
     }
   ]
 }

@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACK = ROOT / "ecosystem" / "defaultspack"
 OUTPUT = PACK / "runtime" / "application_presentation.py"
+COMMAND_SCHEMA = ROOT / "ecosystem" / "rumi_command_protocol_pack" / "schemas" / "command-protocol-v1.schema.json"
 SOURCES = (
     "domain/frontend_settings_catalog.py",
     "domain/frontend_command_catalog.py",
@@ -130,6 +131,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
+    # The command protocol owner defines this schema. Defaultspack retains a
+    # generated local compatibility copy, not a runtime cross-Pack file read.
+    schema_copy = PACK / "schemas" / "command-protocol-v1.schema.json"
+    schema = COMMAND_SCHEMA.read_bytes()
+    if args.check:
+        if schema_copy.read_bytes() != schema:
+            raise SystemExit("command protocol schema compatibility copy is stale")
+    elif schema_copy.read_bytes() != schema:
+        schema_copy.write_bytes(schema)
     expected = render()
     if args.check:
         if not OUTPUT.is_file() or OUTPUT.read_text(encoding="utf-8") != expected:

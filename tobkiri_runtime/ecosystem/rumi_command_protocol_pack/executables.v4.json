@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:31cd48a7c7ba6080eeb50e49c59ed53612c0d296a4d94bb01c6e0408efece02c",
+  "catalog_digest": "sha256:a68876ada1afe9e6942c4883c46812fae1bc2d8b5a8af8cb4d8ef6e87c53f85c",
   "pack_id": "rumi_command_protocol_pack",
-  "source_identity": "sha256:009b27a120e2e18fe5f07bfbb958d1028653a47f6b730339e63bc5c93794b2bf",
+  "source_identity": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_command_protocol_pack.catalog.read",
-      "implementation_digest": "sha256:a6fece946497906abb6ecd64f107f24389b5f2a884fef6cae3465a61bdc84174",
+      "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
       "implementation_path": "runtime/catalog.py",
       "materialization_mode": "on_demand",
       "operations": [

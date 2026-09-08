@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:8d92a13bda6eb3b61cb5113ed7ba6dae04ff0b22fb1883568f7f41d844c123cb",
+      "digest": "sha256:7c23bd70a4a108e5169d6a4be10c287c7815f84bdb36ba20ddfa28cc129c425f",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -9,6 +9,11 @@
       "digest": "sha256:b51f935fa4438007fd0d19eeb7ff3b44b410751c94a987baac8e6306b07615d0",
       "kind": "sidecar",
       "path": "host_contract_contributions.v1.json"
+    },
+    {
+      "digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+      "kind": "executable",
+      "path": "runtime/application_presentation.py"
     },
     {
       "digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
@@ -23,6 +28,13 @@
   ],
   "contracts": [
     {
+      "contract_id": "tobkiri.resource.application.presentation.v1",
+      "operations": [
+        "defaultspack.presentation.read"
+      ],
+      "revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967"
+    },
+    {
       "contract_id": "conversation.turn.v1",
       "operations": [
         "complete"
@@ -31,6 +43,16 @@
     }
   ],
   "functions": [
+    {
+      "contract_revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+      "id": "defaultspack.application-presentation",
+      "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+      "isolation": "pack_vm",
+      "operations": [
+        "defaultspack.presentation.read"
+      ],
+      "role": "brokered"
+    },
     {
       "contract_revision_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a",
       "id": "defaultspack.conversation",
@@ -43,9 +65,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:ba86077bb0c6e66c573b20f8099e84491a3cb93e341eb07340b768d6c530acdd",
-    "contract_catalog_digest": "sha256:453278d5ceac61d6c69275d2290098860f85cdacc827fbffde36083da0a9f7f1",
-    "source_identity": "sha256:2b0081565e1d091db49d3ad6335c83246aef52eea3a58f536e4ea3f2df8c8104"
+    "artifact_set_digest": "sha256:349295a467b723ea85eb3e2c61066342a63426753c1bc0ae3c04667ba174b666",
+    "contract_catalog_digest": "sha256:a80d15cd780fcc875c9e8e157c6689f3468676bf68f05d2f7a76f8328eefe6b8",
+    "source_identity": "sha256:f5cad2a29a3272aeff9a72ff8fabed1879f26471d03c450b1d84319a374ac785"
   },
   "migration": {
     "compatibility": "none",
@@ -61,10 +83,18 @@
       "owner": "defaultspack",
       "provider_id": "defaultspack.conversation",
       "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.application.presentation.v1",
+      "effect_ceiling": [],
+      "operation_id": "defaultspack.presentation.read",
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.application-presentation",
+      "source_kind": "canonical_v4_contract"
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ba86077bb0c6e66c573b20f8099e84491a3cb93e341eb07340b768d6c530acdd",
+    "artifact_digest": "sha256:349295a467b723ea85eb3e2c61066342a63426753c1bc0ae3c04667ba174b666",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -74,7 +104,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:2b0081565e1d091db49d3ad6335c83246aef52eea3a58f536e4ea3f2df8c8104",
+        "digest": "sha256:f5cad2a29a3272aeff9a72ff8fabed1879f26471d03c450b1d84319a374ac785",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -85,11 +115,19 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:2b0081565e1d091db49d3ad6335c83246aef52eea3a58f536e4ea3f2df8c8104",
+    "source_digest": "sha256:f5cad2a29a3272aeff9a72ff8fabed1879f26471d03c450b1d84319a374ac785",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },
   "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.application.presentation.v1",
+      "operations": [
+        "defaultspack.presentation.read"
+      ],
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.application-presentation"
+    },
     {
       "contract_reference": "conversation.turn.v1",
       "operations": [
