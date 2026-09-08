@@ -42,6 +42,34 @@ must not automatically advance the saved-turn application workflow.
 
 ## Required saved-turn sequence
 
+The pure application computation now exists in
+`ecosystem/defaultspack/runtime/saved_conversation.py`. Its `saved_complete`
+ABI accepts either `{request}` or root-created `{state, outcome}` and emits
+`tobkiri.packvm.continuation.intent.v2` containing `hop`, `target`, `payload`
+and `state`. These intents are deliberately **not registered or connected** to
+the v1 guest runner. They must never be treated as terminal success by a v1
+wrapper. The v2 root integration must add request/binding identity, nonce and
+predecessor from retained authenticated state, independently validate the fixed
+target sequence, and consume the result before resuming a fresh sandbox child.
+External callers must not be allowed to submit resume state.
+
+The computation now reads the exact displayed revision, derives stable message
+IDs from conversation/turn/role, follows the selected message ancestry, preserves
+the owner's model reference, checks exact append acknowledgements, and uses
+owner-returned revisions. Lost writes return unknown persistence and a
+reconciliation requirement, never a retry intent. Existing stable IDs require
+reconciliation even when the caller supplies a newer revision. AI intent size is
+checked before the user write. Oversized/failed AI output leaves the acknowledged
+user message saved without pretending an assistant message was written.
+
+Current input is nonempty text. System-prompt/agent references and history
+requiring tool/parts/widget resolution stop explicitly before a user write;
+they are not silently discarded. Their captured context resolution, real
+provider readiness preflight, durable coordinator/reconciliation, protocol
+registration and root-guest/Host dispatch remain required. Isolated tests use
+the real conversation owner and v2 codecs/chain ledger, but a controlled AI
+result; this is neither actual AI nor native/full-UI acceptance.
+
 Use a distinct, explicitly registered saved-turn operation and versioned bridge
 envelope. Its initial request includes a stable turn ID, conversation ID, the
 displayed conversation revision and user input. It must not accept caller-selected

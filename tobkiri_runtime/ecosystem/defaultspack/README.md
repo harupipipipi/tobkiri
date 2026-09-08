@@ -12,6 +12,13 @@ yet complete full-UI message sending, streaming or stopping. Record updates and
 deletion require the displayed record's revision; stale writes fail unchanged.
 See [Chat API](docs/chat.md) for the canonical/legacy distinction.
 
+The isolated saved-turn computation in `runtime/saved_conversation.py` now
+produces four bounded v2 intents: read, append user, generate, append assistant.
+It preserves stable IDs and owner revisions and reports uncertain writes without
+retrying them. It is not registered or wired into the guest runner or ChatApp;
+do not expose its resume-state ABI to HTTP callers. See
+[saved-turn integration requirements](../../docs/saved-turn-bridge-v2.md).
+
 For Tobkiri, the canonical defaultspack implementation is
 `tobkiri_runtime/ecosystem/defaultspack/`.
 
