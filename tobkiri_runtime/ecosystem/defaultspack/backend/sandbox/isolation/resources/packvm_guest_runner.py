@@ -362,11 +362,11 @@ def _validate_bridge_request(value: object) -> dict[str, object]:
     ):
         raise ValueError("PackVM bridge request identity is invalid")
     target = _validate_bridge_target(bridge_request["target"])
-    requested = _exact_bridge_object(
-        bridge_request["request"],
-        {"messages", "requirements"},
-        "PackVM bridge request payload",
-    )
+    raw_request = bridge_request["request"]
+    fields = {"messages", "requirements"}
+    if isinstance(raw_request, dict) and "model_reference" in raw_request:
+        fields.add("model_reference")
+    requested = _exact_bridge_object(raw_request, fields, "PackVM bridge request payload")
     messages = requested["messages"]
     if not isinstance(messages, list) or not messages:
         raise ValueError("PackVM bridge messages are invalid")
@@ -376,6 +376,17 @@ def _validate_bridge_request(value: object) -> dict[str, object]:
     }
     if requested["requirements"] != request_payload["requirements"]:
         raise ValueError("PackVM bridge request surface is invalid")
+    if "model_reference" in requested:
+        model = requested["model_reference"]
+        if (
+            not isinstance(model, str)
+            or not model
+            or model != model.strip()
+            or len(model) > 256
+            or any(ord(char) < 32 or ord(char) == 127 for char in model)
+        ):
+            raise ValueError("PackVM bridge model reference is invalid")
+        request_payload["model_reference"] = model
     if len(_bridge_canonical_json(request_payload)) > MAX_BRIDGE_REQUEST_BYTES:
         raise ValueError("PackVM bridge request exceeds the size limit")
     request_digest = _digest(

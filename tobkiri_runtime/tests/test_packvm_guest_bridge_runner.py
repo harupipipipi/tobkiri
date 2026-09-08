@@ -25,6 +25,44 @@ class _FakeSigner:
         return hashlib.sha512(payload).digest()
 
 
+def test_real_conversation_model_survives_guest_and_host_validation() -> None:
+    """Use actual producer bytes through both independent boundary validators."""
+    from ecosystem.defaultspack.runtime import conversation
+    from tobkiri_host.macos_vz_supervisor import _validate_bridge_request
+
+    produced = conversation.tobkiri_packvm_invoke("complete", {
+        "messages": [{"role": "user", "content": "hello"}],
+        "model": "local/selected", "profile_id": "not-forwarded",
+    })
+    checked = runner._validate_bridge_request(produced)
+    assert checked == produced
+    assert checked["request"]["model_reference"] == "local/selected"
+    assert _validate_bridge_request(checked) == produced["continuation"]
+
+
+@pytest.mark.parametrize("model", [None, True, 1, "", " x", "x\n", "x\x00y", "x" * 257])
+def test_guest_boundary_rejects_malformed_model_reference(model: object) -> None:
+    """Even a correctly digested frame cannot smuggle malformed references."""
+    produced = _bridge_request()
+    produced["request"]["model_reference"] = model
+    produced["request_digest"] = _digest(produced["request"])
+    produced["continuation"]["request_digest"] = produced["request_digest"]
+    with pytest.raises(ValueError, match="model reference"):
+        runner._validate_bridge_request(produced)
+
+
+def test_guest_boundary_rejects_model_tampering_and_authority_fields() -> None:
+    """Model binding is digest-covered and does not broaden payload authority."""
+    produced = _bridge_request()
+    produced["request"]["model_reference"] = "local/changed"
+    with pytest.raises(ValueError, match="digest"):
+        runner._validate_bridge_request(produced)
+    produced = _bridge_request()
+    produced["request"]["profile_id"] = "other"
+    with pytest.raises(ValueError):
+        runner._validate_bridge_request(produced)
+
+
 def _digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(
         runner._bridge_canonical_json(value)
