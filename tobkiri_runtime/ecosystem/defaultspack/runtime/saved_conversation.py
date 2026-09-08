@@ -130,6 +130,11 @@ def _intent(state: dict[str, Any]) -> dict[str, Any]:
 
 def _failure(state: dict[str, Any], code: str) -> dict[str, Any]:
     hop, request = state["hop"], state["request"]
+    user = ("not_written", "unknown", "saved", "saved")[hop]
+    assistant = "unknown" if hop == 3 else "not_written"
+    reconcile = hop in (1, 3)
+    if code == "TURN_RECONCILIATION_REQUIRED":
+        user, assistant, reconcile = "unknown", "unknown", True
     return {
         "status": "error",
         "error": {"code": code, "message": "Saved conversation did not complete."},
@@ -137,15 +142,9 @@ def _failure(state: dict[str, Any], code: str) -> dict[str, Any]:
         "conversation_id": request["conversation_id"],
         "user_message_id": _message_id(request, "user"),
         "assistant_message_id": _message_id(request, "assistant"),
-        "user_persistence": "unknown"
-        if code == "TURN_RECONCILIATION_REQUIRED"
-        else "not_written"
-        if hop == 0
-        else "unknown"
-        if hop == 1
-        else "saved",
-        "assistant_persistence": "unknown" if hop == 3 else "not_written",
-        "reconciliation_required": hop in (1, 3) or code == "TURN_RECONCILIATION_REQUIRED",
+        "user_persistence": user,
+        "assistant_persistence": assistant,
+        "reconciliation_required": reconcile,
     }
 
 
@@ -236,6 +235,11 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
             conversation = value["conversation"]
             if conversation["id"] != request["conversation_id"]:
                 raise ValueError("conversation identity mismatch")
+            if any(
+                item["id"] in {_message_id(request, "user"), _message_id(request, "assistant")}
+                for item in conversation["messages"]
+            ):
+                return _failure(state, "TURN_RECONCILIATION_REQUIRED")
             if _revision(conversation["conversation_revision"]) != request["conversation_revision"]:
                 return _failure(state, "CONVERSATION_REVISION_CONFLICT")
             # These references require extra captured owner calls, not silently
@@ -246,12 +250,10 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(model, str) or not model.strip():
                 return _failure(state, "MODEL_REFERENCE_REQUIRED")
             state["history"], state["parent_id"] = _history(conversation)
-            if any(
-                item["id"] in {_message_id(request, "user"), _message_id(request, "assistant")}
-                for item in conversation["messages"]
-            ):
-                return _failure(state, "TURN_RECONCILIATION_REQUIRED")
             state["model_reference"] = model
+            # Size preflight only, not proof of provider readiness. The larger
+            # AI intent must fit before the user message is persisted.
+            _intent({**state, "hop": 2})
         elif hop in (1, 3):
             expected = _message(state, "user" if hop == 1 else "assistant")
             message = value["message"]

@@ -144,13 +144,15 @@ def test_stale_read_and_duplicate_turn_never_write_or_call_ai(tmp_path: Path) ->
     first = saved.start(request)
     append = saved.resume(first["state"], _owner(store, first))
     _owner(store, append)
-    stale = saved.resume(first["state"], _owner(store, first))
+    stale_request = saved.start({**request, "turn_id": "new-turn"})
+    stale = saved.resume(stale_request["state"], _owner(store, stale_request))
     assert stale["error"]["code"] == "CONVERSATION_REVISION_CONFLICT"
     replay = saved.start({**request, "conversation_revision": 2})
     result = saved.resume(replay["state"], _owner(store, replay))
     assert result["error"]["code"] == "TURN_RECONCILIATION_REQUIRED"
     assert result["reconciliation_required"] is True
     assert result["user_persistence"] == "unknown"
+    assert result["assistant_persistence"] == "unknown"
     assert result["user_message_id"] == append["payload"]["message"]["id"]
     assert len(store.get("conversation-1")["messages"]) == 1
 
@@ -253,3 +255,54 @@ def test_saved_step_imports_and_runs_with_isolated_stdlib_only(tmp_path: Path) -
         timeout=10,
     )
     assert json.loads(completed.stdout) == saved.start(request)
+
+
+def test_oversize_ai_context_is_rejected_before_user_write(tmp_path: Path) -> None:
+    store, request = _setup(tmp_path)
+    store.append_message(
+        "conversation-1",
+        {"id": "old", "role": "user", "content": "x" * 33000},
+        expected_conversation_revision=1,
+    )
+    first = saved.start({**request, "conversation_revision": 2})
+    result = saved.resume(first["state"], _owner(store, first))
+    assert result["status"] == "error"
+    assert result["user_persistence"] == "not_written"
+    assert len(store.get("conversation-1")["messages"]) == 1
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"status": "error", "output": "not a success"},
+        {"status": "ok", "output": "", "tool_intents": []},
+        {"status": "ok", "output": "x" * 80000},
+        {"status": "ok", "output": "tool request", "tool_intents": [{"operation": "execute"}]},
+    ],
+)
+def test_invalid_or_tool_ai_result_preserves_user_without_assistant_write(
+    tmp_path: Path, value: dict[str, Any]
+) -> None:
+    store, request = _setup(tmp_path)
+    first = saved.start(request)
+    append = saved.resume(first["state"], _owner(store, first))
+    ai = saved.resume(append["state"], _owner(store, append))
+    result = saved.resume(ai["state"], {"status": "ok", "value": value})
+    assert result["status"] == "error"
+    assert result["user_persistence"] == "saved"
+    assert result["assistant_persistence"] == "not_written"
+    assert "target" not in result
+    assert len(store.get("conversation-1")["messages"]) == 1
+
+
+def test_next_write_uses_owner_returned_revision_not_local_increment(tmp_path: Path) -> None:
+    store, request = _setup(tmp_path)
+    first = saved.start(request)
+    append = saved.resume(first["state"], _owner(store, first))
+    result = _owner(store, append)
+    result["value"]["conversation_revision"] = 17
+    ai = saved.resume(append["state"], result)
+    assistant = saved.resume(
+        ai["state"], {"status": "ok", "value": {"status": "ok", "output": "Hi"}}
+    )
+    assert assistant["payload"]["expected_conversation_revision"] == 17
