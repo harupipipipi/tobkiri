@@ -53,6 +53,7 @@ def test_profile_resolver_delegates_dependency_order_to_effective_set() -> None:
     assert effective_order == [
         "defaults-basepack",
         "shell.tauri.default",
+        "rumi_turn_runtime_pack",
         "tobkiri_ui_settings_pack",
         "rumi_conversation_store_pack",
         "defaultspack",
