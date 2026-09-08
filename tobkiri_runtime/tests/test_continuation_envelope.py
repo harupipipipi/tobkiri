@@ -7,6 +7,7 @@ import pytest
 
 from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
 from tobkiri_host.continuation_envelope import (
+    seal_continuation_intent,
     validate_continuation_request,
     validate_continuation_result,
 )
@@ -14,6 +15,26 @@ from tobkiri_protocol.canonical import canonical_digest, canonical_json
 
 IDENTITY = ChainIdentity("domain", "request", "sha256:" + "a" * 64, 160.0)
 TARGET = ("owned.contract.v1", "owned.operation")
+
+
+@pytest.mark.parametrize("extra", [
+    {"request_id": "injected"}, {"binding_digest": "sha256:" + "c" * 64},
+    {"nonce": "c" * 48}, {"previous_digest": None}, {"deadline": 9999},
+    {"profile_id": "other"}, {"approved": True}, {"hop": 1}, {"hop": False},
+    {"target": {"contract_id": TARGET[0], "operation_id": "other"}},
+    {"kind": "tobkiri.packvm.bridge.request.v1"}, {"state": []}, {"payload": []},
+])
+def test_intent_cannot_supply_root_framing_or_change_captured_step(extra: dict[str, object]) -> None:
+    intent = {
+        "kind": "tobkiri.packvm.continuation.intent.v2", "hop": 0,
+        "target": {"contract_id": TARGET[0], "operation_id": TARGET[1]},
+        "payload": {}, "state": {}, **extra,
+    }
+    with pytest.raises(ValueError):
+        seal_continuation_intent(
+            canonical_json(intent), identity=IDENTITY, hop=0,
+            previous_digest=None, target=TARGET, nonce="b" * 48,
+        )
 
 
 def _frame(**extra: object) -> bytes:

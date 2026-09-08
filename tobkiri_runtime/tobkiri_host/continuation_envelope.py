@@ -51,6 +51,51 @@ class ValidatedResult:
     digest: str
 
 
+def seal_continuation_intent(
+    encoded: bytes,
+    *,
+    identity: ChainIdentity,
+    hop: int,
+    previous_digest: str | None,
+    target: tuple[str, str],
+    nonce: str,
+) -> ValidatedContinuation:
+    """Add root-owned framing to an application intent, without authorizing it.
+
+    All keyword arguments come from the authenticated execution boundary, not
+    the untrusted intent. Register the returned frame before its first effect;
+    the chain ledger and Authority/Broker still enforce lifetime and execution.
+    """
+    if type(encoded) is not bytes:
+        raise ValueError("continuation intent must be encoded bytes")
+    value = strict_loads(encoded, max_bytes=60 * 1024, max_depth=16)
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"kind", "hop", "target", "payload", "state"}
+        or value["kind"] != "tobkiri.packvm.continuation.intent.v2"
+        or type(value["hop"]) is not int
+        or value["hop"] != hop
+        or value["target"] != {"contract_id": target[0], "operation_id": target[1]}
+    ):
+        raise ValueError("continuation intent does not match the captured step")
+    frame = {
+        "kind": "tobkiri.packvm.continuation.request.v2",
+        "version": 2,
+        "request_id": identity.request_id,
+        "binding_digest": identity.binding_digest,
+        "hop": hop,
+        "nonce": nonce,
+        "previous_digest": previous_digest,
+        "target": value["target"],
+        "payload": value["payload"],
+        "state": value["state"],
+    }
+    return validate_continuation_request(
+        canonical_json(frame), identity=identity, hop=hop,
+        previous_digest=previous_digest, target=target,
+    )
+
+
 def validate_continuation_result(
     encoded: bytes,
     *,

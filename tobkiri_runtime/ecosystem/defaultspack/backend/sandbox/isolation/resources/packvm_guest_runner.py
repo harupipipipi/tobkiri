@@ -333,6 +333,9 @@ def _host_invoke_result(value: dict[str, object]) -> dict[str, object]:
 
     if _looks_like_bridge_request(value):
         return value
+    kind = value.get("kind")
+    if isinstance(kind, str) and kind.startswith("tobkiri.packvm."):
+        raise ValueError("PackVM control frame is not a terminal outcome")
     return {
         "kind": PACKVM_INVOKE_RESULT_KIND,
         "outcome": value,

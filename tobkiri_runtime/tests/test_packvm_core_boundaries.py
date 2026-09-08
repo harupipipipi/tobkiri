@@ -91,6 +91,18 @@ def test_guest_child_preserves_bridge_request_before_host_round_trip() -> None:
     assert packvm_guest_runner._host_invoke_result(bridge_request) is bridge_request
 
 
+@pytest.mark.parametrize("kind", [
+    "tobkiri.packvm.continuation.intent.v2",
+    "tobkiri.packvm.continuation.request.v2",
+    "tobkiri.packvm.continuation.result.v2",
+    "tobkiri.packvm.invoke.result.v1",
+    "tobkiri.packvm.bridge.request.v99",
+])
+def test_guest_never_wraps_unhandled_control_frames_as_completion(kind: str) -> None:
+    with pytest.raises(ValueError, match="not a terminal outcome"):
+        packvm_guest_runner._host_invoke_result({"kind": kind})
+
+
 def test_guest_child_policy_denies_all_available_process_and_socket_syscalls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -34,6 +34,20 @@ from tobkiri_host.macos_vz_supervisor import (
 from tobkiri_host.platform_backends import IsolationLaunch, IsolationLease
 
 
+@pytest.mark.parametrize("kind", [
+    "tobkiri.packvm.continuation.intent.v2",
+    "tobkiri.packvm.continuation.request.v2",
+    "tobkiri.packvm.continuation.result.v2",
+    "tobkiri.packvm.bridge.request.v1",
+    "tobkiri.packvm.invoke.result.v1",
+])
+def test_host_independently_rejects_control_frames_wrapped_as_completion(kind: str) -> None:
+    with pytest.raises(BackendUnavailableError, match="not a terminal outcome"):
+        macos_vz_supervisor._validated_invoke_outcome({
+            "kind": "tobkiri.packvm.invoke.result.v1", "outcome": {"kind": kind},
+        })
+
+
 @pytest.mark.parametrize("model", [None, True, 1, "", " x", "x\n", "x\x00y", "x" * 257])
 def test_host_rejects_invalid_bridge_model_reference(model: object) -> None:
     """The Host independently checks a compromised guest's model reference."""

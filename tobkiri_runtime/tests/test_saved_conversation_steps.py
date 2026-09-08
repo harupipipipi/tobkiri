@@ -15,7 +15,7 @@ from ecosystem.defaultspack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
 from tobkiri_host.continuation_envelope import (
-    validate_continuation_request,
+    seal_continuation_intent,
     validate_continuation_result,
 )
 from tobkiri_protocol.canonical import canonical_json
@@ -59,22 +59,11 @@ def test_four_steps_preserve_owner_revisions_and_validate_v2_frames(tmp_path: Pa
         assert intent["hop"] == hop
         assert tuple(intent["target"].values()) == saved.TARGETS[hop]
         assert "profile_id" not in intent["payload"]
-        frame = {
-            "kind": "tobkiri.packvm.continuation.request.v2",
-            "version": 2,
-            "request_id": identity.request_id,
-            "binding_digest": identity.binding_digest,
-            "hop": hop,
-            "nonce": str(hop) * 48,
-            "previous_digest": previous,
-            "target": intent["target"],
-            "payload": intent["payload"],
-            "state": intent["state"],
-        }
-        checked = validate_continuation_request(
-            canonical_json(frame),
+        checked = seal_continuation_intent(
+            canonical_json(intent),
             identity=identity,
             hop=hop,
+            nonce=str(hop) * 48,
             previous_digest=previous,
             target=saved.TARGETS[hop],
         )

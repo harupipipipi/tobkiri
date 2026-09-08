@@ -1471,6 +1471,9 @@ def _validated_invoke_outcome(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     outcome = payload.get("outcome")
     if not isinstance(outcome, Mapping):
         raise BackendUnavailableError("macOS VZ invocation outcome is invalid")
+    kind = outcome.get("kind")
+    if isinstance(kind, str) and kind.startswith("tobkiri.packvm."):
+        raise BackendUnavailableError("macOS VZ control frame is not a terminal outcome")
     try:
         canonical_json(dict(outcome))
     except Exception as exc:
