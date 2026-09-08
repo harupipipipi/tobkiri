@@ -1149,6 +1149,22 @@ test('every single-target product route is dispatched through the generated map'
   }
 });
 
+test('conversation writes preserve their declared method and revision payload', async () => {
+  for (const method of ['PUT', 'DELETE'] as const) {
+    const payload = {conversation_id: 'conversation', expected_conversation_revision: 2};
+    await fetchFrontendContractOperation(method, '/api/chat/conversation', payload);
+    assert.equal(lastFetchInit?.method, method);
+    assert.deepEqual(JSON.parse(String(lastFetchInit?.body)), payload);
+    assert.equal(decodeURIComponent(lastFetchUrl), `/api/contracts/defaultspack/${method} /api/chat/conversation`);
+    const before = lastFetchUrl;
+    assert.throws(
+      () => fetchFrontendContractOperation(method, '/api/chat/conversation', {...payload, approved: true}),
+      /unknown key/,
+    );
+    assert.equal(lastFetchUrl, before);
+  }
+});
+
 test('all generated map bindings use the exact method/path and reject ambiguous capability dispatch', () => {
   assert.throws(
     () => fetchFrontendContractOperation('POST', '/api/ui/capability/invoke'),

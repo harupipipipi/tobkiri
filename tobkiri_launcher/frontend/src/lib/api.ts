@@ -73,6 +73,10 @@ const PANEL_CSRF_STORAGE_KEY = 'rumi-panel-csrf';
 const PANEL_AUTH_EXCHANGE_PATH = '/api/panel/auth/exchange';
 export type FrontendContractMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
+function isFrontendContractMethod(method: string): method is FrontendContractMethod {
+  return method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE';
+}
+
 const EXACT_NON_MAP_API_ROUTES = [
   {method: 'POST', path: PANEL_AUTH_EXCHANGE_PATH},
   {method: 'GET', path: '/api/setup/packs'},
@@ -279,7 +283,7 @@ function parseFrontendContractPath(path: string): ParsedFrontendContractPath | n
   if (separator <= 0) return null;
   const method = operation.slice(0, separator);
   const target = operation.slice(separator + 1);
-  if (method !== 'GET' && method !== 'POST') return null;
+  if (!isFrontendContractMethod(method)) return null;
   let route;
   try {
     route = generatedRouteFor(
@@ -353,7 +357,7 @@ function isExactAllowedApiRequest(path: string, method: string): boolean {
 }
 
 function frontendContractPath(method: FrontendContractMethod, target: string): string {
-  if (method !== 'GET' && method !== 'POST') {
+  if (!isFrontendContractMethod(method)) {
     throw new Error('The generated v4 contract method is unsupported.');
   }
   try {
@@ -381,7 +385,7 @@ function assertLogicalContractTarget(method: FrontendContractMethod, target: str
   ) {
     throw new Error('The generated v4 contract target is invalid.');
   }
-  if (method !== 'GET' && method !== 'POST') {
+  if (!isFrontendContractMethod(method)) {
     throw new Error('The generated v4 contract method is unsupported.');
   }
 }
@@ -418,7 +422,7 @@ export function fetchFrontendContractOperation<T>(
     ).toString()}`
     : '';
   const path = frontendContractPath(method, target);
-  return apiFetch<T>(query ? `${path}${query}` : path, method === 'POST'
+  return apiFetch<T>(query ? `${path}${query}` : path, method !== 'GET'
     ? {method, body: JSON.stringify(payload ?? {})}
     : {}, requestPolicy);
 }
