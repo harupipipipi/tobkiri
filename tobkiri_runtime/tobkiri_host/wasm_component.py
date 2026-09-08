@@ -63,7 +63,12 @@ class PureComponent:
         from wasmtime import Store, Trap, WasmtimeError
         from wasmtime.component import Linker, Variant
 
-        if not 0 < fuel <= 100_000_000 or not 0 < memory_bytes <= 128 * 1024 * 1024:
+        if (
+            type(fuel) is not int
+            or type(memory_bytes) is not int
+            or not 0 < fuel <= 100_000_000
+            or not 0 < memory_bytes <= 128 * 1024 * 1024
+        ):
             raise ValueError("Wasm invocation limits are invalid")
         if not isinstance(operation_id, str) or not 0 < len(operation_id) <= 1024:
             raise ValueError("Wasm operation identity is invalid")

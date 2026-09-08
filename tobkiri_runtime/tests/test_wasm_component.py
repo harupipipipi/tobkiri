@@ -79,6 +79,16 @@ def test_memory_limit_rejects_instantiation() -> None:
         guest(component()).invoke("inspect", {}, memory_bytes=1024)
 
 
+@pytest.mark.parametrize("field", ["fuel", "memory_bytes"])
+@pytest.mark.parametrize("value", [True, False, 1.5, "1024", None, 0, -1, 2**64])
+def test_limits_require_bounded_exact_integers(field: str, value: object) -> None:
+    """Reject malformed limits before consuming a request or calling the guest."""
+    engine = guest(component())
+    with pytest.raises(ValueError, match="limits are invalid"):
+        engine.invoke("inspect", {}, **{field: value})
+    assert engine.invoke("inspect", {}) == {"ok": True}
+
+
 def test_cancel_before_invocation_permanently_fences_request() -> None:
     engine = guest(component())
     engine.cancel()
