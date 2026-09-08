@@ -1171,7 +1171,11 @@ test('all generated map bindings use the exact method/path and reject ambiguous 
     /multiple operations/i,
   );
   assert.throws(
-    () => fetchFrontendContractOperation('PUT' as never, '/api/pack-control/catalog'),
-    /unsupported|not declared/i,
+    () => fetchFrontendContractOperation('PUT', '/api/pack-control/catalog'),
+    /no exact route/i,
+  );
+  assert.throws(
+    () => fetchFrontendContractOperation('PATCH' as never, '/api/chat/conversation'),
+    /unsupported/i,
   );
 });
