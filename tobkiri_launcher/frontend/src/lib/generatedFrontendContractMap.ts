@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133
+// Raw source digest: sha256:6f69830ebc2f583294948915752774c790b577f79041f7241f7ade9d76d55069
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:6f69830ebc2f583294948915752774c790b577f79041f7241f7ade9d76d55069" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133",
+  "artifact_digest": "sha256:6f69830ebc2f583294948915752774c790b577f79041f7241f7ade9d76d55069",
   "routes": [
     {
       "method": "GET",
@@ -79,6 +79,24 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "function_id": "tobkiri.ui.settings.read",
           "allowed_payload_keys": [
             "full"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/ui/settings",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.preferences.write",
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+          "provider_id": "tobkiri.ui.preferences.write",
+          "function_id": "tobkiri.ui.preferences.write",
+          "allowed_payload_keys": [
+            "changes",
+            "expected_revision"
           ]
         }
       ]
@@ -805,6 +823,22 @@ const EXPECTED_ROUTES = {
         "function_id": "tobkiri.ui.settings.read",
         "allowed_payload_keys": [
           "full"
+        ]
+      }
+    ]
+  },
+  "PUT /api/ui/settings": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.ui.preferences.write",
+        "contract_id": "tobkiri.action.ui.preferences.v1",
+        "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+        "provider_id": "tobkiri.ui.preferences.write",
+        "function_id": "tobkiri.ui.preferences.write",
+        "allowed_payload_keys": [
+          "changes",
+          "expected_revision"
         ]
       }
     ]
