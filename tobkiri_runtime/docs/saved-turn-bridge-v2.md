@@ -64,6 +64,13 @@ write, without claiming that preflight guarantees later provider availability.
 
 1. Preserve the original request identity, caller, domain, activation, artifact
    identity and deadline through every exchange. A new hop cannot renew the turn.
+   The current v1 Host bridge now forwards the authenticated outer monotonic
+   deadline through `V4DispatchSession.invoke` to `RequestBroker.invoke` as a
+   Host-only ceiling. The Broker rejects invalid/expired ceilings before
+   preparation and uses the earlier of its own operation deadline and the
+   parent's original deadline. No application payload supplies this ceiling.
+   This is connected v1 deadline propagation, not v2 multi-hop integration or
+   proof that every provider honors cancellation.
 2. Keep the current hop and predecessor digest in the root guest ledger. Consume
    a continuation before resuming; advance through an explicit method rather
    than reusing initial registration with a fresh TTL.
