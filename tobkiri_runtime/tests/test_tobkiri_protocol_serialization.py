@@ -75,6 +75,26 @@ def test_deep_json_is_rejected() -> None:
         strict_loads(value)
 
 
+@pytest.mark.parametrize("escaped", ["\\ud800", "\\udfff"])
+@pytest.mark.parametrize("template", ['"%s"', '{"nested":["%s"]}', '{"%s":0}'])
+def test_escaped_unpaired_surrogates_are_rejected_in_keys_and_values(
+    escaped: str, template: str,
+) -> None:
+    encoded = (template % escaped).encode("ascii")
+    with pytest.raises(CanonicalizationError, match="invalid Unicode"):
+        strict_loads(encoded)
+    # The same rule applies to directly supplied Python strings, not only
+    # text decoded at the JSON boundary.
+    with pytest.raises(CanonicalizationError, match="invalid Unicode"):
+        canonical_json(json.loads(encoded))
+
+
+def test_valid_surrogate_pairs_decode_to_unicode_scalars() -> None:
+    value = strict_loads(b'{"\\ud83d\\ude80":["\\ud83d\\ude80"]}')
+    assert value == {"🚀": ["🚀"]}
+    assert strict_loads(canonical_json(value)) == value
+
+
 def test_request_payload_cannot_smuggle_authority_fields() -> None:
     request = json.loads((FIXTURES / "request_frame.v1.json").read_text(encoding="utf-8"))
     request["payload"] = {"approved": True}
