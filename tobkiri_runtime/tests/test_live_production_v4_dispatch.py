@@ -543,6 +543,7 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             target_principal=OpaqueAuthorityRef(target.principal_id),
             target_domain=OpaqueAuthorityRef(context.target_domain_id),
             contract_id="conversation.turn.v1",
+            contract_version="1.0.0",
             operation_id="complete",
         )
         invocations: list[tuple[str, str, dict[str, object]]] = []
@@ -584,6 +585,50 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             "value": {"content": "verified completion"},
         }
         assert result["result_digest"] == canonical_digest(result["result"])
+        # The authenticated outer request, not guest framing, selects authority.
+        # Rejected requests must not reach even the controlled Provider adapter.
+        context_changes = {
+            "profile_id": "profile.other",
+            "profile_revision": _digest("other-profile-revision"),
+            "activation_id": "activation.other",
+            "activation_digest": _digest("other-activation"),
+            "plan_digest": _digest("other-plan"),
+            "security_epoch": context.security_epoch + 1,
+            "fencing_token": context.fencing_token + 1,
+            "profile_authority_digest": _digest("other-authority"),
+            "target_domain_id": "domain.other",
+            "target_backend_digest": _digest("other-backend"),
+            "caller_principal": OpaqueAuthorityRef(_digest("other-caller")),
+        }
+        for field, changed in context_changes.items():
+            forged = SimpleNamespace(**{
+                **vars(outer), "context": replace(context, **{field: changed}),
+            })
+            with pytest.raises(AuthorityDenied, match="bridge outer"):
+                backend.capability_bridge(forged, bridge_request)
+            assert len(invocations) == 1, field
+        cancelled = threading.Event()
+        cancelled.set()
+        outer_changes = [
+            ("contract_id", "conversation.saved-turn.v1"),
+            ("contract_version", "2.0.0"),
+            ("contract_version", None),
+            ("operation_id", "saved_complete"),
+            ("target_principal", OpaqueAuthorityRef(_digest("other-target"))),
+            ("target_domain", OpaqueAuthorityRef("domain.other")),
+            ("deadline_monotonic", None),
+            ("deadline_monotonic", True),
+            ("deadline_monotonic", float("inf")),
+            ("deadline_monotonic", float("nan")),
+            ("deadline_monotonic", time.monotonic() - 1),
+            ("cancellation_requested", None),
+            ("cancellation_requested", cancelled),
+        ]
+        for field, changed in outer_changes:
+            forged = SimpleNamespace(**{**vars(outer), field: changed})
+            with pytest.raises(AuthorityDenied, match="bridge outer"):
+                backend.capability_bridge(forged, bridge_request)
+            assert len(invocations) == 1, field
         with pytest.raises(AuthorityDenied, match="bridge request is invalid"):
             backend.capability_bridge(
                 outer,

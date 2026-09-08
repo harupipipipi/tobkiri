@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import secrets
 import stat
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -1794,10 +1796,18 @@ def capture_production_dispatch(
     dispatch_holder: list[V4DispatchSession] = []
     bridge_targets = _bridge_targets_by_outer_edge(captured_edges)
 
-    def capability_bridge(
-        outer_request: object,
-        bridge_request: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
+    def resolve_bridge_outer(outer_request: object) -> _CapturedPlanEdge:
+        """Resolve bridge authority only from the captured authenticated outer edge."""
+        deadline = getattr(outer_request, "deadline_monotonic", None)
+        cancellation = getattr(outer_request, "cancellation_requested", None)
+        if (
+            type(deadline) not in (int, float)
+            or not math.isfinite(deadline)
+            or deadline <= time.monotonic()
+            or type(cancellation) is not threading.Event
+            or cancellation.is_set()
+        ):
+            raise AuthorityDenied("PackVM capability bridge outer budget is invalid")
         outer_context = getattr(outer_request, "context", None)
         outer_target = getattr(
             getattr(outer_request, "target_principal", None),
@@ -1837,6 +1847,8 @@ def capture_production_dispatch(
             outer_target != outer_edge.target.principal_id
             or outer_domain != expected_target_domain
             or outer_caller != outer_edge.caller.principal_id
+            or getattr(outer_request, "contract_version", None)
+            != outer_edge.resolved_binding.operation.contract_version
             or getattr(outer_context, "profile_id", None) != profile["profile_id"]
             or getattr(outer_context, "profile_revision", "") not in {"", plan["profile_revision"]}
             or getattr(outer_context, "activation_id", None) != active.activation["activation_id"]
@@ -1852,6 +1864,67 @@ def capture_production_dispatch(
             != expected_target_backend_digest
         ):
             raise AuthorityDenied("PackVM capability bridge outer identity is invalid")
+        return outer_edge
+
+    def invoke_bridge_provider(
+        outer_request: object,
+        outer_edge: _CapturedPlanEdge,
+        bridge_edge: _CapturedPlanEdge,
+        request: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Invoke the selected Provider with one Host session and original budget."""
+        outer_context = getattr(outer_request, "context", None)
+        if not dispatch_holder:
+            raise AuthorityDenied("PackVM capability bridge is not initialized")
+        dispatch = dispatch_holder[0]
+        dispatch.assert_current()
+        authority_target_domain(bridge_edge.resolved_binding)
+        if target_backend_digests.get(bridge_edge.target.principal_id) is None:
+            raise AuthorityDenied("PackVM capability bridge target is not ready")
+        request_id = getattr(outer_context, "request_id", None)
+        if not isinstance(request_id, str) or not request_id or len(request_id) > 160:
+            raise AuthorityDenied("PackVM capability bridge request identity is invalid")
+        # This session identity is generated in the Host.  The guest nonce
+        # binds its continuation but never becomes an Authority session id.
+        bridge_session_id = f"session.packvm-bridge.{request_id}.{secrets.token_hex(16)}"
+        parent_deadline = getattr(outer_request, "deadline_monotonic", None)
+        if parent_deadline is None:
+            raise AuthorityDenied("PackVM capability bridge outer deadline is missing")
+        parent_cancellation = getattr(outer_request, "cancellation_requested", None)
+        if type(parent_cancellation) is not threading.Event:
+            raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
+        with caller_session_bindings_lock:
+            caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
+        try:
+            provider_result = dispatch.invoke(
+                bridge_edge.resolved_binding.operation.contract_id,
+                bridge_edge.resolved_binding.operation.operation_id,
+                {**dict(request), "_session_id": bridge_session_id},
+                parent_deadline_monotonic=parent_deadline,
+                parent_cancellation=parent_cancellation,
+            )
+            if not isinstance(provider_result, Mapping):
+                raise TypeError("verified Provider capability returned a non-object")
+            result = {"status": "ok", "value": dict(provider_result)}
+            if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
+                raise ValueError("verified Provider capability result is too large")
+        except Exception as error:
+            # Do not project provider/backend details through the PackVM ABI.
+            # The guest receives a typed, bounded result it can safely render.
+            from .bridge_diagnostics import record_bridge_failure
+
+            record_bridge_failure(error)
+            result = _provider_unavailable_bridge_result()
+        finally:
+            with caller_session_bindings_lock:
+                caller_session_bindings.pop(bridge_session_id, None)
+        return result
+
+    def capability_bridge(
+        outer_request: object,
+        bridge_request: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        outer_edge = resolve_bridge_outer(outer_request)
 
         expected_fields = {
             "kind",
@@ -1926,50 +1999,7 @@ def capture_production_dispatch(
         ):
             raise AuthorityDenied("PackVM capability bridge continuation is invalid")
 
-        if not dispatch_holder:
-            raise AuthorityDenied("PackVM capability bridge is not initialized")
-        dispatch = dispatch_holder[0]
-        dispatch.assert_current()
-        authority_target_domain(bridge_edge.resolved_binding)
-        if target_backend_digests.get(bridge_edge.target.principal_id) is None:
-            raise AuthorityDenied("PackVM capability bridge target is not ready")
-        request_id = getattr(outer_context, "request_id", None)
-        if not isinstance(request_id, str) or not request_id or len(request_id) > 160:
-            raise AuthorityDenied("PackVM capability bridge request identity is invalid")
-        # This session identity is generated in the Host.  The guest nonce
-        # binds its continuation but never becomes an Authority session id.
-        bridge_session_id = f"session.packvm-bridge.{request_id}.{secrets.token_hex(16)}"
-        parent_deadline = getattr(outer_request, "deadline_monotonic", None)
-        if parent_deadline is None:
-            raise AuthorityDenied("PackVM capability bridge outer deadline is missing")
-        parent_cancellation = getattr(outer_request, "cancellation_requested", None)
-        if type(parent_cancellation) is not threading.Event:
-            raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
-        with caller_session_bindings_lock:
-            caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
-        try:
-            provider_result = dispatch.invoke(
-                bridge_edge.resolved_binding.operation.contract_id,
-                bridge_edge.resolved_binding.operation.operation_id,
-                {**dict(request), "_session_id": bridge_session_id},
-                parent_deadline_monotonic=parent_deadline,
-                parent_cancellation=parent_cancellation,
-            )
-            if not isinstance(provider_result, Mapping):
-                raise TypeError("verified Provider capability returned a non-object")
-            result = {"status": "ok", "value": dict(provider_result)}
-            if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
-                raise ValueError("verified Provider capability result is too large")
-        except Exception as error:
-            # Do not project provider/backend details through the PackVM ABI.
-            # The guest receives a typed, bounded result it can safely render.
-            from .bridge_diagnostics import record_bridge_failure
-
-            record_bridge_failure(error)
-            result = _provider_unavailable_bridge_result()
-        finally:
-            with caller_session_bindings_lock:
-                caller_session_bindings.pop(bridge_session_id, None)
+        result = invoke_bridge_provider(outer_request, outer_edge, bridge_edge, request)
 
         response = {
             "kind": "tobkiri.packvm.bridge.result.v1",
