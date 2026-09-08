@@ -11,8 +11,19 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:083dd643662178b6415c566b83f27fb2e5ad953a044b754ef596f09bd15ebd28");
-  assert.equal(result.runtimeMap.routes.length, 40);
+  assert.equal(result.rawDigest, "sha256:b979f28b7d3b3b698bdbb966014befe5ab1a1e6d9664c91f569a9f1cb9800293");
+  assert.equal(result.runtimeMap.routes.length, 41);
+  const reconcile = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/chat/turn/reconcile",
+  );
+  assert.deepEqual(reconcile?.targets, [{
+    contribution_id: "defaults.conversations.turn.reconcile",
+    contract_id: "tobkiri.action.turn.reconcile.v1",
+    operation_id: "rumi_turn_runtime_pack.turn-reconcile",
+    provider_id: "rumi_turn_runtime_pack.turn-runtime.reconcile",
+    function_id: "rumi_turn_runtime_pack.turn-runtime.reconcile",
+    allowed_payload_keys: ["turn_id"],
+  }]);
   const saved = result.runtimeMap.routes.find(
     (route) => route.method === "POST" && route.path === "/api/chat/turn",
   );

@@ -59,6 +59,27 @@ test("saved turn reconciliation is a read with no replay or caller Profile", asy
   assert.equal(calls, 2);
 });
 
+test("saved reconciliation posts only an existing turn ID, never the original input", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const turn = { id: "turn-1", conversation_id: "conversation-1", status: "completed", revision: 4 };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn/reconcile")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), { turn_id: "turn-1" });
+    return new Response(JSON.stringify({ success: true, data: { status: "completed", turn } }));
+  };
+  assert.deepEqual(await api.reconcileSavedTurn("turn-1", "conversation-1"), turn);
+  await assert.rejects(api.reconcileSavedTurn("turn-1", "other"), /does not match/);
+  await assert.rejects(api.reconcileSavedTurn("../bad", "conversation-1"), /stable turn ID/);
+  assert.equal(calls, 2);
+  globalThis.fetch = async () => { calls += 1; throw new Error("connection lost"); };
+  await assert.rejects(api.reconcileSavedTurn("turn-1", "conversation-1"), /connection lost/);
+  assert.equal(calls, 3);
+});
+
 test("saved turn uses exact canonical transport and never retries an uncertain outcome", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

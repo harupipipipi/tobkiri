@@ -128,7 +128,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:5f055abbda9c35d9fed62e007bb3101b697530bf044c8c66fe3dd78fbf3c7ea8",
+    "source_digest": "sha256:efb166624747eaac014438c649d7b0fecde5fb4d29308d18fcde3e5ba212da7f",
     "repository_commit": "working-tree",
     "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
     "generator": "tobkiri-profile-artifacts",
@@ -178,6 +178,48 @@
     ]
   },
   "requested_edges": [
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.turn.reconcile.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.reconcile.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-reconcile"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile"
+    },
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.conversation.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
     {
       "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
       "contract_id": "tobkiri.service.ai.route.v1",

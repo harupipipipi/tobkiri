@@ -486,6 +486,24 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert store.path.read_bytes() == before
         assert not ai_calls
         assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
+        reconcile_route = _contract("POST", "/api/chat/turn/reconcile")
+        for invalid in (
+            {"turn_id": "turn-1", "approved": True},
+            {"turn_id": "turn-1", "profile_id": "other"},
+            {"turn_id": "turn-1", "result_reference": {}}, body,
+        ):
+            headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+            rejected_status, rejected, _ = _request(
+                server, "POST", reconcile_route, body=invalid, headers=headers,
+            )
+            assert rejected_status == 400, rejected
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        missing_status, _, _ = _request(
+            server, "POST", reconcile_route, body={"turn_id": "turn-1"}, headers=headers,
+        )
+        assert missing_status != 200
+        assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
+        assert store.path.read_bytes() == before and not ai_calls
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, payload, _ = _request(server, "POST", route, body=body, headers=headers)
         assert status == 200, payload
@@ -493,7 +511,10 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             "reconciliation_required" if lose_owner_reply else "completed"
         ), payload
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
-        status, repeated, _ = _request(server, "POST", route, body=body, headers=headers)
+        status, repeated, _ = _request(
+            server, "POST", reconcile_route if lose_owner_reply else route,
+            body={"turn_id": "turn-1"} if lose_owner_reply else body, headers=headers,
+        )
         assert status == 200, repeated
         if lose_owner_reply:
             assert repeated["data"]["status"] == "completed", repeated

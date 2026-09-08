@@ -167,3 +167,28 @@ def test_saved_host_registration_has_separate_execution_capability() -> None:
         (root / "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json").read_text()
     )
     assert variant["operations"][0]["input_schema"] == schema
+
+
+def test_reconciliation_has_no_execution_edge_and_accepts_only_a_turn_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pack = root / "ecosystem/rumi_turn_runtime_pack"
+    contract = next(item for item in json.loads((pack / "contracts.v4.json").read_text())["contracts"]
+                    if item["contract_id"] == "tobkiri.action.turn.reconcile.v1")
+    effects = contract["operations"][0]["effect_ceiling"]
+    assert "capability:turn.reconcile" in effects
+    assert not {"capability:turn.execute", "capability:turn.manage"}.intersection(effects)
+    variant = next(item for item in json.loads((pack / "executables.v4.json").read_text())["variants"]
+                   if item["function_id"] == "rumi_turn_runtime_pack.turn-runtime.reconcile")
+    validator = Draft202012Validator(variant["operations"][0]["input_schema"])
+    assert validator.is_valid({"turn_id": "turn-1"})
+    for value in (_input(), {"turn_id": "../escape"}, {"turn_id": True},
+                  {"turn_id": "turn-1", "approved": True},
+                  {"turn_id": "turn-1", "result_reference": {}},
+                  {"turn_id": "turn-1", "profile_id": "other"}):
+        assert not validator.is_valid(value)
+    profile = json.loads((root / "ecosystem/defaultspack/v4/defaults.profile.v4.json").read_text())
+    edges = [edge for edge in profile["requested_edges"]
+             if edge["caller_function_id"] == variant["function_id"]]
+    assert [(edge["contract_id"], edge["operation_id"]) for edge in edges] == [
+        ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource"),
+    ]

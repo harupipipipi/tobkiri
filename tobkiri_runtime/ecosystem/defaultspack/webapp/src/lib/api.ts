@@ -3530,6 +3530,21 @@ export const api = {
     return turn;
   },
 
+  async reconcileSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for reconciliation.");
+    }
+    const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn/reconcile"), {
+      method: "POST",
+      body: JSON.stringify({ turn_id: turnId }),
+    });
+    if (!result || !["completed", "existing", "reconciliation_required"].includes(result.status)
+      || result.turn?.id !== turnId || result.turn.conversation_id !== conversationId) {
+      throw new Error("Saved turn reconciliation does not match the pending conversation.");
+    }
+    return result.turn;
+  },
+
   async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
     const input = { ...value };
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];

@@ -24,6 +24,32 @@ RECEIPT_OPERATION = "rumi_conversation_store_pack.conversation-resource"
 SAVED_CONTRACTS = frozenset({SAVED_CONVERSATION_CONTRACT, RECEIPT_CONTRACT})
 
 
+def reconcile_saved_turn(
+    store: DurableTurnRuntime, turn_id: str, *,
+    client: GlobalContractClient, guard: Callable[[], None],
+) -> dict[str, Any]:
+    """Reconcile existing state using an owner-reader-only captured client.
+
+    No initial input, claim, AI call or message append is available here.
+    An absent turn remains absent even when a client repeats this operation.
+    """
+    if (
+        client.consumer_pack_id != "rumi_turn_runtime_pack"
+        or client.session.profile_id != store.profile_id
+        or client.allowed_contract_ids != frozenset({RECEIPT_CONTRACT})
+        or client.host_credential_transport is not None
+    ):
+        raise PermissionError("saved reconciliation requires an owner-reader-only client")
+    guard()
+    record = store.get(turn_id)
+    if record is None:
+        raise KeyError("saved turn is unavailable")
+    if not record.get("input_digest") or not record["request_id"].startswith("saved-turn."):
+        raise PermissionError("only saved turns can be reconciled")
+    recovered = _reconcile(store, record, client, guard)
+    return recovered or {"status": "existing", "turn": record}
+
+
 def execute_saved_turn(
     store: DurableTurnRuntime,
     payload: Mapping[str, Any],

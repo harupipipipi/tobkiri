@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:083dd643662178b6415c566b83f27fb2e5ad953a044b754ef596f09bd15ebd28
+// Raw source digest: sha256:b979f28b7d3b3b698bdbb966014befe5ab1a1e6d9664c91f569a9f1cb9800293
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,14 +28,31 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:083dd643662178b6415c566b83f27fb2e5ad953a044b754ef596f09bd15ebd28" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:b979f28b7d3b3b698bdbb966014befe5ab1a1e6d9664c91f569a9f1cb9800293" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:083dd643662178b6415c566b83f27fb2e5ad953a044b754ef596f09bd15ebd28",
+  "artifact_digest": "sha256:b979f28b7d3b3b698bdbb966014befe5ab1a1e6d9664c91f569a9f1cb9800293",
   "routes": [
+    {
+      "method": "POST",
+      "path": "/api/chat/turn/reconcile",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.turn.reconcile",
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "allowed_payload_keys": [
+            "turn_id"
+          ]
+        }
+      ]
+    },
     {
       "method": "GET",
       "path": "/api/chat/turn",
@@ -820,6 +837,21 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
 };
 
 const EXPECTED_ROUTES = {
+  "POST /api/chat/turn/reconcile": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.turn.reconcile",
+        "contract_id": "tobkiri.action.turn.reconcile.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "allowed_payload_keys": [
+          "turn_id"
+        ]
+      }
+    ]
+  },
   "GET /api/chat/turn": {
     "presentation": "broker_result",
     "targets": [

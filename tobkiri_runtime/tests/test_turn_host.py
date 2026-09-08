@@ -86,6 +86,42 @@ def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) ->
         )
 
 
+def test_reconcile_factory_cannot_create_or_execute_a_turn(tmp_path: Path) -> None:
+    from core_runtime.global_contract_dispatch import GlobalContractClient
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import RECEIPT_CONTRACT
+    from tests.test_saved_turn_coordinator import _Session, _run
+
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    clients = []
+
+    def client(**kwargs: Any) -> GlobalContractClient:
+        clients.append(dict(kwargs))
+        assert kwargs.pop("include_credentials") is False
+        assert kwargs["allowed_contract_ids"] == frozenset({RECEIPT_CONTRACT})
+        return GlobalContractClient(session=session, **kwargs)
+
+    invocation = SimpleNamespace(contract_client=client, assert_current=lambda: None)
+    factory = TurnHostFactoryV4("reconcile")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+    for payload in ({"turn_id": "turn-1", "approved": True}, session.initial,
+                    {"turn_id": "turn-1", "result_reference": {}},
+                    {"turn_id": "turn-1", "profile_id": "other"}):
+        with pytest.raises(PermissionError):
+            invoke(factory.operation_id, payload, invocation)
+    assert not clients
+    with pytest.raises(KeyError):
+        invoke(factory.operation_id, {"turn_id": "turn-1"}, invocation)
+    assert not store.path.exists() and session.calls == 0
+    session.transform = lambda _: (_ for _ in ()).throw(TimeoutError())
+    assert _run(store, session)["status"] == "reconciliation_required"
+    result = invoke(factory.operation_id, {"turn_id": "turn-1"}, invocation)
+    assert result["status"] == "completed"
+    assert result["turn"]["result_reference"]["conversation_revision"] == 3
+    assert session.calls == 1
+
+
 def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
     tmp_path: Path,
 ) -> None:

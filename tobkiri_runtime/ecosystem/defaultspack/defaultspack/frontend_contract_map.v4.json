@@ -3,6 +3,19 @@
   "pack_id": "defaultspack",
   "routes": [
     {
+      "method": "POST",
+      "path": "/api/chat/turn/reconcile",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.reconcile",
+        "contract_id": "tobkiri.action.turn.reconcile.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "allowed_payload_keys": ["turn_id"]
+      }]
+    },
+    {
       "method": "GET",
       "path": "/api/chat/turn",
       "presentation": "broker_result",

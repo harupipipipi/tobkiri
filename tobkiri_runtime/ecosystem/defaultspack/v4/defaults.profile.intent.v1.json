@@ -118,6 +118,46 @@
   "profile_id": "defaults",
   "requested_edges": [
     {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.turn.reconcile.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.reconcile.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-reconcile"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile"
+    },
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.conversation.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
       "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
       "contract_id": "tobkiri.service.ai.route.v1",
       "operation_id": "rumi_ai_routing_pack.ai-route.generate",

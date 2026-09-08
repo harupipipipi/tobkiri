@@ -11,7 +11,9 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
-from ecosystem.rumi_turn_runtime_pack.runtime.saved import SAVED_CONTRACTS, execute_saved_turn
+from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+    RECEIPT_CONTRACT, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
+)
 
 _PACK = "rumi_turn_runtime_pack"
 _CONTRACTS = {
@@ -19,6 +21,7 @@ _CONTRACTS = {
     "resource": ("tobkiri.resource.turn.v1", "turn-resource"),
     "events": ("tobkiri.event.turn.v1", "turn-events"),
     "saved": ("tobkiri.action.turn.saved.v1", "turn-saved"),
+    "reconcile": ("tobkiri.action.turn.reconcile.v1", "turn-reconcile"),
 }
 _MUTATIONS = {
     "transition": ({"status"}, {"details"}),
@@ -68,6 +71,18 @@ class TurnHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
+            if self.kind == "reconcile":
+                values = {key: value for key, value in payload.items() if key != "_session_id"}
+                if operation_id != self.operation_id or set(values) != {"turn_id"}:
+                    raise PermissionError("reconciliation requires only an existing turn ID")
+                return reconcile_saved_turn(
+                    store, _identifier(values["turn_id"]),
+                    client=invocation.contract_client(
+                        allowed_contract_ids=frozenset({RECEIPT_CONTRACT}),
+                        consumer_pack_id=_PACK, include_credentials=False,
+                    ),
+                    guard=invocation.assert_current,
+                )
             if self.kind == "saved":
                 if operation_id != self.operation_id:
                     raise PermissionError("saved operation does not match capture")
