@@ -26,7 +26,12 @@ def test_absent_reads_and_invalid_begin_do_not_create_storage(tmp_path: Path) ->
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     assert store.get("turn") is None
     assert store.list() == []
-    for patch in ({"request_id": None}, {"conversation_revision": True}):
+    for patch in (
+        {"request_id": None},
+        {"conversation_revision": True},
+        {"turn_id": " turn "},
+        {"conversation_id": "x" * 257},
+    ):
         with pytest.raises(ValueError):
             store.begin({**PAYLOAD, **patch})
     with pytest.raises(PermissionError):

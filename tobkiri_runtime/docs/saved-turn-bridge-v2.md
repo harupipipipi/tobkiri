@@ -87,12 +87,20 @@ write, without claiming that preflight guarantees later provider availability.
 - A timeout or lost write result is an uncertain outcome, not permission to
   repeat the write with a new ID/revision. Reconcile through the owner using
   stable IDs; conflict is not automatically equivalent to successful completion.
-- `rumi_turn_runtime_pack` is the existing lifecycle/status owner. Its current
-  `TurnRuntime` is in-process only; add explicit captured persistence and restart
-  reconciliation there before exposing saved-send as complete. Its retained
-  request IDs now reject conversation/Profile/revision/turn rebinding, but
-  terminal pruning and process restart still discard those mappings. Do not
-  put execution state into the conversation storage Pack.
+- `rumi_turn_runtime_pack` is the existing lifecycle/status owner. The new
+  `runtime/durable.py` provides explicit-root SQLite persistence around its
+  existing lifecycle semantics. Begin requests require stable IDs and reject
+  rebinding; independent connections/processes use a write transaction plus an
+  exact revision. Terminal identities are retained: capacity exhaustion rejects
+  new turns instead of pruning replay protection. Reads do not create storage,
+  and oversized mutations roll back without changing the record. This wrapper
+  is NOT yet a captured Host provider or restart execution coordinator. A
+  recovered `running` record is only a snapshot, never permission to re-execute
+  AI or an uncertain write. Register the lifecycle, resource and event contracts
+  against the same captured durable owner, then implement reconciliation before
+  exposing saved-send as complete. The legacy `TurnRuntime` and its global pool
+  remain in-process and still prune terminal mappings. Do not put execution
+  state into the conversation storage Pack.
 - Cancellation must reach the currently executing nested Broker request as
   well as the guest continuation. Dropping an HTTP response or cancelling only
   a pending guest nonce does not prove provider execution stopped.

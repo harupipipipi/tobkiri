@@ -61,7 +61,7 @@ class DurableTurnRuntime:
         ):
             raise PermissionError("turn begin does not match captured Profile")
         for field in ("turn_id", "request_id", "conversation_id"):
-            if not isinstance(payload.get(field), str) or not payload[field]:
+            if not isinstance(payload.get(field), str) or not _ID.fullmatch(payload[field]):
                 raise ValueError("durable begin requires explicit stable identities")
         bound = {**payload, "profile_id": self.profile_id}
         # Validate before creating a new database, including the exact revision.
