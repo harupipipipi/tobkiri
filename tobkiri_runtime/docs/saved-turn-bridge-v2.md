@@ -10,7 +10,19 @@ the original deadline, issues local single-use resume permits, bounds four hops
 and cumulative encoded request/result bytes, and fences cancelled/failed chains.
 It does not authenticate frames, grant execution authority, stop providers or
 provide durable restart recovery. Versioned envelope validation and explicit
-guest-side packaging/integration remain required before using it in production.
+guest-side dispatch integration remain required before using it in production.
+
+`tobkiri_host/continuation_session.py` couples the codecs and shared chain ledger:
+it captures the bounded target plan, registers before returning the first frame,
+consumes each verified reply before exposing one fresh set of child arguments,
+and seals subsequent frames using the retained predecessor digest. Invalid
+results or next steps fence the chain; cancellation and the original deadline
+are rechecked before exposing resume arguments. Final outcome bytes count toward
+the original cumulative budget. The real-owner four-step test now uses this
+session. It still does not authenticate transport, authorize actions, dispatch
+children, terminate execution or provide durable recovery. In particular, its
+deadline must use the ledger's local clock: Host and guest monotonic clocks
+cannot be assumed interchangeable when wiring the VM boundary.
 
 `tobkiri_host/continuation_envelope.py` now defines strict v2 request/result
 validation, still unconnected. Requests carry exactly `kind`, `version`,
@@ -65,7 +77,7 @@ v1 bridge request still follows its dedicated validation path.
 
 The packaging path now uses `scripts/build_packvm_guest_bundle.py` to produce
 a deterministic, uncompressed zipapp. Its exact closure is the existing runner
-as `__main__.py`, the two continuation modules, protocol canonicalization/errors,
+as `__main__.py`, the three continuation modules, protocol canonicalization/errors,
 and empty package initializers. No Host dispatcher, state owner, credentials or
 third-party dependencies are included. `build_packvm_vz_helper.sh` stages this
 archive before binding the existing guest-runner digest and service template;
