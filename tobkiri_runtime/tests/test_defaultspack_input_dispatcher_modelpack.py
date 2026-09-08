@@ -35,6 +35,16 @@ _V4_DIRECT_PROVIDER_TEST_REASON = (
 )
 
 
+def _owner_bound_webhook(root: Path, webhook_id, payload, context):
+    """Select a test-local owner independently of webhook-controlled input."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return handle_inbound_webhook(
+        webhook_id, payload, context,
+        settings_owner=FrontendSettingsStore(root / "frontend_settings.json"),
+    )
+
+
 @pytest.fixture
 def steer_runtime(monkeypatch):
     """Provide an explicit canonical turn owner for instruction delivery tests."""
@@ -190,13 +200,13 @@ def test_generic_webhook_delivery_chat_message(monkeypatch, tmp_path):
     set_external_token("generic", "secret", token_id="generic-chat", kind="webhook_shared_secret")
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-2", "content": [{"type": "text", "text": "sent"}]},
         },
     )
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-chat",
         {"text": "hello", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "chat.message"},
         {},
@@ -223,7 +233,7 @@ def test_generic_webhook_delivery_run_instruction(monkeypatch, tmp_path, steer_r
     )
     set_external_token("generic", "secret", token_id="generic-steer", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-steer",
         {"text": "please continue", "_headers": {"x-rumi-webhook-token": "secret"}},
         {},
@@ -248,7 +258,7 @@ def test_generic_webhook_rejects_disallowed_delivery_action(monkeypatch, tmp_pat
     )
     set_external_token("generic", "secret", token_id="generic-locked", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-locked",
         {"text": "nope", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "run.instruction"},
         {},
@@ -297,7 +307,7 @@ def test_input_endpoint_rejects_agent_delegate_override_when_not_allowed(monkeyp
         {},
     )
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         created["data"]["endpoint_id"],
         {"text": "delegate this", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "agent.delegate"},
         {},
@@ -312,7 +322,7 @@ def test_input_endpoint_non_generic_kind_secret_verifies(monkeypatch, tmp_path):
     conversation = _conversation(tmp_path)
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-kind", "content": [{"type": "text", "text": "sent"}]},
         },
@@ -332,7 +342,7 @@ def test_input_endpoint_non_generic_kind_secret_verifies(monkeypatch, tmp_path):
     assert read_external_token("local_agent_input", token_id=endpoint_id, kind="webhook_shared_secret") == "kind-secret"
     assert read_external_token("generic", token_id=endpoint_id, kind="webhook_shared_secret") == ""
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         endpoint_id,
         {"text": "hello", "_headers": {"x-rumi-webhook-token": "kind-secret"}},
         {},
@@ -370,7 +380,7 @@ def test_input_endpoint_ttl_expired_rejected(monkeypatch, tmp_path):
     )
     set_external_token("generic", "secret", token_id="expired-webhook", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "expired-webhook",
         {"text": "expired", "_headers": {"x-rumi-webhook-token": "secret"}},
         {},

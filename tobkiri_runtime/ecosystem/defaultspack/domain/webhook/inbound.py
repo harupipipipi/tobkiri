@@ -4,13 +4,19 @@ import hmac
 import time
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.external.normalizer import normalize_generic_webhook
 from domain.external.pipeline import dispatch_external_event
 from domain.external.token_store import read_external_token
 from domain.webhook.endpoint_store import WebhookEndpointStore
 
 
-def handle_inbound_webhook(webhook_id: str, input_data: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
+def handle_inbound_webhook(
+    webhook_id: str, input_data: dict[str, Any],
+    context: dict[str, Any] | None = None, *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     endpoint = WebhookEndpointStore().get(webhook_id)
     if endpoint is None:
         return {"status": "error", "error": "webhook endpoint not found", "_http_status": 404}
@@ -40,6 +46,7 @@ def handle_inbound_webhook(webhook_id: str, input_data: dict[str, Any], context:
         audience_policy={"default": "allow", "require": {"verified": endpoint.security.get("mode") != "none"}},
         context=runtime_context,
         send_response=True,
+        settings_owner=settings_owner,
         envelope_overrides={
             "target": dict(endpoint.target),
             "delivery": {
