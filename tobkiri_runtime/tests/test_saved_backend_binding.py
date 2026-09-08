@@ -1,6 +1,7 @@
 """Saved bridge forwarding cannot promote readiness or legacy drivers."""
 
 from types import SimpleNamespace
+from typing import Callable
 
 import pytest
 
@@ -8,7 +9,7 @@ from tobkiri_host.errors import BackendUnavailableError
 from tobkiri_host.platform_backends import ProductionIsolationBackend
 
 
-def _backend(binder=None) -> ProductionIsolationBackend:
+def _backend(binder: Callable[..., None] | None = None) -> ProductionIsolationBackend:
     driver = SimpleNamespace(
         backend_id="tobkiri.python-pack-v4", platform="macos-arm64",
         backend_digest="sha256:" + "a" * 64, capability=lambda: (False, "not provisioned"),
@@ -22,8 +23,11 @@ def _backend(binder=None) -> ProductionIsolationBackend:
 def test_saved_binding_forwards_both_hooks_without_changing_readiness() -> None:
     calls = []
     backend = _backend(lambda *hooks: calls.append(hooks))
-    callback = lambda request, frame: {"status": "ok", "value": {}}
-    preflight = lambda request: None
+    def callback(request: object, frame: object) -> dict[str, object]:
+        return {"status": "ok", "value": {}}
+
+    def preflight(request: object) -> None:
+        return None
     before = backend.status
     backend.bind_saved_capability_bridge(callback, preflight)
     assert calls == [(callback, preflight)]
