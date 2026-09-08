@@ -88,8 +88,15 @@ after pipe EOF. On exchange or serialization failure the runner requests process
 group termination, closes pipes and reaps without an unbounded `communicate()`.
 Termination errors are not suppressed. Real Host subprocess tests cover pipe
 pressure, flooding, timeouts and reaping with a direct-child stop adapter; they
-do not certify Linux guest process-group termination. The per-step deadline is
-not yet the original multi-hop turn deadline; that integration remains required.
+do not certify Linux guest process-group termination. The authenticated guest
+dispatcher now captures one guest-local deadline before initial execution and
+retains it through the pending Host exchange and resumed child. Artifact checking,
+pipe exchange (including the absolute deadline), and late result observation use
+the remaining budget; registration cannot reset the pending TTL after initial
+computation. Host wait consumes this same guest budget. The Host's original
+monotonic value remains unchanged in the signed bridge and is enforced by the
+Host independently: its clock origin is not assumed equal to the guest's. This
+is connected v1 deadline handling, not a registered v2 multi-hop dispatch path.
 `build_packvm_vz_helper.sh` stages this
 archive before binding the existing guest-runner digest and service template;
 the existing signed provisioning manifest covers all archive bytes. The root
