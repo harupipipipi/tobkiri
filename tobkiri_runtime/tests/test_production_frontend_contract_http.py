@@ -94,6 +94,7 @@ class _ShellPolicyPackVmBackend:
     _FUNCTION_ID = "rumi_shell_policy_pack.shell-policy.inspect"
     _CONTRACT_ID = "tobkiri.service.shell.inspect.v1"
     _OPERATION_ID = "rumi_shell_policy_pack.shell-inspect"
+    _execute_abi = staticmethod(shell_policy.tobkiri_packvm_invoke)
 
     def __init__(self) -> None:
         self.status = BackendStatus(
@@ -176,7 +177,7 @@ class _ShellPolicyPackVmBackend:
         ):
             raise BackendUnavailableError("test PackVM envelope is invalid")
         return ProviderOutcome(
-            shell_policy.tobkiri_packvm_invoke(
+            self._execute_abi(
                 request.operation_id,
                 dict(request.payload),
             )
@@ -193,6 +194,20 @@ class _ShellPolicyPackVmBackend:
 
         if domain_id != self._target_domain_id:
             raise BackendUnavailableError("test PackVM domain is invalid")
+
+
+class _PresentationPackVmBackend(_ShellPolicyPackVmBackend):
+    """Test transport for the exact application-owned presentation ABI."""
+
+    from ecosystem.defaultspack.runtime.application_presentation import (
+        tobkiri_packvm_invoke as _presentation_abi,
+    )
+
+    _PACK_ID = "defaultspack"
+    _FUNCTION_ID = "defaultspack.application-presentation"
+    _CONTRACT_ID = "tobkiri.resource.application.presentation.v1"
+    _OPERATION_ID = "defaultspack.presentation.read"
+    _execute_abi = staticmethod(_presentation_abi)
 
 
 def _contract(method: str, target: str) -> str:
@@ -372,8 +387,17 @@ def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
+@pytest.fixture
+def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Keep production Broker checks while supplying the sealed presentation ABI."""
+    yield from _captured_production_server(
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
+    )
+
+
 def test_settings_reads_saved_values_and_models_through_real_broker(
-    production_server, tmp_path: Path,
+    settings_vertical_server, tmp_path: Path,
 ) -> None:
     """Settings use captured state and a nested model contract, without writes."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
@@ -394,7 +418,7 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         "_mutation_receipts": {"hidden-test-secret": {}},
     }), encoding="utf-8")
     before = path.read_bytes()
-    server, _session, _authority = production_server
+    server, _session, _authority = settings_vertical_server
     cookie, _csrf, _origin = _authenticate(server)
     for suffix in ("", "?full=true"):
         status, payload, _ = _request(

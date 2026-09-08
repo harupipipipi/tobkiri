@@ -11,6 +11,8 @@
     "broker.py",
     "canonical-files.v1.json",
     "composition.py",
+    "continuation_chain.py",
+    "continuation_envelope.py",
     "contracts.py",
     "credential_store.py",
     "effects.py",

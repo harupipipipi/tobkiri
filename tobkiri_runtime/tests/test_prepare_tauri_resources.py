@@ -1019,3 +1019,13 @@ def test_validate_bundle_v4_preflight_rejects_drift_and_unsafe_resources(tmp_pat
 
     with pytest.raises((FileNotFoundError, RuntimeError)):
         module.validate_bundle(stage, False, None, repository_root=ROOT)
+def test_canonical_host_inventory_covers_exact_current_source_files():
+    """Catch omitted Host modules before the native build's staging gate."""
+    host_root = Path(__file__).resolve().parents[1] / "tobkiri_host"
+    inventory = json.loads(
+        (host_root / "canonical-files.v1.json").read_text(encoding="utf-8")
+    )
+    actual = sorted(path.name for path in host_root.iterdir() if path.is_file())
+    assert inventory["schema"] == "io.tobkiri.host-file-inventory.v1"
+    assert inventory["files"] == actual
+    assert all(not (host_root / name).is_symlink() for name in actual)
