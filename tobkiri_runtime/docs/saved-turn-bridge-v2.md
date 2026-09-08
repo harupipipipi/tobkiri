@@ -87,9 +87,12 @@ write, without claiming that preflight guarantees later provider availability.
 - A timeout or lost write result is an uncertain outcome, not permission to
   repeat the write with a new ID/revision. Reconcile through the owner using
   stable IDs; conflict is not automatically equivalent to successful completion.
-- A durable turn record/status owner and its restart reconciliation contract
-  must be selected before exposing saved-send as complete. Do not silently put
-  execution state into the storage Pack, which explicitly does not own turns.
+- `rumi_turn_runtime_pack` is the existing lifecycle/status owner. Its current
+  `TurnRuntime` is in-process only; add explicit captured persistence and restart
+  reconciliation there before exposing saved-send as complete. Its retained
+  request IDs now reject conversation/Profile/revision/turn rebinding, but
+  terminal pruning and process restart still discard those mappings. Do not
+  put execution state into the conversation storage Pack.
 - Cancellation must reach the currently executing nested Broker request as
   well as the guest continuation. Dropping an HTTP response or cancelling only
   a pending guest nonce does not prove provider execution stopped.
