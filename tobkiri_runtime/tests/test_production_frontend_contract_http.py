@@ -977,10 +977,11 @@ def test_command_protocol_paths_are_inert_in_captured_production_http(
 
 
 def test_provider_configuration_http_requires_approval_and_saves_once(
-    production_server, tmp_path: Path,
+    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """HTTP/Broker/approval/credential and registry owners; no network or real key."""
     from core_runtime.authority.ui_operator import sign_ui_operator
+    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
     from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
     server, _session, authority = production_server
@@ -997,6 +998,22 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     root = tmp_path / "user-data"
     registry = ProviderRegistry("defaults", user_data_root=root)
     secret = "fixture-secret-provider-configuration"
+    failures = []
+    original_invoke = ExactHostProviderBackendV4.invoke
+
+    def observed_invoke(self, envelope):
+        try:
+            return original_invoke(self, envelope)
+        except Exception as error:
+            chain = []
+            current = error
+            while current is not None:
+                chain.append(f"{type(current).__name__}: {current}")
+                current = current.__cause__
+            failures.append((envelope.operation_id, chain))
+            raise
+
+    monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", observed_invoke)
     request = {
         "phase": "prepare", "effect_kind": "provider_configure",
         "request": {
@@ -1006,7 +1023,7 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     }
     path = "/api/ai/provider-key"
     status, prepared = post(path, request)
-    assert status == 200, prepared
+    assert status == 200, (prepared, failures)
     effect = prepared["data"]
     assert effect["state"] == "approval_pending"
     assert secret not in json.dumps(prepared)
