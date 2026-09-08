@@ -64,5 +64,22 @@ and captured authorization; copying a snapshot without fencing the old writers
 does not establish that cutover. This inventory is a design constraint, not an
 implemented migration or permission to modify the live shared file.
 
+The current store now fails closed if the platform locking module is missing
+or the OS refuses the lock: recovery, update callbacks and mutation receipts
+cannot run without acquisition. Windows retains its bounded contention retry;
+POSIX lock errors propagate. Unlock errors are reported and the file handle is
+closed rather than presenting a known release failure as success. A release
+failure after writing is not proof of rollback and must not trigger blind replay.
+The unused duplicate lock helpers have been removed. This fixes a prerequisite
+for safe ownership work, not the cross-Pack import or an ownership cutover.
+
+The existing in-process lock and advisory file lock do not fence older binaries
+after a future ownership change. A same-path transfer must establish that old
+writers are stopped or no longer authorized; introducing a new owner/read API
+alone does not provide that evidence. No live cutover is authorized by source
+development or isolated tests. A reviewed typed operation must also replace
+legacy callable transforms: arbitrary Python callbacks cannot cross the Pack
+boundary as a write capability.
+
 The isolated ABI and captured-consumer tests are not native startup, real AI
 conversation, live Profile activation, streaming, cancellation or DMG acceptance.
