@@ -151,6 +151,20 @@ envelope. Its initial request includes a stable turn ID, conversation ID, the
 displayed conversation revision and user input. It must not accept caller-selected
 Profile/root, authority receipts, credentials, target bindings or continuation state.
 
+The shared protocol library now defines `saved_conversation_input` (file
+`saved_conversation_input_v1.schema.json`) for the initial `{request}` ABI.
+It permits only stable turn/conversation IDs, a positive I-JSON-safe displayed
+revision, and nonblank text. Additional fields at either level are rejected,
+including model overrides, caller-selected targets and guest resume state.
+Normal text may mention authority words without becoming an authority field.
+The existing computation separately enforces its encoded request/intent budget;
+JSON Schema character constraints are not a substitute for that byte limit.
+Tests compare the schema with the pure initial ABI and explicitly reject the
+internal `{state, outcome}` shape at this external boundary. This is a schema
+definition, not Function publication, route wiring or a live Profile grant.
+Production saved-send must call this validation before its first dispatch when
+the versioned transport and captured operation are connected.
+
 | Step | Captured target | Required outcome before advancing |
 | --- | --- | --- |
 | 0 | Conversation resource/get | Existing record; requested revision matches |

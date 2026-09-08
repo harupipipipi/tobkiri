@@ -2971,6 +2971,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json",
+      "type": "regular-file",
+      "size": 1204,
+      "sha256": "d55add8c2fdc5656cc6cc9d61e3ef5a92699f6200820a9b96ac0d54d17be564c",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/schemas/shell_definition_v4.schema.json",
       "type": "regular-file",
       "size": 3340,
@@ -3001,8 +3008,8 @@
     {
       "path": "tobkiri_protocol/validation.py",
       "type": "regular-file",
-      "size": 20330,
-      "sha256": "b92176c83599d09af7b4d6c0ca5e9271144e77141792d21d106c7ebaa04d919f",
+      "size": 20405,
+      "sha256": "2ac005f422774b97371285a066a9e209b2750161aea75bf48bc6e4dfa30c2143",
       "executable": false
     }
   ]
