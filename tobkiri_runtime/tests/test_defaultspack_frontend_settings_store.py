@@ -45,11 +45,15 @@ def test_command_model_state_keeps_explicit_owner_across_nested_services(
         DEFAULTSPACK_ROOT, settings_owner=owner,
         command_state_dir=tmp_path / "command-state",
     )
-    changed = protocol.legacy._execute_builtin_rumi_function(
-        "ai_set_deepthink_enabled", {"enabled": True},
-        invocation={"expected_revision": 0, "idempotency_key": "owner-test"},
-    )
-    assert changed is not None and changed.get("enabled") is True
+    changed = protocol.invoke({
+        "command_ref": "defaultspack:deepthink",
+        "args": {"enabled": True},
+        "mode": "chat",
+        "invocation_id": "owner-test",
+        "expected_revision": 0,
+        "idempotency_key": "owner-test",
+    })
+    assert changed["status"] == "succeeded", changed
     state = protocol.query_states()["states"][0]
     assert state["value"] is True
     assert state["revision"] == 1
