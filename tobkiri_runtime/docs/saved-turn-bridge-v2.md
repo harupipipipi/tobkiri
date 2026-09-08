@@ -40,6 +40,15 @@ must not automatically advance the saved-turn application workflow.
 
 ## Observed boundaries
 
+- The Swift direct helper now retains exclusive exchange tickets across pending
+  replies: the exact reserved saved contract/version/operation gets at most four
+  bridges; other operations keep the one-bridge limit. A helper-local 60-second
+  deadline is captured at invoke and clamps subsequent transport waits, without
+  interpreting a Host or guest absolute clock. Cancellation retires the ticket
+  before transport; late replies and stale cleanup cannot restore it or remove
+  a replacement exchange. Capacity is bounded to 128 unexpired requests. These
+  are transport ownership limits, not v2 registration, guest frame validation,
+  Provider termination or permission to dispatch a captured Broker edge.
 - `ecosystem/defaultspack/runtime/conversation.py` emits a bounded v1 AI request.
 - The root guest runner validates that request, holds its continuation in
   `_PendingBridgeLedger`, and resumes a fresh sandboxed child once.
