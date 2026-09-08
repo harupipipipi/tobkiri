@@ -517,17 +517,20 @@ def test_conversation_create_uses_real_broker_and_rejects_replay(
     path = _contract("POST", "/api/chat/conversations")
     body = {"id": str(uuid.uuid4()), "expected_revision": 0, "model": "owned-model"}
     for injected in ({"profile_id": "other"}, {"approved": True}, {"operation": "delete"}):
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, payload, _ = _request(server, "POST", path, body={**body, **injected}, headers=headers)
         assert status == 400, payload
     status, payload, _ = _request(server, "POST", path, body=body)
     assert status in {401, 403}, payload
     assert not store.path.exists()
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
     status, payload, _ = _request(server, "POST", path, body=body, headers=headers)
     assert status == 200, payload
     assert payload["data"]["id"] == body["id"]
     assert payload["data"]["model"] == "owned-model"
     assert store.snapshot()["revision"] == 1
     before = store.path.read_bytes()
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
     status, payload, _ = _request(server, "POST", path, body=body, headers=headers)
     assert status != 200, payload
     assert store.path.read_bytes() == before
