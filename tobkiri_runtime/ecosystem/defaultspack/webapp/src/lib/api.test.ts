@@ -45,7 +45,11 @@ test("conversation create pins identity and revision and does not retry conflict
   context.after(() => { globalThis.fetch = originalFetch; });
   const calls: RequestInit[] = [];
   globalThis.fetch = async (input, init) => {
-    assert.equal(requestTarget(input), "/api/chat/conversations");
+    const operation = calls.length === 0
+      ? "GET /api/chat/conversations"
+      : "POST /api/chat/conversations";
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(operation)}`);
+    assert.equal(init?.method ?? "GET", calls.length === 0 ? "GET" : "POST");
     calls.push(init ?? {});
     return new Response(JSON.stringify(calls.length === 1
       ? { success: true, data: { store_revision: 7 }, error: null }
@@ -79,7 +83,11 @@ test("conversation record writes retain the displayed revision without refetch",
   context.after(() => { globalThis.fetch = originalFetch; });
   const bodies: unknown[] = [];
   globalThis.fetch = async (input, init) => {
-    assert.equal(requestTarget(input), "/api/chat/conversation");
+    const operation = bodies.length === 0
+      ? "PUT /api/chat/conversation"
+      : "DELETE /api/chat/conversation";
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(operation)}`);
+    assert.equal(init?.method, bodies.length === 0 ? "PUT" : "DELETE");
     bodies.push(JSON.parse(String(init?.body)));
     return new Response(JSON.stringify({ success: true, data: { deleted: true }, error: null }));
   };
