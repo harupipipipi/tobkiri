@@ -766,7 +766,7 @@ def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Pat
     assert driver.capability()[0] is False
 
 
-@pytest.mark.parametrize("tamper", [None, "target", "binding", "predecessor", "cancel"])
+@pytest.mark.parametrize("tamper", [None, "target", "binding", "predecessor", "cancel", "early_success"])
 def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str | None,
 ) -> None:
@@ -833,6 +833,8 @@ def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owne
         else:
             data = guest.resume(request.target_domain.value, request.context.request_id,
                                 envelope["host_bridge_result"], execute)
+            if tamper == "early_success":
+                data = {"kind": "tobkiri.packvm.invoke.result.v1", "outcome": {"status": "ok"}}
         return signed(envelope, **{**kwargs, "data": data})
 
     monkeypatch.setattr(transport, "_guest", guest_reply)
@@ -845,7 +847,7 @@ def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owne
     else:
         with pytest.raises(BackendUnavailableError, match="saved bridge rejected"):
             driver.invoke(request)
-        assert observed == ([0, 1, 2] if tamper == "cancel" else [])
+        assert observed == ([0, 1, 2] if tamper == "cancel" else [0] if tamper == "early_success" else [])
 
 
 def test_saved_invoke_requires_dedicated_preflight_before_guest_dispatch(tmp_path: Path) -> None:

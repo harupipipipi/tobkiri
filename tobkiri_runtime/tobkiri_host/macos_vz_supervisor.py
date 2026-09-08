@@ -765,7 +765,8 @@ class MacOSVZSupervisorDriver:
                     raise BackendUnavailableError("macOS VZ saved Host bridge is unavailable")
                 self._require_saved_budget(request, active)
                 try:
-                    saved_bridge[1](request)
+                    if saved_bridge[1](request) is not None:
+                        raise BackendUnavailableError("macOS VZ saved preflight acknowledgement is invalid")
                 except Exception as exc:
                     raise BackendUnavailableError("macOS VZ saved preflight rejected request") from exc
                 self._require_saved_budget(request, active)

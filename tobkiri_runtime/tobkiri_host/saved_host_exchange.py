@@ -33,13 +33,14 @@ class SavedHostExchange:
         self._previous: str | None = None
         self._permit: ResumePermit | None = None
         self._pending: ValidatedContinuation | None = None
+        self._failed = False
 
     def accept(self, wrapper: Mapping[str, Any]) -> ValidatedContinuation:
         """Validate and retain before dispatching even the first owner read."""
         expected = self._binding("host-request")
         expected["deadline_monotonic"] = self._deadline_text
         if (
-            self._pending is not None or self._hop >= len(TARGETS)
+            self._failed or self._pending is not None or self._hop >= len(TARGETS)
             or set(wrapper) != set(expected) | {"bridge_request", "bridge_request_digest"}
             or any(wrapper[key] != value for key, value in expected.items())
             or type(wrapper.get("version")) is not int
@@ -69,6 +70,7 @@ class SavedHostExchange:
             "request_digest": frame.digest, "outcome": dict(outcome),
         }
         checked = validate_continuation_result(canonical_json(value), request=frame)
+        self._failed = outcome.get("status") == "error"
         self._permit = self._chains.take(self.identity, nonce=frame.nonce, result=checked.frame)
         self._previous = checked.digest
         self._pending = None
@@ -81,7 +83,7 @@ class SavedHostExchange:
         if self._permit is None or self._pending is not None:
             raise ValueError("saved Host terminal result is not expected")
         if outcome.get("status") not in {"ok", "error"} or (
-            outcome.get("status") == "ok" and self._hop != len(TARGETS)
+            outcome.get("status") == "ok" and (self._failed or self._hop != len(TARGETS))
         ):
             raise ValueError("saved Host success requires all four actions")
         self._chains.finish(self._permit, result=canonical_json(dict(outcome)))
