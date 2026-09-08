@@ -63,6 +63,23 @@ reserved `tobkiri.packvm.*` namespace as terminal application data; an unsupport
 v2 intent cannot masquerade as a completed v1 invocation. The existing initial
 v1 bridge request still follows its dedicated validation path.
 
+The packaging path now uses `scripts/build_packvm_guest_bundle.py` to produce
+a deterministic, uncompressed zipapp. Its exact closure is the existing runner
+as `__main__.py`, the two continuation modules, protocol canonicalization/errors,
+and empty package initializers. No Host dispatcher, state owner, credentials or
+third-party dependencies are included. `build_packvm_vz_helper.sh` stages this
+archive before binding the existing guest-runner digest and service template;
+the existing signed provisioning manifest covers all archive bytes. The root
+runner binds the archive itself (not the virtual `__main__.py` path) into each
+fresh child sandbox. Raw source-runner execution remains available for tests.
+
+Isolated `python -I -S` doctor and continuation imports from the archive are
+tested, as are exact member identity, deterministic bytes, changed-archive
+rejection and linked-source/output refusal. This provides the guest dependency
+delivery path but does not install it into the currently running VM or implement
+multi-hop dispatch. The native app must be rebuilt and its normal verified
+provisioning/launch workflow followed; do not replace live guest files directly.
+
 The computation now reads the exact displayed revision, derives stable message
 IDs from conversation/turn/role, follows the selected message ancestry, preserves
 the owner's model reference, checks exact append acknowledgements, and uses
