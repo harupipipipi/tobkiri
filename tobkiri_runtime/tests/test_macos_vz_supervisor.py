@@ -33,6 +33,28 @@ from tobkiri_host.macos_vz_supervisor import (
 from tobkiri_host.platform_backends import IsolationLaunch, IsolationLease
 
 
+@pytest.mark.parametrize("model", [None, True, 1, "", " x", "x\n", "x\x00y", "x" * 257])
+def test_host_rejects_invalid_bridge_model_reference(model: object) -> None:
+    """The Host independently checks a compromised guest's model reference."""
+    assert not macos_vz_supervisor._valid_bridge_payload({
+        "messages": [{"role": "user", "content": "hello"}],
+        "requirements": {"request_surface": "defaultspack.conversation"},
+        "model_reference": model,
+    })
+
+
+def test_host_accepts_only_model_reference_not_caller_authority() -> None:
+    """Selecting a model does not allow guest-selected Profile or credentials."""
+    payload = {
+        "messages": [{"role": "user", "content": "hello"}],
+        "requirements": {"request_surface": "defaultspack.conversation"},
+        "model_reference": "local/selected",
+    }
+    assert macos_vz_supervisor._valid_bridge_payload(payload)
+    for extra in ({"profile_id": "other"}, {"credential_handle": "untrusted"}, {"approved": True}):
+        assert not macos_vz_supervisor._valid_bridge_payload({**payload, **extra})
+
+
 def _digest(value: str | bytes) -> str:
     raw = value.encode() if isinstance(value, str) else value
     return "sha256:" + hashlib.sha256(raw).hexdigest()

@@ -1595,8 +1595,23 @@ def _valid_bridge_target(value: object) -> bool:
 
 
 def _valid_bridge_payload(value: object) -> bool:
-    if not isinstance(value, Mapping) or set(value) != {"messages", "requirements"}:
+    required = {"messages", "requirements"}
+    if (
+        not isinstance(value, Mapping)
+        or not required <= set(value)
+        or set(value) - required - {"model_reference"}
+    ):
         return False
+    if "model_reference" in value:
+        model = value["model_reference"]
+        if (
+            not isinstance(model, str)
+            or not model
+            or model != model.strip()
+            or len(model) > 256
+            or any(ord(char) < 32 or ord(char) == 127 for char in model)
+        ):
+            return False
     messages = value.get("messages")
     requirements = value.get("requirements")
     if not isinstance(messages, list) or not messages or len(messages) > 128:

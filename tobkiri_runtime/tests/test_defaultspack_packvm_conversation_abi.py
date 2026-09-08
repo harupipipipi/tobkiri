@@ -47,7 +47,7 @@ spec = importlib.util.spec_from_file_location("staged_conversation", sys.argv[1]
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 result = module.tobkiri_packvm_invoke(
-    "complete", {"messages": [{"role": "user", "content": "isolated"}]}
+    "complete", {"messages": [{"role": "user", "content": "isolated"}], "model": "local/isolated"}
 )
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 """
@@ -67,6 +67,7 @@ print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         "operation_id": conversation.AI_GENERATE_OPERATION,
     }
     assert result["continuation"]["nonce"]
+    assert result["request"]["model_reference"] == "local/isolated"
 
 
 def test_guest_complete_emits_a_fixed_target_and_digest_bound_continuation(
@@ -133,6 +134,30 @@ def test_guest_strips_outer_host_metadata_before_requesting_capability() -> None
         "messages": _MESSAGES,
         "requirements": {"request_surface": "defaultspack.conversation"},
     }
+
+
+def test_guest_preserves_selected_model_in_digest_pinned_request() -> None:
+    """A selected model survives without carrying caller-selected authority."""
+    result = conversation.tobkiri_packvm_invoke("complete", {
+        "messages": _MESSAGES, "model": "local/selected",
+        "profile_id": "other", "credential_handle": "untrusted",
+    })
+    assert result["request"] == {
+        "messages": _MESSAGES, "model_reference": "local/selected",
+        "requirements": {"request_surface": "defaultspack.conversation"},
+    }
+    assert result["request_digest"] == conversation._canonical_digest(result["request"])
+    other = conversation.tobkiri_packvm_invoke("complete", {
+        "messages": _MESSAGES, "model": "local/other",
+    })
+    assert other["request_digest"] != result["request_digest"]
+
+
+@pytest.mark.parametrize("model", [None, True, 1, "", " x", "x\n", "x\x00y", "x" * 257])
+def test_guest_rejects_invalid_selected_model(model: object) -> None:
+    """A malformed selection cannot silently fall back to another model."""
+    with pytest.raises(ValueError, match="model"):
+        conversation.tobkiri_packvm_invoke("complete", {"messages": _MESSAGES, "model": model})
 
 
 def test_guest_resumes_matching_host_result_with_existing_completion_projection() -> None:

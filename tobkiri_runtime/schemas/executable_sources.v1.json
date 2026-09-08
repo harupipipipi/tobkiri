@@ -21,7 +21,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "defaultspack.conversation",
-      "implementation_digest": "sha256:4a404c7427393f7343d9bc74d19b9f0f5066f7090e93e728e65e6452441242a7",
+      "implementation_digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
       "implementation_path": "runtime/conversation.py",
       "input_schema": {
         "additionalProperties": false,
@@ -82,7 +82,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:4a404c7427393f7343d9bc74d19b9f0f5066f7090e93e728e65e6452441242a7",
+          "implementation_digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
           "implementation_path": "runtime/conversation.py",
           "input_schema": {
             "additionalProperties": false,
