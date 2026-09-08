@@ -1281,19 +1281,56 @@ test("updateUiSettingsPatches sends field-scoped settings mutations", async () =
     body = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
-      data: { values: { theme: { font_size: 16 } } },
+      data: { values: { general: { composer_placeholder: "Hello" } }, document_revision: 8 },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
     await api.updateUiSettingsPatches([
-      { section: "theme", field: "font_size", value: 16 },
-    ]);
+      { section: "general", field: "composer_placeholder", value: "Hello" },
+    ], 7);
   } finally {
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(body, {
-    patches: [{ section: "theme", field: "font_size", value: 16 }],
+    changes: { general: { composer_placeholder: "Hello" } }, expected_revision: 7,
   });
+});
+
+test("settings patches reject malformed or unrelated acknowledgements without resending", async () => {
+  const originalFetch = globalThis.fetch;
+  const changes = { general: { composer_placeholder: "Hello" } };
+  try {
+    for (const data of [
+      { values: changes },
+      { values: changes, document_revision: 7 },
+      { values: changes, document_revision: "8" },
+      { values: { general: { composer_placeholder: "Different" } }, document_revision: 8 },
+      { values: { ...changes, models: { secret: "unexpected" } }, document_revision: 8 },
+    ]) {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ status: "ok", data }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }) as typeof fetch;
+      await assert.rejects(api.updateUiSettingsPatches([
+        { section: "general", field: "composer_placeholder", value: "Hello" },
+      ], 7));
+      assert.equal(calls, 1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("settings patches need an explicit revision and nonempty field changes", () => {
+  for (const revision of [-1, NaN, Infinity, 1.5]) {
+    assert.throws(() => api.updateUiSettingsPatches([
+      { section: "general", field: "language", value: "ja" },
+    ], revision));
+  }
+  assert.throws(() => api.updateUiSettingsPatches([], 0));
 });
 
 test("listModelProfiles bypasses browser cache", async () => {

@@ -2311,13 +2311,15 @@ export function isUICatalog(value: unknown): value is UICatalog {
 /** Validate the Pack v4 settings response used during startup. */
 export function isUiSettingsResponse(
   value: unknown,
-): value is { sections: SettingsSection[]; values: Record<string, Record<string, unknown>> } {
+): value is { sections: SettingsSection[]; values: Record<string, Record<string, unknown>>; document_revision: number } {
   const record = objectRecord(value);
   return Boolean(
     record
     && Array.isArray(record.sections)
     && record.sections.every(isSettingsSectionShape)
     && isRecordOfRecords(record.values)
+    && Number.isSafeInteger(record.document_revision)
+    && Number(record.document_revision) >= 0
   );
 }
 
@@ -3581,7 +3583,7 @@ export const api = {
 
   uiSettings(options: { full?: boolean } = {}) {
     const query = options.full ? "?full=true" : "";
-    return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>> }>(
+    return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>>; document_revision: number }>(
       defaultspackContractRoute(`api/ui/settings${query}`),
       { cache: "no-store" },
       isUiSettingsResponse,
@@ -3887,18 +3889,36 @@ export const api = {
     });
   },
 
-  updateUiSettings(values: Record<string, Record<string, unknown>>) {
-    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
+  updateUiSettingsPatches(
+    patches: Array<{ section: string; field: string; value: unknown }>,
+    expectedRevision: number,
+  ) {
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || patches.length === 0) {
+      throw new Error("Refresh Settings before saving changes.");
+    }
+    const sections = new Map<string, Map<string, unknown>>();
+    for (const { section, field, value } of patches) {
+      if (value === undefined) throw new Error("Settings patches require a value.");
+      const fields = sections.get(section) ?? new Map<string, unknown>();
+      fields.set(field, value);
+      sections.set(section, fields);
+    }
+    const changes = Object.fromEntries([...sections].map(([section, fields]) => [section, Object.fromEntries(fields)]));
+    type Acknowledgement = { values: Record<string, Record<string, unknown>>; document_revision: number };
+    const validAcknowledgement = (value: unknown): value is Acknowledgement => {
+      const record = objectRecord(value);
+      if (!record || !Number.isSafeInteger(record.document_revision) || record.document_revision !== expectedRevision + 1 || !isRecordOfRecords(record.values)) return false;
+      const values = record.values as Acknowledgement["values"];
+      return Object.keys(values).length === sections.size && [...sections].every(([section, fields]) => (
+        Object.prototype.hasOwnProperty.call(values, section)
+        && Object.keys(values[section]).length === fields.size
+        && [...fields].every(([field, submitted]) => Object.prototype.hasOwnProperty.call(values[section], field) && values[section][field] === submitted)
+      ));
+    };
+    return request<Acknowledgement>(defaultspackContractRoute("api/ui/settings"), {
       method: "PUT",
-      body: JSON.stringify({ values }),
-    });
-  },
-
-  updateUiSettingsPatches(patches: Array<{ section: string; field: string; value: unknown }>) {
-    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
-      method: "PUT",
-      body: JSON.stringify({ patches }),
-    });
+      body: JSON.stringify({ changes, expected_revision: expectedRevision }),
+    }, validAcknowledgement);
   },
 
   listContinuityNodes() {

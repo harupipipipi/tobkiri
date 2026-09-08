@@ -2522,6 +2522,7 @@ export function ChatApp() {
   const settingsValuesRef = useRef(settingsValues);
   const pinnedPlacementSaveRevisionRef = useRef(0);
   const settingsSaveRevisionRef = useRef(0);
+  const settingsDocumentRevisionRef = useRef<number | null>(null);
   const settingsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const settingsDirtyKeysRef = useRef<string[]>([]);
   const refreshCatalogSequenceRef = useRef(0);
@@ -3540,6 +3541,7 @@ export function ChatApp() {
   useEffect(() => {
     if (!isSettingsOpen) return;
     let cancelled = false;
+    const saveRevisionAtRead = settingsSaveRevisionRef.current;
     // The bootstrap response deliberately omits dynamic provider metadata.  Fetch
     // the full registry when Settings opens so built-in Provider/API controls do
     // not look like empty extension slots while the shell is still settling.
@@ -3550,8 +3552,9 @@ export function ChatApp() {
         setSettingsSections(settings.sections);
         // A full refresh can finish after a failed/queued save. Do not replace
         // the user's recoverable local edits with an older server snapshot.
-        if (settingsDirtyKeysRef.current.length === 0) {
+        if (settingsDirtyKeysRef.current.length === 0 && saveRevisionAtRead === settingsSaveRevisionRef.current) {
           const nextValues = withCalendarSettingsValues(settings.values);
+          settingsDocumentRevisionRef.current = settings.document_revision;
           settingsValuesRef.current = nextValues;
           setSettingsValues(nextValues);
         }
@@ -3690,6 +3693,7 @@ export function ChatApp() {
 
   async function refreshCatalog(): Promise<CatalogRefreshResult | null> {
     const requestSequence = ++refreshCatalogSequenceRef.current;
+    const saveRevisionAtRead = settingsSaveRevisionRef.current;
     setSettingsLoadState({ status: "loading" });
     setModelProfilesLoadState({ status: "loading" });
     const [catalogResult, settingsResult, profilesResult, commandsResult] = await Promise.allSettled([
@@ -3722,8 +3726,9 @@ export function ChatApp() {
       setSettingsSections(nextSettings.sections);
       // Provider/OAuth refreshes run independently of settings saves. Preserve
       // dirty values until the existing save/retry flow has resolved them.
-      if (settingsDirtyKeysRef.current.length === 0) {
+      if (settingsDirtyKeysRef.current.length === 0 && saveRevisionAtRead === settingsSaveRevisionRef.current) {
         const nextValues = withCalendarSettingsValues(nextSettings.values);
+        settingsDocumentRevisionRef.current = nextSettings.document_revision;
         settingsValuesRef.current = nextValues;
         setSettingsValues(nextValues);
       }
@@ -4308,12 +4313,22 @@ export function ChatApp() {
     });
     const saveRequest = settingsSaveQueueRef.current
       .catch(() => undefined)
-      .then(() => requestedPatches.length > 0
-        ? api.updateUiSettingsPatches(requestedPatches)
-        : api.updateUiSettings(next))
+      .then(() => {
+        const expectedRevision = settingsDocumentRevisionRef.current;
+        if (expectedRevision === null) throw new Error("Refresh Settings before saving changes.");
+        return api.updateUiSettingsPatches(requestedPatches, expectedRevision);
+      })
       .then((result) => {
+        // Even an earlier queued save advances the owner's revision. It must
+        // not replace newer local edits while the next save waits in the queue.
+        settingsDocumentRevisionRef.current = result.document_revision;
         if (revision !== settingsSaveRevisionRef.current) return result;
-        const persisted = withCalendarSettingsValues(result.values);
+        const persisted = withCalendarSettingsValues({
+          ...settingsValuesRef.current,
+          ...Object.fromEntries(Object.entries(result.values).map(([section, fields]) => [
+            section, { ...settingsValuesRef.current[section], ...fields },
+          ])),
+        });
         settingsDirtyKeysRef.current = [];
         applySettingsValues(persisted);
         setSettingsSaveState({ status: "saved", dirtyKeys: [], lastSavedAt: Date.now(), message: null });
