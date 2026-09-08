@@ -31,7 +31,7 @@ export function useAmbientRouting({
   const [routingGroupId, setRoutingGroupId] = useState("gesture");
   const [routingGroupTitle, setRoutingGroupTitle] = useState("Gesture");
   const [routingModel, setRoutingModel] = useState("");
-  const [destinationConversationModel, setDestinationConversationModel] = useState({ id: "", model: "" });
+  const [destinationConversationModel, setDestinationConversationModel] = useState<{ id: string; model: string; revision?: number }>({ id: "", model: "" });
   const [aiSendApprovalRequired, setAiSendApprovalRequired] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
   const [modelResults, setModelResults] = useState<ModelSearchItem[]>([]);
@@ -75,7 +75,7 @@ export function useAmbientRouting({
 
     const listed = conversations.find((conversation) => conversation.id === activeId);
     if (listed) {
-      setDestinationConversationModel({ id: activeId, model: listed.model || "" });
+      setDestinationConversationModel({ id: activeId, model: listed.model || "", revision: listed.conversation_revision });
       return () => {
         cancelled = true;
       };
@@ -84,7 +84,7 @@ export function useAmbientRouting({
     setDestinationConversationModel((current) => (current.id === activeId ? current : { id: activeId, model: "" }));
     api.getConversation(activeId)
       .then((conversation) => {
-        if (!cancelled) setDestinationConversationModel({ id: activeId, model: conversation.model || "" });
+        if (!cancelled) setDestinationConversationModel({ id: activeId, model: conversation.model || "", revision: conversation.conversation_revision });
       })
       .catch(() => {
         if (!cancelled) setDestinationConversationModel({ id: activeId, model: "" });
@@ -161,8 +161,10 @@ export function useAmbientRouting({
     setBusy(true);
     try {
       if (targetConversationId && normalizedModel) {
-        const updated = await api.updateConversation(targetConversationId, { model: normalizedModel }, conversations.find((item) => item.id === targetConversationId)?.conversation_revision);
-        setDestinationConversationModel({ id: targetConversationId, model: updated.model || normalizedModel });
+        const targetRevision = conversations.find((item) => item.id === targetConversationId)?.conversation_revision
+          ?? (destinationConversationModel.id === targetConversationId ? destinationConversationModel.revision : undefined);
+        const updated = await api.updateConversation(targetConversationId, { model: normalizedModel }, targetRevision);
+        setDestinationConversationModel({ id: targetConversationId, model: updated.model || normalizedModel, revision: updated.conversation_revision });
         setConversations((current) => current.map((item) => (
           item.id === targetConversationId ? { ...item, model: updated.model || normalizedModel, conversation_revision: updated.conversation_revision } : item
         )));

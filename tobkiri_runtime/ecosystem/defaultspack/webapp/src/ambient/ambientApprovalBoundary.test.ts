@@ -338,6 +338,7 @@ test("ambient model selection persists to the canonical selected conversation", 
   const panelSource = readSource("ambient", "AmbientTriggerPanel.tsx");
 
   assert.match(routingSource, /async function saveRoutingModel\(model: string\)/);
-  assert.match(routingSource, /api\.updateConversation\(targetConversationId, \{ model: normalizedModel \}\)/);
+  assert.match(routingSource, /api\.updateConversation\(targetConversationId, \{ model: normalizedModel \}, targetRevision\)/);
+  assert.match(routingSource, /destinationConversationModel\.id === targetConversationId \? destinationConversationModel\.revision : undefined/);
   assert.match(panelSource, /onModelCommit=\{\(model\) => void saveRoutingModel\(model\)\}/);
 });

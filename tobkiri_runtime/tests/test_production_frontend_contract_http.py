@@ -492,7 +492,7 @@ def test_history_list_reads_real_captured_store_without_mutation(
     )
     assert status == 200, payload
     assert payload["data"] == {
-        "conversations": store.snapshot()["conversations"], "total": 1,
+        "conversations": [{**item, "model": item["model_reference"]} for item in store.snapshot()["conversations"]], "total": 1,
         "store_revision": 1,
     }
     for query in ("profile_id=other", "operation=delete", "approved=true"):

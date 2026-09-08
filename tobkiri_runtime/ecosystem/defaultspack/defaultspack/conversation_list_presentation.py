@@ -28,7 +28,10 @@ def present_conversation_list(result: Mapping[str, object]) -> dict[str, object]
     if type(revision) is not int or revision < 0:
         raise ValueError("conversation owner returned an invalid revision")
     return {
-        "conversations": conversations,
+        "conversations": [
+            {**item, "model": item.get("model_reference", "")}
+            for item in conversations
+        ],
         "total": len(conversations),
         "store_revision": revision,
     }
