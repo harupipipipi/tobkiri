@@ -1,0 +1,50 @@
+# Application presentation ownership
+
+Defaultspack owns its UI control definitions, built-in UI layout and default
+command declarations. Other Packs must request that data, not import the
+application's Python implementation or discover its files.
+
+The normal PackVM Function `defaultspack.application-presentation` provides
+`tobkiri.resource.application.presentation.v1` operation
+`defaultspack.presentation.read`. Its single-file implementation is generated
+from the existing application-owned pure sources and JSON definitions with
+`python -B scripts/generate_application_presentation.py`. `--check` verifies
+freshness. Host and relative imports are rejected during generation. The ABI
+performs no Host state access, provider discovery or command execution.
+
+## Captured consumers
+
+- `rumi_command_protocol_pack.catalog.read` requests the sealed command
+  presentation. It retains its own execution-availability and approval policy:
+  only its known high-risk adapter references can become available when the
+  captured adapter exists, and they remain approval-required.
+- `tobkiri.ui.settings.read` and `tobkiri.ui.catalog.read` obtain model display
+  options through the model owner, then request application control definitions
+  through the presentation contract. No direct application-code fallback exists.
+- Three exact caller-to-presentation edges are candidates in the source Defaults
+  intent. They have not been activated in the existing native Profile.
+
+The command Pack owns `schemas/command-protocol-v1.schema.json` and validates its
+outgoing catalog against that local, artifact-pinned schema. The application
+retains a generated compatibility copy; the presentation generator checks or
+refreshes that copy. No schema supplied by an untrusted VM controls Host output
+validation.
+
+## Disclosure policy and remaining state boundary
+
+UI definitions returned by the VM cannot grant access to saved settings fields.
+The settings Pack's `runtime/public-settings-fields.v1.json` is an independently
+reviewed, artifact-pinned Host disclosure policy. It is deliberately not refreshed
+automatically from application templates. New controls do not expose saved values
+until their public fields are approved in that policy. Password/key/token controls
+remain filtered even when a public field identifier is present.
+
+The settings reader still imports the legacy application shared-settings reader
+for the existing `defaultspack/shared/frontend_settings.json` snapshot. This is
+the remaining cross-Pack implementation dependency. Its ownership/compatibility
+transition is not solved by this change; do not replace it with a foreign-path
+read or hide it behind an import alias. No state migration, repair or write is
+performed by these read contracts.
+
+The isolated ABI and captured-consumer tests are not native startup, real AI
+conversation, live Profile activation, streaming, cancellation or DMG acceptance.
