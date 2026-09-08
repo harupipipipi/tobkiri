@@ -36,6 +36,16 @@ from domain.webhook.endpoint_store import WebhookEndpointStore  # noqa: E402
 SECRET = "line-secret"
 
 
+def _run_with_owner(block, fixture_root: Path, payload, context):
+    """Bind this fixture's settings outside webhook input and runtime metadata."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return block.run(
+        payload, context,
+        settings_owner=FrontendSettingsStore(fixture_root / "frontend_settings.json"),
+    )
+
+
 def _signed_line_payload(payload: dict[str, Any], *, raw_body: bytes | None = None) -> dict[str, Any]:
     raw = raw_body or json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     signature = base64.b64encode(hmac.new(SECRET.encode("utf-8"), raw, hashlib.sha256).digest()).decode("ascii")
@@ -138,7 +148,7 @@ def test_line_route_uses_endpoint_enabled_flag(monkeypatch, tmp_path):
     _install_line_endpoint(monkeypatch, tmp_path, enabled=False)
     payload = {"destination": "Udest", "events": []}
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "error"
     assert result["_http_status"] == 403
@@ -186,7 +196,7 @@ def test_line_route_sends_webhook_acknowledgement_when_reply_token_and_access_to
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert calls == [
@@ -259,7 +269,7 @@ def test_line_computer_use_fake_receive_acknowledges_and_preserves_japanese_prom
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     sent_message = calls[0]["body"]["messages"][0]["text"]
@@ -417,7 +427,7 @@ def test_line_computer_use_natural_message_invokes_line_biz_send_tools(monkeypat
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {"call_handler": call_handler})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {"call_handler": call_handler})
 
     event_result = result["data"]["events"][0]
     conversation = ChatStore().get_conversation(event_result["conversation_id"])
@@ -515,7 +525,7 @@ def test_line_computer_use_fake_webhook_runs_three_browser_tasks_and_acknowledge
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert [event["status"] for event in result["data"]["events"]] == ["accepted", "accepted", "accepted"]
@@ -582,7 +592,7 @@ def test_line_route_does_not_acknowledge_normal_line_reply_mode(monkeypatch, tmp
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["acknowledgement"]["sent"] is False
@@ -634,7 +644,7 @@ def test_line_route_preserves_top_level_destination_and_endpoint_policy(monkeypa
     }
     raw_body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
-    result = line_block.run(_signed_line_payload(payload, raw_body=raw_body), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload, raw_body=raw_body), {})
 
     assert result["status"] == "ok"
     assert captured["event"].workspace.id == "Udestination"
@@ -700,7 +710,7 @@ def test_line_route_applies_endpoint_response_context(monkeypatch, tmp_path):
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert captured["input_profile_id"] == "line.default"
@@ -758,7 +768,7 @@ def test_line_route_builds_line_biz_prompt_from_chat_url(monkeypatch, tmp_path):
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert chat_url in captured["context"]["external_prompt_prefix"]
@@ -876,7 +886,7 @@ def test_line_computer_use_background_processing_is_opt_in(monkeypatch, tmp_path
     }
 
     start = time.monotonic()
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
     elapsed = time.monotonic() - start
 
     event_result = result["data"]["events"][0]
@@ -930,7 +940,7 @@ def test_line_background_processing_flag_does_not_affect_normal_line_mode(monkey
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert captured["called"] is True
     assert result["data"]["events"][0]["status"] == "ok"
@@ -963,7 +973,7 @@ def test_line_computer_use_group_message_ignores_unaddressed_text(monkeypatch, t
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -998,7 +1008,7 @@ def test_line_default_group_message_ignores_unaddressed_text(monkeypatch, tmp_pa
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -1031,7 +1041,7 @@ def test_line_default_group_message_ignores_plain_rumi_when_trigger_not_configur
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -1075,7 +1085,7 @@ def test_line_default_group_message_dispatches_for_hash_trigger(monkeypatch, tmp
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["mentioned"] is True
@@ -1127,7 +1137,7 @@ def test_line_default_group_message_dispatches_for_multiword_trigger_case_insens
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["mentioned"] is True
@@ -1162,7 +1172,7 @@ def test_line_group_message_ignores_recent_rumi_context_without_trigger(monkeypa
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -1203,7 +1213,7 @@ def test_line_direct_user_message_still_dispatches_without_mention(monkeypatch, 
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["called"] is True
@@ -1271,7 +1281,7 @@ def test_line_computer_use_group_message_dispatches_when_saved_group_mentions_bo
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["mentioned"] is True
@@ -1330,7 +1340,7 @@ def test_line_computer_use_group_mention_from_unknown_source_is_denied(monkeypat
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     denied = result["data"]["events"][0]
     assert denied["status"] == "denied"
@@ -1355,7 +1365,7 @@ def test_line_route_empty_events_ack_ok_without_dispatch(monkeypatch, tmp_path):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("dispatch should not run")),
     )
 
-    result = line_block.run(_signed_line_payload({"destination": "Udest", "events": []}), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload({"destination": "Udest", "events": []}), {})
 
     assert result["status"] == "ok"
     assert result["data"]["events"] == []
@@ -1382,7 +1392,7 @@ def test_line_route_processes_signed_raw_payload_only(monkeypatch, tmp_path):
     }
     signed_raw = json.dumps({"destination": "Udestination", "events": []}, separators=(",", ":")).encode("utf-8")
 
-    result = line_block.run(_signed_line_payload(parsed_payload, raw_body=signed_raw), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(parsed_payload, raw_body=signed_raw), {})
 
     assert result["status"] == "ok"
     assert result["data"]["events"] == []
@@ -1416,7 +1426,7 @@ def test_line_route_unknown_verified_source_is_saved_disabled_and_denied(monkeyp
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     denied = result["data"]["events"][0]
@@ -1472,7 +1482,7 @@ def test_line_route_frontend_push_to_saved_origin_reaches_adapter(monkeypatch, t
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert result["data"]["events"][0]["reply"]["sent"] is True

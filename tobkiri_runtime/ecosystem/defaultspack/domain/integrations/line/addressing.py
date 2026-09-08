@@ -22,6 +22,7 @@ def decide_line_addressing(
     *,
     endpoint: WebhookEndpoint,
     mentioned: bool,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     scope_type = getattr(getattr(external_event, "scope", None), "type", "")
     if scope_type == "user":
@@ -47,7 +48,7 @@ def decide_line_addressing(
         }
 
     text = _line_message_text(event)
-    trigger = _line_trigger_match(text, _line_addressing_trigger_words(endpoint))
+    trigger = _line_trigger_match(text, _line_addressing_trigger_words(endpoint, settings_owner=settings_owner))
     if trigger:
         return {
             "addressed": True,

@@ -43,7 +43,7 @@ _LINE_REPLY_DEADLINE_PROMPT = (
 )
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     load_integration_secrets_into_env()
     raw_body = raw_body_bytes(input_data)
     endpoint_input = {} if _has_raw_body(input_data) else input_data
@@ -78,6 +78,7 @@ def run(input_data, context):
             verified=bool(verification["verified"]),
             destination=destination,
             endpoint=endpoint,
+            settings_owner=settings_owner,
         )
         results.append(result)
     return ok({"verified": verification["verified"], "endpoint": endpoint.as_dict(), "events": results})
@@ -91,6 +92,7 @@ def _handle_event(
     verified: bool = False,
     destination: str = "",
     endpoint: WebhookEndpoint,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> Dict[str, Any]:
     if event.get("type") != "message":
         return {"ignored": True, "reason": "unsupported LINE event", "event_type": event.get("type")}
@@ -98,12 +100,13 @@ def _handle_event(
     if model:
         external_event.metadata["model"] = model
     mentioned = _line_message_mentions_bot(event, destination=destination)
-    require_group_mention = _require_line_group_mention(endpoint, external_event)
+    require_group_mention = _require_line_group_mention(endpoint, external_event, settings_owner=settings_owner)
     addressing = decide_line_addressing(
         event,
         external_event,
         endpoint=endpoint,
         mentioned=mentioned,
+        settings_owner=settings_owner,
     )
     addressed = bool(addressing.get("addressed"))
     external_event.metadata["line_mention"] = {
@@ -117,7 +120,7 @@ def _handle_event(
     external_event.metadata["origin"] = origin.as_dict()
     external_event.metadata["source_record"] = source_record
     runtime_context = dict(context or {})
-    _apply_external_output_context(runtime_context)
+    _apply_external_output_context(runtime_context, settings_owner=settings_owner)
     runtime_context.setdefault("webhook_endpoint", endpoint.as_dict())
     runtime_context.setdefault("output_profile_id", endpoint.response_profile_id)
     runtime_context.setdefault("response_profile_id", endpoint.response_profile_id)
@@ -247,8 +250,8 @@ def _has_raw_body(input_data) -> bool:
     return isinstance(input_data, dict) and ("_raw_body_base64" in input_data or "_raw_body" in input_data)
 
 
-def _apply_external_output_context(runtime_context: dict[str, Any]) -> None:
-    output = _frontend_external_output_settings()
+def _apply_external_output_context(runtime_context: dict[str, Any], *, settings_owner: SettingsOwnerPort | None = None) -> None:
+    output = _frontend_external_output_settings(settings_owner=settings_owner)
     send_mode = str(output.get("output_send_mode") or output.get("send_mode") or "").strip()
     if send_mode:
         runtime_context.setdefault("send_mode", send_mode)
@@ -548,7 +551,7 @@ def _line_message_mentions_bot(event: dict[str, Any], *, destination: str = "") 
     return False
 
 
-def _require_line_group_mention(endpoint: WebhookEndpoint, external_event) -> bool:
+def _require_line_group_mention(endpoint: WebhookEndpoint, external_event, *, settings_owner: SettingsOwnerPort | None = None) -> bool:
     if getattr(external_event, "scope", None) is None or external_event.scope.type not in {"group", "room"}:
         return False
     response = endpoint.response if isinstance(endpoint.response, dict) else {}
@@ -563,7 +566,7 @@ def _require_line_group_mention(endpoint: WebhookEndpoint, external_event) -> bo
         if configured is not None:
             break
     if configured is None:
-        configured = _line_mention_policy_default()
+        configured = _line_mention_policy_default(settings_owner=settings_owner)
     if configured is None:
         configured = True
     return _truthy(configured)
