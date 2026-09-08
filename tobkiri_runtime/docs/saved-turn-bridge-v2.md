@@ -246,6 +246,17 @@ write, without claiming that preflight guarantees later provider availability.
   an approval credential nor an execution/retry permission. Legacy callers
   without this binding retain their existing behavior, so this optional field
   does not yet close saved-send's mandatory input-binding requirement.
+  The captured lifecycle contract also now exposes `begin_saved`, accepting
+  only the validated `{request}` initial shape. It checks the 60 KiB UTF-8
+  request budget before creating storage, derives a stable request ID from
+  the captured Profile and turn ID, and computes the complete initial-input
+  digest itself. Callers cannot supply those derived fields. Changed text with
+  the same IDs conflicts; identical input returns the existing queued/running/
+  terminal snapshot without changing events or starting computation. Read-only
+  turn contracts cannot call it. This prepares durable identity only: it does
+  not read conversation state, preflight providers, claim execution, run the
+  guest, or store a message. The saved-send coordinator still must use this
+  operation through its captured Broker edge and then handle reconciliation.
 - Cancellation must reach the currently executing nested Broker request as
   well as the guest continuation. Dropping an HTTP response or cancelling only
   a pending guest nonce does not prove provider execution stopped.

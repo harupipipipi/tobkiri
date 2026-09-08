@@ -98,6 +98,52 @@ def test_captured_begin_retains_input_identity_without_restarting(tmp_path: Path
     assert before["status"] == "queued"
 
 
+SAVED_INPUT = {"request": {
+    "turn_id": "saved-turn", "conversation_id": "conversation",
+    "conversation_revision": 1, "content": "original private text",
+}}
+
+
+def test_saved_begin_computes_identity_and_never_restarts_running_turn(tmp_path: Path) -> None:
+    before = _invoke(tmp_path, "lifecycle", operation="begin_saved", **SAVED_INPUT)
+    assert before["input_digest"] == canonical_digest(SAVED_INPUT)
+    assert before["request_id"].startswith("saved-turn.")
+    assert "original private text" not in json.dumps(before)
+    running = _invoke(
+        tmp_path, "lifecycle", operation="transition", turn_id="saved-turn",
+        expected_revision=1, status="running",
+    )
+    assert _invoke(tmp_path, "lifecycle", operation="begin_saved", **SAVED_INPUT) == running
+    changed = copy.deepcopy(SAVED_INPUT)
+    changed["request"]["content"] = "changed text with identical IDs"
+    with pytest.raises(TurnConflict, match="input identity"):
+        _invoke(tmp_path, "lifecycle", operation="begin_saved", **changed)
+    assert _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn") == running
+
+
+@pytest.mark.parametrize("field", ["input_digest", "request_id", "state", "outcome", "target"])
+def test_saved_begin_cannot_accept_caller_execution_identity(tmp_path: Path, field: str) -> None:
+    with pytest.raises(ValueError):
+        _invoke(tmp_path, "lifecycle", operation="begin_saved", **SAVED_INPUT,
+                **{field: "caller-supplied"})
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("kind", ["resource", "events"])
+def test_saved_begin_remains_denied_on_read_contracts(tmp_path: Path, kind: str) -> None:
+    with pytest.raises(PermissionError):
+        _invoke(tmp_path, kind, operation="begin_saved", **SAVED_INPUT)
+    assert not list(tmp_path.iterdir())
+
+
+def test_saved_begin_checks_utf8_byte_budget_before_creating_record(tmp_path: Path) -> None:
+    payload = copy.deepcopy(SAVED_INPUT)
+    payload["request"]["content"] = "あ" * 21000
+    with pytest.raises(ValueError, match="byte limit"):
+        _invoke(tmp_path, "lifecycle", operation="begin_saved", **payload)
+    assert not list(tmp_path.iterdir())
+
+
 @pytest.mark.parametrize(
     "patch",
     [
