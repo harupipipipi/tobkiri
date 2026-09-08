@@ -42,6 +42,14 @@ must not automatically advance the saved-turn application workflow.
 
 ## Observed boundaries
 
+- The AI gateway now publishes `tobkiri.resource.ai.readiness.v1` /
+  `rumi_ai_gateway_pack.ai-gateway.preflight` as a separate captured Host
+  Function. Its exact input is model_profile_id and text messages. It reuses
+  owned model resolution and routing, checks the exact selected Provider
+  operation, and blocks generation, billing and other effectful dependencies.
+  This is route readiness, not a live credential/network/approval proof. The
+  saved caller edge, context resolution and production preflight callback still
+  need connection; no live Profile activation is implied by publication.
 - `saved_host_exchange.py` independently checks wrapper identities, launch
   binding digest, original Host deadline text, fixed targets, hop, predecessor
   and frame digest. The direct VZ driver authenticates each helper HMAC and guest
