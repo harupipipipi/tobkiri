@@ -3384,7 +3384,8 @@ def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
     statuses = Counter(
         _migration_status(path.name, path, proof) for path in _production_pack_dirs()
     )
-    assert statuses == {"semantically-reviewed": 41, "generated-draft": 99}
+    assert statuses == {"semantically-reviewed": 41, "generated-draft": 100}
+    assert proof["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
 
 
 def test_current_sha_evidence_is_red_while_pack_semantics_are_unproved() -> None:
@@ -3401,7 +3402,7 @@ def test_current_sha_evidence_is_red_while_pack_semantics_are_unproved() -> None
     assert report["pack_inventory"]["catalog_pack_directories"] == pack_count
     assert report["pack_inventory"]["v4_artifact_files"] == pack_count * len(PACK_ARTIFACTS)
     assert report["pack_inventory"]["migration_status_counts"] == {
-        "generated-draft": 99,
+        "generated-draft": 100,
         "semantically-reviewed": 41,
     }
     assert report["gates"]["artifact_contracts"]["status"] == "GREEN"

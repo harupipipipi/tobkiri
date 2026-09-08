@@ -2427,8 +2427,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
-      "size": 845459,
-      "sha256": "a1139ab822a0c6a5de3435823f139424bc071eb2cc3fd49e628f081b97dbfd91",
+      "size": 850420,
+      "sha256": "fc17ec2e15ef86fde30b05005a45d1dd7db0dfee241b876bd2afee1734fdeb16",
       "executable": false
     },
     {
