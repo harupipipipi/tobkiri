@@ -161,10 +161,10 @@ export function useAmbientRouting({
     setBusy(true);
     try {
       if (targetConversationId && normalizedModel) {
-        const updated = await api.updateConversation(targetConversationId, { model: normalizedModel });
+        const updated = await api.updateConversation(targetConversationId, { model: normalizedModel }, conversations.find((item) => item.id === targetConversationId)?.conversation_revision);
         setDestinationConversationModel({ id: targetConversationId, model: updated.model || normalizedModel });
         setConversations((current) => current.map((item) => (
-          item.id === targetConversationId ? { ...item, model: updated.model || normalizedModel } : item
+          item.id === targetConversationId ? { ...item, model: updated.model || normalizedModel, conversation_revision: updated.conversation_revision } : item
         )));
       }
       const next = normalizeRouting({

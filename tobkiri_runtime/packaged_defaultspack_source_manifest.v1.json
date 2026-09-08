@@ -66,6 +66,13 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/defaultspack/conversation_record_presentation.py",
+      "type": "regular-file",
+      "size": 4125,
+      "sha256": "bd1c46f6ed2f9eab8cd1d036f7bf4d63f7d3b711e987bb22fd8496b41a3fb232",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/defaultspack/desktop_app.py",
       "type": "regular-file",
       "size": 30592,
@@ -82,8 +89,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 20596,
-      "sha256": "c6fc21e4d3b721a4d7293f1f93004cf7821521818541c58732bd276e23484f47",
+      "size": 22333,
+      "sha256": "fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133",
       "executable": false
     },
     {
@@ -103,8 +110,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 15049,
-      "sha256": "5f9fde09aa1615158fc7f4db6761c57ba1bcd6587f5ce4b8fbc1e0bfda00f93d",
+      "size": 15891,
+      "sha256": "281641005d2613c6c481f631d46439415febede984fa5010c2f69c38bacad6d3",
       "executable": false
     },
     {
@@ -251,7 +258,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57299,
-      "sha256": "23e652244e75e8b3cf1ca20491d496f9936e85f3836630e59e29846af0d67550",
+      "sha256": "1f21d1a73995b6cea2af9ddaa75b066aae0bccd39be287d076b00430e45366de",
       "executable": false
     },
     {
@@ -272,7 +279,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 28197,
-      "sha256": "61f62fbd87962f570d9a7f03eeb0fbf316ffc17c2dcde78858039b2f73287313",
+      "sha256": "9896c94cebae6ab36abb4a1d6e2bd74fc0f3a6160c10161fb552966dd7700e10",
       "executable": false
     },
     {
@@ -286,7 +293,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 64538,
-      "sha256": "9066962f7b75bf629fab5b0e4e6316ffbbfc5da41c07b5414526452d42d4b536",
+      "sha256": "a7e77436c9dd01df27025def4edec50899d415b4ed7c900f03776d1c9f8b7d28",
       "executable": false
     },
     {
@@ -2211,7 +2218,7 @@
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
       "type": "regular-file",
       "size": 3909,
-      "sha256": "7a5d07d80897ba2481b54aaab0aa4d0a88ca77e8c7f8558dc8161d3ce31d7705",
+      "sha256": "fe8da0b57d306f7e2ffe67f194a89ce4bd265f25e98ea0f7959a27f8f5c7466e",
       "executable": false
     },
     {

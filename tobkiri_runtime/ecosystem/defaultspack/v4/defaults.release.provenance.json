@@ -1114,7 +1114,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-      "digest": "sha256:7a5d07d80897ba2481b54aaab0aa4d0a88ca77e8c7f8558dc8161d3ce31d7705"
+      "digest": "sha256:fe8da0b57d306f7e2ffe67f194a89ce4bd265f25e98ea0f7959a27f8f5c7466e"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/search_home_pack.executables.v4.json",
@@ -1325,8 +1325,8 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:23e652244e75e8b3cf1ca20491d496f9936e85f3836630e59e29846af0d67550",
-    "catalog_revision": "sha256:0a3a35c97d7b530cb9dd91ca3ca4a3d09c746f61d521e111caaaf3b5d6fc8d8a",
+    "bundle_digest": "sha256:1f21d1a73995b6cea2af9ddaa75b066aae0bccd39be287d076b00430e45366de",
+    "catalog_revision": "sha256:fed7fe84d5aa898784aec6f0e54ee1fe1e8cf0c7d9f0c925dd88a5e2fba06425",
     "closure_digest": "sha256:f0805dddc4f23041cb5fe632f8bf2e1f8f514ce748473050e527c6f3a88b31a5"
   },
   "outputs": [
@@ -1336,8 +1336,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:61f62fbd87962f570d9a7f03eeb0fbf316ffc17c2dcde78858039b2f73287313"
+      "digest": "sha256:9896c94cebae6ab36abb4a1d6e2bd74fc0f3a6160c10161fb552966dd7700e10"
     }
   ],
-  "release_digest": "sha256:84e55cb218b45a957af382459847f4b3e85fc809debd162fc05a13c39ed675f5"
+  "release_digest": "sha256:c33d93613f7227acec4f5ec9e8f695bbba96707bf058ed24e0a2ec6d3a5fcca0"
 }

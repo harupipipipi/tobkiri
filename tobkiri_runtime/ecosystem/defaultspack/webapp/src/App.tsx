@@ -4190,7 +4190,7 @@ export function ChatApp() {
 
   const handleHistoryMetadataChange = (conversationId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => {
     setError(null);
-    void api.updateConversation(conversationId, updates as Partial<Conversation>)
+    void api.updateConversation(conversationId, updates as Partial<Conversation>, conversations.find((item) => item.id === conversationId)?.conversation_revision)
       .then((conversation) => {
         setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
         if (activeConversationId === conversation.id) setActiveConversation(conversation);
@@ -4228,7 +4228,7 @@ export function ChatApp() {
     void api.updateConversation(activeConversationId, {
       group_id: project?.id ?? null,
       metadata,
-    }).then((conversation) => {
+    }, activeConversation.conversation_revision).then((conversation) => {
       setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
       setActiveConversation(conversation);
       if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
@@ -4594,7 +4594,7 @@ export function ChatApp() {
     // preferred model on the next render.
     setActiveConversation((current) => current ? { ...current, model: profileId } : current);
     if (activeConversationId) {
-      void api.updateConversation(activeConversationId, { model: profileId }).then((conversation) => {
+      void api.updateConversation(activeConversationId, { model: profileId }, activeConversation?.conversation_revision).then((conversation) => {
         setActiveConversation(conversation);
         void refreshConversations(conversation.id);
       }).catch(console.error);
@@ -4998,7 +4998,7 @@ export function ChatApp() {
           setError("現在の会話と新しいtitleを指定してください。");
           return;
         }
-        void api.updateConversation(activeConversationId, { title }).then((conversation) => {
+        void api.updateConversation(activeConversationId, { title }, activeConversation?.conversation_revision).then((conversation) => {
           setActiveConversation(conversation);
           void refreshConversations(conversation.id);
         }).catch((renameError) => {
@@ -5273,7 +5273,7 @@ export function ChatApp() {
           if (feedbackMessage) setError(feedbackMessage);
           await refreshCatalog();
           if (activeConversationId && selectedProfileId) {
-            const conversation = await api.updateConversation(activeConversationId, { model: selectedProfileId });
+            const conversation = await api.updateConversation(activeConversationId, { model: selectedProfileId }, activeConversation?.conversation_revision);
             setActiveConversation(conversation);
             await refreshConversations(conversation.id);
           } else if (activeConversationId) {
@@ -6932,7 +6932,7 @@ export function ChatApp() {
       replaceChatIdInUrl(conversation.id, false);
 
       if (title !== conversation.title) {
-        await api.updateConversation(conversation.id, { title });
+        await api.updateConversation(conversation.id, { title }, conversation.conversation_revision);
       }
 
       await refreshConversations(conversation.id);

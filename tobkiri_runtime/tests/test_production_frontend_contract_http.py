@@ -535,6 +535,47 @@ def test_conversation_create_uses_real_broker_and_rejects_replay(
     assert status != 200, payload
     assert store.path.read_bytes() == before
     assert not ConversationStore("other", user_data_root=tmp_path / "user-data").path.exists()
+    identifier = body["id"]
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, payload, _ = _request(
+        server, "GET", _contract("GET", f"/api/chat/conversation?conversation_id={identifier}"),
+        headers=headers,
+    )
+    assert status == 200, payload
+    assert payload["data"]["conversation_revision"] == 1
+    assert payload["data"]["model"] == "owned-model"
+
+    def mutate(method: str, revision: int, **extra: object) -> tuple[int, dict]:
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _ = _request(
+            server, method, _contract(method, "/api/chat/conversation"),
+            body={"conversation_id": identifier, "expected_conversation_revision": revision, **extra},
+            headers=headers,
+        )
+        return status, payload
+
+    for updates in ({"id": "replace"}, {"messages": []}, {"conversation_revision": 9}, {"is_starred": "true"}):
+        status, payload = mutate("PUT", 1, updates=updates)
+        assert status == 400, payload
+        assert store.path.read_bytes() == before
+    status, payload = mutate("PUT", 1, updates={"title": "Updated", "model": "new-model"})
+    assert status == 200, payload
+    assert payload["data"]["title"] == "Updated"
+    assert payload["data"]["model"] == "new-model"
+    assert payload["data"]["conversation_revision"] == 2
+    before = store.path.read_bytes()
+    for method, extra in (("PUT", {"updates": {"title": "Stale"}}), ("DELETE", {})):
+        status, payload = mutate(method, 1, **extra)
+        assert status != 200, payload
+        assert store.path.read_bytes() == before
+    status, payload = mutate("DELETE", 2)
+    assert status == 200, payload
+    assert payload["data"] == {"deleted": True}
+    assert store.get(identifier) is None
+    before = store.path.read_bytes()
+    status, payload = mutate("DELETE", 2)
+    assert status != 200, payload
+    assert store.path.read_bytes() == before
 
 
 def test_model_profile_list_uses_real_registry_and_rejects_client_profile(

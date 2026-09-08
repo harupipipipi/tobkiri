@@ -74,6 +74,26 @@ test("conversation create never writes without an exact snapshot revision", asyn
   }
 });
 
+test("conversation record writes retain the displayed revision without refetch", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const bodies: unknown[] = [];
+  globalThis.fetch = async (input, init) => {
+    assert.equal(requestTarget(input), "/api/chat/conversation");
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ success: true, data: { deleted: true }, error: null }));
+  };
+  await api.updateConversation("c1", { title: "Changed" }, 2);
+  await api.deleteConversation("c1", 2);
+  assert.deepEqual(bodies, [
+    { conversation_id: "c1", updates: { title: "Changed" }, expected_conversation_revision: 2 },
+    { conversation_id: "c1", expected_conversation_revision: 2 },
+  ]);
+  await assert.rejects(api.updateConversation("c1", { title: "Changed" }, undefined), /revision/);
+  await assert.rejects(api.deleteConversation("c1", undefined), /revision/);
+  assert.equal(bodies.length, 2);
+});
+
 test("health uses the Host endpoint and preserves execution-not-ready evidence", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

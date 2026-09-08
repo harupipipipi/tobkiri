@@ -33,6 +33,12 @@ from .conversation_create_presentation import (
     normalize_conversation_create,
     present_conversation_created,
 )
+from .conversation_record_presentation import (
+    CONVERSATION_RECORD_TARGETS,
+    normalize_conversation_record,
+    present_conversation_record,
+    present_conversation_deleted,
+)
 
 
 _CONVERSATION_TARGET = (
@@ -197,6 +203,15 @@ class DefaultspackHTTPPresentation:
             return normalize_conversation_create(
                 payload, profile_id=str(getattr(session, "profile_id", "")),
             )
+        record_action = CONVERSATION_RECORD_TARGETS.get((
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ))
+        if record_action is not None:
+            session.assert_current()
+            return normalize_conversation_record(
+                record_action, payload, profile_id=str(getattr(session, "profile_id", "")),
+            )
         if not target.contribution_id.startswith("pack."):
             return dict(payload)
         if target.contract_id != "tobkiri.service.media.inspect.v1":
@@ -255,6 +270,10 @@ class DefaultspackHTTPPresentation:
             return present_conversation_list(result)
         if binding.presentation == "conversation_created":
             return present_conversation_created(result)
+        if binding.presentation == "conversation_record":
+            return present_conversation_record(result)
+        if binding.presentation == "conversation_deleted":
+            return present_conversation_deleted(result)
         if binding.presentation != "dynamic_pack_catalog":
             return dict(result)
         capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))

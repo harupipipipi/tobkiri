@@ -78,6 +78,39 @@
       }]
     },
     {
+      "method": "GET", "path": "/api/chat/conversation", "presentation": "conversation_record",
+      "targets": [{
+        "contribution_id": "defaults.conversations.get",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-resource",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "allowed_payload_keys": ["conversation_id"]
+      }]
+    },
+    {
+      "method": "PUT", "path": "/api/chat/conversation", "presentation": "conversation_record",
+      "targets": [{
+        "contribution_id": "defaults.conversations.update",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": ["conversation_id", "updates", "expected_conversation_revision"]
+      }]
+    },
+    {
+      "method": "DELETE", "path": "/api/chat/conversation", "presentation": "conversation_deleted",
+      "targets": [{
+        "contribution_id": "defaults.conversations.delete",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": ["conversation_id", "expected_conversation_revision"]
+      }]
+    },
+    {
       "method": "GET",
       "path": "/api/home/dashboard",
       "presentation": "broker_result",

@@ -31,7 +31,7 @@
   "artifacts": [
     {
       "path": "defaultspack/frontend_contract_map.v4.json",
-      "digest": "sha256:c6fc21e4d3b721a4d7293f1f93004cf7821521818541c58732bd276e23484f47",
+      "digest": "sha256:fdcdd6bcbfcad971c9f4eacd9f8d53f3d315998c4bfbba72512b0eb1ec327133",
       "kind": "asset",
       "platform": "all"
     }
@@ -40,15 +40,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-    "source_digest": "sha256:17551e450f775b1042d1ca9cda9f0e97ce1d868d7e71d0ae3dd1dfddaa4394c3",
+    "source_digest": "sha256:187aca4a2693071f559e3890a16147dc2a7d836f9d4d2ec7bacd393afbca8ae3",
     "repository_commit": "working-tree",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:ffb34b537be25469e3220ec1523dba22415170b759e25e23f76d3defe47a572c",
+    "content_root_digest": "sha256:4f9f9825e4f6edf7b591fe66d5c6e702d065a9219501cb5a2ef111b01408c656",
     "generator": "defaultspack-v4-core",
     "generator_version": "2.0.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
-    "input_inventory_digest": "sha256:b8930428cab853d9aa982eff62b2ba5de5d5b66ef8fa528ad797eb0cf685974c",
+    "input_inventory_digest": "sha256:9e2c7419f7e2c31a9bef098a315b6f596269d3780bf00c964dd61e56a5c82644",
     "normative": true,
     "evidence": [
       {
@@ -59,7 +59,7 @@
       {
         "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:17551e450f775b1042d1ca9cda9f0e97ce1d868d7e71d0ae3dd1dfddaa4394c3"
+        "digest": "sha256:187aca4a2693071f559e3890a16147dc2a7d836f9d4d2ec7bacd393afbca8ae3"
       }
     ]
   },
@@ -103,8 +103,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:bd5d38489b7c6744385f0dffd4c5b71ce7be5c4a0583dfb44dd5829f08c6341b",
-    "artifact_set_digest": "sha256:e64881d004312b84e805ceb239df071c1c371a76f249cbcb5a70764f81712e34",
+    "source_identity": "sha256:d476018d4d9702b9b8b9c92e967d03076bb578d2f5bd6887ff2affe22e3c3ddb",
+    "artifact_set_digest": "sha256:1ca469da81fcd5b1275145a948919738893e74c05838e0517c19247d69ab9a29",
     "contract_catalog_digest": "sha256:0df46117366f419dbad8685b74340a655d45e46e71fc5a0c1eb30c9fce00f614"
   }
 }

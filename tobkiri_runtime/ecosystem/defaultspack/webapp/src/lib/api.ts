@@ -1455,6 +1455,7 @@ export type ConversationSteerResponse =
 
 export type Conversation = {
   id: string;
+  conversation_revision?: number;
   title: string;
   created_at: number;
   updated_at: number;
@@ -3324,7 +3325,7 @@ export const api = {
   },
 
   getConversation(id: string) {
-    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`));
+    return request<Conversation>(withQuery(defaultspackContractRoute("api/chat/conversation"), { conversation_id: id }));
   },
 
   async createConversation(options?: {
@@ -3356,16 +3357,23 @@ export const api = {
     });
   },
 
-  updateConversation(id: string, updates: Partial<Conversation>) {
-    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
+  async updateConversation(id: string, updates: Partial<Conversation>, revision: number | undefined) {
+    if (!Number.isSafeInteger(revision) || (revision ?? 0) < 1) {
+      throw new Error("Refresh the conversation before updating it: revision is unavailable");
+    }
+    return request<Conversation>(defaultspackContractRoute("api/chat/conversation"), {
       method: "PUT",
-      body: JSON.stringify({ updates }),
+      body: JSON.stringify({ conversation_id: id, updates, expected_conversation_revision: revision }),
     });
   },
 
-  deleteConversation(id: string) {
-    return request<{ deleted: boolean }>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
+  async deleteConversation(id: string, revision: number | undefined) {
+    if (!Number.isSafeInteger(revision) || (revision ?? 0) < 1) {
+      throw new Error("Refresh the conversation before deleting it: revision is unavailable");
+    }
+    return request<{ deleted: boolean }>(defaultspackContractRoute("api/chat/conversation"), {
       method: "DELETE",
+      body: JSON.stringify({ conversation_id: id, expected_conversation_revision: revision }),
     });
   },
 
