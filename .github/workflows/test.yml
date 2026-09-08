@@ -246,6 +246,7 @@ jobs:
             tests/test_macos_vz_supervisor.py \
             tests/test_packvm_guest_bridge_runner.py \
             tests/test_saved_guest_dispatch.py \
+            tests/test_saved_host_exchange.py \
             tests/test_saved_backend_binding.py \
             tests/test_saved_bridge_callbacks.py \
             tests/test_saved_turn_coordinator.py \

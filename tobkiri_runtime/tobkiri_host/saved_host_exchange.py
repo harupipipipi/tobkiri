@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from tobkiri_protocol.canonical import canonical_json
+from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 
 from .continuation_chain import ChainIdentity, ContinuationChains, ResumePermit
 from .continuation_envelope import (
@@ -34,6 +34,9 @@ class SavedHostExchange:
         self._permit: ResumePermit | None = None
         self._pending: ValidatedContinuation | None = None
         self._failed = False
+        self._user_revision: int | None = None
+        self._ai_output_digest: str | None = None
+        self._completion_digest: str | None = None
 
     def accept(self, wrapper: Mapping[str, Any]) -> ValidatedContinuation:
         """Validate and retain before dispatching even the first owner read."""
@@ -52,6 +55,18 @@ class SavedHostExchange:
         )
         if frame.digest != wrapper["bridge_request_digest"]:
             raise ValueError("saved Host guest frame digest is invalid")
+        if self._hop == 3:
+            payload = strict_loads(frame.payload)
+            message = payload.get("message")
+            if (
+                self._ai_output_digest is None
+                or self._user_revision is None
+                or type(payload.get("expected_conversation_revision")) is not int
+                or payload["expected_conversation_revision"] != self._user_revision
+                or not isinstance(message, dict)
+                or canonical_digest(message.get("content")) != self._ai_output_digest
+            ):
+                raise ValueError("saved Host assistant differs from acknowledged execution")
         if self._permit is None:
             self._chains.start(self.identity, frame=frame.frame, nonce=frame.nonce)
         else:
@@ -70,6 +85,38 @@ class SavedHostExchange:
             "request_digest": frame.digest, "outcome": dict(outcome),
         }
         checked = validate_continuation_result(canonical_json(value), request=frame)
+        # Retain only fingerprints/revision from Host results, not guest state
+        # or another transcript. Compute before exposing results to the guest.
+        owned = strict_loads(checked.frame)["outcome"].get("value", {})
+        if self._hop == 2:
+            output = owned.get("output")
+            if (
+                owned.get("status") == "ok" and not owned.get("tool_intents")
+                and isinstance(output, (str, list)) and output
+            ):
+                self._ai_output_digest = canonical_digest(output)
+        elif self._hop in (1, 3):
+            payload = strict_loads(frame.payload)
+            message = owned.get("message")
+            revision = owned.get("conversation_revision")
+            expected = payload.get("message")
+            if (
+                owned.get("action") == "message_appended"
+                and isinstance(message, dict) and isinstance(expected, dict)
+                and all(message.get(key) == item for key, item in expected.items())
+                and type(revision) is int
+                and type(payload.get("expected_conversation_revision")) is int
+                and revision > payload["expected_conversation_revision"]
+            ):
+                if self._hop == 1:
+                    self._user_revision = revision
+                else:
+                    self._completion_digest = canonical_digest({
+                        "status": "ok", "turn_id": message["metadata"]["turn_id"],
+                        "conversation_id": payload["conversation_id"],
+                        "conversation_revision": revision,
+                        "user_message_id": message["parent_id"], "message": message,
+                    })
         self._failed = outcome.get("status") == "error"
         self._permit = self._chains.take(self.identity, nonce=frame.nonce, result=checked.frame)
         self._previous = checked.digest
@@ -86,6 +133,11 @@ class SavedHostExchange:
             outcome.get("status") == "ok" and (self._failed or self._hop != len(TARGETS))
         ):
             raise ValueError("saved Host success requires all four actions")
+        if outcome.get("status") == "ok" and (
+            self._completion_digest is None
+            or canonical_digest(dict(outcome)) != self._completion_digest
+        ):
+            raise ValueError("saved Host terminal result differs from owner acknowledgement")
         self._chains.finish(self._permit, result=canonical_json(dict(outcome)))
         self._permit = None
 
