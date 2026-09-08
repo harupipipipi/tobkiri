@@ -248,6 +248,13 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/runtime/saved_conversation.py",
+      "type": "regular-file",
+      "size": 12634,
+      "sha256": "4cc584c4a1d86298caa42413db91409f04f9ca60b5e55d3ea505d56f235fe376",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/schemas/command-protocol-v1.schema.json",
       "type": "regular-file",
       "size": 13690,
