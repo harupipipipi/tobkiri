@@ -29,7 +29,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Callable, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 
 
@@ -210,6 +210,7 @@ def main() -> int:
 
 def _invoke(
     request: dict[str, object], *, guest_deadline: float | None = None,
+    execution_guard: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """Execute one digest-pinned implementation through the finite PackVM ABI."""
 
@@ -256,6 +257,18 @@ def _invoke(
         raise ValueError("PackVM invocation cancel token is invalid")
     if os.geteuid() != 0:
         raise ValueError("PackVM invocation requires the root-owned supervisor")
+    return _execute_invocation_step(
+        request, request["payload"], guest_deadline, execution_guard=execution_guard,
+    )
+
+
+def _execute_invocation_step(
+    request: dict[str, object], payload: dict[str, object], guest_deadline: float,
+    *, execution_guard: Callable[[], None] | None = None,
+) -> dict[str, object]:
+    """Verify the sealed artifact again and execute one fresh sandbox child."""
+    if os.geteuid() != 0:
+        raise ValueError("PackVM invocation requires the root-owned supervisor")
     identity = _verify_invocation_artifact(request)
     artifact_digest = _digest(request["artifact_digest"], "artifact_digest")
     materialization_digest = _digest(request["materialization_digest"], "materialization_digest")
@@ -270,16 +283,24 @@ def _invoke(
     child_request: dict[str, object] = {
         "contract_id": _identifier(request["contract_id"], "contract_id"),
         "operation_id": _identifier(request["operation_id"], "operation_id"),
-        "payload": request["payload"],
+        "payload": payload,
     }
     _remaining_guest_budget(guest_deadline)
+    if execution_guard is not None:
+        execution_guard()
     process = _spawn_staged_implementation(target, implementation)
     try:
-        _register_request(request, process.pid, cancel_token)
+        _register_request(request, process.pid, str(request["cancel_token"]))
     except BaseException:
         _stop_staged_implementation(process)
         raise
     try:
+        if execution_guard is not None:
+            try:
+                execution_guard()
+            except BaseException:
+                _stop_staged_implementation(process)
+                raise
         result = _communicate_staged_implementation(
             process, child_request, guest_deadline=guest_deadline,
         )
@@ -840,6 +861,9 @@ class _PendingBridgeLedger:
     """Fence replayed Host bridge results across fresh Pack child processes."""
 
     def __init__(self) -> None:
+        from tobkiri_host.saved_guest_dispatch import SavedGuestTurns
+
+        self.saved = SavedGuestTurns(clock=lambda: time.monotonic())
         self._pending: dict[tuple[str, str], _PendingBridge] = {}
         self._seen_challenges: OrderedDict[str, None] = OrderedDict()
         self._cancelled: OrderedDict[tuple[str, str], float] = OrderedDict()
@@ -1250,6 +1274,21 @@ def _dispatch_agent_request(
         ):
             raise ValueError("PackVM guest agent invocation binding is invalid")
         guest_deadline = _local_guest_deadline(None)
+        if payload.get("contract_id") == "conversation.saved-turn.v1":
+            def initial_step(
+                captured: dict[str, Any], arguments: dict[str, Any], deadline: float,
+                guard: Callable[[], None],
+            ) -> dict[str, Any]:
+                result = _invoke(captured, guest_deadline=deadline, execution_guard=guard)
+                return _agent_invoke_outcome(result, config)
+
+            captured_request = dict(payload)
+            captured_request["deadline_monotonic"] = _normalise_bridge_deadline(
+                payload["deadline_monotonic"],
+            )
+            return _agent_success(base, ledger.saved.begin(
+                captured_request, _bridge_canonical_digest(config.binding_digests), initial_step,
+            ))
         result = _invoke(dict(payload), guest_deadline=guest_deadline)
         _remaining_guest_budget(guest_deadline)
         bridge = result.get("payload")
@@ -1289,6 +1328,22 @@ def _dispatch_agent_request(
         return _agent_success(base, _agent_invoke_outcome(result, config))
     if operation == "bridge_result":
         host_bridge_result = base["host_bridge_result"]
+        if ledger.saved.contains(config.domain_id, request_id):
+            if not isinstance(host_bridge_result, dict):
+                raise ValueError("saved guest Host result must be an object")
+
+            def resumed_step(
+                captured: dict[str, Any], arguments: dict[str, Any], deadline: float,
+                guard: Callable[[], None],
+            ) -> dict[str, Any]:
+                result = _execute_invocation_step(
+                    captured, arguments, deadline, execution_guard=guard,
+                )
+                return _agent_invoke_outcome(result, config)
+
+            return _agent_success(base, ledger.saved.resume(
+                config.domain_id, request_id, host_bridge_result, resumed_step,
+            ))
         pending = ledger.consume(domain_id=config.domain_id, request_id=request_id)
         bridge_result = _validate_host_bridge_result(
             host_bridge_result,
@@ -1321,6 +1376,7 @@ def _dispatch_agent_request(
             },
         )
     if operation == "cancel":
+        saved_cancelled = ledger.saved.cancel(config.domain_id, request_id)
         cancelled = ledger.cancel(domain_id=config.domain_id, request_id=request_id)
         signals = _cancel_agent_execution(config.domain_id, request_id)
         return _agent_success(
@@ -1333,7 +1389,7 @@ def _dispatch_agent_request(
                 "target_domain": config.domain_id,
                 "state": "cancelled",
                 "signals": signals,
-                "pending_bridge_cancelled": cancelled,
+                "pending_bridge_cancelled": cancelled or saved_cancelled,
             },
         )
     raise ValueError("PackVM guest agent operation is invalid")
@@ -1683,7 +1739,16 @@ def _execute_staged_module(path: Path) -> int:
         result = operation(request["operation_id"], request["payload"])
         if not isinstance(result, dict):
             raise ValueError("PackVM implementation result must be an object")
-        host_result = _host_invoke_result(result)
+        if (
+            request["contract_id"] == "conversation.saved-turn.v1"
+            and request["operation_id"] == "saved_complete"
+            and result.get("kind") == "tobkiri.packvm.continuation.intent.v2"
+        ):
+            # Untrusted intent only. The guest root seals and validates the fixed
+            # target/hop before emitting any signed Host request.
+            host_result = result
+        else:
+            host_result = _host_invoke_result(result)
         encoded = json.dumps(
             host_result,
             sort_keys=True,

@@ -20,6 +20,7 @@ _SOURCES = {
     "tobkiri_host/continuation_chain.py": "tobkiri_host/continuation_chain.py",
     "tobkiri_host/continuation_envelope.py": "tobkiri_host/continuation_envelope.py",
     "tobkiri_host/continuation_session.py": "tobkiri_host/continuation_session.py",
+    "tobkiri_host/saved_guest_dispatch.py": "tobkiri_host/saved_guest_dispatch.py",
     "tobkiri_protocol/canonical.py": "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py": "tobkiri_protocol/errors.py",
     "tobkiri_protocol/saved_conversation.py": "tobkiri_protocol/saved_conversation.py",

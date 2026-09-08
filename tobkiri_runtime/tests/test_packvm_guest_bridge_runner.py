@@ -25,6 +25,82 @@ class _FakeSigner:
         return hashlib.sha512(payload).digest()
 
 
+def _saved_host_result(pending: dict, outcome: dict) -> dict:
+    wrapper = dict(pending["host_bridge_request"])
+    wrapper["kind"] = "tobkiri.packvm.bridge.host-result.v2"
+    wrapper.pop("deadline_monotonic")
+    frame = wrapper.pop("bridge_request")
+    wrapper["bridge_result"] = {
+        "kind": "tobkiri.packvm.continuation.result.v2", "version": 2,
+        "request_digest": _digest(frame), "outcome": outcome,
+    }
+    return wrapper
+
+
+def test_saved_agent_four_signed_exchanges_use_real_owner_and_one_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Socket/signing/ledger/owner are real; sandbox and AI are explicit adapters."""
+    from ecosystem.defaultspack.runtime import saved_conversation as saved
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.saved_guest_dispatch import TARGETS
+
+    assert TARGETS == saved.TARGETS
+    config = _config()
+    ledger = runner._PendingBridgeLedger()
+    signer = _FakeSigner()
+    owner = ConversationStore("defaults", user_data_root=tmp_path)
+    owner.create({"id": "conversation", "model_reference": "model"}, expected_revision=0)
+    request = _invoke_payload("saved", config)
+    request.update(contract_id="conversation.saved-turn.v1", operation_id="saved_complete",
+                   payload={"request": {"turn_id": "turn", "conversation_id": "conversation",
+                                        "conversation_revision": 1, "content": "Hello"}})
+    steps = []
+
+    def execute(captured: dict, arguments: dict, deadline: float, **kwargs: Any) -> dict:
+        kwargs["execution_guard"]()
+        steps.append((arguments, deadline))
+        value = saved.tobkiri_packvm_invoke("saved_complete", arguments)
+        if value.get("kind") != "tobkiri.packvm.continuation.intent.v2":
+            value = runner._host_invoke_result(value)
+        return {"ok": True, "protocol": runner.PROTOCOL,
+                "guest_artifact_identity": _guest_artifact_identity(config), "payload": value}
+
+    def initial(captured: dict, *, guest_deadline: float, **kwargs: Any) -> dict:
+        return execute(captured, captured["payload"], guest_deadline, **kwargs)
+
+    monkeypatch.setattr(runner, "_invoke", initial)
+    monkeypatch.setattr(runner, "_execute_invocation_step", execute)
+    response = _roundtrip(_envelope(config, "invoke", "saved", "0" * 64, payload=request),
+                          config, ledger, signer)
+    for hop in range(4):
+        assert response["success"] is True
+        frame = response["data"]["host_bridge_request"]["bridge_request"]
+        assert frame["hop"] == hop
+        assert tuple(frame["target"].values()) == TARGETS[hop]
+        payload = frame["payload"]
+        if hop == 0:
+            value = {"conversation": owner.get("conversation")}
+        elif hop == 2:
+            value = {"status": "ok", "output": "Hi"}
+        else:
+            value = owner.append_message("conversation", payload["message"],
+                                         expected_conversation_revision=payload["expected_conversation_revision"])
+        result = _saved_host_result(response["data"], {"status": "ok", "value": value})
+        response = _roundtrip(_envelope(config, "bridge_result", "saved", str(hop + 1) * 64,
+                                        host_bridge_result=result), config, ledger, signer)
+    assert response["success"] is True
+    assert response["data"]["kind"] == runner.PACKVM_INVOKE_RESULT_KIND
+    assert len(steps) == 5
+    assert len({deadline for _, deadline in steps}) == 1
+    assert all(set(arguments) == {"state", "outcome"} for arguments, _ in steps[1:])
+    assert len(signer.payloads) == 5
+    replay = _roundtrip(_envelope(config, "bridge_result", "saved", "f" * 64,
+                                  host_bridge_result=result), config, ledger, signer)
+    assert replay["success"] is False
+    assert len(steps) == 5
+
+
 @pytest.mark.parametrize("payload", [
     {"state": {}, "outcome": {}},
     {"request": {"turn_id": "turn", "conversation_id": "conversation",

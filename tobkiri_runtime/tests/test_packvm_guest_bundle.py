@@ -24,6 +24,7 @@ MEMBERS = {
     "tobkiri_host/continuation_chain.py",
     "tobkiri_host/continuation_envelope.py",
     "tobkiri_host/continuation_session.py",
+    "tobkiri_host/saved_guest_dispatch.py",
     "tobkiri_protocol/__init__.py",
     "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py",
