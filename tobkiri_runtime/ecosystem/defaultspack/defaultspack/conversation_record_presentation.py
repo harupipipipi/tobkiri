@@ -97,7 +97,20 @@ def present_conversation_record(result: Mapping[str, object]) -> dict[str, objec
     record = result.get("conversation")
     if not isinstance(record, Mapping) or not isinstance(record.get("id"), str):
         raise ValueError("conversation owner did not return a record")
-    return {**record, "model": record.get("model_reference", "")}
+    messages = record.get("messages")
+    if not isinstance(messages, list) or any(
+        not isinstance(message, Mapping) for message in messages
+    ):
+        raise ValueError("conversation owner did not return messages")
+    # Messages are nested owner records, not independently routed resources.
+    # Bind the UI alias to the enclosing conversation, never message metadata.
+    return {
+        **record,
+        "model": record.get("model_reference", ""),
+        "messages": [
+            {**message, "conversation_id": record["id"]} for message in messages
+        ],
+    }
 
 
 def present_conversation_deleted(result: Mapping[str, object]) -> dict[str, object]:

@@ -5,7 +5,24 @@ import pytest
 from ecosystem.defaultspack.defaultspack.conversation_record_presentation import (
     normalize_conversation_record,
     present_conversation_deleted,
+    present_conversation_record,
 )
+
+
+def test_message_ui_identity_comes_from_enclosing_owner_record() -> None:
+    """Bind the UI alias without rewriting owner messages or turn metadata."""
+    message = {
+        "id": "message-1", "content": "Hi", "conversation_id": "wrong",
+        "metadata": {"turn_id": "turn-1"},
+    }
+    record = {"id": "conversation-1", "model_reference": "model-1", "messages": [message]}
+    shown = present_conversation_record({"conversation": record})
+    assert shown["model"] == "model-1"
+    assert shown["messages"] == [{**message, "conversation_id": "conversation-1"}]
+    assert message["conversation_id"] == "wrong"
+    for invalid in (None, {}, ["not a message"]):
+        with pytest.raises(ValueError):
+            present_conversation_record({"conversation": {**record, "messages": invalid}})
 
 
 @pytest.mark.parametrize(

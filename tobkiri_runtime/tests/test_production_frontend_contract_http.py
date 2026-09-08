@@ -490,6 +490,21 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert repeated["data"] == {"status": "existing", "turn": payload["data"]["turn"]}
         assert len(ai_calls) == 1
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]
+        status, snapshot, _ = _request(
+            server, "GET",
+            _contract("GET", "/api/chat/conversation") + "?conversation_id=conversation-1",
+            headers=headers,
+        )
+        assert status == 200, snapshot
+        assert snapshot["data"]["conversation_revision"] == 3
+        assert [message["id"] for message in snapshot["data"]["messages"]] == [
+            reference["user_message_id"], reference["assistant_message_id"],
+        ]
+        assert all(
+            message["conversation_id"] == "conversation-1"
+            and message["metadata"]["turn_id"] == "turn-1"
+            for message in snapshot["data"]["messages"]
+        )
     finally:
         servers.close()
 
