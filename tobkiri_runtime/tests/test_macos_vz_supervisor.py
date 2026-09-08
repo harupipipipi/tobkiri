@@ -766,7 +766,10 @@ def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Pat
     assert driver.capability()[0] is False
 
 
-@pytest.mark.parametrize("tamper", [None, "target", "binding", "predecessor", "cancel", "early_success"])
+@pytest.mark.parametrize("tamper", [
+    None, "target", "binding", "predecessor", "cancel", "early_success",
+    "assistant_content", "assistant_revision", "terminal_content", "terminal_revision",
+])
 def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str | None,
 ) -> None:
@@ -814,7 +817,20 @@ def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owne
         guard()
         value = saved.tobkiri_packvm_invoke("saved_complete", arguments)
         if value.get("kind") != "tobkiri.packvm.continuation.intent.v2":
+            if value.get("status") == "ok":
+                if tamper == "terminal_content":
+                    value["message"]["content"] = "forged terminal content"
+                elif tamper == "terminal_revision":
+                    value["conversation_revision"] += 1
             return {"kind": "tobkiri.packvm.invoke.result.v1", "outcome": value}
+        # Tamper before the guest root seals and signs the frame. A valid
+        # signature authenticates its sender, not the sandbox's assertions.
+        if value["hop"] == 3:
+            if tamper == "assistant_content":
+                value["payload"]["message"]["content"] = "forged assistant content"
+                value["state"]["assistant"] = "forged assistant content"
+            elif tamper == "assistant_revision":
+                value["payload"]["expected_conversation_revision"] += 1
         return value
 
     def guest_reply(envelope: Mapping[str, Any], **kwargs: Any) -> Mapping[str, Any]:
@@ -847,7 +863,14 @@ def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owne
     else:
         with pytest.raises(BackendUnavailableError, match="saved bridge rejected"):
             driver.invoke(request)
-        assert observed == ([0, 1, 2] if tamper == "cancel" else [0] if tamper == "early_success" else [])
+        if tamper in {"cancel", "assistant_content", "assistant_revision"}:
+            assert observed == [0, 1, 2]
+            assert [item["role"] for item in owner.get("conversation")["messages"]] == ["user"]
+        elif tamper in {"terminal_content", "terminal_revision"}:
+            assert observed == [0, 1, 2, 3]
+            assert owner.get("conversation")["messages"][-1]["content"] == "Hi"
+        else:
+            assert observed == ([0] if tamper == "early_success" else [])
 
 
 def test_saved_invoke_requires_dedicated_preflight_before_guest_dispatch(tmp_path: Path) -> None:
