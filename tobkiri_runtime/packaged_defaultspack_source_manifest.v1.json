@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 847407,
-      "sha256": "58376cf35f519ee5b8d9dca98048f61659da9e8ac37d6f8882557e52f2eda3a2",
+      "sha256": "f6027b37d03f0a9b8e10947faa745b303eac26f76703ad425e36cc10af4d155d",
       "executable": false
     },
     {
@@ -2511,8 +2511,8 @@
     {
       "path": "scripts/quality/scan_command_protocol.py",
       "type": "regular-file",
-      "size": 4986,
-      "sha256": "f73c3dee150cca4fd15ea64984e9c90a7331f1779ec408d6ee4f2d6a197f163f",
+      "size": 5240,
+      "sha256": "e00e907e79028888ae7cb0bc1bdb99998ee99bd0e8e49753057b065d86e8d51d",
       "executable": false
     },
     {

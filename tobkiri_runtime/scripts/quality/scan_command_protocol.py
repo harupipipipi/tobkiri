@@ -38,6 +38,10 @@ class _PackagedCommandRegistry(CommandProtocolRegistry):
     def _registered_settings_commands(self) -> list[dict[str, Any]]:
         return []
 
+    def query_states(self, refs: list[str] | None = None) -> dict[str, Any]:
+        """Build inventories contain declarations, not live user-state snapshots."""
+        return {"states": []}
+
 
 def scan() -> dict[str, Any]:
     """Scan packaged commands independently of the invoking user's settings."""
