@@ -12,9 +12,9 @@ import {
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
   assert.equal(result.rawDigest, "sha256:6f69830ebc2f583294948915752774c790b577f79041f7241f7ade9d76d55069");
-  assert.equal(result.runtimeMap.routes.length, 37);
+  assert.equal(result.runtimeMap.routes.length, 38);
   for (const method of ["PUT", "DELETE"]) {
-    const route = result.runtimeMap.routes.find((item) => item.method === method);
+    const route = result.runtimeMap.routes.find((item) => item.method === method && item.path === "/api/chat/conversation");
     assert.equal(route?.path, "/api/chat/conversation");
     assert.equal(route?.targets[0].contract_id, "tobkiri.action.conversation.manage.v1");
     assert.ok(route?.targets[0].allowed_payload_keys.includes("expected_conversation_revision"));
@@ -28,6 +28,17 @@ test("the checked-in generated map is deterministic and current", async () => {
     assert.equal(read?.targets.length, 1);
     assert.deepEqual(read?.targets[0].allowed_payload_keys, path === "/api/ui/settings" ? ["full"] : []);
   }
+  const preferences = result.runtimeMap.routes.find(
+    (route) => route.method === "PUT" && route.path === "/api/ui/settings",
+  );
+  assert.deepEqual(preferences?.targets, [{
+    contribution_id: "defaults.ui.preferences.write",
+    contract_id: "tobkiri.action.ui.preferences.v1",
+    operation_id: "tobkiri_ui_settings_pack.preferences-write",
+    provider_id: "tobkiri.ui.preferences.write",
+    function_id: "tobkiri.ui.preferences.write",
+    allowed_payload_keys: ["changes", "expected_revision"],
+  }]);
   const capability = result.runtimeMap.routes.find(
     (route) => route.method === "POST" && route.path === "/api/ui/capability/invoke",
   );
