@@ -119,6 +119,24 @@ is not yet a registered operation: capture must supply write policy and field
 value validation independently of the request. The public read allowlist must
 not be reused as an implicit grant to mutate every readable field.
 
+The canonical catalog now registers `tobkiri.ui.preferences.write` through
+`tobkiri.action.ui.preferences.v1`, operation
+`tobkiri_ui_settings_pack.preferences-write`, requiring `ui.preferences.write`.
+Its captured Host factory uses a separate, finite display-preference write
+policy, exact scalar types, bounded strings and an explicit expected document
+revision. It rejects request-supplied policy, paths and approval flags, and does
+not include models, tools, integrations or credential changes. The read Function
+cannot be used to capture this write contribution. Its input/output schemas are
+closed and artifact-pinned independently of guest presentation definitions.
+
+This registration does not establish the normal Defaults caller edge, HTTP/UI
+save flow, cancellation while waiting on the legacy store lock, or live owner
+cutover. The current UI expects a full settings projection after saving, while
+this write acknowledgement deliberately returns only changed fields; integration
+must reconcile that difference and propagate revisions, not expose the private
+document to satisfy the old response shape. Settings persistence still has the
+documented cross-Pack import until the actual storage owner migration finishes.
+
 UI recovery now calls `read(preserve_corrupt=True)`. Unrecoverable bytes are
 preserved by the store under the same transaction lock, with a full-digest
 filename and the original permissions. Existing differing backup bytes are not
