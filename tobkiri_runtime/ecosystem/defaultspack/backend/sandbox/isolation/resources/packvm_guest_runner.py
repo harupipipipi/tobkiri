@@ -1707,6 +1707,12 @@ def _sandbox_argv(target: Path, implementation: Path) -> tuple[str, ...]:
     if bwrap is None or prlimit is None:
         raise ValueError("PackVM guest requires bubblewrap and prlimit")
     runner = Path(__file__).resolve()
+    if runner.name == "__main__.py":
+        # A packaged zipapp reports an internal __main__.py path. Bind the
+        # whole authenticated archive so the fresh isolated child can start.
+        runner = runner.parent
+        if not runner.is_file():
+            raise ValueError("PackVM guest runner archive is unavailable")
     relative = implementation.relative_to(target).as_posix()
     command = [
         prlimit,
