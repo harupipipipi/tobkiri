@@ -4,13 +4,14 @@
 
 import json
 from collections.abc import Mapping
-
-"""Pure settings-control definitions shared by legacy and canonical presentation."""
-
-
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
+import re
+import unicodedata
+
+
+
 
 
 @dataclass(frozen=True)
@@ -1195,13 +1196,8 @@ class SettingsSections:
             )
         return options or [{"value": "", "label": "No templates"}]
 
-"""Pure Command Protocol presentation shared by canonical and legacy readers."""
 
 
-import re
-import unicodedata
-from copy import deepcopy
-from typing import Any
 
 PACK_ID = "defaultspack"
 

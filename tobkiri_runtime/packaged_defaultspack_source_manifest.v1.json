@@ -236,8 +236,8 @@
     {
       "path": "ecosystem/defaultspack/runtime/application_presentation.py",
       "type": "regular-file",
-      "size": 97586,
-      "sha256": "50dbc1c561bc5fc3efafc8394c27365a8b57a42986e6dba72354c4cb6cb91482",
+      "size": 97371,
+      "sha256": "da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
       "executable": false
     },
     {
@@ -2329,8 +2329,8 @@
     {
       "path": "scripts/generate_application_presentation.py",
       "type": "regular-file",
-      "size": 4979,
-      "sha256": "aef7cbf7280c8daa499ca91353c9336561921660b0822ff19b38db7a31dc4169",
+      "size": 6372,
+      "sha256": "b57a63268e16a546f3e8b5494400805f89a8ae992a2589e14efef4eafcf29f04",
       "executable": false
     },
     {
