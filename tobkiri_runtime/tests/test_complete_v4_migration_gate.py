@@ -2295,6 +2295,7 @@ def _rust_call_findings() -> list[dict[str, Any]]:
 def _launcher_safety_findings() -> list[dict[str, Any]]:
     """Scan Launcher calls and verify v3 projections against v4 artifacts."""
     findings = _rust_call_findings()
+    registry = _load_json(RUNTIME / "schemas" / "executable_sources.v1.json")["packs"]
     for path in sorted(ECOSYSTEM.glob("*/rumi.pack.v3.json")):
         value = _load_json(path)
         if not isinstance(value, Mapping):
@@ -2317,10 +2318,37 @@ def _launcher_safety_findings() -> list[dict[str, Any]]:
             candidate = RUNTIME.joinpath(*module.split(".")).with_suffix(".py") if module else None
             actual = _sha256(candidate) if candidate is not None and candidate.is_file() else ""
             declared = str(entry.get("artifact_hash") or "")
+            # All Functions may have migrated off the old entrypoint. Verify
+            # its explicit offline adapter provenance against the current
+            # Function; never treat an unpinned legacy module as executable.
+            adapted = any(
+                record["pack_id"] == pack_dir.name
+                and record["owner"] == pack_dir.name
+                and any(
+                    function.get("id") == function_id
+                    and function.get("implementation_digest") == record["implementation_digest"]
+                    and function.get("operations") == [op["operation_id"] for op in record["operations"]]
+                    for function in v4_functions
+                )
+                and any(
+                    source.get("kind") == "legacy-v3-entrypoint"
+                    and source.get("entrypoint_id") == entry.get("id")
+                    and source.get("module") == module
+                    and source.get("symbol") == entry.get("symbol")
+                    for source in record["source"]
+                )
+                and any(
+                    source.get("kind") == "explicit-implementation-adapter"
+                    and source.get("legacy_implementation_digest") == actual
+                    and module == "ecosystem." + pack_dir.name + "." + source["legacy_implementation_path"].removesuffix(".py").replace("/", ".")
+                    for source in record["source"]
+                )
+                for function_id, record in registry.items()
+            )
             if (
                 not actual
                 or declared != actual
-                or (v4_implementation_digests and actual not in v4_implementation_digests)
+                or (v4_implementation_digests and actual not in v4_implementation_digests and not adapted)
             ):
                 findings.append(
                     _finding(
@@ -3384,7 +3412,8 @@ def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
     statuses = Counter(
         _migration_status(path.name, path, proof) for path in _production_pack_dirs()
     )
-    assert statuses == {"semantically-reviewed": 41, "generated-draft": 100}
+    assert statuses == {"semantically-reviewed": 40, "generated-draft": 101}
+    assert proof["rumi_turn_runtime_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
 
 
@@ -3402,8 +3431,8 @@ def test_current_sha_evidence_is_red_while_pack_semantics_are_unproved() -> None
     assert report["pack_inventory"]["catalog_pack_directories"] == pack_count
     assert report["pack_inventory"]["v4_artifact_files"] == pack_count * len(PACK_ARTIFACTS)
     assert report["pack_inventory"]["migration_status_counts"] == {
-        "generated-draft": 100,
-        "semantically-reviewed": 41,
+        "generated-draft": 101,
+        "semantically-reviewed": 40,
     }
     assert report["gates"]["artifact_contracts"]["status"] == "GREEN"
     assert report["gates"]["declaration_disk_runtime"]["status"] == "GREEN"

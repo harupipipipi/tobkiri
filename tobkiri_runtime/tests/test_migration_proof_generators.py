@@ -349,11 +349,14 @@ def test_independent_proof_preserves_named_identity_and_transactional_receipt() 
         status: sum(entry["status"] == status for entry in proof["packs"].values())
         for status in ("semantically-reviewed", "generated-draft")
     }
-    assert statuses == {"semantically-reviewed": 41, "generated-draft": 100}
+    # Durable captured execution differs from the old in-process lifecycle;
+    # retain draft status until its new semantics have independent proof.
+    assert proof["packs"]["rumi_turn_runtime_pack"]["status"] == "generated-draft"
+    assert statuses == {"semantically-reviewed": 40, "generated-draft": 101}
     assert source["migration_status_counts"] == {
-        "generated-draft": 100,
+        "generated-draft": 101,
         "release-verified": 0,
-        "semantically-reviewed": 41,
+        "semantically-reviewed": 40,
     }
 
 
