@@ -53,6 +53,16 @@ predecessor from retained authenticated state, independently validate the fixed
 target sequence, and consume the result before resuming a fresh sandbox child.
 External callers must not be allowed to submit resume state.
 
+`continuation_envelope.seal_continuation_intent` now converts that exact intent
+shape into a validated request using independently supplied root identity, hop,
+target, nonce and predecessor. Extra application-supplied framing fields are
+rejected. The four-step owner test uses this implementation instead of creating
+request frames itself. This is not yet guest-root installation or dispatch.
+Both the v1 guest wrapper and the Host final-outcome validator now reject the
+reserved `tobkiri.packvm.*` namespace as terminal application data; an unsupported
+v2 intent cannot masquerade as a completed v1 invocation. The existing initial
+v1 bridge request still follows its dedicated validation path.
+
 The computation now reads the exact displayed revision, derives stable message
 IDs from conversation/turn/role, follows the selected message ancestry, preserves
 the owner's model reference, checks exact append acknowledgements, and uses
