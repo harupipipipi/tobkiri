@@ -55,11 +55,16 @@ import stat
 import struct
 import subprocess
 import threading
+import time
 from typing import Any, Callable, Mapping, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from tobkiri_protocol.canonical import canonical_digest, canonical_json
+from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
+from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+
+from .continuation_chain import ChainIdentity, ContinuationChains
+from .saved_host_exchange import SavedHostExchange
 
 from .artifact_materialization import MaterializedPackArtifact
 from .effects import ProviderOutcome
@@ -517,6 +522,8 @@ class MacOSVZSupervisorDriver:
         self._guest_nonce_ledger: dict[tuple[str, str], tuple[str, str]] = {}
         self._max_nonce_ledger_entries = max_nonce_ledger_entries
         self._capability_bridge: CapabilityBridge | None = None
+        self._saved_bridge: tuple[CapabilityBridge, Callable[[object], None]] | None = None
+        self._saved_chains = ContinuationChains()
         self._compromised_reason: str | None = None
         self._lock = threading.RLock()
 
@@ -558,6 +565,23 @@ class MacOSVZSupervisorDriver:
             if self._capability_bridge is not None and self._capability_bridge is not callback:
                 raise BackendUnavailableError("macOS VZ capability bridge is already bound")
             self._capability_bridge = callback
+
+    def bind_saved_capability_bridge(
+        self, callback: CapabilityBridge, preflight: Callable[[object], None],
+    ) -> None:
+        """Bind captured v2 Broker dispatch/readiness before materializing domains.
+
+        Preflight must verify all selected targets and Provider readiness before
+        execution. Neither callback is supplied by a guest or invocation payload.
+        """
+        if not callable(callback) or not callable(preflight):
+            raise BackendUnavailableError("macOS VZ saved bridge is invalid")
+        with self._lock:
+            if self._domains or self._active_requests:
+                raise BackendUnavailableError("macOS VZ saved bridge cannot change after launch")
+            if self._saved_bridge is not None and self._saved_bridge != (callback, preflight):
+                raise BackendUnavailableError("macOS VZ saved bridge is already bound")
+            self._saved_bridge = (callback, preflight)
 
     def launch(self, request: IsolationLaunch) -> PlatformAttestation:
         """Launch one exact, fully pinned PackVM domain."""
@@ -704,6 +728,15 @@ class MacOSVZSupervisorDriver:
         """Invoke only within an authenticated, Host-owned active domain."""
 
         domain_id, request_id, request_digest = _request_identity(request)
+        saved = getattr(request, "contract_id", None) == "conversation.saved-turn.v1"
+        if saved:
+            if (getattr(request, "contract_version", None) != "1.0.0"
+                    or getattr(request, "operation_id", None) != "saved_complete"):
+                raise BackendUnavailableError("macOS VZ saved operation is invalid")
+            saved_payload = getattr(request, "payload", None)
+            if not isinstance(saved_payload, Mapping):
+                raise BackendUnavailableError("macOS VZ saved input is invalid")
+            validate_saved_conversation_input(saved_payload)
         cancellation_requested = getattr(request, "cancellation_requested", threading.Event())
         if type(cancellation_requested) is not threading.Event:
             raise BackendUnavailableError("macOS VZ cancellation signal is invalid")
@@ -725,6 +758,17 @@ class MacOSVZSupervisorDriver:
             )
             self._active_requests[request_id] = active
         try:
+            if saved:
+                with self._lock:
+                    saved_bridge = self._saved_bridge
+                if saved_bridge is None:
+                    raise BackendUnavailableError("macOS VZ saved Host bridge is unavailable")
+                self._require_saved_budget(request, active)
+                try:
+                    saved_bridge[1](request)
+                except Exception as exc:
+                    raise BackendUnavailableError("macOS VZ saved preflight rejected request") from exc
+                self._require_saved_budget(request, active)
             response = self._exchange(
                 self._invoke_envelope(
                     request,
@@ -756,6 +800,10 @@ class MacOSVZSupervisorDriver:
                 and guest_data.get("state") == "pending"
                 and isinstance(guest_data.get("host_bridge_request"), Mapping)
             ):
+                if saved:
+                    return self._complete_saved_bridge(
+                        request, domain_id, session, dict(guest_data["host_bridge_request"]), active,
+                    )
                 return self._complete_bridge(
                     request,
                     domain_id,
@@ -763,6 +811,8 @@ class MacOSVZSupervisorDriver:
                     dict(guest_data["host_bridge_request"]),
                     active,
                 )
+            if saved:
+                raise BackendUnavailableError("macOS VZ saved turn omitted its initial action")
             return ProviderOutcome(_validated_invoke_outcome(guest_data))
         finally:
             with self._lock:
@@ -892,6 +942,72 @@ class MacOSVZSupervisorDriver:
             ):
                 if challenge_domain_id == domain_id:
                     self._guest_challenge_ledger.pop(challenge, None)
+
+    @staticmethod
+    def _require_saved_budget(request: object, active: _ActiveRequest) -> float:
+        active.require_not_cancelled()
+        deadline = getattr(request, "deadline_monotonic", None)
+        if (isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(deadline)
+                or deadline <= time.monotonic()):
+            raise BackendUnavailableError("macOS VZ saved request deadline expired or invalid")
+        return float(deadline)
+
+    def _complete_saved_bridge(
+        self, request: object, domain_id: str, session: _DomainSession,
+        wrapper: Mapping[str, Any], active: _ActiveRequest,
+    ) -> ProviderOutcome:
+        """Independently verify every signed hop before captured Broker dispatch."""
+        _, request_id, request_digest = _request_identity(request)
+        deadline = self._require_saved_budget(request, active)
+        exchange = SavedHostExchange(
+            ChainIdentity(domain_id, request_id, canonical_digest(session.binding_digests),
+                          min(deadline, time.monotonic() + 60)),
+            request_digest=request_digest, artifact_identity=session.attestation.guest_artifact_identity,
+            deadline_text=_deadline_value(deadline) or "", chains=self._saved_chains,
+        )
+        try:
+            for _ in range(4):
+                self._require_saved_budget(request, active)
+                frame = exchange.accept(wrapper)
+                with self._lock:
+                    key = (domain_id, frame.nonce)
+                    if key in self._guest_nonce_ledger or len(self._guest_nonce_ledger) >= self._max_nonce_ledger_entries:
+                        raise BackendUnavailableError("macOS VZ saved nonce is replayed or capacity exhausted")
+                    self._guest_nonce_ledger[key] = (frame.digest, request_digest)
+                    bridge = self._saved_bridge
+                if bridge is None:
+                    raise BackendUnavailableError("macOS VZ saved Host bridge is unavailable")
+                outcome = bridge[0](request, strict_loads(frame.frame))
+                self._require_saved_budget(request, active)
+                result = exchange.result(outcome)
+                host_nonce = self._new_host_nonce()
+                challenge = self._new_guest_challenge(domain_id)
+                response = self._exchange(
+                    {"kind": _REQUEST_KIND, "protocol": _SUPERVISOR_PROTOCOL, "version": 1,
+                     "operation": "bridge_result", "host_nonce": host_nonce,
+                     "domain_id": domain_id, "launch_binding_digest": session.launch_binding_digest,
+                     "guest_challenge": challenge, "host_bridge_result": result},
+                    transport=session.transport, channel_key=session.channel_key,
+                    expected_operation="bridge_result", expected_host_nonce=host_nonce,
+                    expected_domain_id=domain_id, expected_binding_digest=session.launch_binding_digest,
+                )
+                data = self._validated_guest_response(
+                    response["payload"], operation="bridge_result", request_id=request_id,
+                    domain_id=domain_id, binding_digests=session.binding_digests,
+                    guest_challenge=challenge, public_key=session.allocation.guest_public_key,
+                )
+                self._require_saved_budget(request, active)
+                if (set(data) == {"state", "host_bridge_request"} and data["state"] == "pending"
+                        and isinstance(data["host_bridge_request"], Mapping)):
+                    wrapper = data["host_bridge_request"]
+                    continue
+                final = _validated_invoke_outcome(data)
+                exchange.finish(final)
+                return ProviderOutcome(final)
+            raise BackendUnavailableError("macOS VZ saved bridge exceeds four actions")
+        except Exception as exc:
+            exchange.cancel()
+            raise BackendUnavailableError("macOS VZ saved bridge rejected exchange") from exc
 
     def _complete_bridge(
         self,
