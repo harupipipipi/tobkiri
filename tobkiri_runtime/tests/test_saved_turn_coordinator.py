@@ -308,6 +308,9 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
     class Reader:
         profile_id = "defaults"
 
+        def provider_metadata(self, contract_id: str) -> tuple:
+            return ()
+
         def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
             assert (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION)
             assert payload == {
