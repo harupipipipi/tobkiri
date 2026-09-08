@@ -196,6 +196,7 @@ class HostBoundCredentialTransport:
     def __init__(
         self,
         *,
+        envelope: RequestEnvelope,
         store: CredentialMaterialStore,
         authority_store: AuthorityStore,
         invocation_token: str,
@@ -206,6 +207,7 @@ class HostBoundCredentialTransport:
         monotonic_clock: Callable[[], float] = time.monotonic,
         expected_resource_binding: Mapping[str, Any] | None = None,
     ) -> None:
+        self._envelope = envelope
         self._store = store
         self._authority_store = authority_store
         self._invocation_token = invocation_token
@@ -291,6 +293,7 @@ class HostBoundCredentialTransport:
             consumer_pack_id=consumer_pack_id,
         )
         return cls(
+            envelope=envelope,
             store=store,
             authority_store=authority_store,
             invocation_token=invocation_token,
@@ -366,6 +369,10 @@ class HostBoundCredentialTransport:
             raise CredentialTransportDenied("binding_invalid") from None
         if not math.isfinite(deadline_started):
             raise CredentialTransportDenied("binding_invalid")
+        host_remaining = self._envelope.deadline_monotonic - deadline_started
+        if not math.isfinite(host_remaining) or host_remaining <= 0:
+            raise CredentialTransportDenied("binding_invalid")
+        initial_remaining = min(initial_remaining, host_remaining)
         self._consume_once(
             endpoint=endpoint,
             credential_handle=credential_handle,
@@ -425,6 +432,8 @@ class HostBoundCredentialTransport:
                 started=deadline_started,
                 clock=self._monotonic_clock,
             )
+            if not self._authority_still_active():
+                raise CredentialTransportDenied("binding_invalid")
             timeout = min(60.0, remaining)
             with self._opener(request, timeout=timeout) as response:
                 response_bytes = response.read(_MAX_RESPONSE_BYTES + 1)
@@ -434,6 +443,13 @@ class HostBoundCredentialTransport:
             if not isinstance(value, dict):
                 raise CredentialTransportDenied("response_invalid")
             sanitized = _sanitize_json_response(value, secret_text)
+            _remaining_deadline_budget(
+                initial_remaining=initial_remaining,
+                started=deadline_started,
+                clock=self._monotonic_clock,
+            )
+            if not self._authority_still_active():
+                raise CredentialTransportDenied("binding_invalid")
             audit_status = "completed"
             return sanitized
         except CredentialTransportDenied:
@@ -587,6 +603,13 @@ class HostBoundCredentialTransport:
 
     def _authority_still_active(self) -> bool:
         try:
+            if self._envelope.cancellation_requested.is_set():
+                return False
+            remaining = (
+                self._envelope.deadline_monotonic - self._monotonic_clock()
+            )
+            if not math.isfinite(remaining) or remaining <= 0:
+                return False
             durable, state = self._authority_store.inspect_lease_token(
                 self._invocation_token
             )
