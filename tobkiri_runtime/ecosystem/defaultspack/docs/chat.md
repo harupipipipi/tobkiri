@@ -42,6 +42,12 @@ and Host reject malformed references. Profile identity, credentials, arbitrary
 requirements and targets are still not forwarded from the outer UI payload;
 the existing gateway resolves the reference through its captured contracts.
 This bridge behavior alone does not connect the full UI's message/stream routes.
+The guest's bounded cancellation ledger never evicts a live cancellation to
+make room for another. If its 64 entries are full, an overflow fence rejects new
+bridge registrations until the last unrecorded cancellation's normal 60-second
+retention expires. Pending cancelled work is still removed. This trades temporary
+admission availability for preventing late cancelled work from being reintroduced;
+it is not evidence that the full UI's stop endpoint is connected.
 The following sections describe legacy APIs and are not evidence that those
 operations are available through the captured full-UI map.
 
