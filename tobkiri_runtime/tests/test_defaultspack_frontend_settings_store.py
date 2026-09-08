@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import multiprocessing
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +27,64 @@ from domain.ai_client.model_runtime_settings import (  # noqa: E402
 )
 from domain.frontend.registry import FrontendRegistry  # noqa: E402
 from domain.frontend_settings_catalog import SettingsCatalogInputs  # noqa: E402
+from domain import frontend_settings_store as settings_module  # noqa: E402
+
+
+def test_corrupt_diagnostic_is_owned_locked_private_and_preserves_original_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    content = b"{invalid\xff"
+    store.path.write_bytes(content)
+    store.path.chmod(0o600)
+    original_write = store._atomic_write_bytes
+    lock = settings_module._thread_lock(store.path)
+
+    def try_other_thread() -> bool:
+        acquired = lock.acquire(blocking=False)
+        if acquired:
+            lock.release()
+        return acquired
+
+    def checked_write(path: Path, value: bytes, *, mode: int) -> None:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(try_other_thread).result(timeout=5) is False
+        original_write(path, value, mode=mode)
+
+    monkeypatch.setattr(store, "_atomic_write_bytes", checked_write)
+    for _ in range(2):
+        with pytest.raises(FrontendSettingsCorruptError):
+            store.read(preserve_corrupt=True)
+    copies = list(tmp_path.glob("settings.json.corrupt-*.bak"))
+    assert len(copies) == 1
+    assert copies[0].read_bytes() == store.path.read_bytes() == content
+    assert hashlib.sha256(content).hexdigest() in copies[0].name
+    if os.name != "nt":
+        assert copies[0].stat().st_mode & 0o777 == 0o600
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_corrupt_backup_collision_is_not_overwritten(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    content = b"{broken"
+    store.path.write_bytes(content)
+    backup = store.path.with_name(
+        f"settings.json.corrupt-{hashlib.sha256(content).hexdigest()}.bak"
+    )
+    backup.write_bytes(b"keep existing evidence")
+    with pytest.raises(FrontendSettingsCorruptError, match="backup differs"):
+        store.read(preserve_corrupt=True)
+    assert backup.read_bytes() == b"keep existing evidence"
+    assert store.path.read_bytes() == content
+
+
+def test_snapshot_and_ordinary_corrupt_read_do_not_create_diagnostics(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    store.path.write_bytes(b"{broken")
+    for read in (store.read_snapshot, store.read):
+        with pytest.raises(FrontendSettingsCorruptError):
+            read()
+    assert not list(tmp_path.glob("*.corrupt-*.bak"))
 
 
 @pytest.mark.parametrize("has_models", [False, True])

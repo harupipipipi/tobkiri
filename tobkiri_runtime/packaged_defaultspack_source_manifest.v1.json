@@ -187,8 +187,8 @@
     {
       "path": "ecosystem/defaultspack/domain/frontend_settings_store.py",
       "type": "regular-file",
-      "size": 13348,
-      "sha256": "bd4eac61bf616abcc57c335680b865210c8850e2dd101e2305933b5664c3a8e9",
+      "size": 14473,
+      "sha256": "0999856b6c74731c89f1ef80cf3174713f0333f56ddc7822950e6858b96eb594",
       "executable": false
     },
     {

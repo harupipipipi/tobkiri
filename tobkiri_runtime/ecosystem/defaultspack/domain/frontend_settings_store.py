@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import sys
@@ -85,10 +86,30 @@ class FrontendSettingsStore:
         self.backup_path = path.with_suffix(f"{path.suffix}.bak")
         self.lock_path = path.with_suffix(f"{path.suffix}.lock")
 
-    def read(self) -> dict[str, Any]:
+    def read(self, *, preserve_corrupt: bool = False) -> dict[str, Any]:
         """Read settings, recovering a corrupt primary document from backup."""
         with self._locked():
-            return self._read_locked(recover=True)
+            try:
+                return self._read_locked(recover=True)
+            except FrontendSettingsCorruptError:
+                if preserve_corrupt:
+                    self._preserve_corrupt_locked()
+                raise
+
+    def _preserve_corrupt_locked(self) -> None:
+        """Keep unreadable bytes under the same lock as recovery and updates."""
+        try:
+            content = self.path.read_bytes()
+        except OSError:
+            return
+        digest = hashlib.sha256(content).hexdigest()
+        backup = self.path.with_name(f"{self.path.name}.corrupt-{digest}.bak")
+        if backup.exists():
+            if backup.read_bytes() != content:
+                raise FrontendSettingsCorruptError("corrupt settings backup differs")
+            return
+        mode = self.path.stat().st_mode & 0o777
+        self._atomic_write_bytes(backup, content, mode=mode)
 
     def read_snapshot(self) -> dict[str, Any]:
         """Read an atomic snapshot without locking files, repair or migration.
@@ -275,21 +296,25 @@ class FrontendSettingsStore:
             mode = self.path.stat().st_mode & 0o777
         except OSError:
             mode = 0o600
+        content = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        self._atomic_write_bytes(self.path, content, mode=mode)
+
+    def _atomic_write_bytes(self, path: Path, content: bytes, *, mode: int) -> None:
+        """Publish owner-selected bytes without a second UI persistence path."""
         fd, temp_name = tempfile.mkstemp(
-            prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
         )
         temp_path = Path(temp_name)
         try:
-            fchmod = getattr(os, "fchmod", None)
-            if fchmod is not None:
-                fchmod(fd, mode)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(value, handle, ensure_ascii=False, indent=2)
-                handle.write("\n")
+            with os.fdopen(fd, "wb") as handle:
+                fchmod = getattr(os, "fchmod", None)
+                if fchmod is not None:
+                    fchmod(handle.fileno(), mode)
+                handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
-            _replace_file(temp_path, self.path)
-            self._fsync_directory(self.path.parent)
+            _replace_file(temp_path, path)
+            self._fsync_directory(path.parent)
         finally:
             temp_path.unlink(missing_ok=True)
 

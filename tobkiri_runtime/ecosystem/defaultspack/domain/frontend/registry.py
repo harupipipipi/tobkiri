@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import importlib
 import json
-import os
 import re
-import tempfile
 import threading
 import time
 from copy import deepcopy
@@ -1559,13 +1556,8 @@ class FrontendRegistry:
     def _read_settings(self) -> dict[str, Any]:
         values = self._default_settings()
         try:
-            saved = self._settings_store.read()
+            saved = self._settings_store.read(preserve_corrupt=True)
         except FrontendSettingsCorruptError:
-            try:
-                raw_settings = self._settings_path.read_bytes()
-            except OSError:
-                return self._refresh_derived_settings(values)
-            self._backup_corrupt_settings(raw_settings)
             return self._refresh_derived_settings(values)
         saved, migrated = self._migrate_legacy_keyboard_navigation(saved)
         if migrated:
@@ -1579,66 +1571,6 @@ class FrontendRegistry:
             saved = self._settings_with_legacy_tool_version(saved)
             values = self._deep_merge(values, saved)
         return self._refresh_derived_settings(values)
-
-    def _backup_corrupt_settings(self, content: bytes) -> None:
-        """Preserve unreadable settings without changing the original file."""
-
-        digest = hashlib.sha256(content).hexdigest()[:12]
-        backup_path = self._settings_path.with_name(
-            f"{self._settings_path.name}.corrupt-{digest}.bak"
-        )
-        if backup_path.exists():
-            return
-        mode = self._settings_file_mode(self._settings_path)
-        self._atomic_write_bytes(backup_path, content, mode=mode)
-
-    def _write_settings_atomically(self, values: dict[str, Any]) -> None:
-        """Durably replace settings while preserving existing file permissions."""
-
-        content = json.dumps(values, ensure_ascii=False, indent=2).encode("utf-8")
-        mode = self._settings_file_mode(self._settings_path)
-        self._atomic_write_bytes(self._settings_path, content, mode=mode)
-
-    @staticmethod
-    def _settings_file_mode(path: Path) -> int:
-        """Return the current settings mode, or a private default for new files."""
-
-        try:
-            return path.stat().st_mode & 0o777
-        except OSError:
-            return 0o600
-
-    @staticmethod
-    def _atomic_write_bytes(path: Path, content: bytes, *, mode: int) -> None:
-        """Write bytes through a same-directory temporary file and atomic replace."""
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        file_descriptor, temporary_name = tempfile.mkstemp(
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-        )
-        temporary_path = Path(temporary_name)
-        try:
-            os.fchmod(file_descriptor, mode)
-            with os.fdopen(file_descriptor, "wb") as temporary_file:
-                temporary_file.write(content)
-                temporary_file.flush()
-                os.fsync(temporary_file.fileno())
-            os.replace(temporary_path, path)
-            if os.name != "nt":
-                directory_descriptor = os.open(path.parent, os.O_RDONLY)
-                try:
-                    os.fsync(directory_descriptor)
-                finally:
-                    os.close(directory_descriptor)
-        except Exception:
-            try:
-                os.close(file_descriptor)
-            except OSError:
-                pass
-            temporary_path.unlink(missing_ok=True)
-            raise
 
     def _migrate_legacy_keyboard_navigation(
         self,
