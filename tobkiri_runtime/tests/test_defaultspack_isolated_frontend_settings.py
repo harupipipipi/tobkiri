@@ -91,6 +91,7 @@ def test_optional_snapshot_never_repairs_or_creates_state(
 ):
     """Optional preferences read the primary only, even with a valid backup."""
     from domain.frontend_settings import read_optional_frontend_settings
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
     path = tmp_path / "settings.json"
     if content is not None:
@@ -101,7 +102,7 @@ def test_optional_snapshot_never_repairs_or_creates_state(
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(path))
 
     expected = {"ok": True} if content == b'{"ok": true}' else {}
-    assert read_optional_frontend_settings() == expected
+    assert read_optional_frontend_settings(settings_owner=FrontendSettingsStore(path)) == expected
     assert {item.name: item.read_bytes() for item in tmp_path.iterdir()} == before
 
 

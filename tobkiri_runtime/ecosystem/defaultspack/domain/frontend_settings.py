@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from .frontend_settings_store import (
     FrontendSettingsCorruptError,
     FrontendSettingsStore,
@@ -19,7 +21,10 @@ def frontend_settings_path(pack_root: Path | None = None) -> Path:
     )
 
 
-def read_optional_frontend_settings(pack_root: Path | None = None) -> dict[str, Any]:
+def read_optional_frontend_settings(
+    pack_root: Path | None = None, *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     """Read legacy optional preferences without recovery or filesystem writes.
 
     Preserve the existing optional-reader fallback for unreadable/corrupt local
@@ -27,6 +32,8 @@ def read_optional_frontend_settings(pack_root: Path | None = None) -> dict[str, 
     captured contract failures must not be translated into this fallback.
     """
     try:
-        return FrontendSettingsStore(frontend_settings_path(pack_root)).read_snapshot()
+        return FrontendSettingsStore(
+            frontend_settings_path(pack_root), owner=settings_owner,
+        ).read_snapshot()
     except (OSError, FrontendSettingsCorruptError):
         return {}
