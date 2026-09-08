@@ -141,9 +141,13 @@ not include models, tools, integrations or credential changes. The read Function
 cannot be used to capture this write contribution. Its input/output schemas are
 closed and artifact-pinned independently of guest presentation definitions.
 
-This registration does not establish the normal Defaults caller edge, HTTP/UI
-save flow, cancellation while waiting on the legacy store lock, or live owner
-cutover. The current UI expects a full settings projection after saving, while
+The Defaults source intent now includes an exact Shell-to-preferences-write
+edge. The HTTP contract map binds `PUT /api/ui/settings` to it, accepting only
+`changes` and `expected_revision`; presentation supplies the captured Profile.
+Real HTTP/Broker tests cover authenticated patches, identity injection denial,
+private-state preservation, stale revision and out-of-policy writes.
+This does not establish UI save flow, lock-wait cancellation or live cutover.
+The current UI expects a full settings projection after saving, while
 this write acknowledgement deliberately returns only changed fields; integration
 must reconcile that difference and propagate revisions, not expose the private
 document to satisfy the old response shape. The storage source transfer has
