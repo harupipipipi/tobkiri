@@ -13,7 +13,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from ecosystem.defaultspack.domain.frontend_settings_store import FrontendSettingsStore
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
 PACK_ID = "tobkiri_ui_settings_pack"
 FUNCTION_ID = "tobkiri.ui.settings.read"

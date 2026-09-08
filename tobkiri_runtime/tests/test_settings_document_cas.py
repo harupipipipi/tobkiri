@@ -8,7 +8,7 @@ from threading import Barrier
 
 import pytest
 
-from ecosystem.defaultspack.domain.frontend_settings_store import (
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import (
     FrontendSettingsCorruptError,
     FrontendSettingsRevisionConflict,
     FrontendSettingsStore,
@@ -17,6 +17,37 @@ from ecosystem.defaultspack.domain.frontend_settings_store import (
     STATE_REVISIONS_KEY,
 )
 from ecosystem.defaultspack.domain.frontend_settings_client import update_settings_document
+
+
+def test_legacy_path_cannot_reactivate_an_unbound_settings_owner(tmp_path):
+    from ecosystem.defaultspack.domain.frontend_settings_store import FrontendSettingsStore as Client
+
+    path = tmp_path / "legacy.json"
+    path.write_text('{"private": "unchanged"}')
+    client = Client(path)
+    for invoke in (
+        client.read,
+        client.read_snapshot,
+        lambda: client.compare_and_swap_document({}, expected_revision=0),
+        lambda: client.compare_and_swap_state("state", {}, {}, expected_document_revision=0),
+    ):
+        with pytest.raises(RuntimeError, match="explicit settings owner binding"):
+            invoke()
+    assert path.read_text() == '{"private": "unchanged"}'
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_explicit_settings_port_not_legacy_path_selects_persistence(tmp_path):
+    from ecosystem.defaultspack.domain.frontend_settings_store import FrontendSettingsStore as Client
+
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text('{"private": "unchanged"}')
+    owner = FrontendSettingsStore(tmp_path / "owner.json")
+    client = Client(legacy, owner=owner)
+    result = update_settings_document(client, lambda value: {**value, "display": "saved"})
+    assert result == {"display": "saved", REVISION_KEY: 1}
+    assert client.read_snapshot() == owner.read_snapshot() == result
+    assert legacy.read_text() == '{"private": "unchanged"}'
 
 
 def test_data_only_commit_preserves_unknown_values_and_finite_numbers(tmp_path: Path) -> None:

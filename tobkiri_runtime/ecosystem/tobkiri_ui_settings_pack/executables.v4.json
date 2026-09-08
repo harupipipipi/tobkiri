@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:6a881c60dd62db93ecb0c603f2e88bfe71de21e79f4b460a18060305e7b3c350",
+  "catalog_digest": "sha256:8446880b070b36ee158098db51813e35926e6593ae3e60d69f3e248c3291ca6c",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:ee6e9fb12373094e89f53e9ea79e53e4bafb8e57c025fe7d2e422398c4561ea5",
+  "source_identity": "sha256:05f27ff5a6ba7e6fa2f2584cfc8fff6de548c3bdff7f88709c7396da92913ada",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
       "implementation_path": "runtime/settings.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.preferences.write",
-      "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
       "implementation_path": "runtime/settings.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -209,7 +209,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
       "implementation_path": "runtime/settings.py",
       "materialization_mode": "on_demand",
       "operations": [

@@ -11,6 +11,7 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from jsonschema import Draft202012Validator
 
@@ -77,9 +78,11 @@ class CommandProtocolRegistry(CommandCatalogProjection):
         event_store: InvocationEventStore | None = None,
         offline_queue: OfflineOperationQueue | None = None,
         command_state_dir: Path | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.pack_root = pack_root or Path(__file__).resolve().parents[2]
         self._settings_owner = pack_root if pack_root is not None else None
+        self._settings_store = FrontendSettingsStore(owner=settings_owner)
         self.legacy = SlashCommandRegistry(self.pack_root)
         self.operations = CommandOperationRegistry(self.legacy, self.pack_root)
         configured_state = os.environ.get(
@@ -1195,9 +1198,7 @@ class CommandProtocolRegistry(CommandCatalogProjection):
         return [*manifest_commands, *self._registered_settings_commands()]
 
     def _registered_settings_commands(self) -> list[dict[str, Any]]:
-        settings = FrontendSettingsStore(
-            defaultspack_frontend_settings_path(self._settings_owner)
-        ).read()
+        settings = self._settings_store.read()
         commands_section = settings.get("commands") if isinstance(settings.get("commands"), dict) else {}
         records = commands_section.get("registered_slash_commands") if isinstance(commands_section, dict) else []
         if not isinstance(records, list):

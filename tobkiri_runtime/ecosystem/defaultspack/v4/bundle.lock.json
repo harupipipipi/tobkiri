@@ -1409,12 +1409,12 @@
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:031fa1cd8e5307b1cef212ef5fda51166a2ff5fec6b0be0a6d5e660d992ef1fc"
+      "digest": "sha256:cb1505ae61e050ed3f155ff448fe2040784f867a40487994bb700a144c5efce6"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:760ffceb3eebb0765a9e5b1e1a1095366e82960b506b9fef817e9ac0f6a9688b"
+      "digest": "sha256:817cd00b7386d0dada22323698f6f762284726623506dfb2531a062dd653b15a"
     },
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",

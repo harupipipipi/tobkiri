@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:0a7b571df3dbc4ce678229d142ef64d77aa292cd9655af485b86fcfa719d9297",
+  "artifact_set_digest": "sha256:dcb6fce5b4604692cd16c5b822aa81a990548be2e001fde9608b3709adfbccb1",
   "artifacts": [
     {
-      "digest": "sha256:8c2442b63fd2e4ef98d6c2ce16b8114b1a35071ca5f9947e121980f0da6cc478",
+      "digest": "sha256:6adccc345cc3bec623faf745d8664e0818cdbda08b9a8a7d77bf2df045f0c66c",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:c6dea203fe7bc5041469c5a081878dbfd2436e7054a26f1f399de3e0ceee543d",
+      "digest": "sha256:b9388b915ba98c5af7838c725b76345c461e1ec5fec0391e0114cdc4fdc1e70e",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:3764c1daee4027c60e0becdeca788a706a1a9d97690b6b78f6250ce036aa656b",
+      "digest": "sha256:5b3d90048d0ea1e7913993547418f98bd1e376a868c02cd96b8d91b0ad736e26",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,16 +22,21 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+      "digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
       "path": "runtime/settings.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2173f6f284b3067e21a26bd5b2807659fb411184b057dd2a988b5dc58bce5d7d",
+      "path": "runtime/store.py",
       "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:159dff2885ff49a47051c7ad88acee7a87517b248b66b2d95a516867997bf187"
+    "signed_digest": "sha256:bad722d81496c4639ad2bc1fab12791adc44a7f92057ebb18db19874cc2f2e8e"
   },
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:ee6e9fb12373094e89f53e9ea79e53e4bafb8e57c025fe7d2e422398c4561ea5"
+  "source_identity": "sha256:05f27ff5a6ba7e6fa2f2584cfc8fff6de548c3bdff7f88709c7396da92913ada"
 }

@@ -16615,7 +16615,7 @@
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.settings.read",
-          "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+          "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
           "operation_ids": [
             "tobkiri_ui_settings_pack.settings-read"
           ]
@@ -16623,7 +16623,7 @@
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.catalog.read",
-          "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+          "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
           "operation_ids": [
             "tobkiri_ui_settings_pack.catalog-read"
           ]
@@ -16631,7 +16631,7 @@
         {
           "contract_id": "tobkiri.action.ui.preferences.v1",
           "function_id": "tobkiri.ui.preferences.write",
-          "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+          "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
           "operation_ids": [
             "tobkiri_ui_settings_pack.preferences-write"
           ]
@@ -16664,12 +16664,12 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
               "id": "tobkiri_ui_settings_pack.settings-read",
-              "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80"
+              "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb"
             },
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
               "id": "tobkiri_ui_settings_pack.catalog-read",
-              "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80"
+              "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -16701,7 +16701,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.preferences-write",
               "id": "tobkiri_ui_settings_pack.preferences-write",
-              "implementation_digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80"
+              "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -16871,9 +16871,14 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:97012aa9645a7c298ca0b04b0d38d3ce142b7bb5809e85c97800efd21c044d80",
+          "digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
           "kind": "executable",
           "path": "runtime/settings.py"
+        },
+        {
+          "digest": "sha256:2173f6f284b3067e21a26bd5b2807659fb411184b057dd2a988b5dc58bce5d7d",
+          "kind": "executable",
+          "path": "runtime/store.py"
         },
         {
           "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",

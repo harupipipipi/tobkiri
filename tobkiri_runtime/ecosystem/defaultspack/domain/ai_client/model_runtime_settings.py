@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.ai_client.api_key_store import (
     provider_api_metadata,
@@ -46,11 +47,10 @@ MODEL_SLOT_LIGHTWEIGHT = "lightweight"
 class ModelRuntimeSettingsService:
     """Owns model runtime settings persisted in frontend_settings.json."""
 
-    def __init__(self, pack_root: Path | None = None) -> None:
+    def __init__(self, pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        settings_owner = pack_root if pack_root is not None else None
-        self._settings_path = defaultspack_frontend_settings_path(settings_owner)
-        self._settings_store = FrontendSettingsStore(self._settings_path)
+        self._settings_path = defaultspack_frontend_settings_path(pack_root)
+        self._settings_store = FrontendSettingsStore(self._settings_path, owner=settings_owner)
 
     def get_settings(self) -> dict[str, Any]:
         """Resolve current owner values, without inferring freshness from files."""

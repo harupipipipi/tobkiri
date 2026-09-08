@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from ecosystem.defaultspack.domain import frontend_settings_store as settings
+from ecosystem.tobkiri_ui_settings_pack.runtime import store as settings
 
 
 @pytest.mark.parametrize("platform", ["posix", "nt"])

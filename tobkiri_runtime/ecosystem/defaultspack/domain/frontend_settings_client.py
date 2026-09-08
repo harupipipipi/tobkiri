@@ -2,28 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable
 
-from .frontend_settings_store import FrontendSettingsRevisionConflict, REVISION_KEY
+from tobkiri_protocol.settings_state import FrontendSettingsRevisionConflict, REVISION_KEY, SettingsOwnerPort
 
 
-class SettingsOwnerPort(Protocol):
-    """Only JSON data crosses this port; persistence stays with the owner."""
-
-    def read(self, *, preserve_corrupt: bool = False) -> dict[str, Any]:
-        """Read a recoverable snapshot for an already write-capable operation."""
-
-    def compare_and_swap_document(
-        self, document: Mapping[str, Any], *, expected_revision: int,
-    ) -> dict[str, Any]:
-        """Commit a complete proposal without changing owner control metadata."""
-
-    def compare_and_swap_state(
-        self, state_ref: str, document: Mapping[str, Any], result: Mapping[str, Any], *,
-        expected_document_revision: int, expected_revision: int | None = None,
-        idempotency_key: str | None = None, request_fingerprint: str = "",
-    ) -> dict[str, Any]:
-        """Commit one logical-state proposal and its idempotent result."""
 
 
 def update_settings_document(

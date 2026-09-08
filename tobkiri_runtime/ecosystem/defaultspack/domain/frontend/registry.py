@@ -9,6 +9,7 @@ import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from urllib.parse import quote
 
 from domain.ai_client.client import AIClient
@@ -76,11 +77,10 @@ class FrontendRegistry:
     _selectable_model_profiles_cache_ttl_seconds = 30.0
     _load_diagnostics: list[dict[str, str]]
 
-    def __init__(self, pack_root: Path | None = None) -> None:
+    def __init__(self, pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        settings_owner = pack_root if pack_root is not None else None
-        self._settings_path = defaultspack_frontend_settings_path(settings_owner)
-        self._settings_store = FrontendSettingsStore(self._settings_path)
+        self._settings_path = defaultspack_frontend_settings_path(pack_root)
+        self._settings_store = FrontendSettingsStore(self._settings_path, owner=settings_owner)
 
     def build_catalog(
         self,

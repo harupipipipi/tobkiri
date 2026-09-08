@@ -15,7 +15,7 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
-from domain.frontend_settings_store import (  # noqa: E402
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import (  # noqa: E402
     FrontendSettingsCorruptError,
     FrontendSettingsIdempotencyConflict,
     FrontendSettingsRevisionConflict,
@@ -27,7 +27,7 @@ from domain.ai_client.model_runtime_settings import (  # noqa: E402
 )
 from domain.frontend.registry import FrontendRegistry  # noqa: E402
 from domain.frontend_settings_catalog import SettingsCatalogInputs  # noqa: E402
-from domain import frontend_settings_store as settings_module  # noqa: E402
+from ecosystem.tobkiri_ui_settings_pack.runtime import store as settings_module  # noqa: E402
 
 
 def test_corrupt_diagnostic_is_owned_locked_private_and_preserves_original_bytes(
@@ -228,8 +228,9 @@ def test_concurrent_thread_updates_preserve_disjoint_keys(tmp_path: Path) -> Non
 def test_registry_and_model_service_updates_share_one_transaction(
     tmp_path: Path,
 ) -> None:
-    registry = FrontendRegistry(pack_root=tmp_path)
-    models = ModelRuntimeSettingsService(pack_root=tmp_path)
+    owner = FrontendSettingsStore(tmp_path / "user_data" / "shared" / "frontend_settings.json")
+    registry = FrontendRegistry(pack_root=tmp_path, settings_owner=owner)
+    models = ModelRuntimeSettingsService(pack_root=tmp_path, settings_owner=owner)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         registry_update = pool.submit(
