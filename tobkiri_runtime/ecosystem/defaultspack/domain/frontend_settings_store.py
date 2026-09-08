@@ -76,30 +76,6 @@ def _thread_lock(path: Path) -> threading.RLock:
         return _locks.setdefault(key, threading.RLock())
 
 
-def _acquire_file_lock(lock_file: BinaryIO) -> None:
-    if _fcntl is not None:
-        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_EX)
-        return
-    if _msvcrt is not None:
-        lock_file.seek(0, os.SEEK_END)
-        if lock_file.tell() == 0:
-            lock_file.write(b"\0")
-            lock_file.flush()
-        lock_file.seek(0)
-        _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_LOCK, 1)
-        return
-    raise RuntimeError("no supported file-locking implementation is available")
-
-
-def _release_file_lock(lock_file: BinaryIO) -> None:
-    if _fcntl is not None:
-        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
-        return
-    if _msvcrt is not None:
-        lock_file.seek(0)
-        _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_UNLCK, 1)
-
-
 class FrontendSettingsStore:
     """Serialize and atomically persist the shared frontend settings document."""
 
@@ -340,46 +316,35 @@ class FrontendSettingsStore:
 
 def _lock_file_handle(handle: Any) -> None:
     if os.name == "nt":
-        try:
-            import msvcrt
+        import msvcrt
 
-            _ensure_lock_byte(handle)
-            handle.seek(0)
-            for _ in range(400):
-                try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError:
-                    time.sleep(0.025)
-            else:
-                raise TimeoutError("timed out acquiring frontend settings lock")
-        except ImportError:
-            return
+        _ensure_lock_byte(handle)
+        handle.seek(0)
+        for _ in range(400):
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                time.sleep(0.025)
+        else:
+            raise TimeoutError("timed out acquiring frontend settings lock")
         return
-    try:
-        import fcntl
+    import fcntl
 
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-    except (ImportError, OSError):
-        return
+    # A missing/failed OS lock must never allow recovery or mutation to run.
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
 
 
 def _unlock_file_handle(handle: Any) -> None:
     if os.name == "nt":
-        try:
-            import msvcrt
+        import msvcrt
 
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-        except (ImportError, OSError):
-            return
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
         return
-    try:
-        import fcntl
+    import fcntl
 
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-    except (ImportError, OSError):
-        return
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _ensure_lock_byte(handle: Any) -> None:
