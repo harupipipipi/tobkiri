@@ -65,6 +65,9 @@ def _explicit_multi_function_record(
         }
     )
     contract = record["provided_contracts"][0]
+    # This fixture defines exactly one synthetic Contract. Do not inherit new
+    # production Contracts when Defaultspack grows additional Functions.
+    record["provided_contracts"] = [contract]
     contract.update(
         {
             "contract_id": "tobkiri.service.test.v1",
