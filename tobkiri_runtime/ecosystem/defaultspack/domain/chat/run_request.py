@@ -3892,6 +3892,7 @@ def _available_tools(
         service = ToolSelectionService(
             call_handler=resolved_context.get("call_handler"),
             settings=settings,
+            settings_owner=settings_owner,
         )
         decision = service.select(
             user_text,
@@ -3976,6 +3977,7 @@ def _available_tools(
                 fallback_decision = ToolSelectionService(
                     call_handler=resolved_context.get("call_handler"),
                     settings=fallback_settings,
+                    settings_owner=settings_owner,
                 ).select(
                     user_text,
                     profile_filtered,
