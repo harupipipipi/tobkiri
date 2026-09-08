@@ -435,8 +435,9 @@ def test_line_computer_use_natural_message_invokes_line_biz_send_tools(monkeypat
     event_result = result["data"]["events"][0]
     conversation = ChatStore().get_conversation(event_result["conversation_id"])
     user_message = next(message for message in conversation["messages"] if message["role"] == "user")
+    assert event_result["status"] == "ok", event_result
+    assert ai_messages, event_result
     first_model_prompt = json.dumps(ai_messages[0], ensure_ascii=False)
-    assert event_result["status"] == "ok"
     assert line_calls[0]["body"]["messages"][0]["text"] == "\u5c4a\u3044\u305f\u3088\uff01"
     assert user_message["raw_text"] == source_text
     assert "Use computer_use" not in user_message["raw_text"]
