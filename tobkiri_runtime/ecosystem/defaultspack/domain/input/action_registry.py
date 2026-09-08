@@ -63,6 +63,7 @@ def get_input_action_registry(*, settings_owner: SettingsOwnerPort | None = None
         _DEFAULT_REGISTRY = InputActionRegistry()
     if settings_owner is not None:
         from domain.input.actions.chat_message import handle as handle_chat_message
+        from domain.input.actions.agent_delegate import handle as handle_agent_delegate
 
         # Preserve registered custom handlers and the existing two-argument ABI.
         # Bind only our known chat implementation, without mutating the singleton.
@@ -70,7 +71,7 @@ def get_input_action_registry(*, settings_owner: SettingsOwnerPort | None = None
             InputActionSpec(
                 action_id,
                 partial(handler, settings_owner=settings_owner)
-                if handler is handle_chat_message else handler,
+                if handler in (handle_chat_message, handle_agent_delegate) else handler,
             )
             for action_id, handler in _DEFAULT_REGISTRY._actions.items()
         ])

@@ -474,6 +474,7 @@ def test_agent_delegate_provider_error_returns_visible_safe_failure(monkeypatch,
 
 
 def test_agent_delegate_real_execute_receives_required_capabilities_and_context(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
     _configure_paths(monkeypatch, tmp_path)
 
     def fake_ai(self, messages, model, context, tools=None):
@@ -496,6 +497,7 @@ def test_agent_delegate_real_execute_receives_required_capabilities_and_context(
             },
         },
         {"conversation_workspace_dir": str(tmp_path)},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     context = result["result"]["result"]["context"]

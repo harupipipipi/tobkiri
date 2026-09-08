@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.input.envelope import RumiInputEnvelope
 
 
@@ -37,7 +39,7 @@ _TRUSTED_PLACEMENT_CONTEXT_KEYS = (
 )
 
 
-def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -> dict[str, Any]:
+def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
     payload = _delegate_payload(envelope)
     task = str(payload.get("task") or payload.get("prompt") or envelope.input or "").strip()
     if not task:
@@ -60,6 +62,7 @@ def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -
             "timeout_seconds": payload.get("timeout_seconds"),
         },
         _delegate_context(envelope, context or {}),
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
     if isinstance(result, dict) and result.get("status") == "ok":
         data = result.get("data") if isinstance(result.get("data"), dict) else {}
