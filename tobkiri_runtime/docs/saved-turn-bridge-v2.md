@@ -107,6 +107,14 @@ write, without claiming that preflight guarantees later provider availability.
 - Cancellation must reach the currently executing nested Broker request as
   well as the guest continuation. Dropping an HTTP response or cancelling only
   a pending guest nonce does not prove provider execution stopped.
+  The current v1 VZ supervisor now marks an active request as cancellation
+  requested before sending the guest cancel frame. It checks that local fence
+  before calling the Host bridge, after its callback returns, and before
+  publishing a signed guest result. A lost cancellation acknowledgement does
+  not clear the fence. This prevents observed late results from resuming or
+  succeeding; it does not interrupt the nested provider, establish cross-process
+  cancellation ordering, or replace the guest's cancellation ledger. Those
+  requirements remain open for saved-turn execution.
 - After cancellation, a late result must not start another hop. Distinguish
   cancellation requested, confirmed termination, uncertain completion and
   already-persisted effects. Never erase saved data to simulate rollback.
