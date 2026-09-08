@@ -11137,7 +11137,7 @@
       "source": {
         "digest": "sha256:71159c4019cc669f19b21bd1505244f3c8a95091be6728cf47d8152d62d54f62",
         "executable_source_registry": {
-          "digest": "sha256:74ded8d6197917f2b5fe356819c725f8c722b3685aad022c09171c057b740fcb",
+          "digest": "sha256:225e337ce0d4d8cb6db73d9829d8f476eec2683c4389d1d788ea093fa06fb4fd",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 3
         },
@@ -11689,7 +11689,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:60794eb0d79c9f32515c58aa0db9e2e25873feb53d520b4d80838ace5211ab24",
+    "content_digest": "sha256:cb5842e0fccaf378b33f7a37d8d88e426aabba405e9d37883fb10f72ab5a06af",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 40,
@@ -11929,7 +11929,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:dc1f9e758cce37bab21246ff0bad4ad3ac7292938f966c7e2c852bc73ad0e388",
+    "input_digest": "sha256:859e942f10ff4b7d5995df6cddd6a7fd9b528460c143a7704c500f5d02882a7c",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaults/artifact-index.v4.json",
@@ -17513,7 +17513,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:67d3f4b24e7e7470a2d7fd14d85a36ecf5ccfa5bcda9fb3a49aff996fbfbd1be",
+        "digest": "sha256:6759f131d6ffb595097a8a236eee86403ac95c86cc49e9d977079c959a8c78ed",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -17523,7 +17523,7 @@
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
       {
-        "digest": "sha256:8a159d4b2e2225d8ac7a637737ce27400f460889f196ab9fecf7410f9dc84952",
+        "digest": "sha256:67f471e0e892bc94c79d6548bc835b2a7a52a95cf57a022c6258cec416d41c5a",
         "kind": "legacy-executable-source-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -17574,7 +17574,7 @@
       "release-verified": 0,
       "semantically-reviewed": 40
     },
-    "observed_head_sha": "bcbae9957ed33ed6fc5fce69ee0bf8b9bcf3e61d",
+    "observed_head_sha": "29cc8ce0af72d5f2d399e15ac88cca2a86c3c557",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {
