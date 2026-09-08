@@ -112,7 +112,9 @@ def test_settings_consumer_joins_models_and_public_saved_values(tmp_path: Path) 
     path = tmp_path / "defaultspack" / "shared" / "frontend_settings.json"
     path.parent.mkdir(parents=True)
     path.write_text(
-        json.dumps({"general": {"composer_placeholder": "Saved", "private_secret": "hidden"}})
+        json.dumps(
+            {"general": {"composer_placeholder": "Saved", "private_secret": "private-canary-86742"}}
+        )
     )
     before = path.read_bytes()
     captured = SettingsReadHostFactoryV4().capture(
@@ -121,7 +123,8 @@ def test_settings_consumer_joins_models_and_public_saved_values(tmp_path: Path) 
     client = Client()
     result = captured.contributions[0].invoke(OPERATION_ID, {"profile_id": "defaults"}, client)
     assert result["values"]["general"]["composer_placeholder"] == "Saved"
-    assert "hidden" not in json.dumps(result)
+    assert "private_secret" not in result["values"]["general"]
+    assert "private-canary-86742" not in json.dumps(result)
     assert "selected" in json.dumps(result["sections"])
     assert [call[0] for call in client.calls] == [MODEL_CONTRACT, PRESENTATION_CONTRACT]
     assert client.scopes[0]["allowed_contract_ids"] == frozenset(
