@@ -263,9 +263,8 @@ def _invoke(
     process = _spawn_staged_implementation(target, implementation)
     try:
         _register_request(request, process.pid, cancel_token)
-    except Exception:
-        _terminate_process_group(process.pid)
-        process.communicate()
+    except BaseException:
+        _stop_staged_implementation(process)
         raise
     try:
         result = _communicate_staged_implementation(
@@ -325,13 +324,7 @@ def _communicate_staged_implementation(
         # Do not call communicate() here: cleanup must not buffer the output
         # which just exceeded its budget. This also owns serialization failures
         # after spawn, before the pipe exchange could start.
-        try:
-            _terminate_process_group(process.pid)
-        finally:
-            for stream in (process.stdin, process.stdout, process.stderr):
-                if stream is not None:
-                    stream.close()
-        process.wait(timeout=5.0)
+        _stop_staged_implementation(process)
         raise
     if process.returncode != 0:
         # Child stderr is artifact-controlled.  Do not include it in errors
@@ -347,6 +340,18 @@ def _communicate_staged_implementation(
         raise ValueError("PackVM implementation result must be an object")
     _remaining_guest_budget(guest_deadline)
     return result
+
+
+def _stop_staged_implementation(process: subprocess.Popen[bytes]) -> None:
+    """Stop and reap a failed child without reading artifact-controlled pipes."""
+
+    try:
+        _terminate_process_group(process.pid)
+    finally:
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+    process.wait(timeout=5.0)
 
 
 def _local_guest_deadline(value: float | None) -> float:
@@ -1610,9 +1615,8 @@ def _resume_bridge_invocation(
     process = _spawn_staged_implementation(target, implementation)
     try:
         _register_request(request, process.pid, cancel_token)
-    except Exception:
-        _terminate_process_group(process.pid)
-        process.communicate()
+    except BaseException:
+        _stop_staged_implementation(process)
         raise
     try:
         result = _communicate_staged_implementation(

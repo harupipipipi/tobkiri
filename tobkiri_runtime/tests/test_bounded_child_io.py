@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 
 import pytest
@@ -131,4 +132,49 @@ def test_failed_termination_still_closes_pipes_without_claiming_success(
     with _child("import time; time.sleep(30)") as process:
         with pytest.raises(PermissionError, match="termination denied"):
             runner._communicate_staged_implementation(process, {"invalid": object()})
+        assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
+
+
+@pytest.mark.parametrize("resuming", [False, True])
+@pytest.mark.parametrize("failure", [OSError, SystemExit])
+def test_registration_failure_stops_child_without_unbounded_pipe_drain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    resuming: bool, failure: type[BaseException],
+) -> None:
+    """Both execution entries own cleanup even before request registration."""
+    digest = "sha256:" + "a" * 64
+    request = {
+        "operation": "invoke", "request_id": "registration-failure",
+        "target_domain": "test-domain", "artifact_digest": digest,
+        "materialization_digest": digest, "guest_artifact_identity": digest,
+        "contract_id": "test.contract", "contract_version": "1.0.0",
+        "operation_id": "test.operation", "payload": {},
+        "request_digest": digest, "deadline_monotonic": 100.0,
+        "cancel_token": "b" * 64,
+    }
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(runner, "ARTIFACT_ROOT", tmp_path)
+    monkeypatch.setattr(runner, "_verify_invocation_artifact", lambda request: digest)
+    monkeypatch.setattr(runner, "_load_manifest", lambda target: {
+        "implementation_path": "runtime/test.py",
+    })
+
+    def reject_registration(*args: object) -> None:
+        raise failure("registration interrupted")
+
+    def no_drain(*args: object, **kwargs: object) -> None:
+        pytest.fail("registration cleanup must never call communicate")
+
+    monkeypatch.setattr(runner, "_register_request", reject_registration)
+    with _child("import os\nwhile True: os.write(2, b'private'*1000)") as process:
+        stopped = _local_stop(monkeypatch, process)
+        monkeypatch.setattr(runner, "_spawn_staged_implementation", lambda *args: process)
+        monkeypatch.setattr(process, "communicate", no_drain)
+        with pytest.raises(failure, match="registration interrupted"):
+            if resuming:
+                runner._resume_bridge_invocation(request, {"continuation": {}}, {})
+            else:
+                runner._invoke(request)
+        assert stopped == [process.pid]
+        assert process.returncode is not None
         assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
