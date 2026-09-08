@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:e0547aa546dc8a4b719a06234fe78809e4de331a7b442ae773d93924df5cddf6",
+  "catalog_digest": "sha256:1fcb1c04b83c637b7a1b07cb9ad0c0df1afaaa00ed2fed2ce559a00f691030d1",
   "pack_id": "rumi_provider_registry_pack",
-  "source_identity": "sha256:cb5179586989b5f7e70c893cb17aaa2c8a41fefbff15ea22a2516d1ab3ad4149",
+  "source_identity": "sha256:7795fcfe1ea7a065aa70d72dad84b267ccf70c6411dfc145222f122a0847e4e0",
   "variants": [
     {
       "architecture": "any",
@@ -82,7 +82,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.provider-registry.manage",
-      "implementation_digest": "sha256:740c36b4d83fd920b1dccf6f3848f942838db624add1fae4e136e122c8fff286",
+      "implementation_digest": "sha256:95307a85fe31d2cdf4393b8a64af16eaa634ba0c952e04fddb72bbbad83e92b9",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -116,7 +116,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-      "implementation_digest": "sha256:740c36b4d83fd920b1dccf6f3848f942838db624add1fae4e136e122c8fff286",
+      "implementation_digest": "sha256:95307a85fe31d2cdf4393b8a64af16eaa634ba0c952e04fddb72bbbad83e92b9",
       "implementation_path": "runtime/process.py",
       "materialization_mode": "on_demand",
       "operations": [

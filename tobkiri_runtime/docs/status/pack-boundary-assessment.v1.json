@@ -2545,7 +2545,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/ecosystem.json",
-          "sha256": "63ce080a69cdf5fae8de392cdaac260bb19f17fa1a546487c1f1db338a5ff003"
+          "sha256": "153dfca500c47f04e2932e504c9bccae1abe7d15f2e601bfb841c50bf8ebf61f"
         }
       ]
     },
