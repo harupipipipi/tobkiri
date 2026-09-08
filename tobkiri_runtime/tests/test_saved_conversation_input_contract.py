@@ -5,6 +5,9 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 import json
+import hashlib
+
+from jsonschema import Draft202012Validator
 
 import pytest
 
@@ -94,11 +97,43 @@ def test_internal_resume_shape_is_not_an_external_input_contract() -> None:
     assert saved.tobkiri_packvm_invoke("saved_complete", resume)["status"] == "error"
 
 
-def test_schema_does_not_publish_unfinished_saved_turn_function() -> None:
+def test_saved_function_is_sealed_with_only_the_initial_input_schema() -> None:
+    """Registration pins the pure ABI, not guest resume or execution authority."""
     root = Path(__file__).resolve().parents[1]
     variants = json.loads((root / "ecosystem/defaultspack/executables.v4.json").read_text())["variants"]
-    assert all(item["implementation_path"] != "runtime/saved_conversation.py" for item in variants)
-    assert all(
-        operation["operation_id"] != "saved_complete"
-        for item in variants for operation in item["operations"]
+    selected = [item for item in variants if item["function_id"] == "defaultspack.conversation.saved"]
+    assert len(selected) == 1
+    variant = selected[0]
+    assert variant["implementation_path"] == "runtime/saved_conversation.py"
+    assert variant["implementation_digest"] == "sha256:" + hashlib.sha256(
+        (root / "ecosystem/defaultspack/runtime/saved_conversation.py").read_bytes()
+    ).hexdigest()
+    assert variant["execution_kind"] == "pack_vm"
+    assert variant["backend"] == "tobkiri.python-pack-v4"
+    assert len(variant["operations"]) == 1
+    operation = variant["operations"][0]
+    assert operation["contract_id"] == "conversation.saved-turn.v1"
+    assert operation["operation_id"] == "saved_complete"
+    schema = json.loads(
+        (root / "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json").read_text()
     )
+    assert operation["input_schema"] == schema
+    validator = Draft202012Validator(operation["input_schema"])
+    validator.validate(_input())
+    assert not validator.is_valid({"state": {}, "outcome": {}})
+    assert not validator.is_valid({**_input(), "approved": True})
+
+
+def test_saved_registration_does_not_select_an_unfinished_defaults_route() -> None:
+    """A catalog entry alone does not add a signed caller edge or UI route."""
+    root = Path(__file__).resolve().parents[1]
+    bundle = root / "ecosystem/defaultspack/v4"
+    for path in bundle.glob("*.profile.*.json"):
+        profile = json.loads(path.read_text())
+        for edge in profile.get("requested_edges", []):
+            assert edge["contract_id"] != "conversation.saved-turn.v1"
+            assert edge.get("caller_function_id") != "defaultspack.conversation.saved"
+    routes = json.loads(
+        (root / "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json").read_text()
+    )
+    assert "conversation.saved-turn.v1" not in json.dumps(routes)

@@ -1,7 +1,7 @@
 # Saved-turn bridge v2 implementation contract
 
 Status: guest/Host source exchange exists; production captured Broker/preflight
-binding, registration and native acceptance remain incomplete. This document is
+binding, caller-edge/UI wiring and native acceptance remain incomplete. This document is
 not release acceptance evidence.
 The existing v1 `conversation.turn.v1/complete` remains supported and single-hop.
 Do not remove its one-exchange guards to implement saved conversations.
@@ -112,7 +112,8 @@ The pure application computation now exists in
 `ecosystem/defaultspack/runtime/saved_conversation.py`. Its `saved_complete`
 ABI accepts either `{request}` or root-created `{state, outcome}` and emits
 `tobkiri.packvm.continuation.intent.v2` containing `hop`, `target`, `payload`
-and `state`. These intents are **not registered as a public Function**. Only the
+and `state`. The sealed Function `defaultspack.conversation.saved` now publishes
+`conversation.saved-turn.v1` / `saved_complete` at version `1.0.0`. Only the
 explicit saved contract/operation can emit them through the child ABI; the
 guest root adds request/binding identity, nonce and predecessor from retained
 state, validates the fixed target sequence, and consumes a result before
@@ -120,8 +121,8 @@ resuming a fresh sandbox child. They are never terminal success in the v1 path.
 External callers must not be allowed to submit resume state.
 
 The saved-turn file is now explicitly digest-pinned as an executable artifact
-in the canonical Pack source, artifact index and generated bundle. It has no
-Function variant or published operation yet. Sealing these source bytes fixes
+in the canonical Pack source, artifact index and generated bundle. Its Function
+variant is PackVM-only, not a Host fallback. Sealing these source bytes fixes
 the integrity scanner's unlisted-runtime-file error; it does not make the
 unfinished saved-turn dispatcher available or grant a live Profile binding.
 
@@ -197,8 +198,8 @@ user message saved without pretending an assistant message was written.
 Current input is nonempty text. System-prompt/agent references and history
 requiring tool/parts/widget resolution stop explicitly before a user write;
 they are not silently discarded. Their captured context resolution, real
-provider readiness preflight, durable coordinator/reconciliation, protocol
-registration and root-guest/Host dispatch remain required. Isolated tests use
+provider readiness preflight, durable coordinator/reconciliation and captured
+Broker dispatch remain required. Isolated tests use
 the real conversation owner and v2 codecs/chain ledger, but a controlled AI
 result; this is neither actual AI nor native/full-UI acceptance.
 
@@ -216,8 +217,11 @@ Normal text may mention authority words without becoming an authority field.
 The existing computation separately enforces its encoded request/intent budget;
 JSON Schema character constraints are not a substitute for that byte limit.
 Tests compare the schema with the pure initial ABI and explicitly reject the
-internal `{state, outcome}` shape at this external boundary. This is a schema
-definition, not Function publication, route wiring or a live Profile grant.
+internal `{state, outcome}` shape at this external boundary. The registered
+Function embeds this exact schema, but adds no caller edge, UI route or live
+Profile grant. Defaults intent and Profile definitions are unchanged; generated
+artifact locks follow the new catalog identity. The direct supervisor still
+rejects saved execution without the dedicated captured preflight/Broker hooks.
 Production saved-send must call this validation before its first dispatch when
 the versioned transport and captured operation are connected.
 
@@ -228,8 +232,8 @@ cover valid values, extra execution fields, invalid identities/revisions and
 the internal resume shape. `begin_saved` uses this validator, and the guest
 initial invoke path calls it before artifact access for the reserved explicit
 pair `conversation.saved-turn.v1` / `saved_complete` at version `1.0.0`.
-The initial path cannot accept external `{state, outcome}` even after a future
-Function is registered. The pure validator is in the deterministic guest
+The initial path cannot accept external `{state, outcome}` after Function
+registration. The pure validator is in the deterministic guest
 archive and exercised with `python -I -S`; no jsonschema dependency is shipped.
 This input validator registers no Function or live edge. The separate saved guest
 dispatcher above now admits the reserved v2 intent, not arbitrary control output:

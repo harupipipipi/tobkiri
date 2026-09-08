@@ -306,6 +306,181 @@
       ],
       "variant_id": "defaultspack.conversation.python"
     },
+    "defaultspack.conversation.saved": {
+      "contract_id": "conversation.saved-turn.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "defaultspack.conversation.saved",
+      "implementation_digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e",
+      "implementation_path": "runtime/saved_conversation.py",
+      "input_schema": {
+        "$defs": {
+          "identifier": {
+            "maxLength": 256,
+            "minLength": 1,
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            },
+            "pattern": "^[A-Za-z0-9]",
+            "type": "string"
+          }
+        },
+        "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+        "properties": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "conversation_id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "conversation_revision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "turn_id": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "required": [
+              "turn_id",
+              "conversation_id",
+              "conversation_revision",
+              "content"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "title": "Saved conversation initial input",
+        "type": "object"
+      },
+      "operation_id": "saved_complete",
+      "operations": [
+        {
+          "contract_id": "conversation.saved-turn.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "saved_complete",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e",
+          "implementation_path": "runtime/saved_conversation.py",
+          "input_schema": {
+            "$defs": {
+              "identifier": {
+                "maxLength": 256,
+                "minLength": 1,
+                "not": {
+                  "pattern": "[^A-Za-z0-9._:-]"
+                },
+                "pattern": "^[A-Za-z0-9]",
+                "type": "string"
+              }
+            },
+            "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "properties": {
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "conversation_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "turn_id": {
+                    "$ref": "#/$defs/identifier"
+                  }
+                },
+                "required": [
+                  "turn_id",
+                  "conversation_id",
+                  "conversation_revision",
+                  "content"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request"
+            ],
+            "title": "Saved conversation initial input",
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "saved_complete",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "defaultspack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "defaultspack",
+      "pack_id": "defaultspack",
+      "source": [
+        {
+          "entrypoint_id": "saved_complete",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "defaultspack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "defaultspack.conversation.saved.python"
+    },
     "rumi_agent_runtime_service_pack.agent-runtime.control": {
       "contract_id": "tobkiri.action.agent.run.v1",
       "contract_version": "1.0.0",
@@ -11333,7 +11508,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:e43c3a7609b0ff62e9ba385716bed5fee90d95f174ca1c36bc561f67c08a83a1",
+    "input_digest": "sha256:c6281c3cfdfb979a335e7675b127db9bd1dc45c2165807ad5c5464e74c5dbf4a",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12040,7 +12215,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:6424cf3dc30135adc4bc2f35821a85796361e50d75756b61259e8ebe75ab879d",
+        "digest": "sha256:4dfbe3040d99b748881648e952f0cbd0fbe78241295f525bfe262b509949a452",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -12055,7 +12230,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d813d855cbb890bfc10c8ffe35618c9a6d140faf3035b3cc18068bc62df6450f",
+        "digest": "sha256:3f3a680461f547dda16b0f44d8f78b026cd3210bf0649bbfac8cc3949982be70",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json"
       },
@@ -12510,7 +12685,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:6d462c17f2c0e9b3f3b176c4704d5a7a1c61ce1ab92ae5a304e26a180d43b637",
+        "digest": "sha256:af3928b8faa7748756e906c1b22d5b4d35200d561491efee0c71550a0d0e374d",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },

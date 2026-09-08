@@ -216,6 +216,101 @@
       "provided_contracts": [
         {
           "cardinality": "one",
+          "contract_id": "conversation.saved-turn.v1",
+          "failure": "fail_closed",
+          "isolation": "sandbox",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "4.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "saved_complete",
+              "id": "saved_complete",
+              "implementation_digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e"
+            }
+          ],
+          "owner": "defaultspack",
+          "provider_id": "defaultspack.conversation.saved",
+          "required_capabilities": [],
+          "schemas": {
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
           "contract_id": "tobkiri.resource.application.presentation.v1",
           "failure": "fail_closed",
           "security": "sensitive",

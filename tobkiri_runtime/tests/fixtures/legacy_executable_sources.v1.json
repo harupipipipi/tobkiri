@@ -284,6 +284,88 @@
           }
         },
         {
+          "function_id": "defaultspack.conversation.saved",
+          "operation_ids": [
+            "saved_complete"
+          ],
+          "contract_id": "conversation.saved-turn.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/saved_conversation.py",
+          "schemas": {
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
           "function_id": "defaultspack.conversation",
           "operation_ids": ["complete"],
           "contract_id": "conversation.turn.v1",

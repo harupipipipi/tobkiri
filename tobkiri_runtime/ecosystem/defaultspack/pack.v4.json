@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:a27f3c734df3eec40845b35d0eae2b582d6dc5b431ff4eb1019b382f4125c1a7",
+      "digest": "sha256:74e39ccd6041ed3ab6714eeba86cadd9bb9880104ff2f82900f8e0ade02a9c2f",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -32,6 +32,13 @@
     }
   ],
   "contracts": [
+    {
+      "contract_id": "conversation.saved-turn.v1",
+      "operations": [
+        "saved_complete"
+      ],
+      "revision_digest": "sha256:c1e1e6a7d047591694d1fca6d8ac110d8d1df28a368aa4ac2ccbdec0a46248ff"
+    },
     {
       "contract_id": "tobkiri.resource.application.presentation.v1",
       "operations": [
@@ -67,12 +74,22 @@
         "complete"
       ],
       "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:c1e1e6a7d047591694d1fca6d8ac110d8d1df28a368aa4ac2ccbdec0a46248ff",
+      "id": "defaultspack.conversation.saved",
+      "implementation_digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e",
+      "isolation": "pack_vm",
+      "operations": [
+        "saved_complete"
+      ],
+      "role": "brokered"
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:2500d1e0d822effd3d19399779208216dc0c6262036e1699e802a7e6f3c427f4",
-    "contract_catalog_digest": "sha256:7e33fcfa2b7fa54da5197e7f0538446deb2aa9c8cf0b02e6f7d30d033e444ef3",
-    "source_identity": "sha256:5806194a1ee95e9721d8affdb416b721cc07896761f2dbd25f8006be765761d1"
+    "artifact_set_digest": "sha256:1a6f257a78232a1b1f2f38ac8c2859bb395f0f58bdae79d8e5a0bb5d8a999699",
+    "contract_catalog_digest": "sha256:551908832123263e806587eb30e0945e7b276ea598762f1d393307b90755b310",
+    "source_identity": "sha256:cda2c8d34f10ce3cabc7ebc09c9f97b05f662742ee0b0ae8ddfb4d244bd39a7b"
   },
   "migration": {
     "compatibility": "none",
@@ -96,10 +113,18 @@
       "owner": "defaultspack",
       "provider_id": "defaultspack.application-presentation",
       "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "conversation.saved-turn.v1",
+      "effect_ceiling": [],
+      "operation_id": "saved_complete",
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.conversation.saved",
+      "source_kind": "canonical_v4_contract"
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:2500d1e0d822effd3d19399779208216dc0c6262036e1699e802a7e6f3c427f4",
+    "artifact_digest": "sha256:1a6f257a78232a1b1f2f38ac8c2859bb395f0f58bdae79d8e5a0bb5d8a999699",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -109,7 +134,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:5806194a1ee95e9721d8affdb416b721cc07896761f2dbd25f8006be765761d1",
+        "digest": "sha256:cda2c8d34f10ce3cabc7ebc09c9f97b05f662742ee0b0ae8ddfb4d244bd39a7b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -120,7 +145,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:5806194a1ee95e9721d8affdb416b721cc07896761f2dbd25f8006be765761d1",
+    "source_digest": "sha256:cda2c8d34f10ce3cabc7ebc09c9f97b05f662742ee0b0ae8ddfb4d244bd39a7b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },
@@ -140,6 +165,14 @@
       ],
       "owner": "defaultspack",
       "provider_id": "defaultspack.conversation"
+    },
+    {
+      "contract_reference": "conversation.saved-turn.v1",
+      "operations": [
+        "saved_complete"
+      ],
+      "owner": "defaultspack",
+      "provider_id": "defaultspack.conversation.saved"
     }
   ],
   "requirements": {
