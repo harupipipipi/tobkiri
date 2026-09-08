@@ -227,7 +227,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e"
+              "implementation_digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae"
             }
           ],
           "owner": "defaultspack",
@@ -504,7 +504,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e",
+          "digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },

@@ -175,7 +175,7 @@ class SavedBridgeCallbacks:
                 set(payload) != {"messages", "model_reference", "requirements"}
                 or payload["model_reference"] != conversation.get("model_reference")
                 or payload["messages"] != _messages(conversation)
-                or payload["requirements"] != {"request_surface": "defaultspack.conversation"}
+                or payload["requirements"] != {"request_surface": "conversation.saved"}
             ):
                 raise AuthorityDenied("saved bridge AI input differs from the owner")
         return self._dispatch(outer, target, payload)

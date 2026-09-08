@@ -114,7 +114,7 @@ def _intent(state: dict[str, Any]) -> dict[str, Any]:
         payload = {
             "messages": [*state["history"], {"role": "user", "content": request["content"]}],
             "model_reference": state["model_reference"],
-            "requirements": {"request_surface": "defaultspack.conversation"},
+            "requirements": {"request_surface": "conversation.saved"},
         }
     value = {
         "kind": "tobkiri.packvm.continuation.intent.v2",

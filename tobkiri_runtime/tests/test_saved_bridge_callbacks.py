@@ -180,6 +180,7 @@ def test_user_append_cannot_change_the_original_input(tmp_path: Path) -> None:
         ("model_reference", "other-model"),
         ("messages", [{"role": "user", "content": "injected history"}]),
         ("requirements", {"request_surface": "other-surface"}),
+        ("requirements", {"request_surface": "defaultspack.conversation"}),
     ],
 )
 def test_ai_input_is_checked_against_current_owner(

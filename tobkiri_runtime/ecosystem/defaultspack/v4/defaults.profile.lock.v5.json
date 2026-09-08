@@ -6,8 +6,8 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:da4877e3885161e54381a54ef3660ef401e206c1458a8b7bc075271fabd4af36",
   "profile_definition_digest": "sha256:0d83085f45a539310c7eb062e787c0ff73988421ebd553e5cb46a73dde54bcce",
-  "catalog_revision": "sha256:af37f8d193d9e9342e13cdaab35c56402e1c2225bd58839a07e3f95530c38c0a",
-  "bundle_digest": "sha256:eadc79c0e3306340cc687e9b3b5322531910ce72fcdadfd5b751b079e54cc6dc",
+  "catalog_revision": "sha256:da436fb5f441d580c93a354d9645f4e9e3d6bf26b9c15bdc7baa73e6e8da4dc0",
+  "bundle_digest": "sha256:edd48bbdaf72f0b5448b3c54161f8d0d38294203b3cc3cd8d6ab86f030d25a28",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -53,7 +53,7 @@
     {
       "role": "pack",
       "identity": "defaultspack",
-      "artifact_digest": "sha256:1a6f257a78232a1b1f2f38ac8c2859bb395f0f58bdae79d8e5a0bb5d8a999699"
+      "artifact_digest": "sha256:690d5915222d4f200ff6d12ca7c6ba329acdd64a9d7e483b89775f4b73a04288"
     },
     {
       "role": "pack",
@@ -166,8 +166,8 @@
   "variant_pins": [
     {
       "pack_id": "defaultspack",
-      "artifact_digest": "sha256:1a6f257a78232a1b1f2f38ac8c2859bb395f0f58bdae79d8e5a0bb5d8a999699",
-      "executable_catalog_digest": "sha256:698da56b5c6eed0f5c6a0609a57ea896efec2277ba722700ac361c42afd76c4d",
+      "artifact_digest": "sha256:690d5915222d4f200ff6d12ca7c6ba329acdd64a9d7e483b89775f4b73a04288",
+      "executable_catalog_digest": "sha256:ed105c30e98c688e83856a4c7c9816985b30f477104b83f122dd806a3956d115",
       "variant_id": "defaultspack.application-presentation.python",
       "platform": "any",
       "architecture": "any",
@@ -178,8 +178,8 @@
     },
     {
       "pack_id": "defaultspack",
-      "artifact_digest": "sha256:1a6f257a78232a1b1f2f38ac8c2859bb395f0f58bdae79d8e5a0bb5d8a999699",
-      "executable_catalog_digest": "sha256:698da56b5c6eed0f5c6a0609a57ea896efec2277ba722700ac361c42afd76c4d",
+      "artifact_digest": "sha256:690d5915222d4f200ff6d12ca7c6ba329acdd64a9d7e483b89775f4b73a04288",
+      "executable_catalog_digest": "sha256:ed105c30e98c688e83856a4c7c9816985b30f477104b83f122dd806a3956d115",
       "variant_id": "defaultspack.conversation.python",
       "platform": "any",
       "architecture": "any",
@@ -635,7 +635,7 @@
   ],
   "requested_edges_digest": "sha256:4d91c01ab604753cde43364c215104c5014d97bc73a2298d3d17db76da4d2d8c",
   "constraints_digest": "sha256:cb947e4375ee4583136f65006fc172401910cfbb15c178a5ee30518f69e2b28f",
-  "closure_digest": "sha256:38db663b3d8a565fad384cfd9eb089bb6fc82eca4832ac6a4d2fc3a172c841c5",
+  "closure_digest": "sha256:fd534f91057cfccd998c5783e67990d9bc005e37f7b7b4e63494bdb5cecb7a46",
   "provenance_digest": "sha256:f557fdcfe2d35e6402309e6967534558bb80283fa3d34b5ab166fa58cd94e2ed",
-  "lock_digest": "sha256:89d5d1be7f766b96ad0f77dadd8eb6ab5529559a28c3b1ff3447f0da5d522d87"
+  "lock_digest": "sha256:53ace3bbedc6844ed39252dbf8991a0d20ea4bb7f482da0453cea32f5466c78f"
 }

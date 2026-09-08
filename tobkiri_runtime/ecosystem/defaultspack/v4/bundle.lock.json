@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:910d712723e37432f3ad629ec948cee2d18636a51afb6b72c72b0bfb83a11a47"
+      "digest": "sha256:dc42144e3ad993d52a07a51cc7c0ddf8f2718fcd92fa4c8110b933ccdd422b1c"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:9da76c5f8f85f34ecb6042a4d46604f55ae16f6ecf0590975215706b59a945bc"
+      "digest": "sha256:1140bc8ea3b044d8a51a3b65698a7c0b64a4f00c65731b6c280f69527c14ace8"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",

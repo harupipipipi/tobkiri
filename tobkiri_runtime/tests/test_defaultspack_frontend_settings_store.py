@@ -454,7 +454,7 @@ def test_settings_endpoint_field_patch_preserves_unrelated_state(
             "_method": "PUT",
             "patches": [{"section": "theme", "field": "font_size", "value": 16}],
         },
-        {},
+        {"_settings_owner_port": store},
     )
 
     assert result["status"] == "ok"
