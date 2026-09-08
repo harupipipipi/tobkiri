@@ -749,6 +749,36 @@ def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Pat
     assert driver.capability()[0] is False
 
 
+@pytest.mark.parametrize("cancel_at", ["invoke", "bridge_result"])
+def test_cancellation_fences_authenticated_guest_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel_at: str,
+) -> None:
+    """Signed late outcomes do not override an already requested cancellation."""
+    driver, allocator = _driver(tmp_path)
+    callbacks: list[object] = []
+
+    def callback(outer_request: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        callbacks.append(outer_request)
+        return _bridge_result(request)
+
+    driver.bind_capability_bridge(callback)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.pending_bridge = cancel_at == "bridge_result"
+    original_exchange = transport.exchange
+
+    def exchange(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        response = original_exchange(request)
+        if request.get("operation") == cancel_at:
+            driver.cancel("request-1")
+        return response
+
+    monkeypatch.setattr(transport, "exchange", exchange)
+    with pytest.raises(BackendUnavailableError, match="cancellation was requested"):
+        driver.invoke(_request("domain.provider.conversation"))
+    assert len(callbacks) == (1 if cancel_at == "bridge_result" else 0)
+
+
 def test_runtime_bounds_are_fail_closed() -> None:
     assert MacOSVZRuntime().memory_bytes == 1024 * 1024 * 1024
     assert MacOSVZRuntime(memory_bytes=512 * 1024 * 1024).memory_bytes == (
