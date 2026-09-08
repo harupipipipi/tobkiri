@@ -77,7 +77,7 @@ def _profile(
 
 
 def test_model_runtime_settings_preferred_model_and_thinking_level(tmp_path):
-service = _owner_bound_service(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     assert service.get_preferred_model() == "stub/default"
     assert service.get_preferred_model_group() == "default"
