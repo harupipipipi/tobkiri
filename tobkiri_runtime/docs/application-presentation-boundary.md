@@ -137,6 +137,13 @@ must reconcile that difference and propagate revisions, not expose the private
 document to satisfy the old response shape. Settings persistence still has the
 documented cross-Pack import until the actual storage owner migration finishes.
 
+Both settings read and the full catalog's settings projection now include
+`document_revision` from the same single snapshot used for their public values.
+Missing legacy revision metadata means zero; negative, boolean and non-integer
+metadata fails closed. The internal metadata key, logical revisions and receipts
+remain outside the public values. This revision describes settings only, not
+an atomic snapshot of the separately queried model registry or UI definitions.
+
 UI recovery now calls `read(preserve_corrupt=True)`. Unrecoverable bytes are
 preserved by the store under the same transaction lock, with a full-digest
 filename and the original permissions. Existing differing backup bytes are not
