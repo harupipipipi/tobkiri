@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from tempfile import TemporaryDirectory
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ for entry in (ROOT, DEFAULTSPACK):
         sys.path.insert(0, str(entry))
 
 from domain.frontend.command_protocol import CommandProtocolRegistry  # noqa: E402
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore  # noqa: E402
 
 ALLOWED_EXECUTION_KINDS = {
     "host_operation",
@@ -32,7 +34,18 @@ SECRET_FRAGMENTS = {
 
 
 def scan() -> dict[str, Any]:
-    registry = CommandProtocolRegistry()
+    """Scan packaged commands independently of the invoking user's settings."""
+    with TemporaryDirectory(prefix="tobkiri-command-scan-") as directory:
+        root = Path(directory)
+        registry = CommandProtocolRegistry(
+            DEFAULTSPACK,
+            settings_owner=FrontendSettingsStore(root / "settings.json"),
+            command_state_dir=root / "commands",
+        )
+        return _scan_registry(registry)
+
+
+def _scan_registry(registry: CommandProtocolRegistry) -> dict[str, Any]:
     catalog = registry.catalog()
     commands = catalog["commands"]
     failures: list[str] = []
