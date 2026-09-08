@@ -65,6 +65,19 @@
       ]
     },
     {
+      "method": "POST",
+      "path": "/api/chat/conversations",
+      "presentation": "conversation_created",
+      "targets": [{
+        "contribution_id": "defaults.conversations.create",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": ["id", "expected_revision", "model", "system_prompt_id", "agent_id", "tags", "parent_conversation_id", "conversation_kind", "group_id", "metadata"]
+      }]
+    },
+    {
       "method": "GET",
       "path": "/api/home/dashboard",
       "presentation": "broker_result",

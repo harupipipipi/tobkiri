@@ -40,6 +40,40 @@ function requestTarget(input: RequestInfo | URL): string {
   return separator < 0 ? operation : operation.slice(separator + 1);
 }
 
+test("conversation create pins identity and revision and does not retry conflicts", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const calls: RequestInit[] = [];
+  globalThis.fetch = async (input, init) => {
+    assert.equal(requestTarget(input), "/api/chat/conversations");
+    calls.push(init ?? {});
+    return new Response(JSON.stringify(calls.length === 1
+      ? { success: true, data: { store_revision: 7 }, error: null }
+      : { success: false, data: null, error: "Revision conflict" }));
+  };
+  await assert.rejects(api.createConversation({ model: "selected-model" }), /Revision conflict/);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].method, "POST");
+  const body = JSON.parse(String(calls[1].body));
+  assert.equal(body.expected_revision, 7);
+  assert.equal(body.model, "selected-model");
+  assert.match(body.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test("conversation create never writes without an exact snapshot revision", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  for (const store_revision of [undefined, null, true, -1, 1.5, "0"]) {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ success: true, data: { store_revision }, error: null }));
+    };
+    await assert.rejects(api.createConversation(), /invalid revision/);
+    assert.equal(calls, 1);
+  }
+});
+
 test("health uses the Host endpoint and preserves execution-not-ready evidence", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

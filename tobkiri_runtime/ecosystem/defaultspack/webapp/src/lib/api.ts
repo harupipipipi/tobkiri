@@ -3327,7 +3327,7 @@ export const api = {
     return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`));
   },
 
-  createConversation(options?: {
+  async createConversation(options?: {
     model?: string;
     system_prompt_id?: string | null;
     agent_id?: string | null;
@@ -3337,9 +3337,22 @@ export const api = {
     group_id?: string | null;
     metadata?: Record<string, unknown>;
   }) {
+    const snapshot = await request<{ store_revision: number }>(
+      defaultspackContractRoute("api/chat/conversations"),
+    );
+    if (!Number.isSafeInteger(snapshot.store_revision) || snapshot.store_revision < 0) {
+      throw new Error("Conversation store returned an invalid revision");
+    }
+    // Bind identity and revision once. Transport retries must retain this body;
+    // a stale response must not trigger another create with a fresh identity.
+    const body = {
+      ...options,
+      id: crypto.randomUUID(),
+      expected_revision: snapshot.store_revision,
+    };
     return request<Conversation>(defaultspackContractRoute("api/chat/conversations"), {
       method: "POST",
-      body: JSON.stringify(options ?? {}),
+      body: JSON.stringify(body),
     });
   },
 

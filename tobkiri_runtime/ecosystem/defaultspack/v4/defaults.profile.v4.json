@@ -123,7 +123,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:a3fd957d0b93745a42ea1e9d6ea27efaa78538ec09e8b370eeb9aa43b0bbeb3b",
+    "source_digest": "sha256:e55977e78d5bcc5a1b42cd6fb8c536e9877c06d9bb462c394d1346eb2c4a5432",
     "repository_commit": "working-tree",
     "repository_tree": "b88e50f6df4e77e2bca6c2642893b86728a5b11ae3d9d5326b65f85a0b1c35a7",
     "generator": "tobkiri-profile-artifacts",
@@ -298,6 +298,27 @@
         "opaque": false
       },
       "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.conversation.manage.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-manage",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8869274e7d77752a9d1e64e274bf82fab48f10b0a7dd5f316cb5cb528a4407aa",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.conversation.manage.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.manage"
     },
     {
       "caller_function_id": "shell.tauri.default",

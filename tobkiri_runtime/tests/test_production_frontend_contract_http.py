@@ -493,6 +493,7 @@ def test_history_list_reads_real_captured_store_without_mutation(
     assert status == 200, payload
     assert payload["data"] == {
         "conversations": store.snapshot()["conversations"], "total": 1,
+        "store_revision": 1,
     }
     for query in ("profile_id=other", "operation=delete", "approved=true"):
         status, payload, _headers = _request(
@@ -501,6 +502,36 @@ def test_history_list_reads_real_captured_store_without_mutation(
         )
         assert status == 400, payload
     assert store.path.read_bytes() == before
+
+
+def test_conversation_create_uses_real_broker_and_rejects_replay(
+    production_server, tmp_path: Path,
+) -> None:
+    """Only the captured, authenticated create writes once at its snapshot."""
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+
+    store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+    path = _contract("POST", "/api/chat/conversations")
+    body = {"id": str(uuid.uuid4()), "expected_revision": 0, "model": "owned-model"}
+    for injected in ({"profile_id": "other"}, {"approved": True}, {"operation": "delete"}):
+        status, payload, _ = _request(server, "POST", path, body={**body, **injected}, headers=headers)
+        assert status == 400, payload
+    status, payload, _ = _request(server, "POST", path, body=body)
+    assert status in {401, 403}, payload
+    assert not store.path.exists()
+    status, payload, _ = _request(server, "POST", path, body=body, headers=headers)
+    assert status == 200, payload
+    assert payload["data"]["id"] == body["id"]
+    assert payload["data"]["model"] == "owned-model"
+    assert store.snapshot()["revision"] == 1
+    before = store.path.read_bytes()
+    status, payload, _ = _request(server, "POST", path, body=body, headers=headers)
+    assert status != 200, payload
+    assert store.path.read_bytes() == before
+    assert not ConversationStore("other", user_data_root=tmp_path / "user-data").path.exists()
 
 
 def test_model_profile_list_uses_real_registry_and_rejects_client_profile(

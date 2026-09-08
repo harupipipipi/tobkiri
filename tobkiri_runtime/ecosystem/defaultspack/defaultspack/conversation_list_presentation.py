@@ -15,7 +15,7 @@ CONVERSATION_LIST_TARGET = (
 
 
 def present_conversation_list(result: Mapping[str, object]) -> dict[str, object]:
-    """Return real records while keeping owner revision and migration private."""
+    """Return records and the snapshot revision needed for optimistic creation."""
     if result.get("state") == "error":
         return dict(result)
     conversations = result.get("conversations")
@@ -24,4 +24,11 @@ def present_conversation_list(result: Mapping[str, object]) -> dict[str, object]
         for item in conversations
     ):
         raise ValueError("conversation owner returned an invalid list")
-    return {"conversations": conversations, "total": len(conversations)}
+    revision = result.get("revision")
+    if type(revision) is not int or revision < 0:
+        raise ValueError("conversation owner returned an invalid revision")
+    return {
+        "conversations": conversations,
+        "total": len(conversations),
+        "store_revision": revision,
+    }
