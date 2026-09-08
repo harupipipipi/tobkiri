@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 847547,
-      "sha256": "2a23805f59962da638c3faa2d298c2752e3d1bfe1597039ede5124d2f8df50ce",
+      "sha256": "de6145e8bf2f56fadc22ac420b1e7f245d777883d7edbd52bc4ae22f98369cd2",
       "executable": false
     },
     {
@@ -2763,8 +2763,8 @@
     {
       "path": "tobkiri_protocol/schema_hashes.json",
       "type": "regular-file",
-      "size": 3738,
-      "sha256": "e7379248890e5359de297968dab6643228a9f784566a5f2b44290ca018ca1c04",
+      "size": 3860,
+      "sha256": "18e0d1f4c5e86e34c45d56261cea8f4af61fba7595a6f6effb2421732b9e7147",
       "executable": false
     },
     {

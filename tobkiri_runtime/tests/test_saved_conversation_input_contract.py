@@ -124,16 +124,45 @@ def test_saved_function_is_sealed_with_only_the_initial_input_schema() -> None:
     assert not validator.is_valid({**_input(), "approved": True})
 
 
-def test_saved_registration_does_not_select_an_unfinished_defaults_route() -> None:
-    """A catalog entry alone does not add a signed caller edge or UI route."""
+def test_defaults_saved_edge_requires_coordinator_and_ui_remains_separate() -> None:
+    """Defaults declares the coordinator chain, never direct Shell to guest."""
     root = Path(__file__).resolve().parents[1]
     bundle = root / "ecosystem/defaultspack/v4"
     for path in bundle.glob("*.profile.*.json"):
         profile = json.loads(path.read_text())
-        for edge in profile.get("requested_edges", []):
-            assert edge["contract_id"] != "conversation.saved-turn.v1"
-            assert edge.get("caller_function_id") != "defaultspack.conversation.saved"
+        edges = profile.get("requested_edges", [])
+        if not edges:
+            continue
+        saved_edges = [edge for edge in edges
+                       if edge["contract_id"] == "conversation.saved-turn.v1"]
+        assert len(saved_edges) == 1
+        assert saved_edges[0]["caller_function_id"] == "rumi_turn_runtime_pack.turn-runtime.saved"
+        assert saved_edges[0]["target_provider_id"] == "defaultspack.conversation.saved"
+        assert saved_edges[0]["operation_id"] == "saved_complete"
+        assert any(edge["caller_function_id"] == "shell.tauri.default"
+                   and edge["contract_id"] == "tobkiri.action.turn.saved.v1" for edge in edges)
     routes = json.loads(
         (root / "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json").read_text()
     )
     assert "conversation.saved-turn.v1" not in json.dumps(routes)
+
+
+def test_saved_host_registration_has_separate_execution_capability() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pack_root = root / "ecosystem/rumi_turn_runtime_pack"
+    contracts = json.loads((pack_root / "contracts.v4.json").read_text())["contracts"]
+    contract = next(item for item in contracts
+                    if item["contract_id"] == "tobkiri.action.turn.saved.v1")
+    assert contract["owner"] == "rumi_turn_runtime_pack"
+    assert contract["operations"][0]["operation_id"] == "rumi_turn_runtime_pack.turn-saved"
+    assert "capability:turn.execute" in contract["operations"][0]["effect_ceiling"]
+    assert "capability:turn.manage" not in contract["operations"][0]["effect_ceiling"]
+    variants = json.loads((pack_root / "executables.v4.json").read_text())["variants"]
+    variant = next(item for item in variants
+                   if item["function_id"] == "rumi_turn_runtime_pack.turn-runtime.saved")
+    assert variant["execution_kind"] == "host_brokered"
+    assert variant["implementation_path"] == "runtime/host.py"
+    schema = json.loads(
+        (root / "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json").read_text()
+    )
+    assert variant["operations"][0]["input_schema"] == schema

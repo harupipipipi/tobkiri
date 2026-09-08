@@ -436,7 +436,7 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
             and grant.profile_id == current_context.profile_id
             and grant.activation_id == current_context.activation_id
         }
-        # One conversation edge and three application-presentation edges now
+        # Two conversation edges and three application-presentation edges now
         # share this Pack approval; revocation must fence every one of them.
         assert len(expected_revoked) == 5
         assert persisted_grant.grant_id in expected_revoked
