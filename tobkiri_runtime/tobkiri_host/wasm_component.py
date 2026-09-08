@@ -8,9 +8,10 @@ the artifact and request through Authority before invoking guest code.
 from __future__ import annotations
 
 import hashlib
-import json
 import threading
 from typing import Any, Mapping
+
+from tobkiri_protocol.canonical import canonical_json, strict_loads
 
 from .errors import InvalidArtifactError, ProviderExecutionError
 
@@ -72,9 +73,10 @@ class PureComponent:
             raise ValueError("Wasm invocation limits are invalid")
         if not isinstance(operation_id, str) or not 0 < len(operation_id) <= 1024:
             raise ValueError("Wasm operation identity is invalid")
-        encoded = json.dumps(dict(payload), allow_nan=False, ensure_ascii=False)
-        if len(encoded.encode("utf-8")) > 1024 * 1024:
+        encoded_bytes = canonical_json(dict(payload))
+        if len(encoded_bytes) > 1024 * 1024:
             raise ValueError("Wasm input exceeds the transport limit")
+        encoded = encoded_bytes.decode("utf-8")
         if not self._claimed.acquire(blocking=False):
             raise ProviderExecutionError("Wasm request has already been consumed")
         # The lock is intentionally never released: a guest cannot retain state
@@ -104,10 +106,10 @@ class PureComponent:
             raise ProviderExecutionError("Wasm request was cancelled")
         if not isinstance(result, Variant) or result.tag != "ok":
             raise ProviderExecutionError("Wasm component rejected the request")
-        if not isinstance(result.payload, str) or len(result.payload.encode("utf-8")) > 1024 * 1024:
+        if not isinstance(result.payload, str):
             raise ProviderExecutionError("Wasm output exceeds the transport limit")
         try:
-            output = json.loads(result.payload)
+            output = strict_loads(result.payload, max_bytes=1024 * 1024)
         except (ValueError, RecursionError):
             raise ProviderExecutionError("Wasm output is not a JSON object") from None
         if not isinstance(output, dict):

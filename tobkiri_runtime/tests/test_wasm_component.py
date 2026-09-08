@@ -13,16 +13,20 @@ from tobkiri_host.wasm_component import PureComponent
 wasmtime = pytest.importorskip("wasmtime")
 
 
-def component(body: str = "i32.const 0") -> bytes:
+def component(body: str = "i32.const 0", *, output: str = '{"ok":true}') -> bytes:
     """Build a tiny component with the same ABI as the Shell Policy guest."""
+    content = output.encode("utf-8")
+    descriptor = bytes(4) + (32).to_bytes(4, "little") + len(content).to_bytes(4, "little")
+    descriptor_wat = "".join(f"\\{byte:02x}" for byte in descriptor)
+    content_wat = "".join(f"\\{byte:02x}" for byte in content)
     return bytes(
         wasmtime.wat2wasm(
-            r"""
+            f"""
         (component
           (core module $guest
             (memory (export "memory") 1)
-            (data (i32.const 0) "\00\00\00\00\20\00\00\00\0b\00\00\00")
-            (data (i32.const 32) "{\22ok\22:true}")
+            (data (i32.const 0) "{descriptor_wat}")
+            (data (i32.const 32) "{content_wat}")
             (func (export "realloc") (param i32 i32 i32 i32) (result i32)
               i32.const 4096)
             (func (export "invoke") (param i32 i32 i32 i32) (result i32)
@@ -116,3 +120,27 @@ def test_oversized_input_does_not_enter_guest() -> None:
     engine = guest(component())
     with pytest.raises(ValueError, match="transport limit"):
         engine.invoke("inspect", {"text": "x" * (1024 * 1024)})
+
+
+@pytest.mark.parametrize("output", [
+    '{"ok":true,"ok":false}', '{"value":NaN}', '{"value":Infinity}',
+    '{"value":1.5}', '{"value":9007199254740992}', '{"value":"\\ud800"}',
+    '{"value":' + '[' * 65 + '0' + ']' * 65 + '}', '[]',
+])
+def test_guest_output_requires_unambiguous_protocol_json(output: str) -> None:
+    engine = guest(component(output=output))
+    with pytest.raises(ProviderExecutionError, match="not a JSON object"):
+        engine.invoke("inspect", {})
+    with pytest.raises(ProviderExecutionError, match="consumed"):
+        engine.invoke("inspect", {})
+
+
+@pytest.mark.parametrize("payload", [
+    {"value": float("nan")}, {"value": 1.5}, {"value": 2**53},
+    {"value": "\ud800"}, {1: "ambiguous key"},
+])
+def test_noncanonical_input_does_not_consume_guest(payload: dict) -> None:
+    engine = guest(component())
+    with pytest.raises(ValueError):
+        engine.invoke("inspect", payload)
+    assert engine.invoke("inspect", {}) == {"ok": True}
