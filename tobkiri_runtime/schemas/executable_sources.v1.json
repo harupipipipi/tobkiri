@@ -10864,7 +10864,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -10878,7 +10878,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -10907,6 +10907,319 @@
       ],
       "variant_id": "tobkiri.ui.catalog.read.python"
     },
+    "tobkiri.ui.preferences.write": {
+      "contract_id": "tobkiri.action.ui.preferences.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.ui.preferences.write",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+      "implementation_path": "runtime/settings.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "chat_rendering": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "show_widgets": {
+                    "type": "boolean"
+                  },
+                  "unknown_block_strategy": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "general": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "composer_placeholder": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "keyboard_button_navigation": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "show_activity_in_messages": {
+                    "type": "boolean"
+                  },
+                  "spotlight_shortcut": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "spotlight_shortcut_enabled": {
+                    "type": "boolean"
+                  },
+                  "spotlight_shortcut_text_input": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "changes",
+          "expected_revision"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.preferences-write",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+          "implementation_path": "runtime/settings.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "changes": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "chat_rendering": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "show_widgets": {
+                        "type": "boolean"
+                      },
+                      "unknown_block_strategy": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "general": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "composer_placeholder": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "keyboard_button_navigation": {
+                        "type": "boolean"
+                      },
+                      "language": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "show_activity_in_messages": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "spotlight_shortcut_enabled": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut_text_input": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "changes",
+              "expected_revision"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "document_revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "values": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "chat_rendering": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "show_widgets": {
+                        "type": "boolean"
+                      },
+                      "unknown_block_strategy": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "general": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "composer_placeholder": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "keyboard_button_navigation": {
+                        "type": "boolean"
+                      },
+                      "language": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "show_activity_in_messages": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "spotlight_shortcut_enabled": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut_text_input": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "values",
+              "document_revision"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "document_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "values": {
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "chat_rendering": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "show_widgets": {
+                    "type": "boolean"
+                  },
+                  "unknown_block_strategy": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "general": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "composer_placeholder": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "keyboard_button_navigation": {
+                    "type": "boolean"
+                  },
+                  "language": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "show_activity_in_messages": {
+                    "type": "boolean"
+                  },
+                  "spotlight_shortcut": {
+                    "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "spotlight_shortcut_enabled": {
+                    "type": "boolean"
+                  },
+                  "spotlight_shortcut_text_input": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "values",
+          "document_revision"
+        ],
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.preferences-write",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.ui.preferences.write.python"
+    },
     "tobkiri.ui.settings.read": {
       "contract_id": "tobkiri.resource.ui.settings.v1",
       "contract_version": "1.0.0",
@@ -10915,7 +11228,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -10929,7 +11242,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -11508,7 +11821,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:6dc24b1bacaa93f6d8daf557d4ec9bd080c1a0ed1bb4fccf63bf6a94a5ff5e6c",
+    "input_digest": "sha256:f0d4eb17589991bb7435d16cf0e61d320209ad7e1a7c7580481d91c5e506d5e1",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12215,7 +12528,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:3952105ddc6e0787d710b89de4e646e211879b4591fcd5d3c13d7d3e0a6d912f",
+        "digest": "sha256:d2c4021257894ae444dfc3cc16c1ba99072bcff1cd7d976e727cd2cb1d274ff8",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

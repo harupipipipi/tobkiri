@@ -25,6 +25,24 @@ MODEL_CONTRACT = "tobkiri.resource.ai.model.profile.v1"
 MODEL_OPERATION = "rumi_model_registry_pack.model-profile-resource"
 PRESENTATION_CONTRACT = "tobkiri.resource.application.presentation.v1"
 PRESENTATION_OPERATION = "defaultspack.presentation.read"
+WRITE_FUNCTION_ID = "tobkiri.ui.preferences.write"
+WRITE_CONTRACT_ID = "tobkiri.action.ui.preferences.v1"
+WRITE_OPERATION_ID = "tobkiri_ui_settings_pack.preferences-write"
+
+# This write policy is intentionally separate from public-settings-fields.
+# Model, tool, integration and credential mutations need their own owner policy.
+_PREFERENCE_TYPES = {
+    "general": {
+        "composer_placeholder": str,
+        "show_activity_in_messages": bool,
+        "keyboard_button_navigation": bool,
+        "spotlight_shortcut_enabled": bool,
+        "spotlight_shortcut": str,
+        "spotlight_shortcut_text_input": bool,
+        "language": str,
+    },
+    "chat_rendering": {"show_widgets": bool, "unknown_block_strategy": str},
+}
 
 
 def _model_options(result: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -180,7 +198,84 @@ class SettingsReadHostFactoryV4:
         )
 
 
+class PreferencesWriteHostFactoryV4:
+    """Capture one finite display-preference mutation, not a generic settings API."""
+
+    function_id = WRITE_FUNCTION_ID
+
+    def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
+        """Bind persistence to the Host root and one write-only Function identity."""
+        if not context.profile_id or context.user_data_root is None or len(context.provider_bindings) != 1:
+            raise PermissionError("preferences write capture is incomplete")
+        binding = context.provider_bindings[0]
+        operation = binding.operation
+        if (
+            binding.function.function_id != WRITE_FUNCTION_ID
+            or operation.contract_id != WRITE_CONTRACT_ID
+            or operation.operation_id != WRITE_OPERATION_ID
+        ):
+            raise PermissionError("preferences write binding is invalid")
+        domain_id = context.domain_ids.get(
+            (WRITE_CONTRACT_ID, WRITE_OPERATION_ID, binding.principal_ref.value)
+        )
+        if domain_id is None:
+            raise PermissionError("preferences write domain is unavailable")
+        store = FrontendSettingsStore(
+            context.user_data_root / "defaultspack" / "shared" / "frontend_settings.json"
+        )
+        allowed_fields = {
+            section: frozenset(fields) for section, fields in _PREFERENCE_TYPES.items()
+        }
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            # Admission and approval remain on this exact write Function's
+            # Broker edge; the read Function cannot invoke this contribution.
+            del invocation
+            if (
+                operation_id != WRITE_OPERATION_ID
+                or payload.get("profile_id") != context.profile_id
+                or set(payload) - {"profile_id", "changes", "expected_revision", "_session_id"}
+                or not {"profile_id", "changes", "expected_revision"} <= set(payload)
+            ):
+                raise PermissionError("preferences write request is invalid")
+            changes = payload["changes"]
+            if not isinstance(changes, dict) or not changes:
+                raise ValueError("preferences changes must be a nonempty object")
+            for section, fields in changes.items():
+                if section not in _PREFERENCE_TYPES or not isinstance(fields, dict) or not fields:
+                    raise PermissionError("preferences section is not writable")
+                for field, value in fields.items():
+                    value_type = _PREFERENCE_TYPES[section].get(field)
+                    if value_type is None:
+                        raise PermissionError("preferences field is not writable")
+                    if type(value) is not value_type or (isinstance(value, str) and len(value) > 2048):
+                        raise ValueError("preferences value is invalid")
+            return store.compare_and_swap_fields(
+                changes, allowed_fields=allowed_fields,
+                expected_revision=payload["expected_revision"],
+            )
+
+        return CapturedHostProviderV4(
+            (HostProviderContributionV4(
+                contract_id=WRITE_CONTRACT_ID,
+                contract_version=operation.contract_version,
+                operation_id=WRITE_OPERATION_ID,
+                principal_id=binding.principal_ref.value,
+                artifact_digest=binding.artifact.digest,
+                implementation_digest=binding.function.implementation_digest,
+                domain_id=domain_id,
+                invoke=invoke,
+            ),),
+            lambda: None,
+        )
+
+
 HOST_PROVIDER_FACTORY = {
     FUNCTION_ID: SettingsReadHostFactoryV4(),
     CATALOG_FUNCTION_ID: SettingsReadHostFactoryV4(CATALOG_FUNCTION_ID),
+    WRITE_FUNCTION_ID: PreferencesWriteHostFactoryV4(),
 }

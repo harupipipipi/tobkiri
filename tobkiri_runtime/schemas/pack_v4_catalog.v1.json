@@ -16604,15 +16604,18 @@
       "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
       "capabilities": [
-        "ui.settings.read"
+        "ui.settings.read",
+        "ui.preferences.write"
       ],
       "dependencies": {},
-      "description": "Read-only app preferences and settings controls with captured model choices.",
+      "description": "Captured settings presentation and capability-gated display preference changes.",
+      "display_name": "Tobkiri UI Settings",
+      "execution_boundary": "host_brokered",
       "functions": [
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.settings.read",
-          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
           "operation_ids": [
             "tobkiri_ui_settings_pack.settings-read"
           ]
@@ -16620,14 +16623,20 @@
         {
           "contract_id": "tobkiri.resource.ui.settings.v1",
           "function_id": "tobkiri.ui.catalog.read",
-          "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
           "operation_ids": [
             "tobkiri_ui_settings_pack.catalog-read"
           ]
+        },
+        {
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "function_id": "tobkiri.ui.preferences.write",
+          "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.preferences-write"
+          ]
         }
       ],
-      "display_name": "Tobkiri UI Settings",
-      "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [],
       "legacy_operations": [],
@@ -16655,12 +16664,12 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.settings-read",
               "id": "tobkiri_ui_settings_pack.settings-read",
-              "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0"
+              "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7"
             },
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.catalog-read",
               "id": "tobkiri_ui_settings_pack.catalog-read",
-              "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0"
+              "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -16673,6 +16682,172 @@
               "type": "object"
             },
             "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.preferences-write",
+              "id": "tobkiri_ui_settings_pack.preferences-write",
+              "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7"
+            }
+          ],
+          "owner": "tobkiri_ui_settings_pack",
+          "provider_id": "tobkiri.ui.preferences.write",
+          "required_capabilities": [
+            "ui.preferences.write"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "changes": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "chat_rendering": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "general": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "composer_placeholder": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "changes",
+                "expected_revision"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "properties": {
+                "document_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "values": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "chat_rendering": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "general": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "composer_placeholder": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "maxLength": 2048,
+                          "type": "string"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "values",
+                "document_revision"
+              ],
               "type": "object"
             }
           },
@@ -16696,7 +16871,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+          "digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
           "kind": "executable",
           "path": "runtime/settings.py"
         },

@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:760a15d091cb5064ea8b821213a9c77ae8baedc6b7dbaa8f25fdca013755922e",
+      "digest": "sha256:52984b81ca375a9f1e7bf9a94cba139f423bfd8ea892060d002ce303adb053e7",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/public-settings-fields.v1.json"
     },
     {
-      "digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+      "digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
       "kind": "executable",
       "path": "runtime/settings.py"
     }
@@ -24,13 +24,20 @@
         "tobkiri_ui_settings_pack.catalog-read"
       ],
       "revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c"
+    },
+    {
+      "contract_id": "tobkiri.action.ui.preferences.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.preferences-write"
+      ],
+      "revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee"
     }
   ],
   "functions": [
     {
       "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.catalog-read"
@@ -38,9 +45,19 @@
       "role": "host_capability_provider"
     },
     {
+      "contract_revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee",
+      "id": "tobkiri.ui.preferences.write",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_ui_settings_pack.preferences-write"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.settings-read"
@@ -49,9 +66,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448",
-    "contract_catalog_digest": "sha256:56e678d2d0cea6adb364c22d70d8e301eede66320e0b78d97273ee05068c9097",
-    "source_identity": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b"
+    "artifact_set_digest": "sha256:cec3972832b3be77207e901db1f0ec4004f9599ab8acf1226512db879b713fe1",
+    "contract_catalog_digest": "sha256:6b1b48cde8c06889c07b2e86cdeb74b306201c8194eb028eb85914c83a8157a2",
+    "source_identity": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411"
   },
   "migration": {
     "compatibility": "none",
@@ -72,6 +89,17 @@
       "source_kind": "canonical_v4_contract"
     },
     {
+      "contract_reference": "tobkiri.action.ui.preferences.v1",
+      "effect_ceiling": [
+        "capability:ui.preferences.write",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+      "owner": "tobkiri_ui_settings_pack",
+      "provider_id": "tobkiri.ui.preferences.write",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
       "contract_reference": "tobkiri.resource.ui.settings.v1",
       "effect_ceiling": [
         "capability:ui.settings.read",
@@ -84,7 +112,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:100fc2c0327d448480e4dfe82debb53364e9ffc172dab30e4da9310881e26448",
+    "artifact_digest": "sha256:cec3972832b3be77207e901db1f0ec4004f9599ab8acf1226512db879b713fe1",
     "display_name": "Tobkiri UI Settings",
     "id": "tobkiri_ui_settings_pack",
     "kind": "host_extension",
@@ -94,7 +122,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b",
+        "digest": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -105,7 +133,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b",
+    "source_digest": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
   },
@@ -119,6 +147,14 @@
       "provider_id": "tobkiri.ui.catalog.read"
     },
     {
+      "contract_reference": "tobkiri.action.ui.preferences.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.preferences-write"
+      ],
+      "owner": "tobkiri_ui_settings_pack",
+      "provider_id": "tobkiri.ui.preferences.write"
+    },
+    {
       "contract_reference": "tobkiri.resource.ui.settings.v1",
       "operations": [
         "tobkiri_ui_settings_pack.settings-read"
@@ -130,7 +166,8 @@
   "requirements": {
     "approval_policy": "capability_gated",
     "capabilities": [
-      "ui.settings.read"
+      "ui.settings.read",
+      "ui.preferences.write"
     ],
     "contract_dependencies": [
       {

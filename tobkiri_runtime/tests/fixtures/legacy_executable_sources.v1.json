@@ -694,6 +694,157 @@
     "tobkiri_ui_settings_pack": {
       "entries": [
         {
+          "function_id": "tobkiri.ui.preferences.write",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.preferences-write"
+          ],
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profile_id",
+                "changes",
+                "expected_revision"
+              ],
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "changes": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "additionalProperties": false,
+                  "properties": {
+                    "general": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "composer_placeholder": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    },
+                    "chat_rendering": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    }
+                  }
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "values",
+                "document_revision"
+              ],
+              "properties": {
+                "values": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "additionalProperties": false,
+                  "properties": {
+                    "general": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "composer_placeholder": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    },
+                    "chat_rendering": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    }
+                  }
+                },
+                "document_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
           "function_id": "tobkiri.ui.settings.read",
           "operation_ids": ["tobkiri_ui_settings_pack.settings-read"],
           "contract_id": "tobkiri.resource.ui.settings.v1",

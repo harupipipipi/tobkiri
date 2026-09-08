@@ -38,7 +38,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b",
+            "digest": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -49,7 +49,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b",
+        "source_digest": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
       },
@@ -75,8 +75,206 @@
       },
       "status": "accepted",
       "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.ui.preferences.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ui.preferences.write",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:86ad4d3c22a5544f61806fca43eac80fe3915d48c273e39924d10e9bea5e1400",
+          "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+          "output_schema_digest": "sha256:dd815a0b91e7b2d1c90de45d0219434c7e1782e636e2f8a0d753a587c262ea33",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_ui_settings_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri.ui.preferences.write",
+        "required_capabilities": [
+          "ui.preferences.write"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee",
+      "schema_catalog": {
+        "sha256:86ad4d3c22a5544f61806fca43eac80fe3915d48c273e39924d10e9bea5e1400": {
+          "additionalProperties": false,
+          "properties": {
+            "changes": {
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "chat_rendering": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "show_widgets": {
+                      "type": "boolean"
+                    },
+                    "unknown_block_strategy": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "general": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "composer_placeholder": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    },
+                    "keyboard_button_navigation": {
+                      "type": "boolean"
+                    },
+                    "language": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    },
+                    "show_activity_in_messages": {
+                      "type": "boolean"
+                    },
+                    "spotlight_shortcut": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    },
+                    "spotlight_shortcut_enabled": {
+                      "type": "boolean"
+                    },
+                    "spotlight_shortcut_text_input": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "expected_revision": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "changes",
+            "expected_revision"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:dd815a0b91e7b2d1c90de45d0219434c7e1782e636e2f8a0d753a587c262ea33": {
+          "additionalProperties": false,
+          "properties": {
+            "document_revision": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "values": {
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "chat_rendering": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "show_widgets": {
+                      "type": "boolean"
+                    },
+                    "unknown_block_strategy": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "general": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "composer_placeholder": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    },
+                    "keyboard_button_navigation": {
+                      "type": "boolean"
+                    },
+                    "language": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    },
+                    "show_activity_in_messages": {
+                      "type": "boolean"
+                    },
+                    "spotlight_shortcut": {
+                      "maxLength": 2048,
+                      "type": "string"
+                    },
+                    "spotlight_shortcut_enabled": {
+                      "type": "boolean"
+                    },
+                    "spotlight_shortcut_text_input": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "values",
+            "document_revision"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
     }
   ],
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:565c4f2ae84c0dd9e2599fe6beb7de86a1be36759b5c9c2674343652cf99cb4b"
+  "source_identity": "sha256:73e3840f23f128b6efda5dbe17f37baff450279701227b5417ee2c5b3b551411"
 }

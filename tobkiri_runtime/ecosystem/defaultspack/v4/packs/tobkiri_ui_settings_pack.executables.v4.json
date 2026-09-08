@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:1002cf0c362f703351443c1ab8d461cd2a3715e606e0d403a56327c1feed0342",
+  "source_identity": "sha256:7bd7a3a7d58dc5e325605f58366e28b805105660c5ff66f4c56400cfbe31315c",
   "variants": [
     {
       "variant_id": "tobkiri.ui.catalog.read.python",
       "function_id": "tobkiri.ui.catalog.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -38,10 +38,175 @@
       ]
     },
     {
+      "variant_id": "tobkiri.ui.preferences.write.python",
+      "function_id": "tobkiri.ui.preferences.write",
+      "implementation_path": "runtime/settings.py",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee",
+          "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "changes": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "chat_rendering": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "show_widgets": {
+                        "type": "boolean"
+                      },
+                      "unknown_block_strategy": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "general": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "composer_placeholder": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "keyboard_button_navigation": {
+                        "type": "boolean"
+                      },
+                      "language": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "show_activity_in_messages": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "spotlight_shortcut_enabled": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut_text_input": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "changes",
+              "expected_revision"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "document_revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "values": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "chat_rendering": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "show_widgets": {
+                        "type": "boolean"
+                      },
+                      "unknown_block_strategy": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "general": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "composer_placeholder": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "keyboard_button_navigation": {
+                        "type": "boolean"
+                      },
+                      "language": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "show_activity_in_messages": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "spotlight_shortcut_enabled": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut_text_input": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "values",
+              "document_revision"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
       "variant_id": "tobkiri.ui.settings.read.python",
       "function_id": "tobkiri.ui.settings.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:5cf0cfa59d76145e226e17e3b70270f51acd97413321d48e2b9f1187e9d955a0",
+      "implementation_digest": "sha256:323b0c9ea481f230dac128243eac8a0075cda244ede3ac5c734a9cb329ae47d7",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -72,6 +237,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:39a4c49df918cb5956c3dfeab038bd283b24a0cdc8a4fecaa50dbab514c54271",
-  "catalog_digest": "sha256:c4d6ec5b0a6dfc2d00b47e121a1f862038c9073e9a1dccd1346451675b2182d7"
+  "materialization_catalog_digest": "sha256:79039d95fb947e3ccd258e3d505c5b48d78fb2cc62ed28dc57f3ac9454f58a19",
+  "catalog_digest": "sha256:9e14111d44100dfe8f6e0eb26ab07f450db0f97ad803f3c541ac9c520ed6bba7"
 }
