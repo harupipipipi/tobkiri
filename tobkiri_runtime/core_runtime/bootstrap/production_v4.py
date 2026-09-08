@@ -2139,6 +2139,8 @@ def capture_production_dispatch(
                     operation_id,
                     {**dict(payload), "_session_id": nested_session_id},
                     version_range=version_range,
+                    parent_deadline_monotonic=self._envelope.deadline_monotonic,
+                    parent_cancellation=self._envelope.cancellation_requested,
                 )
             finally:
                 release_nested_session(nested_session_id, nested_authority_session_id)
