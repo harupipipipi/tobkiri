@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+            "digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+        "source_digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -86,7 +86,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+            "digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -97,7 +97,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+        "source_digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -148,7 +148,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+            "digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -159,7 +159,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+        "source_digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -210,7 +210,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+            "digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -221,7 +221,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072",
+        "source_digest": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -319,5 +319,5 @@
     }
   ],
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:ae837104d2da1bc5679622c4ddad651c584505707e9dede501d231b45753e072"
+  "source_identity": "sha256:cdab4a132a5438a6b8c307c196bcdc49a9e08518bda22f51a17f7e7648171681"
 }

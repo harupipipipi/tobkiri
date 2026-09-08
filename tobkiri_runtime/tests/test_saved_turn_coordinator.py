@@ -248,3 +248,31 @@ def test_message_edit_cannot_change_the_saved_completion_evidence(tmp_path: Path
     assert result["turn"]["result_reference"] == before["result_reference"]
     assert result["turn"]["result_reference"]["conversation_revision"] == 3
     assert session.calls == 1
+
+
+@pytest.mark.parametrize("field,value", [
+    ("input_digest", "sha256:" + "0" * 64), ("turn_id", "other"),
+    ("initial_revision", True), ("user_revision", True),
+    ("result_reference", {"conversation_id": "other"}),
+])
+def test_substituted_receipt_cannot_complete_a_waiting_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: Any,
+) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    session.transform = lambda _: (_ for _ in ()).throw(TimeoutError())
+    _run(store, session)
+    before = store.get("turn-1")
+    original = session.invoke
+
+    def substitute(contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+        result = original(contract_id, operation, payload, **kwargs)
+        if contract_id == RECEIPT_CONTRACT:
+            result["receipt"][field] = value
+        return result
+
+    monkeypatch.setattr(session, "invoke", substitute)
+    with pytest.raises(ValueError, match="saved receipt"):
+        _run(store, session)
+    assert store.get("turn-1") == before
+    assert session.calls == 1

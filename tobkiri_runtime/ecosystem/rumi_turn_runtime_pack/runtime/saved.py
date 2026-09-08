@@ -86,7 +86,10 @@ def _reconcile(
     encoded = canonical_json(response)
     if len(encoded) > 8192:
         raise ValueError("saved receipt exceeds byte limit")
-    receipt = strict_loads(encoded).get("receipt")
+    decoded = strict_loads(encoded)
+    if not isinstance(decoded, dict) or set(decoded) != {"receipt"}:
+        raise ValueError("saved receipt response is invalid")
+    receipt = decoded["receipt"]
     if receipt is None or isinstance(receipt, dict) and "result_reference" not in receipt:
         return None
     if not isinstance(receipt, dict) or set(receipt) != {
@@ -115,6 +118,7 @@ def _reconcile(
         or reference["user_message_id"] != user_id or receipt["user_message_id"] != user_id
         or reference["assistant_message_id"] != assistant_id
         or receipt["assistant_message_id"] != assistant_id
+        or type(receipt["initial_revision"]) is not int
         or type(receipt["user_revision"]) is not int
         or receipt["user_revision"] != record["conversation_revision"] + 1
         or type(reference["conversation_revision"]) is not int
