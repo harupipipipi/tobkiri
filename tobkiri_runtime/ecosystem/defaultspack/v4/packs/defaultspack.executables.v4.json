@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:b7a791972efb460f01664981b797db9b7fa1a5816a843f289ad7a1d32d4ab57c",
+  "source_identity": "sha256:c1aabb8c17ce4bd61885c813df483239fdc7654bcdf6549a80ace01cfb2d169b",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
@@ -174,6 +174,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:7e5f7e155f8a1464a08184e7d97701fbe81d92bb7662ef3fa15d157e68ae7ad7",
-  "catalog_digest": "sha256:d43451526894e1d506cd1040ac583c016675984b083ba99b3f0bfec5cf97650d"
+  "materialization_catalog_digest": "sha256:8e37482d0318af26d3850e9711328321dc719917bebdbea89a933d9ffd19684f",
+  "catalog_digest": "sha256:2a91e4decb53edc145fd5ceddc5908d8cc84855df23a4f78284edd6555c7924d"
 }

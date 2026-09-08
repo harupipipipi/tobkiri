@@ -409,6 +409,11 @@
           "path": "runtime/application_presentation.py"
         },
         {
+          "digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e",
+          "kind": "executable",
+          "path": "runtime/saved_conversation.py"
+        },
+        {
           "digest": "sha256:b51f935fa4438007fd0d19eeb7ff3b44b410751c94a987baac8e6306b07615d0",
           "index_role": "host_contract_contribution",
           "kind": "sidecar",

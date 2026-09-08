@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -71,6 +72,20 @@ def test_defaultspack_integrity_scan_strict_passes():
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "passed" in result.stdout
+
+
+def test_saved_turn_code_is_sealed_but_does_not_advertise_an_unwired_operation() -> None:
+    pack = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
+    executables = json.loads((DEFAULTSPACK_ROOT / "executables.v4.json").read_text(encoding="utf-8"))
+    path = "runtime/saved_conversation.py"
+    artifacts = [item for item in pack["artifacts"] if item["path"] == path]
+    assert len(artifacts) == 1
+    assert artifacts[0]["kind"] == "executable"
+    assert artifacts[0]["digest"] == "sha256:" + hashlib.sha256(
+        (DEFAULTSPACK_ROOT / path).read_bytes()
+    ).hexdigest()
+    assert all(item["implementation_path"] != path for item in executables["variants"])
+    assert all("saved_complete" not in item["operations"] for item in pack["functions"])
 
 
 def test_projection_catalog_order_matches_canonical_independent_of_function_order():

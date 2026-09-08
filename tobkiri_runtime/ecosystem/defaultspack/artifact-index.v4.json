@@ -1,13 +1,13 @@
 {
-  "artifact_set_digest": "sha256:349295a467b723ea85eb3e2c61066342a63426753c1bc0ae3c04667ba174b666",
+  "artifact_set_digest": "sha256:2500d1e0d822effd3d19399779208216dc0c6262036e1699e802a7e6f3c427f4",
   "artifacts": [
     {
-      "digest": "sha256:a80d15cd780fcc875c9e8e157c6689f3468676bf68f05d2f7a76f8328eefe6b8",
+      "digest": "sha256:7e33fcfa2b7fa54da5197e7f0538446deb2aa9c8cf0b02e6f7d30d033e444ef3",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:7c23bd70a4a108e5169d6a4be10c287c7815f84bdb36ba20ddfa28cc129c425f",
+      "digest": "sha256:a27f3c734df3eec40845b35d0eae2b582d6dc5b431ff4eb1019b382f4125c1a7",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -17,7 +17,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:b7a791972efb460f01664981b797db9b7fa1a5816a843f289ad7a1d32d4ab57c",
+      "digest": "sha256:c1aabb8c17ce4bd61885c813df483239fdc7654bcdf6549a80ace01cfb2d169b",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -32,6 +32,11 @@
       "role": "runtime"
     },
     {
+      "digest": "sha256:e8c31be5f66a6d4e2814bd6da58185ad156c512525f333e27a9a35d74caba81e",
+      "path": "runtime/saved_conversation.py",
+      "role": "runtime"
+    },
+    {
       "digest": "sha256:5623895308596889104518081c539647de80ee8d070228311ec263c6ef85bcdd",
       "path": "update_metadata.v1.json",
       "role": "host_contract_update_metadata"
@@ -40,8 +45,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:ebc788b6e210b5cd5f8900a5914baed2761c143dd23104c9e050c7fd5fb66ba5"
+    "signed_digest": "sha256:d3f493137158824299feb825178c4900b00cbc7c0f4676c0af3ba9b93993c338"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:f5cad2a29a3272aeff9a72ff8fabed1879f26471d03c450b1d84319a374ac785"
+  "source_identity": "sha256:5806194a1ee95e9721d8affdb416b721cc07896761f2dbd25f8006be765761d1"
 }
