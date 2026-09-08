@@ -558,14 +558,17 @@ def _presentation_metadata(
             raise InteractiveEffectUnavailable("interactive effect is unavailable")
         _execute_payload(spec, request, plan)
         # Never render the request, key, request digest, or arbitrary metadata.
-        return {
-            "operation": "Configure Provider connection",
-            "target": str(plan["provider_instance_id"])[:160],
-            "profile": str(plan["profile_id"])[:160],
-            "protocol": str(plan["adapter_id"])[:80],
-            "endpoint": str(plan["endpoint"])[:2_048],
-            "credential": _REDACTED,
-        }
+        return _presentation(
+            action="Configure Provider connection",
+            summary="Store an encrypted API key and update the Provider connection.",
+            detail=(
+                f"Provider: {plan['provider_instance_id']}\n"
+                f"Profile: {plan['profile_id']}\n"
+                f"Protocol: {plan['adapter_id']}\n"
+                f"Endpoint: {plan['endpoint']}\n"
+                f"Credential: {_REDACTED}"
+            ),
+        )
     if spec.kind == "shell_execute":
         return _shell_presentation(payload)
     if spec.kind == "git_commit":

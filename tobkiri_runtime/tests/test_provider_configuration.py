@@ -1,6 +1,7 @@
 """Provider configuration owner writes, failure reconciliation and redaction."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,6 +19,25 @@ def _request() -> dict[str, str]:
         "connection_name": "fixture", "protocol": "openai-compatible",
         "endpoint": "https://provider.example/v1", "key_value": "fixture-secret-123",
     }
+
+
+def test_configuration_approval_uses_existing_confirmation_and_redacts_key(tmp_path: Path) -> None:
+    from core_runtime.interactive_effect_coordinator import (
+        INTERACTIVE_EFFECT_SPECS, _presentation_metadata,
+    )
+    from tobkiri_protocol.canonical import canonical_digest
+
+    request = _request()
+    plan = prepare_configuration(ProviderRegistry("defaults", user_data_root=tmp_path), request)
+    payload = {"request": request, "plan": plan}
+    metadata = _presentation_metadata(
+        INTERACTIVE_EFFECT_SPECS["provider_configure"],
+        SimpleNamespace(request_digest=canonical_digest(payload), normalized_payload=payload),
+    )
+    assert metadata["confirmation_phrase"] == "EXECUTE"
+    assert request["key_value"] not in str(metadata)
+    assert request["endpoint"] in metadata["detail"]
+    assert "provider.fixture" in metadata["detail"]
 
 
 class _Client:
