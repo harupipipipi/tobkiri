@@ -137,3 +137,17 @@ def test_oversize_result_fences_chain_without_retry() -> None:
         chains.take(identity, nonce=_nonce(0), result=b"def")
     with pytest.raises(ValueError):
         chains.take(identity, nonce=_nonce(0), result=b"x")
+
+
+@pytest.mark.parametrize("identity", [
+    replace(_identity(), domain_id="x" * 513),
+    replace(_identity(), request_id="x" * 161),
+    replace(_identity(), deadline=float("inf")),
+    replace(_identity(), deadline=100.0),
+    replace(_identity(), binding_digest="unbound"),
+])
+def test_invalid_identity_never_registers_a_chain(identity: ChainIdentity) -> None:
+    chains = ContinuationChains(clock=lambda: 100.0, max_entries=1)
+    with pytest.raises(ValueError):
+        chains.start(identity, frame=b"request", nonce=_nonce(0))
+    chains.start(_identity(), frame=b"valid", nonce=_nonce(1))
