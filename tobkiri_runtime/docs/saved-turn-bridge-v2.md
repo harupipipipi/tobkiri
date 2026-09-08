@@ -103,7 +103,8 @@ unfinished saved-turn dispatcher available or grant a live Profile binding.
 shape into a validated request using independently supplied root identity, hop,
 target, nonce and predecessor. Extra application-supplied framing fields are
 rejected. The four-step owner test uses this implementation instead of creating
-request frames itself. This is not yet guest-root installation or dispatch.
+request frames itself. Guest source dispatch now uses it as described above;
+deployment into the guest VM and Host-side dispatch remain unverified/unimplemented.
 Both the v1 guest wrapper and the Host final-outcome validator now reject the
 reserved `tobkiri.packvm.*` namespace as terminal application data; an unsupported
 v2 intent cannot masquerade as a completed v1 invocation. The existing initial
@@ -204,7 +205,8 @@ pair `conversation.saved-turn.v1` / `saved_complete` at version `1.0.0`.
 The initial path cannot accept external `{state, outcome}` even after a future
 Function is registered. The pure validator is in the deterministic guest
 archive and exercised with `python -I -S`; no jsonschema dependency is shipped.
-This registers no Function or live edge and does not yet admit v2 control output:
+This input validator registers no Function or live edge. The separate saved guest
+dispatcher above now admits the reserved v2 intent, not arbitrary control output:
 the existing v1 control-frame rejection remains until the full dispatch is wired.
 
 | Step | Captured target | Required outcome before advancing |
