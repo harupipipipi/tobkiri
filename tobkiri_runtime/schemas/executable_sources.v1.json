@@ -9935,7 +9935,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -9949,7 +9949,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+          "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -9994,7 +9994,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -10008,7 +10008,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+          "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -10053,7 +10053,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -10067,7 +10067,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+          "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -10125,7 +10125,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
-      "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+      "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "$defs": {
@@ -10201,7 +10201,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+          "implementation_digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "$defs": {
@@ -11996,7 +11996,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:4b42c7b31965ed6e8fceb8b82ae29b5efdcfff884101b15bd988162619bb7db3",
+    "input_digest": "sha256:e585cd2c86de160e4d67bc7ed0fe3c663034d7dce385e0dfddf515bdd5c045eb",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12213,17 +12213,17 @@
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/message_host.py"
       },
       {
-        "digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+        "digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+        "digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:02b6de377bc84352b84c48b67e7f03481d54f2e05e4b14c23826500fbc76ef01",
+        "digest": "sha256:9d2ab8c07e5643c45c6bc2db78e4f8e0084edcbaa5355e1f24e25d5b1d649ac8",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
@@ -12703,7 +12703,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:78c264e78e2fe0e8b9af6164a4e6c5b2b553101ffcee6d16423e013ef84d680b",
+        "digest": "sha256:4f13f96dc8007c2468f18ee2051f71e4fda4be6c93d27d06246f109c560e92d2",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -13173,7 +13173,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:30541ad52bf1894e417521d49b9136813983c720e52a2f71f153e79bc3017b4f",
+        "digest": "sha256:be1f0cba1c57dd47a59beff5639997344e8a82388e47eff72a36f17683c199ca",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },

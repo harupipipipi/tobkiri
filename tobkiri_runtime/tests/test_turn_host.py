@@ -188,10 +188,7 @@ def test_saved_begin_computes_identity_and_never_restarts_running_turn(tmp_path:
     assert before["input_digest"] == canonical_digest(SAVED_INPUT)
     assert before["request_id"].startswith("saved-turn.")
     assert "original private text" not in json.dumps(before)
-    running = _invoke(
-        tmp_path, "lifecycle", operation="transition", turn_id="saved-turn",
-        expected_revision=1, status="running",
-    )
+    running = _invoke(tmp_path, "lifecycle", operation="claim_saved", **SAVED_INPUT)["turn"]
     assert _invoke(tmp_path, "lifecycle", operation="begin_saved", **SAVED_INPUT) == running
     changed = copy.deepcopy(SAVED_INPUT)
     changed["request"]["content"] = "changed text with identical IDs"
@@ -209,6 +206,29 @@ def test_saved_claim_is_durable_across_host_recapture(tmp_path: Path) -> None:
         "claimed": False, "turn": first["turn"],
     }
     assert _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn") == first["turn"]
+
+
+@pytest.mark.parametrize("status", ["completed", "waiting", "failed", "cancelled"])
+def test_management_cannot_forge_saved_execution_status(tmp_path: Path, status: str) -> None:
+    """A management grant cannot impersonate a saved result or confirmed stop."""
+    claimed = _invoke(tmp_path, "lifecycle", operation="claim_saved", **SAVED_INPUT)["turn"]
+    database = next(tmp_path.rglob("turns.sqlite3"))
+    before = database.read_bytes()
+    with pytest.raises(PermissionError, match="coordinator-owned"):
+        _invoke(
+            tmp_path, "lifecycle", operation="transition", turn_id="saved-turn",
+            expected_revision=claimed["revision"], status=status,
+            details={"result_reference": {"assistant_message_id": "forged"}},
+        )
+    assert database.read_bytes() == before
+    assert _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn") == claimed
+    with pytest.raises(PermissionError, match="fields"):
+        _invoke(
+            tmp_path, "lifecycle", operation="transition", turn_id="saved-turn",
+            expected_revision=claimed["revision"], status="completed",
+            reject_saved_transition=False,
+        )
+    assert database.read_bytes() == before
 
 
 @pytest.mark.parametrize("operation", ["begin_saved", "claim_saved"])

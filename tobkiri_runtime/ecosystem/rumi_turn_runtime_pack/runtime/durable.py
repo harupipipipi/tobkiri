@@ -178,9 +178,12 @@ class DurableTurnRuntime:
             connection.close()
 
     def mutate(
-        self, action: str, turn_id: str, *, expected_revision: int, **arguments: Any
+        self, action: str, turn_id: str, *, expected_revision: int,
+        reject_saved_transition: bool = False, **arguments: Any
     ) -> dict[str, Any]:
         """Apply only existing lifecycle methods under one SQLite write lock."""
+        if type(reject_saved_transition) is not bool:
+            raise ValueError("turn mutation boundary is invalid")
         if action not in _ACTIONS or set(arguments) - _ACTIONS[action]:
             raise ValueError("durable turn mutation fields are invalid")
         if type(expected_revision) is not int or expected_revision < 1:
@@ -195,6 +198,13 @@ class DurableTurnRuntime:
             ).fetchone()
             if row is None:
                 raise KeyError("turn is unknown")
+            if reject_saved_transition and action == "transition":
+                record = self._record(row)
+                if record.get("input_digest") and record["request_id"].startswith("saved-turn."):
+                    # The captured management adapter fixes this flag, never
+                    # caller payload. Check under the write lock, so creation
+                    # or pruning cannot race a separate preflight read.
+                    raise PermissionError("saved turn status is coordinator-owned")
             runtime = self._restore(row)
             result = getattr(runtime, action)(
                 turn_id, expected_revision=expected_revision, **arguments

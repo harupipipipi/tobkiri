@@ -138,7 +138,10 @@ class TurnHostFactoryV4:
                 if not isinstance(ids, list) or len(ids) > 200:
                     raise ValueError("turn guidance IDs must be a bounded list")
                 values["guidance_ids"] = [_identifier(value) for value in ids]
-            return store.mutate(action, turn_id, expected_revision=revision, **values)
+            return store.mutate(
+                action, turn_id, expected_revision=revision,
+                reject_saved_transition=True, **values,
+            )
 
         return CapturedHostProviderV4(
             (
