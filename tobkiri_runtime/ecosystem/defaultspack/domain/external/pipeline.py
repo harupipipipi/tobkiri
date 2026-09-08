@@ -88,7 +88,7 @@ def dispatch_external_event(
             ignored["response_plan"] = _suppressed_response_plan(event.provider, trigger_decision)
         return ignored
     envelope = _apply_envelope_overrides(envelope, envelope_overrides)
-    result = submit_input(envelope, runtime_context)
+    result = submit_input(envelope, runtime_context, settings_owner=settings_owner)
     result["external_event"] = event.as_dict()
     result["policy"] = decision.as_dict()
     result["input_profile_id"] = profile.id

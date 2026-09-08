@@ -2087,7 +2087,7 @@ def _sanitize_attachment_metadata(attachments):
     return sanitized
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     from domain.chat.run_request import validate_chat_run_input
     from domain.chat.idempotency import (
         IdempotencyConflictError,
@@ -2145,7 +2145,7 @@ def run(input_data, context):
             "task_failed",
         }
         engine_context.setdefault("run_source", "blocks.chat.send")
-        for event in ChatRunEngine().stream(input_data, engine_context, stream_mode=use_stream_adapter):
+        for event in ChatRunEngine(settings_owner=settings_owner).stream(input_data, engine_context, stream_mode=use_stream_adapter):
             if not isinstance(event, dict):
                 continue
             event_type = str(event.get("type") or "").strip()
