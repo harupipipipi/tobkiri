@@ -2,7 +2,7 @@
 
 ## Captured full-UI integration
 
-The canonical map currently connects conversation listing and creation to
+The canonical map currently connects conversation CRUD to
 `rumi_conversation_store_pack`, not the legacy handlers documented below.
 The wire endpoint is `/api/contracts/defaultspack/` followed by the URL-encoded
 method and target, for example `POST%20%2Fapi%2Fchat%2Fconversations`.
@@ -23,7 +23,19 @@ and Broker checks remain required.
   a manufactured conversation revision. A new source Profile action edge needs
   normal activation review; existing live Profiles are not changed by this code.
 
-Detail/update/delete and message/stream/stop integration are still pending.
+- `GET /api/chat/conversation?conversation_id=...` returns the actual record,
+  including its `conversation_revision`. This is a fixed route: a conversation
+  ID is query data, never an unregistered path suffix.
+- `PUT /api/chat/conversation` requires `conversation_id`,
+  `expected_conversation_revision` and a nonempty `updates` object of mutable
+  metadata fields. The UI sends the displayed revision, without a hidden
+  refetch that could overwrite another edit. IDs, messages and manufactured
+  revisions are not mutable metadata.
+- `DELETE /api/chat/conversation` requires `conversation_id` and
+  `expected_conversation_revision` in the JSON body. Only a confirmed owner
+  deletion returns `deleted: true`; stale updates/deletes leave storage unchanged.
+
+Message/stream/stop integration is still pending.
 The following sections describe legacy APIs and are not evidence that those
 operations are available through the captured full-UI map.
 

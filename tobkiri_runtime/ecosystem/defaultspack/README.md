@@ -3,12 +3,13 @@
 
 ## Canonical implementation
 
-The captured full-UI conversation list and creation routes use the conversation
+The captured full-UI conversation CRUD routes use the conversation
 owner Pack through Authority/Broker. Creation requires a stable client UUID and
 the list's `store_revision`; a stale write is rejected, not retried with a fresh
 identity. The source Profile includes the required conversation-manage edge;
 existing activations must review that addition before using it. This does not
-yet complete full-UI message sending, streaming, stopping or conversation CRUD.
+yet complete full-UI message sending, streaming or stopping. Record updates and
+deletion require the displayed record's revision; stale writes fail unchanged.
 See [Chat API](docs/chat.md) for the canonical/legacy distinction.
 
 For Tobkiri, the canonical defaultspack implementation is

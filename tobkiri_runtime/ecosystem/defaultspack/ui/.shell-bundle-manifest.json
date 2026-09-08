@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "bfd5e71c58636eecce2bfad563526dd5511e08b315547cc474bc5f0036c14498",
+    "digest": "c6796304a21f92464d024db29428def973c8b03082123d0d14ec8d51fdeaea09",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 352073,
-        "sha256": "7fc6fd0a41c3498c4e035cf755f994c1326ab3fe3cfac60a7e5be3c22eb97b03"
+        "size": 352361,
+        "sha256": "13922c2c36b3c400ba4dd691f7d48ccf6e446a054d8bc3a33626b626586b5fe0"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -215,8 +215,8 @@
       },
       {
         "path": "src/ambient/ambientApprovalBoundary.test.ts",
-        "size": 21899,
-        "sha256": "1d714cd17177d33cf8c42f5c3061c226ee992ccaefcb5e9234c232f3add0e54a"
+        "size": 22061,
+        "sha256": "0bc08d8dd095edfec227c038fbd4970b1f267f7957042336c8af754c8b1b4507"
       },
       {
         "path": "src/ambient/ambientConversationCompletion.ts",
@@ -320,8 +320,8 @@
       },
       {
         "path": "src/ambient/useAmbientRouting.ts",
-        "size": 9412,
-        "sha256": "f035d15c0f822f1eea6d5c7e27c53227b6af974f6a32eec374fa6bb506c758ea"
+        "size": 9901,
+        "sha256": "3fc54bed4713a39a59650c096b4c4c75af0b2946cd0cae227df3e05c06fa186f"
       },
       {
         "path": "src/ambient/useFinalAnswerBridge.ts",
@@ -1115,13 +1115,13 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 114321,
-        "sha256": "01ecf799cd35d0f8081b6492a8f1be1b8c2d2d2d14e9a779c11a1ded2296b442"
+        "size": 115340,
+        "sha256": "6c0872325d6131c5088603670fc0a1f69fce5a672b467f876303d1595492317f"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 174578,
-        "sha256": "682847c47a7f00bb0533f41296ae50733c96828cca8f6233046633f8ba9fa814"
+        "size": 175191,
+        "sha256": "8a54418812840b348298d1604da2c8e106c96ae68c80329ccf2d2d155d706f99"
       },
       {
         "path": "src/lib/approvalPresentation.ts",
@@ -1876,7 +1876,7 @@
     ]
   },
   "bundle": {
-    "digest": "d626fea9087c60e59e25d1a0250df73d34349a565eb693103a70f836add84096",
+    "digest": "dd48296b655a6884a95539f6bc315644b1156ae80553efc377f947510b5f96d1",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1890,8 +1890,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2209497,
-        "sha256": "5b2c9a50d820223fc45f5a28edcbf0d783ff4408886fa420febe75720d7dae96"
+        "size": 2210275,
+        "sha256": "8ee2326a04ae3615df862744b883979ea435fcb96ab9e3f7efec00bcabde5def"
       },
       {
         "path": "shell-rolldown-runtime.js",
