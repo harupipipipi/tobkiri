@@ -2602,8 +2602,8 @@
     {
       "path": "tobkiri_protocol/canonical.py",
       "type": "regular-file",
-      "size": 5164,
-      "sha256": "27fa2ce73fbc40668f56e664e3bbb2008ccbf569cb49044e02dbf1949304af7b",
+      "size": 5465,
+      "sha256": "9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e",
       "executable": false
     },
     {
