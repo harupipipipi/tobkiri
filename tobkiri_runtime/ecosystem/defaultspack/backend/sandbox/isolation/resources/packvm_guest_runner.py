@@ -236,6 +236,19 @@ def _invoke(
             raise ValueError(f"PackVM invocation {field} is invalid")
     if not isinstance(request["payload"], dict):
         raise ValueError("PackVM invocation payload must be an object")
+    from tobkiri_protocol.saved_conversation import (
+        SAVED_CONVERSATION_CONTRACT,
+        SAVED_CONVERSATION_OPERATION,
+        validate_saved_conversation_input,
+    )
+
+    if request["contract_id"] == SAVED_CONVERSATION_CONTRACT:
+        if (
+            request["operation_id"] != SAVED_CONVERSATION_OPERATION
+            or request["contract_version"] != "1.0.0"
+        ):
+            raise ValueError("PackVM saved conversation operation is invalid")
+        request = {**request, "payload": validate_saved_conversation_input(request["payload"])}
     _digest(request["request_digest"], "request_digest")
     _normalise_bridge_deadline(request["deadline_monotonic"])
     cancel_token = str(request["cancel_token"] or "")

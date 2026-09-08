@@ -11,6 +11,7 @@ import pytest
 from ecosystem.defaultspack.runtime import saved_conversation as saved
 from tobkiri_protocol.errors import SchemaValidationError
 from tobkiri_protocol.validation import validate_document
+from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 
 def _input() -> dict:
@@ -31,6 +32,7 @@ def test_valid_input_matches_pure_initial_abi(field: str, value: object) -> None
     checked = validate_document(payload, "saved_conversation_input")
     assert checked == payload
     assert checked is not payload
+    assert validate_saved_conversation_input(payload) == checked
     intent = saved.tobkiri_packvm_invoke("saved_complete", checked)
     assert intent["hop"] == 0
     assert intent["state"]["request"] == payload["request"]
@@ -54,6 +56,8 @@ def test_invalid_initial_values_are_rejected_by_contract_and_computation(
     with pytest.raises(SchemaValidationError):
         validate_document(payload, "saved_conversation_input")
     with pytest.raises(ValueError):
+        validate_saved_conversation_input(payload)
+    with pytest.raises(ValueError):
         saved.tobkiri_packvm_invoke("saved_complete", payload)
 
 
@@ -71,6 +75,8 @@ def test_external_input_cannot_supply_execution_or_resume_context(
     with pytest.raises(SchemaValidationError):
         validate_document(payload, "saved_conversation_input")
     with pytest.raises(ValueError):
+        validate_saved_conversation_input(payload)
+    with pytest.raises(ValueError):
         saved.tobkiri_packvm_invoke("saved_complete", payload)
 
 
@@ -81,6 +87,8 @@ def test_internal_resume_shape_is_not_an_external_input_contract() -> None:
     }}
     with pytest.raises(SchemaValidationError):
         validate_document(resume, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(resume)
     assert saved.tobkiri_packvm_invoke("saved_complete", resume)["status"] == "error"
 
 

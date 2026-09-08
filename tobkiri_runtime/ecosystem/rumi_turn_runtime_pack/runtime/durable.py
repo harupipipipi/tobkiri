@@ -15,8 +15,8 @@ from typing import Any, Mapping
 
 from core_runtime.profile_workspace import validate_profile_id
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict, TurnRuntime
-from tobkiri_protocol.canonical import canonical_digest, canonical_json
-from tobkiri_protocol.validation import validate_document
+from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 _MAX_RECORD_BYTES = 1024 * 1024
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
@@ -52,10 +52,8 @@ class DurableTurnRuntime:
 
     def begin_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Bind validated saved input without starting or retrying execution."""
-        initial = validate_document(payload, "saved_conversation_input")
+        initial = validate_saved_conversation_input(payload)
         request = initial["request"]
-        if len(canonical_json(request)) > 60 * 1024:
-            raise ValueError("saved turn input exceeds byte limit")
         identity = canonical_digest({
             "profile_id": self.profile_id, "turn_id": request["turn_id"],
         }).removeprefix("sha256:")

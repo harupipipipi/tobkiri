@@ -84,7 +84,7 @@ v1 bridge request still follows its dedicated validation path.
 The packaging path now uses `scripts/build_packvm_guest_bundle.py` to produce
 a deterministic, uncompressed zipapp. Its exact closure is the existing runner
 as `__main__.py`, the three continuation modules, bounded child pipe I/O,
-protocol canonicalization/errors,
+protocol canonicalization/errors and dependency-free saved-input validation,
 and empty package initializers. No Host dispatcher, state owner, credentials or
 third-party dependencies are included. The pipe helper is now used by the actual
 initial and resumed child execution path: stdout is bounded while reading,
@@ -164,6 +164,19 @@ internal `{state, outcome}` shape at this external boundary. This is a schema
 definition, not Function publication, route wiring or a live Profile grant.
 Production saved-send must call this validation before its first dispatch when
 the versioned transport and captured operation are connected.
+
+`tobkiri_protocol.saved_conversation.validate_saved_conversation_input` now
+implements the same finite input shape plus the encoded request byte budget
+without jsonschema or file reads. Schema/computation/validator parity tests
+cover valid values, extra execution fields, invalid identities/revisions and
+the internal resume shape. `begin_saved` uses this validator, and the guest
+initial invoke path calls it before artifact access for the reserved explicit
+pair `conversation.saved-turn.v1` / `saved_complete` at version `1.0.0`.
+The initial path cannot accept external `{state, outcome}` even after a future
+Function is registered. The pure validator is in the deterministic guest
+archive and exercised with `python -I -S`; no jsonschema dependency is shipped.
+This registers no Function or live edge and does not yet admit v2 control output:
+the existing v1 control-frame rejection remains until the full dispatch is wired.
 
 | Step | Captured target | Required outcome before advancing |
 | --- | --- | --- |

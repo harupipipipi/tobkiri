@@ -22,6 +22,7 @@ _SOURCES = {
     "tobkiri_host/continuation_session.py": "tobkiri_host/continuation_session.py",
     "tobkiri_protocol/canonical.py": "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py": "tobkiri_protocol/errors.py",
+    "tobkiri_protocol/saved_conversation.py": "tobkiri_protocol/saved_conversation.py",
 }
 _PACKAGES = ("tobkiri_host/__init__.py", "tobkiri_protocol/__init__.py")
 

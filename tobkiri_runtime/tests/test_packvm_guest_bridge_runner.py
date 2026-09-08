@@ -25,6 +25,32 @@ class _FakeSigner:
         return hashlib.sha512(payload).digest()
 
 
+@pytest.mark.parametrize("payload", [
+    {"state": {}, "outcome": {}},
+    {"request": {"turn_id": "turn", "conversation_id": "conversation",
+                 "conversation_revision": 1, "content": "hello", "target": "other"}},
+])
+def test_saved_initial_invoke_rejects_resume_or_routing_before_artifact_access(
+    monkeypatch: pytest.MonkeyPatch, payload: dict,
+) -> None:
+    def forbidden(*args: object) -> None:
+        pytest.fail("invalid initial input must not inspect or execute an artifact")
+
+    monkeypatch.setattr(runner, "_verify_invocation_artifact", forbidden)
+    request = {
+        "operation": "invoke", "request_id": "request", "target_domain": "domain",
+        "artifact_digest": "sha256:" + "a" * 64,
+        "materialization_digest": "sha256:" + "a" * 64,
+        "guest_artifact_identity": "sha256:" + "a" * 64,
+        "contract_id": "conversation.saved-turn.v1", "contract_version": "1.0.0",
+        "operation_id": "saved_complete", "payload": payload,
+        "request_digest": "sha256:" + "b" * 64,
+        "deadline_monotonic": "60", "cancel_token": "c" * 64,
+    }
+    with pytest.raises(ValueError, match="fields are invalid"):
+        runner._invoke(request)
+
+
 def test_cancellation_capacity_never_evicts_a_live_fence(monkeypatch: pytest.MonkeyPatch) -> None:
     """Overflow stays bounded without allowing an old or new cancel to revive."""
     now = [100.0]

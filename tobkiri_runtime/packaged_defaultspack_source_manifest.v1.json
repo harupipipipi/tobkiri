@@ -272,7 +272,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57299,
-      "sha256": "68d365133fd2270e36b0f507f7c9c5e17898e1ae748eb2c5aea3bef4808ac38e",
+      "sha256": "c9b789d399695221102b05b5c0db34e8dc27edecececcbe8b2e14f0cc5d19476",
       "executable": false
     },
     {
@@ -293,7 +293,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 28719,
-      "sha256": "1f1b91ba8c54d189bd1909f28b043ab2a3ba9ae49758b4b73c800827c70cd96e",
+      "sha256": "2c970ff5aca0b911560925afc7e62ccd98ab6434b0a2ffdede75b559f44f8915",
       "executable": false
     },
     {
@@ -307,7 +307,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 64723,
-      "sha256": "4f1c62d9c8959ff3298e063656e93d9f7677bf5595fc1663731b53996554605c",
+      "sha256": "4f966d40593db019973b88c648ada27ced9c2d31922af1e2485bd03b81cd593a",
       "executable": false
     },
     {
@@ -2169,14 +2169,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.executables.v4.json",
       "type": "regular-file",
       "size": 4225,
-      "sha256": "6d0eb739707bce6060abb22013a24adabc8f5edce0d2d7215ef781462bd41d65",
+      "sha256": "f29b9a732921531aa7ba1f97084777e06a8874160369ac714db08e77e4990daf",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 7628,
-      "sha256": "5ab90bcd8295db571dde5b45799260906db490a9970e9b7c3c596cb0947ad468",
+      "sha256": "e5daa91794ec22c32a56d75be93cfb6a5080e3a3de5a20a6cfd503c1f9a0c74a",
       "executable": false
     },
     {
@@ -2329,8 +2329,8 @@
     {
       "path": "scripts/build_packvm_guest_bundle.py",
       "type": "regular-file",
-      "size": 4029,
-      "sha256": "a710cf9d5f6a6abe5005cc418a4b35fd7ec794f45c1a760347a9968ad2692b96",
+      "size": 4117,
+      "sha256": "b3fac077ca6cebba8972e16e057d112b9a519c447a145ffa85123b4bf9a80e65",
       "executable": false
     },
     {
@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 846337,
-      "sha256": "3238c8362a756e53fe60b2cfe0f4ed5a6cb3d28eef6de0eeed3591d51487a30f",
+      "sha256": "dddb64a6ff72f0acb5aabff56a5556f9397e39250e17b0f1d29165ee66f5cb73",
       "executable": false
     },
     {
@@ -2744,6 +2744,13 @@
       "type": "regular-file",
       "size": 10901,
       "sha256": "9598187b7a80a22505ee7eb7de391f1886c289da2d87e9e89d7a86d563571a31",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/saved_conversation.py",
+      "type": "regular-file",
+      "size": 2011,
+      "sha256": "364931c995cadca691c4e1e7057a724fc055a0f3ae3050e4fb10f88bcf9ad223",
       "executable": false
     },
     {
