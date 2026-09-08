@@ -64,10 +64,12 @@ The legacy transition must cover more than the presentation reader:
   unreadable/corrupt-preference fallback remains local compatibility behavior;
   it must not absorb future captured-contract authorization failures. They do
   not recover from backup or create locks/directories/diagnostics.
-- The model cache signature still observes the primary and backup paths.
-  Moving only the snapshot method would leave these filesystem dependencies
-  behind; the captured owner cutover must use an owner snapshot/revision instead.
-  The command registry also derives its separate event/offline database paths
+- The model service no longer caches resolved values using filesystem size and
+  modification time. Those attributes can remain identical across different
+  settings documents and are not an owner revision. Each resolution now reads
+  the current owner snapshot and credential availability without retaining a
+  second global settings cache. Captured owner binding is still pending.
+  The command registry derives its separate event/offline database paths
   from the settings path; those databases are not settings-owner state and must
   retain an explicit independent location when the settings client loses paths.
 
