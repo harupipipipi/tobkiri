@@ -3711,7 +3711,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_credential_broker_pack.credential-broker.manage",
-      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -3725,7 +3725,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+          "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -3764,7 +3764,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_credential_broker_pack.credential-broker.migrate",
-      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -3778,7 +3778,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+          "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -3817,7 +3817,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_credential_broker_pack.credential-broker.resolve",
-      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -3831,7 +3831,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+          "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -3870,7 +3870,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_credential_broker_pack.credential-broker.status",
-      "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+      "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
       "implementation_path": "runtime/process.py",
       "input_schema": {
         "type": "object"
@@ -3884,7 +3884,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+          "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
           "implementation_path": "runtime/process.py",
           "input_schema": {
             "type": "object"
@@ -12103,7 +12103,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:fff46a205fcd4a18e891be4713150137796cd6fd77c49377da70b417f8e5a53c",
+    "input_digest": "sha256:a2542274844174222df5f1bcabcc397efb26bcc42f9e33b75317f48478c99143",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12470,7 +12470,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:944f1e6bca5c3e798f674aa964c59a422fd69d8a400255137348783e7c960e54",
+        "digest": "sha256:213e3536e1fb224d57f54df2b2888b0655023b6b5f91a0b7b1204ebd80ca263b",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/artifact-manifest.json"
       },
@@ -12950,7 +12950,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:1f2fed618cb0e8ca0fbc0d797e3d55cf9ff33dcf852f0ac60737b01af52f45ae",
+        "digest": "sha256:6adb7a2305227bbf10fea5d5b834d7af99296561cb39bf5a74abb757331f63c4",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/rumi.pack.v3.json"
       },

@@ -5496,7 +5496,7 @@
             {
               "entrypoint_id": "credential-manage",
               "id": "rumi_credential_broker_pack.credential-manage",
-              "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8"
+              "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9"
             }
           ],
           "owner": "rumi_credential_broker_pack",
@@ -5531,7 +5531,7 @@
             {
               "entrypoint_id": "credential-migrate",
               "id": "rumi_credential_broker_pack.credential-migrate",
-              "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8"
+              "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9"
             }
           ],
           "owner": "rumi_credential_broker_pack",
@@ -5564,7 +5564,7 @@
             {
               "entrypoint_id": "credential-status",
               "id": "rumi_credential_broker_pack.credential-status",
-              "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8"
+              "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9"
             }
           ],
           "owner": "rumi_credential_broker_pack",
@@ -5599,7 +5599,7 @@
             {
               "entrypoint_id": "credential-resolve",
               "id": "rumi_credential_broker_pack.credential-resolve",
-              "implementation_digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8"
+              "implementation_digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9"
             }
           ],
           "owner": "rumi_credential_broker_pack",
@@ -5627,7 +5627,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:52f30f2c79e2b057b78dac8d4e263fdbaed7f5bd3d02cdb4d1b2cc07003c7ef8",
+          "digest": "sha256:e879c790b7b9caea95b116afed10bc7b11d3a47de47ec073d1575ce254f3a9f9",
           "kind": "executable",
           "path": "runtime/process.py"
         },
