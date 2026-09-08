@@ -1026,7 +1026,9 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert status == 400, rejected
     assert not registry.path.exists()
     status, prepared = post(path, request)
-    assert status == 200, (failures, authority.audit_events()[-6:], prepared)
+    assert status == 200, "\n".join(
+        f"{operation}: {' -> '.join(chain)}" for operation, chain in failures
+    ) or str(prepared)
     effect = prepared["data"]
     assert effect["state"] == "approval_pending"
     assert secret not in json.dumps(prepared)
