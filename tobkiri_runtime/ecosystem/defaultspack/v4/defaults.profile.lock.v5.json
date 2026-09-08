@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:41614004be184c1d516c13e52bf3cd3609aba3ff4c177731686a572a7da76a07",
-  "profile_definition_digest": "sha256:748d2093ccbc6d2db54a9632a6865ecee14b1318f17726a19c5814f071174c14",
-  "catalog_revision": "sha256:23361513b4c7cfe29bff5ed0751ad7b129e7e633aea4616543ec05f4d9c17e70",
-  "bundle_digest": "sha256:3f0dbb64be162670fc9d15ed584038a5f9de1ced7ec073f65dc26ef18e624f21",
+  "profile_revision": "sha256:7cc78a597c22c4471316dbe1d987c1d7d921585054d8ebf426cc6dbdfcb505e4",
+  "profile_definition_digest": "sha256:b53420ab206fe593a19c958b6a49b0d6ab34ec5ad04afc21bb66a63dfe95e88a",
+  "catalog_revision": "sha256:bb1e547b9bf67d63ed041bd61a63b767f555797f5ce75e06b9229df2fa9ce2aa",
+  "bundle_digest": "sha256:103b9758463cb85084de646646755bf9bafab4ed48ac675833e7541779836421",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -27,7 +27,7 @@
     "pack_id": "runtime.tauri.application.default",
     "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
     "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
-    "definition_digest": "sha256:9472a7e6189c57c6ea3e48c735b16bb542ab4312914054c012592c8833c24a20"
+    "definition_digest": "sha256:b71cd4a815f7b7d59b5e2ee156654a5cd412910f91409a58d000b1f219a7c7a8"
   },
   "effective_set": [
     {
@@ -39,6 +39,11 @@
       "role": "shell",
       "identity": "shell.tauri.default",
       "artifact_digest": "sha256:75e4452baa85b5034a50746b452d0e65055e8951aae06577921ee9f115f6d507"
+    },
+    {
+      "role": "pack",
+      "identity": "rumi_credential_broker_pack",
+      "artifact_digest": "sha256:47b2e1962ac46510de2daa9e1987a5a0411483412346ab08d5dc1b76f24138e0"
     },
     {
       "role": "pack",
@@ -123,7 +128,7 @@
     {
       "role": "pack",
       "identity": "rumi_provider_registry_pack",
-      "artifact_digest": "sha256:25d6829cc22af74902c9d16735add658817275d1c625f2a77d10602ac12afa78"
+      "artifact_digest": "sha256:20c952d5e3283909bcd2dd4a8bda6983035557531785dcff782a70622e53d871"
     },
     {
       "role": "pack",
@@ -374,6 +379,18 @@
       "domain_kind": "dedicated_process"
     },
     {
+      "pack_id": "rumi_credential_broker_pack",
+      "artifact_digest": "sha256:47b2e1962ac46510de2daa9e1987a5a0411483412346ab08d5dc1b76f24138e0",
+      "executable_catalog_digest": "sha256:632578b039d3491b9c0bef0dfccba0bdd5f222683665d3588169cd32b3890bb6",
+      "variant_id": "rumi_credential_broker_pack.credential-broker.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
       "pack_id": "rumi_file_inspect_pack",
       "artifact_digest": "sha256:88f28f0b08f22b9b63940829b04a5f24d4e55cf63b4a852ab1ffa0b21cd4cc95",
       "executable_catalog_digest": "sha256:12b2f284afeb1fe7f0d370d89b9f26400f374936dd95fe8f73013444c43f5c04",
@@ -555,8 +572,8 @@
     },
     {
       "pack_id": "rumi_provider_registry_pack",
-      "artifact_digest": "sha256:25d6829cc22af74902c9d16735add658817275d1c625f2a77d10602ac12afa78",
-      "executable_catalog_digest": "sha256:1fcb1c04b83c637b7a1b07cb9ad0c0df1afaaa00ed2fed2ce559a00f691030d1",
+      "artifact_digest": "sha256:20c952d5e3283909bcd2dd4a8bda6983035557531785dcff782a70622e53d871",
+      "executable_catalog_digest": "sha256:4fdf82e0e0a79ad19aca66f41b9a9a888af31f679d76e2a0ba5d56425208451d",
       "variant_id": "rumi_provider_registry_pack.provider-registry.health.python",
       "platform": "any",
       "architecture": "any",
@@ -567,8 +584,20 @@
     },
     {
       "pack_id": "rumi_provider_registry_pack",
-      "artifact_digest": "sha256:25d6829cc22af74902c9d16735add658817275d1c625f2a77d10602ac12afa78",
-      "executable_catalog_digest": "sha256:1fcb1c04b83c637b7a1b07cb9ad0c0df1afaaa00ed2fed2ce559a00f691030d1",
+      "artifact_digest": "sha256:20c952d5e3283909bcd2dd4a8bda6983035557531785dcff782a70622e53d871",
+      "executable_catalog_digest": "sha256:4fdf82e0e0a79ad19aca66f41b9a9a888af31f679d76e2a0ba5d56425208451d",
+      "variant_id": "rumi_provider_registry_pack.provider-registry.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_provider_registry_pack",
+      "artifact_digest": "sha256:20c952d5e3283909bcd2dd4a8bda6983035557531785dcff782a70622e53d871",
+      "executable_catalog_digest": "sha256:4fdf82e0e0a79ad19aca66f41b9a9a888af31f679d76e2a0ba5d56425208451d",
       "variant_id": "rumi_provider_registry_pack.provider-registry.resource.python",
       "platform": "any",
       "architecture": "any",
@@ -722,9 +751,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:24200684a30705cc7bb14431490cf334a3fa3a5697db30f7335b64d7c6f63abc",
-  "constraints_digest": "sha256:656d9f2289685f224af51592a2866454ec894554996784b350ea418876c41426",
-  "closure_digest": "sha256:9404c5ec1054e8884cdbc1c69501f4aa63c8a08b434b84990e385ff74bc5e036",
-  "provenance_digest": "sha256:f6da4ddf7be7796a5a5d4d1ffa5005acc5abe1bd87b1c83a81493347883dba4a",
-  "lock_digest": "sha256:4bfe1d383bcc04d40a86b9e4b572cdb443edf686d243e815a971aadb5bcfc6fb"
+  "requested_edges_digest": "sha256:adc1370ff81692e768b14de23fb5975f3e5bec04fc93b38cc6823801fd475e24",
+  "constraints_digest": "sha256:13be5ca7af1e3cc4f73bff6672e60845335d1cccaa4daec3edf65464ca30b1b8",
+  "closure_digest": "sha256:907cc1b04a83222ea83d5f1e0c8677ff1cc30ae5ac4834120489a540281aa465",
+  "provenance_digest": "sha256:5eea1cf5ebf9339ff72259378cfbe758ca816c4ba652f4c758f4352a7ca7a1b4",
+  "lock_digest": "sha256:77ec246acbd1077892579a55ac514a9886d269d5b6f61c390bff70ad53f18ac0"
 }

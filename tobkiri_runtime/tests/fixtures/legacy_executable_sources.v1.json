@@ -641,6 +641,15 @@
     "rumi_provider_registry_pack": {
       "entries": [
         {
+          "function_id": "rumi_provider_registry_pack.provider-registry.manage",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-configure-prepare",
+            "rumi_provider_registry_pack.provider-configure"
+          ],
+          "contract_id": "rumi.action.ai.provider.registry.manage.v1",
+          "implementation_path": "runtime/process.py"
+        },
+        {
           "function_id": "rumi_provider_registry_pack.provider-registry.health",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-health.generate",

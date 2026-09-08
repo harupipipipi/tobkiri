@@ -976,6 +976,73 @@ def test_command_protocol_paths_are_inert_in_captured_production_http(
     assert session.broker._executor._work_queue.empty()
 
 
+def test_provider_configuration_http_requires_approval_and_saves_once(
+    production_server, tmp_path: Path,
+) -> None:
+    """HTTP/Broker/approval/credential and registry owners; no network or real key."""
+    from core_runtime.authority.ui_operator import sign_ui_operator
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+
+    server, _session, authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(path: str, body: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+        status, result, _ = _request(
+            server, "POST", _contract("POST", path), body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        return status, result
+
+    root = tmp_path / "user-data"
+    registry = ProviderRegistry("defaults", user_data_root=root)
+    secret = "fixture-secret-provider-configuration"
+    request = {
+        "phase": "prepare", "effect_kind": "provider_configure",
+        "request": {
+            "connection_name": "fixture", "protocol": "openai-compatible",
+            "endpoint": "https://provider.example/v1", "key_value": secret,
+        },
+    }
+    path = "/api/ai/provider-key"
+    status, prepared = post(path, request)
+    assert status == 200, prepared
+    effect = prepared["data"]
+    assert effect["state"] == "approval_pending"
+    assert secret not in json.dumps(prepared)
+    assert not registry.path.exists()
+    assert not (root / "credentials/material-store/credentials.store.json").exists()
+    status, denied = post(path, {"phase": "resume", "effect_id": effect["effect_id"]})
+    assert status != 200 or denied["data"]["state"] != "succeeded"
+    assert not registry.path.exists()
+    approval_id = effect["approval_request_id"]
+    status, approval = post("/api/interactive-approval/v1/get", {"request_id": approval_id})
+    assert status == 200, approval
+    data = approval["data"]
+    status, approved = post("/api/interactive-approval/v1/approve", {
+        "request_id": approval_id, "confirmation_text": "EXECUTE",
+        "ui_operator": sign_ui_operator(
+            approval_id, nonce="provider-configuration-approval", decision="approve",
+            request_snapshot_digest=data["request_snapshot_digest"],
+            typed_confirmation_digest=data["typed_confirmation_digest"],
+        ),
+    })
+    assert status == 200, approved
+    for _ in range(2):
+        status, result = post(path, {"phase": "resume", "effect_id": effect["effect_id"]})
+        assert status == 200, result
+        assert result["data"]["state"] == "succeeded", result
+        assert secret not in json.dumps(result)
+        snapshot = registry.snapshot()
+        assert snapshot["revision"] == 1
+        assert snapshot["providers"][0]["credential_handle"].startswith("credential:")
+    assert secret not in registry.path.read_text()
+    stored = root / "credentials/material-store/credentials.store.json"
+    assert secret not in stored.read_text()
+    assert len(json.loads(stored.read_text())["credentials"]) == 1
+    assert secret not in json.dumps(authority.audit_events(), default=str)
+
+
 def test_all_high_risk_commands_http_require_host_approval_and_run_once(
     command_vertical_server,
     tmp_path: Path,

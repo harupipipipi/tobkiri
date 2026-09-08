@@ -53,6 +53,13 @@ class InteractiveEffectSpec:
 
 
 INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
+    "provider_configure": InteractiveEffectSpec(
+        kind="provider_configure",
+        prepare_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
+        prepare_operation_id="rumi_provider_registry_pack.provider-configure-prepare",
+        execute_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
+        execute_operation_id="rumi_provider_registry_pack.provider-configure",
+    ),
     "shell_execute": InteractiveEffectSpec(
         kind="shell_execute",
         prepare_contract_id="tobkiri.service.shell.execute.v1",
@@ -372,6 +379,19 @@ def _execute_payload(
 ) -> dict[str, Any]:
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
+    if spec.kind == "provider_configure":
+        plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
+        if (
+            set(plan) != {
+                "profile_id", "provider_instance_id", "adapter_id", "endpoint",
+                "expected_revision", "request_digest",
+            }
+            or plan.get("request_digest") != canonical_digest(dict(request))
+            or type(plan.get("expected_revision")) is not int
+            or plan["expected_revision"] < 0
+        ):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        return {"request": dict(request), "plan": plan}
     if spec.kind == "shell_execute":
         plan = prepared_result.get("redacted_plan")
         digest = prepared_result.get("plan_digest")
@@ -531,6 +551,21 @@ def _presentation_metadata(
         prepared.normalized_payload,
         HostInteractiveEffectService._MAX_REQUEST_BYTES,
     )
+    if spec.kind == "provider_configure":
+        plan = payload.get("plan")
+        request = payload.get("request")
+        if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        _execute_payload(spec, request, plan)
+        # Never render the request, key, request digest, or arbitrary metadata.
+        return {
+            "operation": "Configure Provider connection",
+            "target": str(plan["provider_instance_id"])[:160],
+            "profile": str(plan["profile_id"])[:160],
+            "protocol": str(plan["adapter_id"])[:80],
+            "endpoint": str(plan["endpoint"])[:2_048],
+            "credential": _REDACTED,
+        }
     if spec.kind == "shell_execute":
         return _shell_presentation(payload)
     if spec.kind == "git_commit":

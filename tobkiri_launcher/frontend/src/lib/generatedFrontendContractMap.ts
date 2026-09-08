@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:b979f28b7d3b3b698bdbb966014befe5ab1a1e6d9664c91f569a9f1cb9800293
+// Raw source digest: sha256:79e7d162738f4d86d5d08f05fbca2c2ca2ff3ba996e5f09469e29f0b07986ee9
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,14 +28,34 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:b979f28b7d3b3b698bdbb966014befe5ab1a1e6d9664c91f569a9f1cb9800293" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:79e7d162738f4d86d5d08f05fbca2c2ca2ff3ba996e5f09469e29f0b07986ee9" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:b979f28b7d3b3b698bdbb966014befe5ab1a1e6d9664c91f569a9f1cb9800293",
+  "artifact_digest": "sha256:79e7d162738f4d86d5d08f05fbca2c2ca2ff3ba996e5f09469e29f0b07986ee9",
   "routes": [
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-key",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.providers.configure",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "operation_id": "interactive_effect.manage",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "allowed_payload_keys": [
+            "phase",
+            "effect_kind",
+            "request",
+            "effect_id"
+          ]
+        }
+      ]
+    },
     {
       "method": "POST",
       "path": "/api/chat/turn/reconcile",
@@ -837,6 +857,24 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
 };
 
 const EXPECTED_ROUTES = {
+  "POST /api/ai/provider-key": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.providers.configure",
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "operation_id": "interactive_effect.manage",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "allowed_payload_keys": [
+          "phase",
+          "effect_kind",
+          "request",
+          "effect_id"
+        ]
+      }
+    ]
+  },
   "POST /api/chat/turn/reconcile": {
     "presentation": "broker_result",
     "targets": [

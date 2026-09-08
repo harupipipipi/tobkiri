@@ -35,7 +35,10 @@ def _capture(tmp_path: Path, *, readonly: bool = False) -> Any:
             for operation in factory.operations
         },
     )
-    return factory.capture(context).contributions
+    return tuple(sorted(
+        factory.capture(context).contributions,
+        key=lambda item: not item.operation_id.endswith("provider-registry-manage"),
+    ))
 
 
 def _save_payload() -> dict[str, Any]:

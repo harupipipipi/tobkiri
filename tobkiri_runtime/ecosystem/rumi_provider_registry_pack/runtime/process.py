@@ -15,6 +15,14 @@ from core_runtime.host_provider_backend_v4 import (
 from ecosystem.rumi_provider_registry_pack.runtime.service import (
     ProviderRegistryService,
 )
+from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
+    CREDENTIAL_CONTRACT,
+    EXECUTE_OPERATION,
+    PREPARE_OPERATION,
+    execute_configuration,
+    prepare_configuration,
+)
+from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
 
 class ProviderRegistryHostFactoryV4:
@@ -36,7 +44,7 @@ class ProviderRegistryHostFactoryV4:
         )
         self.operations = (
             frozenset({base_operation, base_operation + ".generate", base_operation + ".stream"})
-            if readonly else frozenset({base_operation})
+            if readonly else frozenset({base_operation, PREPARE_OPERATION, EXECUTE_OPERATION})
         )
 
     def capture(
@@ -63,12 +71,23 @@ class ProviderRegistryHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            del invocation
             if (
                 operation_id not in self.operations
                 or payload.get("profile_id", context.profile_id) != context.profile_id
             ):
                 raise PermissionError("provider registry request binding is invalid")
+            if not self.readonly and operation_id in {PREPARE_OPERATION, EXECUTE_OPERATION}:
+                registry = ProviderRegistry(
+                    context.profile_id, user_data_root=context.user_data_root,
+                )
+                if operation_id == PREPARE_OPERATION:
+                    return prepare_configuration(registry, payload)
+                client = invocation.contract_client(
+                    allowed_contract_ids=frozenset({CREDENTIAL_CONTRACT}),
+                    consumer_pack_id="rumi_provider_registry_pack",
+                    include_credentials=False,
+                )
+                return execute_configuration(registry, client, payload)
             if self.readonly:
                 if set(payload) - {"profile_id"}:
                     raise PermissionError("provider registry read payload is invalid")
