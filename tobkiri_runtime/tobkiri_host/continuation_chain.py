@@ -90,8 +90,10 @@ class ContinuationChains:
                 not isinstance(identity, ChainIdentity)
                 or not isinstance(identity.domain_id, str)
                 or not identity.domain_id
+                or len(identity.domain_id) > 512
                 or not isinstance(identity.request_id, str)
                 or not identity.request_id
+                or len(identity.request_id) > 160
                 or not isinstance(identity.binding_digest, str)
                 or _DIGEST.fullmatch(identity.binding_digest) is None
                 or type(identity.deadline) not in (int, float)
