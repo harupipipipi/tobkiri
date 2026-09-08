@@ -1023,7 +1023,7 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     }
     path = "/api/ai/provider-key"
     status, prepared = post(path, request)
-    assert status == 200, (prepared, failures)
+    assert status == 200, (failures, authority.audit_events()[-6:], prepared)
     effect = prepared["data"]
     assert effect["state"] == "approval_pending"
     assert secret not in json.dumps(prepared)
