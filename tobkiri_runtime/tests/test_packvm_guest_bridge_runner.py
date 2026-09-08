@@ -25,6 +25,49 @@ class _FakeSigner:
         return hashlib.sha512(payload).digest()
 
 
+def test_cancellation_capacity_never_evicts_a_live_fence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Overflow stays bounded without allowing an old or new cancel to revive."""
+    now = [100.0]
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(runner, "MAX_PENDING_BRIDGES", 2)
+    ledger = runner._PendingBridgeLedger()
+    for request_id in ("first", "second"):
+        ledger.cancel(domain_id="domain", request_id=request_id)
+    now[0] = 110.0
+    ledger.cancel(domain_id="domain", request_id="overflow")
+    assert len(ledger._cancelled) == 2
+    assert ("domain", "first") in ledger._cancelled
+    for request_id in ("first", "second", "overflow", "new"):
+        with pytest.raises(ValueError, match="saturated"):
+            ledger.add(domain_id="domain", request={"request_id": request_id}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
+    # The first two tombstones expire earlier than the overflow cancellation.
+    now[0] = 100.0 + runner.PENDING_BRIDGE_TTL_SECONDS
+    with pytest.raises(ValueError, match="saturated"):
+        ledger.add(domain_id="domain", request={"request_id": "overflow"}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
+    now[0] = 110.0 + runner.PENDING_BRIDGE_TTL_SECONDS
+    ledger.add(domain_id="domain", request={"request_id": "fresh"}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
+    assert ledger.consume(domain_id="domain", request_id="fresh").request["request_id"] == "fresh"
+
+
+def test_overflow_cancellation_removes_pending_and_extends_fence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cancelling pending work still works while the tombstone ledger is full."""
+    now = [100.0]
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(runner, "MAX_PENDING_BRIDGES", 1)
+    ledger = runner._PendingBridgeLedger()
+    ledger.add(domain_id="domain", request={"request_id": "active"}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
+    ledger.cancel(domain_id="domain", request_id="first")
+    assert ledger.cancel(domain_id="domain", request_id="active") is True
+    with pytest.raises(ValueError, match="unavailable"):
+        ledger.consume(domain_id="domain", request_id="active")
+    now[0] = 120.0
+    ledger.cancel(domain_id="domain", request_id="later")
+    now[0] = 100.0 + runner.PENDING_BRIDGE_TTL_SECONDS
+    with pytest.raises(ValueError, match="saturated"):
+        ledger.add(domain_id="domain", request={"request_id": "later"}, guest_artifact_identity="artifact", bridge_request=_bridge_request())
+    assert len(ledger._cancelled) <= 1
+
+
 def test_real_conversation_model_survives_guest_and_host_validation() -> None:
     """Use actual producer bytes through both independent boundary validators."""
     from ecosystem.defaultspack.runtime import conversation

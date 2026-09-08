@@ -770,6 +770,7 @@ class _PendingBridgeLedger:
         self._pending: dict[tuple[str, str], _PendingBridge] = {}
         self._seen_challenges: OrderedDict[str, None] = OrderedDict()
         self._cancelled: OrderedDict[tuple[str, str], float] = OrderedDict()
+        self._cancel_fence_until = 0.0
         self._lock = threading.RLock()
 
     def accept_challenge(self, challenge: object) -> str:
@@ -804,6 +805,8 @@ class _PendingBridgeLedger:
         with self._lock:
             self._purge_expired()
             key = (domain_id, str(request["request_id"]))
+            if time.monotonic() < self._cancel_fence_until:
+                raise ValueError("PackVM bridge cancellation ledger is saturated")
             if key in self._cancelled:
                 raise ValueError("PackVM bridge request was cancelled")
             if key in self._pending:
@@ -834,9 +837,14 @@ class _PendingBridgeLedger:
             self._purge_expired()
             key = (domain_id, request_id)
             cancelled = self._pending.pop(key, None) is not None
-            if len(self._cancelled) >= MAX_PENDING_BRIDGES:
-                self._cancelled.popitem(last=False)
-            self._cancelled[key] = time.monotonic() + PENDING_BRIDGE_TTL_SECONDS
+            expires_at = time.monotonic() + PENDING_BRIDGE_TTL_SECONDS
+            if key not in self._cancelled and len(self._cancelled) >= MAX_PENDING_BRIDGES:
+                # Never evict a live cancellation to admit another one. A
+                # bounded overflow fence blocks all late registrations until
+                # every unrecorded cancellation has reached its normal expiry.
+                self._cancel_fence_until = max(self._cancel_fence_until, expires_at)
+            else:
+                self._cancelled[key] = expires_at
             return cancelled
 
     def _purge_expired(self) -> None:
