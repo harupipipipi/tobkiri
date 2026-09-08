@@ -71,3 +71,20 @@ def test_command_blocks_mutate_and_read_the_same_owner(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="explicit settings owner"):
         states.run({"settings_owner": str(owner.path)}, {})
     assert legacy.read_bytes() == before
+
+
+def test_fast_command_requires_owner_and_preserves_unrelated_settings(tmp_path):
+    """Fast mode never trusts a payload owner and retains other preferences."""
+    module = importlib.import_module("blocks.ai.fast_command")
+    path = tmp_path / "owned.json"
+    path.write_text('{"general":{"language":"ja"}}', encoding="utf-8")
+    owner = FrontendSettingsStore(path)
+    before = path.read_bytes()
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        module.run({"enabled": True, "settings_owner": str(path)}, {})
+    assert path.read_bytes() == before
+    assert module.run({"enabled": True}, {}, settings_owner=owner)["status"] == "ok"
+    assert owner.read_snapshot()["models"]["fast_mode_enabled"] is True
+    assert module.run({"enabled": False}, {}, settings_owner=owner)["status"] == "ok"
+    assert owner.read_snapshot()["models"]["fast_mode_enabled"] is False
+    assert owner.read_snapshot()["general"]["language"] == "ja"

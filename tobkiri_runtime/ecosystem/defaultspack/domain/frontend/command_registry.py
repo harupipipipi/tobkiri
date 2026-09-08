@@ -393,7 +393,15 @@ class SlashCommandRegistry:
                 block_input[forwarded] = value
 
         try:
-            result = runner(block_input, dict(context or {}))
+            # Only this known settings consumer receives the in-process port.
+            # Arbitrary manifest-selected blocks retain their two-argument ABI.
+            if module_path == "blocks.ai.fast_command":
+                result = runner(
+                    block_input, dict(context or {}),
+                    settings_owner=self._settings_owner,
+                )
+            else:
+                result = runner(block_input, dict(context or {}))
         except Exception as exc:
             return error(f"pack_block execution failed: {exc}", "EXECUTION_FAILED")
         if isinstance(result, dict) and result.get("status") == "ok":

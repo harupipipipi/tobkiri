@@ -135,6 +135,7 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
     assert all(item["verified_handler"] is True for item in matrix)
     assert all(item["concrete_binding"] for item in matrix)
     assert fast["status"] == "succeeded", fast
+    assert protocol._settings_store.read_snapshot()["models"]["fast_mode_enabled"] is True
     assert {item["execution"]["kind"] for item in catalog["commands"]} <= {
         "state_mutation",
         "host_operation",
