@@ -52,6 +52,7 @@ pack-architecture:
     # Compare the working-tree candidate with the committed, reviewed baseline.
     reference="$(mktemp)"; trap 'rm -f "$reference"' EXIT; git show HEAD:scripts/quality/pack_architecture_baseline.json > "$reference"; python scripts/quality/scan_pack_architecture.py --reference-baseline "$reference"
     python scripts/quality/check_core_no_favoritism.py
+    python tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
 
 # Validate v4 schemas, provenance, migration guards, scanners, and inventory.
 pack-architecture-v4:

@@ -400,6 +400,7 @@ jobs:
           python scripts/quality/scan_pack_architecture.py \
             --reference-baseline "${reference}"
           python scripts/quality/check_core_no_favoritism.py
+          python tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
 
       - name: Enforce shrink-only Pack boundary lint baseline
         env:
