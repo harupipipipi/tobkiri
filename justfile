@@ -74,6 +74,20 @@ pack-v4-minimal-profile:
 presentation-catalog:
     python scripts/quality/generate_presentation_catalog.py --check
 
+# Check generated artifacts together without rewriting them; this is not full CI.
+generated-check python="python":
+    {{python}} -B tobkiri_runtime/scripts/migrate_pack_artifacts_v4.py --check
+    {{python}} -B tobkiri_runtime/scripts/migrate_manifest_authority.py --check
+    {{python}} -B tobkiri_runtime/scripts/generate_executable_source_registry_v1.py --check
+    {{python}} -B tobkiri_runtime/scripts/generate_executable_catalogs_v4.py --check
+    {{python}} -B tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py --check
+    {{python}} -B tobkiri_runtime/scripts/quality/scan_defaultspack_integrity.py --strict
+    {{python}} -B scripts/quality/generate_presentation_catalog.py --check
+    {{python}} -B scripts/quality/validate_pack_architecture.py
+    {{python}} -B tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
+    {{python}} -B tobkiri_runtime/scripts/quality/run_independent_migration_proof.py --check
+    {{python}} -B tobkiri_runtime/scripts/generator_source_manifest.py --check
+
 # Migrate one legacy profile to a review-only v4 document.
 migrate-legacy-profile source output:
     python scripts/quality/migrate_legacy_profile.py {{source}} --output {{output}}
