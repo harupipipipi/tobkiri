@@ -10,6 +10,7 @@ import pytest
 from ecosystem.defaultspack.blocks.tool import mcp_connect as mcp_connect_block
 from ecosystem.defaultspack.blocks.tool import mcp_list as mcp_list_block
 from ecosystem.defaultspack.domain.tool.mcp_client import McpClient, McpConnections
+from ecosystem.defaultspack.domain.tool import mcp_client as mcp_module
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
 from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 from domain.tool_policy.internal_context import mark_tool_server_approval_context
@@ -206,6 +207,44 @@ def test_owned_connections_do_not_share_names_or_disconnect_each_other(tmp_path)
     finally:
         first.disconnect("same")
         second.disconnect("same")
+
+
+@pytest.mark.parametrize("failure_stage", ["_initialize", "_list_tools"])
+def test_failed_handshake_stops_started_stdio_process(
+    monkeypatch, tmp_path, failure_stage
+):
+    """A failed handshake must not leave its already started child running."""
+    server_path = tmp_path / "failed_handshake_server.py"
+    _write_demo_mcp_server(server_path)
+    client = McpConnections()
+    processes = []
+
+    def fail_handshake(connection):
+        processes.append(connection._transport._proc)
+        connection.server_capabilities = {"tools": {}}
+        raise RuntimeError("injected handshake failure")
+
+    monkeypatch.setattr(mcp_module._ServerConnection, failure_stage, fail_handshake)
+    try:
+        with pytest.raises(RuntimeError, match="injected handshake failure"):
+            client.connect("failed", {
+                "transport": "stdio", "command": sys.executable,
+                "args": [str(server_path)],
+            })
+        assert len(processes) == 1
+        assert processes[0].poll() is not None
+        assert client.list_servers() == [
+            {"name": "failed", "status": "error", "tools": []}
+        ]
+        assert client._servers["failed"]._transport is None
+        assert client._servers["failed"].server_capabilities == {}
+        assert client.invoke("failed", "ping", {})["is_error"] is True
+    finally:
+        client.disconnect("failed")
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
 
 
 def test_mcp_connect_accepts_server_id_and_saved_config(monkeypatch, tmp_path):

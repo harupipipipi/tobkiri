@@ -319,9 +319,14 @@ class _ServerConnection:
         else:
             raise ValueError("Unknown transport type: {}".format(transport_type))
 
-        self._transport.start()
-        self._initialize()
-        self.tools = self._list_tools()
+        try:
+            self._transport.start()
+            self._initialize()
+            self.tools = self._list_tools()
+        except Exception:
+            self.disconnect()
+            self.status = "error"
+            raise
         self.status = "connected"
         return len(self.tools)
 
