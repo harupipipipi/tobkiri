@@ -345,7 +345,8 @@ def test_runner_allowlists_fail_closed(
         )
 
 
-def test_runner_timeout_kills_descendant_process_tree(tmp_path: Path) -> None:
+@pytest.mark.parametrize("to_file", [False, True])
+def test_runner_timeout_kills_descendant_process_tree(tmp_path: Path, to_file: bool) -> None:
     sentinel = tmp_path / "descendant-survived"
     child = (
         "import pathlib,signal,time; "
@@ -361,13 +362,16 @@ def test_runner_timeout_kills_descendant_process_tree(tmp_path: Path) -> None:
     argv = (sys.executable, "-c", parent)
 
     started = time.monotonic()
-    result = HostBoundedProcessRunner().run_local(
+    runner = HostBoundedProcessRunner()
+    run = runner.run_local_to_file if to_file else runner.run_local
+    result = run(
         argv=argv,
         cwd=tmp_path,
         stdin=None,
         timeout_seconds=0.15,
         environment={},
         policy=_policy(argv, tmp_path),
+        **({"stdout_path": tmp_path / "stdout.bin"} if to_file else {}),
     )
     elapsed = time.monotonic() - started
     time.sleep(0.8)
@@ -375,6 +379,21 @@ def test_runner_timeout_kills_descendant_process_tree(tmp_path: Path) -> None:
     assert result.timed_out is True
     assert result.exit_code is not None
     assert elapsed < 1.5
+    assert not sentinel.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Job lifetime")
+def test_runner_windows_normal_parent_exit_closes_descendants(tmp_path: Path) -> None:
+    sentinel = tmp_path / "descendant-survived"
+    child = f"import pathlib,time; time.sleep(0.3); pathlib.Path({str(sentinel)!r}).write_text('alive')"
+    parent = f"import subprocess,sys; subprocess.Popen([sys.executable, '-c', {child!r}])"
+    argv = (sys.executable, "-c", parent)
+    result = HostBoundedProcessRunner().run_local(
+        argv=argv, cwd=tmp_path, stdin=None, timeout_seconds=2,
+        environment={}, policy=_policy(argv, tmp_path),
+    )
+    assert result.exit_code == 0
+    time.sleep(0.5)
     assert not sentinel.exists()
 
 
