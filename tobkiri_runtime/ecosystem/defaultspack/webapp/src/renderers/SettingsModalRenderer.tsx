@@ -6,6 +6,7 @@ import { cn } from "../lib/cn";
 import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { ApprovalBatchPicker } from "../components/ApprovalBatch";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
 import { AppsSettingsPanel } from "../components/AppsSettingsPanel";
 import { CredentialTransferModal } from "../components/CredentialTransferModal";
@@ -4838,6 +4839,17 @@ export function SettingsModalRenderer({
             </div>
           </div>
         </div>
+      );
+    }
+    if (section.id === "privacy_security") {
+      return (
+        <section className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
+          <h3 className="text-sm font-medium text-zinc-100">承認待ちの要求</h3>
+          <p className="mt-1 text-xs leading-5 text-zinc-400">
+            必要な項目を選び、内容と有効期間を確認してまとめて承認できます。
+          </p>
+          <ApprovalBatchPicker />
+        </section>
       );
     }
     if (section.id === "computer_automation") {

@@ -1108,6 +1108,79 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in json.dumps(authority.audit_events(), default=str)
 
 
+def test_multiple_prepared_requests_freeze_and_settle_through_real_http(
+    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real Broker batch settlement; signing is a fixture, effects stay pending."""
+    from core_runtime.authority.ui_operator import sign_ui_operator
+    from core_runtime import pack_api_server as server_module
+
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+    failures: list[str] = []
+    original_classify = server_module._exception_error_code
+
+    def observed_error(error: BaseException) -> str:
+        current = error
+        while current is not None:
+            failures.append(f"{type(current).__name__}: {current}")
+            current = current.__cause__
+        return original_classify(error)
+
+    monkeypatch.setattr(server_module, "_exception_error_code", observed_error)
+
+    def post(path: str, body: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+        status, result, _ = _request(
+            server, "POST", _contract("POST", path), body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        return status, result
+
+    request_ids = []
+    for index in range(2):
+        status, prepared = post("/api/ai/provider-key", {
+            "phase": "prepare", "effect_kind": "provider_configure",
+            "request": {
+                "connection_name": f"batch-fixture-{index}",
+                "protocol": "openai-compatible",
+                "endpoint": f"https://provider-{index}.example/v1",
+                "key_value": f"fixture-secret-{index}",
+            },
+        })
+        assert status == 200, prepared
+        assert prepared["data"]["state"] == "approval_pending"
+        request_ids.append(prepared["data"]["approval_request_id"])
+    assert len(set(request_ids)) == 2
+    status, frozen = post("/api/interactive-approval/v1/batch-create", {
+        "request_ids": request_ids,
+    })
+    assert status == 200, failures or frozen
+    batch = frozen["data"]
+    assert {item["request_id"] for item in batch["items"]} == set(request_ids)
+    assert len({item["request_snapshot_digest"] for item in batch["items"]}) == 2
+    decision = {
+        "request_id": batch["request_id"],
+        "confirmation_texts": {request_id: "EXECUTE" for request_id in request_ids},
+        "ui_operator": sign_ui_operator(
+            batch["request_id"], nonce="http-multiple-batch", decision="approve",
+            request_snapshot_digest=batch["request_snapshot_digest"],
+            typed_confirmation_digest=None,
+        ),
+    }
+    status, approved = post("/api/interactive-approval/v1/batch-approve", decision)
+    assert status == 200, approved
+    assert approved["data"]["state"] == "approved"
+    for request_id in request_ids:
+        status, result = post("/api/interactive-approval/v1/get", {"request_id": request_id})
+        assert status == 200, result
+        assert result["data"]["state"] == "approved"
+    status, replay = post("/api/interactive-approval/v1/batch-approve", decision)
+    assert status >= 400, replay
+    # Approval atomicity does not execute or promise rollback of external writes.
+    assert not (tmp_path / "user-data/credentials/material-store/credentials.store.json").exists()
+
+
 def test_saved_settings_reach_host_credential_transport(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

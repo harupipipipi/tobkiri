@@ -8,6 +8,7 @@ never derives a Function principal from Pack-supplied invocation fields.
 from __future__ import annotations
 
 import hmac
+import math
 import secrets
 from dataclasses import dataclass, replace
 from threading import RLock
@@ -391,19 +392,19 @@ class AuthorityV4Adapter:
             "request_id": batch.request_id,
             "request_snapshot_digest": _interactive_ui_operator_digest(batch.digest),
             "profile_id": batch.profile_id,
-            "expires_at": batch.expires_at,
+            "expires_at": math.ceil(batch.expires_at),
             "state": state,
-            "items": tuple({
+            "items": [{
                 "request_id": request.request_id,
                 "request_snapshot_digest": _interactive_ui_operator_digest(request.digest),
                 "caller": request.caller.to_dict(),
                 "target": request.target.to_dict(),
                 "scope": request.base_scope.to_dict(),
                 "lifetime": GrantLifetime.ONE_SHOT.value,
-                "expires_at": request.expires_at,
+                "expires_at": math.ceil(request.expires_at),
                 "typed_confirmation_required": request.typed_confirmation_digest is not None,
                 "redacted_metadata": dict(request.redacted_metadata),
-            } for request in requests),
+            } for request in requests],
         }
 
     def settle_interactive_approval_batch(
