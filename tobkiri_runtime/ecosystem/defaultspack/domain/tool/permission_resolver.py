@@ -31,9 +31,15 @@ DEFAULT_ACTION_PERMISSIONS: dict[str, str] = {
 
 
 class ToolPermissionResolver:
-    def __init__(self, settings: dict[str, Any] | None = None, *, pack_root: Path | None = None) -> None:
+    def __init__(
+        self, settings: dict[str, Any] | None = None, *,
+        pack_root: Path | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._settings = settings if isinstance(settings, dict) else read_frontend_settings(self._pack_root)
+        self._settings = settings if isinstance(settings, dict) else read_frontend_settings(
+            self._pack_root, settings_owner=settings_owner,
+        )
         self._tool_settings = mapping_or_empty(self._settings.get("tools"))
 
     def resolve(self, tool: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any]:

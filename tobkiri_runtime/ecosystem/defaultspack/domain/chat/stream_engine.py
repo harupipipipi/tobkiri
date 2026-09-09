@@ -4625,7 +4625,9 @@ class ChatRunEngine:
                 },
             )
         else:
-            executed = ToolExecutor().execute(tool_name, arguments, invoke_context)
+            executed = ToolExecutor(settings_owner=self._settings_owner).execute(
+                tool_name, arguments, invoke_context,
+            )
             result = {"status": "ok", "data": executed}
 
         log = {
