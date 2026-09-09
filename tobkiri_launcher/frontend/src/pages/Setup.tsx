@@ -49,6 +49,9 @@ export function Setup() {
   const loadFrontendCatalog = useAppStore((state) => state.loadFrontendCatalog);
   const [setup, setSetup] = useState<DefaultsSetupState | null>(null);
   const [reviewed, setReviewed] = useState(false);
+  const [includeSourceAdditions, setIncludeSourceAdditions] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const reviewGeneration = useRef(0);
   const [activating, setActivating] = useState(false);
   const [activationCommitted, setActivationCommitted] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -92,9 +95,10 @@ export function Setup() {
 
   useEffect(() => {
     let live = true;
+    const generation = ++reviewGeneration.current;
     void fetchDefaultsSetupState({waitForRestart: true})
       .then((next) => {
-        if (!live) return;
+        if (!live || generation !== reviewGeneration.current) return;
         setSetup(next);
         setActivationCommitted(next.state === 'active');
         if (next.state === 'active') {
@@ -103,10 +107,32 @@ export function Setup() {
         }
       })
       .catch((error) => {
-        if (live) setSetupError(message(error, 'Defaults Profile could not be loaded.'));
+        if (live && generation === reviewGeneration.current) {
+          setSetupError(message(error, 'Defaults Profile could not be loaded.'));
+        }
       });
-    return () => { live = false; };
+    return () => { live = false; ++reviewGeneration.current; };
   }, [completeBrowserSetup, desktopShell, loadPresentation]);
+
+  const changeSourceAdditions = async (include: boolean) => {
+    if (activationInFlightRef.current || activationCommitted) return;
+    const generation = ++reviewGeneration.current;
+    setIncludeSourceAdditions(include);
+    setReviewed(false);
+    setSetup(null);
+    setSetupError(null);
+    setReviewLoading(true);
+    try {
+      const next = await fetchDefaultsSetupState({includeSourceAdditions: include});
+      if (generation === reviewGeneration.current) setSetup(next);
+    } catch (error) {
+      if (generation === reviewGeneration.current) {
+        setSetupError(message(error, 'Updated Profile could not be reviewed.'));
+      }
+    } finally {
+      if (generation === reviewGeneration.current) setReviewLoading(false);
+    }
+  };
 
   const reconcileActiveRuntime = useCallback(async () => {
     await reconcileDefaultsRuntime();
@@ -163,6 +189,8 @@ export function Setup() {
     result: Awaited<ReturnType<typeof recoverDefaultsActivation>>,
   ) => {
     setSetup(result.state);
+    // Recovery reads the committed/default candidate, never the opt-in proposal.
+    setIncludeSourceAdditions(false);
     setReviewed(false);
     setActivationCommitted(result.activationCommitted);
     const failure = result.error
@@ -210,7 +238,9 @@ export function Setup() {
     setSetupError(null);
     try {
       const result = await activateDefaultsWithRecovery({
-        submitActivation: () => activateDefaultsProfile(setup.recommended_default_profile.confirmation),
+        submitActivation: () => activateDefaultsProfile(
+          setup.recommended_default_profile.confirmation, {includeSourceAdditions},
+        ),
         fetchAuthoritativeSetup: () => fetchDefaultsSetupState({waitForRestart: true}),
         reconcileActiveRuntime,
       });
@@ -298,6 +328,12 @@ export function Setup() {
 
   return <div className="min-h-screen bg-bg-main px-6 py-10"><div className="mx-auto max-w-3xl">
     <Header />
+    {profileReconfirmationRequired && !activationCommitted && <label className="mb-6 flex items-start gap-3 rounded-xl border border-border p-4 text-sm text-text-main">
+      <input type="checkbox" checked={includeSourceAdditions} disabled={activating || reviewLoading}
+        onChange={(event) => void changeSourceAdditions(event.target.checked)} />
+      <span>Include new bundled Profile Packs and operation bindings in this review.
+        Existing selections and settings are retained. Review the updated details below before activating.</span>
+    </label>}
     <DefaultsReview
       setup={setup}
       reviewed={reviewed}

@@ -17,6 +17,7 @@ from backend_core.ecosystem.spec.schema.validator import (  # noqa: E402
     validate_ecosystem,
 )
 from scripts.quality.legacy_manifest_v3 import load_manifest  # noqa: E402
+from scripts.generate_executable_source_registry_v1 import build_registry  # noqa: E402
 from scripts.offline_legacy_projection import (  # noqa: E402
     render_legacy_ecosystem,
 )
@@ -63,7 +64,48 @@ def _load_v4(pack_root: Path) -> dict[str, Any]:
         "source_identity": source_identity,
         "artifact_digest": artifact_digest,
         "implementation_digests": implementation_digests,
+        "functions": {
+            function["id"]: function["implementation_digest"]
+            for function in payload.get("functions", [])
+        },
     }
+
+
+def _matches_legacy_adapter(
+    pack_root: Path, entrypoint: dict[str, Any], v4: dict[str, Any], digest: str
+) -> bool:
+    """Accept only independently verified same-owner implementation migrations.
+
+    A completely migrated Pack no longer has a v4 Function executing its legacy
+    source. Keep that source as offline provenance, not as a fake live Function.
+    The registry builder verifies old/new bytes and the full adapter identity.
+    """
+    registry = build_registry(ECOSYSTEM)
+    module = entrypoint.get("module")
+    for function_id, record in registry["packs"].items():
+        if (
+            record["pack_id"] != pack_root.name
+            or record["owner"] != pack_root.name
+            or v4.get("functions", {}).get(function_id) != record["implementation_digest"]
+        ):
+            continue
+        sources = record["source"]
+        legacy = any(
+            source.get("kind") == "legacy-v3-entrypoint"
+            and source.get("entrypoint_id") == entrypoint.get("id")
+            and source.get("module") == module
+            and source.get("symbol") == entrypoint.get("symbol")
+            for source in sources
+        )
+        adapted = any(
+            source.get("kind") == "explicit-implementation-adapter"
+            and source.get("legacy_implementation_digest") == digest
+            and module == "ecosystem." + pack_root.name + "." + source["legacy_implementation_path"].removesuffix(".py").replace("/", ".")
+            for source in sources
+        )
+        if legacy and adapted:
+            return True
+    return False
 
 
 def _v4_build_identity(v4: dict[str, Any]) -> str:
@@ -221,9 +263,11 @@ def _normalize_v3(
         if not candidate.is_file():
             raise SystemExit(f"v3 entrypoint module is missing: {candidate}")
         artifact_hash = _sha256(candidate)
-        if v4["implementation_digests"] and artifact_hash not in v4[
-            "implementation_digests"
-        ]:
+        if (
+            v4["implementation_digests"]
+            and artifact_hash not in v4["implementation_digests"]
+            and not _matches_legacy_adapter(pack_root, entrypoint, v4, artifact_hash)
+        ):
             raise SystemExit(
                 f"v3 entrypoint is not pinned by canonical v4 implementation: {candidate}"
             )

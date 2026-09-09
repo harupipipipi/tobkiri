@@ -12,20 +12,32 @@ from ..profile_definition_store_v4 import (
     ProfileDefinitionStore,
     ProfileDefinitionStoreConflict,
 )
+from .profile_source_update import profile_scope_successor, profile_source_additions
 
 
 def bootstrap_review_catalog(
-    *, runtime: Any, catalog: Any, user_data: Path, profile_id: str
+    *,
+    runtime: Any,
+    catalog: Any,
+    user_data: Path,
+    profile_id: str,
+    include_source_additions: bool = False,
 ) -> tuple[Any, tuple[str, ...]]:
     """Keep the verified active definition when reviewing a packaged Shell update."""
     pointer_path = user_data / "profiles" / "active.json"
     if not pointer_path.exists() and not pointer_path.is_symlink():
+        if include_source_additions:
+            raise runtime.denied("source update requires an active Profile")
         return catalog, ()
     pointer = ActiveProfileStore(user_data).load(verify_snapshot=True)
     if pointer is None or pointer.profile_id != profile_id:
+        if include_source_additions:
+            raise runtime.denied("source update requires the active Profile")
         return catalog, ()
     registered = ProfileDefinitionStore(user_data).get_profile(profile_id)
     if registered is None:
+        if include_source_additions:
+            raise runtime.denied("source update requires a registered Profile")
         return catalog, ()
     workspace = user_data / "workspaces" / profile_id
     successor_required = False
@@ -68,6 +80,14 @@ def bootstrap_review_catalog(
     candidate = deepcopy(dict(registered.profile))
     if successor_required:
         candidate["shell"] = deepcopy(catalog.profiles[profile_id]["shell"])
+        candidate = profile_scope_successor(candidate, catalog.profiles[profile_id])
+    if include_source_additions:
+        if not successor_required:
+            raise runtime.denied("source update requires reconfirmation")
+        try:
+            candidate = profile_source_additions(candidate, catalog.profiles[profile_id])
+        except ProfileDefinitionStoreConflict as error:
+            raise runtime.denied("source update conflicts with the registered Profile") from error
     declared_ids = {item["pack_id"] for item in candidate["packs"]}
     selected_ids = {item["pack_id"] for item in active_profile["packs"]}
     closure_ids = selected_ids | {

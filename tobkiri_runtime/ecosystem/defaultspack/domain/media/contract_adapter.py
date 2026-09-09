@@ -9,8 +9,8 @@ from core_runtime.global_contract_dispatch import invoke_global_contract
 from core_runtime.resolved_profile_scope import active_resolved_profile
 
 
-CLIPBOARD_READ = "rumi.resource.clipboard.v1"
-CLIPBOARD_WRITE = "rumi.action.clipboard.v1"
+CLIPBOARD_READ = "tobkiri.resource.clipboard.v1"
+CLIPBOARD_WRITE = "tobkiri.action.clipboard.v1"
 MEDIA_CAPTURE = "rumi.action.media.capture.v1"
 MEDIA_INSPECT = "rumi.service.media.inspect.v1"
 
@@ -34,6 +34,15 @@ def invoke_media_contract(
         "_contract_consumer_pack_id": "defaultspack",
         "_contract_consumer_function_id": source_function_id,
     }
+    if contract_id in {CLIPBOARD_READ, CLIPBOARD_WRITE}:
+        # The captured session owns caller/Profile identity. These operations
+        # accept only their exact formal data schema, never legacy authority IDs.
+        request = dict(payload)
+        operation = (
+            "rumi_clipboard_host_service_pack.clipboard-read"
+            if contract_id == CLIPBOARD_READ
+            else "rumi_clipboard_host_service_pack.clipboard-write"
+        )
     result = invoke_global_contract(registry, contract_id, operation, request)
     if not isinstance(result, dict):
         raise RuntimeError("media owner returned an invalid result")
@@ -58,6 +67,10 @@ def execute_ui_host_contract(
         payload,
         source_function_id=source_function_id,
     )
+    if contract_id in {CLIPBOARD_READ, CLIPBOARD_WRITE}:
+        # Native clipboard providers return the result of the authorized effect.
+        # Do not turn it into another intent/approval or retry the old executor.
+        return intent
     request_context = dict(context or {})
     handled = maybe_handle_host_intent_output(
         intent,

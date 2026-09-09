@@ -181,7 +181,7 @@ def test_worker_guards_and_provider_keep_callers_context(
     token = marker.set("authenticated-caller")
     try:
         result = broker.invoke_prepared(
-            prepared, _context(harness), harness.scope.to_dict(),
+            prepared.to_snapshot(), _context(harness), harness.scope.to_dict(),
             execute_not_after_wall=2_000.0, wall_clock=lambda: 1_000.0,
             before_dispatch=lambda: observed.append(("pending", marker.get())),
         )
@@ -192,3 +192,143 @@ def test_worker_guards_and_provider_keep_callers_context(
     assert observed == [("authority", "authenticated-caller"),
                         ("pending", "authenticated-caller"),
                         ("provider", "authenticated-caller")]
+
+
+def test_parent_cancellation_while_queued_never_enters_provider() -> None:
+    """The shared cancel signal fences queued work without ambiguous effects."""
+    from tobkiri_host.errors import RequestCancellationRequestedError
+    from tests.test_tobkiri_host_execution_integration import (
+        context, frame, make_broker,
+    )
+
+    fixture = make_broker(timeout_ms=10000)
+    cancelled = Event()
+    with _blocked_worker(fixture.broker) as (_release, submitted):
+        with ThreadPoolExecutor(max_workers=1) as caller:
+            result = caller.submit(
+                fixture.broker.invoke, frame(), context(), effect_scope={},
+                parent_cancellation=cancelled,
+            )
+            assert submitted.wait(2)
+            cancelled.set()
+            with pytest.raises(RequestCancellationRequestedError):
+                result.result(timeout=2)
+            assert fixture.admission.released
+    assert fixture.backend.invocations == 0
+    assert fixture.backend.cancelled == []
+    assert "authority_effect_recheck" not in fixture.events
+    assert "audit_dispatched" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+
+
+def test_parent_cancellation_during_worker_guard_retains_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A running guard retains its reservation but cannot later start effects."""
+    from tobkiri_host.errors import RequestCancellationRequestedError
+    from tests.test_tobkiri_host_execution_integration import (
+        context, frame, make_broker,
+    )
+
+    fixture = make_broker(timeout_ms=10000)
+    cancelled, entered, release_guard, resources_released = (
+        Event(), Event(), Event(), Event()
+    )
+    original_release = fixture.admission.release
+
+    def guard(*args) -> None:
+        entered.set()
+        assert release_guard.wait(5)
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        resources_released.set()
+
+    monkeypatch.setattr(fixture.authority, "recheck_effect_boundary", guard)
+    monkeypatch.setattr(fixture.admission, "release", release)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as caller:
+            result = caller.submit(
+                fixture.broker.invoke, frame(), context(), effect_scope={},
+                parent_cancellation=cancelled,
+            )
+            assert entered.wait(2)
+            cancelled.set()
+            with pytest.raises(RequestCancellationRequestedError):
+                result.result(timeout=2)
+            assert not fixture.admission.released
+            assert fixture.backend.invocations == 0
+            assert fixture.backend.cancelled == []
+            assert fixture.audit.failures == [("provider_failed", False)]
+            release_guard.set()
+            assert resources_released.wait(2)
+        assert fixture.backend.invocations == 0
+        assert fixture.events.count("reservation_released") == 1
+    finally:
+        release_guard.set()
+        fixture.broker.close()
+
+
+@pytest.mark.parametrize("interruption", ["timeout", "cancel"])
+def test_started_privileged_effect_is_reconciled_after_interruption(
+    monkeypatch: pytest.MonkeyPatch, interruption: str,
+) -> None:
+    """A started OS effect stays uncertain while cancellation is outstanding."""
+    from tobkiri_host.effects import EffectDisposition
+    from tobkiri_host.errors import AmbiguousEffectError
+    from tobkiri_host.models import EffectClass
+    from tests.test_tobkiri_host_execution_integration import (
+        context, frame, make_broker,
+    )
+
+    fixture = make_broker(effect=EffectClass.PRIVILEGED, timeout_ms=10000)
+    entered, finish, cancelled, released = Event(), Event(), Event(), Event()
+    clock = [10.0]
+    prepared = replace(
+        fixture.broker.prepare(frame(), context()), deadline_monotonic=20.0,
+    )
+    original_release = fixture.admission.release
+
+    def invoke(envelope) -> ProviderOutcome:
+        fixture.backend.invocations += 1
+        entered.set()
+        assert finish.wait(5)
+        return ProviderOutcome(None, EffectDisposition.UNKNOWN)
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        released.set()
+
+    monkeypatch.setattr(fixture.backend, "invoke", invoke)
+    monkeypatch.setattr(fixture.admission, "release", release)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as caller:
+            result = caller.submit(
+                fixture.broker._execute_prepared, prepared, context(),
+                effect_scope={}, monotonic_clock=lambda: clock[0],
+                before_dispatch=None, cancellation_requested=cancelled,
+            )
+            assert entered.wait(2)
+            if interruption == "timeout":
+                clock[0] = 21.0
+            else:
+                cancelled.set()
+            with pytest.raises(AmbiguousEffectError) as raised:
+                result.result(timeout=2)
+            record = fixture.reconciliation.get(raised.value.reconciliation_id)
+            assert record.status == "needs_reconciliation"
+            assert record.request_id == "request-1"
+            assert record.idempotency_key == frame().idempotency_key
+            assert fixture.backend.invocations == 1
+            assert fixture.backend.cancelled == ["request-1"]
+            assert fixture.authority.fenced == ["request-1"]
+            assert fixture.audit.failures == [("ambiguous_effect", True)]
+            assert not fixture.admission.released
+            assert "audit_committed" not in fixture.events
+            finish.set()
+            assert released.wait(2)
+        assert fixture.backend.invocations == 1
+        assert fixture.events.count("reservation_released") == 1
+    finally:
+        finish.set()
+        fixture.broker.close()

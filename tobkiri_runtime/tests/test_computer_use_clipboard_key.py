@@ -31,42 +31,53 @@ def test_computer_backspace_repeat_generates_repeated_key_code_on_macos():
     assert 'key code 51' in script
 
 
-def test_computer_clipboard_read_write_and_clear(tmp_path, monkeypatch):
+def test_computer_clipboard_preview_projects_authorized_result(tmp_path, monkeypatch):
     from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+    from ecosystem.rumi_default_tools_pack.domain.tool import host_contract_adapter
 
-    writes: list[str] = []
-    monkeypatch.setattr(BrowserComputerController, "_system_clipboard_read", staticmethod(lambda: "clip text"))
-    monkeypatch.setattr(BrowserComputerController, "_system_clipboard_write", staticmethod(lambda content: writes.append(content)))
+    calls = []
 
+    def dispatch(action, payload, **kwargs):
+        calls.append((action, payload, kwargs))
+        return {"success": True, "text": "clip text", "written": True}
+
+    monkeypatch.setattr(host_contract_adapter, "run_host_contract_action", dispatch)
     controller = BrowserComputerController(artifact_root=tmp_path)
-
     read = controller.run("clipboard", {}, yolo_mode=True)
-    full_read = controller.run("clipboard", {"include_content": True}, yolo_mode=True)
+    full = controller.run("clipboard", {"include_content": True}, yolo_mode=False)
     write = controller.run("clipboard_write", {"content": "new text"}, yolo_mode=True)
-    clear = controller.run("clipboard_clear", {}, yolo_mode=True)
+    controller.run("clipboard_clear", {}, yolo_mode=True)
 
     assert read["content_preview"] == "clip text"
     assert read["content_included"] is False
     assert "content" not in read
-    assert full_read["content"] == "clip text"
-    assert full_read["content_included"] is True
+    assert full["content"] == "clip text"
+    assert full["content_included"] is True
     assert write["written"] is True
-    assert clear["cleared"] is True
-    assert writes == ["new text", ""]
+    assert [call[0] for call in calls] == [
+        "computer.clipboard.read", "computer.clipboard.read",
+        "computer.clipboard.write", "computer.clipboard.clear",
+    ]
+    assert all(call[2] == {"source_function_id": "browser_computer"} for call in calls)
 
 
-def test_computer_clipboard_read_requires_explicit_full_content_approval(tmp_path, monkeypatch):
+def test_computer_clipboard_boolean_cannot_override_host_denial(tmp_path, monkeypatch):
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
+    from ecosystem.rumi_default_tools_pack.domain.tool import host_contract_adapter
+
+    denied = {"success": False, "error_type": "approval_required"}
+    monkeypatch.setattr(host_contract_adapter, "run_host_contract_action", lambda *a, **k: denied)
+    controller = BrowserComputerController(artifact_root=tmp_path)
+    for action in ("clipboard", "clipboard_write", "clipboard_clear"):
+        for yolo in (True, False):
+            assert controller.run(action, {"approved": True}, yolo_mode=yolo) == denied
+
+
+def test_computer_clipboard_direct_helpers_are_retired():
+    import pytest
     from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
 
-    monkeypatch.setattr(BrowserComputerController, "_system_clipboard_read", staticmethod(lambda: "secret-token-value"))
-
-    controller = BrowserComputerController(artifact_root=tmp_path)
-
-    preview_approval = controller.run("clipboard", {}, yolo_mode=False)
-    full_approval = controller.run("clipboard", {"include_content": True}, yolo_mode=False)
-
-    assert preview_approval["requires_approval"] is True
-    assert preview_approval["payload"]["clipboard_access"] == "preview_only"
-    assert "short preview" in preview_approval["approval_warning"]
-    assert full_approval["payload"]["clipboard_access"] == "full_content"
-    assert "full system clipboard text" in full_approval["approval_warning"]
+    with pytest.raises(PermissionError, match="legacy_clipboard_execution_retired"):
+        BrowserComputerController._system_clipboard_read()
+    with pytest.raises(PermissionError, match="legacy_clipboard_execution_retired"):
+        BrowserComputerController._system_clipboard_write("text")

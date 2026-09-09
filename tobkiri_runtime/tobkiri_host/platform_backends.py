@@ -178,6 +178,7 @@ class ProductionIsolationBackend:
         self._request_domains: dict[str, str] = {}
         self._request_lock = threading.RLock()
         self._capability_bridge: CapabilityBridge | None = None
+        self._saved_bridge: tuple[CapabilityBridge, Callable[[object], None]] | None = None
         self.status = BackendStatus(
             backend_id=driver.backend_id,
             execution_kind=ExecutionKind.PACK_VM,
@@ -247,6 +248,26 @@ class ProductionIsolationBackend:
             )
         binder(callback)
         self._capability_bridge = callback
+
+    def bind_saved_capability_bridge(
+        self, callback: CapabilityBridge, preflight: Callable[[object], None],
+    ) -> None:
+        """Forward captured v2 hooks only to an explicitly supporting supervisor.
+
+        Binding changes no readiness or production gates. Legacy drivers cannot
+        acquire saved-turn support merely by supporting the v1 callback.
+        """
+        if not callable(callback) or not callable(preflight):
+            raise BackendUnavailableError("PackVM saved capability bridge is invalid")
+        if self._domains or self._reservations:
+            raise BackendUnavailableError("PackVM saved bridge cannot change after materialization")
+        if self._saved_bridge is not None and self._saved_bridge != (callback, preflight):
+            raise BackendUnavailableError("PackVM saved bridge is already bound")
+        binder = getattr(self._driver, "bind_saved_capability_bridge", None)
+        if not callable(binder):
+            raise BackendUnavailableError("platform supervisor does not support a saved capability bridge")
+        binder(callback, preflight)
+        self._saved_bridge = (callback, preflight)
 
     def materialize(
         self,

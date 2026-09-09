@@ -1165,8 +1165,12 @@ def _defaultspack_v4_snapshot() -> _V4TestResolvedSnapshot:
         security_epoch=1,
     )
     assert resolved.profile["shell"]["provider_id"] == "shell.tauri.default"
-    assert resolved.profile["requested_edges"][0]["caller_function_id"] == (
-        "shell.tauri.default"
+    assert any(
+        edge["caller_function_id"] == "shell.tauri.default"
+        and edge["target_provider_id"] == "defaultspack.conversation"
+        and edge["contract_id"] == "conversation.turn.v1"
+        and edge["operation_id"] == "complete"
+        for edge in resolved.profile["requested_edges"]
     )
     return _V4TestResolvedSnapshot(
         resolved=resolved,

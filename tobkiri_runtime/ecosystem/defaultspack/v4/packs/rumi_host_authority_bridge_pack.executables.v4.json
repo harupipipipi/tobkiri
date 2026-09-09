@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:245d2962d9b8b5d268f0063a45fd19c583507f33655ca5d2d067996e1964bd80",
+  "source_identity": "sha256:aa719f9d7106502dd9fa1cffcb95622b2e0bba71b6c9508dfc02d60a8d465c14",
   "variants": [
     {
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.authorize.python",
@@ -218,7 +218,7 @@
         {
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:326adb19001054eab62ac043a0d8b2aaac9544ca41c697f985682deb96a6c628",
+          "revision_digest": "sha256:3a5606ffbdfa7e976c0f349350929ac4ccf0866a1d557d045d07fb7b0a45160a",
           "operation_id": "interactive_effect.manage",
           "input_schema": {
             "additionalProperties": false,
@@ -229,6 +229,7 @@
               },
               "effect_kind": {
                 "enum": [
+                  "provider_configure",
                   "shell_execute",
                   "git_commit",
                   "git_restore",
@@ -264,6 +265,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:0dec3f48eea1783dda0b077ba7bc921c05ea6d161b19b472b38f0c6b74001d06",
-  "catalog_digest": "sha256:2f9fa56b706201dc107be77c43ed934c902be8a14c1ee79d799f3137c3dc77b4"
+  "materialization_catalog_digest": "sha256:1f6f8b422b8cd3d9eb74e2f475aeaf1e62444accb795228250781a28f404f01e",
+  "catalog_digest": "sha256:9a885eb80bf14d16ff6e1bc7e0be9c98067f852d5056eacb942d682f0a36abbe"
 }

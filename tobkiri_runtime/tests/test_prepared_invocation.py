@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 import json
+import time
 from typing import Any, Mapping
 
 import pytest
@@ -86,6 +87,49 @@ class _UnusedPort:
 
     def __getattr__(self, name: str) -> Any:
         raise AssertionError(f"prepare unexpectedly called {name}")
+
+
+@pytest.mark.parametrize("parent_budget", [5.0, 60.0])
+def test_nested_invoke_preserves_stricter_original_deadline(parent_budget: float) -> None:
+    """A nested request cannot refresh its parent or extend its own hard limit."""
+    observed: list[float] = []
+
+    class RecordingBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            observed.append(request.deadline_monotonic)
+            return super().invoke(request)
+
+    fixture = make_broker(timeout_ms=10000, backend=RecordingBackend([]))
+    parent_deadline = time.monotonic() + parent_budget
+    try:
+        fixture.broker.invoke(
+            frame(), context(), effect_scope={"user": "u1"},
+            parent_deadline_monotonic=parent_deadline,
+        )
+        assert len(observed) == 1
+        assert observed[0] <= parent_deadline
+        if parent_budget == 5.0:
+            assert observed[0] == parent_deadline
+        else:
+            assert observed[0] < parent_deadline - 40
+    finally:
+        fixture.broker.close()
+
+
+@pytest.mark.parametrize("deadline", [True, "50", float("nan"), float("inf"), -1.0, 0.0])
+def test_invalid_or_expired_parent_deadline_has_no_effects(deadline: object) -> None:
+    """Reject unusable Host deadlines before adapters, admission or providers."""
+    fixture = make_broker()
+    try:
+        with pytest.raises((ValueError, RequestTimedOutError)):
+            fixture.broker.invoke(
+                frame(), context(), effect_scope={"user": "u1"},
+                parent_deadline_monotonic=deadline,  # type: ignore[arg-type]
+            )
+        assert fixture.events == []
+        assert fixture.backend.invocations == 0
+    finally:
+        fixture.broker.close()
 
 
 class _UppercaseAdapterExecutor:

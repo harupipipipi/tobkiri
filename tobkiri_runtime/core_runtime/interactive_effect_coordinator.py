@@ -53,6 +53,13 @@ class InteractiveEffectSpec:
 
 
 INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
+    "provider_configure": InteractiveEffectSpec(
+        kind="provider_configure",
+        prepare_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
+        prepare_operation_id="rumi_provider_registry_pack.provider-configure-prepare",
+        execute_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
+        execute_operation_id="rumi_provider_registry_pack.provider-configure",
+    ),
     "shell_execute": InteractiveEffectSpec(
         kind="shell_execute",
         prepare_contract_id="tobkiri.service.shell.execute.v1",
@@ -372,6 +379,19 @@ def _execute_payload(
 ) -> dict[str, Any]:
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
+    if spec.kind == "provider_configure":
+        configuration_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
+        if (
+            set(configuration_plan) != {
+                "profile_id", "provider_instance_id", "adapter_id", "endpoint",
+                "expected_revision", "request_digest",
+            }
+            or configuration_plan.get("request_digest") != canonical_digest(dict(request))
+            or type(configuration_plan.get("expected_revision")) is not int
+            or configuration_plan["expected_revision"] < 0
+        ):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        return {"request": dict(request), "plan": configuration_plan}
     if spec.kind == "shell_execute":
         plan = prepared_result.get("redacted_plan")
         digest = prepared_result.get("plan_digest")
@@ -531,6 +551,24 @@ def _presentation_metadata(
         prepared.normalized_payload,
         HostInteractiveEffectService._MAX_REQUEST_BYTES,
     )
+    if spec.kind == "provider_configure":
+        plan = payload.get("plan")
+        request = payload.get("request")
+        if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        _execute_payload(spec, request, plan)
+        # Never render the request, key, request digest, or arbitrary metadata.
+        return _presentation(
+            action="Configure Provider connection",
+            summary="Store an encrypted API key and update the Provider connection.",
+            detail=(
+                f"Provider: {plan['provider_instance_id']}\n"
+                f"Profile: {plan['profile_id']}\n"
+                f"Protocol: {plan['adapter_id']}\n"
+                f"Endpoint: {plan['endpoint']}\n"
+                f"Credential: {_REDACTED}"
+            ),
+        )
     if spec.kind == "shell_execute":
         return _shell_presentation(payload)
     if spec.kind == "git_commit":

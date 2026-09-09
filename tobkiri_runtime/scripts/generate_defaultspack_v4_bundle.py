@@ -36,7 +36,7 @@ from tobkiri_protocol.provenance import (  # noqa: E402
     normative_generated_provenance,
 )
 from tobkiri_protocol.validation import validate_document  # noqa: E402
-from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog  # noqa: E402
+from tobkiri_protocol.bundle_catalog import BundledCatalog  # noqa: E402
 from scripts.profile_compatibility_provenance import (  # noqa: E402
     compatibility_profile_provenance,
     validate_compatibility_profile,
@@ -289,8 +289,8 @@ def _normalize_pack(document: dict[str, Any]) -> dict[str, Any]:
                 }
             )
     document["requirements"] = _requirements(document["pack"]["kind"], document.get("requirements"))
-    document["operation_catalog"] = operations
-    document["provider_catalog"] = providers
+    document["operation_catalog"] = sorted(operations, key=lambda item: item["operation_id"])
+    document["provider_catalog"] = sorted(providers, key=lambda item: item["provider_id"])
     identity_source = {
         key: document[key]
         for key in (

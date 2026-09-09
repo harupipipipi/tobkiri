@@ -1,4 +1,6 @@
 import sys
+
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 import os
 import base64
 import json
@@ -14,7 +16,7 @@ from domain.chat.store import ChatStore
 from domain.chat.message_converter import convert_to_standard
 from domain.chat.message_builder import build_assistant_message
 from domain.dev.inspector import Inspector
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.prompt.manager import get_manager
 from blocks.chat._context_helpers import extract_user_text, enrich_messages
 from domain.tool.registry import ToolRegistry
@@ -1215,12 +1217,8 @@ def _truthy(value):
     return False
 
 
-def _frontend_debug_settings_enabled():
-    try:
-        settings_path = frontend_settings_path()
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    except Exception:
-        return False
+def _frontend_debug_settings_enabled(*, settings_owner: SettingsOwnerPort | None = None) -> bool:
+    settings = read_optional_frontend_settings(settings_owner=settings_owner)
     debug = settings.get("debug") if isinstance(settings, dict) else {}
     if not isinstance(debug, dict):
         return False
@@ -2089,7 +2087,7 @@ def _sanitize_attachment_metadata(attachments):
     return sanitized
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     from domain.chat.run_request import validate_chat_run_input
     from domain.chat.idempotency import (
         IdempotencyConflictError,
@@ -2147,7 +2145,7 @@ def run(input_data, context):
             "task_failed",
         }
         engine_context.setdefault("run_source", "blocks.chat.send")
-        for event in ChatRunEngine().stream(input_data, engine_context, stream_mode=use_stream_adapter):
+        for event in ChatRunEngine(settings_owner=settings_owner).stream(input_data, engine_context, stream_mode=use_stream_adapter):
             if not isinstance(event, dict):
                 continue
             event_type = str(event.get("type") or "").strip()

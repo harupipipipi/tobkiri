@@ -75,6 +75,12 @@ class RequestTimedOutError(HostCoreError):
     code = "timed_out"
 
 
+class RequestCancellationRequestedError(HostCoreError):
+    """Host cancellation was requested; provider termination is not certified."""
+
+    code = "cancellation_requested"
+
+
 class ProviderExecutionError(HostCoreError):
     """Provider failed; internal exception text is intentionally not exposed."""
 

@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Mapping
 
 from core_runtime.authority.v4 import AuthorityStore, LeaseState
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.clipboard_native import MacOSTextClipboard
 from tobkiri_host.effects import ProviderOutcome
 from tobkiri_protocol.canonical import canonical_digest
-
 
 _OPERATIONS = {
     ("tobkiri.resource.clipboard.v1", "rumi_clipboard_host_service_pack.clipboard-read"): "read",
@@ -78,7 +76,8 @@ class ClipboardTransportV4:
             lease, state = self._store.inspect_lease_token(token)
             context = envelope.context
             if (
-                state is not LeaseState.DISPATCHED
+                envelope.cancellation_requested.is_set()
+                or state is not LeaseState.DISPATCHED
                 or time.time() >= lease.expires_at
                 or time.monotonic() >= envelope.deadline_monotonic
                 or lease.security_epoch != self._store.security_epoch
@@ -113,6 +112,18 @@ class ClipboardTransportV4:
             )
             if any(self._store.is_revoked(kind, identity) for kind, identity in targets):
                 raise PermissionError("clipboard authority was revoked")
+            now = time.time()
+            provider = self._store.get_provider_authority(lease.provider_authority_id)
+            grant = self._store.get_grant(lease.grant_id)
+            if provider is None or grant is None:
+                raise PermissionError("clipboard authority record is unavailable")
+            if provider.valid_from > now or grant.issued_at > now:
+                raise PermissionError("clipboard authority record is not active")
+            for record in (provider, grant):
+                if (
+                    record.expires_at is not None and record.expires_at <= now
+                ):
+                    raise PermissionError("clipboard authority record expired")
             for domain_id, boot_epoch, principal in (
                 (lease.caller_domain_id, lease.caller_boot_epoch, lease.caller),
                 (lease.target_domain_id, lease.target_boot_epoch, lease.target),

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7b7fbbfa2956bf02ac1cd28b8e3e0d1dc02c235febddf807959ddf93c937fa10",
+  "catalog_digest": "sha256:57424c8962884786ea0d0a9024802a909bbaf33937b3aec00c5a786d68f09081",
   "pack_id": "rumi_clipboard_host_service_pack",
-  "source_identity": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720",
+  "source_identity": "sha256:93a5ee1a5af733a0558404dd7f0b2e5d5159fdaecc7f09c1c579f58d904ca57f",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_clipboard_host_service_pack.clipboard.read",
-      "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "implementation_digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d",
       "implementation_path": "runtime/service.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -45,7 +45,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_clipboard_host_service_pack.clipboard.write",
-      "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "implementation_digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d",
       "implementation_path": "runtime/service.py",
       "materialization_mode": "on_demand",
       "operations": [

@@ -1,16 +1,105 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:29398e513e1b5f09ab8d23af08975b756fb7b4debd75d1ea5fe22a5c85deab1a",
+  "catalog_digest": "sha256:ed105c30e98c688e83856a4c7c9816985b30f477104b83f122dd806a3956d115",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:c9c561446efe070b449801cabfffa785758f03e49f1dc9a4652833b56f83256c",
+  "source_identity": "sha256:f243e146494f0aaa6f314aadddb06d93316c52fd47475add1fe0cafcd5128934",
   "variants": [
     {
       "architecture": "any",
       "backend": "tobkiri.python-pack-v4",
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
+      "function_id": "defaultspack.application-presentation",
+      "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+      "implementation_path": "runtime/application_presentation.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "ui",
+                  "commands"
+                ]
+              },
+              "model_options": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "value": {
+                      "maxLength": 4096,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              },
+              "profile_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "operation_id": "defaultspack.presentation.read",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "defaultspack.application-presentation.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation",
-      "implementation_digest": "sha256:4a404c7427393f7343d9bc74d19b9f0f5066f7090e93e728e65e6452441242a7",
+      "implementation_digest": "sha256:28f40236e26209bc3360cd59618291f5b98be5354ea70d0f39d2dbbaef86d793",
       "implementation_path": "runtime/conversation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -84,6 +173,102 @@
       "platform": "any",
       "runtime_abi": "python3.13",
       "variant_id": "defaultspack.conversation.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "defaultspack.conversation.saved",
+      "implementation_digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+      "implementation_path": "runtime/saved_conversation.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "conversation.saved-turn.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "pure",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "$defs": {
+              "identifier": {
+                "maxLength": 256,
+                "minLength": 1,
+                "not": {
+                  "pattern": "[^A-Za-z0-9._:-]"
+                },
+                "pattern": "^[A-Za-z0-9]",
+                "type": "string"
+              }
+            },
+            "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "properties": {
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "conversation_id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "conversation_revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "turn_id": {
+                    "$ref": "#/$defs/identifier"
+                  }
+                },
+                "required": [
+                  "turn_id",
+                  "conversation_id",
+                  "conversation_revision",
+                  "content"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request"
+            ],
+            "title": "Saved conversation initial input",
+            "type": "object"
+          },
+          "operation_id": "saved_complete",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:c1e1e6a7d047591694d1fca6d8ac110d8d1df28a368aa4ac2ccbdec0a46248ff",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "defaultspack.conversation.saved.python"
     }
   ]
 }

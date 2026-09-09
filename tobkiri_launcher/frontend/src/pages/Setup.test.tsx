@@ -109,6 +109,30 @@ test('reconfirmation setup copy exposes only the Host-owned bootstrap ceremony',
   assert.doesNotMatch(reviewSource, /profile\.change\.(resolve|review|approve|activate)/);
 });
 
+test('review displays the exact Host confirmation and every operation binding', () => {
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json',
+    import.meta.url,
+  ), 'utf8'));
+  const setup = parseDefaultsSetupState(fixture);
+  const html = renderToString(<DefaultsReview setup={setup} reviewed={false}
+    activating={false} error={null} onReviewedChange={() => undefined}
+    onActivate={() => { throw new Error('render must not activate'); }} />);
+  const confirmation = setup.recommended_default_profile.confirmation;
+  assert.ok(html.includes(confirmation.confirmation_digest));
+  assert.ok(html.includes(confirmation.profile_revision));
+  assert.ok(html.includes(confirmation.authority_snapshot_digest));
+  for (const binding of confirmation.bindings) {
+    assert.ok(html.includes(binding.operation_id));
+    assert.ok(html.includes(binding.caller_function_id));
+    assert.ok(html.includes(binding.function_principal.contract_revision_digest));
+    assert.ok(html.includes(binding.requested_scope_digest));
+  }
+  assert.match(html, /Confirmed operation bindings/);
+  assert.match(html, /disabled=""/);
+  assert.doesNotMatch(html, /<details[^>]*\sopen(?:\s|>)/);
+});
+
 test('the current GUI has no dependency on retired setup-pack routing', () => {
   assert.doesNotMatch(setupSource, /setupPack|setup_pack|\/setup\?return_to/);
   assert.doesNotMatch(appSource, /hasSelectedSetupPack|setupPacks/);

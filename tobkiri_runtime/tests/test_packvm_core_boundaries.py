@@ -91,6 +91,50 @@ def test_guest_child_preserves_bridge_request_before_host_round_trip() -> None:
     assert packvm_guest_runner._host_invoke_result(bridge_request) is bridge_request
 
 
+@pytest.mark.parametrize(("contract", "operation", "accepted"), [
+    ("conversation.saved-turn.v1", "saved_complete", True),
+    ("conversation.turn.v1", "saved_complete", False),
+    ("conversation.saved-turn.v1", "complete", False),
+])
+def test_child_allows_v2_intent_only_for_reserved_saved_abi(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    contract: str, operation: str, accepted: bool,
+) -> None:
+    """Execute the real child entrypoint with test stdio, not a Linux sandbox."""
+    implementation = tmp_path / "intent.py"
+    implementation.write_text(
+        "def tobkiri_packvm_invoke(operation_id, payload):\n"
+        "    return {'kind': 'tobkiri.packvm.continuation.intent.v2', 'hop': 0}\n",
+        encoding="utf-8",
+    )
+    output = io.BytesIO()
+    monkeypatch.setattr(packvm_guest_runner.os, "geteuid", lambda: 65534)
+    monkeypatch.setattr(packvm_guest_runner.sys, "platform", "darwin")
+    monkeypatch.setattr(packvm_guest_runner.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(
+        json.dumps({"contract_id": contract, "operation_id": operation, "payload": {}}).encode()
+    )))
+    monkeypatch.setattr(packvm_guest_runner.sys, "stdout", SimpleNamespace(buffer=output))
+    monkeypatch.setattr(packvm_guest_runner.sys, "stderr", io.StringIO())
+    assert packvm_guest_runner._execute_staged_module(implementation) == (0 if accepted else 1)
+    if accepted:
+        # Root sealing must still reject this deliberately incomplete intent.
+        assert json.loads(output.getvalue())["kind"] == "tobkiri.packvm.continuation.intent.v2"
+    else:
+        assert output.getvalue() == b""
+
+
+@pytest.mark.parametrize("kind", [
+    "tobkiri.packvm.continuation.intent.v2",
+    "tobkiri.packvm.continuation.request.v2",
+    "tobkiri.packvm.continuation.result.v2",
+    "tobkiri.packvm.invoke.result.v1",
+    "tobkiri.packvm.bridge.request.v99",
+])
+def test_guest_never_wraps_unhandled_control_frames_as_completion(kind: str) -> None:
+    with pytest.raises(ValueError, match="not a terminal outcome"):
+        packvm_guest_runner._host_invoke_result({"kind": kind})
+
+
 def test_guest_child_policy_denies_all_available_process_and_socket_syscalls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -473,15 +517,24 @@ def test_vsock_console_milestones_are_fixed_and_nonsecret(
     assert closed == [41, 41, 41, 41, 41]
 
 
-def test_child_abi_request_limit_stays_within_the_sandbox_memory_limit() -> None:
+def test_child_abi_request_limit_stays_within_the_sandbox_memory_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Artifact seed admission is separate from the bounded child ABI frame."""
 
     class Child:
         returncode = 0
+        pid = 12345
+        stdin = stdout = stderr = None
+
+        def wait(self, **_kwargs: object) -> int:
+            return 0
 
         def communicate(self, *_args: object, **_kwargs: object) -> tuple[bytes, bytes]:
             pytest.fail("oversized child input must be rejected before spawn I/O")
 
+    stopped = []
+    monkeypatch.setattr(packvm_guest_runner, "_terminate_process_group", stopped.append)
     with pytest.raises(ValueError, match="payload exceeds size limit"):
         packvm_guest_runner._communicate_staged_implementation(
             Child(),  # type: ignore[arg-type]
@@ -493,6 +546,7 @@ def test_child_abi_request_limit_stays_within_the_sandbox_memory_limit() -> None
         )
 
     assert packvm_guest_runner.MAX_CHILD_REQUEST_BYTES < packvm_guest_runner.MAX_REQUEST_BYTES
+    assert stopped == [12345]
 
 
 def test_child_entrypoint_rejects_oversized_abi_input_before_json_decode(
@@ -592,7 +646,7 @@ def test_agent_direct_invoke_unwraps_the_runner_completion(
     monkeypatch.setattr(
         packvm_guest_runner,
         "_invoke",
-        lambda _request: _runner_completion(config, outcome),
+        lambda _request, **_kwargs: _runner_completion(config, outcome),
     )
 
     response = packvm_guest_runner._dispatch_agent_request({}, config, object())
@@ -619,10 +673,10 @@ def test_agent_bridge_result_unwraps_the_runner_completion(
         request={"request_digest": _digest("request")},
         guest_artifact_identity=_digest("guest"),
         bridge_request={"continuation": {}},
-        expires_at=1.0,
+        expires_at=packvm_guest_runner.time.monotonic() + 60.0,
     )
 
-    class Ledger:
+    class Ledger(packvm_guest_runner._PendingBridgeLedger):
         def consume(self, **_kwargs: object) -> packvm_guest_runner._PendingBridge:
             return pending
 
@@ -631,7 +685,7 @@ def test_agent_bridge_result_unwraps_the_runner_completion(
     monkeypatch.setattr(
         packvm_guest_runner,
         "_resume_bridge_invocation",
-        lambda *_args: _runner_completion(config, outcome),
+        lambda *_args, **_kwargs: _runner_completion(config, outcome),
     )
 
     response = packvm_guest_runner._dispatch_agent_request({}, config, Ledger())

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import subprocess
 from pathlib import Path
 
 
@@ -67,3 +68,22 @@ def test_generic_client_selected_dispatch_is_red(tmp_path: Path) -> None:
             "rule": "generic_client_dispatch_bundle",
         }
     ]
+
+
+def test_cli_scans_explicit_build_output(tmp_path: Path) -> None:
+    panel, contract_map = _fixture(
+        tmp_path,
+        "const prefix='/api/contracts/defaultspack/';const path='/api/home/dashboard';",
+    )
+    command = [
+        sys.executable, str(SCANNER_PATH), "--panel-root", str(panel),
+        "--contract-map", str(contract_map),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    (panel / "assets" / "app.js").write_text(
+        "const prefix='/api/contracts/defaultspack/';", encoding="utf-8"
+    )
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    assert result.returncode == 1
+    assert json.loads(result.stdout)["findings"][0]["rule"] == "mapped_route_missing"

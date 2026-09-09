@@ -1356,7 +1356,7 @@ def _run_text_tool_call_response(
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
     engine = ChatRunEngine(store=store, gateway=gateway)
     events = list(engine.stream({}, {}, stream_mode=False))
     stored = store.get_conversation(conversation["id"])["messages"][-1]
@@ -1689,7 +1689,7 @@ def test_nonstream_scheduled_mimo_initial_run_syncs_draft_before_model_turn(tmp_
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     observed: dict[str, object] = {}
 
@@ -1774,7 +1774,7 @@ def test_nonstream_scheduled_mimo_finalizes_when_draft_update_is_stale(tmp_path,
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     original_update_message = store.update_message
 
@@ -1905,7 +1905,7 @@ def test_nonstream_scheduled_mimo_followup_syncs_replay_to_draft_before_summary(
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2037,7 +2037,7 @@ def test_stream_engine_scheduled_desktop_frame_approval_replay_consumes_approval
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2183,7 +2183,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_canonicalizes_display_tool
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2316,7 +2316,7 @@ def test_stream_engine_scheduled_desktop_frame_approval_replay_suppresses_duplic
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2533,7 +2533,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     class FakeSandboxApi:
         def __init__(self):
@@ -2681,7 +2681,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_consumes_legacy_inline_arg
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2873,7 +2873,7 @@ def test_stream_engine_scheduled_mimo_approval_replay_keeps_tools_for_distinct_f
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     gateway = Gateway()
     engine = ChatRunEngine(store=store, gateway=gateway)

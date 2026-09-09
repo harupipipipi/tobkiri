@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -217,12 +218,16 @@ class V4DispatchSession:
         payload: Mapping[str, Any],
         *,
         version_range: str | None = None,
+        parent_deadline_monotonic: float | None = None,
+        parent_cancellation: threading.Event | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
         An omitted compatibility requirement is bound to the exact Contract
         version in the immutable plan.  A caller-supplied range remains a
         strict additional constraint and can never select another Provider.
+        The optional parent deadline is a Host-only absolute ceiling, never
+        derived from application payload fields or renewed for nested work.
         """
         arguments = dict(payload)
         session_id = str(arguments.pop("_session_id", "")).strip()
@@ -246,15 +251,20 @@ class V4DispatchSession:
             # expose the original three-argument callback.  Production
             # capture always supplies the context-aware form above.
             scope = self.effect_scope_for(contract_id, operation_id, arguments)
+        invocation = InvocationFrame(
+            contract_id=contract_id,
+            version_range=version_range,
+            operation_id=operation_id,
+            payload=arguments,
+        )
+        if parent_deadline_monotonic is None and parent_cancellation is None:
+            return self.broker.invoke(invocation, context, effect_scope=scope)
         return self.broker.invoke(
-            InvocationFrame(
-                contract_id=contract_id,
-                version_range=version_range,
-                operation_id=operation_id,
-                payload=arguments,
-            ),
+            invocation,
             context,
             effect_scope=scope,
+            parent_deadline_monotonic=parent_deadline_monotonic,
+            parent_cancellation=parent_cancellation,
         )
 
 

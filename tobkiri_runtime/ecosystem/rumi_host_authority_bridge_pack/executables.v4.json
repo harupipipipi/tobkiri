@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:0dec3f48eea1783dda0b077ba7bc921c05ea6d161b19b472b38f0c6b74001d06",
+  "catalog_digest": "sha256:1f6f8b422b8cd3d9eb74e2f475aeaf1e62444accb795228250781a28f404f01e",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:6b20a5968c5bb3c3450faeef99ba73241bc8befb9b9932ad49e14ae89a969af0",
+  "source_identity": "sha256:90cce8b3dfcf35c3dcc17ee689c65ba48c7bbf2e2d51c6e05651f47b3759266d",
   "variants": [
     {
       "architecture": "any",
@@ -230,6 +230,7 @@
               },
               "effect_kind": {
                 "enum": [
+                  "provider_configure",
                   "shell_execute",
                   "git_commit",
                   "git_restore",
@@ -255,7 +256,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:326adb19001054eab62ac043a0d8b2aaac9544ca41c697f985682deb96a6c628",
+          "revision_digest": "sha256:3a5606ffbdfa7e976c0f349350929ac4ccf0866a1d557d045d07fb7b0a45160a",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

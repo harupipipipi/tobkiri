@@ -3726,94 +3726,40 @@ class BrowserComputerController:
         return result
 
     def _clipboard_read(self, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
-        include_content = self._truthy(payload.get("include_content")) or self._truthy(payload.get("full_content"))
-        approval_payload = self._safe_payload(
-            {
-                **payload,
-                "include_content": include_content,
-                "clipboard_access": "full_content" if include_content else "preview_only",
-            }
+        from .host_contract_adapter import run_host_contract_action
+
+        del yolo_mode
+        result = run_host_contract_action(
+            "computer.clipboard.read", payload, source_function_id="browser_computer"
         )
-        if not (yolo_mode or self._consume_approval(payload, "computer.clipboard.read", approval_payload)):
-            return self._approval_required("computer.clipboard.read", approval_payload)
-        content = self._system_clipboard_read()
-        result: dict[str, Any] = {
+        if result.get("success") is not True:
+            return result
+        content = str(result.get("text") or "")
+        include_content = self._truthy(payload.get("include_content")) or self._truthy(payload.get("full_content"))
+        return {
             "action": "computer.clipboard.read",
             "format": "text/plain",
             "content_preview": self._clipboard_preview(content),
             "content_included": include_content,
             "length": len(content),
             "truncated": len(content) > _CLIPBOARD_PREVIEW_CHARS,
+            **({"content": content} if include_content else {}),
         }
-        if include_content:
-            result["content"] = content
-        else:
-            result["content_note"] = (
-                "Full clipboard content is omitted by default; retry with include_content=true "
-                "after explicit approval when the model needs the exact text."
-            )
-        return result
 
     def _clipboard_write(self, action: str, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
-        content = "" if action == "computer.clipboard.clear" else str(
-            payload.get("content", payload.get("text", payload.get("value", ""))) or ""
-        )
-        approval_payload = self._safe_payload({**payload, "content": content})
-        if not (yolo_mode or self._consume_approval(payload, action, approval_payload)):
-            return self._approval_required(action, approval_payload)
-        self._system_clipboard_write(content)
-        return {
-            "action": action,
-            "written": True,
-            "format": "text/plain",
-            "length": len(content),
-            "cleared": action == "computer.clipboard.clear",
-        }
+        from .host_contract_adapter import run_host_contract_action
+
+        del yolo_mode
+        return run_host_contract_action(action, payload, source_function_id="browser_computer")
 
     @staticmethod
     def _system_clipboard_read() -> str:
-        system = platform.system()
-        if system == "Darwin":
-            completed = subprocess.run(["pbpaste"], capture_output=True, text=True, check=False)
-            return completed.stdout
-        if system == "Windows":
-            completed = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            return completed.stdout
-        if system == "Linux":
-            for command in (["wl-paste"], ["xclip", "-selection", "clipboard", "-out"], ["xsel", "--clipboard", "--output"]):
-                if shutil.which(command[0]):
-                    completed = subprocess.run(command, capture_output=True, text=True, check=False)
-                    if completed.returncode == 0:
-                        return completed.stdout
-            raise RuntimeError("Linux clipboard requires wl-paste, xclip, or xsel.")
-        raise RuntimeError("Clipboard is supported on macOS, Windows, and Linux.")
+        raise PermissionError("legacy_clipboard_execution_retired")
 
     @staticmethod
     def _system_clipboard_write(content: str) -> None:
-        system = platform.system()
-        if system == "Darwin":
-            subprocess.run(["pbcopy"], input=content, text=True, check=True)
-            return
-        if system == "Windows":
-            subprocess.run(
-                ["powershell", "-NoProfile", "-Command", "Set-Clipboard -Value ([Console]::In.ReadToEnd())"],
-                input=content,
-                text=True,
-                check=True,
-            )
-            return
-        if system == "Linux":
-            for command in (["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
-                if shutil.which(command[0]):
-                    subprocess.run(command, input=content, text=True, check=True)
-                    return
-            raise RuntimeError("Linux clipboard requires wl-copy, xclip, or xsel.")
-        raise RuntimeError("Clipboard is supported on macOS, Windows, and Linux.")
+        del content
+        raise PermissionError("legacy_clipboard_execution_retired")
 
     @staticmethod
     def _clipboard_preview(content: str) -> str:

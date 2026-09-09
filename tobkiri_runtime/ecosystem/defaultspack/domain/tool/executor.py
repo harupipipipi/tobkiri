@@ -1,5 +1,6 @@
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from .registry import ToolRegistry
 from .mcp_client import McpClient
@@ -314,7 +315,10 @@ def _approval_module():
 class ToolExecutor:
     """ツール実行エンジン"""
 
-    def __init__(self, *, subagent_factory: SubagentFactory | None = None):
+    def __init__(
+        self, *, subagent_factory: SubagentFactory | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
+    ):
         try:
             from domain.integrations.secrets import load_integration_secrets_into_env
 
@@ -324,6 +328,7 @@ class ToolExecutor:
         self._registry = ToolRegistry()
         self._mcp_client = McpClient()
         self._subagent_factory = subagent_factory
+        self._settings_owner = settings_owner
 
     def execute(self, tool_name, arguments, context):
         """
@@ -403,6 +408,7 @@ class ToolExecutor:
             tool_def,
             arguments,
             context,
+            settings_owner=self._settings_owner,
         )
         if delegated_review_response is not None:
             return delegated_review_response
@@ -423,6 +429,7 @@ class ToolExecutor:
             arguments,
             context,
             policy,
+            settings_owner=self._settings_owner,
         )
         if settings_permission_response is not None:
             return settings_permission_response
@@ -2684,6 +2691,7 @@ def _preflight_delegated_approval(
     tool_def,
     arguments,
     context,
+    *, settings_owner: SettingsOwnerPort | None = None,
 ):
     """Resolve ``agent`` mode through an isolated reviewer, never blanket-yolo."""
 
@@ -2710,7 +2718,7 @@ def _preflight_delegated_approval(
     if not needs_review:
         try:
             needs_review = (
-                ToolPermissionResolver().resolve(
+                ToolPermissionResolver(settings_owner=settings_owner).resolve(
                     tool_def,
                     context=next_context,
                 ).get("permission")
@@ -2781,11 +2789,16 @@ def _preflight_delegated_approval(
     return next_context, response
 
 
-def _preflight_frontend_tool_permission(tool_name, tool_def, arguments, context, policy):
+def _preflight_frontend_tool_permission(
+    tool_name, tool_def, arguments, context, policy, *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if not isinstance(policy, dict):
         policy = {}
     try:
-        resolution = ToolPermissionResolver().resolve(tool_def, context=context if isinstance(context, dict) else {})
+        resolution = ToolPermissionResolver(settings_owner=settings_owner).resolve(
+            tool_def, context=context if isinstance(context, dict) else {},
+        )
     except Exception:
         if _frontend_permission_resolver_failure_requires_approval(tool_def, tool_name):
             decision = _frontend_permission_decision(

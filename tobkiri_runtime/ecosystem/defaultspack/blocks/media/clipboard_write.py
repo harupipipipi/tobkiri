@@ -1,10 +1,10 @@
 """defaults.media.clipboard_write — クリップボード書込ブロック"""
 from blocks._common import ok, error
-from domain.media.processor import write_clipboard
+from domain.media.contract_adapter import CLIPBOARD_WRITE, invoke_media_contract
 
 
 def run(input_data, context):
-    """クリップボードに内容を書き込む（スタブ）。
+    """Hostの正式契約でクリップボードに内容を書き込む。
 
     input_data:
         content (str): 書き込む内容
@@ -17,7 +17,12 @@ def run(input_data, context):
         return error("content is required", code="INVALID_INPUT")
 
     try:
-        write_clipboard(content)
+        result = invoke_media_contract(
+            CLIPBOARD_WRITE, "write", {"text": content},
+            source_function_id="defaults.media.clipboard_write",
+        )
+        if result.get("success") is not True:
+            return result
         return ok({"written": True})
     except Exception as exc:
         return error(str(exc), code="CLIPBOARD_WRITE_ERROR")

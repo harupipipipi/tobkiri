@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Final, Mapping
+from typing import Any, Final
 
 from core_runtime.host_provider_backend_v4 import (
     CapturedHostProviderV4,
@@ -12,7 +13,6 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from tobkiri_host.effects import ProviderOutcome
-
 
 _MAX_TEXT_BYTES: Final[int] = 1_048_576
 _FORBIDDEN_ARGUMENTS: Final[frozenset[str]] = frozenset(

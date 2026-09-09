@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.external.audience_policy import AudienceDecision, AudiencePolicy
 from domain.external.event import ExternalEvent
 from domain.external.input_profile_engine import InputProfileEngine
@@ -26,6 +28,7 @@ def dispatch_external_event(
     send_response: bool = False,
     mentioned: bool = False,
     envelope_overrides: dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     policy = AudiencePolicy(audience_policy or {"default": "allow"})
     decision = _coerce_audience_decision(audience_decision) or policy.evaluate(event, mentioned=mentioned)
@@ -54,7 +57,9 @@ def dispatch_external_event(
             **(runtime_context.get("profile_policy") if isinstance(runtime_context.get("profile_policy"), dict) else {}),
         }
     envelope = engine.to_envelope(event)
-    trigger_decision = TriggerDecisionService.from_profile(profile, runtime_context).decide(
+    trigger_decision = TriggerDecisionService.from_profile(
+        profile, runtime_context, settings_owner=settings_owner,
+    ).decide(
         event,
         envelope=envelope,
         context=runtime_context,
@@ -83,7 +88,7 @@ def dispatch_external_event(
             ignored["response_plan"] = _suppressed_response_plan(event.provider, trigger_decision)
         return ignored
     envelope = _apply_envelope_overrides(envelope, envelope_overrides)
-    result = submit_input(envelope, runtime_context)
+    result = submit_input(envelope, runtime_context, settings_owner=settings_owner)
     result["external_event"] = event.as_dict()
     result["policy"] = decision.as_dict()
     result["input_profile_id"] = profile.id

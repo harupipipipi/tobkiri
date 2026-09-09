@@ -9,14 +9,15 @@ not emulated with an unbounded process or an arbitrary script.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import selectors
 import signal
 import stat
 import subprocess
 import sys
 import time
-from typing import Callable, Mapping, Any
+from collections.abc import Callable, Mapping
+from pathlib import Path
+from typing import Any
 
 from .effects import EffectDisposition, ProviderOutcome
 
@@ -124,6 +125,7 @@ class MacOSTextClipboard:
             return unavailable("provider_unavailable", "Check the OS clipboard service.")
         try:
             output = self._exchange(process, data, end, check_authority)
+            check_authority()
             if process.returncode != 0:
                 return self._failed_after_start(access, "execution_failed")
             if access == "read":
@@ -144,12 +146,17 @@ class MacOSTextClipboard:
             if process.poll() is None:
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                    process.wait(timeout=1)
+                except (OSError, subprocess.SubprocessError):
+                    # Cleanup failure must never replace UNKNOWN with a generic
+                    # exception and bypass the Broker's reconciliation path.
                     pass
-                process.wait(timeout=1)
             for stream in (process.stdin, process.stdout, process.stderr):
                 if stream is not None:
-                    stream.close()
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
 
     @staticmethod
     def _failed_after_start(access: str, code: str) -> ProviderOutcome:
@@ -184,18 +191,19 @@ class MacOSTextClipboard:
                 if remaining <= 0:
                     raise TimeoutError("clipboard deadline exceeded")
                 for key, event in selector.select(min(remaining, 0.05)):
-                    stream = key.fileobj
+                    ready_stream = key.fileobj
                     if event & selectors.EVENT_WRITE:
                         assert data is not None
                         offset += os.write(key.fd, data[offset:offset + 65536])
                         if offset == len(data):
-                            selector.unregister(stream)
-                            stream.close()
+                            selector.unregister(key.fd)
+                            assert process.stdin is not None
+                            process.stdin.close()
                     else:
                         chunk = os.read(key.fd, 65536)
                         if not chunk:
-                            selector.unregister(stream)
-                        elif stream is process.stdout:
+                            selector.unregister(key.fd)
+                        elif ready_stream is process.stdout:
                             if len(output) + len(chunk) > MAX_TEXT_BYTES:
                                 raise ValueError("clipboard response exceeds one MiB")
                             output.extend(chunk)

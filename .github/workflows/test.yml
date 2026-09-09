@@ -239,6 +239,20 @@ jobs:
             tests/test_pack_signature.py \
             tests/test_authority_security_hardening.py \
             tests/test_bounded_process_runner.py \
+            tests/test_bounded_child_io.py \
+            tests/test_continuation_chain.py \
+            tests/test_continuation_envelope.py \
+            tests/test_continuation_session.py \
+            tests/test_macos_vz_supervisor.py \
+            tests/test_packvm_guest_bridge_runner.py \
+            tests/test_saved_guest_dispatch.py \
+            tests/test_saved_host_exchange.py \
+            tests/test_saved_backend_binding.py \
+            tests/test_saved_bridge_callbacks.py \
+            tests/test_saved_turn_coordinator.py \
+            tests/test_saved_conversation_input_contract.py \
+            tests/test_saved_conversation_steps.py \
+            tests/test_ai_gateway_host_provider_v4.py \
             tests/test_capability_binding_registration_security.py \
             tests/test_capability_executor_security.py \
             tests/test_defaultspack_adaptive_api.py \
@@ -441,7 +455,9 @@ jobs:
           npm run build
 
       - name: Scan copied Launcher panel routes
-        run: python scripts/quality/scan_launcher_frontend_routes.py
+        run: >-
+          python scripts/quality/scan_launcher_frontend_routes.py
+          --panel-root "${{ runner.temp }}/tobkiri-panel-build"
 
       - name: Exercise Base Pack/Shell and structured CLI integration
         run: |

@@ -41,7 +41,7 @@ public final class VZSupervisor {
         let queue: DispatchQueue
         let diagnostics: DirectSerialDiagnostics
         let guestArtifactIdentity: String
-        var activeRequests: Set<String>
+        let activeRequests: DirectRequestLedger
     }
 
     private var domains: [String: Domain] = [:]
@@ -290,7 +290,7 @@ public final class VZSupervisor {
                     queue: queue,
                     diagnostics: createdDiagnostics,
                     guestArtifactIdentity: guestArtifactIdentity,
-                    activeRequests: []
+                    activeRequests: DirectRequestLedger()
                 )
             }
             return guestResponse
@@ -323,17 +323,19 @@ public final class VZSupervisor {
               try CanonicalJSON.data(payload).count <= maxInvokePayloadBytes else {
             throw HelperError.invalidRequest("INVALID_DIRECT_INVOKE")
         }
-        var domain = try activeDirectDomain(domainID)
-        guard domain.activeRequests.insert(requestID).inserted else {
-            throw HelperError.invalidState("REQUEST_ALREADY_ACTIVE")
-        }
-        synchronized { directDomains[domainID] = domain }
+        let domain = try activeDirectDomain(domainID)
+        // This changes only transport retention. Guest/Host validation and captured
+        // Broker edges still decide whether the reserved operation is callable.
+        let savedTurn = request["contract_id"] as? String == "conversation.saved-turn.v1"
+            && request["contract_version"] as? String == "1.0.0"
+            && request["operation_id"] as? String == "saved_complete"
+        let ticket = try domain.activeRequests.begin(requestID, maximumBridges: savedTurn ? 4 : 1)
         var completed = false
         defer {
             // A transport or schema failure must not leave an unowned request
             // pinned in the per-domain helper. The Host has already failed the
             // outer invocation and will not be permitted to resume it.
-            if !completed { removeDirectActiveRequest(requestID, from: domainID) }
+            if !completed { domain.activeRequests.abandon(ticket) }
         }
         let guestPayload: [String: Any] = [
             "operation": "invoke",
@@ -366,11 +368,12 @@ public final class VZSupervisor {
             expectedOperation: "invoke",
             expectedRequestID: requestID,
             expectedChallenge: guestChallenge,
-            attestationNonce: nil
+            attestationNonce: nil,
+            requestDeadline: ticket.deadline
         )
         let pending = (response["data"] as? [String: Any])?["state"] as? String == "pending"
-        if !pending { removeDirectActiveRequest(requestID, from: domainID) }
-        completed = pending
+        try domain.activeRequests.settle(ticket, pending: pending)
+        completed = true
         return response
     }
 
@@ -385,10 +388,11 @@ public final class VZSupervisor {
             throw HelperError.invalidRequest("INVALID_DIRECT_BRIDGE_RESULT")
         }
         let domain = try activeDirectDomain(domainID)
-        guard synchronized({ directDomains[domainID]?.activeRequests.contains(requestID) == true }) else {
-            throw HelperError.invalidState("REQUEST_NOT_ACTIVE")
+        let ticket = try domain.activeRequests.resume(requestID)
+        var completed = false
+        defer {
+            if !completed { domain.activeRequests.abandon(ticket) }
         }
-        defer { removeDirectActiveRequest(requestID, from: domainID) }
         let response = try callDirectGuest(
             machine: domain.machine,
             queue: domain.queue,
@@ -405,8 +409,12 @@ public final class VZSupervisor {
             expectedOperation: "bridge_result",
             expectedRequestID: requestID,
             expectedChallenge: guestChallenge,
-            attestationNonce: nil
+            attestationNonce: nil,
+            requestDeadline: ticket.deadline
         )
+        let pending = (response["data"] as? [String: Any])?["state"] as? String == "pending"
+        try domain.activeRequests.settle(ticket, pending: pending)
+        completed = true
         return response
     }
 
@@ -417,10 +425,7 @@ public final class VZSupervisor {
         guestChallenge: String
     ) throws -> [String: Any] {
         let domain = try activeDirectDomain(domainID)
-        guard synchronized({ directDomains[domainID]?.activeRequests.contains(requestID) == true }) else {
-            throw HelperError.invalidState("REQUEST_NOT_ACTIVE")
-        }
-        defer { removeDirectActiveRequest(requestID, from: domainID) }
+        try domain.activeRequests.cancel(requestID)
         let response = try callDirectGuest(
             machine: domain.machine,
             queue: domain.queue,
@@ -779,14 +784,6 @@ public final class VZSupervisor {
         return domain
     }
 
-    private func removeDirectActiveRequest(_ requestID: String, from domainID: String) {
-        synchronized {
-            guard var domain = directDomains[domainID] else { return }
-            domain.activeRequests.remove(requestID)
-            directDomains[domainID] = domain
-        }
-    }
-
     private func makeConfiguration(_ binding: LaunchBinding) throws -> VZVirtualMachineConfiguration {
         let configuration = VZVirtualMachineConfiguration()
         if binding.bootMode == "efi" {
@@ -1036,7 +1033,8 @@ public final class VZSupervisor {
         expectedRequestID: String,
         expectedChallenge: String,
         attestationNonce: String?,
-        retryForReadiness: Bool = false
+        retryForReadiness: Bool = false,
+        requestDeadline: TimeInterval? = nil
     ) throws -> [String: Any] {
         let connectionAttempts = GuestConnectAttemptLimiter(
             maximumInFlight: directGuestMaximumPendingConnects
@@ -1066,6 +1064,11 @@ public final class VZSupervisor {
                 isTransient: Self.isTransientGuestReadinessError
             )
         }
+        let remaining = requestDeadline.map { $0 - ProcessInfo.processInfo.systemUptime }
+            ?? directGuestOperationTimeout
+        guard remaining > 0 else {
+            throw HelperError.invalidState("REQUEST_DEADLINE_EXCEEDED")
+        }
         return try callDirectGuestOnce(
             machine: machine,
             queue: queue,
@@ -1075,7 +1078,7 @@ public final class VZSupervisor {
             expectedRequestID: expectedRequestID,
             expectedChallenge: expectedChallenge,
             attestationNonce: attestationNonce,
-            timeout: directGuestOperationTimeout,
+            timeout: min(remaining, directGuestOperationTimeout),
             timeoutErrorCode: "GUEST_AGENT_TIMEOUT",
             connectionAttempts: connectionAttempts
         )

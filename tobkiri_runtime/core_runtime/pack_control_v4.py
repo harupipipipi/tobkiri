@@ -94,7 +94,10 @@ NO_ACTIVE_ACTIVATION_ID = "activation:none"
 class RuntimeSurfacePort(Protocol):
     """Neutral runtime read surface used by Host control contracts."""
 
-    def bind_capability_reader(self, reader: Callable[[], Mapping[str, object]]) -> None: ...
+    def bind_capability_reader(
+        self,
+        reader: Callable[[], tuple[Mapping[str, object], Mapping[str, Any]]],
+    ) -> None: ...
 
     def cancel_pending_reads(self) -> None: ...
 
@@ -511,7 +514,7 @@ class CapturedPackControlSession:
 
     def bind_capability_reader(
         self,
-        reader: Callable[[], Mapping[str, Any]],
+        reader: Callable[[], tuple[Mapping[str, object], Mapping[str, Any]]],
     ) -> None:
         """Bind the Host's exact PackAPI capability snapshot once."""
 

@@ -32,6 +32,15 @@ def _invokes_package_test(job: str) -> bool:
     return direct or rust_launcher_tests
 
 
+def test_launcher_route_scan_targets_the_current_ci_build() -> None:
+    """Do not scan the checked-in panel after building into a temporary directory."""
+    workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    job = _job_blocks(workflow)["pack-architecture"]
+    output = "${{ runner.temp }}/tobkiri-panel-build"
+    assert f"TOBKIRI_PANEL_BUILD_DIR: {output}" in job
+    assert f'--panel-root "{output}"' in job
+
+
 def test_locked_python_test_installer_uses_both_project_exports() -> None:
     installer = (ROOT / LOCKED_INSTALLER).read_text(encoding="utf-8")
     for export in LOCKED_EXPORTS:

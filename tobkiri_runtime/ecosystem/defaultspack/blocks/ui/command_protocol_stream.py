@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error
 from domain.frontend.command_protocol import CommandProtocolRegistry
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from domain.frontend.invocation_events import InvocationEventError
 
 
@@ -60,7 +61,8 @@ def _stream(
         time.sleep(0.25)
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
+    """Run with a trusted caller-supplied owner, never one from request data."""
     payload = input_data if isinstance(input_data, dict) else {}
     invocation_id = str(payload.get("invocation_id") or "").strip()
     if not invocation_id:
@@ -77,7 +79,7 @@ def run(input_data, context):
             raise ValueError("after_sequence must be non-negative")
         if not 0 <= wait_seconds <= 30:
             raise ValueError("wait_seconds must be between 0 and 30")
-        registry = CommandProtocolRegistry()
+        registry = CommandProtocolRegistry(settings_owner=settings_owner)
         owner_key = registry.owner_key(payload, context or {})
         registry.reconcile_approval(payload, context or {})
     except (TypeError, ValueError, InvocationEventError) as exc:

@@ -67,11 +67,18 @@ class ConversationReadHostFactoryV4:
                     "profile_id",
                     "operation",
                     "conversation_id",
+                    "turn_id",
                     "_session_id",
                 }
             ):
                 raise PermissionError("conversation read request is invalid")
             action = payload.get("operation")
+            if action == "saved_receipt" and set(payload) - {"_session_id"} == {
+                "profile_id", "operation", "turn_id",
+            }:
+                return {"receipt": store.saved_receipt(payload["turn_id"])}
+            if "turn_id" in payload:
+                raise PermissionError("turn identity is only valid for a saved receipt")
             if action == "list" and "conversation_id" not in payload:
                 return store.snapshot()
             if action == "get":

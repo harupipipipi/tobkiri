@@ -67,18 +67,18 @@
   },
   "operation_catalog": [
     {
-      "operation_id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation",
-      "owner": "rumi_scheduler_tool_adapter_pack",
-      "contract_reference": "tobkiri.service.tool.local.operation.v1",
-      "provider_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
       "operation_id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
       "owner": "rumi_scheduler_tool_adapter_pack",
       "contract_reference": "tobkiri.resource.tool.definition.contribution.v1",
       "provider_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation",
+      "owner": "rumi_scheduler_tool_adapter_pack",
+      "contract_reference": "tobkiri.service.tool.local.operation.v1",
+      "provider_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
     }
@@ -98,18 +98,18 @@
     "source_digest": "sha256:b62928d53703ee74ba1b23c017756f786429678950b9e2712701af25a104d3f3",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:90ad1340f96fa0956ed94c24140e81a6c91d9e33f80179c3d3afe0984919de07",
+    "content_root_digest": "sha256:6534f2f119e86e36dbdb3b50bdae06eb46cb18d9582a937cf8d7975605787fa4",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
+    "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
     "input_inventory_digest": "sha256:1b3f3f48e0cc45dc12fc523604c300ef826a2e72f4f190b283bb408043ed8a6e",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943"
+        "digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231"
       },
       {
         "path": "ecosystem/rumi_scheduler_tool_adapter_pack/pack.v4.json",

@@ -35,6 +35,23 @@ _V4_DIRECT_PROVIDER_TEST_REASON = (
 )
 
 
+def _owner_bound_model_call(root: Path, payload):
+    """Keep model unit test settings separate from ambient application state."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return call_model(payload, settings_owner=FrontendSettingsStore(root / "settings.json"))
+
+
+def _owner_bound_webhook(root: Path, webhook_id, payload, context):
+    """Select a test-local owner independently of webhook-controlled input."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return handle_inbound_webhook(
+        webhook_id, payload, context,
+        settings_owner=FrontendSettingsStore(root / "frontend_settings.json"),
+    )
+
+
 @pytest.fixture
 def steer_runtime(monkeypatch):
     """Provide an explicit canonical turn owner for instruction delivery tests."""
@@ -151,7 +168,7 @@ def test_submit_input_defaults_to_chat_message(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-1", "content": [{"type": "text", "text": "hi"}]},
         },
@@ -190,13 +207,13 @@ def test_generic_webhook_delivery_chat_message(monkeypatch, tmp_path):
     set_external_token("generic", "secret", token_id="generic-chat", kind="webhook_shared_secret")
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-2", "content": [{"type": "text", "text": "sent"}]},
         },
     )
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-chat",
         {"text": "hello", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "chat.message"},
         {},
@@ -223,7 +240,7 @@ def test_generic_webhook_delivery_run_instruction(monkeypatch, tmp_path, steer_r
     )
     set_external_token("generic", "secret", token_id="generic-steer", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-steer",
         {"text": "please continue", "_headers": {"x-rumi-webhook-token": "secret"}},
         {},
@@ -248,7 +265,7 @@ def test_generic_webhook_rejects_disallowed_delivery_action(monkeypatch, tmp_pat
     )
     set_external_token("generic", "secret", token_id="generic-locked", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-locked",
         {"text": "nope", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "run.instruction"},
         {},
@@ -297,7 +314,7 @@ def test_input_endpoint_rejects_agent_delegate_override_when_not_allowed(monkeyp
         {},
     )
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         created["data"]["endpoint_id"],
         {"text": "delegate this", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "agent.delegate"},
         {},
@@ -312,7 +329,7 @@ def test_input_endpoint_non_generic_kind_secret_verifies(monkeypatch, tmp_path):
     conversation = _conversation(tmp_path)
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-kind", "content": [{"type": "text", "text": "sent"}]},
         },
@@ -332,7 +349,7 @@ def test_input_endpoint_non_generic_kind_secret_verifies(monkeypatch, tmp_path):
     assert read_external_token("local_agent_input", token_id=endpoint_id, kind="webhook_shared_secret") == "kind-secret"
     assert read_external_token("generic", token_id=endpoint_id, kind="webhook_shared_secret") == ""
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         endpoint_id,
         {"text": "hello", "_headers": {"x-rumi-webhook-token": "kind-secret"}},
         {},
@@ -370,7 +387,7 @@ def test_input_endpoint_ttl_expired_rejected(monkeypatch, tmp_path):
     )
     set_external_token("generic", "secret", token_id="expired-webhook", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "expired-webhook",
         {"text": "expired", "_headers": {"x-rumi-webhook-token": "secret"}},
         {},
@@ -457,6 +474,7 @@ def test_agent_delegate_provider_error_returns_visible_safe_failure(monkeypatch,
 
 
 def test_agent_delegate_real_execute_receives_required_capabilities_and_context(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
     _configure_paths(monkeypatch, tmp_path)
 
     def fake_ai(self, messages, model, context, tools=None):
@@ -479,6 +497,7 @@ def test_agent_delegate_real_execute_receives_required_capabilities_and_context(
             },
         },
         {"conversation_workspace_dir": str(tmp_path)},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     context = result["result"]["result"]["context"]
@@ -1016,7 +1035,9 @@ def test_builtin_rumi_model_pack_uses_available_runtime_model(monkeypatch, tmp_p
     assert [call["model"] for call in provider.calls] == ["gemini-2.5-flash"]
 
 
-def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monkeypatch):
+def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     client = AIClient()
     captured = []
 
@@ -1041,6 +1062,7 @@ def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monk
                 "deepthink_enabled": deepthink_enabled,
                 "rumi_base_model_override": "anthropic/explicit-override",
             },
+            settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
         )
         assert response["content"][0]["text"] == "ok"
 
@@ -1123,7 +1145,7 @@ def test_rumi_provider_mimo_requires_intended_base_model():
     assert seen["params"]["rumi_require_intended_base_model"] is True
 
 
-def test_model_call_uses_required_capabilities(monkeypatch):
+def test_model_call_uses_required_capabilities(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_route(request, profiles=None):
@@ -1135,14 +1157,14 @@ def test_model_call_uses_required_capabilities(monkeypatch):
     monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_tool_calling": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.tool_calling"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.tool_calling"]})
 
     assert result["status"] == "ok"
     assert result["model"] == "demo/tool"
     assert seen["requires_tool_calling"] is True
 
 
-def test_model_call_requires_image_input_routes_to_vision_model(monkeypatch):
+def test_model_call_requires_image_input_routes_to_vision_model(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_route(request, profiles=None):
@@ -1154,14 +1176,14 @@ def test_model_call_requires_image_input_routes_to_vision_model(monkeypatch):
     monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_vision": True, "supports_image_input": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.image_input"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.image_input"]})
 
     assert result["status"] == "ok"
     assert result["model"] == "demo/vision"
     assert seen["has_images"] is True
 
 
-def test_model_call_uses_fast_required_capability(monkeypatch):
+def test_model_call_uses_fast_required_capability(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_route(request, profiles=None):
@@ -1173,13 +1195,13 @@ def test_model_call_uses_fast_required_capability(monkeypatch):
     monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_fast": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.fast"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.fast"]})
 
     assert result["status"] == "ok"
     assert seen["requires_fast"] is True
 
 
-def test_model_call_errors_when_required_capability_unavailable(monkeypatch):
+def test_model_call_errors_when_required_capability_unavailable(monkeypatch, tmp_path):
     def fake_route(request, profiles=None):
         del request, profiles
         return _fake_route_decision("demo/text")
@@ -1191,14 +1213,14 @@ def test_model_call_errors_when_required_capability_unavailable(monkeypatch):
     monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_vision": False, "supports_image_input": False})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", fail_complete)
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.image_input"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.image_input"]})
 
     assert result["status"] == "error"
     assert result["code"] == "MODEL_CAPABILITY_UNSATISFIED"
     assert result["missing_capabilities"] == ["model.image_input"]
 
 
-def test_model_call_does_not_forward_secrets(monkeypatch):
+def test_model_call_does_not_forward_secrets(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_complete(self, request):
@@ -1207,7 +1229,7 @@ def test_model_call_does_not_forward_secrets(monkeypatch):
 
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", fake_complete)
 
-    result = call_model(
+    result = _owner_bound_model_call(tmp_path,
         {
             "messages": [
                 {
@@ -1241,6 +1263,8 @@ def test_model_switch_updates_conversation_default(monkeypatch, tmp_path):
 
 
 def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation(tmp_path)
     dispatch_input(
@@ -1258,6 +1282,7 @@ def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
     prepared = prepare_chat_run(
         {"conversation_id": conversation["id"], "message": {"role": "user", "content": "hello"}},
         {},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     assert prepared.model == "demo/route-once"

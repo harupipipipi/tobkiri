@@ -26,15 +26,12 @@ class ResourceAmount:
     start_slots: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            min(
-                self.memory_bytes,
-                self.disk_bytes,
-                self.process_slots,
-                self.start_slots,
-            )
-            < 0
-        ):
+        amounts = (
+            self.memory_bytes, self.disk_bytes, self.process_slots, self.start_slots
+        )
+        if any(type(value) is not int for value in amounts):
+            raise ValueError("resource amounts must be integers")
+        if min(amounts) < 0:
             raise ValueError("resource amounts cannot be negative")
 
     def __add__(self, other: ResourceAmount) -> ResourceAmount:
@@ -78,22 +75,25 @@ class AdmissionEstimate:
 
     def charge(self) -> ResourceAmount:
         """Calculate the admission charge without trusting a low declaration."""
-        if self.concurrency <= 0:
+        if type(self.concurrency) is not int or self.concurrency <= 0:
             raise AdmissionError("admitted concurrency must be positive")
-        base = max(
+        estimates = (
             self.measured_p95_bytes,
             self.declared_minimum_bytes,
             self.runtime_floor_bytes,
             self.profile_reservation_bytes,
             self.backend_overhead_bytes,
         )
+        amounts: tuple[int, ...] = (*estimates, self.disk_bytes)
+        if self.declared_upper_bound_bytes is not None:
+            amounts = (*amounts, self.declared_upper_bound_bytes)
+        if any(type(value) is not int for value in amounts):
+            raise AdmissionError("admission estimates must be integers")
+        if min(amounts) < 0:
+            raise AdmissionError("admission estimates cannot be negative")
+        base = max(estimates)
         if self.declared_upper_bound_bytes is not None:
             base = max(base, self.declared_upper_bound_bytes)
-        if base < 0 or self.disk_bytes < 0 or (
-            self.declared_upper_bound_bytes is not None
-            and self.declared_upper_bound_bytes < 0
-        ):
-            raise AdmissionError("admission estimates cannot be negative")
         return ResourceAmount(
             memory_bytes=base * self.concurrency,
             disk_bytes=self.disk_bytes,

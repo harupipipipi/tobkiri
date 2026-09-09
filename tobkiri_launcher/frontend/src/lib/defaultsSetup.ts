@@ -363,7 +363,7 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
 }
 
 export async function fetchDefaultsSetupState(
-  options: {waitForRestart?: boolean} = {},
+  options: {waitForRestart?: boolean; includeSourceAdditions?: boolean} = {},
 ): Promise<DefaultsSetupState> {
   // Restart may close the connection before a response arrives. Retry only
   // transport failures of this read; integrity/auth errors and POSTs are final.
@@ -371,7 +371,9 @@ export async function fetchDefaultsSetupState(
   while (true) {
     try {
       return parseDefaultsSetupState(await apiFetch<unknown>(
-        '/api/setup/packs', {}, options.waitForRestart
+        options.includeSourceAdditions
+          ? '/api/setup/packs?include_source_additions=true' : '/api/setup/packs',
+        {}, options.waitForRestart
           ? {timeoutMs: Math.max(1, deadline - Date.now())} : {},
       ));
     } catch (error) {
@@ -452,9 +454,11 @@ export function parseDefaultsActivationResponse(
 
 export async function activateDefaultsProfile(
   confirmation: DefaultsConfirmation,
+  options: {includeSourceAdditions?: boolean} = {},
 ): Promise<DefaultsActivation> {
   return parseDefaultsActivationResponse(
-    await apiFetch<unknown>('/api/setup/packs/install', {
+    await apiFetch<unknown>(options.includeSourceAdditions
+      ? '/api/setup/packs/install?include_source_additions=true' : '/api/setup/packs/install', {
       method: 'POST',
       body: JSON.stringify({
         setup_api_version: 'io.tobkiri.setup-state.v4',

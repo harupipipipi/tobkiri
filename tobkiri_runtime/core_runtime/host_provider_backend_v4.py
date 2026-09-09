@@ -44,11 +44,15 @@ class HostProviderInvocationContextV4(Protocol):
         *,
         allowed_contract_ids: frozenset[str],
         consumer_pack_id: str,
+        include_credentials: bool = True,
     ) -> Any:
         """Build a client restricted to declared contracts and this envelope."""
 
     def clipboard(self) -> ProviderOutcome:
         """Execute this envelope's exact clipboard contract through the Host."""
+
+    def assert_current(self) -> None:
+        """Reject cancelled, expired or stale captured invocations."""
 
 
 @dataclass(frozen=True)

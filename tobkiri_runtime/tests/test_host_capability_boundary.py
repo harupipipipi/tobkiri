@@ -209,6 +209,14 @@ def test_host_composition_rejects_injected_route_and_authority_ceiling(
     tmp_path: Path,
 ) -> None:
     _composition, resolved, activation, artifacts, routes, ceilings = _capture(tmp_path)
+    removed_operation = (routes[-1].contract_id, routes[-1].operation_id)
+    incomplete_routes = tuple(
+        route for route in routes
+        if (route.contract_id, route.operation_id) != removed_operation
+    )
+    # Several callers can select the same presentation operation. Removing
+    # only one duplicate does not remove that OperationCatalog route.
+    assert len(incomplete_routes) < len(routes)
     with pytest.raises(ResolutionError, match="OperationCatalog routes"):
         HostV4Composition.capture(
             profile=resolved.profile,
@@ -216,7 +224,7 @@ def test_host_composition_rejects_injected_route_and_authority_ceiling(
             plan=resolved.plan,
             activation=activation,
             artifacts=artifacts,
-            routes=routes[:-1],
+            routes=incomplete_routes,
             authority_ceilings=ceilings,
         )
     injected = dict(ceilings)

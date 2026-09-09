@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:799c945f64d1516bf867765047d7781d985ca88708a883b60ac2c78352a740d3",
+  "artifact_set_digest": "sha256:399b21766ef9e83ab919c61481488fd97ce71f2323401cfbe552a6156ea45520",
   "artifacts": [
     {
-      "digest": "sha256:20c461b0c6f997177910df3d8ca4f885dcfbf78573b2a0f3be9a6a29aca8022e",
+      "digest": "sha256:c024b97b76a63ccc4a14b916d604093262821f3ecc6983f48e81bd9cf83443fa",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:676a7360e11579ceb38389266aac4b6f94bf5bcf9a7330dbf3fb2f8f9c8b3a2b",
+      "digest": "sha256:44d64b5217f5c2dd3865e2a2a00fc33865110bedcb07cc7e0c7cc6397e1fa898",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:63d6f6ddf8a56b6caa36739ac9ca825456db085ed406cfeae3352c5cc368f988",
+      "digest": "sha256:75240e3f7c878c076cc588eb858aa2fe1b6a629b69ee6b07d02ff732f6de7f15",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,16 +22,21 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "path": "runtime/gateway.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "path": "runtime/preflight.py",
       "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:d34622ddb77318ed7645eb775a1317a0c527fe7c1642db8d9495da2ad911c09f"
+    "signed_digest": "sha256:5371b63bd01eea6089283941ce04305a2681b4784e938ce680d99569fbc7bf8b"
   },
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:11f8631e8829c35a20ed2fff86bf854f64ffedc54303697cb4359ffbcf9493ec"
+  "source_identity": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25"
 }

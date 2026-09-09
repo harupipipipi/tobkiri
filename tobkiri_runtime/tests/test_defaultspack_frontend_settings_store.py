@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import multiprocessing
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -13,7 +15,7 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
-from domain.frontend_settings_store import (  # noqa: E402
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import (  # noqa: E402
     FrontendSettingsCorruptError,
     FrontendSettingsIdempotencyConflict,
     FrontendSettingsRevisionConflict,
@@ -24,6 +26,155 @@ from domain.ai_client.model_runtime_settings import (  # noqa: E402
     ModelRuntimeSettingsService,
 )
 from domain.frontend.registry import FrontendRegistry  # noqa: E402
+from domain.frontend_settings_catalog import SettingsCatalogInputs  # noqa: E402
+from ecosystem.tobkiri_ui_settings_pack.runtime import store as settings_module  # noqa: E402
+
+
+def test_command_model_state_keeps_explicit_owner_across_nested_services(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Command state reads and model mutations share the supplied owner only."""
+    from domain.frontend.command_protocol import CommandProtocolRegistry
+
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text('{"models":{"deepthink_enabled":false}}', encoding="utf-8")
+    before = legacy.read_bytes()
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(legacy))
+    owner = FrontendSettingsStore(tmp_path / "owned.json")
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT, settings_owner=owner,
+        command_state_dir=tmp_path / "command-state",
+    )
+    changed = protocol.invoke({
+        "command_ref": "defaultspack:deepthink",
+        "args": {"enabled": True},
+        "mode": "chat",
+        "invocation_id": "owner-test",
+        "expected_revision": 0,
+        "idempotency_key": "owner-test",
+    })
+    assert changed["status"] == "succeeded", changed
+    state = protocol.query_states()["states"][0]
+    assert state["value"] is True
+    assert state["revision"] == 1
+    assert owner.read_snapshot()["models"]["deepthink_enabled"] is True
+    assert legacy.read_bytes() == before
+
+
+def test_command_state_without_owner_does_not_fall_back_to_legacy_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from domain.frontend.command_protocol import CommandProtocolRegistry
+
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text('{"models":{"deepthink_enabled":true}}', encoding="utf-8")
+    before = legacy.read_bytes()
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(legacy))
+    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT, command_state_dir=tmp_path)
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        protocol.query_states()
+    assert legacy.read_bytes() == before
+
+
+def test_corrupt_diagnostic_is_owned_locked_private_and_preserves_original_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    content = b"{invalid\xff"
+    store.path.write_bytes(content)
+    store.path.chmod(0o600)
+    original_write = store._atomic_write_bytes
+    lock = settings_module._thread_lock(store.path)
+
+    def try_other_thread() -> bool:
+        acquired = lock.acquire(blocking=False)
+        if acquired:
+            lock.release()
+        return acquired
+
+    def checked_write(path: Path, value: bytes, *, mode: int) -> None:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(try_other_thread).result(timeout=5) is False
+        original_write(path, value, mode=mode)
+
+    monkeypatch.setattr(store, "_atomic_write_bytes", checked_write)
+    for _ in range(2):
+        with pytest.raises(FrontendSettingsCorruptError):
+            store.read(preserve_corrupt=True)
+    copies = list(tmp_path.glob("settings.json.corrupt-*.bak"))
+    assert len(copies) == 1
+    assert copies[0].read_bytes() == store.path.read_bytes() == content
+    assert hashlib.sha256(content).hexdigest() in copies[0].name
+    if os.name != "nt":
+        assert copies[0].stat().st_mode & 0o777 == 0o600
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_corrupt_backup_collision_is_not_overwritten(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    content = b"{broken"
+    store.path.write_bytes(content)
+    backup = store.path.with_name(
+        f"settings.json.corrupt-{hashlib.sha256(content).hexdigest()}.bak"
+    )
+    backup.write_bytes(b"keep existing evidence")
+    with pytest.raises(FrontendSettingsCorruptError, match="backup differs"):
+        store.read(preserve_corrupt=True)
+    assert backup.read_bytes() == b"keep existing evidence"
+    assert store.path.read_bytes() == content
+
+
+def test_snapshot_and_ordinary_corrupt_read_do_not_create_diagnostics(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    store.path.write_bytes(b"{broken")
+    for read in (store.read_snapshot, store.read):
+        with pytest.raises(FrontendSettingsCorruptError):
+            read()
+    assert not list(tmp_path.glob("*.corrupt-*.bak"))
+
+
+@pytest.mark.parametrize("has_models", [False, True])
+def test_explicit_settings_catalog_never_discovers_ambient_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, has_models: bool
+) -> None:
+    registry = FrontendRegistry(tmp_path)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("ambient discovery is not permitted")
+
+    for name in (
+        "_external_io_template_catalog",
+        "_input_profile_options",
+        "_output_profile_options",
+        "_model_options",
+        "_model_route_options",
+    ):
+        monkeypatch.setattr(registry, name, forbidden)
+    monkeypatch.setattr("domain.frontend.registry.provider_key_status", forbidden)
+    options = [{"value": "captured-model", "label": "Captured Model"}] if has_models else []
+    inputs = SettingsCatalogInputs(
+        input_templates=[],
+        output_templates=[],
+        input_profile_options=[],
+        output_profile_options=[],
+        model_options=options,
+        model_route_options=options,
+        api_key_status=[],
+    )
+    sections = registry._settings_sections([], [], template_catalog={}, inputs=inputs)
+    fields = {
+        (section["id"], field["id"]): field
+        for section in sections
+        for field in section["fields"]
+    }
+    assert fields["general", "composer_placeholder"]["default"] == "メッセージを入力..."
+    assert fields["models", "preferred_model"]["options"] == options
+    assert fields["models", "model_api_routes"]["options"] == options
+    assert fields["models", "model_api_routes"]["api_keys"] == []
+    fields["models", "preferred_model"]["options"].append({"value": "changed"})
+    assert inputs.model_options == options
+    assert fields["models", "model_api_routes"]["options"] == options
+    assert list(tmp_path.iterdir()) == []
 
 
 def _process_update(path_text: str, key: str, value: str) -> None:
@@ -123,8 +274,9 @@ def test_concurrent_thread_updates_preserve_disjoint_keys(tmp_path: Path) -> Non
 def test_registry_and_model_service_updates_share_one_transaction(
     tmp_path: Path,
 ) -> None:
-    registry = FrontendRegistry(pack_root=tmp_path)
-    models = ModelRuntimeSettingsService(pack_root=tmp_path)
+    owner = FrontendSettingsStore(tmp_path / "user_data" / "shared" / "frontend_settings.json")
+    registry = FrontendRegistry(pack_root=tmp_path, settings_owner=owner)
+    models = ModelRuntimeSettingsService(pack_root=tmp_path, settings_owner=owner)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         registry_update = pool.submit(
@@ -216,6 +368,42 @@ def test_state_mutation_is_revisioned_and_idempotent(tmp_path: Path) -> None:
     assert store.state_revision("defaultspack:models.deepthink_enabled") == 1
 
 
+def test_deepthink_value_and_revision_use_one_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ModelRuntimeSettingsService(pack_root=tmp_path)
+    state_ref = "defaultspack:models.deepthink_enabled"
+    snapshots = iter([
+        {"models": {"deepthink_enabled": False}, "_state_revisions": {state_ref: 3}},
+        {"models": {"deepthink_enabled": True}, "_state_revisions": {state_ref: 4}},
+    ])
+    reads = []
+
+    def read() -> dict:
+        snapshot = next(snapshots)
+        reads.append(snapshot)
+        return snapshot
+
+    monkeypatch.setattr(service._settings_store, "read", read)
+    # Keep this interleaving test focused on snapshot identity; actual model
+    # normalization is exercised by the service and endpoint regressions.
+    monkeypatch.setattr(service, "default_model_settings", lambda: {})
+    monkeypatch.setattr(service, "refresh_models_settings", lambda value: value)
+    first = service.get_deepthink_enabled()
+    assert (first["enabled"], first["revision"]) == (False, 3)
+    assert len(reads) == 1
+    second = service.get_deepthink_enabled()
+    assert (second["enabled"], second["revision"]) == (True, 4)
+    assert len(reads) == 2
+
+
+@pytest.mark.parametrize("revision", [None, True, -1, "3", 1.0, {}, []])
+def test_snapshot_revision_rejects_non_revision_values(revision: object) -> None:
+    assert settings_module.settings_state_revision(
+        {"_state_revisions": {"state": revision}}, "state"
+    ) == 0
+
+
 def test_state_mutation_rejects_stale_revision_and_key_reuse(tmp_path: Path) -> None:
     store = FrontendSettingsStore(tmp_path / "frontend_settings.json")
 
@@ -245,6 +433,48 @@ def test_state_mutation_rejects_stale_revision_and_key_reuse(tmp_path: Path) -> 
         )
 
 
+def test_idempotency_receipt_cannot_replay_for_another_state(tmp_path: Path) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    store.mutate_state(
+        "state:first", lambda current: (current, {"enabled": True}),
+        idempotency_key="same-key-123", request_fingerprint="same-payload",
+    )
+    original = store.path.read_bytes()
+
+    def forbidden(current: dict) -> tuple[dict, dict]:
+        pytest.fail("a retained identity must not execute another mutation")
+
+    with pytest.raises(FrontendSettingsIdempotencyConflict):
+        store.mutate_state(
+            "state:second", forbidden,
+            idempotency_key="same-key-123", request_fingerprint="same-payload",
+        )
+    assert store.path.read_bytes() == original
+
+
+@pytest.mark.parametrize("receipts", [
+    None, [], "invalid", {"same-key-123": None},
+    {"same-key-123": {"fingerprint": "same-payload", "result": []}},
+])
+def test_corrupt_receipt_never_becomes_permission_to_repeat_a_write(
+    tmp_path: Path, receipts: object,
+) -> None:
+    store = FrontendSettingsStore(tmp_path / "settings.json")
+    original = json.dumps({"_mutation_receipts": receipts, "custom": {"keep": 1}}).encode()
+    store.path.write_bytes(original)
+
+    def forbidden(current: dict) -> tuple[dict, dict]:
+        pytest.fail("corrupt receipts must not permit mutation")
+
+    with pytest.raises(FrontendSettingsCorruptError):
+        store.mutate_state(
+            "state:first", forbidden,
+            idempotency_key="same-key-123", request_fingerprint="same-payload",
+        )
+    assert store.path.read_bytes() == original
+    assert not store.backup_path.exists()
+
+
 def test_settings_endpoint_field_patch_preserves_unrelated_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -270,7 +500,7 @@ def test_settings_endpoint_field_patch_preserves_unrelated_state(
             "_method": "PUT",
             "patches": [{"section": "theme", "field": "font_size", "value": 16}],
         },
-        {},
+        {"_settings_owner_port": store},
     )
 
     assert result["status"] == "ok"

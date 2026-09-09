@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:676a7360e11579ceb38389266aac4b6f94bf5bcf9a7330dbf3fb2f8f9c8b3a2b",
+      "digest": "sha256:44d64b5217f5c2dd3865e2a2a00fc33865110bedcb07cc7e0c7cc6397e1fa898",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,12 +11,24 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "kind": "executable",
       "path": "runtime/gateway.py"
+    },
+    {
+      "digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "kind": "executable",
+      "path": "runtime/preflight.py"
     }
   ],
   "contracts": [
+    {
+      "contract_id": "tobkiri.resource.ai.readiness.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.preflight"
+      ],
+      "revision_digest": "sha256:b55d97c2964f2ea62761d49a9e996b48e37bea088ae662feacb0d861b4f89f1e"
+    },
     {
       "contract_id": "tobkiri.resource.ai.routing.diagnostics.v1",
       "operations": [
@@ -43,7 +55,7 @@
     {
       "contract_revision_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
       "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway.generate"
@@ -51,9 +63,19 @@
       "role": "host_capability_provider"
     },
     {
+      "contract_revision_digest": "sha256:b55d97c2964f2ea62761d49a9e996b48e37bea088ae662feacb0d861b4f89f1e",
+      "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.preflight"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:b41c3f794afcdf4913c27f3245d162472e43f7dc712ccdf5e1dc0486c599eb46",
       "id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics"
@@ -63,7 +85,7 @@
     {
       "contract_revision_digest": "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597",
       "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway.stream"
@@ -72,9 +94,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:799c945f64d1516bf867765047d7781d985ca88708a883b60ac2c78352a740d3",
-    "contract_catalog_digest": "sha256:20c461b0c6f997177910df3d8ca4f885dcfbf78573b2a0f3be9a6a29aca8022e",
-    "source_identity": "sha256:11f8631e8829c35a20ed2fff86bf854f64ffedc54303697cb4359ffbcf9493ec"
+    "artifact_set_digest": "sha256:399b21766ef9e83ab919c61481488fd97ce71f2323401cfbe552a6156ea45520",
+    "contract_catalog_digest": "sha256:c024b97b76a63ccc4a14b916d604093262821f3ecc6983f48e81bd9cf83443fa",
+    "source_identity": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25"
   },
   "migration": {
     "compatibility": "read_only",
@@ -112,6 +134,17 @@
       "source_kind": "canonical_v4_contract"
     },
     {
+      "contract_reference": "tobkiri.resource.ai.readiness.v1",
+      "effect_ceiling": [
+        "capability:ai.gateway.readiness.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
       "contract_reference": "tobkiri.service.ai.stream.v1",
       "effect_ceiling": [
         "capability:ai.gateway.stream",
@@ -124,7 +157,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:799c945f64d1516bf867765047d7781d985ca88708a883b60ac2c78352a740d3",
+    "artifact_digest": "sha256:399b21766ef9e83ab919c61481488fd97ce71f2323401cfbe552a6156ea45520",
     "display_name": "Rumi AI Gateway",
     "id": "rumi_ai_gateway_pack",
     "kind": "host_extension",
@@ -134,7 +167,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:11f8631e8829c35a20ed2fff86bf854f64ffedc54303697cb4359ffbcf9493ec",
+        "digest": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -145,7 +178,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:11f8631e8829c35a20ed2fff86bf854f64ffedc54303697cb4359ffbcf9493ec",
+    "source_digest": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
   },
@@ -157,6 +190,14 @@
       ],
       "owner": "rumi_ai_gateway_pack",
       "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate"
+    },
+    {
+      "contract_reference": "tobkiri.resource.ai.readiness.v1",
+      "operations": [
+        "rumi_ai_gateway_pack.ai-gateway.preflight"
+      ],
+      "owner": "rumi_ai_gateway_pack",
+      "provider_id": "rumi_ai_gateway_pack.ai-gateway.preflight"
     },
     {
       "contract_reference": "tobkiri.resource.ai.routing.diagnostics.v1",

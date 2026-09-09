@@ -1,17 +1,17 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:caff927fb10334748f2dfb762f221617f6d438643d42b7e08c5b9752d5c94fc6",
+      "digest": "sha256:9f998fa0ef0703f42d3feb04afa5c8442c3e65abb597187c5d93330cc4ea1a5a",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:24b44aee8e740aa379a36e662794e24be47631229131d083e0fbad1cbe14e5e0",
+      "digest": "sha256:444f5415acce534f5b8a2f9eef0340eeef9c58d5394ee712275ca5ef89333042",
       "kind": "executable",
       "path": "runtime/runner.py"
     },
     {
-      "digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d",
       "kind": "executable",
       "path": "runtime/service.py"
     }
@@ -36,7 +36,7 @@
     {
       "contract_revision_digest": "sha256:1c12dec4c4a39b4fc2da2d00ea258b9b26d4665e1e1f3cabf1293eb72bfdd6a4",
       "id": "rumi_clipboard_host_service_pack.clipboard.read",
-      "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "implementation_digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_clipboard_host_service_pack.clipboard-read"
@@ -46,7 +46,7 @@
     {
       "contract_revision_digest": "sha256:7b17d2bc36986ebb287cbdb016b581185aa0438cc42c87b5bce9c7dd126cb7c0",
       "id": "rumi_clipboard_host_service_pack.clipboard.write",
-      "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "implementation_digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_clipboard_host_service_pack.clipboard-write"
@@ -55,9 +55,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:76377cc3a85b98f5d138681cdf00013845379a47b3c88293e280a106dfe51fd8",
-    "contract_catalog_digest": "sha256:b547115fae30453941c89869d0a9360fdf8ebea97481c904dc4fd3fb2526a94e",
-    "source_identity": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720"
+    "artifact_set_digest": "sha256:217ef40abcd3c14cf29aa7b7b17cb473062235a0e5b7f0c901e1f8f27669e95a",
+    "contract_catalog_digest": "sha256:d03189906385ed65ef8cc67b121f85b057158e6fe3ebb9c8ef4d7339693765b8",
+    "source_identity": "sha256:93a5ee1a5af733a0558404dd7f0b2e5d5159fdaecc7f09c1c579f58d904ca57f"
   },
   "migration": {
     "compatibility": "read_only",
@@ -95,7 +95,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:76377cc3a85b98f5d138681cdf00013845379a47b3c88293e280a106dfe51fd8",
+    "artifact_digest": "sha256:217ef40abcd3c14cf29aa7b7b17cb473062235a0e5b7f0c901e1f8f27669e95a",
     "display_name": "Rumi Clipboard Host Service",
     "id": "rumi_clipboard_host_service_pack",
     "kind": "host_extension",
@@ -105,7 +105,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720",
+        "digest": "sha256:93a5ee1a5af733a0558404dd7f0b2e5d5159fdaecc7f09c1c579f58d904ca57f",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -116,7 +116,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720",
+    "source_digest": "sha256:93a5ee1a5af733a0558404dd7f0b2e5d5159fdaecc7f09c1c579f58d904ca57f",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_clipboard_host_service_pack"
   },

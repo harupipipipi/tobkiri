@@ -23,7 +23,11 @@ def _bool_with_default(value, default=False):
 
 
 def run(input_data, context):
-    registry = FrontendRegistry()
+    # A trusted in-process owner port can be supplied by the host caller.
+    # Request data never selects a path, creates an owner or grants authority.
+    registry = FrontendRegistry(
+        settings_owner=(context or {}).get("_settings_owner_port")
+    )
     method = (input_data or {}).get("_method", "GET").upper()
     if method == "GET":
         return ok(registry.get_settings(lightweight=not _bool_with_default((input_data or {}).get("full"), False)))

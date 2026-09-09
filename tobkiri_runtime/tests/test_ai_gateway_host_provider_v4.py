@@ -47,7 +47,8 @@ class _CapturedDispatch:
 
     def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
         if contract_id == GENERATE_PROVIDER_CONTRACT and self._configured_provider:
-            return ({"provider_instance_id": "provider.fixture"},)
+            return ({"provider_instance_id": "provider.fixture",
+                     "operation_id": "rumi_provider_adapters_pack.provider-generate"},)
         return ()
 
     def invoke(
@@ -146,10 +147,20 @@ def _binding() -> Any:
     )
 
 
-def _captured_provider() -> tuple[Any, Any]:
+def _captured_provider(*, preflight: bool = False) -> tuple[Any, Any]:
     binding = _binding()
     domain_id = "domain.provider.gateway-host-provider"
+    contract_id, operation_id = _CONTRACT_ID, _OPERATION_ID
     factory = HOST_PROVIDER_FACTORY[_FUNCTION_ID]
+    if preflight:
+        from ecosystem.rumi_ai_gateway_pack.runtime.preflight import (
+            CONTRACT_ID, FUNCTION_ID, HOST_PROVIDER_FACTORY as PREFLIGHT_FACTORIES,
+        )
+        contract_id, operation_id = CONTRACT_ID, FUNCTION_ID
+        binding.function.function_id = FUNCTION_ID
+        binding.operation.contract_id = CONTRACT_ID
+        binding.operation.operation_id = FUNCTION_ID
+        factory = PREFLIGHT_FACTORIES[FUNCTION_ID]
     captured = factory.capture(
         HostProviderCaptureContextV4(
             profile_id="defaults",
@@ -161,8 +172,8 @@ def _captured_provider() -> tuple[Any, Any]:
             catalog_bindings=(),
             domain_ids={
                 (
-                    _CONTRACT_ID,
-                    _OPERATION_ID,
+                    contract_id,
+                    operation_id,
                     binding.principal_ref.value,
                 ): domain_id
             },
@@ -170,6 +181,81 @@ def _captured_provider() -> tuple[Any, Any]:
     )
     assert len(captured.contributions) == 1
     return captured.contributions[0], binding
+
+
+class _PreflightDispatch(_CapturedDispatch):
+    def invoke(self, contract_id: str, operation_id: str, payload: Mapping[str, Any], *,
+               version_range: str | None = None) -> Mapping[str, Any]:
+        if contract_id == MODEL_PROFILE_CONTRACT:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            return {"profile": {"model_id": "fixture/model", "credential_handle": "private-handle"}}
+        result = super().invoke(contract_id, operation_id, payload, version_range=version_range)
+        if contract_id == REQUEST_PREPARE_CONTRACT:
+            return {**result, "model_profile_id": payload.get("model_profile_id")}
+        return result
+
+
+def test_preflight_captured_operation_resolves_without_generation_or_billing() -> None:
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    result = contribution.invoke(FUNCTION_ID, {
+        "model_profile_id": "model-profile", "messages": [{"role": "user", "content": "Hello"}],
+    }, _Invocation(dispatch))
+    assert result == {"ready": True, "model_profile_id": "model-profile",
+                      "model_id": "fixture/model", "provider_instance_id": "provider.fixture",
+                      "catalog_revision": "catalog.fixture.v1"}
+    assert [contract for contract, _, _ in dispatch.calls] == [
+        REQUEST_PREPARE_CONTRACT, MODEL_PROFILE_CONTRACT, ROUTING_CONTRACT,
+    ]
+    assert "private-handle" not in repr(result)
+
+
+@pytest.mark.parametrize("extra", ["resolve_only", "credential_handle", "provider_instance_id", "_session_id"])
+def test_preflight_rejects_extra_input_before_reading_dependencies(extra: str) -> None:
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    with pytest.raises(ValueError, match="fields"):
+        contribution.invoke(FUNCTION_ID, {
+            "model_profile_id": "model-profile", "messages": [{"role": "user", "content": "Hi"}],
+            extra: "injected",
+        }, _Invocation(dispatch))
+    assert not dispatch.calls
+
+
+def test_preflight_missing_provider_is_not_reported_ready() -> None:
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+    contribution, _ = _captured_provider(preflight=True)
+    with pytest.raises(GlobalContractInvocationError, match="no selected provider"):
+        contribution.invoke(FUNCTION_ID, {
+            "model_profile_id": "model-profile", "messages": [{"role": "user", "content": "Hi"}],
+        }, _Invocation(_PreflightDispatch(configured_provider=False)))
+
+
+def test_preflight_missing_exact_provider_operation_is_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core_runtime.global_contract_dispatch import GlobalContractUnavailable
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    monkeypatch.setattr(dispatch, "provider_metadata", lambda contract: (
+        ({"provider_instance_id": "provider.fixture"},) if contract == GENERATE_PROVIDER_CONTRACT else ()
+    ))
+    with pytest.raises(GlobalContractUnavailable, match="selected provider operation"):
+        contribution.invoke(FUNCTION_ID, {
+            "model_profile_id": "model-profile", "messages": [{"role": "user", "content": "Hi"}],
+        }, _Invocation(dispatch))
+    assert not any(contract == GENERATE_PROVIDER_CONTRACT for contract, _, _ in dispatch.calls)
+
+
+@pytest.mark.parametrize("contract", [GENERATE_PROVIDER_CONTRACT, USAGE_CONTRACT, FAILOVER_CONTRACT])
+def test_preflight_dispatch_guard_denies_effectful_dependency_calls(contract: str) -> None:
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import _ReadOnlyDispatch
+    dispatch = _PreflightDispatch(configured_provider=True)
+    readonly = _ReadOnlyDispatch(dispatch)
+    with pytest.raises(PermissionError, match="cannot execute"):
+        readonly.invoke(contract, "injected", {})
+    assert not dispatch.calls
 
 
 def test_gateway_host_factory_dispatches_only_through_the_captured_client() -> None:

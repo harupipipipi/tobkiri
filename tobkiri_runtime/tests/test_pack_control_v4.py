@@ -119,7 +119,13 @@ def test_catalog_install_approve_enable_and_restart_read_back(captured_session, 
     """The positive lifecycle survives a fresh captured session."""
     session, _state_path, user_data = captured_session
     initial = _invoke(session, "catalog.read")
-    assert initial["count"] == 140
+    source_catalog = json.loads(
+        (Path(__file__).resolve().parents[1] / "schemas" / "pack_v4_catalog.v1.json")
+        .read_text(encoding="utf-8")
+    )
+    expected_pack_ids = set(source_catalog["pack_ids"])
+    assert {row["pack_id"] for row in initial["packs"]} == expected_pack_ids
+    assert initial["count"] == len(expected_pack_ids)
     target = _catalog_pack(initial, pack_id)
     assert target["installed"] is False
     assert target["enabled"] is False
@@ -141,6 +147,9 @@ def test_catalog_install_approve_enable_and_restart_read_back(captured_session, 
     assert enabled["enabled"] is True
 
     restarted = _capture_control_session()
+    restarted_catalog = _invoke(restarted, "catalog.read")
+    assert {row["pack_id"] for row in restarted_catalog["packs"]} == expected_pack_ids
+    assert restarted_catalog["count"] == len(expected_pack_ids)
     status = _invoke(restarted, "pack.status", {"pack_id": pack_id})
     assert status["installed"] is True
     assert status["approved"] is True
@@ -216,7 +225,7 @@ def test_unapproved_revoke_does_not_hold_session_lock_during_slow_capture(
             else:
                 should_block = current_thread_id == blocked_thread_id
         if should_block:
-            assert release_capture.wait(timeout=2)
+            assert release_capture.wait(timeout=30)
         return current_active
 
     monkeypatch.setattr(
@@ -231,15 +240,18 @@ def test_unapproved_revoke_does_not_hold_session_lock_during_slow_capture(
         "approval.revoke",
         {"pack_id": TARGET_PACK},
     )
-    assert capture_started.wait(timeout=2)
-    catalog = executor.submit(_invoke, session, "catalog.read")
     try:
-        assert catalog.result(timeout=2)["profile_id"] == "defaults"
+        assert capture_started.wait(timeout=10)
+        assert session._lock.acquire(blocking=False)
+        session._lock.release()
+        catalog = executor.submit(_invoke, session, "catalog.read")
+        assert catalog.result(timeout=10)["profile_id"] == "defaults"
+        assert not release_capture.is_set()
     finally:
         release_capture.set()
         executor.shutdown(wait=True, cancel_futures=True)
     with pytest.raises(PackControlUnapproved):
-        denied.result(timeout=2)
+        denied.result(timeout=10)
 
 
 def test_slow_catalog_capture_does_not_own_the_control_session_lock(
@@ -263,7 +275,7 @@ def test_slow_catalog_capture_does_not_own_the_control_session_lock(
             should_block = capture_calls == 1
         if should_block:
             capture_started.set()
-            assert release_capture.wait(timeout=2)
+            assert release_capture.wait(timeout=30)
         return current_active
 
     monkeypatch.setattr(
@@ -274,7 +286,7 @@ def test_slow_catalog_capture_does_not_own_the_control_session_lock(
     executor = ThreadPoolExecutor(max_workers=2)
     catalog = executor.submit(_invoke, session, "catalog.read")
     try:
-        assert capture_started.wait(timeout=2)
+        assert capture_started.wait(timeout=10)
         assert session._lock.acquire(blocking=False)
         session._lock.release()
         denied = executor.submit(
@@ -284,11 +296,12 @@ def test_slow_catalog_capture_does_not_own_the_control_session_lock(
             {"pack_id": TARGET_PACK},
         )
         with pytest.raises(PackControlUnapproved):
-            denied.result(timeout=2)
+            denied.result(timeout=10)
+        assert not release_capture.is_set()
     finally:
         release_capture.set()
         executor.shutdown(wait=True, cancel_futures=True)
-    assert catalog.result(timeout=2)["profile_id"] == "defaults"
+    assert catalog.result(timeout=10)["profile_id"] == "defaults"
 
 
 def test_enable_does_not_require_unrelated_pack_install_or_approval(

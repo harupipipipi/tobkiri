@@ -818,7 +818,7 @@ mod tests {
     fn panel_reauthorization_preserves_a_kernel_with_slow_health_readiness() {
         use std::io::{Read, Write};
         use std::net::TcpListener;
-        use std::sync::{Arc, Mutex};
+        use std::sync::{mpsc, Arc, Mutex};
         use std::time::{Duration, Instant};
 
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -834,25 +834,40 @@ mod tests {
             kernel_port: listener.local_addr().unwrap().port(),
             dev_workspace_root: None,
         };
+        let (stop_server, stop_requested) = mpsc::channel();
         let server = std::thread::spawn(move || {
-            let started = Instant::now();
-            while started.elapsed() < Duration::from_secs(15) {
+            let mut first_request = None;
+            while matches!(stop_requested.try_recv(), Err(mpsc::TryRecvError::Empty)) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Accepted sockets may inherit nonblocking mode. Read
+                        // the complete request before closing the connection;
+                        // unread request bytes can turn the response into a reset.
+                        stream.set_nonblocking(false).unwrap();
                         stream
                             .set_read_timeout(Some(Duration::from_secs(1)))
                             .unwrap();
-                        let mut request = [0; 2048];
-                        let _ = stream.read(&mut request);
+                        stream
+                            .set_write_timeout(Some(Duration::from_secs(1)))
+                            .unwrap();
+                        let mut request = Vec::new();
+                        let mut byte = [0];
+                        while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {
+                            if stream.read_exact(&mut byte).is_err() {
+                                break;
+                            }
+                            request.push(byte[0]);
+                        }
+                        if !request.ends_with(b"\r\n\r\n") {
+                            continue;
+                        }
+                        let started = first_request.get_or_insert_with(Instant::now);
                         let ready = started.elapsed() >= Duration::from_secs(7);
                         let status = if ready { "200 OK" } else { "503 Unavailable" };
                         let _ = write!(
                             stream,
                             "HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                         );
-                        if ready {
-                            return;
-                        }
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                         std::thread::sleep(Duration::from_millis(10));
@@ -862,7 +877,7 @@ mod tests {
             }
         });
         let child = std::process::Command::new("/bin/sleep")
-            .arg("30")
+            .arg("120")
             .spawn()
             .unwrap();
         let pid = child.id();
@@ -871,6 +886,7 @@ mod tests {
         let manager = Arc::new(Mutex::new(manager));
 
         let result = crate::ensure_kernel_ready_for_panel_auth(&config, &manager);
+        stop_server.send(()).unwrap();
         let mut kernel = manager.lock().unwrap();
         let retained_pid = kernel.child.as_ref().map(|child| child.id());
         let still_running = kernel.is_running();
