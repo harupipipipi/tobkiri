@@ -1220,9 +1220,13 @@ def test_sandbox_exec_fails_closed_after_internal_tool_decision_until_managed_ru
 
     result = ToolExecutor().execute("sandbox_exec", {"command": "pwd"}, context)
 
-    assert result["is_error"] is True
-    assert result["widget"]["error"]["code"] == "MANAGED_RUNTIME_NOT_READY"
-    assert result["widget"]["error"]["argv"] == ["pwd"]
+    assert result["widget"]["type"] == "approval_request"
+    # An internal decision does not bypass the executor's outer approval gate.
+    # Exercise the post-gate handler separately without relaxing that gate.
+    handled = sandbox_tools.sandbox_exec({"command": "pwd"}, context)
+    assert handled["status"] == "error"
+    assert handled["error"]["code"] == "MANAGED_RUNTIME_NOT_READY"
+    assert handled["error"]["argv"] == ["pwd"]
 
 
 def test_sandbox_exec_creates_ephemeral_sandbox_when_no_sandbox_id(
@@ -1278,8 +1282,12 @@ def test_sandbox_exec_rejects_shell_strings_after_internal_tool_decision(
 
     result = ToolExecutor().execute("sandbox_exec", {"command": "echo ok && echo nope"}, context)
 
-    assert result["is_error"] is True
-    assert result["widget"]["error"]["code"] == "SANDBOX_SHELL_STRING_REJECTED"
+    assert result["widget"]["type"] == "approval_request"
+    from domain.tool import sandbox_tools
+
+    handled = sandbox_tools.sandbox_exec({"command": "echo ok && echo nope"}, context)
+    assert handled["status"] == "error"
+    assert handled["error"]["code"] == "SANDBOX_SHELL_STRING_REJECTED"
 
 
 def test_sandbox_exec_command_string_preserves_quoted_whitespace(tmp_path, monkeypatch):
@@ -1878,8 +1886,12 @@ def test_package_install_plan_never_executes_packages(tmp_path):
     )
 
     assert result["is_error"] is False
-    assert result["widget"]["data"]["executes"] is False
-    assert result["widget"]["data"]["command"][-1] == "requests"
+    assert result["widget"]["type"] == "approval_request"
+    from domain.tool.sandbox_tools import package_install_plan
+
+    plan = package_install_plan({"manager": "pip", "packages": ["requests"]})
+    assert plan["data"]["executes"] is False
+    assert plan["data"]["command"][-1] == "requests"
 
 
 def test_connector_approval_request_redacts_secret_arguments(
@@ -1920,10 +1932,18 @@ def test_connector_dry_run_redacts_secret_arguments_after_internal_approval(
     )
 
     assert result["is_error"] is False
-    message = result["widget"]["data"]["message"]
+    assert result["widget"]["type"] == "approval_request"
+    from domain.tool.external_connector_tools import slack_send
+
+    handled = slack_send(
+        {"text": "hello", "bot_token": "xoxb-secret", "nested": {"api_key": "secret-key"}},
+        context,
+    )
+    message = handled["data"]["message"]
     assert message["bot_token"] == "[redacted]"
     assert message["nested"]["api_key"] == "[redacted]"
     assert "xoxb-secret" not in result["result"]
+    assert "xoxb-secret" not in str(handled)
 
 
 def test_rumi_api_manifest_and_executor_require_approval():
