@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:4574c9aaef9bedc0b62f1c3e81d1d23915fd8b49fba36db12d3bf4040463ffe6",
+      "digest": "sha256:7f476e08526f71cdaf05c78d56354fcc2dbdcb0366b4e04b2cf22b7dd812c4e7",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -33,7 +33,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
+    "artifact_set_digest": "sha256:833a95acd2c395f5b9be397857a92a866982e02dd9e2304786b5919b9dd39489",
     "contract_catalog_digest": "sha256:9cd1973d02da6e6eed723e08cf5dc27d748a7adf8c55b2788956a3a0925ee318",
     "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda"
   },
@@ -60,7 +60,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
+    "artifact_digest": "sha256:833a95acd2c395f5b9be397857a92a866982e02dd9e2304786b5919b9dd39489",
     "display_name": "Rumi MCP Gateway",
     "id": "rumi_mcp_gateway_pack",
     "kind": "normal_sandbox",

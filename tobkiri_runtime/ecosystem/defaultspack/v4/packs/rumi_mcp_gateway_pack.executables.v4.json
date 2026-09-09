@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_mcp_gateway_pack",
-  "source_identity": "sha256:1bc42b77853b67745218ddc1724799c3625a637206949f559d5b573fb888ba34",
+  "source_identity": "sha256:fb3e1dc241f0c3e687db8384e28eec9bb8f3faa98f63cb34890c0dd5ef09466b",
   "variants": [
     {
       "variant_id": "rumi_mcp_gateway_pack.mcp-gateway.call.python",
@@ -30,7 +30,7 @@
           "error_schema": {
             "type": "object"
           },
-          "effect_class": "read",
+          "effect_class": "external_effect",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:95ba0c5893918c3136450443980137bdc27984a7171eda6aad6119d5e2f4413a",
-  "catalog_digest": "sha256:f24c7aab9a347e5aab46f824c3d4a6ce1a48571fd76024599228bb03041927c9"
+  "materialization_catalog_digest": "sha256:b36cb74207ef30a56466c8bdb3679182040f28ccf7e0c31149d1ceb52d3a8ecc",
+  "catalog_digest": "sha256:b76eeb5143a389dc9a906b261f0c345d1a46c837dfb2560a6d194cdc1bb92edb"
 }

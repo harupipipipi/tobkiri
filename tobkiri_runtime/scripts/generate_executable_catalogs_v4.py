@@ -82,7 +82,12 @@ def _effect_class(operation: dict[str, Any]) -> str:
     effects = tuple(str(item) for item in operation["effect_ceiling"])
     if any(item.startswith(("host:", "secret:")) for item in effects):
         return "privileged"
-    if any(item.startswith("network:") for item in effects):
+    if (
+        "capability:mcp.tool.call" in effects
+        or any(item.startswith("network:") for item in effects)
+    ):
+        # Remote MCP tools can mutate external state even when their namespace
+        # does not contain a write-like verb. Never treat an unknown tool as read.
         return "external_effect"
     if any("write" in item or "mutat" in item or "delete" in item for item in effects):
         return "write"

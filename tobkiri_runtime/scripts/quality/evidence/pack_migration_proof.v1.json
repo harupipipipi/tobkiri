@@ -6597,18 +6597,18 @@
       "target": {
         "artifact_verification": {
           "artifact_count": 4,
-          "artifact_index_digest": "sha256:b42d4076e2847806ff75263e39e19454b816f1cc09ed16ba35b008eb3e1b8057",
-          "artifact_set_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
-          "executable_catalog_digest": "sha256:95ba0c5893918c3136450443980137bdc27984a7171eda6aad6119d5e2f4413a",
+          "artifact_index_digest": "sha256:d8b7898e8b0e53450f8e1b8afb079145777f6879f4ec294628ea1bfd9ac116a2",
+          "artifact_set_digest": "sha256:833a95acd2c395f5b9be397857a92a866982e02dd9e2304786b5919b9dd39489",
+          "executable_catalog_digest": "sha256:b36cb74207ef30a56466c8bdb3679182040f28ccf7e0c31149d1ceb52d3a8ecc",
           "pack_id": "rumi_mcp_gateway_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:b42d4076e2847806ff75263e39e19454b816f1cc09ed16ba35b008eb3e1b8057",
+            "artifact-index.v4.json": "sha256:d8b7898e8b0e53450f8e1b8afb079145777f6879f4ec294628ea1bfd9ac116a2",
             "contracts.v4.json": "sha256:9cd1973d02da6e6eed723e08cf5dc27d748a7adf8c55b2788956a3a0925ee318",
-            "executables.v4.json": "sha256:4574c9aaef9bedc0b62f1c3e81d1d23915fd8b49fba36db12d3bf4040463ffe6",
-            "pack.v4.json": "sha256:1bc42b77853b67745218ddc1724799c3625a637206949f559d5b573fb888ba34"
+            "executables.v4.json": "sha256:7f476e08526f71cdaf05c78d56354fcc2dbdcb0366b4e04b2cf22b7dd812c4e7",
+            "pack.v4.json": "sha256:fb3e1dc241f0c3e687db8384e28eec9bb8f3faa98f63cb34890c0dd5ef09466b"
           }
         },
-        "digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
+        "digest": "sha256:833a95acd2c395f5b9be397857a92a866982e02dd9e2304786b5919b9dd39489",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "rumi_mcp_gateway_pack",
         "status": "artifact-integrity-verified"
@@ -11698,7 +11698,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:7d19655936c75805172f504782911ef09a74a6a72e5c69713c9c2a7746ab85c7",
+    "content_digest": "sha256:fff787e0b355027cd6e3876430da13f56d2772c770dddc8fddc0a5d2a40d83e6",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 40,
@@ -11941,7 +11941,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:8e482428809828d66f3a18cbedfa2cc13b3ce85679dbe2d925de79856131c441",
+    "input_digest": "sha256:311c5a88a91cf9681d09d38076b6234e2fa3b1a93b0aae1b3a96709b3958b495",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaults/artifact-index.v4.json",
@@ -15385,7 +15385,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_localization_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:b42d4076e2847806ff75263e39e19454b816f1cc09ed16ba35b008eb3e1b8057",
+        "digest": "sha256:d8b7898e8b0e53450f8e1b8afb079145777f6879f4ec294628ea1bfd9ac116a2",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/artifact-index.v4.json"
       },
@@ -15400,12 +15400,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:4574c9aaef9bedc0b62f1c3e81d1d23915fd8b49fba36db12d3bf4040463ffe6",
+        "digest": "sha256:7f476e08526f71cdaf05c78d56354fcc2dbdcb0366b4e04b2cf22b7dd812c4e7",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:1bc42b77853b67745218ddc1724799c3625a637206949f559d5b573fb888ba34",
+        "digest": "sha256:fb3e1dc241f0c3e687db8384e28eec9bb8f3faa98f63cb34890c0dd5ef09466b",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/pack.v4.json"
       },
@@ -17616,7 +17616,7 @@
       "release-verified": 0,
       "semantically-reviewed": 40
     },
-    "observed_head_sha": "24c81fc6b7f0679289632ed6c39d026651e9ea66",
+    "observed_head_sha": "14eaf6c1c13266ea707a7a4ff8493ce6db637e6f",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {

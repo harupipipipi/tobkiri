@@ -779,12 +779,12 @@
     {
       "path": "packs/rumi_mcp_gateway_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:d80b61ec7c320e52d3fd97632967f9372d141f1bab8c8001c9037c51caa23365"
+      "digest": "sha256:837860f24ff781572c54f7adf2495a8ac57db9f6e021a7aa5f0ce2bba1034c6a"
     },
     {
       "path": "packs/rumi_mcp_gateway_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:79ff75b62388976a3f85acdd90d6808b585e021b46e689ddfa362cf711fa4d75"
+      "digest": "sha256:2b8f17984487d6aa86ed5ce52aeb9fc9c2d3e80b7c255a76610b88a68002371e"
     },
     {
       "path": "packs/rumi_mcp_server_pack.executables.v4.json",

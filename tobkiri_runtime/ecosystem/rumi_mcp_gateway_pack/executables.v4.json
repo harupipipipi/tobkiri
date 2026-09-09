@@ -1,6 +1,6 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:95ba0c5893918c3136450443980137bdc27984a7171eda6aad6119d5e2f4413a",
+  "catalog_digest": "sha256:b36cb74207ef30a56466c8bdb3679182040f28ccf7e0c31149d1ceb52d3a8ecc",
   "pack_id": "rumi_mcp_gateway_pack",
   "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda",
   "variants": [
@@ -17,7 +17,7 @@
         {
           "contract_id": "tobkiri.service.mcp.tool.call.v1",
           "contract_version": "1.0.0",
-          "effect_class": "read",
+          "effect_class": "external_effect",
           "error_schema": {
             "type": "object"
           },

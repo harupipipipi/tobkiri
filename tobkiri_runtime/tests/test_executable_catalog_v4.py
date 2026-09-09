@@ -15,6 +15,18 @@ from tobkiri_protocol.errors import SchemaValidationError
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_mcp_gateway_calls_compile_as_external_effects() -> None:
+    """Arbitrary remote tool calls must retain ambiguous-outcome handling."""
+    compiled = compile_pack_root(ROOT / "ecosystem" / "rumi_mcp_gateway_pack")
+    operations = [
+        operation
+        for function in compiled.artifact.functions
+        for operation in function.operations
+    ]
+    assert len(operations) == 1
+    assert operations[0].effect_class.value == "external_effect"
+
+
 @pytest.mark.parametrize(
     ("pack_id", "function_id", "operation_id"),
     (
