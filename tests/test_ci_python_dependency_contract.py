@@ -61,6 +61,13 @@ def test_recovery_regressions_run_without_contract_marker_filtering() -> None:
         assert (ROOT / "tobkiri_runtime/tests" / name).is_file()
     assert "steps.recovery_pytest.outcome == 'failure'" in remaining
     assert "-- pytest -m contract -v" in remaining
+    contract_step = remaining.split("- name: Run active contract cluster pytest", 1)[1]
+    contract_step = contract_step.split("- name: Upload contract pytest log", 1)[0]
+    assert (
+        "if: ${{ !cancelled() && (success() || "
+        "steps.recovery_pytest.outcome == 'failure') }}"
+    ) in contract_step
+    assert "continue-on-error" not in job
 
 
 def test_locked_python_test_installer_uses_both_project_exports() -> None:

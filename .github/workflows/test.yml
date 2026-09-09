@@ -126,6 +126,7 @@ jobs:
           retention-days: 7
 
       - name: Run active contract cluster pytest
+        if: ${{ !cancelled() && (success() || steps.recovery_pytest.outcome == 'failure') }}
         id: contract_pytest
         working-directory: tobkiri_runtime
         run: |
