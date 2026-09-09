@@ -224,6 +224,22 @@ class InteractiveApprovalPort(Protocol):
     ) -> tuple[InteractiveApprovalStatus, ...]:
         """Return owner-authorized redacted statuses, optionally by state."""
 
+    def create_interactive_approval_batch(
+        self, context: RequestContext, request_ids: tuple[str, ...],
+    ) -> Mapping[str, object]:
+        """Freeze an exact owner-authorized selection without granting authority."""
+
+    def get_interactive_approval_batch(
+        self, context: RequestContext, request_id: str,
+    ) -> Mapping[str, object]:
+        """Return the complete frozen selection for the authenticated owner."""
+
+    def settle_interactive_approval_batch(
+        self, command: InteractiveApprovalDecisionCommand, *,
+        approved: bool, confirmation_texts: Mapping[str, str],
+    ) -> Mapping[str, object]:
+        """Atomically settle a selection using the Host-verified native proof."""
+
     def interactive_approval_status(self, request_id: str) -> InteractiveApprovalStatus:
         """Return the redacted lifecycle view of one approval request."""
 

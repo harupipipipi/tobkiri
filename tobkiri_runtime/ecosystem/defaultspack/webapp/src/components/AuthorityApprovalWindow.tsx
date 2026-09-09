@@ -224,6 +224,17 @@ export function AuthorityApprovalWindow() {
     window.setTimeout(() => void closeApprovalWindow(), 650);
   }, [readAuthoritativeRequest]);
 
+  const readReviewedRequest = async () => {
+    const current = await readAuthoritativeRequest();
+    if (!isPending(current)) throw new Error("APPROVAL_REQUEST_MISMATCH");
+    if (current.request_snapshot_digest !== request?.request_snapshot_digest) {
+      setRequest(current);
+      setConfirmationText("");
+      throw new Error("承認内容が更新されました。表示された内容を確認して、もう一度操作してください。");
+    }
+    return current;
+  };
+
   const approve = async () => {
     if (!request || !isPending(request)) return;
     if (
@@ -236,8 +247,7 @@ export function AuthorityApprovalWindow() {
     setAction("approve");
     setError(null);
     try {
-      const current = await readAuthoritativeRequest();
-      if (!isPending(current)) throw new Error("APPROVAL_REQUEST_MISMATCH");
+      const current = await readReviewedRequest();
       const context = await getAuthorityApprovalContext(requestId, {
         decision: "approve",
         requestSnapshotDigest: current.request_snapshot_digest,
@@ -261,8 +271,7 @@ export function AuthorityApprovalWindow() {
     setAction("deny");
     setError(null);
     try {
-      const current = await readAuthoritativeRequest();
-      if (!isPending(current)) throw new Error("APPROVAL_REQUEST_MISMATCH");
+      const current = await readReviewedRequest();
       const context = await getAuthorityApprovalContext(requestId, {
         decision: "deny",
         requestSnapshotDigest: current.request_snapshot_digest,

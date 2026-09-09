@@ -7220,7 +7220,11 @@
             "interactive_approval.get",
             "interactive_approval.list",
             "interactive_approval.approve",
-            "interactive_approval.deny"
+            "interactive_approval.deny",
+            "interactive_approval.batch_create",
+            "interactive_approval.batch_get",
+            "interactive_approval.batch_approve",
+            "interactive_approval.batch_deny"
           ]
         },
         {
@@ -7351,6 +7355,42 @@
               "entrypoint_id": "deny",
               "id": "interactive_approval.deny",
               "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_create",
+              "id": "interactive_approval.batch_create",
+              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_get",
+              "id": "interactive_approval.batch_get",
+              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_approve",
+              "id": "interactive_approval.batch_approve",
+              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_deny",
+              "id": "interactive_approval.batch_deny",
+              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -7375,6 +7415,25 @@
                 },
                 "ui_operator": {
                   "type": "object"
+                },
+                "request_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  }
+                },
+                "confirmation_texts": {
+                  "type": "object",
+                  "maxProperties": 64,
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 512
+                  }
                 }
               },
               "type": "object"
@@ -9817,17 +9876,17 @@
             {
               "entrypoint_id": "bundled-model-catalog",
               "id": "rumi_model_catalog_pack.bundled-model-catalog",
-          "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
+              "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
             },
             {
               "entrypoint_id": "bundled-model-catalog.generate",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
-          "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
+              "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
             },
             {
               "entrypoint_id": "bundled-model-catalog.stream",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
-          "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
+              "implementation_digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a"
             }
           ],
           "owner": "rumi_model_catalog_pack",
@@ -9855,7 +9914,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a",
+          "digest": "sha256:486a0a395fecaefeb0c1a09e2552043c924f35d844e251f3cc344037a14d923a",
           "kind": "executable",
           "path": "runtime/catalog.py"
         }
@@ -11210,17 +11269,17 @@
             {
               "entrypoint_id": "provider-registry-health",
               "id": "rumi_provider_registry_pack.provider-registry-health",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.generate",
               "id": "rumi_provider_registry_pack.provider-registry-health.generate",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.stream",
               "id": "rumi_provider_registry_pack.provider-registry-health.stream",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -11293,7 +11352,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
+          "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "kind": "executable",
           "path": "runtime/health_process.py"
         },

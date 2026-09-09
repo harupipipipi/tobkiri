@@ -1385,3 +1385,62 @@ class InteractiveApprovalSettlement:
     approval: ApprovalRecord | None = None
     grant: GrantRecord | None = None
     confirmation_text: str | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalBatch:
+    """A Host-frozen, finite selection of existing one-shot requests."""
+
+    request_id: str
+    request_snapshots: tuple[tuple[str, str], ...]
+    profile_id: str
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    security_epoch: int
+    created_at: float
+    expires_at: float
+
+    def __post_init__(self) -> None:
+        _require_id("request_id", self.request_id)
+        _require_id("profile_id", self.profile_id)
+        _require_digest("presentation owner", self.presentation_owner_principal_id)
+        _require_id("presentation session", self.presentation_owner_session_id)
+        _require_positive_int("security_epoch", self.security_epoch)
+        _require_finite_time("created_at", self.created_at)
+        _require_finite_time("expires_at", self.expires_at)
+        if self.expires_at <= self.created_at:
+            raise AuthorityValidationError("approval batch expiry is invalid")
+        snapshots = tuple(tuple(item) for item in self.request_snapshots)
+        if not 1 <= len(snapshots) <= 64:
+            raise AuthorityValidationError("approval selection must contain 1 to 64 items")
+        if any(len(item) != 2 for item in snapshots):
+            raise AuthorityValidationError("approval selection is malformed")
+        if len({item[0] for item in snapshots}) != len(snapshots):
+            raise AuthorityValidationError("approval selection contains duplicates")
+        for request_id, digest in snapshots:
+            _require_id("selected request", request_id)
+            _require_digest("selected snapshot", digest)
+        object.__setattr__(self, "request_snapshots", tuple(sorted(snapshots)))
+
+    @property
+    def digest(self) -> str:
+        """Bind the complete finite selection and its presentation owner."""
+
+        return authority_digest(self.to_dict())
+
+    @property
+    def typed_confirmation_digest(self) -> None:
+        """Individual phrases are verified separately against each frozen request."""
+
+        return None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the immutable batch without operator proof or payloads."""
+
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> InteractiveApprovalBatch:
+        """Parse an authenticated Host record."""
+
+        return cls(**dict(value))

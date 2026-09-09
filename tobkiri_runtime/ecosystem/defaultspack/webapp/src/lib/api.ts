@@ -412,6 +412,20 @@ export type InteractiveApprovalRequest = {
   redacted_metadata: Record<string, string>;
 };
 
+export type InteractiveApprovalBatch = {
+  request_id: string;
+  request_snapshot_digest: string;
+  profile_id: string;
+  expires_at: number;
+  state: string;
+  items: Array<Omit<InteractiveApprovalRequest, "state" | "typed_confirmation_digest"> & {
+    caller: Record<string, unknown>;
+    target: Record<string, unknown>;
+    scope: Record<string, unknown>;
+    lifetime: string;
+  }>;
+};
+
 /** A redacted list projection from the interactive-approval Pack. */
 export type InteractiveApprovalRequestsResponse = {
   approvals: InteractiveApprovalRequest[];
@@ -5279,6 +5293,27 @@ export const api = {
         persist: Boolean(options.persist),
         ui_operator: options.ui_operator,
       }),
+    });
+  },
+
+  createInteractiveApprovalBatch(requestIds: string[]) {
+    return request<InteractiveApprovalBatch>(defaultspackContractRoute("api/interactive-approval/v1/batch-create"), {
+      method: "POST", body: JSON.stringify({ request_ids: requestIds }),
+    });
+  },
+  getInteractiveApprovalBatch(requestId: string) {
+    return request<InteractiveApprovalBatch>(defaultspackContractRoute("api/interactive-approval/v1/batch-get"), {
+      method: "POST", body: JSON.stringify({ request_id: requestId }), cache: "no-store",
+    });
+  },
+  approveInteractiveApprovalBatch(requestId: string, confirmationTexts: Record<string, string>, uiOperator: AuthorityUiOperator) {
+    return request<InteractiveApprovalBatch>(defaultspackContractRoute("api/interactive-approval/v1/batch-approve"), {
+      method: "POST", body: JSON.stringify({ request_id: requestId, confirmation_texts: confirmationTexts, ui_operator: uiOperator }),
+    });
+  },
+  denyInteractiveApprovalBatch(requestId: string, uiOperator: AuthorityUiOperator) {
+    return request<InteractiveApprovalBatch>(defaultspackContractRoute("api/interactive-approval/v1/batch-deny"), {
+      method: "POST", body: JSON.stringify({ request_id: requestId, ui_operator: uiOperator }),
     });
   },
 

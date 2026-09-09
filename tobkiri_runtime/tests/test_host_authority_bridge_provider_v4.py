@@ -265,7 +265,7 @@ def test_factory_is_separate_presentation_contract_with_no_request_operation() -
         bridge._V4_LIST_OPERATION,
         bridge._V4_APPROVE_OPERATION,
         bridge._V4_DENY_OPERATION,
-    }
+    } | bridge._V4_BATCH_OPERATIONS
     assert bridge._V4_CONTRACT_ID == _CONTRACT_ID
     assert "request" not in bridge._V4_OPERATIONS
     assert "authorize" not in factory.function_id
@@ -447,3 +447,66 @@ def test_v4_presentation_never_uses_legacy_request_store_or_receipts(
     result = _invoke(contributions, bridge._V4_LIST_OPERATION, {})
     assert result["approvals"][0]["state"] == "pending"
     assert callable(bridge.create_authority_operation)
+
+
+class _BatchPort(_ApprovalPort):
+    def create_interactive_approval_batch(self, context, request_ids):
+        self.selected = (context, request_ids)
+        return {"request_id": "approval-batch-1", "items": request_ids}
+
+    def settle_interactive_approval_batch(self, command, *, approved, confirmation_texts):
+        self.settlement = (command, approved, confirmation_texts)
+        return {"request_id": command.request_id}
+
+
+def test_batch_creation_freezes_selection_without_grant():
+    port = _BatchPort()
+    result = _invoke(_capture(port), "interactive_approval.batch_create",
+                     {"request_ids": ["first", "second"]})
+    assert result["request_id"] == "approval-batch-1"
+    assert port.selected == (_context(), ("first", "second"))
+    assert port.decisions == []
+
+
+@pytest.mark.parametrize("selected", [[], ["one", "one"], [""], "one", [False], ["x"] * 65])
+def test_batch_rejects_invalid_selection_without_partial_forwarding(selected):
+    port = _BatchPort()
+    with pytest.raises(PermissionError):
+        _invoke(_capture(port), "interactive_approval.batch_create", {"request_ids": selected})
+    assert not hasattr(port, "selected")
+
+
+def test_batch_forwards_native_proof_and_all_confirmations_to_host():
+    port = _BatchPort()
+    proof = {"version": 3, "signature": "host-verifies-this"}
+    _invoke(_capture(port), "interactive_approval.batch_approve", {
+        "request_id": "approval-batch-1", "ui_operator": proof,
+        "confirmation_texts": {"first": "PUBLISH", "second": "DELETE"},
+    })
+    command, approved, confirmations = port.settlement
+    assert command.context == _context()
+    assert command.ui_operator == proof
+    assert approved is True
+    assert confirmations == {"first": "PUBLISH", "second": "DELETE"}
+
+
+@pytest.mark.parametrize("extra", [{"approved": True}, {"token": "api-token"}, {"debug": True}])
+def test_batch_rejects_client_authority_fields(extra):
+    port = _BatchPort()
+    with pytest.raises(PermissionError):
+        _invoke(_capture(port), "interactive_approval.batch_approve", {
+            "request_id": "approval-batch-1", "ui_operator": {},
+            "confirmation_texts": {}, **extra,
+        })
+    assert not hasattr(port, "settlement")
+
+
+def test_batch_rejects_missing_operator_and_malformed_confirmations():
+    port = _BatchPort()
+    for options in ({"confirmation_texts": {}},
+                    {"ui_operator": {}, "confirmation_texts": {"first": True}}):
+        with pytest.raises(PermissionError):
+            _invoke(_capture(port), "interactive_approval.batch_approve", {
+                "request_id": "approval-batch-1", **options,
+            })
+    assert not hasattr(port, "settlement")
