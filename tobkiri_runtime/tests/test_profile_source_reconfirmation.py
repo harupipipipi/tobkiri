@@ -83,7 +83,13 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     proposed, confirmation = profile_capture.prepare_bootstrap_profile_review(
         include_source_additions=True
     )
-    assert not added_packs & {row["pack_id"] for row in unchanged.profiles["defaults"]["packs"]}
+    retained, _ = profile_capture._bootstrap_review_candidate()
+    assert not added_packs & {
+        row["pack_id"] for row in retained.profiles["defaults"]["packs"]
+    }
+    assert {row["pack_id"] for row in unchanged.profiles["defaults"]["packs"]} == {
+        row["pack_id"] for row in previous.resolved.profile["packs"]
+    }
     assert added_packs <= {row["pack_id"] for row in proposed.profiles["defaults"]["packs"]}
     assert proposed.profiles["defaults"]["display_name"] == "My retained Defaults"
     if unpinned_scope:
