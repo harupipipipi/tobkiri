@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import http.cookiejar
 import json
 import os
@@ -323,14 +325,25 @@ def test_public_kernel_first_start_requires_confirmed_defaults_transaction(
         kernel.run_startup_until("api_init")
         remaining = kernel.run_startup_remaining()
         assert remaining["status"] == "setup_required"
-        with urlopen(
+        challenge = "fresh-kernel-cold-boot-challenge"
+        health_request = Request(
             f"http://127.0.0.1:{port}/health",
+            headers={"X-Rumi-Desktop-Health-Challenge": challenge},
+        )
+        with urlopen(
+            health_request,
             timeout=coordination_timeout_seconds,
         ) as response:
             envelope = json.load(response)
         assert envelope["success"] is True
         assert envelope["data"]["panel_ready"] is True
         assert envelope["data"]["runtime_ready"] is False
+        assert hmac.compare_digest(
+            envelope["data"]["desktop_challenge_response"],
+            hmac.new(
+                bootstrap_secret.encode(), challenge.encode(), hashlib.sha256,
+            ).hexdigest(),
+        )
 
         # The temporary Launcher identity may authenticate only this bootstrap
         # panel session. It is not the execution identity projected by health.
