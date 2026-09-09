@@ -12205,7 +12205,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:5114d8fba94623b11ee3279260643fa0f038a11bc93e3d809645e9adc825d49c",
+    "input_digest": "sha256:63c163e5299f66a9679321148a7d7e7c3a8d7a1cb6b78e8250ea47772abac167",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12927,7 +12927,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:5b364d39016369964f6083a26c511ee879e09308ac6a277abe5ec8543e361794",
+        "digest": "sha256:0c5057f540a02ab4b781ecd68c1a6e2af9a967d818e82340c60b3fb981431ea1",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json"
       },
