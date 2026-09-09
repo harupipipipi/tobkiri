@@ -41,10 +41,33 @@ def _request(outer: object) -> dict[str, Any]:
     return validate_saved_conversation_input(payload)["request"]
 
 
-def _messages(conversation: Mapping[str, Any]) -> list[dict[str, str]]:
-    """Independently constrain the selected owner history to resolved text."""
+def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
+    """Reject owned context that the text-only saved path cannot resolve."""
+    metadata = conversation.get("metadata") or {}
+    tags = conversation.get("tags") or []
+    if not isinstance(metadata, Mapping) or not isinstance(tags, list):
+        raise AuthorityDenied("saved bridge owned context is invalid")
     if conversation.get("system_prompt_id") or conversation.get("agent_id"):
         raise AuthorityDenied("saved bridge context resolution is required")
+    if (
+        conversation.get("conversation_kind") not in (None, "", "chat")
+        or conversation.get("group_id")
+        or any(metadata.get(key) for key in (
+            "group_id", "workspace_id", "workspace_root", "rumi_data_path",
+            "shared_read_only",
+        ))
+        or metadata.get("mode") not in (None, "", "chat")
+        or metadata.get("profile_id") in (
+            "defaultspack.operations_company", "defaultspack.mimo_coding_company",
+        )
+        or any(tag in tags for tag in ("operations-company", "mimo-coding-company"))
+    ):
+        raise AuthorityDenied("saved bridge context resolution is required")
+
+
+def _messages(conversation: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Independently constrain the selected owner history to resolved text."""
+    _require_resolved_context(conversation)
     messages = conversation.get("messages")
     if not isinstance(messages, list) or len(messages) > 200:
         raise AuthorityDenied("saved bridge owner history is invalid")
@@ -172,6 +195,7 @@ class SavedBridgeCallbacks:
             self._check_append(request, payload, hop)
             if hop == 1:
                 conversation = self._conversation(outer, request)
+                _require_resolved_context(conversation)
                 if (
                     payload["expected_conversation_revision"] != request["conversation_revision"]
                     or conversation.get("conversation_revision") != request["conversation_revision"]
