@@ -431,9 +431,9 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
-@pytest.mark.parametrize("lose_owner_reply", [False, True])
+@pytest.mark.parametrize("completion", ["normal", "reply_lost", "stop_after_commit"])
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lose_owner_reply: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, completion: str,
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
     from core_runtime.bootstrap.saved_bridge import READINESS
@@ -443,6 +443,8 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
 
     original = V4DispatchSession.invoke
     ai_calls = []
+    stop_receipts = []
+    lose_owner_reply = completion != "normal"
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
@@ -456,6 +458,15 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             and payload.get("operation") == "append_saved"
             and payload["message"]["role"] == "assistant"
         ):
+            if completion == "stop_after_commit":
+                # The owner has committed, but its reply has not reached the
+                # coordinator. Stop must not erase that durable outcome.
+                stop_status, stopped, _ = _request(
+                    server, "POST", _contract("POST", "/api/chat/turn/stop"),
+                    body={"turn_id": "turn-1"},
+                    headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                )
+                stop_receipts.append((stop_status, stopped))
             raise RuntimeError("owner reply lost after commit")
         return result
 
@@ -508,10 +519,18 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert store.path.read_bytes() == before and not ai_calls
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, payload, _ = _request(server, "POST", route, body=body, headers=headers)
-        assert status == 200, payload
-        assert payload["data"]["status"] == (
-            "reconciliation_required" if lose_owner_reply else "completed"
-        ), payload
+        if completion == "stop_after_commit":
+            assert len(stop_receipts) == 1
+            stop_status, stopped = stop_receipts[0]
+            assert stop_status == 200, stopped
+            assert stopped["data"] == {
+                "status": "cancellation_requested", "turn_id": "turn-1", "stopped": False,
+            }
+        else:
+            assert status == 200, payload
+            assert payload["data"]["status"] == (
+                "reconciliation_required" if lose_owner_reply else "completed"
+            ), payload
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, repeated, _ = _request(
             server, "POST", reconcile_route if lose_owner_reply else route,
@@ -559,6 +578,15 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         )
         assert status == 200, observed
         assert observed["data"] == completed_turn
+        assert ledger.read_bytes() == ledger_before
+        conversation_before = store.path.read_bytes()
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, late_stop, _ = _request(
+            server, "POST", _contract("POST", "/api/chat/turn/stop"),
+            body={"turn_id": "turn-1"}, headers=headers,
+        )
+        assert status != 200, late_stop
+        assert store.path.read_bytes() == conversation_before
         assert ledger.read_bytes() == ledger_before
         assert len(ai_calls) == 1
     finally:
