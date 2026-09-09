@@ -2,6 +2,8 @@ import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
 import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
+import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
+import { openAuthorityApprovalWindow } from "./desktopApproval";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
@@ -4114,7 +4116,7 @@ export const api = {
     });
   },
 
-  saveProviderApiKey(providerId: string, value: string, options?: {
+  async saveProviderApiKey(providerId: string, value: string, options?: {
     apiId?: string;
     name?: string;
     baseUrl?: string;
@@ -4123,22 +4125,53 @@ export const api = {
     notes?: string;
     quotaLabel?: string;
     kind?: string;
+    protocol?: "openai-compatible" | "anthropic";
   }) {
-    return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean; kind?: string; model_availability?: ModelAvailabilityAfterKeySave }>(defaultspackContractRoute("api/ai/provider-key"), {
-      method: "POST",
-      body: JSON.stringify({
-        provider_id: providerId,
-        value,
-        api_id: options?.apiId,
-        name: options?.name,
-        base_url: options?.baseUrl,
-        allowed_models: options?.allowedModels,
-        default_model: options?.defaultModel,
-        notes: options?.notes,
-        quota_label: options?.quotaLabel,
-        kind: options?.kind,
-      }),
+    const protocol = options?.protocol ?? (
+      providerId === "anthropic" ? "anthropic"
+        : ["openai", "openai_compatible", "deepseek", "openrouter"].includes(providerId)
+          ? "openai-compatible" : null
+    );
+    if (!protocol || options?.kind === "custom") {
+      throw new Error("このProviderの設定には対応するLLM protocolの選択が必要です。");
+    }
+    if (options?.allowedModels?.length || options?.defaultModel || options?.notes || options?.quotaLabel) {
+      throw new Error("モデル・メモ・quotaの同時保存は未対応です。接続設定とは別に設定してください。");
+    }
+    const connection = `${providerId}.${options?.apiId || "default"}`;
+    const endpoint = options?.baseUrl?.trim() ?? "";
+    let url: URL;
+    try { url = new URL(endpoint); } catch { throw new Error("HTTPSのProvider接続先URLを入力してください。"); }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(connection)
+      || !value || /[\x00-\x1f\x7f]/.test(value) || value.length > 16384
+      || url.protocol !== "https:" || url.username || url.password || url.search || url.hash
+      || /\s/.test(endpoint) || endpoint.length > 2048 || endpoint.includes(value) || connection.includes(value)) {
+      throw new Error("Provider接続名・HTTPS URL・APIキーの入力を確認してください。");
+    }
+    const post = (body: object) => request<ProviderConfigurationStatus>(
+      defaultspackContractRoute("api/ai/provider-key"), {
+        method: "POST", body: JSON.stringify(body),
+      },
+    );
+    await configureProvider({
+      connection_name: connection, protocol, endpoint, key_value: value,
+    }, {
+      storage: window.sessionStorage,
+      prepare: (configuration) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration }),
+      status: (effect_id) => post({ phase: "status", effect_id }),
+      resume: (effect_id) => post({ phase: "resume", effect_id }),
+      cancel: (effect_id) => post({ phase: "cancel", effect_id }),
+      approval: (id) => api.getInteractiveApproval(id),
+      openApproval: openAuthorityApprovalWindow,
+      pause: () => new Promise((resolve) => window.setTimeout(resolve, 1000)),
     });
+    return {
+      provider_id: providerId, api_id: options?.apiId ?? "default", configured: true,
+      model_availability: {
+        status: "route_required", provider_id: providerId, api_id: options?.apiId ?? "default", candidate_models: [],
+        reason: "接続を保存しました。モデルルートは別途設定が必要です。",
+      } as ModelAvailabilityAfterKeySave,
+    };
   },
 
   registerCustomProvider(providerId: string, options?: { label?: string; kind?: string }) {

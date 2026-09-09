@@ -207,13 +207,13 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                     : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
                 )}
               >
-                {saveState === "saving" ? "Saving" : "Save"}
+                {saveState === "saving" ? "承認・保存結果を確認中" : "Save"}
               </button>
           </div>
-          <details className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs">
-            <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">詳細設定（任意）</summary>
+          <details open className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs">
+            <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">接続先HTTPS URL（必須）・モデル設定（別途）</summary>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              <input value={baseUrl} onChange={(event) => { setBaseUrl(event.target.value); resetFeedback(); }} placeholder="base_url (optional)" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
+              <input value={baseUrl} onChange={(event) => { setBaseUrl(event.target.value); resetFeedback(); }} placeholder="HTTPS base URL (required)" aria-label="Provider HTTPS base URL" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
               <input value={defaultModel} onChange={(event) => { setDefaultModel(event.target.value); resetFeedback(); }} placeholder="default model for this API" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
               <input value={allowedModels} onChange={(event) => { setAllowedModels(event.target.value); resetFeedback(); }} placeholder="allowed models, comma separated" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
               <input value={quotaLabel} onChange={(event) => { setQuotaLabel(event.target.value); resetFeedback(); }} placeholder="quota label" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />

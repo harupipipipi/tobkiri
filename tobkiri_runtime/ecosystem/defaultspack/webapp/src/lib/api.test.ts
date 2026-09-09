@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
@@ -1851,7 +1852,7 @@ test("searchConversations serializes spotlight search filters", async () => {
   });
 });
 
-test("saveProviderApiKey serializes named API metadata", async () => {
+test("saveProviderApiKey rejects unsupported metadata before sending a key", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -1863,7 +1864,7 @@ test("saveProviderApiKey serializes named API metadata", async () => {
   }) as typeof fetch;
 
   try {
-    await api.saveProviderApiKey("google", "secret", {
+    await assert.rejects(api.saveProviderApiKey("openai", "secret", {
       apiId: "main",
       name: "Main",
       baseUrl: "https://example.test/v1",
@@ -1871,22 +1872,126 @@ test("saveProviderApiKey serializes named API metadata", async () => {
       defaultModel: "gemini-test",
       quotaLabel: "paid",
       notes: "fast route",
-    });
+    }), /同時保存は未対応/);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(requestBody, {
-    provider_id: "google",
-    value: "secret",
-    api_id: "main",
-    name: "Main",
-    base_url: "https://example.test/v1",
-    allowed_models: ["gemini-test"],
-    default_model: "gemini-test",
-    quota_label: "paid",
-    notes: "fast route",
+  assert.equal(requestBody, null);
+});
+
+function providerConfigurationFixture() {
+  const values = new Map<string, string>();
+  const calls: string[] = [];
+  const status = (state: string): ProviderConfigurationStatus => ({
+    effect_id: "effect-1", approval_request_id: "approval-1", state,
   });
+  const configuration = {
+    connection_name: "openai.main", protocol: "openai-compatible" as const,
+    endpoint: "https://provider.example/v1", key_value: "fixture-private-key",
+  };
+  const ports = {
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    },
+    prepare: async () => { calls.push("prepare"); return status("approval_pending"); },
+    status: async () => { calls.push("status"); return status("approval_pending"); },
+    resume: async () => { calls.push("resume"); return status("succeeded"); },
+    cancel: async () => { calls.push("cancel"); return status("cancelled"); },
+    approval: async () => ({ request_id: "approval-1", state: "approved" }),
+    openApproval: async () => { calls.push("open"); return true; },
+    pause: async () => {},
+  };
+  return { values, calls, status, configuration, ports };
+}
+
+test("saveProviderApiKey sends canonical preparation and returns success only after Host resume", async () => {
+  const f = providerConfigurationFixture();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true, value: { sessionStorage: f.ports.storage, location: { hash: "" } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const path = requestTarget(input);
+    assert.match(path, /provider-key|interactive-approval/);
+    const data = path.includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : f.status(body.phase === "resume" ? "succeeded" : "approval_pending");
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    const result = await api.saveProviderApiKey("openai", "fixture-private-key", {
+      apiId: "main", baseUrl: "https://provider.example/v1",
+    });
+    assert.equal(result.configured, true);
+    assert.equal(result.model_availability.status, "route_required");
+    assert.deepEqual(bodies, [
+      { phase: "prepare", effect_kind: "provider_configure", request: f.configuration },
+      { request_id: "approval-1" },
+      { phase: "resume", effect_id: "effect-1" },
+    ]);
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("provider configuration waits for approval then resumes once and stores no raw key", async () => {
+  const f = providerConfigurationFixture();
+  let polls = 0;
+  f.ports.approval = async () => ({ request_id: "approval-1", state: polls++ ? "approved" : "pending" });
+  f.ports.pause = async () => {
+    const stored = JSON.stringify([...f.values]);
+    assert.doesNotMatch(stored, /fixture-private-key|https:/);
+    assert.deepEqual(f.calls, ["prepare", "open"]);
+  };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "open", "status", "resume"]);
+  assert.equal(f.values.size, 0);
+});
+
+test("provider configuration preserves uncertain prepare without resending or leaking exceptions", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.prepare = async () => { f.calls.push("prepare"); throw new Error(f.configuration.key_value); };
+  await assert.rejects(configureProvider(f.configuration, f.ports), (error: Error) => {
+    assert.doesNotMatch(error.message, /fixture-private-key/);
+    return true;
+  });
+  await assert.rejects(configureProvider(f.configuration, f.ports), /受付結果が不明/);
+  assert.deepEqual(f.calls, ["prepare"]);
+});
+
+test("provider configuration reconciles lost resume ACK and refuses changed input", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.resume = async () => { f.calls.push("resume"); throw new Error("lost ACK"); };
+  await assert.rejects(configureProvider(f.configuration, f.ports), /結果を確認できません/);
+  await assert.rejects(configureProvider({ ...f.configuration, key_value: "replacement" }, f.ports), /入力を変更せず/);
+  f.ports.status = async () => { f.calls.push("status"); return f.status("succeeded"); };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "resume", "status"]);
+});
+
+test("provider configuration does not resume denied or mismatched approval", async () => {
+  for (const approval of [
+    { request_id: "approval-1", state: "denied" },
+    { request_id: "foreign", state: "approved" },
+  ]) {
+    const f = providerConfigurationFixture();
+    f.ports.approval = async () => approval;
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    assert.deepEqual(f.calls, approval.state === "denied" ? ["prepare", "cancel"] : ["prepare"]);
+    assert.equal(f.values.size, approval.state === "denied" ? 0 : 1);
+  }
 });
 
 test("renameProviderApiKey serializes rename action", async () => {
