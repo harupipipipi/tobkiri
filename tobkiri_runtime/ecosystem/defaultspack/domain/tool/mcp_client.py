@@ -15,6 +15,8 @@ import urllib.request
 import urllib.error
 from typing import Any, BinaryIO
 
+from .mcp_sse_policy import SseEndpointPolicy
+
 
 _PROTOCOL_VERSION = "2024-11-05"
 _CLIENT_INFO = {"name": "rumiai-defaults", "version": "0.1.0"}
@@ -280,6 +282,7 @@ class _SseTransport(_TransportBase):
 
     def __init__(self, url, headers=None):
         self._sse_url = url
+        self._endpoint_policy = SseEndpointPolicy(url)
         self._extra_headers = headers or {}
         self._post_url = None
         self._reader_thread = None
@@ -287,6 +290,7 @@ class _SseTransport(_TransportBase):
         self._stop_event = threading.Event()
         self._response = None
         self._ready_event = threading.Event()
+        self._failure: str | None = None
 
     def start(self):
         self._stop_event.clear()
@@ -295,6 +299,8 @@ class _SseTransport(_TransportBase):
         self._reader_thread.start()
         if not self._ready_event.wait(timeout=_DEFAULT_TIMEOUT):
             raise RuntimeError("SSE transport: failed to receive endpoint event within timeout")
+        if self._failure is not None or self._post_url is None:
+            raise RuntimeError(self._failure or "MCP SSE endpoint is unavailable")
 
     def stop(self):
         self._stop_event.set()
@@ -323,10 +329,11 @@ class _SseTransport(_TransportBase):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=remaining) as resp:
+            with self._endpoint_policy.open(req, timeout=remaining) as resp:
                 resp.read()
         except urllib.error.HTTPError as exc:
-            raise RuntimeError("SSE POST failed: {} {}".format(exc.code, exc.reason))
+            exc.close()
+            raise RuntimeError("MCP SSE POST failed") from None
 
     def recv(self, timeout=_DEFAULT_TIMEOUT):
         try:
@@ -349,7 +356,7 @@ class _SseTransport(_TransportBase):
                     **self._extra_headers,
                 },
             )
-            self._response = urllib.request.urlopen(req, timeout=None)
+            self._response = self._endpoint_policy.open(req, timeout=None)
             event_type = ""
             data_buf = []
             for raw_line in self._response:
@@ -367,8 +374,9 @@ class _SseTransport(_TransportBase):
                     event_type = ""
                     data_buf = []
         except Exception:
-            pass
+            self._failure = "MCP SSE connection failed"
         finally:
+            self._ready_event.set()
             if self._response is not None:
                 try:
                     self._response.close()
@@ -377,7 +385,7 @@ class _SseTransport(_TransportBase):
 
     def _handle_event(self, event_type, data_str):
         if event_type == "endpoint":
-            self._post_url = data_str.strip()
+            self._post_url = self._endpoint_policy.resolve_endpoint(data_str)
             self._ready_event.set()
         elif event_type == "message" or event_type == "":
             try:
