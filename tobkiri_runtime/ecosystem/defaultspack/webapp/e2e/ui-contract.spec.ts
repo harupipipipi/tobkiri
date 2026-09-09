@@ -1429,6 +1429,54 @@ test("approval window renderer contract binds typed approval to the current requ
 });
 
 for (const decision of ["approve", "deny"] as const) {
+  test(`batch window checks every phrase and rejects a changed snapshot before ${decision}`, async ({ page }) => {
+    await installDefaultspackApiMocks(page);
+    const requestId = "approval-batch-renderer";
+    const batch = {
+      request_id: requestId, request_snapshot_digest: "a".repeat(64),
+      profile_id: "test-profile", state: "pending", expires_at: now / 1000 + 300,
+      items: ["read", "write"].map(operation => ({
+        request_id: `request-${operation}`, request_snapshot_digest: "b".repeat(64),
+        caller: { function_id: "ordinary-pack" }, target: { operation_id: operation },
+        scope: { resource: "selected-file" }, lifetime: "one_shot",
+        expires_at: now / 1000 + 300, typed_confirmation_required: true,
+        redacted_metadata: { title: operation, confirmation_phrase: `CONFIRM ${operation}` },
+      })),
+    };
+    let changed = false;
+    const decisionRequests: string[] = [];
+    await page.route("**/api/contracts/defaultspack/**", async route => {
+      const target = requestTarget(new URL(route.request().url()));
+      if (target === "/api/interactive-approval/v1/batch-get") {
+        return fulfill(route, changed ? { ...batch, request_snapshot_digest: "c".repeat(64) } : batch);
+      }
+      if (target.includes("/batch-approve") || target.includes("/batch-deny")) {
+        decisionRequests.push(target);
+        return fulfill(route, { ...batch, state: "approved" });
+      }
+      return route.fallback();
+    });
+    await page.goto(`/approval?request_id=${requestId}`);
+    const approve = page.getByRole("button", { name: "表示した要求を今回だけ承認" });
+    const inputs = page.getByRole("textbox");
+    await expect(inputs).toHaveCount(2);
+    await expect(approve).toBeDisabled();
+    await inputs.nth(0).fill("CONFIRM read");
+    await expect(approve).toBeDisabled();
+    await inputs.nth(1).fill("CONFIRM write");
+    await expect(approve).toBeEnabled();
+    changed = true;
+    await page.getByRole("button", { name: decision === "approve"
+      ? "表示した要求を今回だけ承認" : "選択した要求を拒否" }).click();
+    await expect(page.getByRole("alert")).toContainText("承認内容が更新されました");
+    await expect(inputs.nth(0)).toHaveValue("");
+    await expect(inputs.nth(1)).toHaveValue("");
+    expect(decisionRequests).toEqual([]);
+    expect(await page.evaluate(() => (window as Window & {
+      __approvalRendererFixture?: { tauriBridgeCalls: Array<{ command: string }> };
+    }).__approvalRendererFixture?.tauriBridgeCalls.filter(call => call.command === "authority_approval_context"))).toEqual([]);
+  });
+
   test(`approval window rejects a changed displayed snapshot before ${decision} signing`, async ({ page }) => {
     const decisions: string[] = [];
     const requestId = `apr-changed-snapshot-${decision}`;

@@ -156,8 +156,10 @@ def _binding(operation_id: str, principal_id: str = "bridge-principal") -> Any:
     )
 
 
-def _capture_provider(port: _ApprovalPort) -> Any:
-    bindings = tuple(_binding(operation) for operation in sorted(bridge._V4_OPERATIONS))
+def _capture_provider(
+    port: _ApprovalPort, operations: frozenset[str] = bridge._V4_OPERATIONS
+) -> Any:
+    bindings = tuple(_binding(operation) for operation in sorted(operations))
     domains = {
         (
             item.operation.contract_id,
@@ -269,6 +271,21 @@ def test_factory_is_separate_presentation_contract_with_no_request_operation() -
     assert bridge._V4_CONTRACT_ID == _CONTRACT_ID
     assert "request" not in bridge._V4_OPERATIONS
     assert "authorize" not in factory.function_id
+
+
+def test_original_four_operation_profile_remains_narrow_and_usable() -> None:
+    """An older exact capture neither breaks nor acquires batch operations."""
+    port = _ApprovalPort()
+    _seed(port)
+    captured = _capture_provider(port, bridge._V4_SINGLE_OPERATIONS)
+    contributions = {item.operation_id: item for item in captured.contributions}
+    assert set(contributions) == bridge._V4_SINGLE_OPERATIONS
+    result = _invoke(
+        contributions,
+        bridge._V4_GET_OPERATION,
+        {"request_id": "interactive-request-1"},
+    )
+    assert result["state"] == "pending"
 
 
 def test_factory_rejects_a_partial_or_legacy_operation_set() -> None:
