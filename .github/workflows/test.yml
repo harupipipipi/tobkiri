@@ -172,6 +172,10 @@ jobs:
       - name: Test compact runner cross-platform
         run: python -m pytest scripts/quality/test_compact_test_runner.py -q
 
+      - name: Test cross-process approval consumption
+        working-directory: tobkiri_runtime
+        run: python -m pytest tests/test_legacy_computer_approval_concurrency.py -q
+
       - name: Run Task D smoke tests
         working-directory: tobkiri_runtime
         run: |
