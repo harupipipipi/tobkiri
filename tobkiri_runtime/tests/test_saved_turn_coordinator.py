@@ -87,6 +87,24 @@ def test_unresolved_context_rejects_before_claim_or_execution(tmp_path: Path) ->
     assert session.conversations.path.read_bytes() == before
 
 
+@pytest.mark.parametrize("case", ["stale_revision", "missing_model", "blank_model"])
+def test_owned_prerequisites_reject_before_claim(tmp_path: Path, case: str) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    patch = {"title": "changed"} if case == "stale_revision" else {
+        "model_reference": None if case == "missing_model" else "   ",
+    }
+    session.conversations.update("conversation-1", patch, expected_conversation_revision=1)
+    if case != "stale_revision":
+        session.initial["request"]["conversation_revision"] = 2
+    before = session.conversations.path.read_bytes()
+    with pytest.raises(ValueError, match="revision changed|model reference is required"):
+        _run(store, session)
+    assert not store.path.exists()
+    assert session.calls == session.ai_calls == 0
+    assert session.conversations.path.read_bytes() == before
+
+
 def test_completed_turn_repeats_after_owned_context_changes(tmp_path: Path) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)

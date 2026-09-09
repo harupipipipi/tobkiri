@@ -91,6 +91,12 @@ def execute_saved_turn(
         ):
             raise ValueError("saved conversation owner response is invalid")
         validate_saved_conversation_context(conversation)
+        revision = conversation.get("conversation_revision")
+        if type(revision) is not int or revision != initial["request"]["conversation_revision"]:
+            raise ValueError("saved conversation revision changed before execution")
+        model = conversation.get("model_reference")
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("saved conversation model reference is required")
     claim = store.claim_saved(initial)
     if not claim["claimed"]:
         # A running snapshot may still have a live executor. Do not rewrite it

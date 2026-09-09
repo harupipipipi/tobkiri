@@ -628,6 +628,9 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
             {"metadata": {"workspaceId": "workspace-1"}},
             {"metadata": {"shared_read_only": True}},
             {"conversation_kind": "operations_company"},
+            {"model_reference": None},
+            {"model_reference": "   "},
+            {"title": "stale revision"},
             {"metadata": {"icon": "chat"}},
         )
         for index, context in enumerate(contexts):
@@ -640,13 +643,13 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
                 server, "POST", _contract("POST", "/api/chat/turn"),
                 body={"request": {
                     "turn_id": f"turn-{index}", "conversation_id": conversation_id,
-                    "conversation_revision": 1, "content": "Hello",
+                    "conversation_revision": 2 if index == 5 else 1, "content": "Hello",
                 }},
                 headers={"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
                          "X-Tobkiri-Request-ID": str(uuid.uuid4())},
             )
             assert conversation_id in reads  # Not a missing route/auth rejection.
-            if index < 3:
+            if index < len(contexts) - 1:
                 assert status != 200, payload
                 assert store.path.read_bytes() == before
                 assert not ai_calls
