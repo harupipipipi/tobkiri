@@ -10,6 +10,9 @@ from core_runtime.bootstrap import profile_capture
 from core_runtime.bootstrap.profile_registry import register_bootstrap_definition
 from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
 from core_runtime.profile_runtime_port import require_profile_runtime
+from ecosystem.defaultspack.defaultspack.runtime_composition import (
+    defaultspack_runtime_capture_inputs,
+)
 from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore, ProfileResolutionDenied
 from tests.test_profile_architecture_review_c import _packaged_catalog_revision, _resolve
 
@@ -26,7 +29,10 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     if unpinned_scope:
         for edge in previous_definition["requested_edges"]:
             edge["requested_scope_template"].pop("semantics_digest", None)
-    added_packs = {"tobkiri_ui_settings_pack", "rumi_conversation_store_pack"}
+    added_packs = {
+        "tobkiri_ui_settings_pack", "rumi_conversation_store_pack",
+        "rumi_turn_runtime_pack",
+    }
     previous_definition["packs"] = [
         row for row in previous_definition["packs"] if row["pack_id"] not in added_packs
     ]
@@ -36,6 +42,9 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
         "tobkiri_ui_settings_pack.catalog-read",
         "tobkiri_ui_settings_pack.settings-read",
         "rumi_conversation_store_pack.conversation-resource",
+        "tobkiri_ui_settings_pack.preferences-write",
+        "rumi_conversation_store_pack.conversation-manage",
+        "rumi_model_registry_pack.model-profile-manage",
     }
     added_functions = {
         function["id"]
@@ -113,6 +122,15 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
         include_source_additions=True, confirmation=confirmation
     )
     assert added_packs <= {row["pack_id"] for row in active.resolved.profile["packs"]}
+    # The update must restore the signed application's actual HTTP contract
+    # coverage, not merely add rows to the selected-Pack inventory.
+    inputs = defaultspack_runtime_capture_inputs(
+        active, bundle_root=successor_catalog.root,
+    )
+    assert any(
+        binding.path == "/api/chat/turn" and binding.method == "POST"
+        for binding in inputs.contract_bindings
+    )
     assert profile_capture.capture_bootstrap_profile() == active
     with pytest.raises(ProfileResolutionDenied, match="requires reconfirmation"):
         profile_capture.capture_bootstrap_profile(
