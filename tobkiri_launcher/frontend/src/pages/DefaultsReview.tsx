@@ -3,6 +3,7 @@ import {AlertCircle, ShieldAlert} from 'lucide-react';
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import type {DefaultsSetupState} from '@/src/lib/defaultsSetup';
+import {DefaultsConfirmationDetails} from './DefaultsConfirmationDetails';
 
 type Props = {
   readonly setup: DefaultsSetupState | null;
@@ -66,6 +67,7 @@ export function DefaultsReview({
           Resolve, review, approve, activate, and capture are performed by the Host-owned transaction. This screen only submits the exact confirmation it issued.
         </p>
       </div>
+      <DefaultsConfirmationDetails confirmation={setup.recommended_default_profile.confirmation} />
       <label className="flex items-start gap-3 rounded-lg border border-border p-4 text-text-main">
         <input
           type="checkbox"
