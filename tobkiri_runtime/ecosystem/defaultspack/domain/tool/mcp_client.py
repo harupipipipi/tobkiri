@@ -123,10 +123,10 @@ class _StdioTransport(_TransportBase):
                 self._proc.terminate()
                 self._proc.wait(timeout=5)
             except Exception:
-                try:
-                    self._proc.kill()
-                except Exception:
-                    pass
+                # Do not discard ownership until the child has been reaped.
+                # A failed kill/wait leaves the handle available for cleanup retry.
+                self._proc.kill()
+                self._proc.wait(timeout=5)
             self._proc = None
 
     def send(self, message_bytes):
