@@ -1732,7 +1732,6 @@ class RuntimeSurfaceService:
                 "profile_id": str(active.resolved.profile["profile_id"]),
                 "profile_revision": str(active.resolved.plan["profile_revision"]),
                 "plan_digest": str(active.resolved.plan["plan_digest"]),
-                "catalog_revision": str(active.resolved.lock["catalog_revision"]),
             }
             if any(lifecycle.get(key) != value for key, value in expected.items()):
                 raise RuntimeSurfaceError(

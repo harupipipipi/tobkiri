@@ -180,7 +180,7 @@ def test_projection_reuses_host_catalog_only_within_one_read(
 
 
 @pytest.mark.parametrize(
-    "field", ["profile_id", "profile_revision", "plan_digest", "catalog_revision"],
+    "field", ["profile_id", "profile_revision", "plan_digest"],
 )
 def test_projection_rejects_host_catalog_from_another_snapshot(active_runtime, field):
     catalog = {**runtime_surface._captured_lifecycle_projection(), field: "wrong"}

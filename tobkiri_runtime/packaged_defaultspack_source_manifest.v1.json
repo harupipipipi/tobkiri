@@ -194,8 +194,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_surface_v4.py",
       "type": "regular-file",
-      "size": 123390,
-      "sha256": "053a96b548d97dbfc0a36cb73d234185b8381dca644e670408cc95e4aa12383f",
+      "size": 123307,
+      "sha256": "28f765a498e24ad3da7b015dde65e8c83d54c047f3badf95ed9cdd09c45f5db9",
       "executable": false
     },
     {
