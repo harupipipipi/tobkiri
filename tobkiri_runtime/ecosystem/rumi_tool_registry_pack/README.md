@@ -22,3 +22,11 @@ mutation lock waits recheck cancellation and expiry, keeping the existing lock
 identity and on-disk data layout for compatibility. Ordinary Defaults tool
 projection, execution and live data migration require their own captured edges
 and acceptance checks.
+
+Primary state, migration backups and lock entries use the shared pinned-directory
+persistence operations. Symlinked, hardlinked and replaced captured paths are
+rejected. Reads preserve directory permissions and reject state larger than
+16 MiB; writes enforce the same limit and check invocation lifetime immediately
+before publication. Invalid stored revisions are rejected without coercion or
+automatic repair. The existing exclusive-file lock protocol still excludes
+legacy writers; switching this owner does not introduce a separate lock domain.

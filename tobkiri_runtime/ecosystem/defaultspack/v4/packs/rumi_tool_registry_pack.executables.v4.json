@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_tool_registry_pack",
-  "source_identity": "sha256:d13ae9fc7589c33c3c01aae28ba2037c2c3c0e7b49f0509bc08e6b7b5e49da3e",
+  "source_identity": "sha256:d671891568e32708b7c63ee5a3655cd5762d23dd643a675c5c5ebd12ddfba702",
   "variants": [
     {
       "variant_id": "rumi_tool_registry_pack.tool-registry.definition.python",
@@ -106,6 +106,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:6bc15262b812797d76df5262876e846b2972d7fb83eda9d7c42f0cf775210da3",
-  "catalog_digest": "sha256:ae963010b96dd2669a1d2d5f33f8f3fdd2c4faacebb788534f321ca2ca8c5168"
+  "materialization_catalog_digest": "sha256:04917810c27ed3a87ebab4a699cbea592a3f1fca4f03cb727b1daf52dc57deee",
+  "catalog_digest": "sha256:2b715164551c3d1d2ed579cad208a5e91c51a2fb695e7fc64367f5b5464e4e70"
 }

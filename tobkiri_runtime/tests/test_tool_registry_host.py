@@ -475,3 +475,168 @@ def test_stale_rollback_preserves_updates_and_matching_rollback_backs_them_up(
     assert not path.exists()
     backup = next(tmp_path.rglob("rollback-*.json"))
     assert json.loads(backup.read_bytes()) == json.loads(before)
+
+
+@pytest.mark.parametrize("action", ["read", "save", "migrate"])
+@pytest.mark.parametrize("link", ["symlink", "hardlink"])
+def test_registry_rejects_linked_primary_without_touching_other_state(
+    tmp_path, action, link
+):
+    import hashlib
+    import json
+    import os
+
+    from ecosystem.rumi_tool_registry_pack.runtime.registry import (
+        ToolDefinitionRegistry,
+    )
+    from tobkiri_protocol.secure_persistence import SecurePersistenceError
+
+    registry = ToolDefinitionRegistry("defaults", user_data_root=tmp_path)
+    registry.root.mkdir(parents=True)
+    victim = tmp_path / "another-owner.json"
+    victim.write_text(json.dumps(registry._empty()))
+    try:
+        if link == "symlink":
+            registry.path.symlink_to(victim)
+        else:
+            os.link(victim, registry.path)
+    except OSError:
+        pytest.skip("filesystem link creation unavailable")
+    before = victim.read_bytes(), victim.stat().st_mtime_ns
+    source = {"definitions": [_definition()], "aliases": {}}
+    digest = hashlib.sha256(
+        json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    actions = {
+        "read": registry.snapshot,
+        "save": lambda: registry.save(_definition(), 0),
+        "migrate": lambda: registry.migrate(source["definitions"], {}, digest),
+    }
+    with pytest.raises(SecurePersistenceError):
+        actions[action]()
+    assert (victim.read_bytes(), victim.stat().st_mtime_ns) == before
+    assert not registry.backup_root.exists()
+
+
+@pytest.mark.parametrize("directory", ["root", "locks", "migration_backups"])
+def test_registry_rejects_linked_directories_before_foreign_writes(tmp_path, directory):
+    import hashlib
+    import json
+
+    from ecosystem.rumi_tool_registry_pack.runtime.registry import (
+        ToolDefinitionRegistry,
+    )
+    from tobkiri_protocol.secure_persistence import SecurePersistenceError
+
+    registry = ToolDefinitionRegistry("defaults", user_data_root=tmp_path)
+    victim = tmp_path / "foreign"
+    victim.mkdir()
+    marker = victim / "keep"
+    marker.write_bytes(b"foreign owner")
+    target = registry.root if directory == "root" else registry.root / directory
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        target.symlink_to(victim, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    before = victim.stat().st_mode, marker.read_bytes()
+    source = {"definitions": [_definition()], "aliases": {}}
+    digest = hashlib.sha256(
+        json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    with pytest.raises(SecurePersistenceError):
+        registry.migrate(source["definitions"], {}, digest)
+    assert (victim.stat().st_mode, marker.read_bytes()) == before
+    assert sorted(path.name for path in victim.iterdir()) == ["keep"]
+    assert not registry.path.exists()
+
+
+def test_registry_keeps_captured_root_identity_across_operations(tmp_path):
+    from ecosystem.rumi_tool_registry_pack.runtime.registry import (
+        ToolDefinitionRegistry,
+    )
+    from tobkiri_protocol.secure_persistence import SecurePersistenceError
+
+    registry = ToolDefinitionRegistry("defaults", user_data_root=tmp_path)
+    registry.save(_definition(), 0)
+    before = registry.path.read_bytes()
+    displaced = tmp_path / "displaced"
+    registry.root.rename(displaced)
+    registry.root.mkdir()
+    with pytest.raises(SecurePersistenceError, match="ancestor identity changed"):
+        registry.save(_definition("other"), 1)
+    assert (displaced / registry.path.name).read_bytes() == before
+    assert list(registry.root.iterdir()) == []
+
+
+def test_registry_cancellation_during_write_cannot_publish(tmp_path, monkeypatch):
+    import threading
+
+    from ecosystem.rumi_tool_registry_pack.runtime.registry import (
+        ToolDefinitionRegistry,
+    )
+    from tobkiri_protocol.secure_persistence import SecureDirectory
+
+    cancelled = threading.Event()
+
+    def guard():
+        if cancelled.is_set():
+            raise InterruptedError("cancelled")
+
+    registry = ToolDefinitionRegistry("defaults", user_data_root=tmp_path, guard=guard)
+    registry.save(_definition(), 0)
+    before = registry.path.read_bytes()
+    write_all = SecureDirectory._write_all
+
+    def cancel_after_write(descriptor, data):
+        write_all(descriptor, data)
+        cancelled.set()
+
+    monkeypatch.setattr(SecureDirectory, "_write_all", staticmethod(cancel_after_write))
+    with pytest.raises(InterruptedError, match="cancelled"):
+        registry.save(_definition("late"), 1)
+    assert registry.path.read_bytes() == before
+    assert not list(registry.root.glob(".*.tmp"))
+    assert not (registry.lock_root / "tool-definitions.lock").exists()
+
+
+def test_registry_storage_limit_rejects_growth_without_replacing_state(
+    tmp_path, monkeypatch
+):
+    from ecosystem.rumi_tool_registry_pack.runtime import registry as owner
+    from tobkiri_protocol.secure_persistence import SecurePersistenceError
+
+    registry = owner.ToolDefinitionRegistry("defaults", user_data_root=tmp_path)
+    registry.save(_definition(), 0)
+    before = registry.path.read_bytes()
+    monkeypatch.setattr(owner, "_STORE_LIMIT", 4096)
+    large = _definition("large")
+    large["input_schema"]["description"] = "x" * 8192
+    with pytest.raises(ValueError, match="storage limit"):
+        registry.save(large, 1)
+    assert registry.path.read_bytes() == before
+    monkeypatch.setattr(owner, "_STORE_LIMIT", len(before) - 1)
+    with pytest.raises(SecurePersistenceError, match="read limit"):
+        registry.snapshot()
+    assert registry.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("revision", [True, -1, "1", 1.5])
+def test_corrupt_stored_revision_is_not_coerced_into_a_writable_version(
+    tmp_path, revision
+):
+    import json
+
+    from ecosystem.rumi_tool_registry_pack.runtime.registry import (
+        ToolDefinitionRegistry,
+    )
+
+    registry = ToolDefinitionRegistry("defaults", user_data_root=tmp_path)
+    registry.save(_definition(), 0)
+    state = json.loads(registry.path.read_bytes())
+    state["revision"] = revision
+    registry.path.write_text(json.dumps(state))
+    before = registry.path.read_bytes()
+    with pytest.raises(ValueError, match="registry is invalid"):
+        registry.save(_definition("next"), 1)
+    assert registry.path.read_bytes() == before

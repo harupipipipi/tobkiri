@@ -8,7 +8,7 @@ import stat
 import ctypes
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 from .durability import replace_file_durable
 from .platform_paths import canonical_platform_path
@@ -291,14 +291,18 @@ class SecureDirectory:
                 except FileNotFoundError:
                     if not create:
                         raise
-                    os.mkdir(component, mode=0o700, dir_fd=descriptors[-1])
+                    try:
+                        os.mkdir(component, mode=0o700, dir_fd=descriptors[-1])
+                    except FileExistsError:
+                        pass  # Another creator won; the no-follow open still validates it.
                     descriptor = os.open(component, flags, dir_fd=descriptors[-1])
                 descriptors.append(descriptor)
                 posix_captured.append((current, _identity(os.fstat(descriptor))))
             root_metadata = os.fstat(descriptors[-1])
             if not _owned_directory(root_metadata):
                 raise SecurePersistenceError("persistence root is unsafe")
-            os.fchmod(descriptors[-1], 0o700)
+            if create:
+                os.fchmod(descriptors[-1], 0o700)
             return tuple(posix_captured)
         except OSError as error:
             if isinstance(error, SecurePersistenceError):
@@ -327,7 +331,10 @@ class SecureDirectory:
                 except FileNotFoundError:
                     if not create or index == 0:
                         raise
-                    path.mkdir(mode=0o700)
+                    try:
+                        path.mkdir(mode=0o700)
+                    except FileExistsError:
+                        pass
                     handle, file_id = _windows_open_directory(path)
                 handles.append(handle)
                 captured.append((path, file_id))
@@ -380,7 +387,10 @@ class SecureDirectory:
                     except FileNotFoundError:
                         if not create:
                             raise
-                        parent.mkdir(mode=0o700)
+                        try:
+                            parent.mkdir(mode=0o700)
+                        except FileExistsError:
+                            pass
                         handle, current = _windows_open_directory(parent)
                     handles.append(handle)
                     pinned.append((parent, current))
@@ -457,7 +467,10 @@ class SecureDirectory:
                         except FileNotFoundError:
                             if not create:
                                 raise
-                            os.mkdir(component, mode=0o700, dir_fd=current)
+                            try:
+                                os.mkdir(component, mode=0o700, dir_fd=current)
+                            except FileExistsError:
+                                pass
                             descriptor = os.open(component, flags, dir_fd=current)
                         metadata = os.fstat(descriptor)
                         if not _owned_directory(metadata):
@@ -640,11 +653,17 @@ class SecureDirectory:
                 raise SecurePersistenceError("persistence write was incomplete")
             view = view[written:]
 
-    def write_bytes_atomic(self, relative: str | Path, data: bytes) -> None:
-        """Durably replace one entry below the pinned tree."""
+    def write_bytes_atomic(
+        self,
+        relative: str | Path,
+        data: bytes,
+        *,
+        before_publish: Callable[[], None] | None = None,
+    ) -> None:
+        """Durably replace an entry after an optional caller lifetime check."""
 
         if os.name == "nt":
-            self._write_bytes_windows(relative, data)
+            self._write_bytes_windows(relative, data, before_publish=before_publish)
             return
         with self._parent_descriptor(relative, create=True) as (parent, name):
             destination_before = self._stat_entry(parent, name, required=False)
@@ -670,11 +689,14 @@ class SecureDirectory:
                     and destination_now is None
                     or destination_before is not None
                     and destination_now is not None
-                    and _fingerprint(destination_before) != _fingerprint(destination_now)
+                    and _fingerprint(destination_before)
+                    != _fingerprint(destination_now)
                 ):
                     raise SecurePersistenceError(
                         "persistence destination changed before publication"
                     )
+                if before_publish is not None:
+                    before_publish()
                 os.replace(
                     temporary,
                     name,
@@ -697,7 +719,13 @@ class SecureDirectory:
                     except FileNotFoundError:
                         pass
 
-    def _write_bytes_windows(self, relative: str | Path, data: bytes) -> None:
+    def _write_bytes_windows(
+        self,
+        relative: str | Path,
+        data: bytes,
+        *,
+        before_publish: Callable[[], None] | None = None,
+    ) -> None:
         with self._windows_parent(relative, create=True) as (parent, name):
             destination = parent / name
             before = self._windows_stat_entry(parent, name, required=False)
@@ -732,6 +760,8 @@ class SecureDirectory:
                     raise SecurePersistenceError(
                         "persistence destination changed before publication"
                     )
+                if before_publish is not None:
+                    before_publish()
                 replace_file_durable(temporary, destination)
                 after = self._windows_stat_entry(parent, name, required=True)
                 assert after is not None
@@ -763,7 +793,9 @@ class SecureDirectory:
                     required=True,
                 )
                 if windows_current != windows_before:
-                    raise SecurePersistenceError("persistence entry changed before unlink")
+                    raise SecurePersistenceError(
+                        "persistence entry changed before unlink"
+                    )
                 (parent / name).unlink()
             return
         try:
@@ -774,15 +806,17 @@ class SecureDirectory:
                 current = self._stat_entry(parent, name, required=True)
                 assert current is not None
                 if _fingerprint(current) != _fingerprint(posix_before):
-                    raise SecurePersistenceError("persistence entry changed before unlink")
+                    raise SecurePersistenceError(
+                        "persistence entry changed before unlink"
+                    )
                 os.unlink(name, dir_fd=parent)
                 os.fsync(parent)
         except FileNotFoundError:
             if not missing_ok:
                 raise
 
-    def open_lock(self, relative: str | Path) -> int:
-        """Open or create one owned single-link lock file below the pinned tree."""
+    def open_lock(self, relative: str | Path, *, exclusive: bool = False) -> int:
+        """Open a safe lock; exclusive mode requires creating a new entry."""
 
         if os.name == "nt":
             with self._windows_parent(relative, create=True) as (parent, name):
@@ -791,10 +825,12 @@ class SecureDirectory:
                     name,
                     required=False,
                 )
+                if exclusive and windows_before is not None:
+                    raise FileExistsError(str(relative))
                 descriptor, opened_id = _windows_open_file_descriptor(
                     parent / name,
                     os.O_RDWR,
-                    disposition=_OPEN_ALWAYS,
+                    disposition=_CREATE_NEW if exclusive else _OPEN_ALWAYS,
                 )
                 try:
                     opened = os.fstat(descriptor)
@@ -810,20 +846,28 @@ class SecureDirectory:
                         or windows_before is not None
                         and windows_before[1] != opened_id
                     ):
-                        raise SecurePersistenceError("persistence lock identity is unsafe")
+                        raise SecurePersistenceError(
+                            "persistence lock identity is unsafe"
+                        )
                     return descriptor
                 except Exception:
                     os.close(descriptor)
                     raise
         with self._parent_descriptor(relative, create=True) as (parent, name):
             before = self._stat_entry(parent, name, required=False)
+            if exclusive and before is not None:
+                raise FileExistsError(str(relative))
             flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
             if before is None:
                 flags |= os.O_CREAT | os.O_EXCL
             try:
                 descriptor = os.open(name, flags, 0o600, dir_fd=parent)
             except FileExistsError as error:
-                raise SecurePersistenceError("persistence lock changed before open") from error
+                if exclusive:
+                    raise
+                raise SecurePersistenceError(
+                    "persistence lock changed before open"
+                ) from error
             try:
                 opened = os.fstat(descriptor)
                 after = self._stat_entry(parent, name, required=True)
@@ -851,10 +895,12 @@ class SecureDirectory:
             with self._windows_parent(relative, create=False) as (parent, name):
                 named = self._windows_stat_entry(parent, name, required=True)
                 assert named is not None
-                if named[0] != _fingerprint(opened) or named[1] != _windows_descriptor_file_id(
-                    descriptor
-                ):
-                    raise SecurePersistenceError("persistence open file identity changed")
+                if named[0] != _fingerprint(opened) or named[
+                    1
+                ] != _windows_descriptor_file_id(descriptor):
+                    raise SecurePersistenceError(
+                        "persistence open file identity changed"
+                    )
             return
         with self._parent_descriptor(relative, create=False) as (parent, name):
             posix_named = self._stat_entry(parent, name, required=True)

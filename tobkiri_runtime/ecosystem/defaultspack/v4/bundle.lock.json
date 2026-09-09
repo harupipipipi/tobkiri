@@ -1279,12 +1279,12 @@
     {
       "path": "packs/rumi_tool_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:548ba71c16b7b5df1178663c938a4eb503fbf966bb726b9ff0bbcbe7444e8bd1"
+      "digest": "sha256:60bae2f85d2b7b5321696137ab2e67b32cfafc9bfd43e204325a868be4d5c262"
     },
     {
       "path": "packs/rumi_tool_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:69206c7fe63032c49366ed88a78ccc7f4e3ec012ac0138e092f9907d82dde3f2"
+      "digest": "sha256:f92d0695b6c34b5e5f9ba56bd7e97b33c0b58097ad6e135378a2154f2fd7e685"
     },
     {
       "path": "packs/rumi_tool_remote_executor_pack.executables.v4.json",
