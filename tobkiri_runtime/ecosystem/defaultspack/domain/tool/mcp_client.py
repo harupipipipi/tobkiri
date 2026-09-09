@@ -475,17 +475,15 @@ class McpConnections:
             if server_name in self._servers:
                 self._servers[server_name].disconnect()
             conn = _ServerConnection(server_name, config)
-        try:
-            tools_added = conn.connect()
-        except Exception as exc:
-            conn.status = "error"
-            conn.tools = []
-            with self._lock:
-                self._servers[server_name] = conn
-            raise RuntimeError("Failed to connect to MCP server '{}': {}".format(server_name, exc))
-        with self._lock:
+            # Publish ownership before startup, and serialize replacement with
+            # disconnect/reconnect. A failed startup may already own a child.
             self._servers[server_name] = conn
-        return tools_added
+            try:
+                return conn.connect()
+            except Exception as exc:
+                conn.status = "error"
+                conn.tools = []
+                raise RuntimeError("Failed to connect to MCP server '{}': {}".format(server_name, exc)) from exc
 
     def disconnect(self, server_name):
         """MCP サーバーから切断する"""
@@ -499,9 +497,9 @@ class McpConnections:
         """MCP サーバーに再接続する"""
         with self._lock:
             conn = self._servers.get(server_name)
-        if conn is None:
-            raise RuntimeError("MCP server '{}' not found".format(server_name))
-        return conn.reconnect()
+            if conn is None:
+                raise RuntimeError("MCP server '{}' not found".format(server_name))
+            return conn.reconnect()
 
     def list_servers(self):
         """
