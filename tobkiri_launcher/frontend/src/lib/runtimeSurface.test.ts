@@ -228,7 +228,12 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     GENERATED_FRONTEND_CONTRACT_MAP.artifact_digest,
     PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
   );
-  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 41);
+  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 43);
+  for (const path of ['/api/ai/provider-key', '/api/ai/profiles']) {
+    assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
+      (route) => route.method === 'POST' && route.path === path,
+    ));
+  }
   assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
     (route) => route.method === 'PUT' && route.path === '/api/ui/settings',
   ));
