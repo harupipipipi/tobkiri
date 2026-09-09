@@ -473,23 +473,34 @@ def _kernel_is_healthy(
     challenge: str,
 ) -> bool:
     """Verify both Kernel readiness and proof of the sealed bootstrap secret."""
-    if response is None or response.status != 200:
-        return False
+    return _kernel_health_failure(response, bootstrap_secret, challenge) is None
+
+
+def _kernel_health_failure(
+    response: Optional[HttpResponse], bootstrap_secret: str, challenge: str,
+) -> str | None:
+    """Return a fixed diagnostic code, never response text or credential data."""
+    if response is None:
+        return "unreachable"
+    if response.status != 200:
+        return "http_not_ok"
     document = response.json_object()
     if not isinstance(document, dict) or document.get("success") is not True:
-        return False
+        return "invalid_envelope"
     payload = document.get("data")
-    if not isinstance(payload, dict) or payload.get("panel_ready") is False:
-        return False
+    if not isinstance(payload, dict):
+        return "invalid_payload"
+    if payload.get("panel_ready") is False:
+        return "panel_not_ready"
     response_mac = payload.get("desktop_challenge_response")
     if not isinstance(response_mac, str):
-        return False
+        return "challenge_missing"
     expected_mac = hmac.new(
         bootstrap_secret.encode("utf-8"),
         challenge.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
-    return hmac.compare_digest(response_mac, expected_mac)
+    return None if hmac.compare_digest(response_mac, expected_mac) else "challenge_mismatch"
 
 
 def _embedded_panel_bootstrap_secret(config: ColdBootConfig) -> str | None:
@@ -714,6 +725,7 @@ def _wait_for_readiness(
     kernel_ownership_error = False
     panel_reachable = False
     pending_stage = "embedded_broker"
+    health_failure = "not_checked"
     bootstrap_secret: str | None = None
     connection_path = config.app_data_dir / BROKER_CONNECTION_RELATIVE
 
@@ -755,11 +767,10 @@ def _wait_for_readiness(
             )
             if bootstrap_secret is not None:
                 pending_stage = "authenticated_kernel_health"
-            if bootstrap_secret is not None and _kernel_is_healthy(
-                kernel_response,
-                bootstrap_secret,
-                challenge,
-            ):
+                health_failure = _kernel_health_failure(
+                    kernel_response, bootstrap_secret, challenge,
+                )
+            if bootstrap_secret is not None and health_failure is None:
                 kernel_pid = probes.listener_pid(config.kernel_port)
                 pending_stage = "kernel_process_ownership"
                 if kernel_pid is not None and _is_descendant(
@@ -798,7 +809,7 @@ def _wait_for_readiness(
         raise ColdBootError("embedded host broker did not become ready before timeout")
     raise ColdBootError(
         "owned Kernel health and panel authentication did not become ready before "
-        f"timeout (pending stage: {pending_stage})"
+        f"timeout (pending stage: {pending_stage}; health: {health_failure})"
     )
 
 

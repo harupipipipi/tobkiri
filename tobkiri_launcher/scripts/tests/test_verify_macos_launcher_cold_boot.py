@@ -389,6 +389,27 @@ def test_cold_boot_rejects_healthy_kernel_not_owned_by_launched_app(
 
 
 @pytest.mark.parametrize(
+    ("status", "body", "expected"),
+    [
+        (503, b"secret-response", "http_not_ok"),
+        (200, b"not-json-secret", "invalid_envelope"),
+        (200, b'{"success":true,"data":null}', "invalid_payload"),
+        (200, b'{"success":true,"data":{"panel_ready":false}}', "panel_not_ready"),
+        (200, b'{"success":true,"data":{}}', "challenge_missing"),
+        (200, b'{"success":true,"data":{"desktop_challenge_response":"private-proof"}}',
+         "challenge_mismatch"),
+    ],
+)
+def test_kernel_health_failure_reports_only_fixed_codes(
+    status: int, body: bytes, expected: str,
+) -> None:
+    response = VERIFY.HttpResponse(status, {}, body)
+    assert VERIFY._kernel_health_failure(response, "private-key", "nonce") == expected
+    assert VERIFY._kernel_is_healthy(response, "private-key", "nonce") is False
+    assert VERIFY._kernel_health_failure(None, "private-key", "nonce") == "unreachable"
+
+
+@pytest.mark.parametrize(
     "stage",
     ["bootstrap_contract", "authenticated_kernel_health", "panel_authentication"],
 )
