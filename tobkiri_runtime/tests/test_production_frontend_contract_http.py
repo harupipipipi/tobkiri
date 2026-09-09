@@ -302,6 +302,7 @@ def _captured_production_server(
     monkeypatch: pytest.MonkeyPatch,
     *,
     packvm_backends: BackendRegistry | None = None,
+    credential_store_factory=None,
 ) -> Iterator[tuple[PackAPIServer, object, AuthorityStore]]:
     """Start one production capture, optionally with a test PackVM supervisor."""
 
@@ -349,6 +350,7 @@ def _captured_production_server(
         ecosystem_root=RUNTIME_ROOT / "ecosystem",
         authority_store=authority,
         backends=packvm_backends,
+        credential_store_factory=credential_store_factory,
         http_contract_bindings=bindings,
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
         runtime_surface_factory=create_runtime_surface_services,
@@ -1113,6 +1115,7 @@ def test_saved_settings_reach_host_credential_transport(
     import io
     from core_runtime import credential_transport
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.credential_store import host_credential_store_factory
     from tobkiri_host.runtime import V4DispatchSession
 
     requests = []
@@ -1137,6 +1140,7 @@ def test_saved_settings_reach_host_credential_transport(
     servers = _captured_production_server(
         tmp_path, monkeypatch,
         packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        credential_store_factory=host_credential_store_factory,
     )
     fixture = next(servers)
     server, _session, _authority = fixture
