@@ -7,6 +7,7 @@ import uuid
 from pathlib import PurePosixPath
 from typing import Mapping
 
+from core_runtime.global_contracts.capability_capture import capture_target_identity
 from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPCapabilitySnapshot,
     HTTPContractBinding,
@@ -360,6 +361,17 @@ class DefaultspackHTTPPresentation:
                 catalog_hash=canonical_digest({"contributions": []}), targets=()
             )
         )
+        display_targets = list(snapshot.targets)
+        if session is not None and capability_binding is not None:
+            # Keep the full UI/settings reachable before PackVM provisioning.
+            # This identity-only route is NOT added to the invoke snapshot.
+            for target in capability_binding.targets:
+                if _is_conversation(target) and not any(
+                    _is_conversation(item) for item in display_targets
+                ):
+                    captured = capture_target_identity(target, session=session)
+                    if captured is not None:
+                        display_targets.append(captured)
         return {
             **dict(result),
             "dynamic_host": {
@@ -370,7 +382,7 @@ class DefaultspackHTTPPresentation:
                 "plan_hash": str(getattr(session, "plan_digest", "")),
                 "contributions": [
                     _contribution(target, index, session)
-                    for index, target in enumerate(snapshot.targets)
+                    for index, target in enumerate(display_targets)
                 ],
                 "diagnostics": _diagnostics(result, session),
                 "quarantined_pack_ids": [],

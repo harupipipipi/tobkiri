@@ -415,19 +415,36 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
             },
         )
         assert status == 200, unready_catalog
-        assert all(
-            item["contribution_id"] != _CONVERSATION_ID
+        assert any(
+            item["contribution_id"] == _CONVERSATION_ID
             for item in unready_catalog["data"]["dynamic_host"]["contributions"]
         )
+        before_unready = len(session.broker_invocations)
+        denied_status, _, _ = _request(
+            server,
+            "POST",
+            route,
+            body={
+                **capability_request,
+                "request_id": str(uuid.uuid4()),
+                "catalog_hash": unready_catalog["data"]["dynamic_host"]["catalog_hash"],
+            },
+            headers={
+                **mutation_headers,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        assert denied_status == 404
+        assert len(session.broker_invocations) == before_unready
     finally:
         server.stop()
 
 
-def test_unready_conversation_is_omitted_without_blocking_packapi_start(
+def test_unready_conversation_keeps_verified_ui_without_admitting_execution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PackAPI starts fail-closed before the optional Provider is ready."""
+    """Settings stay reachable while the executable snapshot remains empty."""
 
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
     conversation = _load_conversation_target()
@@ -493,9 +510,39 @@ def test_unready_conversation_is_omitted_without_blocking_packapi_start(
             },
         )
         assert status == 200, response
-        assert all(
-            item["contribution_id"] != _CONVERSATION_ID
+        assert any(
+            item["contribution_id"] == _CONVERSATION_ID
             for item in response["data"]["dynamic_host"]["contributions"]
         )
+        snapshot = defaultspack_capability_snapshot(
+            server._contract_routes[("POST", "/api/ui/capability/invoke")],  # noqa: SLF001
+            session=session,
+            catalog={"packs": []},
+        )
+        assert all(
+            target.contribution_id != _CONVERSATION_ID
+            for target in snapshot.targets
+        )
+        providers = session._providers[_CONVERSATION_CONTRACT]  # noqa: SLF001
+        for field in (
+            "provider_id", "function_id", "operation_id", "profile_id",
+            "profile_revision", "activation_id", "plan_digest", "artifact_digest",
+        ):
+            session._providers[_CONVERSATION_CONTRACT] = tuple(  # noqa: SLF001
+                {**provider, field: ""} for provider in providers
+            )
+            status, mismatch, _ = _request(
+                server, "GET", _contract("GET", "/api/ui/catalog"),
+                headers={
+                    "Cookie": cookie,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == 200, mismatch
+            assert all(
+                item["contribution_id"] != _CONVERSATION_ID
+                for item in mismatch["data"]["dynamic_host"]["contributions"]
+            ), field
+        session._providers[_CONVERSATION_CONTRACT] = providers  # noqa: SLF001
     finally:
         server.stop()

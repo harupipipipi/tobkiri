@@ -126,6 +126,28 @@ def _capture_static_target(
     *,
     session: CapabilityDispatchSession,
 ) -> HTTPContractTarget | None:
+    captured = capture_target_identity(target, session=session)
+    if captured is None:
+        return None
+    try:
+        session.assert_operation_ready(target.contract_id, target.operation_id)
+    except Exception:
+        return None
+    return captured
+
+
+def capture_target_identity(
+    target: HTTPContractTarget,
+    *,
+    session: CapabilityDispatchSession,
+) -> HTTPContractTarget | None:
+    """Verify presentation identity only; this does not admit an invocation.
+
+    A settings or unavailable screen may describe a captured target before its
+    execution backend is ready. Executable capability snapshots must additionally
+    check readiness through ``_capture_static_target``.
+    """
+
     providers = tuple(
         item
         for item in session.provider_metadata(target.contract_id)
@@ -143,10 +165,6 @@ def _capture_static_target(
     if not artifact_digest or (
         target.artifact_digest and target.artifact_digest != artifact_digest
     ):
-        return None
-    try:
-        session.assert_operation_ready(target.contract_id, target.operation_id)
-    except Exception:
         return None
     return HTTPContractTarget(
         contribution_id=target.contribution_id,
@@ -175,4 +193,5 @@ __all__ = [
     "CapabilityBindingSnapshot",
     "DynamicCapabilityTargetFactory",
     "capture_capability_binding_snapshot",
+    "capture_target_identity",
 ]
