@@ -43,7 +43,7 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
         "record": {
             "model_profile_id": payload["model_profile_id"],
             "model_id": payload["model_id"], "display_name": name,
-            "requirements": {"preferred_provider_instance_id": payload["provider_instance_id"]},
+            "metadata": {"provider_connection_id": payload["provider_instance_id"]},
         },
     }
 
@@ -82,12 +82,17 @@ def present_model_profiles(result: Mapping[str, object]) -> dict[str, object]:
             record[destination] = value
         enabled = profile.get("enabled")
         requirements = profile.get("requirements")
-        if isinstance(requirements, Mapping):
+        metadata = profile.get("metadata")
+        provider = (
+            metadata.get("provider_connection_id")
+            if isinstance(metadata, Mapping) else None
+        )
+        if not provider and isinstance(requirements, Mapping):
             provider = requirements.get("preferred_provider_instance_id")
-            if isinstance(provider, str) and provider:
-                record["provider_id"] = provider
-                # This confirms a stored route, not credentials or reachability.
-                record["route_configured"] = True
+        if isinstance(provider, str) and provider:
+            record["provider_id"] = provider
+            # This confirms a stored route, not credentials or reachability.
+            record["route_configured"] = True
         if not isinstance(enabled, bool):
             raise ValueError("model registry returned an invalid enabled state")
         # A configured model is not evidence that its Provider is reachable.

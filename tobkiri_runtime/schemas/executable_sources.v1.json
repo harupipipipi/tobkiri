@@ -754,7 +754,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -768,7 +768,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+          "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -982,7 +982,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -996,7 +996,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+          "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -1035,7 +1035,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -1049,7 +1049,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+          "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -12205,7 +12205,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:6bf2b708b1200c4b1bcc94a301526eaa94da80bc0aa0a76caf484b344d2b6cb9",
+    "input_digest": "sha256:5114d8fba94623b11ee3279260643fa0f038a11bc93e3d809645e9adc825d49c",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12447,7 +12447,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:0761b93770ff96c6e9fc3d8cbef733e1cada993526d71406b5a683fbbb55c26b",
+        "digest": "sha256:5b7306fb89e21a029744ac93744fa053ce5ecb164f71fe51741356f288e5accb",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-manifest.json"
       },
@@ -12927,7 +12927,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:c47abb1c9ebd2daf88ac44c4f1d6d70c110951aa037651504d8667fff5bf28e8",
+        "digest": "sha256:5b364d39016369964f6083a26c511ee879e09308ac6a277abe5ec8543e361794",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json"
       },
