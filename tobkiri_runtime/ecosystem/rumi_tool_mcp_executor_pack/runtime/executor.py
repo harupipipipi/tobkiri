@@ -7,8 +7,7 @@ from typing import Any, Callable, Mapping
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
 
-MCP_CALL = "tobkiri.service.mcp.tool.call.v1"
-MCP_CALL_OPERATION = "rumi_mcp_gateway_pack.mcp-tool-call"
+MCP_CALL = "rumi.service.mcp.tool.call.v1"
 _NAMESPACE = re.compile(r"^mcp\.[a-z0-9][a-z0-9._-]{0,127}$")
 _OPERATION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 _EXPECTED_CONSUMER = "rumi_tool_broker_pack"
@@ -43,7 +42,7 @@ def create_execute_operation(
             raise ValueError("MCP execution descriptor is invalid")
         return client.invoke(
             MCP_CALL,
-            MCP_CALL_OPERATION,
+            "call",
             {
                 "namespace": namespace,
                 "operation": remote_operation,
@@ -57,3 +56,4 @@ def create_execute_operation(
         )
 
     return operation
+

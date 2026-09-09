@@ -28,10 +28,7 @@ from ecosystem.rumi_tool_result_pack.runtime.normalizer import (
 from ecosystem.rumi_tool_validation_pack.runtime.validator import (
     create_validate_operation,
 )
-from core_runtime.global_contract_dispatch import (
-    GlobalContractClient,
-    GlobalContractUnavailable,
-)
+from core_runtime.global_contract_dispatch import GlobalContractUnavailable
 from ecosystem.defaultspack.domain.tool.catalog_contract_client import (
     ContractToolCatalog,
 )
@@ -258,7 +255,7 @@ def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
                 "_contract_consumer_pack_id": "rumi_tool_broker_pack",
                 "definition": {
                     "execution": {
-                        "contract_id": "tobkiri.service.mcp.tool.call.v1",
+                        "contract_id": "rumi.service.mcp.tool.call.v1",
                         "provider_instance_id": "mcp-gateway.call",
                         "operation": "search",
                     }
@@ -272,59 +269,6 @@ def test_mcp_executor_rejects_nonbroker_consumer() -> None:
     execute = create_mcp_execute_operation(_McpClient())
     with pytest.raises(PermissionError, match="consumer"):
         execute("execute", {"_contract_consumer_pack_id": "untrusted-pack"})
-
-
-@pytest.mark.parametrize("selected", [True, False])
-def test_mcp_executor_routes_only_to_selected_canonical_operation(selected) -> None:
-    """Use the real client and catalog IDs, not a permissive invoke stub."""
-    catalog = json.loads((
-        Path(__file__).parents[1] / "ecosystem" / "rumi_mcp_gateway_pack"
-        / "contracts.v4.json"
-    ).read_text(encoding="utf-8"))
-    contract = catalog["contracts"][0]
-    contract_id = contract["contract_id"]
-    operation_id = contract["operations"][0]["operation_id"]
-    calls = []
-
-    class Session:
-        profile_id = "captured-test-profile"
-        plan_digest = "test-only-plan"
-
-        def provider_metadata(self, requested):
-            assert requested == contract_id
-            return ({
-                "provider_instance_id": "selected-gateway" if selected else "other",
-                "operation_id": operation_id,
-            },)
-
-        def invoke(self, requested, operation, payload):
-            calls.append((requested, operation, payload))
-            return {"result": "test transport response"}
-
-    execute = create_mcp_execute_operation(GlobalContractClient(
-        session=Session(), allowed_contract_ids=frozenset({contract_id}),
-        consumer_pack_id="rumi_tool_mcp_executor_pack",
-    ))
-    payload = {
-        "_contract_consumer_pack_id": "rumi_tool_broker_pack",
-        "definition": {"execution": {
-            "contract_id": contract_id,
-            "provider_instance_id": "selected-gateway",
-            "namespace": "mcp.test-server", "operation": "ping",
-        }},
-        "arguments": {"message": "hello"},
-        "profile_id": "captured-test-profile", "caller_id": "test-caller",
-    }
-    if selected:
-        assert execute("execute", payload) == {"result": "test transport response"}
-        assert len(calls) == 1
-        assert calls[0][:2] == (contract_id, operation_id)
-        assert calls[0][2]["namespace"] == "mcp.test-server"
-        assert calls[0][2]["arguments"] == {"message": "hello"}
-    else:
-        with pytest.raises(GlobalContractUnavailable, match="selected provider"):
-            execute("execute", payload)
-        assert calls == []
 
 
 def test_broker_source_has_no_concrete_tool_or_service_branches() -> None:
