@@ -70,7 +70,7 @@ class _TransportBase:
     def stop(self):
         raise NotImplementedError
 
-    def send(self, message_bytes):
+    def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
         """JSON-RPC メッセージ（bytes）を送信する"""
         raise NotImplementedError
 
@@ -99,6 +99,9 @@ class _StdioTransport(_TransportBase):
         self._proc = None
         self._reader_thread = None
         self._stderr_thread = None
+        self._writer_thread: threading.Thread | None = None
+        self._write_lock = threading.Lock()
+        self._writes: queue.Queue[tuple[bytes, float, threading.Event]] = queue.Queue(1)
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue(_STDIO_QUEUE_LIMIT)
         self._stop_event = threading.Event()
         self._stdout_closed = threading.Event()
@@ -123,8 +126,12 @@ class _StdioTransport(_TransportBase):
         self._stderr_thread = threading.Thread(
             target=self._drain_stderr, args=(self._proc.stderr,), daemon=True,
         )
+        self._writer_thread = threading.Thread(
+            target=self._write_loop, args=(self._proc.stdin,), daemon=True,
+        )
         self._reader_thread.start()
         self._stderr_thread.start()
+        self._writer_thread.start()
 
     def stop(self):
         self._stop_event.set()
@@ -145,18 +152,64 @@ class _StdioTransport(_TransportBase):
                     reader.join(timeout=max(0, deadline - time.monotonic()))
                     if reader.is_alive():
                         raise RuntimeError("stdio transport reader cleanup is incomplete")
+            writer = self._writer_thread
+            if writer is not None and writer.ident is not None:
+                writer.join(timeout=max(0, deadline - time.monotonic()))
+                if writer.is_alive():
+                    raise RuntimeError("stdio transport writer cleanup is incomplete")
             for pipe in (self._proc.stdin, self._proc.stdout, self._proc.stderr):
                 if pipe is not None:
                     pipe.close()
             self._proc = None
 
-    def send(self, message_bytes):
-        if self._stop_event.is_set():
-            raise RuntimeError(self._failure or "stdio transport is closed")
-        if self._proc is None or self._proc.stdin is None:
-            raise RuntimeError("stdio transport not started")
-        self._proc.stdin.write(message_bytes + b"\n")
-        self._proc.stdin.flush()
+    def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
+        """Write within the original request budget, retaining unfinished IO."""
+        if deadline is None:
+            deadline = time.monotonic() + _DEFAULT_TIMEOUT
+        if len(message_bytes) + 1 > _STDIO_FRAME_LIMIT:
+            raise ValueError("stdio transport request exceeds limit")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self._write_lock.acquire(timeout=remaining):
+            raise TimeoutError("Timeout waiting for the MCP writer")
+        try:
+            if self._stop_event.is_set():
+                raise RuntimeError(self._failure or "stdio transport is closed")
+            if self._proc is None or self._proc.stdin is None:
+                raise RuntimeError("stdio transport not started")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timeout waiting for the MCP writer")
+            done = threading.Event()
+            self._writes.put_nowait((message_bytes, deadline, done))
+            while not done.wait(max(0, min(deadline - time.monotonic(), 0.05))):
+                if time.monotonic() >= deadline:
+                    self._fail("stdio transport write deadline exceeded")
+                    raise TimeoutError("stdio transport write deadline exceeded")
+                if self._stop_event.is_set():
+                    raise RuntimeError(self._failure or "stdio transport is closed")
+            if time.monotonic() >= deadline:
+                self._fail("stdio transport write deadline exceeded")
+                raise TimeoutError("stdio transport write deadline exceeded")
+            if self._stop_event.is_set():
+                raise RuntimeError(self._failure or "stdio transport is closed")
+        finally:
+            self._write_lock.release()
+
+    def _write_loop(self, stdin: BinaryIO) -> None:
+        while not self._stop_event.is_set():
+            try:
+                message_bytes, deadline, done = self._writes.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            try:
+                if time.monotonic() >= deadline:
+                    self._fail("stdio transport write deadline exceeded")
+                elif not self._stop_event.is_set():
+                    stdin.write(message_bytes + b"\n")
+                    stdin.flush()
+            except (OSError, ValueError):
+                self._fail("stdio transport write failed")
+            finally:
+                done.set()
 
     def recv(self, timeout=_DEFAULT_TIMEOUT):
         deadline = time.monotonic() + timeout
@@ -269,7 +322,12 @@ class _SseTransport(_TransportBase):
                 pass
             self._response = None
 
-    def send(self, message_bytes):
+    def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
+        remaining = (
+            _DEFAULT_TIMEOUT if deadline is None else deadline - time.monotonic()
+        )
+        if remaining <= 0:
+            raise TimeoutError("Timeout waiting for the MCP writer")
         if self._post_url is None:
             raise RuntimeError("SSE transport: post URL not yet received")
         req = urllib.request.Request(
@@ -282,7 +340,7 @@ class _SseTransport(_TransportBase):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=_DEFAULT_TIMEOUT) as resp:
+            with urllib.request.urlopen(req, timeout=remaining) as resp:
                 resp.read()
         except urllib.error.HTTPError as exc:
             raise RuntimeError("SSE POST failed: {} {}".format(exc.code, exc.reason))
@@ -466,14 +524,16 @@ class _ServerConnection:
             request = {"jsonrpc": "2.0", "id": msg_id, "method": method}
             if params is not None:
                 request["params"] = params
-            transport.send(json.dumps(request).encode("utf-8"))
+            transport.send(json.dumps(request).encode("utf-8"), deadline=deadline)
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("Timeout waiting for the MCP response")
                 msg = transport.recv(timeout=remaining)
-                if msg is None:
+                if msg is None or time.monotonic() >= deadline:
                     raise TimeoutError("Timeout waiting for the MCP response")
+                if self._transport is not transport:
+                    raise RuntimeError("MCP connection changed while waiting")
                 if msg.get("id") == msg_id:
                     return msg
                 # Notifications and late replies to timed-out requests do not

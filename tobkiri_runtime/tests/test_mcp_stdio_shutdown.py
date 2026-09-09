@@ -7,7 +7,9 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -26,6 +28,7 @@ def _assert_collected(transport: _StdioTransport, process: subprocess.Popen) -> 
     assert all(pipe.closed for pipe in (process.stdin, process.stdout, process.stderr))
     assert not transport._reader_thread.is_alive()
     assert not transport._stderr_thread.is_alive()
+    assert not transport._writer_thread.is_alive()
 
 
 def test_stderr_larger_than_pipe_does_not_block_the_reply() -> None:
@@ -60,7 +63,7 @@ def test_shutdown_unblocks_a_writer_when_child_does_not_read_stdin() -> None:
     def write() -> None:
         writing.set()
         try:
-            transport.send(b'x' * (2 * 1024 * 1024))
+            transport.send(b'x' * (mcp_client._STDIO_FRAME_LIMIT - 1))
         except (BrokenPipeError, ValueError, RuntimeError):
             pass
         finally:
@@ -95,6 +98,74 @@ def test_shutdown_unblocks_a_writer_when_child_does_not_read_stdin() -> None:
     assert not failures
     assert not writer.is_alive() and not stopper.is_alive()
     _assert_collected(transport, process)
+
+
+def test_request_deadline_stops_a_real_child_that_never_reads_stdin(monkeypatch) -> None:
+    """A request cannot spend unbounded time writing before waiting for a reply."""
+    transport = _child("import time; time.sleep(60)")
+    connection = mcp_client._ServerConnection("owned", {})
+    connection._transport = transport
+    transport.start()
+    process = transport._proc
+    monkeypatch.setattr(mcp_client, "_DEFAULT_TIMEOUT", 0.2)
+    started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(connection.call_tool, "blocked", {"text": "x" * 1_000_000})
+        try:
+            with pytest.raises(TimeoutError, match="write deadline exceeded"):
+                pending.result(timeout=2)
+            assert time.monotonic() - started < 2
+            process.wait(timeout=2)
+            # A partial frame must never be replayed on the same or a new child.
+            assert transport._proc is process
+            assert connection._transport is transport
+            with pytest.raises(RuntimeError, match="stdio transport"):
+                connection.call_tool("not-replayed", {})
+        finally:
+            connection.disconnect()
+    _assert_collected(transport, process)
+
+
+def test_expired_and_oversized_writes_leave_the_connection_usable() -> None:
+    """Rejected unsent frames cannot contaminate the next complete request."""
+    transport = _child(
+        "import sys\n"
+        "for line in sys.stdin.buffer:\n"
+        " sys.stdout.buffer.write(line); sys.stdout.buffer.flush()\n"
+    )
+    transport.start()
+    process = transport._proc
+    writer = transport._writer_thread
+    try:
+        with pytest.raises(TimeoutError, match="waiting for the MCP writer"):
+            transport.send(b'{"id": 100}', deadline=time.monotonic() - 1)
+        with pytest.raises(ValueError, match="request exceeds limit"):
+            transport.send(b'x' * mcp_client._STDIO_FRAME_LIMIT)
+        for request_id in (1, 2):
+            transport.send(json.dumps({"id": request_id}).encode())
+            assert transport.recv(timeout=2) == {"id": request_id}
+            assert transport._writer_thread is writer
+            assert writer.is_alive()
+    finally:
+        transport.stop()
+    _assert_collected(transport, process)
+
+
+def test_writer_cleanup_failure_retains_handles_for_retry() -> None:
+    """Shutdown cannot discard the child while an owned pipe writer is alive."""
+    transport = _StdioTransport(["unused"])
+    process, writer = Mock(), Mock()
+    transport._proc = process
+    transport._writer_thread = writer
+    writer.is_alive.return_value = True
+    with pytest.raises(RuntimeError, match="writer cleanup is incomplete"):
+        transport.stop()
+    assert transport._proc is process
+    process.stdin.close.assert_not_called()
+    writer.is_alive.return_value = False
+    transport.stop()
+    assert transport._proc is None
+    process.stdin.close.assert_called_once_with()
 
 
 @pytest.mark.parametrize("output,reason", [
@@ -148,13 +219,14 @@ def test_reader_cleanup_failure_retains_handles_for_retry() -> None:
     process.stdout.close.assert_called_once_with()
 
 
-def test_reader_start_failure_does_not_prevent_child_cleanup(monkeypatch) -> None:
+@pytest.mark.parametrize("thread_name", ["_stderr_thread", "_writer_thread"])
+def test_io_start_failure_does_not_prevent_child_cleanup(monkeypatch, thread_name) -> None:
     """Partially started transports must also close readers that never started."""
     transport = _child("import time; time.sleep(60)")
     start = threading.Thread.start
 
     def fail_stderr_start(reader: threading.Thread) -> None:
-        if reader is transport._stderr_thread:
+        if reader is getattr(transport, thread_name):
             raise RuntimeError("cannot start diagnostic reader")
         start(reader)
 
@@ -177,7 +249,7 @@ class _BlockingReplies:
         self.sent: list[dict] = []
         self.replies: queue.Queue = queue.Queue()
 
-    def send(self, data: bytes) -> None:
+    def send(self, data: bytes, *, deadline: float | None = None) -> None:
         request = json.loads(data)
         self.sent.append(request)
         self.replies.put({
@@ -249,6 +321,33 @@ def test_queued_call_expires_without_sending_or_consuming_reply(monkeypatch) -> 
             connection.call_tool("not-sent", {})
     connection._transport.send.assert_not_called()
     connection._transport.recv.assert_not_called()
+
+
+def test_send_shares_request_deadline_and_late_reply_cannot_succeed(monkeypatch) -> None:
+    """Transport IO cannot reset the budget or return success after it expires."""
+    connection = mcp_client._ServerConnection("owned", {})
+    transport = Mock()
+    connection._transport = transport
+    clock = [10.0]
+    monkeypatch.setattr(mcp_client, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(mcp_client, "_DEFAULT_TIMEOUT", 30)
+
+    def send(data: bytes, *, deadline: float) -> None:
+        assert deadline == 40
+        assert json.loads(data)["id"] == 1
+        clock[0] = 39.9
+
+    def recv(*, timeout: float) -> dict:
+        assert timeout == pytest.approx(0.1)
+        clock[0] = 40
+        return {"id": 1, "result": {"content": [{"type": "text", "text": "late"}]}}
+
+    transport.send.side_effect = send
+    transport.recv.side_effect = recv
+    with pytest.raises(TimeoutError, match="waiting for the MCP response"):
+        connection.call_tool("late", {})
+    assert transport.send.call_count == 1
+    assert transport.recv.call_count == 1
 
 
 @pytest.mark.parametrize("next_action", ["connect", "disconnect", "reconnect"])
