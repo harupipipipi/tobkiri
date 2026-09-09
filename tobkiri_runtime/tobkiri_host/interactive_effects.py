@@ -27,6 +27,7 @@ from .ports import (
     InteractiveApprovalGrantAttestation,
     InteractiveApprovalPort,
     InteractiveEffectOwnerQuery,
+    InteractiveEffectLookupQuery,
     InteractiveEffectPort,
     InteractiveEffectPrepareCommand,
     InteractiveEffectStatus,
@@ -803,6 +804,14 @@ class LateBoundInteractiveEffectPort:
         """Forward a prepare request only after the Broker binding exists."""
 
         return self._bound().prepare_interactive_effect(command)
+
+    def find_interactive_effect(
+        self,
+        query: InteractiveEffectLookupQuery,
+    ) -> InteractiveEffectStatus:
+        """Forward receipt lookup through the single captured Host port."""
+
+        return self._bound().find_interactive_effect(query)
 
     def get_interactive_effect(
         self,

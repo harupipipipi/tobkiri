@@ -1920,6 +1920,9 @@ function providerConfigurationFixture() {
       removeItem: (key: string) => { values.delete(key); },
     },
     prepare: async () => { calls.push("prepare"); return status("approval_pending"); },
+    lookup: async (_correlation: string): Promise<ProviderConfigurationStatus> => {
+      calls.push("lookup"); throw new Error("receipt unavailable");
+    },
     status: async () => { calls.push("status"); return status("approval_pending"); },
     resume: async () => { calls.push("resume"); return status("succeeded"); },
     cancel: async () => { calls.push("cancel"); return status("cancelled"); },
@@ -1956,8 +1959,9 @@ test("saveProviderApiKey sends canonical preparation and returns success only af
     });
     assert.equal(result.configured, true);
     assert.equal(result.model_availability.status, "route_required");
+    assert.match(String(bodies[0].correlation_id), /^[0-9a-f-]{36}$/);
     assert.deepEqual(bodies, [
-      { phase: "prepare", effect_kind: "provider_configure", request: f.configuration },
+      { phase: "prepare", effect_kind: "provider_configure", request: f.configuration, correlation_id: bodies[0].correlation_id },
       { request_id: "approval-1" },
       { phase: "resume", effect_id: "effect-1" },
     ]);
@@ -1990,8 +1994,24 @@ test("provider configuration preserves uncertain prepare without resending or le
     assert.doesNotMatch(error.message, /fixture-private-key/);
     return true;
   });
-  await assert.rejects(configureProvider(f.configuration, f.ports), /受付結果が不明/);
-  assert.deepEqual(f.calls, ["prepare"]);
+  await assert.rejects(configureProvider(f.configuration, f.ports), /結果を確認できません/);
+  assert.deepEqual(f.calls, ["prepare", "lookup"]);
+});
+
+test("provider prepare reply loss recovers by correlation without resending the key", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.prepare = async () => { f.calls.push("prepare"); throw new Error("lost reply"); };
+  await assert.rejects(configureProvider(f.configuration, f.ports));
+  const pending = JSON.parse([...f.values.values()][0]);
+  f.ports.lookup = async (correlation) => {
+    f.calls.push("lookup");
+    assert.equal(correlation, pending.correlation);
+    assert.match(correlation, /^[0-9a-f-]{36}$/);
+    return f.status("approval_pending");
+  };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "lookup", "status", "resume"]);
+  assert.equal(f.values.size, 0);
 });
 
 test("provider configuration reconciles lost resume ACK and refuses changed input", async () => {

@@ -4185,7 +4185,8 @@ export const api = {
       connection_name: connection, protocol, endpoint, key_value: value,
     }, {
       storage: window.sessionStorage,
-      prepare: (configuration) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration }),
+      prepare: (configuration, correlation_id) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration, correlation_id }),
+      lookup: (correlation_id) => post({ phase: "lookup", effect_kind: "provider_configure", correlation_id }),
       status: (effect_id) => post({ phase: "status", effect_id }),
       resume: (effect_id) => post({ phase: "resume", effect_id }),
       cancel: (effect_id) => post({ phase: "cancel", effect_id }),

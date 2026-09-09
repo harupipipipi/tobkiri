@@ -26,6 +26,7 @@ from tobkiri_host.interactive_effects import (
 from tobkiri_host.models import InvocationFrame, OpaqueAuthorityRef, RequestContext
 from tobkiri_host.ports import (
     InteractiveEffectOwnerQuery,
+    InteractiveEffectLookupQuery,
     InteractiveEffectPort,
     InteractiveEffectPrepareCommand,
     InteractiveEffectStatus,
@@ -245,10 +246,37 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 presentation_metadata=_presentation_metadata(route.spec, prepared),
                 expires_at=self._clock() + self._EXPIRY_SECONDS,
                 typed_confirmation_phrase="EXECUTE",
+                correlation_id=command.correlation_id,
             )
             return _port_status(pending)
         except InteractiveEffectUnavailable:
             raise
+        except Exception as exc:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
+
+    def find_interactive_effect(
+        self,
+        query: InteractiveEffectLookupQuery,
+    ) -> InteractiveEffectStatus:
+        """Resolve only an owned receipt for the captured finite execute route."""
+
+        try:
+            self._assert_current_capture()
+            self._validate_outer_context(query.context, query.coordinator_principal)
+            self._validate_presentation_owner(
+                query.presentation_owner_principal_id,
+                query.presentation_owner_session_id,
+            )
+            route = self._route(query.effect_kind)
+            return _port_status(self._controller.find_for_presentation(
+                correlation_id=query.correlation_id,
+                presentation_owner_principal_id=query.presentation_owner_principal_id,
+                presentation_owner_session_id=query.presentation_owner_session_id,
+                context=query.context,
+                contract_id=route.spec.execute_contract_id,
+                operation_id=route.spec.execute_operation_id,
+                target_principal=route.execute_target_principal,
+            ))
         except Exception as exc:
             raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
 

@@ -150,11 +150,20 @@ class DefaultspackHTTPPresentation:
             phase = payload.get("phase")
             if phase == "prepare":
                 if (
-                    set(payload) != {"phase", "effect_kind", "request"}
+                    set(payload) not in (
+                        {"phase", "effect_kind", "request"},
+                        {"phase", "effect_kind", "request", "correlation_id"},
+                    )
                     or payload.get("effect_kind") != "provider_configure"
                     or not isinstance(payload.get("request"), Mapping)
                 ):
                     raise ValueError("provider configuration request is invalid")
+            elif phase == "lookup":
+                if (
+                    set(payload) != {"phase", "effect_kind", "correlation_id"}
+                    or payload.get("effect_kind") != "provider_configure"
+                ):
+                    raise ValueError("provider configuration lookup is invalid")
             elif phase not in {"status", "resume", "cancel"} or set(payload) != {
                 "phase", "effect_id",
             }:

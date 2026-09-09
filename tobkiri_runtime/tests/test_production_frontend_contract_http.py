@@ -1059,6 +1059,7 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     monkeypatch.setattr(V4DispatchSession, "invoke", observed_invoke)
     request = {
         "phase": "prepare", "effect_kind": "provider_configure",
+        "correlation_id": str(uuid.uuid4()),
         "request": {
             "connection_name": "fixture", "protocol": "openai-compatible",
             "endpoint": "https://provider.example/v1", "key_value": secret,
@@ -1077,6 +1078,31 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in json.dumps(prepared)
     assert not registry.path.exists()
     assert not (root / "credentials/material-store/credentials.store.json").exists()
+    lookup = {
+        "phase": "lookup", "effect_kind": "provider_configure",
+        "correlation_id": request["correlation_id"],
+    }
+    for _ in range(2):
+        status, receipt = post(path, lookup)
+        assert status == 200, receipt
+        assert receipt["data"] == effect
+        assert secret not in json.dumps(receipt)
+    assert not registry.path.exists()
+    assert not (root / "credentials/material-store/credentials.store.json").exists()
+    status, missing = post(path, {**lookup, "correlation_id": str(uuid.uuid4())})
+    assert status != 200, missing
+    status, invalid = post(path, {**lookup, "request": request["request"]})
+    assert status == 400, invalid
+    other_cookie, other_csrf, other_origin = _authenticate(server)
+    status, foreign, _ = _request(
+        server, "POST", _contract("POST", path), body=lookup,
+        headers={
+            "Cookie": other_cookie, "Origin": other_origin,
+            "X-Rumi-CSRF": other_csrf, "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        },
+    )
+    assert status != 200, foreign
+    assert effect["effect_id"] not in json.dumps(foreign)
     status, denied = post(path, {"phase": "resume", "effect_id": effect["effect_id"]})
     assert status != 200 or denied["data"]["state"] != "succeeded"
     assert not registry.path.exists()

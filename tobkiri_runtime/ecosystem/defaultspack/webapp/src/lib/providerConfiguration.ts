@@ -12,10 +12,11 @@ export type ProviderConfigurationRequest = {
   key_value: string;
 };
 
-type Pending = { connection: string; effect: string | null; digest: string };
+type Pending = { connection: string; effect: string | null; digest: string; correlation?: string };
 type Ports = {
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
-  prepare: (request: ProviderConfigurationRequest) => Promise<ProviderConfigurationStatus>;
+  prepare: (request: ProviderConfigurationRequest, correlation: string) => Promise<ProviderConfigurationStatus>;
+  lookup: (correlation: string) => Promise<ProviderConfigurationStatus>;
   status: (effect: string) => Promise<ProviderConfigurationStatus>;
   resume: (effect: string) => Promise<ProviderConfigurationStatus>;
   cancel: (effect: string) => Promise<ProviderConfigurationStatus>;
@@ -39,8 +40,17 @@ export async function configureProvider(
     const digest = Array.from(new Uint8Array(digestBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
     const stored = ports.storage.getItem(STORAGE_KEY);
     const pending: Pending = stored ? JSON.parse(stored) : {
-      connection: request.connection_name, effect: null, digest,
+      connection: request.connection_name, effect: null, digest, correlation: crypto.randomUUID(),
     };
+    if (stored && !pending.effect && typeof pending.correlation === "string") {
+      // Only the saved non-secret correlation is sent, never the key or input.
+      const receipt = await ports.lookup(pending.correlation);
+      if (typeof receipt.effect_id !== "string" || !receipt.effect_id) {
+        throw new ConfigurationError("Provider設定の受付結果が不明です。再送しないでください。");
+      }
+      pending.effect = receipt.effect_id;
+      ports.storage.setItem(STORAGE_KEY, JSON.stringify(pending));
+    }
     if (pending.connection !== request.connection_name || pending.digest !== digest) {
       if (typeof pending.effect === "string" && pending.effect) {
         // A changed key must not prevent reading the previous operation's result.
@@ -68,7 +78,7 @@ export async function configureProvider(
       // Written before sending: response loss must not silently create another effect.
       // Only correlation and a request digest are persisted, never the key or URL.
       ports.storage.setItem(STORAGE_KEY, JSON.stringify(pending));
-      status = await ports.prepare(request);
+      status = await ports.prepare(request, pending.correlation!);
       if (typeof status.effect_id !== "string" || !status.effect_id) {
         throw new ConfigurationError("Provider設定の受付結果が不明です。再送しないでください。");
       }
