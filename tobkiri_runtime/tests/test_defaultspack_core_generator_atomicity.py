@@ -289,3 +289,27 @@ def test_core_generator_script_entrypoint_is_independent_of_cwd() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_generator_catalog_load_does_not_import_product_packs() -> None:
+    """The shared verifier remains usable with all ecosystem imports denied."""
+    script = """
+import sys
+
+class DenyPackImports:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'ecosystem' or fullname.startswith('ecosystem.'):
+            raise AssertionError('generator imported a product Pack: ' + fullname)
+
+sys.meta_path.insert(0, DenyPackImports())
+from scripts.generate_defaultspack_v4_bundle import BUNDLE, BundledCatalog
+catalog = BundledCatalog.load(BUNDLE)
+assert catalog.packs and catalog.profiles and catalog.executable_catalogs
+assert not any(name == 'ecosystem' or name.startswith('ecosystem.') for name in sys.modules)
+"""
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script], cwd=ROOT,
+        env={"PATH": os.environ["PATH"], "PYTHONDONTWRITEBYTECODE": "1"},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
