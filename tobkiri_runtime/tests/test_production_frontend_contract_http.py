@@ -1785,6 +1785,35 @@ def test_home_and_pack_workflow_use_only_real_broker_contracts(
     assert enable_status == 409
     assert denied["data"]["code"] == "STALE_REVISION"
 
+    # A revoked approval cannot be reused, but a fresh normal ceremony must
+    # restore this optional Pack without duplicating the persisted selection.
+    candidate_status, candidate = post(
+        "/api/pack-control/approval-candidate", {"pack_id": target_pack}
+    )
+    assert candidate_status == 200, candidate
+    approve_status, approved = post(
+        "/api/pack-control/approval-approve",
+        {"pack_id": target_pack, "candidate_id": candidate["data"]["candidate_id"]},
+    )
+    assert approve_status == 200, approved
+    enable_status, reenabled = post("/api/pack-control/enable", {"pack_id": target_pack})
+    assert enable_status == 200, reenabled
+    assert reenabled["data"]["enabled"] is True
+    cookie, csrf, origin = _authenticate(server)
+    mutation_headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+    assert post("/api/pack-control/restart", {})[0] == 200
+    cookie, csrf, origin = _authenticate(server)
+    status, selection, _ = _request(
+        server, "GET", _contract("GET", "/api/runtime-surface/profile"),
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, selection
+    selected_ids = [
+        item["pack_id"] for item in selection["data"]["data"]["profile_document"]["packs"]
+    ]
+    assert selected_ids.count(target_pack) == 1
+    assert len(selected_ids) == len(set(selected_ids))
+
     with AuthorityStore(authority_path) as current_authority:
         assert any(
             event["event_type"] == "pack_approval_revoked" and event["event_state"] == "committed"
