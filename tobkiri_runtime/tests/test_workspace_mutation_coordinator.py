@@ -713,7 +713,7 @@ def test_scoped_close_failure_retains_but_disables_lease(
                 lease, identity, relative_path="document.txt",
                 ttl_seconds=30, max_uses=1, max_bytes=100,
             )
-        foreign = replace(identity, target_namespace="foreign")
+        foreign = _identity(context=_context(activation_id="foreign-activation"))
         with pytest.raises(WorkspaceMutationError):
             port.close_lease(lease, foreign)
         assert port._leases[lease.value] is record
