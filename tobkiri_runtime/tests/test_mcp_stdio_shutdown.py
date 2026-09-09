@@ -14,8 +14,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from ecosystem.defaultspack.domain.tool.mcp_client import McpConnections, _StdioTransport
-from ecosystem.defaultspack.domain.tool import mcp_client
+from core_runtime.mcp.transport import McpConnections, _StdioTransport
+from core_runtime.mcp import transport as mcp_client
 
 
 def _child(source: str) -> _StdioTransport:
@@ -358,11 +358,11 @@ def test_startup_keeps_ownership_until_lifecycle_operation_finishes(monkeypatch,
     connections = []
 
     class Connection:
-        def __init__(self, name, config):
+        def __init__(self, name, config, *, inherit_environment=True):
             self.alive = False
             connections.append(self)
 
-        def connect(self):
+        def connect(self, *, deadline=None, cancellation=None):
             self.alive = True
             if len(connections) == 1:
                 entered.set()

@@ -9,8 +9,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from ecosystem.defaultspack.domain.tool import mcp_client, mcp_sse_events
-from ecosystem.defaultspack.domain.tool.mcp_sse_events import read_sse_events
+from core_runtime.mcp import transport as mcp_client, sse_events as mcp_sse_events
+from core_runtime.mcp.sse_events import read_sse_events
 
 
 def test_sse_multiline_framing_preserves_data_whitespace_and_byte_order() -> None:

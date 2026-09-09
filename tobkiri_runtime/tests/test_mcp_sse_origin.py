@@ -9,8 +9,8 @@ from typing import Callable, Iterator
 
 import pytest
 
-from ecosystem.defaultspack.domain.tool import mcp_client
-from ecosystem.defaultspack.domain.tool.mcp_sse_policy import SseEndpointPolicy
+from core_runtime.mcp import transport as mcp_client
+from core_runtime.mcp.sse_policy import SseEndpointPolicy
 
 
 @contextmanager
@@ -179,7 +179,7 @@ def test_invalid_configured_url_is_rejected_before_transport_start(url: str) -> 
 def test_real_http_oversized_event_closes_reader_without_a_post(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from ecosystem.defaultspack.domain.tool import mcp_sse_events
+    from core_runtime.mcp import sse_events as mcp_sse_events
 
     monkeypatch.setattr(mcp_sse_events, "SSE_EVENT_LIMIT", 64)
     observed: list[str] = []

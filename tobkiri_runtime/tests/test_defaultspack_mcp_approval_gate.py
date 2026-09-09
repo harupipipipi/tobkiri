@@ -265,7 +265,7 @@ def test_sse_transport_receives_resolved_url_and_headers_verbatim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An already reviewed URL/header cannot read a second ambient placeholder."""
-    from domain.tool import mcp_client
+    from core_runtime.mcp import transport as mcp_client
     from domain.tool.mcp_approval import build_mcp_snapshot
 
     literal = "${TOBKIRI_MCP_SECOND_PASS}"
@@ -285,8 +285,8 @@ def test_sse_transport_receives_resolved_url_and_headers_verbatim(
     factory = Mock()
     monkeypatch.setattr(mcp_client, "_SseTransport", factory)
     connection = mcp_client._ServerConnection("sse-literal", snapshot["effective_config"])
-    monkeypatch.setattr(connection, "_initialize", lambda: None)
-    monkeypatch.setattr(connection, "_list_tools", lambda: [])
+    monkeypatch.setattr(connection, "_initialize", lambda **kwargs: None)
+    monkeypatch.setattr(connection, "_list_tools", lambda **kwargs: [])
     try:
         connection.connect()
         factory.assert_called_once_with(

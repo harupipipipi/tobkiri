@@ -10,7 +10,7 @@ import pytest
 from ecosystem.defaultspack.blocks.tool import mcp_connect as mcp_connect_block
 from ecosystem.defaultspack.blocks.tool import mcp_list as mcp_list_block
 from ecosystem.defaultspack.domain.tool.mcp_client import McpClient, McpConnections
-from ecosystem.defaultspack.domain.tool import mcp_client as mcp_module
+from core_runtime.mcp import transport as mcp_module
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
 from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 from domain.tool_policy.internal_context import mark_tool_server_approval_context
@@ -221,7 +221,7 @@ def test_failed_handshake_stops_started_stdio_process(
     client = McpConnections()
     processes = []
 
-    def fail_handshake(connection):
+    def fail_handshake(connection, **kwargs):
         processes.append(connection._transport._proc)
         connection.server_capabilities = {"tools": {}}
         raise RuntimeError("injected handshake failure")
