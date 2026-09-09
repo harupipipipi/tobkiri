@@ -731,35 +731,35 @@ class McpConnections:
             return []
         return list(conn.tools)
 
-    def invoke(self, server_name, tool_name, arguments, *, deadline=None, cancellation=None):
-        """
-        MCP ツール実行。
-        戻り値: {"result": str, "is_error": bool, "widget": dict|None}
+    def call(
+        self, server_name: str, tool_name: str, arguments: dict[str, Any], *,
+        deadline: float | None = None,
+        cancellation: threading.Event | None = None,
+    ) -> dict[str, Any]:
+        """Call once, preserving local IO failures for the resource owner.
+
+        A normal server result with isError=true is still a valid reply. Local
+        transport failures raise so the Host can fence and collect the resource.
         """
         with self._lock:
             if self._closed:
-                return {"result": "MCP connection owner is closed", "is_error": True, "widget": None}
+                raise RuntimeError("MCP connection owner is closed")
             conn = self._servers.get(server_name)
         if conn is None:
-            return {
-                "result": "MCP server '{}' not connected".format(server_name),
-                "is_error": True,
-                "widget": None,
-            }
+            raise RuntimeError("MCP server is not connected")
         if conn.status != "connected":
-            return {
-                "result": "MCP server '{}' status: {}".format(server_name, conn.status),
-                "is_error": True,
-                "widget": None,
-            }
+            raise RuntimeError("MCP server is not ready")
+        return conn.call_tool(tool_name, arguments, deadline=deadline,
+                              cancellation=cancellation)
+
+    def invoke(self, server_name, tool_name, arguments, *, deadline=None, cancellation=None):
+        """Preserve the legacy result-envelope API during owner migration."""
         try:
-            return conn.call_tool(tool_name, arguments, deadline=deadline, cancellation=cancellation)
+            return self.call(server_name, tool_name, arguments, deadline=deadline,
+                             cancellation=cancellation)
         except Exception as exc:
-            return {
-                "result": "MCP call failed: {}".format(exc),
-                "is_error": True,
-                "widget": None,
-            }
+            return {"result": "MCP call failed: {}".format(exc),
+                    "is_error": True, "widget": None}
 
 
 

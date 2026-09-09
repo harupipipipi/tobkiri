@@ -143,7 +143,7 @@ class CapturedMcpConnectionOwner:
             raise ValueError("MCP arguments must be an object")
         self._check_current(invocation)
         try:
-            result = self._connections.invoke(
+            result = self._connections.call(
                 connection_id,
                 tool,
                 payload["arguments"],
@@ -151,7 +151,7 @@ class CapturedMcpConnectionOwner:
                 cancellation=envelope.cancellation_requested,
             )
             self._check_current(invocation)
-        except Exception:
+        except Exception as error:
             # A cancelled or stale request may have reached the server. Fence
             # this connection, stop it, and never reconnect/replay the effect.
             with self._lock:
@@ -162,7 +162,11 @@ class CapturedMcpConnectionOwner:
                 raise RuntimeError("MCP connection cleanup is incomplete") from None
             with self._lock:
                 self._records.pop(connection_id, None)
-            raise
+            if isinstance(error, (TimeoutError, InterruptedError)):
+                raise
+            if isinstance(error, PermissionError):
+                raise PermissionError("MCP invocation is unavailable") from None
+            raise RuntimeError("MCP request failed") from None
         return result
 
     def close(self) -> None:

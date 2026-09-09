@@ -89,7 +89,7 @@ for line in sys.stdin:
             output.write(json.dumps(message["params"]) + "\\n")
         if message["params"]["name"] == "wait":
             time.sleep(20)
-        result = {"content": [{"type": "text", "text": json.dumps({
+        result = {"isError": message["params"]["arguments"].get("fail", False), "content": [{"type": "text", "text": json.dumps({
             "literal": os.environ.get("LITERAL"),
             "ambient": os.environ.get("MCP_TEST_AMBIENT"),
             "argv": sys.argv[1:],
@@ -275,3 +275,30 @@ def test_stale_registration_does_not_create_a_transport(owner, connection_reques
     with pytest.raises(PermissionError, match="stale"):
         owner.invoke(invocation)
     assert owner._records == {}
+
+
+def test_local_timeout_before_host_deadline_fences_and_reaps(
+    owner, connection_request, monkeypatch
+):
+    """The local 30-second budget may expire while the Host lease is current."""
+    from core_runtime.mcp import transport
+
+    connection_id = owner.invoke(_Invocation(CONNECT, connection_request))["connection_id"]
+    process = owner._connections._servers[connection_id]._transport._proc
+    monkeypatch.setattr(transport, "_DEFAULT_TIMEOUT", 0.05)
+    invocation = _call(connection_id, tool="wait")
+    with pytest.raises(TimeoutError):
+        owner.invoke(invocation)
+    assert time.monotonic() < invocation.envelope.deadline_monotonic
+    assert process.poll() is not None
+    assert owner._records == {}
+    with pytest.raises(PermissionError):
+        owner.invoke(_call(connection_id))
+
+
+def test_remote_tool_error_keeps_a_healthy_connection(owner, connection_request):
+    """A server's normal isError reply must not be treated as broken IO."""
+    connection_id = owner.invoke(_Invocation(CONNECT, connection_request))["connection_id"]
+    result = owner.invoke(_call(connection_id, arguments={"fail": True}))
+    assert result["is_error"] is True
+    assert owner.invoke(_call(connection_id))["is_error"] is False
