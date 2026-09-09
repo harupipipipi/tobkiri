@@ -459,6 +459,22 @@ class McpConnections:
     def __init__(self) -> None:
         self._servers: dict[str, _ServerConnection] = {}
         self._lock = threading.Lock()
+        self._closed = False
+
+    def close(self) -> None:
+        """Fence new work and reap owned connections, retaining failed cleanup."""
+        with self._lock:
+            self._closed = True
+            failed = False
+            for name, connection in list(self._servers.items()):
+                try:
+                    connection.disconnect()
+                except Exception:
+                    failed = True
+                else:
+                    del self._servers[name]
+            if failed:
+                raise RuntimeError("MCP connection cleanup is incomplete")
 
     def connect(self, server_name, config):
         """
@@ -472,6 +488,8 @@ class McpConnections:
         戻り値: 追加されたツール数 (int)
         """
         with self._lock:
+            if self._closed:
+                raise RuntimeError("MCP connection owner is closed")
             if server_name in self._servers:
                 self._servers[server_name].disconnect()
             conn = _ServerConnection(server_name, config)
@@ -496,6 +514,8 @@ class McpConnections:
     def reconnect(self, server_name):
         """MCP サーバーに再接続する"""
         with self._lock:
+            if self._closed:
+                raise RuntimeError("MCP connection owner is closed")
             conn = self._servers.get(server_name)
             if conn is None:
                 raise RuntimeError("MCP server '{}' not found".format(server_name))
@@ -542,6 +562,8 @@ class McpConnections:
         戻り値: {"result": str, "is_error": bool, "widget": dict|None}
         """
         with self._lock:
+            if self._closed:
+                return {"result": "MCP connection owner is closed", "is_error": True, "widget": None}
             conn = self._servers.get(server_name)
         if conn is None:
             return {

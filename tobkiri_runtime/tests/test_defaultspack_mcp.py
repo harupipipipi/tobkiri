@@ -200,13 +200,15 @@ def test_owned_connections_do_not_share_names_or_disconnect_each_other(tmp_path)
         second.connect("same", config)
         assert first.invoke("same", "ping", {"message": "first"})["result"] == "pong:first"
         assert second.invoke("same", "ping", {"message": "second"})["result"] == "pong:second"
-        first.disconnect("same")
+        first_process = first._servers["same"]._transport._proc
+        first.close()
+        assert first_process.poll() is not None
         assert second.invoke("same", "ping", {"message": "retained"})["result"] == "pong:retained"
         assert legacy.list_servers() == []
         assert McpClient() is legacy
     finally:
-        first.disconnect("same")
-        second.disconnect("same")
+        first.close()
+        second.close()
 
 
 @pytest.mark.parametrize("failure_stage", ["_initialize", "_list_tools"])

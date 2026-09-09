@@ -77,6 +77,34 @@ def test_failed_startup_retains_the_new_connection_for_cleanup(monkeypatch) -> N
     assert not owner._servers
 
 
+def test_owner_close_fences_work_and_retries_only_failed_cleanup(monkeypatch) -> None:
+    """One failed child cleanup must not skip the owner's other children."""
+    owner = McpConnections()
+    failed, healthy = Mock(), Mock()
+    failed.disconnect.side_effect = OSError("still running")
+    owner._servers.update({"failed": failed, "healthy": healthy})
+    factory = Mock()
+    monkeypatch.setattr(mcp_client, "_ServerConnection", factory)
+    with pytest.raises(RuntimeError, match="cleanup is incomplete"):
+        owner.close()
+    assert owner._servers == {"failed": failed}
+    healthy.disconnect.assert_called_once_with()
+    assert owner.invoke("failed", "tool", {})["is_error"] is True
+    failed.call_tool.assert_not_called()
+    with pytest.raises(RuntimeError, match="owner is closed"):
+        owner.connect("new", {})
+    with pytest.raises(RuntimeError, match="owner is closed"):
+        owner.reconnect("failed")
+    factory.assert_not_called()
+    failed.reconnect.assert_not_called()
+    failed.disconnect.side_effect = None
+    owner.close()
+    owner.close()
+    assert not owner._servers
+    assert failed.disconnect.call_count == 2
+    healthy.disconnect.assert_called_once_with()
+
+
 def test_shutdown_reaps_child_after_termination_timeout() -> None:
     """SIGKILL alone is not proof that a child was collected."""
     process = Mock()
