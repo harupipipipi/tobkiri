@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:391025636b8e28810f936b5b7bff6046ace1980f158126fe6daef5727d397b31",
+  "artifact_set_digest": "sha256:b158195cc0e56919778ca062577ca22b55e1ab93dcaf3f05d3f5710836785a5f",
   "artifacts": [
     {
-      "digest": "sha256:2a4dd324805b19ff1cbf40c606a485e8e28813ab36eaa91eeab2c609c1abdeca",
+      "digest": "sha256:65c73e318424092bffba68800e4df1ab285036fe38c0f197aa7dfac1b5900370",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:73c2d47401a94302a64162ab014548c72b2a0889540bfc3873f3ae49155f1a2a",
+      "digest": "sha256:c46b365f5c40802213cbec2fcc9f56a82fb8412ea31487f0621a1ed269483a28",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:2ef961613365aaa0fdd9369f8af58061375c9408493e99f3513030ea3ce496fd",
+      "digest": "sha256:659286e01e4d23a9a25024935ab4b4b89ec9995d8a311645c767df1a8dc8dbe7",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,7 +22,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:c6186fd17b9a4a2ae6eba0bdc90687795bfd2aaba869c1131f353085d85bf78f",
+      "digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669",
       "path": "runtime/process.py",
       "role": "runtime"
     },
@@ -40,8 +40,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:5b4fe636daa6832e28bb33e1c9e89fbe8110eb4f2e62c22a35ad2020f7a58c71"
+    "signed_digest": "sha256:5966e107cd0c1ecf723fe73a92b6ea438673c050488b6a8accb403afd1341ca2"
   },
   "pack_id": "rumi_model_registry_pack",
-  "source_identity": "sha256:952f3b2a7d21afd84a25da1ebe015901563ce3fb567f44f983d9b4d434115b7d"
+  "source_identity": "sha256:88b87d5fdd3ceb33aa4d2d9feba0265975638ab4cfacff8c99965324ebb7e22f"
 }

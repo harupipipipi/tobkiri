@@ -57,6 +57,7 @@ class ModelRegistryHostFactoryV4:
 
         if (
             context.user_data_root is None
+            or not context.profile_id
             or not context.provider_bindings
             or any(
                 binding.function.function_id != self.function_id
@@ -76,14 +77,34 @@ class ModelRegistryHostFactoryV4:
         ) -> Mapping[str, Any]:
             if operation_id not in allowed_operation_ids:
                 raise PermissionError("model registry operation is unavailable")
+            if "profile_id" in payload and payload["profile_id"] != context.profile_id:
+                raise PermissionError("model registry Profile is unavailable")
+            operation = _service_operation(operation_id, payload)
+            fields = {
+                "list": set(), "get": {"model_profile_id"},
+                "resolve": {"identifier"},
+                _PROFILE_GENERATE_OPERATION: {"identifier"},
+                _PROFILE_STREAM_OPERATION: {"identifier"},
+                "save": {"record", "expected_revision"},
+                "delete": {"model_profile_id", "expected_revision"},
+                "alias.set": {"alias", "target_profile_id", "expected_revision"},
+                "migration.apply": {"profiles", "aliases", "expected_source_hash"},
+                "migration.rollback": {"migration_id"},
+            }[operation]
+            if set(payload) - fields - {"operation", "action", "profile_id"}:
+                raise PermissionError("model registry payload is invalid")
+            if operation in _MANAGE_SERVICE_OPERATIONS:
+                revision = payload.get("expected_revision")
+                if type(revision) is not int or revision < 0:
+                    raise PermissionError("model registry revision is invalid")
             client = invocation.contract_client(
                 allowed_contract_ids=frozenset(),
                 consumer_pack_id=_PACK_ID,
             )
             del client
             return service.invoke(
-                _service_operation(operation_id, payload),
-                payload,
+                operation,
+                {**payload, "profile_id": context.profile_id},
             )
 
         return CapturedHostProviderV4(

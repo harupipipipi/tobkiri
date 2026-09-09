@@ -889,12 +889,12 @@
     {
       "path": "packs/rumi_model_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:7ed9f9994dbde6ba719a17b04f0e0f99b379f0883bb9a22fb3c79893c06f1de2"
+      "digest": "sha256:e9a1e629f4664803b68a5d44533d257775354d14a681eb2f91824fbabf8c8e6c"
     },
     {
       "path": "packs/rumi_model_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:d52d6bd397ff54ff53ed5c18fefc8f2e86a679b59a1dc0be3a3179c86cb41029"
+      "digest": "sha256:fbc49544c222cd393846037afa17df2e31ba2ab88f90aa8a93401196aa2a2de0"
     },
     {
       "path": "packs/rumi_multimodal_media_pack.executables.v4.json",
