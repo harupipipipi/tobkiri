@@ -86,6 +86,7 @@ generated-check python="python":
     {{python}} -B scripts/quality/validate_pack_architecture.py
     {{python}} -B tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
     {{python}} -B tobkiri_runtime/scripts/quality/run_independent_migration_proof.py --check
+    {{python}} -B tobkiri_runtime/scripts/quality/scan_complete_v4_migration.py --check --freshness-only
     {{python}} -B tobkiri_runtime/scripts/generator_source_manifest.py --check
 
 # Migrate one legacy profile to a review-only v4 document.

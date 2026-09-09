@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
+import sys
+
+import pytest
 
 from scripts.quality import scan_complete_v4_migration as scanner
 
@@ -138,3 +143,32 @@ def test_default_mode_keeps_semantic_red_fail_closed() -> None:
     assert scanner._exit_code(
         _gate_evidence("RED"), [], freshness_only=False
     ) == 1
+
+
+@pytest.mark.parametrize("state", ["fresh", "stale", "missing"])
+def test_check_mode_never_rewrites_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    """A check must detect drift without erasing the evidence it compares."""
+    observed = _evidence(CURRENT)
+    observed.update({"gate": {"status": "RED"}, "nodeids": []})
+    observed["source"]["semantic_digest"] = scanner._semantic_digest(observed)
+    tracked = deepcopy(observed)
+    path = tmp_path / "evidence" / "current.json"
+    before = None
+    if state != "missing":
+        if state == "stale":
+            tracked["counts"]["production_pack_directories"] = 144
+            tracked["source"]["semantic_digest"] = scanner._semantic_digest(tracked)
+        path.parent.mkdir()
+        path.write_text(json.dumps(tracked) + "\n")
+        before = path.read_bytes(), path.stat().st_mtime_ns
+    monkeypatch.setattr(scanner, "build_evidence", lambda: deepcopy(observed))
+    monkeypatch.setattr(
+        sys, "argv", ["scanner", "--check", "--output", str(path), "--freshness-only"]
+    )
+    assert scanner.main() == (0 if state == "fresh" else 1)
+    if before is None:
+        assert not path.parent.exists()
+    else:
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == before

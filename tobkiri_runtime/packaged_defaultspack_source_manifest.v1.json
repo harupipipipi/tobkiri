@@ -2476,8 +2476,8 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 84044,
-      "sha256": "a6d94894158cbda6ff61ba05a162a25836175d28afd5b3ee361c1f5547d04bb6",
+      "size": 84585,
+      "sha256": "c53b8a0ee60f30d75bc8f4e0ed6b2ec421bc99b49742e831bf07ffd26adda190",
       "executable": false
     },
     {
@@ -2532,8 +2532,8 @@
     {
       "path": "scripts/quality/scan_complete_v4_migration.py",
       "type": "regular-file",
-      "size": 11589,
-      "sha256": "537920ac60e94ea92bfb3a4354b02e6f570384404778e51ce5cac4b7c63ce98a",
+      "size": 11847,
+      "sha256": "dfe515a3d6bb875ac2bb9202920642fb57fddc7d89f73aed0db79ef556421872",
       "executable": false
     },
     {
