@@ -1237,7 +1237,7 @@ def test_generation_change_immediately_before_publish_discards_capture(
         server.stop()
 
 
-def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
+def test_stop_timeout_blocks_restart_until_pending_capture_is_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     initial = _RefreshDispatch("initial")
@@ -1247,7 +1247,7 @@ def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
         panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
         dispatch_session=initial,  # type: ignore[arg-type]
     )
-    server._runtime_capture_factory = _test_runtime_capture_inputs
+    generation = _prepare_refresh_race(server, monkeypatch)
     stale_entered = threading.Event()
     release_stale = threading.Event()
 
@@ -1260,11 +1260,10 @@ def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
         del host_contract
         if session is stale:
             stale_entered.set()
-            assert release_stale.wait(2.0)
+            assert release_stale.wait(5.0)
 
-    server.start()
     monkeypatch.setattr(server, "_validate_contract_capture", validate)
-    generation = server._lifecycle_generation
+    monkeypatch.setattr("core_runtime.pack_api_server.THREAD_JOIN_TIMEOUT_SECONDS", 0.02)
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             pending = executor.submit(
@@ -1273,12 +1272,18 @@ def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
                 lifecycle_generation=generation,
             )
             assert stale_entered.wait(2.0)
+            with pytest.raises(RuntimeError, match="active_runtime_captures.*1"):
+                server.stop()
+            assert server._lifecycle_state == "drain_failed"
+            with pytest.raises(RuntimeError, match="teardown is incomplete"):
+                server.start()
+            release_stale.set()
+            pending.result(timeout=2.0)
+            monkeypatch.setattr("core_runtime.pack_api_server.THREAD_JOIN_TIMEOUT_SECONDS", 5)
             server.stop()
             server.start()
             restarted_handler = server.handler_class
             restarted_routes = server._contract_routes
-            release_stale.set()
-            pending.result(timeout=2.0)
 
         assert server._dispatch_session is initial
         assert server.handler_class is restarted_handler
@@ -1288,6 +1293,87 @@ def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
     finally:
         release_stale.set()
         server.stop()
+
+
+def test_stop_drains_capture_construction_and_unpublished_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A candidate not yet returned by its factory still belongs to teardown."""
+    import core_runtime.authority.v4 as authority_v4
+    import core_runtime.bootstrap.production_v4 as production_v4
+    import core_runtime.bootstrap.profile_capture as profile_capture
+
+    initial = _RefreshDispatch("initial")
+    candidate = _RefreshDispatch("candidate")
+    server = PackAPIServer(port=0, dispatch_session=initial)
+    generation = _prepare_refresh_race(server, monkeypatch)
+    server._dispatch_session_owned_by_server = True
+    building, release_build = threading.Event(), threading.Event()
+    closing, release_close = threading.Event(), threading.Event()
+    draining = threading.Event()
+    condition_wait = server._runtime_capture_condition.wait
+
+    def capture(*_args, **_kwargs):
+        building.set()
+        assert release_build.wait(5)
+        return candidate
+
+    def close() -> None:
+        closing.set()
+        assert release_close.wait(5)
+        candidate.close_calls += 1
+
+    def wait(timeout=None):
+        draining.set()
+        return condition_wait(timeout)
+
+    monkeypatch.setattr(profile_capture, "capture_active_profile", object)
+    monkeypatch.setattr(authority_v4, "AuthorityStore", lambda _path: object())
+    monkeypatch.setattr(production_v4, "capture_production_dispatch", capture)
+    monkeypatch.setattr(candidate, "close", close)
+    monkeypatch.setattr(server._runtime_capture_condition, "wait", wait)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        refresh = executor.submit(
+            server._refresh_runtime_capture, lifecycle_generation=generation,
+        )
+        try:
+            assert building.wait(2)
+            stopped = executor.submit(server.stop)
+            assert draining.wait(2)
+            assert not stopped.done()
+            assert initial.close_calls == 0
+            release_build.set()
+            assert closing.wait(2)
+            assert not stopped.done()
+            assert initial.close_calls == 0
+            assert server._lifecycle_state == "stopping"
+        finally:
+            release_build.set()
+            release_close.set()
+        refresh.result(timeout=2)
+        stopped.result(timeout=2)
+    assert candidate.close_calls == initial.close_calls == 1
+    assert server._retired_dispatch_sessions == []
+    assert server._lifecycle_state == "stopped"
+
+
+def test_capture_factory_failure_releases_stop_drain_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed construction cannot leave a phantom in-flight capture."""
+    initial = _RefreshDispatch("initial")
+    server = PackAPIServer(port=0, dispatch_session=initial)
+    generation = _prepare_refresh_race(server, monkeypatch)
+
+    def fail_inputs():
+        raise RuntimeError("capture input failed")
+
+    server._runtime_capture_factory = fail_inputs
+    with pytest.raises(RuntimeError, match="capture input failed"):
+        server._refresh_runtime_capture(initial, lifecycle_generation=generation)
+    server.stop()
+    assert server._lifecycle_state == "stopped"
+    assert initial.close_calls == 0
 
 
 def test_double_stop_and_restart_remain_bounded() -> None:

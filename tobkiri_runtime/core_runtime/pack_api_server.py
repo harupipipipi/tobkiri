@@ -2370,6 +2370,8 @@ class PackAPIServer:
         self.thread: threading.Thread | None = None
         self.handler_class: type[PackAPIHandler] | None = None
         self._lifecycle_lock = threading.RLock()
+        self._runtime_capture_condition = threading.Condition(self._lifecycle_lock)
+        self._active_runtime_captures = 0
         self._lifecycle_generation = 0
         self._runtime_refresh_sequence = 0
         self._lifecycle_state = "stopped"
@@ -2592,6 +2594,29 @@ class PackAPIServer:
             self._runtime_refresh_sequence += 1
             refresh_sequence = self._runtime_refresh_sequence
             base_session = self._dispatch_session
+            self._active_runtime_captures += 1
+
+        try:
+            self._build_runtime_capture(
+                activated_session,
+                lifecycle_generation=lifecycle_generation,
+                refresh_sequence=refresh_sequence,
+                base_session=base_session,
+            )
+        finally:
+            with self._runtime_capture_condition:
+                self._active_runtime_captures -= 1
+                self._runtime_capture_condition.notify_all()
+
+    def _build_runtime_capture(
+        self,
+        activated_session: DispatchSession | None,
+        *,
+        lifecycle_generation: int,
+        refresh_sequence: int,
+        base_session: DispatchSession | None,
+    ) -> None:
+        """Build, publish or close one candidate before releasing its drain slot."""
 
         from tobkiri_host.runtime import install_dispatch_session
 
@@ -2714,7 +2739,13 @@ class PackAPIServer:
             self._close_retired_session(previous)
         from .app_lifecycle_manager import mark_runtime_ready
 
-        mark_runtime_ready()
+        with self._lifecycle_lock:
+            if (
+                self._lifecycle_state == "running"
+                and lifecycle_generation == self._lifecycle_generation
+                and refresh_sequence == self._runtime_refresh_sequence
+            ):
+                mark_runtime_ready()
 
     def _close_retired_session(self, session: DispatchSession) -> None:
         """Release a retired capture, retaining ownership until close succeeds."""
@@ -2811,6 +2842,14 @@ class PackAPIServer:
         if server is not None:
             drained = server.wait_for_request_drain(max(0.0, deadline - time.monotonic()))
             diagnostics.update(server.teardown_snapshot())
+        with self._runtime_capture_condition:
+            while self._active_runtime_captures:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                self._runtime_capture_condition.wait(remaining)
+            drained = drained and self._active_runtime_captures == 0
+            diagnostics["active_runtime_captures"] = self._active_runtime_captures
 
         with self._lifecycle_lock:
             if drained and not serving_thread_alive:
