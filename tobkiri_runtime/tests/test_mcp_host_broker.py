@@ -14,7 +14,7 @@ from core_runtime.authority.ui_operator import sign_ui_operator
 from core_runtime.authority.v4 import AuthorityDenied, AuthorityStore
 from core_runtime.bootstrap import profile_capture, runtime
 from core_runtime.bootstrap.production_v4 import capture_production_dispatch
-from core_runtime.mcp.connection_owner import CONNECT, CONTRACT_ID, DISCONNECT, LIST, PREPARE
+from core_runtime.mcp.connection_owner import CALL, CONNECT, CONTRACT_ID, DISCONNECT, LIST, PREPARE
 from ecosystem.defaultspack.defaultspack.runtime_composition import (
     defaultspack_activation_snapshot_loader,
 )
@@ -25,13 +25,13 @@ from scripts.generate_packaged_defaultspack_v4_bundle import package_bundle
 from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
 from tests.conformance_support.host_contract import host_contract
 from tests.test_mcp_connection_owner import connection_request as connection_request
-from tobkiri_host.errors import ProviderExecutionError
+from tobkiri_host.errors import ProviderExecutionError, ResolutionError
 
 
 _EFFECT = "tobkiri.service.interactive-effect.v1"
 _APPROVAL = "tobkiri.service.interactive-approval.v1"
 _COORDINATOR = "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
-_OWNER = {op: op + ".service" for op in (PREPARE, CONNECT, LIST, DISCONNECT)}
+_OWNER = {op: op + ".service" for op in (PREPARE, CONNECT, CALL, LIST, DISCONNECT)}
 _RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -74,6 +74,7 @@ def mcp_session(tmp_path, monkeypatch):
             _edge(_COORDINATOR, _OWNER[PREPARE], CONTRACT_ID, PREPARE),
             _edge(_COORDINATOR, _OWNER[CONNECT], CONTRACT_ID, CONNECT, "interactive_only"),
             _edge("shell.tauri.default", _OWNER[LIST], CONTRACT_ID, LIST),
+            _edge("shell.tauri.default", _OWNER[CALL], CONTRACT_ID, CALL),
             _edge("shell.tauri.default", _OWNER[DISCONNECT], CONTRACT_ID, DISCONNECT),
             _edge(
                 _OWNER[PREPARE],
@@ -83,6 +84,12 @@ def mcp_session(tmp_path, monkeypatch):
             ),
             _edge(
                 _OWNER[CONNECT],
+                "rumi_workspace_mount_pack.workspace-mount.resource",
+                "tobkiri.resource.workspace.v1",
+                "rumi_workspace_mount_pack.workspace-resource",
+            ),
+            _edge(
+                _OWNER[CALL],
                 "rumi_workspace_mount_pack.workspace-mount.resource",
                 "tobkiri.resource.workspace.v1",
                 "rumi_workspace_mount_pack.workspace-resource",
@@ -172,6 +179,7 @@ def mcp_session(tmp_path, monkeypatch):
 def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
     mcp_session,
     connection_request,
+    tmp_path,
 ):
     session, authority = mcp_session
 
@@ -218,6 +226,27 @@ def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
     assert len(connections) == 1 and connections[0]["status"] == "connected"
     assert invoke(CONTRACT_ID, LIST, {}, owner="foreign-session") == {"connections": []}
     assert invoke(_EFFECT, "interactive_effect.manage", resume)["state"] == "succeeded"
+    assert invoke(CONTRACT_ID, LIST, {})["connections"] == connections
+    call = {
+        "connection_id": connections[0]["connection_id"],
+        "tool": "ping",
+        "arguments": {"value": 42},
+    }
+    result = invoke(CONTRACT_ID, CALL, call)
+    assert result["is_error"] is False
+    assert json.loads(result["result"])["arguments"] == {"value": 42}
+    calls = tmp_path / "calls.jsonl"
+    assert len(calls.read_text().splitlines()) == 1
+    for payload, owner in (
+        (call, "foreign-session"),
+        ({**call, "tool": "blocked"}, "mcp-owner-session"),
+    ):
+        with pytest.raises(ProviderExecutionError, match="provider execution failed"):
+            invoke(CONTRACT_ID, CALL, payload, owner=owner)
+        assert len(calls.read_text().splitlines()) == 1
+    with pytest.raises(ResolutionError, match="input schema validation failed"):
+        invoke(CONTRACT_ID, CALL, {**call, "approved": True})
+    assert len(calls.read_text().splitlines()) == 1
     assert invoke(CONTRACT_ID, LIST, {})["connections"] == connections
     invoke(CONTRACT_ID, DISCONNECT, {"connection_id": connections[0]["connection_id"]})
     assert invoke(CONTRACT_ID, LIST, {}) == {"connections": []}
