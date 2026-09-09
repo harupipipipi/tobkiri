@@ -1329,12 +1329,12 @@
     {
       "path": "packs/rumi_turn_runtime_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:ec16f6af45fb0e88cde98f3c396c59163d66ebffa7b03807718948ca9f7895a9"
+      "digest": "sha256:d6d012b99d7642619a7dd38267501d01f46eda6fb222ea13a0b25a7dbf153110"
     },
     {
       "path": "packs/rumi_turn_runtime_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:1317f6013bcb866f0dd5cf09f01c60262b572cb0162010cb664dd8329ae489c5"
+      "digest": "sha256:194360d268c51491f5b01d2d7c97bbd942680d22142c202c754dd21f1f12da88"
     },
     {
       "path": "packs/rumi_voice_mobile_pack.executables.v4.json",
@@ -1374,7 +1374,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:b89c28829896a1501d7f5c3083c78ce0fe0f3591d94f4de18a7b08623bd52d14"
+      "digest": "sha256:6b8a41a2e7fc3917c756290fb4765949ada640e43615e2849f396e85464a54e7"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",

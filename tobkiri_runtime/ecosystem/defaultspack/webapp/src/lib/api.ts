@@ -3549,6 +3549,20 @@ export const api = {
     return result.turn;
   },
 
+  async stopSavedTurn(turnId: string): Promise<void> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for stopping.");
+    }
+    const result = await request<{ status: string; turn_id: string; stopped: boolean }>(
+      defaultspackContractRoute("api/chat/turn/stop"), {
+        method: "POST", body: JSON.stringify({ turn_id: turnId }),
+      },
+    );
+    if (result?.status !== "cancellation_requested" || result.turn_id !== turnId || result.stopped !== false) {
+      throw new Error("Saved turn cancellation receipt does not match the pending operation.");
+    }
+  },
+
   async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
     const input = { ...value };
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];

@@ -4,6 +4,19 @@
   "routes": [
     {
       "method": "POST",
+      "path": "/api/chat/turn/stop",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.stop",
+        "contract_id": "tobkiri.action.turn.stop.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-stop",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "allowed_payload_keys": ["turn_id"]
+      }]
+    },
+    {
+      "method": "POST",
       "path": "/api/ai/provider-key",
       "presentation": "broker_result",
       "targets": [{

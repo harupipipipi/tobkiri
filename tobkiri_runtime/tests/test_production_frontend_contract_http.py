@@ -565,6 +565,74 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         servers.close()
 
 
+def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) -> None:
+    """Real HTTP/Host/Broker cancellation; the AI and guest remain explicit adapters."""
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.runtime import V4DispatchSession
+
+    entered, observed = threading.Event(), threading.Event()
+    signals = []
+    original = V4DispatchSession.invoke
+
+    def invoke(self, contract_id, operation_id, payload, **kwargs):
+        if (contract_id, operation_id) == READINESS:
+            return {"ready": True, "model_profile_id": "model-profile-1"}
+        if (contract_id, operation_id) == TARGETS[2]:
+            signal = kwargs["parent_cancellation"]
+            signals.append(signal)
+            entered.set()
+            if signal.wait(8):
+                observed.set()
+            raise RuntimeError("test AI stopped without a result")
+        return original(self, contract_id, operation_id, payload, **kwargs)
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    servers = _captured_production_server(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    )
+    server, _session, _authority = next(servers)
+    try:
+        store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+        store.create({"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0)
+        cookie, csrf, origin = _authenticate(server)
+        foreign_cookie, foreign_csrf, _ = _authenticate(server)
+
+        def post(path, body, *, foreign=False):
+            return _request(server, "POST", _contract("POST", path), body=body, headers={
+                "Cookie": foreign_cookie if foreign else cookie, "Origin": origin,
+                "X-Rumi-CSRF": foreign_csrf if foreign else csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            })
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            sent = pool.submit(post, "/api/chat/turn", {"request": {
+                "turn_id": "turn-stop-1", "conversation_id": "conversation-1",
+                "conversation_revision": 1, "content": "Hello",
+            }})
+            try:
+                assert entered.wait(8), "saved execution did not reach the AI adapter"
+                status, denied, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"}, foreign=True)
+                assert status != 200, denied
+                assert not signals[0].is_set()
+                status, invalid, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1", "approved": True})
+                assert status == 400, invalid
+                status, receipt, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
+                assert status == 200, receipt
+                assert receipt["data"] == {
+                    "status": "cancellation_requested", "turn_id": "turn-stop-1", "stopped": False,
+                }
+                assert observed.wait(2)
+                sent.result(timeout=5)
+                assert len(signals) == 1
+            finally:
+                for signal in signals:
+                    signal.set()
+    finally:
+        servers.close()
+
+
 def test_preferences_write_uses_captured_owner_and_preserves_private_state(
     settings_vertical_server, tmp_path: Path,
 ) -> None:

@@ -16,7 +16,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
@@ -32,7 +32,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
@@ -48,7 +48,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
@@ -125,6 +125,24 @@
   "packs": {
     "rumi_turn_runtime_pack": {
       "entries": [
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "operation_ids": ["rumi_turn_runtime_pack.turn-stop"],
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "type": "object", "additionalProperties": false, "required": ["turn_id"],
+              "properties": {"turn_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9]", "not": {"pattern": "[^A-Za-z0-9._:-]"}}}
+            },
+            "output": {
+              "type": "object", "additionalProperties": false, "required": ["status", "turn_id", "stopped"],
+              "properties": {"status": {"const": "cancellation_requested"}, "turn_id": {"type": "string"}, "stopped": {"const": false}}
+            },
+            "error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}, "additionalProperties": false}
+          }
+        },
         {
           "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
           "operation_ids": [

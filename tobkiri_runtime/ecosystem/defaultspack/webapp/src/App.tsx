@@ -4226,7 +4226,17 @@ export function ChatApp() {
   const handleStopGenerating = () => {
     const conversationId = activeConversationId;
     if (conversationId && pendingRequests[conversationId]?.savedTurn) {
-      setError("保存付き送信の停止確認は未対応です。停止済みとは扱わず、結果の照合を続けます。");
+      const turnId = pendingRequests[conversationId].operationId;
+      if (!turnId) {
+        setError("送信の操作IDを確認できないため、停止要求は送信していません。");
+        return;
+      }
+      setError("停止を要求しています。停止済みとは扱わず、結果の照合を続けます。");
+      void api.stopSavedTurn(turnId).then(() => {
+        setError("停止要求を受け付けました。実行・保存結果の照合を続けます。");
+      }).catch(() => {
+        setError("停止要求の結果を確認できません。自動再送せず、実行・保存結果の照合を続けます。");
+      });
       return;
     }
     if (conversationId) {

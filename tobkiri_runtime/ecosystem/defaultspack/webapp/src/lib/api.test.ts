@@ -2512,6 +2512,31 @@ test("streamMessage forwards abort signal to fetch", async () => {
   assert.equal(seenSignal, controller.signal);
 });
 
+test("saved stop sends only turn identity and rejects false completion receipts", async () => {
+  const originalFetch = globalThis.fetch;
+  let response = { status: "cancellation_requested", turn_id: "turn-1", stopped: false };
+  const calls: unknown[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(requestTarget(input), routeKey("api/chat/turn/stop"));
+    assert.equal(init?.method, "POST");
+    calls.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ status: "ok", data: response }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    await api.stopSavedTurn("turn-1");
+    response = { ...response, stopped: true };
+    await assert.rejects(api.stopSavedTurn("turn-1"), /receipt/);
+    response = { ...response, stopped: false, turn_id: "other" };
+    await assert.rejects(api.stopSavedTurn("turn-1"), /receipt/);
+    await assert.rejects(api.stopSavedTurn("../invalid"), /stable turn ID/);
+    assert.deepEqual(calls, [{ turn_id: "turn-1" }, { turn_id: "turn-1" }, { turn_id: "turn-1" }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("stopMessage calls backend stop endpoint", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
