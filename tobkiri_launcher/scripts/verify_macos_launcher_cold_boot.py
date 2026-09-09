@@ -49,7 +49,8 @@ PANEL_AUTH_BOOTSTRAP_PATH = "/api/panel/auth/bootstrap"
 PANEL_AUTH_EXCHANGE_PATH = "/api/panel/auth/exchange"
 DEFAULT_KERNEL_PORT = 8765
 POLL_INTERVAL_SECONDS = 0.2
-HTTP_TIMEOUT_SECONDS = 0.8
+HTTP_CONNECT_TIMEOUT_SECONDS = 0.8
+HTTP_RESPONSE_TIMEOUT_SECONDS = 30.0
 TERMINATION_GRACE_SECONDS = 5.0
 MAX_ANCESTRY_DEPTH = 64
 DIAGNOSTIC_FILENAME = "launcher-cold-boot.v1.json"
@@ -105,7 +106,7 @@ class ColdBootProbes:
     port_available: Callable[[int], bool]
     reserve_broker_port: Callable[[int], int]
     http_request: Callable[
-        [int, str, str, Mapping[str, str], bytes], Optional[HttpResponse]
+        [int, str, str, Mapping[str, str], bytes, float], Optional[HttpResponse]
     ]
     listener_pid: Callable[[int], Optional[int]]
     parent_pid: Callable[[int], Optional[int]]
@@ -290,25 +291,71 @@ def _http_request(
     path: str,
     headers: Mapping[str, str],
     body: bytes,
+    timeout_seconds: float,
 ) -> Optional[HttpResponse]:
+    if timeout_seconds <= 0:
+        return None
+    deadline = time.monotonic() + timeout_seconds
+    connection = http.client.HTTPConnection(
+        "127.0.0.1", port,
+        timeout=min(HTTP_CONNECT_TIMEOUT_SECONDS, timeout_seconds),
+    )
+    timer: Optional[threading.Timer] = None
+
+    def remaining_timeout() -> None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or connection.sock is None:
+            raise TimeoutError("cold-boot HTTP budget expired")
+        connection.sock.settimeout(remaining)
+
     try:
-        connection = http.client.HTTPConnection(
-            "127.0.0.1",
-            port,
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
+        connection.connect()
+        remaining_timeout()
+        owned_socket = connection.sock
+        assert owned_socket is not None
+
+        def expire_socket() -> None:
+            # Socket timeouts reset on each read; a slow response must still
+            # stop at the original request/boot deadline.
+            try:
+                owned_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+        timer = threading.Timer(deadline - time.monotonic(), expire_socket)
+        timer.daemon = True
+        timer.start()
         connection.request(method, path, body=body, headers=dict(headers))
+        remaining_timeout()
         response = connection.getresponse()
+        # HTTP/1.0 getresponse may detach the socket from the connection. The
+        # response retains its already bounded socket until the body is read.
         body = response.read(128 * 1024)
+        if time.monotonic() >= deadline:
+            return None
         headers = {key.lower(): value for key, value in response.getheaders()}
         return HttpResponse(response.status, headers, body)
     except (OSError, http.client.HTTPException):
         return None
     finally:
-        try:
-            connection.close()
-        except UnboundLocalError:
-            pass
+        if timer is not None:
+            timer.cancel()
+        connection.close()
+
+
+def _request_before_deadline(
+    probes: ColdBootProbes, deadline: float, port: int, method: str, path: str,
+    headers: Mapping[str, str], body: bytes,
+) -> Optional[HttpResponse]:
+    """Allow a cold health read without resetting the whole boot deadline."""
+    remaining = deadline - probes.monotonic()
+    if remaining <= 0:
+        return None
+    response = probes.http_request(
+        port, method, path, headers, body,
+        min(HTTP_RESPONSE_TIMEOUT_SECONDS, remaining),
+    )
+    return response if probes.monotonic() < deadline else None
 
 
 def _listener_pid(port: int) -> Optional[int]:
@@ -559,10 +606,12 @@ def _panel_authentication_is_reachable(
     config: ColdBootConfig,
     probes: ColdBootProbes,
     bootstrap_secret: str,
+    deadline: float,
 ) -> bool:
     """Prove the native bootstrap and browser code exchange both work locally."""
 
-    bootstrap = probes.http_request(
+    bootstrap = _request_before_deadline(
+        probes, deadline,
         config.kernel_port,
         "POST",
         PANEL_AUTH_BOOTSTRAP_PATH,
@@ -578,7 +627,8 @@ def _panel_authentication_is_reachable(
     if not isinstance(code, str) or not code or code != code.strip():
         return False
 
-    exchange = probes.http_request(
+    exchange = _request_before_deadline(
+        probes, deadline,
         config.kernel_port,
         "POST",
         PANEL_AUTH_EXCHANGE_PATH,
@@ -737,7 +787,8 @@ def _wait_for_readiness(
             )
 
         if not broker_ready:
-            broker_response = probes.http_request(
+            broker_response = _request_before_deadline(
+                probes, deadline,
                 broker_port,
                 "GET",
                 BROKER_HEALTH_PATH,
@@ -755,7 +806,8 @@ def _wait_for_readiness(
             pending_stage = "bootstrap_contract"
             bootstrap_secret = bootstrap_secret or _embedded_panel_bootstrap_secret(config)
             challenge = secrets.token_urlsafe(32)
-            kernel_response = probes.http_request(
+            kernel_response = _request_before_deadline(
+                probes, deadline,
                 config.kernel_port,
                 "GET",
                 KERNEL_HEALTH_PATH,
@@ -784,11 +836,12 @@ def _wait_for_readiness(
                             config,
                             probes,
                             bootstrap_secret,
+                            deadline,
                         )
                         if bootstrap_secret is not None
                         else False
                     )
-                    if panel_reachable:
+                    if panel_reachable and probes.monotonic() < deadline:
                         return ColdBootResult(
                             broker_port=broker_port,
                             kernel_port=config.kernel_port,
