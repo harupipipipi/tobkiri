@@ -448,6 +448,12 @@ jobs:
       - name: Verify generated Tobkiri Launcher presentation catalog
         run: python scripts/quality/generate_presentation_catalog.py --check
 
+      - name: Verify canonical Host source inventory
+        run: >-
+          python -B -c
+          'import runpy; from pathlib import Path;
+          runpy.run_path(".github/scripts/prepare_tauri_resources.py")["canonical_host_files"](Path("tobkiri_runtime"))'
+
       - name: Enforce Pack v4 migration evidence freshness (Phase 0)
         run: >-
           python tobkiri_runtime/scripts/quality/scan_complete_v4_migration.py

@@ -88,6 +88,12 @@ jobs:
           test "${#token}" -eq 32
           echo "TOBKIRI_PACKAGING_TRANSACTION_TOKEN=$token" >> "$GITHUB_ENV"
 
+      - name: Verify canonical Host inventory before packaging
+        run: >-
+          /usr/bin/python3 -B -c
+          'import runpy; from pathlib import Path;
+          runpy.run_path(".github/scripts/prepare_tauri_resources.py")["canonical_host_files"](Path("tobkiri_runtime"))'
+
       - name: Build rootless sealed packaging Python
         shell: bash
         env:

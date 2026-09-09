@@ -24,6 +24,7 @@
     "macos_vz_supervisor.py",
     "materialization.py",
     "models.py",
+    "operation_cancellation.py",
     "platform_backends.py",
     "ports.py",
     "resources.py",
