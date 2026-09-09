@@ -511,7 +511,10 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
             "is_error": False,
         }
 
-    from ecosystem.defaultspack.domain.host_bridge import computer_router
+    # Patch the exact module used by the compatibility ToolExecutor. Importing
+    # the ecosystem-qualified alias creates a separate module and leaves the
+    # real router active during this isolated approval replay test.
+    from domain.host_bridge import computer_router
 
     monkeypatch.setattr(computer_router, "run_computer_action", fake_router)
     monkeypatch.setattr(ChatRunEngine, "_provider_supports_stream_tool_calls", staticmethod(lambda _model: True))
@@ -666,7 +669,9 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
     }, *[
         (event.get("type"), event.get("phase"), event.get("message"))
         for event in resumed_events
-        if event.get("type") in {"status", "error", "approval_requested"}
+        if event.get("type") in {
+            "status", "error", "approval_requested", "tool_call_completed",
+        }
     ]]
     assert router_calls[0]["context"]["_tool_server_approved"] is True
     assert router_calls[0]["payload"]["approval_token"] == decision["token"]
