@@ -249,7 +249,7 @@ class _BlockingReplies:
         self.sent: list[dict] = []
         self.replies: queue.Queue = queue.Queue()
 
-    def send(self, data: bytes, *, deadline: float | None = None) -> None:
+    def send(self, data: bytes, *, deadline: float | None = None, cancellation=None) -> None:
         request = json.loads(data)
         self.sent.append(request)
         self.replies.put({
@@ -332,7 +332,7 @@ def test_send_shares_request_deadline_and_late_reply_cannot_succeed(monkeypatch)
     monkeypatch.setattr(mcp_client, "time", SimpleNamespace(monotonic=lambda: clock[0]))
     monkeypatch.setattr(mcp_client, "_DEFAULT_TIMEOUT", 30)
 
-    def send(data: bytes, *, deadline: float) -> None:
+    def send(data: bytes, *, deadline: float, cancellation=None) -> None:
         assert deadline == 40
         assert json.loads(data)["id"] == 1
         clock[0] = 39.9
@@ -493,3 +493,69 @@ def test_failed_shutdown_retains_child_for_retry(failure_stage: str) -> None:
     process.kill.side_effect = None
     transport.stop()
     assert transport._proc is None
+
+
+@pytest.mark.parametrize("notification", [False, True])
+def test_cancelled_blocked_write_fences_child_and_retains_cleanup(notification) -> None:
+    """Host cancellation reaches real pipe writes before the 30 second deadline."""
+    transport = _child("import time; print('{}', flush=True); time.sleep(60)")
+    connection = mcp_client._ServerConnection("owned", {})
+    connection._transport = transport
+    cancellation = threading.Event()
+    transport.start()
+    process = transport._proc
+    assert transport.recv(timeout=2) == {}
+    operation = connection._send_notification if notification else connection._send_request
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(
+            operation, "blocked", {"text": "x" * 1_000_000},
+            deadline=time.monotonic() + 30, cancellation=cancellation,
+        )
+        try:
+            with pytest.raises(TimeoutError):
+                pending.result(timeout=0.1)
+            cancellation.set()
+            with pytest.raises(InterruptedError, match="cancelled"):
+                pending.result(timeout=2)
+            process.wait(timeout=2)
+            assert connection._transport is transport and transport._proc is process
+            # The pipe writer can report BrokenPipe after cancellation kills
+            # the child. Either diagnosis must keep subsequent sends fenced.
+            with pytest.raises(RuntimeError, match="stdio transport"):
+                transport.send(b'{"id": 99}')
+        finally:
+            # Reap even when checking this test against the old uncancellable writer.
+            connection.disconnect()
+    _assert_collected(transport, process)
+
+
+def test_cancelled_writer_lock_wait_does_not_enqueue_or_fence_an_unsent_frame() -> None:
+    """Cancelling a queued caller leaves another writer and the connection usable."""
+    transport = _child(
+        "import sys\n"
+        "for line in sys.stdin.buffer:\n"
+        " sys.stdout.buffer.write(line); sys.stdout.buffer.flush()\n"
+    )
+    transport.start()
+    process = transport._proc
+    cancellation = threading.Event()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        try:
+            with transport._write_lock:
+                pending = pool.submit(
+                    transport.send, b'{"id": 99}', cancellation=cancellation,
+                    deadline=time.monotonic() + 30,
+                )
+                with pytest.raises(TimeoutError):
+                    pending.result(timeout=0.1)
+                cancellation.set()
+                with pytest.raises(InterruptedError, match="cancelled"):
+                    pending.result(timeout=2)
+                assert transport._writes.empty()
+                assert not transport._stop_event.is_set()
+                assert process.poll() is None
+            transport.send(b'{"id": 1}')
+            assert transport.recv(timeout=2) == {"id": 1}
+        finally:
+            transport.stop()
+    _assert_collected(transport, process)

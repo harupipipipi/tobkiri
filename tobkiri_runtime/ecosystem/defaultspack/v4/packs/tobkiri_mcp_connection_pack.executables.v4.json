@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_mcp_connection_pack",
-  "source_identity": "sha256:c233791d3dc72f3e5785d1d0cb60a84611ad04d0fac67a493ce6d81cd3d75d9d",
+  "source_identity": "sha256:d4d82d2784adf594246fe331918615ca9c694e6a1991737c4e4528e63ec1d069",
   "variants": [
     {
       "variant_id": "mcp.connection.call.service.python",
       "function_id": "mcp.connection.call.service",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -231,7 +231,7 @@
       "variant_id": "mcp.connection.connect.service.python",
       "function_id": "mcp.connection.connect.service",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -455,7 +455,7 @@
       "variant_id": "mcp.connection.disconnect.service.python",
       "function_id": "mcp.connection.disconnect.service",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -679,7 +679,7 @@
       "variant_id": "mcp.connection.list.service.python",
       "function_id": "mcp.connection.list.service",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -903,7 +903,7 @@
       "variant_id": "mcp.connection.prepare.service.python",
       "function_id": "mcp.connection.prepare.service",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -1124,6 +1124,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:044e423bcf4251ff3d86115e42e5e2f790081ee64b8921d1fef719a7599defd5",
-  "catalog_digest": "sha256:a126649aeb5bc464b631929a259986a5e0cbd9adba2335092a9c07b103481138"
+  "materialization_catalog_digest": "sha256:c8d060cd7b987362d08c8cb2647c7c4d05ea98ae38f72e8527dbe69eb6ec2764",
+  "catalog_digest": "sha256:b67b5c9916e196f1ecda60909f1a2449fc9c88c0adbfb8a7f38d7775cdee735b"
 }

@@ -16966,7 +16966,7 @@
         {
           "contract_id": "tobkiri.service.mcp.connection.v1",
           "function_id": "mcp.connection.prepare.service",
-          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
           "operation_ids": [
             "mcp.connection.prepare"
           ]
@@ -16974,7 +16974,7 @@
         {
           "contract_id": "tobkiri.service.mcp.connection.v1",
           "function_id": "mcp.connection.connect.service",
-          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
           "operation_ids": [
             "mcp.connection.connect"
           ]
@@ -16982,7 +16982,7 @@
         {
           "contract_id": "tobkiri.service.mcp.connection.v1",
           "function_id": "mcp.connection.call.service",
-          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
           "operation_ids": [
             "mcp.connection.call"
           ]
@@ -16990,7 +16990,7 @@
         {
           "contract_id": "tobkiri.service.mcp.connection.v1",
           "function_id": "mcp.connection.disconnect.service",
-          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
           "operation_ids": [
             "mcp.connection.disconnect"
           ]
@@ -16998,7 +16998,7 @@
         {
           "contract_id": "tobkiri.service.mcp.connection.v1",
           "function_id": "mcp.connection.list.service",
-          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
           "operation_ids": [
             "mcp.connection.list"
           ]
@@ -17032,7 +17032,7 @@
             {
               "entrypoint_id": "mcp.connection.prepare",
               "id": "mcp.connection.prepare",
-              "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
               "effect_ceiling": [
                 "capability:mcp.connection.prepare",
                 "host:brokered-execution"
@@ -17041,7 +17041,7 @@
             {
               "entrypoint_id": "mcp.connection.connect",
               "id": "mcp.connection.connect",
-              "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
               "effect_ceiling": [
                 "capability:mcp.connection.connect",
                 "host:brokered-execution"
@@ -17054,7 +17054,7 @@
               ],
               "entrypoint_id": "mcp.connection.call",
               "id": "mcp.connection.call",
-              "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f"
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
             },
             {
               "effect_ceiling": [
@@ -17063,7 +17063,7 @@
               ],
               "entrypoint_id": "mcp.connection.disconnect",
               "id": "mcp.connection.disconnect",
-              "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f"
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
             },
             {
               "effect_ceiling": [
@@ -17072,7 +17072,7 @@
               ],
               "entrypoint_id": "mcp.connection.list",
               "id": "mcp.connection.list",
-              "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f"
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
             }
           ],
           "owner": "tobkiri_mcp_connection_pack",
@@ -17299,7 +17299,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
           "kind": "executable",
           "path": "runtime/host.py"
         }

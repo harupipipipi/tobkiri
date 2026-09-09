@@ -11603,7 +11603,7 @@
       "source": {
         "digest": "sha256:26ff32264a6778ca6dac58c74d357246a597bc5a0a36dd6fccfd6eab900b8e95",
         "executable_source_registry": {
-          "digest": "sha256:42f41d446d36f24840761aba30a9fb6b2fe12e8b90bb1726caac5b9094a95978",
+          "digest": "sha256:215a047e436b836078d11a3b939edad9ed701db549ce86f1a417c157cac0b89b",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 5
         },
@@ -11622,18 +11622,18 @@
       "target": {
         "artifact_verification": {
           "artifact_count": 4,
-          "artifact_index_digest": "sha256:9fbfb101d9df1794787bf788422ad8b642c82caf8b9e7390cde56fa161200e82",
-          "artifact_set_digest": "sha256:5ecd52ea88536d62d224989a4d27ad37ce84346fda9f6ef0474d07f4825baa59",
-          "executable_catalog_digest": "sha256:044e423bcf4251ff3d86115e42e5e2f790081ee64b8921d1fef719a7599defd5",
+          "artifact_index_digest": "sha256:56ce77b614a653ba837fbe864903c758d8dc63821cb0fc1440b7f2af7eb8bb8c",
+          "artifact_set_digest": "sha256:47d7cdb44a13fe2d56ea2e8c0b9c0c1ec46f14511feed58f22259be10cd28df5",
+          "executable_catalog_digest": "sha256:c8d060cd7b987362d08c8cb2647c7c4d05ea98ae38f72e8527dbe69eb6ec2764",
           "pack_id": "tobkiri_mcp_connection_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:9fbfb101d9df1794787bf788422ad8b642c82caf8b9e7390cde56fa161200e82",
-            "contracts.v4.json": "sha256:847834c910c59ec0654411c3c0fd97c0e07bad01aabbf5a097df8c33cb70884c",
-            "executables.v4.json": "sha256:0f7c89afc1daff3811ea65b37808532ce9c39e9c751eb7ba9cee62859240bcdb",
-            "pack.v4.json": "sha256:c233791d3dc72f3e5785d1d0cb60a84611ad04d0fac67a493ce6d81cd3d75d9d"
+            "artifact-index.v4.json": "sha256:56ce77b614a653ba837fbe864903c758d8dc63821cb0fc1440b7f2af7eb8bb8c",
+            "contracts.v4.json": "sha256:7c9a5574a77731c326e1b5d992dce9d182630e1f5614344fc55a3727ff9c0000",
+            "executables.v4.json": "sha256:65b434f133bc42d17b75371bc7762f84dea645f03db25b469249378401f67308",
+            "pack.v4.json": "sha256:d4d82d2784adf594246fe331918615ca9c694e6a1991737c4e4528e63ec1d069"
           }
         },
-        "digest": "sha256:5ecd52ea88536d62d224989a4d27ad37ce84346fda9f6ef0474d07f4825baa59",
+        "digest": "sha256:47d7cdb44a13fe2d56ea2e8c0b9c0c1ec46f14511feed58f22259be10cd28df5",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "tobkiri_mcp_connection_pack",
         "status": "artifact-integrity-verified"
@@ -11752,7 +11752,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:7819200b840afff2151266a357af1562c1e026ae2c3a90cd74b30f209f75b01c",
+    "content_digest": "sha256:dd8a7dc2b2d6dffce3c50247666b7868c78e4eaeaac3b377d9cca4dc1fa89b75",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 40,
@@ -11996,7 +11996,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:c03f7ae23514da6d5c7e41c8a5ead63644fd582251bbdc0d38b87a5a70114189",
+    "input_digest": "sha256:9c95a15b16acf707378846c8c3bd50cab7831086c4440a3b7438f6518cc4a31f",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaults/artifact-index.v4.json",
@@ -17520,27 +17520,27 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/runtime/catalog.py"
       },
       {
-        "digest": "sha256:9fbfb101d9df1794787bf788422ad8b642c82caf8b9e7390cde56fa161200e82",
+        "digest": "sha256:56ce77b614a653ba837fbe864903c758d8dc63821cb0fc1440b7f2af7eb8bb8c",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/artifact-index.v4.json"
       },
       {
-        "digest": "sha256:847834c910c59ec0654411c3c0fd97c0e07bad01aabbf5a097df8c33cb70884c",
+        "digest": "sha256:7c9a5574a77731c326e1b5d992dce9d182630e1f5614344fc55a3727ff9c0000",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:0f7c89afc1daff3811ea65b37808532ce9c39e9c751eb7ba9cee62859240bcdb",
+        "digest": "sha256:65b434f133bc42d17b75371bc7762f84dea645f03db25b469249378401f67308",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:c233791d3dc72f3e5785d1d0cb60a84611ad04d0fac67a493ce6d81cd3d75d9d",
+        "digest": "sha256:d4d82d2784adf594246fe331918615ca9c694e6a1991737c4e4528e63ec1d069",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+        "digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/runtime/host.py"
       },
@@ -17640,7 +17640,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:d8c466f9bd008d68546baf35be1746db1772926fdc155afdc79fd0ba9bbcea28",
+        "digest": "sha256:a41547022ab1011bdfdd6bb26177132a9ebab0480f489c71146e74a7b187a8d6",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -17701,7 +17701,7 @@
       "release-verified": 0,
       "semantically-reviewed": 40
     },
-    "observed_head_sha": "6280ea62fd04e9a9a4172368be572d78f68e40b7",
+    "observed_head_sha": "041c3bc35ff8191b36dde74446e70a3b38f0faa7",
     "pack_count": 142,
     "profile_collection_proof": {
       "identity_proof": {

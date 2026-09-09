@@ -96,7 +96,12 @@ class _CapturedConnections:
                 connections.extend(entry.connections.invoke(invocation)["connections"])
             return {"connections": connections}
         if operation in {PREPARE, CONNECT}:
-            with self._starts:
+            while True:
+                invocation.assert_current()
+                if self._starts.acquire(timeout=0.05):
+                    break
+            try:
+                invocation.assert_current()
                 workspace = _workspace(client, self.context.profile_id)
                 owner = self._owner(workspace)
                 if (
@@ -116,6 +121,8 @@ class _CapturedConnections:
                     with self._lock:
                         for created_id in owner.connections.connection_ids - before:
                             self._routes[created_id] = (owner, _origin(invocation))
+            finally:
+                self._starts.release()
         connection_id = payload.get("connection_id")
         if not isinstance(connection_id, str):
             raise ValueError("MCP connection is invalid")

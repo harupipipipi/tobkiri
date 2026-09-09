@@ -1142,11 +1142,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_mcp_connection_pack.executables.v4.json",
-      "digest": "sha256:8a2018e5e1852556f49c14243f89679a4fb5c487bd9ec40638e171364fb8729c"
+      "digest": "sha256:c1a8091de28e07819620a7561fc50f3007f08e8371d958d7d6ea7501e2e55f92"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_mcp_connection_pack.pack.v4.json",
-      "digest": "sha256:6698b8a5261e16d074de77458ebc04c9628c4ee37b59c1464103ae802c0c3923"
+      "digest": "sha256:5df68994e59f1949098dca56833a513fbdc978df338a1ec9a6955d004542346c"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.executables.v4.json",
@@ -1337,7 +1337,7 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:0cc03622d8c0186a7bd269628b05baba61ff9dfcf443734ceb5732f37de37bd2",
+    "bundle_digest": "sha256:adefdbbfbf90dae238215d8a5f56fc0447909c56d5bd7f6bd911cd830c0ff505",
     "catalog_revision": "sha256:8626b27508cbdab16fd57502c9b9e8978047500ee512b952906b7d72d8d86d11",
     "closure_digest": "sha256:098de2322e291af3046df7086180950bcdae5c66c489154f1d4a0c24bd3d001a"
   },
@@ -1348,8 +1348,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:3e05faaab38810abfdab6ef12cbf03fbfdc826aebeb42e8c0022c1bdeb271c79"
+      "digest": "sha256:c9f5e01cd4c4cecf2a97c7c221058394ba8fe0ed9e944d437f8e25f024032a53"
     }
   ],
-  "release_digest": "sha256:d681702b23b43793be61568411b9f589c4d9e6b9965643fa6445c80f9c8bcf68"
+  "release_digest": "sha256:d0f540a669ad04d53cf74d7a5eff93ed86fdffa8612104a997466f6405b66674"
 }

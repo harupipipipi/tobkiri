@@ -1,6 +1,9 @@
 """Captured factory and real-child lifecycle; workspace contract is a double."""
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import replace
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -72,6 +75,18 @@ def captured(tmp_path):
         invocation.presentation_owner_session_id = session
         if context_change:
             invocation.envelope = replace(invocation.envelope, **context_change)
+        # Match the production Host invocation contract, including cancellation
+        # and deadline checks while the factory waits for startup admission.
+        original_assert_current = invocation.assert_current
+
+        def assert_current():
+            original_assert_current()
+            if invocation.envelope.cancellation_requested.is_set():
+                raise InterruptedError("MCP invocation cancelled")
+            if time.monotonic() >= invocation.envelope.deadline_monotonic:
+                raise TimeoutError("MCP invocation expired")
+
+        invocation.assert_current = assert_current
         client_binding = None
 
         def contract_client(**kwargs):
@@ -210,3 +225,34 @@ def test_capture_retains_failed_cleanup_and_retries(captured, connection_request
     monkeypatch.setattr(owner, "close", original)
     provider.close()
     assert not service._owners and not service._routes
+
+
+@pytest.mark.parametrize("operation", [PREPARE, CONNECT])
+@pytest.mark.parametrize("end", ["cancel", "deadline"])
+def test_startup_wait_ends_without_workspace_access_or_child(
+    captured, connection_request, operation, end,
+):
+    """A busy capture cannot hold a cancelled/expired second startup indefinitely."""
+    provider, workspace, invoke = captured
+    service = provider.contributions[0].invoke.__self__
+    cancellation = threading.Event()
+    changes = {
+        "cancellation_requested": cancellation,
+        "deadline_monotonic": time.monotonic() + (0.2 if end == "deadline" else 30),
+    }
+    payload = connection_request if operation == PREPARE else {
+        "request": connection_request, "plan": {},
+    }
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with service._starts:
+            pending = pool.submit(invoke, operation, payload, context_change=changes)
+            with pytest.raises(TimeoutError):
+                pending.result(timeout=0.05)
+            if end == "cancel":
+                cancellation.set()
+            with pytest.raises(InterruptedError if end == "cancel" else TimeoutError):
+                pending.result(timeout=2)
+            assert workspace.reads == []
+            assert service._owners == {} and service._routes == {}
+    # Failure cannot strand the admission lock or poison an unrelated request.
+    assert invoke(PREPARE, connection_request)["request_digest"]

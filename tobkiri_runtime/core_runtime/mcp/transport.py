@@ -56,7 +56,10 @@ class _TransportBase:
     def stop(self):
         raise NotImplementedError
 
-    def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
+    def send(
+        self, message_bytes: bytes, *, deadline: float | None = None,
+        cancellation: threading.Event | None = None,
+    ) -> None:
         """JSON-RPC メッセージ（bytes）を送信する"""
         raise NotImplementedError
 
@@ -87,7 +90,9 @@ class _StdioTransport(_TransportBase):
         self._stderr_thread = None
         self._writer_thread: threading.Thread | None = None
         self._write_lock = threading.Lock()
-        self._writes: queue.Queue[tuple[bytes, float, threading.Event]] = queue.Queue(1)
+        self._writes: queue.Queue[
+            tuple[bytes, float, threading.Event | None, threading.Event]
+        ] = queue.Queue(1)
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue(_STDIO_QUEUE_LIMIT)
         self._stop_event = threading.Event()
         self._stdout_closed = threading.Event()
@@ -148,50 +153,74 @@ class _StdioTransport(_TransportBase):
                     pipe.close()
             self._proc = None
 
-    def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
+    def send(
+        self, message_bytes: bytes, *, deadline: float | None = None,
+        cancellation: threading.Event | None = None,
+    ) -> None:
         """Write within the original request budget, retaining unfinished IO."""
         if deadline is None:
             deadline = time.monotonic() + _DEFAULT_TIMEOUT
         if len(message_bytes) + 1 > _STDIO_FRAME_LIMIT:
             raise ValueError("stdio transport request exceeds limit")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0 or not self._write_lock.acquire(timeout=remaining):
-            raise TimeoutError("Timeout waiting for the MCP writer")
+        while True:
+            _check_request_lifetime(
+                deadline, cancellation, timeout_message="Timeout waiting for the MCP writer",
+            )
+            if self._stop_event.is_set():
+                raise RuntimeError(self._failure or "stdio transport is closed")
+            if self._write_lock.acquire(timeout=max(0, min(0.05, deadline - time.monotonic()))):
+                break
+        queued = False
         try:
+            _check_request_lifetime(
+                deadline, cancellation, timeout_message="Timeout waiting for the MCP writer",
+            )
             if self._stop_event.is_set():
                 raise RuntimeError(self._failure or "stdio transport is closed")
             if self._proc is None or self._proc.stdin is None:
                 raise RuntimeError("stdio transport not started")
-            if time.monotonic() >= deadline:
-                raise TimeoutError("Timeout waiting for the MCP writer")
             done = threading.Event()
-            self._writes.put_nowait((message_bytes, deadline, done))
+            self._writes.put_nowait((message_bytes, deadline, cancellation, done))
+            queued = True
             while not done.wait(max(0, min(deadline - time.monotonic(), 0.05))):
-                if time.monotonic() >= deadline:
-                    self._fail("stdio transport write deadline exceeded")
-                    raise TimeoutError("stdio transport write deadline exceeded")
+                _check_request_lifetime(
+                    deadline, cancellation, timeout_message="stdio transport write deadline exceeded",
+                )
                 if self._stop_event.is_set():
                     raise RuntimeError(self._failure or "stdio transport is closed")
-            if time.monotonic() >= deadline:
-                self._fail("stdio transport write deadline exceeded")
-                raise TimeoutError("stdio transport write deadline exceeded")
+            _check_request_lifetime(
+                deadline, cancellation, timeout_message="stdio transport write deadline exceeded",
+            )
             if self._stop_event.is_set():
                 raise RuntimeError(self._failure or "stdio transport is closed")
+        except (TimeoutError, InterruptedError) as error:
+            # Once enqueued, a partial frame may already have reached the child.
+            # Fence and retain it for stop(); never replay an uncertain write.
+            if queued:
+                self._fail(
+                    "stdio transport write cancelled" if isinstance(error, InterruptedError)
+                    else "stdio transport write deadline exceeded"
+                )
+            raise
         finally:
             self._write_lock.release()
 
     def _write_loop(self, stdin: BinaryIO) -> None:
         while not self._stop_event.is_set():
             try:
-                message_bytes, deadline, done = self._writes.get(timeout=0.05)
+                message_bytes, deadline, cancellation, done = self._writes.get(timeout=0.05)
             except queue.Empty:
                 continue
             try:
-                if time.monotonic() >= deadline:
-                    self._fail("stdio transport write deadline exceeded")
-                elif not self._stop_event.is_set():
+                _check_request_lifetime(deadline, cancellation)
+                if not self._stop_event.is_set():
                     stdin.write(message_bytes + b"\n")
                     stdin.flush()
+            except (TimeoutError, InterruptedError) as error:
+                self._fail(
+                    "stdio transport write cancelled" if isinstance(error, InterruptedError)
+                    else "stdio transport write deadline exceeded"
+                )
             except (OSError, ValueError):
                 self._fail("stdio transport write failed")
             finally:
@@ -323,8 +352,14 @@ class _SseTransport(_TransportBase):
             self._response.close()
             self._response = None
 
-    def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
+    def send(
+        self, message_bytes: bytes, *, deadline: float | None = None,
+        cancellation: threading.Event | None = None,
+    ) -> None:
         deadline = time.monotonic() + _DEFAULT_TIMEOUT if deadline is None else deadline
+        _check_request_lifetime(
+            deadline, cancellation, timeout_message="Timeout waiting for the MCP writer",
+        )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("Timeout waiting for the MCP writer")
@@ -351,6 +386,7 @@ class _SseTransport(_TransportBase):
             if time.monotonic() >= deadline:
                 self._failure = "MCP SSE POST deadline exceeded"
                 raise TimeoutError(self._failure)
+            _check_request_lifetime(deadline, cancellation)
         except urllib.error.HTTPError as exc:
             exc.close()
             raise RuntimeError("MCP SSE POST failed") from None
@@ -555,7 +591,10 @@ class _ServerConnection:
             request = {"jsonrpc": "2.0", "id": msg_id, "method": method}
             if params is not None:
                 request["params"] = params
-            transport.send(json.dumps(request).encode("utf-8"), deadline=deadline)
+            transport.send(
+                json.dumps(request).encode("utf-8"), deadline=deadline,
+                cancellation=cancellation,
+            )
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -587,7 +626,7 @@ class _ServerConnection:
             notification["params"] = params
         raw = json.dumps(notification).encode("utf-8")
         _check_request_lifetime(deadline, cancellation)
-        self._transport.send(raw, deadline=deadline)
+        self._transport.send(raw, deadline=deadline, cancellation=cancellation)
         _check_request_lifetime(deadline, cancellation)
 
     def _initialize(self, *, deadline=None, cancellation=None):
