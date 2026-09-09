@@ -1131,6 +1131,16 @@ def test_tool_executor_does_not_fallback_to_local_computer_use_with_yolo_policy(
     assert captured == {}
 
 
+def test_file_reader_declares_the_contract_backed_compatibility_entrypoint():
+    pack = ROOT / "ecosystem" / "rumi_default_tools_pack"
+    manifest = json.loads((pack / "tools/file_reader/manifest.json").read_text())
+    assert manifest["config"]["execution"] == {
+        "type": "rumi_function", "qualified_name": "defaultspack:tool_file_reader",
+    }
+    assert not (pack / "functions/file_reader/main.py").exists()
+    assert not (pack / "functions/file_reader/manifest.json").exists()
+
+
 def test_tool_file_reader_ignores_caller_supplied_workspace_root(
     tmp_path,
     monkeypatch,

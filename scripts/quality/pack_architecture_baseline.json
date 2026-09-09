@@ -108,21 +108,6 @@
       "violation_category": "cross_pack_import"
     },
     {
-      "identity": "cross_pack_import|tobkiri_runtime/ecosystem/rumi_default_tools_pack/functions/file_reader/main.py|ast-v1:55cfbcad4ab3cbca0aa3|rumi_default_tools_pack|defaultspack",
-      "rule": "cross_pack_import",
-      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/functions/file_reader/main.py",
-      "line": 53,
-      "fingerprint": "ast-v1:55cfbcad4ab3cbca0aa3",
-      "source": "rumi_default_tools_pack",
-      "target": "defaultspack",
-      "owner": "pack-architecture",
-      "reason": "Observed in the integrated full-v4 candidate and left unreviewed by Phase 0; remove or explicitly adjudicate before the sunset.",
-      "introduced_at": "2026-09-01",
-      "fix_by_wave": 10,
-      "sunset_at": "2027-09-01",
-      "violation_category": "cross_pack_import"
-    },
-    {
       "identity": "cross_pack_import|tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/runtime/gateway.py|ast-v1:28ef84f2295ce03a8ec9|rumi_mcp_gateway_pack|defaultspack",
       "rule": "cross_pack_import",
       "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/runtime/gateway.py",

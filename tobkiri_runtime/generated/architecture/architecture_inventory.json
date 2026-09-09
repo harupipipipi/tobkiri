@@ -4193,13 +4193,6 @@
         "evidence": "host_execution",
         "line": 5,
         "message": "legacy execution or authority path is present",
-        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/functions/file_reader/manifest.json",
-        "rule_id": "legacy_host_execution"
-      },
-      {
-        "evidence": "host_execution",
-        "line": 5,
-        "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/functions/reddit_search/manifest.json",
         "rule_id": "legacy_host_execution"
       },
@@ -13555,12 +13548,6 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:6a6c184becb294f785b45738b3fe75a4cf9337119c328c030575e4cb1ff73888",
-        "line": 5,
-        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/functions/file_reader/manifest.json",
-        "rule_id": "legacy_host_execution"
-      },
-      {
         "evidence_digest": "sha256:c2ddca7c869dda36f00b2d28223427c14dc8438b9b873c75c2e97f5d1719d517",
         "line": 5,
         "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/functions/reddit_search/manifest.json",
@@ -18407,7 +18394,7 @@
     ]
   },
   "repository": {
-    "commit": "715da2f22a0291dde0f509db1035c38872b9a3ec",
+    "commit": "a7e5bc4c9fbec54bde476139d375447204366c60",
     "tree_digest": "dc2d2c6a6d35ddb6057d2ef5ed87fc011165e5fd5afac8fd63cd4267b6d954b0"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
