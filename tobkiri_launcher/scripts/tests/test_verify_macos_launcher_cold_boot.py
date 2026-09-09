@@ -388,6 +388,44 @@ def test_cold_boot_rejects_healthy_kernel_not_owned_by_launched_app(
     ]
 
 
+@pytest.mark.parametrize(
+    "stage",
+    ["bootstrap_contract", "authenticated_kernel_health", "panel_authentication"],
+)
+def test_cold_boot_timeout_identifies_stage_without_response_payload(
+    tmp_path: Path, stage: str,
+) -> None:
+    config, diagnostics = _bundle_and_config(tmp_path)
+    clock = _Clock()
+    signals: list[tuple[int, signal.Signals]] = []
+
+    def request(
+        port: int, method: str, path: str, headers: object, _body: bytes,
+    ) -> Optional[object]:
+        if path == VERIFY.BROKER_HEALTH_PATH:
+            _write_embedded_broker_connection(config.app_data_dir, port)
+            if stage != "bootstrap_contract":
+                _write_embedded_host_contract(config.app_data_dir)
+            return VERIFY.HttpResponse(200, {}, b'{"ok":true,"status":"running"}')
+        if path == VERIFY.KERNEL_HEALTH_PATH and stage == "panel_authentication":
+            return _authenticated_kernel_health_response(headers)
+        return VERIFY.HttpResponse(503, {}, b'private-response-must-not-be-logged')
+
+    with pytest.raises(VERIFY.ColdBootError, match=f"pending stage: {stage}"):
+        VERIFY.verify_cold_boot(
+            config,
+            probes=_probes(clock, request, lambda _pid: _Process.pid, signals),
+            launch=lambda *_args: _Process(),
+            base_environment={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+        )
+    diagnostic = (diagnostics / VERIFY.DIAGNOSTIC_FILENAME).read_text()
+    assert stage in diagnostic
+    assert "private-response" not in diagnostic
+    assert "cold-boot-test-secret" not in diagnostic
+    assert "not-printed-test-token" not in diagnostic
+    assert signals == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+
+
 def test_cold_boot_fails_closed_when_ci_app_data_is_not_fresh(tmp_path: Path) -> None:
     config, _diagnostics = _bundle_and_config(tmp_path)
     config.app_data_dir.mkdir()
