@@ -434,6 +434,74 @@ def test_runner_cancellation_kills_descendant_process_tree_and_keeps_bounded_res
     assert not sentinel.exists()
 
 
+@pytest.mark.parametrize("failure", [None, "assign", "body", "spawn"])
+def test_windows_spawn_owns_job_before_resume_and_closes_on_failure(monkeypatch, failure) -> None:
+    from types import SimpleNamespace
+    import core_runtime.bounded_process_runner as runner_module
+    import core_runtime.windows_process_job as job_module
+
+    events = []
+
+    class FakeJob:
+        def __init__(self):
+            self.closed = False
+            events.append("job")
+
+        def assign_and_resume(self, handle, pid):
+            assert (handle, pid) == (2**40, 123)
+            events.append("assign-resume")
+            if failure == "assign":
+                raise OSError("assignment denied")
+
+        def close(self):
+            if not self.closed:
+                events.append("close")
+                self.closed = True
+
+    class FakeProcess:
+        pid = 123
+        _handle = 2**40
+        stdin = stdout = stderr = None
+        alive = failure in {"assign", "body"}
+
+        def poll(self):
+            return None if self.alive else 0
+
+        def kill(self):
+            events.append("kill")
+            self.alive = False
+
+    def spawn(**kwargs):
+        assert kwargs["creationflags"] & job_module.CREATE_SUSPENDED
+        events.append("spawn")
+        if failure == "spawn":
+            raise OSError("spawn denied")
+        return FakeProcess()
+
+    monkeypatch.setattr(runner_module, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(job_module, "WindowsProcessJob", FakeJob)
+    monkeypatch.setattr(runner_module.subprocess, "Popen", spawn)
+
+    def run():
+        with HostBoundedProcessRunner._spawn_process({}) as process:
+            assert not process._tobkiri_process_job.closed
+            events.append("body")
+            if failure == "body":
+                raise RuntimeError("body failed")
+
+    if failure:
+        with pytest.raises((OSError, RuntimeError)):
+            run()
+    else:
+        run()
+    expected = ["job", "spawn"]
+    if failure != "spawn":
+        expected.append("assign-resume")
+    if failure not in {"spawn", "assign"}:
+        expected.append("body")
+    assert events == [*expected, "close", *(["kill"] if failure in {"assign", "body"} else [])]
+
+
 def test_runner_never_attests_unverified_windows_tree_termination(monkeypatch) -> None:
     import core_runtime.bounded_process_runner as runner_module
 
