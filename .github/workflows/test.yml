@@ -455,7 +455,9 @@ jobs:
           npm run build
 
       - name: Scan copied Launcher panel routes
-        run: python scripts/quality/scan_launcher_frontend_routes.py
+        run: >-
+          python scripts/quality/scan_launcher_frontend_routes.py
+          --panel-root "${{ runner.temp }}/tobkiri-panel-build"
 
       - name: Exercise Base Pack/Shell and structured CLI integration
         run: |
