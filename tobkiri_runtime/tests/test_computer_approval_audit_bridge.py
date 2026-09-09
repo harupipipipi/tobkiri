@@ -194,7 +194,16 @@ def test_dry_run_does_not_execute_driver(controller):
     controller._computer_seat.click.assert_not_called()
 
 
-def test_pid_event_function_requires_approval_before_service(tmp_path, monkeypatch):
+@pytest.mark.parametrize("context", [
+    {},
+    {"_tool_server_approved": True},
+    {"_tool_server_approval_token_valid": True},
+    {"_tool_server_approved": True, "_tool_server_approval_token_valid": True,
+     "_tool_server_approval_internal": True},
+])
+def test_pid_event_function_requires_approval_before_service(
+    tmp_path, monkeypatch, context
+):
     """The standalone subprocess function must not dispatch PID input without approval."""
     from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
     from ecosystem.rumi_default_tools_pack.functions import _computer_approval
@@ -209,11 +218,41 @@ def test_pid_event_function_requires_approval_before_service(tmp_path, monkeypat
         lambda: (_ for _ in ()).throw(AssertionError("service must not be used before approval")),
     )
 
-    result = main.run({}, {"pid": 123, "action": "type_text", "text": "blocked"})
+    result = main.run(context, {"pid": 123, "action": "type_text", "text": "blocked"})
 
     assert result["action"] == "computer.pid_event"
     assert result["requires_approval"] is True
     assert "approval_token" not in result
+
+
+def test_pid_event_function_consumes_scoped_stored_token_once(tmp_path, monkeypatch):
+    """A real isolated approval record permits one dispatch, not a flag replay."""
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import (
+        BrowserComputerController,
+    )
+    from ecosystem.rumi_default_tools_pack.functions import _computer_approval
+    from ecosystem.rumi_default_tools_pack.functions.computer_pid_event import main
+
+    controller = BrowserComputerController(artifact_root=tmp_path / "artifacts")
+    controller._approval_path = tmp_path / "shared" / "approvals.json"
+    monkeypatch.setattr(controller, "_approval_module", lambda: None)
+    monkeypatch.setattr(_computer_approval, "BrowserComputerController", lambda: controller)
+    service = MagicMock()
+    service.pid_event.return_value = {"executed": True}
+    monkeypatch.setattr(main, "_get_service", lambda: service)
+    arguments = {"pid": 123, "action": "type_text", "text": "approved"}
+    token = controller._issue_legacy_approval("computer.pid_event", arguments)
+    supplied = {**arguments, "approval_token": token}
+
+    assert main.run({}, supplied)["executed"] is True
+    assert main.run({"_tool_server_approved": True}, supplied)["requires_approval"]
+    service.pid_event.assert_called_once()
+
+    changed_token = controller._issue_legacy_approval("computer.pid_event", arguments)
+    assert main.run({}, {**arguments, "pid": 456, "approval_token": changed_token})[
+        "requires_approval"
+    ]
+    service.pid_event.assert_called_once()
 
 
 # --- Permission model tests ---

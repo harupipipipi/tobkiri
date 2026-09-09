@@ -20,6 +20,53 @@ class _Handler(SetupHandlersMixin):
     pass
 
 
+@pytest.mark.parametrize("query", [
+    "include_source_additions=false",
+    "include_source_additions=1",
+    "include_source_additions=true&include_source_additions=true",
+    "include_source_additions=true&unknown=1",
+    "unknown=1",
+])
+def test_setup_rejects_noncanonical_review_selector_without_activation(query: str) -> None:
+    handler = _Handler()
+    handler.path = f"/api/setup/packs/install?{query}"
+    with patch.object(profile_capture, "capture_bootstrap_profile") as capture:
+        result = handler._setup_install_pack(_request())
+    assert result["status_code"] == 409
+    assert result["write_set"] == []
+    capture.assert_not_called()
+
+
+@pytest.mark.parametrize("via_lifecycle", [False, True])
+def test_setup_forwards_same_additive_candidate_to_activation(via_lifecycle: bool) -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs/install?include_source_additions=true"
+    with (
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()) as listing,
+        patch.object(profile_capture, "capture_bootstrap_profile", side_effect=ProfileResolutionDenied("test denial")) as capture,
+        patch.object(_Handler, "app_lifecycle_manager", None, create=True),
+    ):
+        if via_lifecycle:
+            _Handler.app_lifecycle_manager = SimpleNamespace(activate_bootstrap_profile=capture)
+        handler._setup_install_pack(_request())
+        listing.assert_called_once_with(include_source_additions=True)
+        if via_lifecycle:
+            capture.assert_called_once_with(_request()["confirmation"], include_source_additions=True)
+        else:
+            capture.assert_called_once_with(confirmation=_request()["confirmation"], include_source_additions=True)
+
+
+def test_additive_setup_listing_uses_requested_candidate() -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs?include_source_additions=true"
+    with (
+        patch.object(profile_capture, "active_profile_exists", return_value=False),
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()) as listing,
+    ):
+        handler._setup_list_packs()
+    assert listing.call_args.kwargs["include_source_additions"] is True
+
+
 @pytest.fixture(autouse=True)
 def _install_profile_runtime() -> None:
     """Compose the Pack port explicitly for this isolated Host-handler suite."""

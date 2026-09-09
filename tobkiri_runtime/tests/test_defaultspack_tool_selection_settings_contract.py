@@ -110,7 +110,8 @@ def test_all_with_hints_exposes_every_schema_and_keeps_recommendations(monkeypat
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -164,7 +165,8 @@ def test_catalog_ai_direct_sends_every_compact_candidate_to_selector(monkeypatch
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -215,7 +217,8 @@ def test_catalog_ai_uses_full_catalog_even_above_direct_limit(monkeypatch):
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -261,7 +264,8 @@ def test_explicit_tool_helper_model_does_not_force_fast_route(monkeypatch):
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["model_hint"] = input_data["model_hint"]
         captured["required_capabilities"] = input_data["required_capabilities"]
@@ -942,7 +946,7 @@ def test_available_tools_falls_back_when_selector_service_fails(monkeypatch):
 
     monkeypatch.setattr(run_request, "ToolRegistry", FakeRegistry)
     monkeypatch.setattr(run_request, "filter_tool_definitions_for_runtime_profile", fake_filter)
-    monkeypatch.setattr(run_request, "_read_frontend_settings", lambda: {"tools": {"selection_strategy": "catalog_ai"}})
+    monkeypatch.setattr(run_request, "_read_frontend_settings", lambda *, settings_owner=None: {"tools": {"selection_strategy": "catalog_ai"}})
     monkeypatch.setattr(run_request.ToolSelectionService, "select", fake_select)
 
     raw, provider, context = run_request._available_tools(

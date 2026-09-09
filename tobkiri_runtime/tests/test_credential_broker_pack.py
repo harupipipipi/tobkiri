@@ -287,6 +287,66 @@ def test_transport_rechecks_deadline_after_secret_resolution(
         assert "deadline-canary" not in repr(material)
 
 
+@pytest.mark.parametrize("stage", ["before", "resolve", "response"])
+@pytest.mark.parametrize("stop", ["cancel", "deadline"])
+def test_transport_fences_host_stop_before_egress_and_after_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    stop: str,
+) -> None:
+    """Host cancellation/deadline cannot be extended by a provider payload."""
+    transport, arguments = _https_transport(tmp_path, secret="stop-canary")
+    transport._envelope = replace(
+        transport._envelope, deadline_monotonic=11.0
+    )
+    clock = [10.0]
+    touched: list[str] = []
+    material = {"api_key": "stop-canary"}
+    audits: list[Mapping[str, Any]] = []
+
+    def request_stop() -> None:
+        if stop == "cancel":
+            transport._envelope.cancellation_requested.set()
+        else:
+            clock[0] = 11.0
+
+    def resolve(*args: object, **kwargs: object) -> dict[str, Any]:
+        touched.append("resolve")
+        if stage == "resolve":
+            request_stop()
+        return material
+
+    def open_request(request: urllib.request.Request, *, timeout: float) -> _Response:
+        touched.append("open")
+        assert timeout <= 1.0
+        if stage == "response":
+            request_stop()
+        return _Response({"answer": "late result"})
+
+    monkeypatch.setattr(transport._store, "resolve", resolve)
+    monkeypatch.setattr(transport, "_monotonic_clock", lambda: clock[0])
+    monkeypatch.setattr(transport, "_clock", lambda: 100.0)
+    monkeypatch.setattr(transport, "_opener", open_request)
+    monkeypatch.setattr(transport, "_audit_sink", audits.append)
+    if stage == "before":
+        request_stop()
+
+    with pytest.raises(CredentialTransportDenied) as denied:
+        transport.post_json(**arguments)
+
+    assert denied.value.code == "binding_invalid"
+    assert touched == {
+        "before": [], "resolve": ["resolve"], "response": ["resolve", "open"]
+    }[stage]
+    assert "stop-canary" not in str(denied.value)
+    assert all(item.get("status") != "completed" for item in audits)
+    if stage != "before":
+        assert material == {}
+        with pytest.raises(CredentialTransportDenied):
+            transport.post_json(**arguments)
+
+
 def _pin_test_network(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[list[str], list[tuple[str, int]]]:

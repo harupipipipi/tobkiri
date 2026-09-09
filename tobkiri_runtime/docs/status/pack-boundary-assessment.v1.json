@@ -409,7 +409,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-          "sha256": "412e8e25eaa60e98b0d1b10d9a8d7319059cd09123ad12c7767a5527cd690a5d"
+          "sha256": "7b885b219a66711241b4ca90bce62cee1b8b773d84e506285f36a51e7a62f931"
         }
       ]
     },
@@ -1249,7 +1249,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/ecosystem.json",
-          "sha256": "127164eadd131cada8c15ff6a153561c41aade56458e3b1897fcf50979bd1caa"
+          "sha256": "5610064606703fd5ff2b54c7134a6b39073b9125ed75601c7439fdfc85c75caf"
         }
       ]
     },
@@ -1273,7 +1273,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/ecosystem.json",
-          "sha256": "156305bf08e4bc5432e36f9d7ae33e3c9fe61e98772c2fa75d8b116042aa05e5"
+          "sha256": "2e6ead9c33ea1ae3a18478ebfd1cf978c3feef01373730641da2e49059798b41"
         }
       ]
     },
@@ -1753,7 +1753,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/ecosystem.json",
-          "sha256": "fbe0ce44abc07c56add9af936f8d905ca2d9b5783659aa27869d3ec51483a6e3"
+          "sha256": "98ea595a90ad16b018ef95ee0b78e84cd6546714d3413e58b1db5d3cd9466ffb"
         }
       ]
     },
@@ -2281,7 +2281,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/ecosystem.json",
-          "sha256": "ba6d4dcf5a3810d3375cd20c6243c90b7d3b73b0ecce033d35a24c52d3e43ed6"
+          "sha256": "e65e76b76b10a655aac4a78e972ef62d82c939ae4f86eed0bdbac74118f2958b"
         }
       ]
     },
@@ -2329,7 +2329,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/ecosystem.json",
-          "sha256": "33804ebe4900210098fe032f3522c02d57e5a32130a2a76a5a09c1a81193ac44"
+          "sha256": "cd817791c114d6dbe06b826cd868d03e5b06c6378a8ae4d85914b01a35674321"
         }
       ]
     },
@@ -2521,7 +2521,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/ecosystem.json",
-          "sha256": "3fd9b2111d0b21655ba9d53de40a5a949667ae4b744028ed4b6ddabe86e3ad09"
+          "sha256": "46630ad199c587ea8513ecbb21f5667f9fd0513ec1574023224654860ff0a709"
         }
       ]
     },
@@ -2545,7 +2545,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/ecosystem.json",
-          "sha256": "90bdc9940d82fe582309a26e98799b169b722e09bdec6b91a1c4309b7ea1460c"
+          "sha256": "728cd5147eec1ba04de93b182257da6007dd22eede0220d9ff0db2de9303b344"
         }
       ]
     },
@@ -2833,7 +2833,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/ecosystem.json",
-          "sha256": "8813a1e060ff31536b61e09370eab617b2efc7f0d37429a8440ac95716d3ffe2"
+          "sha256": "51816d4da01101e832356504c0ed05553204c03f55c2eb2a0709e7f1b2d87e61"
         }
       ]
     },
@@ -3385,7 +3385,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-          "sha256": "9dd8240d8e4e8a696cd3d2f6ce375e5ca6dde1fd05b58c6a87dc0ea5da23807c"
+          "sha256": "c498bd7ed118c7c9b2a00200c41b4322f9dd6df92f2a8b7f726fdaee40b955ef"
         }
       ]
     },
@@ -3553,7 +3553,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/ecosystem.json",
-          "sha256": "1dfc6279131474369e27aa3fe46358dc9af0e0262ef6a5fdf43e33df6e6d7177"
+          "sha256": "bcff790b4a5e7bcda1788c7d51ff05be65368b3c0e916de84932395713b818c6"
         }
       ]
     }

@@ -11,6 +11,7 @@ from ecosystem.defaultspack.blocks.tool import mcp_connect as mcp_connect_block
 from ecosystem.defaultspack.blocks.tool import mcp_list as mcp_list_block
 from ecosystem.defaultspack.domain.tool.mcp_client import McpClient
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
 pytestmark = pytest.mark.usefixtures(
@@ -404,7 +405,10 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=EvidenceCheckingClient()).stream(
+        ChatRunEngine(
+            client=EvidenceCheckingClient(),
+            settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+        ).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {
@@ -523,7 +527,10 @@ def test_mcp_tool_is_unverified_when_selected_model_cannot_call_tools(monkeypatc
     store = ChatStore()
     conversation = store.create_conversation(model="local/no-tools")
     events = list(
-        ChatRunEngine(client=TextOnlyClient()).stream(
+        ChatRunEngine(
+            client=TextOnlyClient(),
+            settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+        ).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "Please use the MCP digest tool."},

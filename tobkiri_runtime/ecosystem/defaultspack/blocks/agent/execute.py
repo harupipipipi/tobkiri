@@ -3,10 +3,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok, error
 from domain.agent.engine import AgentEngine
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from blocks.agent._state import set_engine
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     task = input_data.get("task") if isinstance(input_data, dict) else None
     if not task:
         return error("task is required")
@@ -23,7 +24,7 @@ def run(input_data, context):
             context[key] = input_data.get(key)
     if isinstance(input_data.get("params"), dict):
         context["params"] = dict(input_data["params"])
-    engine = AgentEngine()
+    engine = AgentEngine(settings_owner=settings_owner)
     result = engine.execute(task, tools, model, system_prompt, context)
     execution_id = result.get("execution_id", "")
     set_engine(execution_id, engine)

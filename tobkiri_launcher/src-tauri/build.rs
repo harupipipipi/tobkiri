@@ -7823,10 +7823,19 @@ mod tests {
         let selected = catalog["source_manifest_digests"]
             .as_object()
             .expect("canonical selection should exist");
-        assert_eq!(selected.len(), 24);
+        for required in [
+            "rumi_turn_runtime_pack",
+            "rumi_conversation_store_pack",
+            "tobkiri_ui_settings_pack",
+        ] {
+            assert!(selected.contains_key(required), "missing {required}");
+        }
         let updated = selected_source_manifest_digests_from_lock(&lock_path, selected)
             .expect("real lock aliases must bind by nested pack.id");
         assert_eq!(updated.len(), selected.len());
+        for key in selected.keys() {
+            assert!(updated.contains_key(key), "catalog entry lost: {key}");
+        }
         for alias in [
             "rumi_file_inspect_pack",
             "rumi_host_authority_bridge_pack",

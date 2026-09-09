@@ -11,8 +11,56 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:b6fba6eafe1809167a9dc7f5c88948557a46f08e3f059a46d3250fc79930841f");
-  assert.equal(result.runtimeMap.routes.length, 28);
+  assert.equal(result.rawDigest, "sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49");
+  assert.equal(result.runtimeMap.routes.length, 43);
+  const reconcile = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/chat/turn/reconcile",
+  );
+  assert.deepEqual(reconcile?.targets, [{
+    contribution_id: "defaults.conversations.turn.reconcile",
+    contract_id: "tobkiri.action.turn.reconcile.v1",
+    operation_id: "rumi_turn_runtime_pack.turn-reconcile",
+    provider_id: "rumi_turn_runtime_pack.turn-runtime.reconcile",
+    function_id: "rumi_turn_runtime_pack.turn-runtime.reconcile",
+    allowed_payload_keys: ["turn_id"],
+  }]);
+  const saved = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/chat/turn",
+  );
+  assert.deepEqual(saved?.targets, [{
+    contribution_id: "defaults.conversations.send",
+    contract_id: "tobkiri.action.turn.saved.v1",
+    operation_id: "rumi_turn_runtime_pack.turn-saved",
+    provider_id: "rumi_turn_runtime_pack.turn-runtime.saved",
+    function_id: "rumi_turn_runtime_pack.turn-runtime.saved",
+    allowed_payload_keys: ["request"],
+  }]);
+  for (const method of ["PUT", "DELETE"]) {
+    const route = result.runtimeMap.routes.find((item) => item.method === method && item.path === "/api/chat/conversation");
+    assert.equal(route?.path, "/api/chat/conversation");
+    assert.equal(route?.targets[0].contract_id, "tobkiri.action.conversation.manage.v1");
+    assert.ok(route?.targets[0].allowed_payload_keys.includes("expected_conversation_revision"));
+  }
+  for (const path of [
+    "/api/ai/profiles", "/api/chat/conversations", "/api/ui/settings",
+    "/api/ui/full-catalog", "/api/command-protocol/v1/catalog",
+  ]) {
+    const read = result.runtimeMap.routes.find((route) => route.path === path);
+    assert.equal(read?.method, "GET");
+    assert.equal(read?.targets.length, 1);
+    assert.deepEqual(read?.targets[0].allowed_payload_keys, path === "/api/ui/settings" ? ["full"] : []);
+  }
+  const preferences = result.runtimeMap.routes.find(
+    (route) => route.method === "PUT" && route.path === "/api/ui/settings",
+  );
+  assert.deepEqual(preferences?.targets, [{
+    contribution_id: "defaults.ui.preferences.write",
+    contract_id: "tobkiri.action.ui.preferences.v1",
+    operation_id: "tobkiri_ui_settings_pack.preferences-write",
+    provider_id: "tobkiri.ui.preferences.write",
+    function_id: "tobkiri.ui.preferences.write",
+    allowed_payload_keys: ["changes", "expected_revision"],
+  }]);
   const capability = result.runtimeMap.routes.find(
     (route) => route.method === "POST" && route.path === "/api/ui/capability/invoke",
   );

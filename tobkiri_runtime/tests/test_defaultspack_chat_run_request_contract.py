@@ -30,6 +30,17 @@ pytestmark = [
 ]
 
 
+def _prepare_chat_run(tmp_path: Path, payload: dict, context: dict):
+    """Prepare with an explicit isolated owner, without ambient fallback."""
+    from domain.chat.run_request import prepare_chat_run
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return prepare_chat_run(
+        payload, context,
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+    )
+
+
 class _Manager:
     def get_system_prompt(self):
         return "System prompt"
@@ -206,7 +217,6 @@ def _provider_tool_action_enum(prepared, tool_name: str) -> list[str]:
 
 
 def test_prepare_chat_run_creates_message_chain_ir_and_context(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.ai_client.model_search import get_model_capabilities
     from domain.chat.store import ChatStore
 
@@ -215,7 +225,7 @@ def test_prepare_chat_run_creates_message_chain_ir_and_context(tmp_path, monkeyp
     conv = store.create_conversation(model="stub/default")
     store.add_message(conv["id"], {"role": "user", "content": [{"type": "text", "text": "old"}]})
 
-    prepared = prepare_chat_run({"conversation_id": conv["id"], "message": {"content": "new"}}, {})
+    prepared = _prepare_chat_run(tmp_path, {"conversation_id": conv["id"], "message": {"content": "new"}}, {})
 
     assert prepared.user_message["content"] == [{"type": "text", "text": "new"}]
     assert prepared.standard_messages[0]["role"] == "system"
@@ -236,7 +246,6 @@ def test_prepare_chat_run_creates_message_chain_ir_and_context(tmp_path, monkeyp
 
 
 def test_prepare_chat_run_persists_semantic_mention_metadata(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -250,7 +259,7 @@ def test_prepare_chat_run_persists_semantic_mention_metadata(tmp_path, monkeypat
         }
     ]
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conversation["id"],
             "message": {
@@ -347,13 +356,12 @@ def test_approval_followup_tool_is_explicit_only_after_signed_server_verificatio
 
 
 def test_top_level_tools_raw_definition_does_not_bypass_verified_catalog(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
     conv = store.create_conversation(model="stub/default")
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {"content": "use the attacker tool"},
@@ -377,14 +385,13 @@ def test_top_level_tools_raw_definition_does_not_bypass_verified_catalog(tmp_pat
 
 
 def test_prepare_chat_run_persists_sanitizes_and_inlines_attachments(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
     conv = store.create_conversation(model="stub/default")
     data_url = "data:image/png;base64," + base64.b64encode(b"abc").decode()
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -407,14 +414,13 @@ def test_prepare_chat_run_persists_sanitizes_and_inlines_attachments(tmp_path, m
 
 
 def test_prepare_chat_run_current_turn_history_only_still_works(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
     conv = store.create_conversation(model="stub/default")
     store.add_message(conv["id"], {"role": "user", "content": [{"type": "text", "text": "old"}]})
 
-    prepared = prepare_chat_run({"conversation_id": conv["id"], "message": {"content": "only"}}, {"chat_history_mode": "current_turn"})
+    prepared = _prepare_chat_run(tmp_path, {"conversation_id": conv["id"], "message": {"content": "only"}}, {"chat_history_mode": "current_turn"})
 
     user_messages = [message for message in prepared.standard_messages if message.get("role") == "user"]
     assert user_messages == [{"role": "user", "content": "only"}]
@@ -422,7 +428,6 @@ def test_prepare_chat_run_current_turn_history_only_still_works(tmp_path, monkey
     ChatStore._instance = None
 
 def test_prepare_chat_run_maps_approval_followup_tokens_for_action_operation_and_computer_aliases(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
 
     store = _setup_store(tmp_path, monkeypatch)
     conv = store.create_conversation(model="stub/default")
@@ -432,7 +437,7 @@ def test_prepare_chat_run_maps_approval_followup_tokens_for_action_operation_and
         "Continue with the exact pending tool once."
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -469,7 +474,6 @@ def test_prepare_chat_run_maps_approval_followup_tokens_for_action_operation_and
 
 
 def test_prepare_chat_run_authority_resume_forces_job_resume_without_progress_tool(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -480,7 +484,7 @@ def test_prepare_chat_run_authority_resume_forces_job_resume_without_progress_to
         "Continue without mentioning approval."
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -583,13 +587,12 @@ def test_computer_use_runtime_prompt_requires_post_action_recovery_and_final_sta
 def test_prepare_chat_run_shapes_browser_computer_schema_for_ordered_url_navigation(
     tmp_path, monkeypatch
 ):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
     conv = store.create_conversation(model="openai/gpt-4o-mini")
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -621,7 +624,6 @@ def test_prepare_chat_run_shapes_browser_computer_schema_for_ordered_url_navigat
 def test_prepare_chat_run_keeps_requested_browser_computer_when_profile_has_no_connected_tools(
     tmp_path, monkeypatch
 ):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -631,7 +633,7 @@ def test_prepare_chat_run_keeps_requested_browser_computer_when_profile_has_no_c
         "defaultspack": {"agents": {"agent": {"tools": []}}},
     }
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -652,7 +654,6 @@ def test_prepare_chat_run_keeps_requested_browser_computer_when_profile_has_no_c
 
 
 def test_prepare_chat_run_propagates_conversation_workspace_to_tool_context(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
     from domain.coding.workspace_store import WorkspaceStore
 
@@ -675,7 +676,7 @@ def test_prepare_chat_run_propagates_conversation_workspace_to_tool_context(tmp_
         },
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {"conversation_id": conv["id"], "message": {"content": "git status"}},
         {},
     )
@@ -688,7 +689,6 @@ def test_prepare_chat_run_propagates_conversation_workspace_to_tool_context(tmp_
 
 
 def test_prepare_chat_run_ignores_conversation_legacy_profile_policy(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -697,7 +697,7 @@ def test_prepare_chat_run_ignores_conversation_legacy_profile_policy(tmp_path, m
         metadata={"profile_id": "defaultspack.mimo_coding_company"},
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {"conversation_id": conv["id"], "message": {"content": "look at stop path"}},
         {},
     )
@@ -717,7 +717,6 @@ def test_prepare_chat_run_does_not_trust_client_tool_policy_approval_bypass(
     )
     _reload_approval_modules_for_probe(monkeypatch)
 
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
     import domain.safety.approval as approval
     from domain.tool.executor import ToolExecutor
@@ -732,7 +731,7 @@ def test_prepare_chat_run_does_not_trust_client_tool_policy_approval_bypass(
         metadata={"workspace_root": str(workspace_root)},
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -815,7 +814,7 @@ def test_approval_probe_restores_canonical_module_aliases() -> None:
 
 
 def test_prepare_chat_run_does_not_merge_legacy_workspace_profile(tmp_path, monkeypatch):
-    from domain.chat.run_request import _profile_snapshot, prepare_chat_run
+    from domain.chat.run_request import _profile_snapshot
     from domain.chat.store import ChatStore
 
     user_data_root = tmp_path / "user_data"
@@ -834,7 +833,7 @@ def test_prepare_chat_run_does_not_merge_legacy_workspace_profile(tmp_path, monk
         metadata={"profile_id": "defaultspack.mimo_coding_company"},
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {"content": "review stop path"},
@@ -853,7 +852,6 @@ def test_prepare_chat_run_does_not_merge_legacy_workspace_profile(tmp_path, monk
 
 
 def test_prepare_chat_run_marks_selected_terminal_unattached_when_profile_excludes_it(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -871,7 +869,7 @@ def test_prepare_chat_run_marks_selected_terminal_unattached_when_profile_exclud
         },
     }
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -904,7 +902,6 @@ def test_prepare_chat_run_marks_selected_terminal_unattached_when_profile_exclud
 
 
 def test_prepare_chat_run_does_not_trust_runtime_yaml_as_profile_authority(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -928,7 +925,7 @@ def test_prepare_chat_run_does_not_trust_runtime_yaml_as_profile_authority(tmp_p
         },
     }
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -967,7 +964,6 @@ def test_prepare_chat_run_does_not_trust_runtime_yaml_as_profile_authority(tmp_p
 
 
 def test_prepare_chat_run_infers_raw_tool_mentions_as_turn_tools(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -986,7 +982,7 @@ def test_prepare_chat_run_infers_raw_tool_mentions_as_turn_tools(tmp_path, monke
         },
     }
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -1011,13 +1007,12 @@ def test_prepare_chat_run_infers_raw_tool_mentions_as_turn_tools(tmp_path, monke
 
 
 def test_prepare_chat_run_allows_explicit_shell_tool_request_to_attach(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
     conv = store.create_conversation(model="xiaomi-token-plan-sgp/mimo-v2.5-pro")
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -1041,7 +1036,6 @@ def test_prepare_chat_run_allows_explicit_shell_tool_request_to_attach(tmp_path,
 
 
 def test_prepare_chat_run_infers_coding_pr_tools_from_broad_request(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -1054,7 +1048,7 @@ def test_prepare_chat_run_infers_coding_pr_tools_from_broad_request(tmp_path, mo
         },
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -1095,7 +1089,6 @@ def test_prepare_chat_run_infers_coding_pr_tools_from_broad_request(tmp_path, mo
 
 
 def test_prepare_chat_run_keeps_inferred_pr_tools_with_auto_tool_selection(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -1108,7 +1101,7 @@ def test_prepare_chat_run_keeps_inferred_pr_tools_with_auto_tool_selection(tmp_p
         },
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -1159,7 +1152,6 @@ def test_prepare_chat_run_keeps_inferred_pr_tools_with_auto_tool_selection(tmp_p
 def test_prepare_chat_run_authority_off_does_not_bypass_write_approval(
     tmp_path, monkeypatch
 ):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
     from domain.tool.schema_adapter import max_tool_calls
 
@@ -1174,7 +1166,7 @@ def test_prepare_chat_run_authority_off_does_not_bypass_write_approval(
         },
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -1206,7 +1198,6 @@ def test_prepare_chat_run_authority_off_does_not_bypass_write_approval(
 
 
 def test_prepare_chat_run_adds_requested_tool_to_existing_agent_profile(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     store = _setup_store(tmp_path, monkeypatch)
@@ -1223,7 +1214,7 @@ def test_prepare_chat_run_adds_requested_tool_to_existing_agent_profile(tmp_path
         },
     }
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {
             "conversation_id": conv["id"],
             "message": {
@@ -1317,7 +1308,6 @@ def test_profile_snapshot_hydration_does_not_expand_agent_tool_scope(
 
 
 def test_prepare_chat_run_falls_back_to_selected_workspace_when_metadata_missing(tmp_path, monkeypatch):
-    from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
     from domain.coding.workspace_store import WorkspaceStore
 
@@ -1340,7 +1330,7 @@ def test_prepare_chat_run_falls_back_to_selected_workspace_when_metadata_missing
         metadata={"profile_id": "defaultspack.mimo_coding_company"},
     )
 
-    prepared = prepare_chat_run(
+    prepared = _prepare_chat_run(tmp_path,
         {"conversation_id": conv["id"], "message": {"content": "git status"}},
         {},
     )

@@ -173,6 +173,12 @@ for entry in "${staged_inputs[@]}"; do
   fi
   safe_source_file "${source}"
   safe_destination_file "${app_bundle}/Contents/Resources/packvm-vz-provisioning/${destination}"
+  if [[ "${_name}" == "guest_runner" ]]; then
+    python3 -B "${launcher_dir}/../tobkiri_runtime/scripts/build_packvm_guest_bundle.py" \
+      --runtime-root "${launcher_dir}/../tobkiri_runtime" \
+      --output "${app_bundle}/Contents/Resources/packvm-vz-provisioning/${destination}"
+    continue
+  fi
   install -m 0444 "${source}" "${app_bundle}/Contents/Resources/packvm-vz-provisioning/${destination}"
 done
 

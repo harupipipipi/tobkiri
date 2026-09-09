@@ -211,6 +211,18 @@ def _cas_activation_process(
         authority.close()
 
 
+def test_bundle_catalog_is_shared_with_generator_without_pack_implementation() -> None:
+    """Compatibility imports retain the exact neutral verifier and error types."""
+    from tobkiri_protocol import bundle_catalog
+    from ecosystem.defaultspack.domain import runtime_v4
+    from scripts import generate_defaultspack_v4_bundle
+
+    assert runtime_v4.BundledCatalog is bundle_catalog.BundledCatalog
+    assert generate_defaultspack_v4_bundle.BundledCatalog is bundle_catalog.BundledCatalog
+    assert runtime_v4.BundleIntegrityError is bundle_catalog.BundleIntegrityError
+    assert runtime_v4.DefaultProfileV4Error is bundle_catalog.DefaultProfileV4Error
+
+
 def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     catalog = _catalog()
     resolved = _resolve(catalog)
@@ -252,6 +264,10 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     assert resolved.profile["profile_authority_snapshot_digest"] == SNAPSHOT_DIGEST
     assert {item["pack_id"] for item in resolved.profile["packs"]} == {
         "defaultspack",
+        "rumi_turn_runtime_pack",
+        "rumi_conversation_store_pack",
+        "rumi_credential_broker_pack",
+        "tobkiri_ui_settings_pack",
         "rumi_ai_gateway_pack",
         "rumi_ai_pipeline_pack",
         "rumi_ai_routing_pack",
@@ -282,6 +298,38 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     assert [
         item["function_principal"]["function_id"] for item in resolved.plan["bindings"]
     ] == [
+        "rumi_model_registry_pack.model-registry.manage",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "rumi_provider_registry_pack.provider-configure.prepare",
+        "rumi_provider_registry_pack.provider-configure.execute",
+        "rumi_credential_broker_pack.credential-broker.manage",
+        "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "rumi_ai_routing_pack.ai-routing.default",
+        "rumi_turn_runtime_pack.turn-runtime.saved",
+        "rumi_turn_runtime_pack.turn-runtime.resource",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "defaultspack.conversation.saved",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "rumi_conversation_store_pack.conversation-store.message-manage",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+        "rumi_ai_gateway_pack.ai-gateway.preflight",
+        "rumi_ai_pipeline_pack.ai-pipeline.prepare",
+        "rumi_provider_registry_pack.provider-registry.health",
+        "rumi_model_catalog_pack.model-catalog.bundled",
+        "rumi_model_registry_pack.model-registry.profile",
+        "defaultspack.application-presentation",
+        "defaultspack.application-presentation",
+        "defaultspack.application-presentation",
+        "rumi_command_protocol_pack.catalog.read",
+        "rumi_model_registry_pack.model-registry.profile",
+        "tobkiri.ui.catalog.read",
+        "tobkiri.ui.settings.read",
+        "tobkiri.ui.preferences.write",
+        "rumi_model_registry_pack.model-registry.profile",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "rumi_conversation_store_pack.conversation-store.manage",
+        "rumi_model_registry_pack.model-registry.profile",
         "defaultspack.conversation",
         "rumi_ai_gateway_pack.ai-gateway.generate",
         "rumi_ai_gateway_pack.ai-gateway.stream",
@@ -346,6 +394,18 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_git_write_pack.git-apply-patch.service",
         "rumi_git_publish_pack.git-push-prepare.service",
         "rumi_git_publish_pack.git-publish.service",
+        "rumi_shell_policy_pack.shell-policy.inspect",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_shell_policy_pack.shell-policy.inspect",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
     ]
     assert resolved.lock["plan_digest"] == resolved.plan["plan_digest"]
 
@@ -833,8 +893,14 @@ def test_bundle_rejects_symlinked_locked_artifact(tmp_path: Path) -> None:
 def test_foundational_conversation_provider_is_exactly_one() -> None:
     catalog = _catalog()
     missing_manifest = copy.deepcopy(catalog.packs["defaultspack"])
-    missing_manifest["functions"] = []
-    missing_manifest["contracts"] = []
+    missing_manifest["functions"] = [
+        item for item in missing_manifest["functions"]
+        if item["id"] != "defaultspack.conversation"
+    ]
+    missing_manifest["contracts"] = [
+        item for item in missing_manifest["contracts"]
+        if item["contract_id"] != "conversation.turn.v1"
+    ]
     missing = replace(
         catalog,
         packs={**catalog.packs, "defaultspack": missing_manifest},

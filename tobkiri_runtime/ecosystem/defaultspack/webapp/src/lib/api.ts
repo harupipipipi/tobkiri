@@ -2,6 +2,8 @@ import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
 import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
+import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
+import { openAuthorityApprovalWindow } from "./desktopApproval";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
@@ -33,6 +35,30 @@ export type ChatMessage = {
   events?: ChatActivityEvent[] | null;
   tool_logs?: ToolLogEntry[] | null;
   model?: string | null;
+};
+
+export type SavedTurnRequest = {
+  turn_id: string;
+  conversation_id: string;
+  conversation_revision: number;
+  content: string;
+};
+
+export type SavedTurnResult = {
+  status: "completed" | "existing" | "reconciliation_required";
+  turn: {
+    id: string;
+    conversation_id: string;
+    status: string;
+    revision: number;
+    result_reference?: {
+      conversation_id: string;
+      conversation_revision: number;
+      user_message_id: string;
+      assistant_message_id: string;
+      outcome_digest: string;
+    };
+  };
 };
 
 export type TokenizerInfo = {
@@ -1353,6 +1379,8 @@ export function conversationArtifactFileUrl(conversationId: string, path: string
 export type ModelProfile = {
   profile_id: string;
   display_name: string;
+  /** A saved routing record, not proof of credentials or Provider health. */
+  route_configured?: boolean;
   provider_id?: string;
   provider_display_name?: string;
   model_id?: string;
@@ -1469,6 +1497,7 @@ export type ConversationSteerResponse =
 
 export type Conversation = {
   id: string;
+  conversation_revision?: number;
   title: string;
   created_at: number;
   updated_at: number;
@@ -2324,13 +2353,15 @@ export function isUICatalog(value: unknown): value is UICatalog {
 /** Validate the Pack v4 settings response used during startup. */
 export function isUiSettingsResponse(
   value: unknown,
-): value is { sections: SettingsSection[]; values: Record<string, Record<string, unknown>> } {
+): value is { sections: SettingsSection[]; values: Record<string, Record<string, unknown>>; document_revision: number } {
   const record = objectRecord(value);
   return Boolean(
     record
     && Array.isArray(record.sections)
     && record.sections.every(isSettingsSectionShape)
     && isRecordOfRecords(record.values)
+    && Number.isSafeInteger(record.document_revision)
+    && Number(record.document_revision) >= 0
   );
 }
 
@@ -3338,10 +3369,10 @@ export const api = {
   },
 
   getConversation(id: string) {
-    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`));
+    return request<Conversation>(withQuery(defaultspackContractRoute("api/chat/conversation"), { conversation_id: id }));
   },
 
-  createConversation(options?: {
+  async createConversation(options?: {
     model?: string;
     system_prompt_id?: string | null;
     agent_id?: string | null;
@@ -3351,22 +3382,42 @@ export const api = {
     group_id?: string | null;
     metadata?: Record<string, unknown>;
   }) {
+    const snapshot = await request<{ store_revision: number }>(
+      defaultspackContractRoute("api/chat/conversations"),
+    );
+    if (!Number.isSafeInteger(snapshot.store_revision) || snapshot.store_revision < 0) {
+      throw new Error("Conversation store returned an invalid revision");
+    }
+    // Bind identity and revision once. Transport retries must retain this body;
+    // a stale response must not trigger another create with a fresh identity.
+    const body = {
+      ...options,
+      id: crypto.randomUUID(),
+      expected_revision: snapshot.store_revision,
+    };
     return request<Conversation>(defaultspackContractRoute("api/chat/conversations"), {
       method: "POST",
-      body: JSON.stringify(options ?? {}),
+      body: JSON.stringify(body),
     });
   },
 
-  updateConversation(id: string, updates: Partial<Conversation>) {
-    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
+  async updateConversation(id: string, updates: Partial<Conversation>, revision: number | undefined) {
+    if (!Number.isSafeInteger(revision) || (revision ?? 0) < 1) {
+      throw new Error("Refresh the conversation before updating it: revision is unavailable");
+    }
+    return request<Conversation>(defaultspackContractRoute("api/chat/conversation"), {
       method: "PUT",
-      body: JSON.stringify({ updates }),
+      body: JSON.stringify({ conversation_id: id, updates, expected_conversation_revision: revision }),
     });
   },
 
-  deleteConversation(id: string) {
-    return request<{ deleted: boolean }>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
+  async deleteConversation(id: string, revision: number | undefined) {
+    if (!Number.isSafeInteger(revision) || (revision ?? 0) < 1) {
+      throw new Error("Refresh the conversation before deleting it: revision is unavailable");
+    }
+    return request<{ deleted: boolean }>(defaultspackContractRoute("api/chat/conversation"), {
       method: "DELETE",
+      body: JSON.stringify({ conversation_id: id, expected_conversation_revision: revision }),
     });
   },
 
@@ -3483,6 +3534,57 @@ export const api = {
     });
   },
 
+  async getSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for reconciliation.");
+    }
+    const turn = await request<SavedTurnResult["turn"]>(
+      withQuery(defaultspackContractRoute("api/chat/turn"), { turn_id: turnId }),
+      { cache: "no-store" },
+    );
+    if (turn?.id !== turnId || turn.conversation_id !== conversationId) {
+      throw new Error("Saved turn read does not match the pending conversation.");
+    }
+    return turn;
+  },
+
+  async reconcileSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for reconciliation.");
+    }
+    const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn/reconcile"), {
+      method: "POST",
+      body: JSON.stringify({ turn_id: turnId }),
+    });
+    if (!result || !["completed", "existing", "reconciliation_required"].includes(result.status)
+      || result.turn?.id !== turnId || result.turn.conversation_id !== conversationId) {
+      throw new Error("Saved turn reconciliation does not match the pending conversation.");
+    }
+    return result.turn;
+  },
+
+  async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
+    const input = { ...value };
+    const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];
+    if (Object.keys(input).length !== fields.length || fields.some((key) => !(key in input))
+      || typeof input.turn_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.turn_id)
+      || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
+      || !Number.isSafeInteger(input.conversation_revision) || input.conversation_revision < 1
+      || typeof input.content !== "string" || !input.content.trim()
+      || new TextEncoder().encode(JSON.stringify(input)).length > 60 * 1024) {
+      throw new Error("Saved conversation request is invalid or requires unsupported context.");
+    }
+    const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn"), {
+      method: "POST",
+      body: JSON.stringify({ request: input }),
+    });
+    if (!result || !["completed", "existing", "reconciliation_required"].includes(result.status)
+      || result.turn?.id !== input.turn_id || result.turn.conversation_id !== input.conversation_id) {
+      throw new Error("Saved conversation outcome is unconfirmed; do not resend automatically.");
+    }
+    return result;
+  },
+
   sendMessage(
     conversationId: string,
     text: string,
@@ -3540,9 +3642,35 @@ export const api = {
   },
 
   listModelProfiles() {
-    return request<{ profiles: ModelProfile[]; count: number }>(defaultspackContractRoute("api/ai/profiles"), {
+    return request<{ profiles: ModelProfile[]; count: number; registry_revision?: number }>(defaultspackContractRoute("api/ai/profiles"), {
       cache: "no-store",
     }, isModelProfilesResponse);
+  },
+
+  async createModelProfile(input: {
+    model_profile_id: string; model_id: string; provider_instance_id: string; display_name: string;
+  }) {
+    const current = await api.listModelProfiles();
+    const matches = (profile: ModelProfile) => profile.profile_id === input.model_profile_id
+      && profile.model_id === input.model_id && profile.provider_id === input.provider_instance_id
+      && profile.display_name === input.display_name;
+    const existing = current.profiles.find((profile) => profile.profile_id === input.model_profile_id);
+    if (existing) {
+      if (matches(existing)) return existing;
+      throw new Error("同じモデル設定IDが既に存在します。別のIDを指定してください。");
+    }
+    if (!Number.isInteger(current.registry_revision) || current.registry_revision! < 0) {
+      throw new Error("モデル設定のrevisionを確認できません。");
+    }
+    const saved = await request<{ profiles: ModelProfile[]; count: number }>(
+      defaultspackContractRoute("api/ai/profiles"), {
+        method: "POST", body: JSON.stringify({ ...input, expected_revision: current.registry_revision }),
+      }, isModelProfilesResponse,
+    );
+    if (saved.profiles.length !== 1 || !matches(saved.profiles[0])) {
+      throw new Error("モデル設定の保存結果が一致しません。再送せず一覧を確認してください。");
+    }
+    return saved.profiles[0];
   },
 
   searchModels(filters: Record<string, unknown>) {
@@ -3566,7 +3694,7 @@ export const api = {
 
   uiCatalog() {
     return request<UICatalog>(
-      defaultspackContractRoute("api/ui/catalog?include_skills=true"),
+      defaultspackContractRoute("api/ui/full-catalog"),
       undefined,
       isUICatalog,
     );
@@ -3574,7 +3702,7 @@ export const api = {
 
   uiSettings(options: { full?: boolean } = {}) {
     const query = options.full ? "?full=true" : "";
-    return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>> }>(
+    return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>>; document_revision: number }>(
       defaultspackContractRoute(`api/ui/settings${query}`),
       { cache: "no-store" },
       isUiSettingsResponse,
@@ -3880,18 +4008,36 @@ export const api = {
     });
   },
 
-  updateUiSettings(values: Record<string, Record<string, unknown>>) {
-    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
+  updateUiSettingsPatches(
+    patches: Array<{ section: string; field: string; value: unknown }>,
+    expectedRevision: number,
+  ) {
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || patches.length === 0) {
+      throw new Error("Refresh Settings before saving changes.");
+    }
+    const sections = new Map<string, Map<string, unknown>>();
+    for (const { section, field, value } of patches) {
+      if (value === undefined) throw new Error("Settings patches require a value.");
+      const fields = sections.get(section) ?? new Map<string, unknown>();
+      fields.set(field, value);
+      sections.set(section, fields);
+    }
+    const changes = Object.fromEntries([...sections].map(([section, fields]) => [section, Object.fromEntries(fields)]));
+    type Acknowledgement = { values: Record<string, Record<string, unknown>>; document_revision: number };
+    const validAcknowledgement = (value: unknown): value is Acknowledgement => {
+      const record = objectRecord(value);
+      if (!record || !Number.isSafeInteger(record.document_revision) || record.document_revision !== expectedRevision + 1 || !isRecordOfRecords(record.values)) return false;
+      const values = record.values as Acknowledgement["values"];
+      return Object.keys(values).length === sections.size && [...sections].every(([section, fields]) => (
+        Object.prototype.hasOwnProperty.call(values, section)
+        && Object.keys(values[section]).length === fields.size
+        && [...fields].every(([field, submitted]) => Object.prototype.hasOwnProperty.call(values[section], field) && values[section][field] === submitted)
+      ));
+    };
+    return request<Acknowledgement>(defaultspackContractRoute("api/ui/settings"), {
       method: "PUT",
-      body: JSON.stringify({ values }),
-    });
-  },
-
-  updateUiSettingsPatches(patches: Array<{ section: string; field: string; value: unknown }>) {
-    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
-      method: "PUT",
-      body: JSON.stringify({ patches }),
-    });
+      body: JSON.stringify({ changes, expected_revision: expectedRevision }),
+    }, validAcknowledgement);
   },
 
   listContinuityNodes() {
@@ -4012,7 +4158,7 @@ export const api = {
     });
   },
 
-  saveProviderApiKey(providerId: string, value: string, options?: {
+  async saveProviderApiKey(providerId: string, value: string, options?: {
     apiId?: string;
     name?: string;
     baseUrl?: string;
@@ -4021,22 +4167,53 @@ export const api = {
     notes?: string;
     quotaLabel?: string;
     kind?: string;
+    protocol?: "openai-compatible" | "anthropic";
   }) {
-    return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean; kind?: string; model_availability?: ModelAvailabilityAfterKeySave }>(defaultspackContractRoute("api/ai/provider-key"), {
-      method: "POST",
-      body: JSON.stringify({
-        provider_id: providerId,
-        value,
-        api_id: options?.apiId,
-        name: options?.name,
-        base_url: options?.baseUrl,
-        allowed_models: options?.allowedModels,
-        default_model: options?.defaultModel,
-        notes: options?.notes,
-        quota_label: options?.quotaLabel,
-        kind: options?.kind,
-      }),
+    const protocol = options?.protocol ?? (
+      providerId === "anthropic" ? "anthropic"
+        : ["openai", "openai_compatible", "deepseek", "openrouter"].includes(providerId)
+          ? "openai-compatible" : null
+    );
+    if (!protocol || options?.kind === "custom") {
+      throw new Error("このProviderの設定には対応するLLM protocolの選択が必要です。");
+    }
+    if (options?.allowedModels?.length || options?.defaultModel || options?.notes || options?.quotaLabel) {
+      throw new Error("モデル・メモ・quotaの同時保存は未対応です。接続設定とは別に設定してください。");
+    }
+    const connection = `${providerId}.${options?.apiId || "default"}`;
+    const endpoint = options?.baseUrl?.trim() ?? "";
+    let url: URL;
+    try { url = new URL(endpoint); } catch { throw new Error("HTTPSのProvider接続先URLを入力してください。"); }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(connection)
+      || !value || /[\x00-\x1f\x7f]/.test(value) || value.length > 16384
+      || url.protocol !== "https:" || url.username || url.password || url.search || url.hash
+      || /\s/.test(endpoint) || endpoint.length > 2048 || endpoint.includes(value) || connection.includes(value)) {
+      throw new Error("Provider接続名・HTTPS URL・APIキーの入力を確認してください。");
+    }
+    const post = (body: object) => request<ProviderConfigurationStatus>(
+      defaultspackContractRoute("api/ai/provider-key"), {
+        method: "POST", body: JSON.stringify(body),
+      },
+    );
+    await configureProvider({
+      connection_name: connection, protocol, endpoint, key_value: value,
+    }, {
+      storage: window.sessionStorage,
+      prepare: (configuration) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration }),
+      status: (effect_id) => post({ phase: "status", effect_id }),
+      resume: (effect_id) => post({ phase: "resume", effect_id }),
+      cancel: (effect_id) => post({ phase: "cancel", effect_id }),
+      approval: (id) => api.getInteractiveApproval(id),
+      openApproval: openAuthorityApprovalWindow,
+      pause: () => new Promise((resolve) => window.setTimeout(resolve, 1000)),
     });
+    return {
+      provider_id: providerId, api_id: options?.apiId ?? "default", configured: true,
+      model_availability: {
+        status: "route_required", provider_id: providerId, api_id: options?.apiId ?? "default", candidate_models: [],
+        reason: "接続を保存しました。モデルルートは別途設定が必要です。",
+      } as ModelAvailabilityAfterKeySave,
+    };
   },
 
   registerCustomProvider(providerId: string, options?: { label?: string; kind?: string }) {

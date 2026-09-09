@@ -69,13 +69,14 @@ def test_ai_conversation_chain_outlives_provider_transport_deadline(
 def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     pack_roots = sorted(path.parent for path in (ROOT / "ecosystem").glob("*/pack.v4.json"))
     compiled = [compile_pack_root(path) for path in pack_roots]
-    assert len(compiled) == 140
+    assert len(compiled) == 141
     assert {item.artifact.pack_id for item in compiled} == {path.name for path in pack_roots}
 
     command = next(
         item for item in compiled if item.artifact.pack_id == "rumi_command_protocol_pack"
     )
     assert set(command.routes) == {
+        ("tobkiri.resource.command.catalog.v1", "command.catalog.read"),
         ("tobkiri.service.command.high-risk.v1", "high_risk_command.manage")
     }
 
@@ -89,6 +90,8 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     }
     assert selected_operations == {
         ("conversation.turn.v1", "complete"),
+        ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
         (
             "tobkiri.service.file.inspect.v1",
             "rumi_file_inspect_pack.file-inspect",
@@ -98,7 +101,11 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
             "rumi_file_inspect_pack.file-inspect.for-media",
         ),
     }
-    assert set(conversation.routes) == {("conversation.turn.v1", "complete")}
+    assert set(conversation.routes) == {
+        ("conversation.turn.v1", "complete"),
+        ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
+    }
     assert set(inspect.routes) == {
         (
             "tobkiri.service.file.inspect.v1",

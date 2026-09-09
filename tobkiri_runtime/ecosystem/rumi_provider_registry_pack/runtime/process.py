@@ -15,32 +15,142 @@ from core_runtime.host_provider_backend_v4 import (
 from ecosystem.rumi_provider_registry_pack.runtime.service import (
     ProviderRegistryService,
 )
+from ecosystem.rumi_provider_registry_pack.runtime.configuration import (
+    CREDENTIAL_CONTRACT,
+    EXECUTE_OPERATION,
+    PREPARE_OPERATION,
+    execute_configuration,
+    prepare_configuration,
+)
+from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
 
 class ProviderRegistryHostFactoryV4:
-    """Capture read-only registry operations for authenticated Host dispatch."""
+    """Capture Profile-bound registry operations for authenticated Host dispatch."""
 
-    function_id = "rumi_provider_registry_pack.provider-registry.resource"
+    def __init__(
+        self, *, readonly: bool = True, configuration_phase: str | None = None,
+    ) -> None:
+        if configuration_phase not in {None, "prepare", "execute"}:
+            raise ValueError("provider configuration phase is invalid")
+        if configuration_phase is not None:
+            readonly = False
+        self.readonly = readonly
+        self.function_id = (
+            "rumi_provider_registry_pack.provider-registry."
+            + ("resource" if readonly else "manage")
+        )
+        self.contract_id = (
+            "tobkiri.resource.ai.provider.registry.v1" if readonly
+            else "tobkiri.action.ai.provider.registry.manage.v1"
+        )
+        base_operation = (
+            "rumi_provider_registry_pack.provider-registry-"
+            + ("resource" if readonly else "manage")
+        )
+        self.operations = (
+            frozenset({base_operation, base_operation + ".generate", base_operation + ".stream"})
+            if readonly else frozenset({base_operation})
+        )
+        if configuration_phase is not None:
+            self.function_id = "rumi_provider_registry_pack.provider-configure." + configuration_phase
+            self.operations = frozenset({
+                PREPARE_OPERATION if configuration_phase == "prepare" else EXECUTE_OPERATION,
+            })
 
     def capture(
         self,
         context: HostProviderCaptureContextV4,
     ) -> CapturedHostProviderV4:
         """Bind the redacted registry service to exact resolved operations."""
-        if context.user_data_root is None or any(
+        if (
+            context.user_data_root is None
+            or not context.profile_id
+            or not context.provider_bindings
+            or any(
             binding.function.function_id != self.function_id
+            or binding.operation.contract_id != self.contract_id
+            or binding.operation.operation_id not in self.operations
             for binding in context.provider_bindings
+            )
         ):
             raise PermissionError("provider registry bindings are incomplete")
         service = ProviderRegistryService(user_data_root=context.user_data_root)
+        credential_consumer = ""
+        if EXECUTE_OPERATION in self.operations:
+            # Bind the credential to the selected typed AI Provider contracts,
+            # never to a client-supplied or hard-coded foreign Pack identity.
+            owners = {
+                contract: {
+                    item.artifact.pack_id for item in context.catalog_bindings
+                    if item.operation.contract_id == contract
+                }
+                for contract in (
+                    "tobkiri.service.ai.provider.generate.v1",
+                    "tobkiri.service.ai.provider.stream.v1",
+                )
+            }
+            if any(len(items) != 1 for items in owners.values()):
+                raise PermissionError("AI Provider credential owner is unavailable")
+            selected = set.union(*owners.values())
+            if len(selected) != 1:
+                raise PermissionError("AI Provider credential owner is ambiguous")
+            credential_consumer = next(iter(selected))
 
         def invoke(
             operation_id: str,
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
-            del invocation
-            return service.invoke(operation_id, payload)
+            if (
+                operation_id not in self.operations
+                or payload.get("profile_id", context.profile_id) != context.profile_id
+            ):
+                raise PermissionError("provider registry request binding is invalid")
+            if not self.readonly and operation_id in {PREPARE_OPERATION, EXECUTE_OPERATION}:
+                registry = ProviderRegistry(
+                    context.profile_id, user_data_root=context.user_data_root,
+                )
+                if operation_id == PREPARE_OPERATION:
+                    return prepare_configuration(registry, payload)
+                client = invocation.contract_client(
+                    allowed_contract_ids=frozenset({CREDENTIAL_CONTRACT}),
+                    consumer_pack_id="rumi_provider_registry_pack",
+                    include_credentials=False,
+                )
+                return execute_configuration(
+                    registry, client, payload, consumer_pack_id=credential_consumer,
+                )
+            if self.readonly:
+                if set(payload) - {"profile_id"}:
+                    raise PermissionError("provider registry read payload is invalid")
+                return service.invoke("list", {"profile_id": context.profile_id})
+            action = payload.get("operation")
+            if action == "save":
+                fields = {"operation", "profile_id", "record", "expected_revision"}
+                record = payload.get("record")
+                if not isinstance(record, Mapping):
+                    raise ValueError("provider registry record is required")
+                if set(record) - {
+                    "provider_instance_id", "adapter_id", "display_name",
+                    "credential_handle", "endpoint", "enabled", "data_residency",
+                    "metadata",
+                }:
+                    raise PermissionError("provider registry record fields are invalid")
+            elif action == "delete":
+                fields = {
+                    "operation", "profile_id", "provider_instance_id", "expected_revision",
+                }
+            else:
+                raise PermissionError("provider registry mutation is not permitted")
+            revision = payload.get("expected_revision")
+            if (
+                set(payload) - fields
+                or type(revision) is not int
+                or revision < 0
+            ):
+                raise PermissionError("provider registry mutation payload is invalid")
+            return service.invoke(action, {**payload, "profile_id": context.profile_id})
 
         contributions = []
         for binding in context.provider_bindings:
@@ -67,7 +177,15 @@ class ProviderRegistryHostFactoryV4:
         return CapturedHostProviderV4(tuple(contributions), lambda: None)
 
 
-HOST_PROVIDER_FACTORY = ProviderRegistryHostFactoryV4()
+HOST_PROVIDER_FACTORY = {
+    factory.function_id: factory
+    for factory in (
+        ProviderRegistryHostFactoryV4(),
+        ProviderRegistryHostFactoryV4(readonly=False),
+        ProviderRegistryHostFactoryV4(configuration_phase="prepare"),
+        ProviderRegistryHostFactoryV4(configuration_phase="execute"),
+    )
+}
 
 
 def main() -> int:

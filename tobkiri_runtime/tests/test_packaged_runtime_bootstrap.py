@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import http.cookiejar
 import json
 import os
@@ -89,9 +91,11 @@ def _publish_launcher_contract(
     return path
 
 
+@pytest.mark.parametrize("failure_stage", ["profile_capture", "http_composition"])
 def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
 ) -> None:
     """A valid predecessor transition serves setup instead of wedging startup."""
 
@@ -116,14 +120,21 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
         raise ProfileReconfirmationRequired(diagnostic)
 
     monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: True)
-    monkeypatch.setattr(
-        runtime_bootstrap,
-        "capture_active_profile",
-        require_reconfirmation,
-    )
+    if failure_stage == "profile_capture":
+        monkeypatch.setattr(
+            runtime_bootstrap,
+            "capture_active_profile",
+            require_reconfirmation,
+        )
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: port)
 
     kernel = _kernel()
+    if failure_stage == "http_composition":
+        def unavailable_composition(active):
+            del active
+            require_reconfirmation()
+
+        kernel._runtime_capture_factory = unavailable_composition
     try:
         result = kernel.run_startup_until(kernel.API_INIT_STEP)
         readiness = get_runtime_readiness()
@@ -323,14 +334,25 @@ def test_public_kernel_first_start_requires_confirmed_defaults_transaction(
         kernel.run_startup_until("api_init")
         remaining = kernel.run_startup_remaining()
         assert remaining["status"] == "setup_required"
-        with urlopen(
+        challenge = "fresh-kernel-cold-boot-challenge"
+        health_request = Request(
             f"http://127.0.0.1:{port}/health",
+            headers={"X-Rumi-Desktop-Health-Challenge": challenge},
+        )
+        with urlopen(
+            health_request,
             timeout=coordination_timeout_seconds,
         ) as response:
             envelope = json.load(response)
         assert envelope["success"] is True
         assert envelope["data"]["panel_ready"] is True
         assert envelope["data"]["runtime_ready"] is False
+        assert hmac.compare_digest(
+            envelope["data"]["desktop_challenge_response"],
+            hmac.new(
+                bootstrap_secret.encode(), challenge.encode(), hashlib.sha256,
+            ).hexdigest(),
+        )
 
         # The temporary Launcher identity may authenticate only this bootstrap
         # panel session. It is not the execution identity projected by health.

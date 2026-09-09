@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.ai_client.capability_tokens import (
     missing_model_capabilities,
     model_requirements_from_tokens,
@@ -27,6 +29,7 @@ def call_model(
     context: dict[str, Any] | None = None,
     *,
     call_handler: Any = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     payload = dict(input_data or {})
     runtime_context = dict(context or {})
@@ -46,7 +49,7 @@ def call_model(
         or payload.get("capability")
     )
     model_requirements = model_requirements_from_tokens(required_capabilities)
-    model_settings = ModelRuntimeSettingsService().get_settings()
+    model_settings = ModelRuntimeSettingsService(settings_owner=settings_owner).get_settings()
     profiles = get_profile_catalog()
     preferred_model = str(
         payload.get("model_hint")

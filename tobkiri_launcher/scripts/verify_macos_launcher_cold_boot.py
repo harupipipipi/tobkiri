@@ -713,6 +713,7 @@ def _wait_for_readiness(
     broker_ready = False
     kernel_ownership_error = False
     panel_reachable = False
+    pending_stage = "embedded_broker"
     bootstrap_secret: str | None = None
     connection_path = config.app_data_dir / BROKER_CONNECTION_RELATIVE
 
@@ -739,6 +740,7 @@ def _wait_for_readiness(
                 broker_ready = True
 
         if broker_ready:
+            pending_stage = "bootstrap_contract"
             bootstrap_secret = bootstrap_secret or _embedded_panel_bootstrap_secret(config)
             challenge = secrets.token_urlsafe(32)
             kernel_response = probes.http_request(
@@ -751,17 +753,21 @@ def _wait_for_readiness(
                 },
                 b"",
             )
+            if bootstrap_secret is not None:
+                pending_stage = "authenticated_kernel_health"
             if bootstrap_secret is not None and _kernel_is_healthy(
                 kernel_response,
                 bootstrap_secret,
                 challenge,
             ):
                 kernel_pid = probes.listener_pid(config.kernel_port)
+                pending_stage = "kernel_process_ownership"
                 if kernel_pid is not None and _is_descendant(
                     kernel_pid,
                     int(process.pid),
                     probes.parent_pid,
                 ):
+                    pending_stage = "panel_authentication"
                     panel_reachable = (
                         _panel_authentication_is_reachable(
                             config,
@@ -791,7 +797,8 @@ def _wait_for_readiness(
     if not broker_ready:
         raise ColdBootError("embedded host broker did not become ready before timeout")
     raise ColdBootError(
-        "owned Kernel health and panel authentication did not become ready before timeout"
+        "owned Kernel health and panel authentication did not become ready before "
+        f"timeout (pending stage: {pending_stage})"
     )
 
 

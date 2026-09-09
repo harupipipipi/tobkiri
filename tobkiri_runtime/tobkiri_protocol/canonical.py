@@ -116,7 +116,13 @@ def canonical_digest(value: Any) -> str:
 def _validate_value(value: Any, *, depth: int, max_depth: int) -> None:
     if depth > max_depth:
         raise CanonicalizationError("json nesting exceeds depth limit")
-    if value is None or isinstance(value, (str, bool)):
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            raise CanonicalizationError("json string contains invalid Unicode") from exc
+        return
+    if value is None or isinstance(value, bool):
         return
     if isinstance(value, int):
         if abs(value) > MAX_SAFE_INTEGER:
@@ -136,6 +142,7 @@ def _validate_value(value: Any, *, depth: int, max_depth: int) -> None:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise CanonicalizationError("JSON object keys must be strings")
+            _validate_value(key, depth=depth, max_depth=max_depth)
             _validate_value(item, depth=depth + 1, max_depth=max_depth)
         return
     raise CanonicalizationError(f"unsupported JSON value type: {type(value).__name__}")

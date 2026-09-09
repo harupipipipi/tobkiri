@@ -71,12 +71,18 @@ const API_BASE_URL =
   (import.meta as ImportMeta & {env?: Record<string, string>}).env?.VITE_API_BASE_URL ?? '';
 const PANEL_CSRF_STORAGE_KEY = 'rumi-panel-csrf';
 const PANEL_AUTH_EXCHANGE_PATH = '/api/panel/auth/exchange';
-export type FrontendContractMethod = 'GET' | 'POST';
+export type FrontendContractMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+function isFrontendContractMethod(method: string): method is FrontendContractMethod {
+  return method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE';
+}
 
 const EXACT_NON_MAP_API_ROUTES = [
   {method: 'POST', path: PANEL_AUTH_EXCHANGE_PATH},
   {method: 'GET', path: '/api/setup/packs'},
   {method: 'POST', path: '/api/setup/packs/install'},
+  {method: 'GET', path: '/api/setup/packs?include_source_additions=true'},
+  {method: 'POST', path: '/api/setup/packs/install?include_source_additions=true'},
   {method: 'POST', path: '/api/setup/runtime/reconcile'},
   {method: 'GET', path: '/api/v4/profiles'},
   {method: 'POST', path: '/api/v4/profiles/create'},
@@ -254,7 +260,9 @@ function isUnsafeMethod(method: string): boolean {
 }
 
 function isSetupApiPath(path: string): boolean {
-  return path === '/api/setup/packs' || path === '/api/setup/packs/install';
+  return path === '/api/setup/packs' || path === '/api/setup/packs/install'
+    || path === '/api/setup/packs?include_source_additions=true'
+    || path === '/api/setup/packs/install?include_source_additions=true';
 }
 
 interface ParsedFrontendContractPath {
@@ -275,7 +283,7 @@ function parseFrontendContractPath(path: string): ParsedFrontendContractPath | n
   if (separator <= 0) return null;
   const method = operation.slice(0, separator);
   const target = operation.slice(separator + 1);
-  if (method !== 'GET' && method !== 'POST') return null;
+  if (!isFrontendContractMethod(method)) return null;
   let route;
   try {
     route = generatedRouteFor(
@@ -349,7 +357,7 @@ function isExactAllowedApiRequest(path: string, method: string): boolean {
 }
 
 function frontendContractPath(method: FrontendContractMethod, target: string): string {
-  if (method !== 'GET' && method !== 'POST') {
+  if (!isFrontendContractMethod(method)) {
     throw new Error('The generated v4 contract method is unsupported.');
   }
   try {
@@ -377,7 +385,7 @@ function assertLogicalContractTarget(method: FrontendContractMethod, target: str
   ) {
     throw new Error('The generated v4 contract target is invalid.');
   }
-  if (method !== 'GET' && method !== 'POST') {
+  if (!isFrontendContractMethod(method)) {
     throw new Error('The generated v4 contract method is unsupported.');
   }
 }
@@ -414,7 +422,7 @@ export function fetchFrontendContractOperation<T>(
     ).toString()}`
     : '';
   const path = frontendContractPath(method, target);
-  return apiFetch<T>(query ? `${path}${query}` : path, method === 'POST'
+  return apiFetch<T>(query ? `${path}${query}` : path, method !== 'GET'
     ? {method, body: JSON.stringify(payload ?? {})}
     : {}, requestPolicy);
 }

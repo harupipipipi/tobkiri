@@ -14,7 +14,7 @@
     },
     {
       "path": "runtime/process.py",
-      "sha256": "sha256:c6186fd17b9a4a2ae6eba0bdc90687795bfd2aaba869c1131f353085d85bf78f"
+      "sha256": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

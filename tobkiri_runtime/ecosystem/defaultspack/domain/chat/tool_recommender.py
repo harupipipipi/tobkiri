@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import json
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import math
 import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 
 
 TOOL_ASSIST_DEFAULT_MODE = "auto"
@@ -136,13 +137,8 @@ def search_tools(
     ]
 
 
-def _read_frontend_settings(pack_root: Path | None = None) -> dict[str, Any]:
-    path = frontend_settings_path(pack_root)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+def _read_frontend_settings(pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return read_optional_frontend_settings(pack_root, settings_owner=settings_owner)
 
 
 def _tool_vector(tool: dict[str, Any]) -> Counter[str]:

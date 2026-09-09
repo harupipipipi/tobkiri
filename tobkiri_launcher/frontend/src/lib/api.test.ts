@@ -37,7 +37,7 @@ import {
   RUNTIME_SURFACE_API_VERSION,
 } from './runtimeSurface.ts';
 import {GENERATED_FRONTEND_CONTRACT_MAP} from './generatedFrontendContractMap.ts';
-import {fetchDefaultsSetupState} from './defaultsSetup.ts';
+import {activateDefaultsProfile, fetchDefaultsSetupState} from './defaultsSetup.ts';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -910,6 +910,50 @@ test('health parsing recognizes reconfirmation and preserves the typed setup pat
   assert.equal(lastFetchUrl, '/api/setup/packs');
 });
 
+test('additive Setup routes retain exact methods, authentication and selector spelling', async () => {
+  setRuntimeDispatchStatus('profile_reconfirmation_required');
+  await apiFetch('/api/setup/packs?include_source_additions=true');
+  assert.equal(lastFetchUrl, '/api/setup/packs?include_source_additions=true');
+  await apiFetch('/api/setup/packs/install?include_source_additions=true', {method: 'POST'});
+  assert.equal(lastFetchUrl, '/api/setup/packs/install?include_source_additions=true');
+  for (const path of [
+    '/api/setup/packs?include_source_additions=false',
+    '/api/setup/packs?include_source_additions=1',
+    '/api/setup/packs?include_source_additions=true&include_source_additions=true',
+    '/api/setup/packs?include_source_additions=true&unknown=1',
+    '/api/setup/packs/install?include_source_additions=true',
+  ]) {
+    await assert.rejects(apiFetch(path), /exact method\/path allowlist/);
+  }
+});
+
+test('additive preview and activation use the same selector without retrying a denied POST', async () => {
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  const requests: Array<{path: string; init?: RequestInit}> = [];
+  fetchHandler = async (input, init) => {
+    requests.push({path: String(input), init});
+    return init?.method === 'POST'
+      ? new Response(JSON.stringify({success: false, error: 'confirmation rejected'}), {status: 409})
+      : new Response(JSON.stringify({success: true, data: fixture}));
+  };
+  const proposal = await fetchDefaultsSetupState({includeSourceAdditions: true});
+  await assert.rejects(activateDefaultsProfile(
+    proposal.recommended_default_profile.confirmation, {includeSourceAdditions: true},
+  ), /confirmation rejected/);
+  assert.deepEqual(requests.map(({path}) => path), [
+    '/api/setup/packs?include_source_additions=true',
+    '/api/setup/packs/install?include_source_additions=true',
+  ]);
+  assert.deepEqual(JSON.parse(String(requests[1].init?.body)), {
+    setup_api_version: 'io.tobkiri.setup-state.v4',
+    operation_id: 'defaults.activate',
+    confirmed: true,
+    confirmation: proposal.recommended_default_profile.confirmation,
+  });
+});
+
 test('dispatch gate releases only after the Host publishes runtime_ready', async () => {
   setRuntimeDispatchStatus('profile_reconfirmation_required');
   await assert.rejects(
@@ -1105,13 +1149,33 @@ test('every single-target product route is dispatched through the generated map'
   }
 });
 
+test('conversation writes preserve their declared method and revision payload', async () => {
+  for (const method of ['PUT', 'DELETE'] as const) {
+    const payload = {conversation_id: 'conversation', expected_conversation_revision: 2};
+    await fetchFrontendContractOperation(method, '/api/chat/conversation', payload);
+    assert.equal(lastFetchInit?.method, method);
+    assert.deepEqual(JSON.parse(String(lastFetchInit?.body)), payload);
+    assert.equal(decodeURIComponent(lastFetchUrl), `/api/contracts/defaultspack/${method} /api/chat/conversation`);
+    const before = lastFetchUrl;
+    assert.throws(
+      () => fetchFrontendContractOperation(method, '/api/chat/conversation', {...payload, approved: true}),
+      /unknown key/,
+    );
+    assert.equal(lastFetchUrl, before);
+  }
+});
+
 test('all generated map bindings use the exact method/path and reject ambiguous capability dispatch', () => {
   assert.throws(
     () => fetchFrontendContractOperation('POST', '/api/ui/capability/invoke'),
     /multiple operations/i,
   );
   assert.throws(
-    () => fetchFrontendContractOperation('PUT' as never, '/api/pack-control/catalog'),
-    /unsupported|not declared/i,
+    () => fetchFrontendContractOperation('PUT', '/api/pack-control/catalog'),
+    /no exact route/i,
+  );
+  assert.throws(
+    () => fetchFrontendContractOperation('PATCH' as never, '/api/chat/conversation'),
+    /unsupported/i,
   );
 });

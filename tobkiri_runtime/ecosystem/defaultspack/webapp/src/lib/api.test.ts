@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
@@ -39,6 +40,155 @@ function requestTarget(input: RequestInfo | URL): string {
   const separator = operation.indexOf(" ");
   return separator < 0 ? operation : operation.slice(separator + 1);
 }
+
+test("saved turn reconciliation is a read with no replay or caller Profile", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const turn = { id: "turn-1", conversation_id: "conversation-1", status: "waiting", revision: 3 };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("GET /api/chat/turn?turn_id=turn-1")}`);
+    assert.equal(init?.method ?? "GET", "GET");
+    assert.equal(init?.body, undefined);
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: turn }));
+  };
+  assert.deepEqual(await api.getSavedTurn("turn-1", "conversation-1"), turn);
+  await assert.rejects(api.getSavedTurn("turn-1", "other"), /does not match/);
+  await assert.rejects(api.getSavedTurn("../bad", "conversation-1"), /stable turn ID/);
+  assert.equal(calls, 2);
+});
+
+test("saved reconciliation posts only an existing turn ID, never the original input", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const turn = { id: "turn-1", conversation_id: "conversation-1", status: "completed", revision: 4 };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn/reconcile")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), { turn_id: "turn-1" });
+    return new Response(JSON.stringify({ success: true, data: { status: "completed", turn } }));
+  };
+  assert.deepEqual(await api.reconcileSavedTurn("turn-1", "conversation-1"), turn);
+  await assert.rejects(api.reconcileSavedTurn("turn-1", "other"), /does not match/);
+  await assert.rejects(api.reconcileSavedTurn("../bad", "conversation-1"), /stable turn ID/);
+  assert.equal(calls, 2);
+  globalThis.fetch = async () => { calls += 1; throw new Error("connection lost"); };
+  await assert.rejects(api.reconcileSavedTurn("turn-1", "conversation-1"), /connection lost/);
+  assert.equal(calls, 3);
+});
+
+test("saved turn uses exact canonical transport and never retries an uncertain outcome", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
+  const result = { status: "reconciliation_required", turn: { id: "turn-1", conversation_id: "conversation-1", status: "waiting", revision: 3 } };
+  let calls = 0;
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
+    return new Response(JSON.stringify({ success: true, data: result }));
+  };
+  assert.deepEqual(await api.startSavedTurn(input), result);
+  assert.equal(calls, 1);
+  globalThis.fetch = async () => { calls += 1; throw new Error("connection lost"); };
+  await assert.rejects(api.startSavedTurn(input), /connection lost/);
+  assert.equal(calls, 2);
+});
+
+test("saved turn rejects unsupported fields and invalid revisions before sending", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
+  const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
+  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { conversation_revision: 0 },
+    { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) }]) {
+    await assert.rejects(api.startSavedTurn({ ...input, ...patch }), /invalid|unsupported/);
+  }
+  assert.equal(calls, 0);
+});
+
+test("saved turn rejects another conversation outcome without replay", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ success: true, data: {
+      status: "completed", turn: { id: "turn-1", conversation_id: "other" },
+    } }));
+  };
+  await assert.rejects(api.startSavedTurn({ turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 1, content: "hello" }), /unconfirmed/);
+  assert.equal(calls, 1);
+});
+
+test("conversation create pins identity and revision and does not retry conflicts", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const calls: RequestInit[] = [];
+  globalThis.fetch = async (input, init) => {
+    const operation = calls.length === 0
+      ? "GET /api/chat/conversations"
+      : "POST /api/chat/conversations";
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(operation)}`);
+    assert.equal(init?.method ?? "GET", calls.length === 0 ? "GET" : "POST");
+    calls.push(init ?? {});
+    return new Response(JSON.stringify(calls.length === 1
+      ? { success: true, data: { store_revision: 7 }, error: null }
+      : { success: false, data: null, error: "Revision conflict" }));
+  };
+  await assert.rejects(api.createConversation({ model: "selected-model" }), /Revision conflict/);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].method, "POST");
+  const body = JSON.parse(String(calls[1].body));
+  assert.equal(body.expected_revision, 7);
+  assert.equal(body.model, "selected-model");
+  assert.match(body.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test("conversation create never writes without an exact snapshot revision", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  for (const store_revision of [undefined, null, true, -1, 1.5, "0"]) {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ success: true, data: { store_revision }, error: null }));
+    };
+    await assert.rejects(api.createConversation(), /invalid revision/);
+    assert.equal(calls, 1);
+  }
+});
+
+test("conversation record writes retain the displayed revision without refetch", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const bodies: unknown[] = [];
+  globalThis.fetch = async (input, init) => {
+    const operation = bodies.length === 0
+      ? "PUT /api/chat/conversation"
+      : "DELETE /api/chat/conversation";
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(operation)}`);
+    assert.equal(init?.method, bodies.length === 0 ? "PUT" : "DELETE");
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ success: true, data: { deleted: true }, error: null }));
+  };
+  await api.updateConversation("c1", { title: "Changed" }, 2);
+  await api.deleteConversation("c1", 2);
+  assert.deepEqual(bodies, [
+    { conversation_id: "c1", updates: { title: "Changed" }, expected_conversation_revision: 2 },
+    { conversation_id: "c1", expected_conversation_revision: 2 },
+  ]);
+  await assert.rejects(api.updateConversation("c1", { title: "Changed" }, undefined), /revision/);
+  await assert.rejects(api.deleteConversation("c1", undefined), /revision/);
+  assert.equal(bodies.length, 2);
+});
 
 test("health uses the Host endpoint and preserves execution-not-ready evidence", async (context) => {
   const originalFetch = globalThis.fetch;
@@ -1219,19 +1369,56 @@ test("updateUiSettingsPatches sends field-scoped settings mutations", async () =
     body = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
-      data: { values: { theme: { font_size: 16 } } },
+      data: { values: { general: { composer_placeholder: "Hello" } }, document_revision: 8 },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
     await api.updateUiSettingsPatches([
-      { section: "theme", field: "font_size", value: 16 },
-    ]);
+      { section: "general", field: "composer_placeholder", value: "Hello" },
+    ], 7);
   } finally {
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(body, {
-    patches: [{ section: "theme", field: "font_size", value: 16 }],
+    changes: { general: { composer_placeholder: "Hello" } }, expected_revision: 7,
   });
+});
+
+test("settings patches reject malformed or unrelated acknowledgements without resending", async () => {
+  const originalFetch = globalThis.fetch;
+  const changes = { general: { composer_placeholder: "Hello" } };
+  try {
+    for (const data of [
+      { values: changes },
+      { values: changes, document_revision: 7 },
+      { values: changes, document_revision: "8" },
+      { values: { general: { composer_placeholder: "Different" } }, document_revision: 8 },
+      { values: { ...changes, models: { secret: "unexpected" } }, document_revision: 8 },
+    ]) {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ status: "ok", data }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }) as typeof fetch;
+      await assert.rejects(api.updateUiSettingsPatches([
+        { section: "general", field: "composer_placeholder", value: "Hello" },
+      ], 7));
+      assert.equal(calls, 1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("settings patches need an explicit revision and nonempty field changes", () => {
+  for (const revision of [-1, NaN, Infinity, 1.5]) {
+    assert.throws(() => api.updateUiSettingsPatches([
+      { section: "general", field: "language", value: "ja" },
+    ], revision));
+  }
+  assert.throws(() => api.updateUiSettingsPatches([], 0));
 });
 
 test("listModelProfiles bypasses browser cache", async () => {
@@ -1665,7 +1852,30 @@ test("searchConversations serializes spotlight search filters", async () => {
   });
 });
 
-test("saveProviderApiKey serializes named API metadata", async () => {
+test("createModelProfile uses revisioned model writes and reconciles existing identity", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  const input = { model_profile_id: "daily", model_id: "model-1", provider_instance_id: "provider.fixture", display_name: "Daily" };
+  const profile = { profile_id: "daily", model_id: "model-1", provider_id: "provider.fixture", display_name: "Daily" };
+  let saved = false;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      bodies.push(JSON.parse(String(init.body)));
+      saved = true;
+    }
+    return new Response(JSON.stringify({ status: "ok", data: {
+      profiles: saved ? [profile] : [], count: saved ? 1 : 0, registry_revision: saved ? 1 : 0,
+    } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await api.createModelProfile(input), profile);
+    assert.deepEqual(await api.createModelProfile(input), profile);
+    await assert.rejects(api.createModelProfile({ ...input, model_id: "different" }), /既に存在/);
+    assert.deepEqual(bodies, [{ ...input, expected_revision: 0 }]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("saveProviderApiKey rejects unsupported metadata before sending a key", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -1677,7 +1887,7 @@ test("saveProviderApiKey serializes named API metadata", async () => {
   }) as typeof fetch;
 
   try {
-    await api.saveProviderApiKey("google", "secret", {
+    await assert.rejects(api.saveProviderApiKey("openai", "secret", {
       apiId: "main",
       name: "Main",
       baseUrl: "https://example.test/v1",
@@ -1685,22 +1895,166 @@ test("saveProviderApiKey serializes named API metadata", async () => {
       defaultModel: "gemini-test",
       quotaLabel: "paid",
       notes: "fast route",
-    });
+    }), /同時保存は未対応/);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(requestBody, {
-    provider_id: "google",
-    value: "secret",
-    api_id: "main",
-    name: "Main",
-    base_url: "https://example.test/v1",
-    allowed_models: ["gemini-test"],
-    default_model: "gemini-test",
-    quota_label: "paid",
-    notes: "fast route",
+  assert.equal(requestBody, null);
+});
+
+function providerConfigurationFixture() {
+  const values = new Map<string, string>();
+  const calls: string[] = [];
+  const status = (state: string): ProviderConfigurationStatus => ({
+    effect_id: "effect-1", approval_request_id: "approval-1", state,
   });
+  const configuration = {
+    connection_name: "openai.main", protocol: "openai-compatible" as const,
+    endpoint: "https://provider.example/v1", key_value: "fixture-private-key",
+  };
+  const ports = {
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    },
+    prepare: async () => { calls.push("prepare"); return status("approval_pending"); },
+    status: async () => { calls.push("status"); return status("approval_pending"); },
+    resume: async () => { calls.push("resume"); return status("succeeded"); },
+    cancel: async () => { calls.push("cancel"); return status("cancelled"); },
+    approval: async () => ({ request_id: "approval-1", state: "approved" }),
+    openApproval: async () => { calls.push("open"); return true; },
+    pause: async () => {},
+  };
+  return { values, calls, status, configuration, ports };
+}
+
+test("saveProviderApiKey sends canonical preparation and returns success only after Host resume", async () => {
+  const f = providerConfigurationFixture();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true, value: { sessionStorage: f.ports.storage, location: { hash: "" } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const path = requestTarget(input);
+    assert.match(path, /provider-key|interactive-approval/);
+    const data = path.includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : f.status(body.phase === "resume" ? "succeeded" : "approval_pending");
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    const result = await api.saveProviderApiKey("openai", "fixture-private-key", {
+      apiId: "main", baseUrl: "https://provider.example/v1",
+    });
+    assert.equal(result.configured, true);
+    assert.equal(result.model_availability.status, "route_required");
+    assert.deepEqual(bodies, [
+      { phase: "prepare", effect_kind: "provider_configure", request: f.configuration },
+      { request_id: "approval-1" },
+      { phase: "resume", effect_id: "effect-1" },
+    ]);
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("provider configuration waits for approval then resumes once and stores no raw key", async () => {
+  const f = providerConfigurationFixture();
+  let polls = 0;
+  f.ports.approval = async () => ({ request_id: "approval-1", state: polls++ ? "approved" : "pending" });
+  f.ports.pause = async () => {
+    const stored = JSON.stringify([...f.values]);
+    assert.doesNotMatch(stored, /fixture-private-key|https:/);
+    assert.deepEqual(f.calls, ["prepare", "open"]);
+  };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "open", "status", "resume"]);
+  assert.equal(f.values.size, 0);
+});
+
+test("provider configuration preserves uncertain prepare without resending or leaking exceptions", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.prepare = async () => { f.calls.push("prepare"); throw new Error(f.configuration.key_value); };
+  await assert.rejects(configureProvider(f.configuration, f.ports), (error: Error) => {
+    assert.doesNotMatch(error.message, /fixture-private-key/);
+    return true;
+  });
+  await assert.rejects(configureProvider(f.configuration, f.ports), /受付結果が不明/);
+  assert.deepEqual(f.calls, ["prepare"]);
+});
+
+test("provider configuration reconciles lost resume ACK and refuses changed input", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.resume = async () => { f.calls.push("resume"); throw new Error("lost ACK"); };
+  await assert.rejects(configureProvider(f.configuration, f.ports), /結果を確認できません/);
+  await assert.rejects(configureProvider({ ...f.configuration, key_value: "replacement" }, f.ports), /入力を変更せず/);
+  f.ports.status = async () => { f.calls.push("status"); return f.status("succeeded"); };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "resume", "status", "status"]);
+});
+
+test("changed provider input reconciles only a confirmed previous result without submitting the new key", async () => {
+  for (const state of ["succeeded", "cancelled", "ambiguous", "failed", "approval_pending"]) {
+    const f = providerConfigurationFixture();
+    f.ports.resume = async () => { f.calls.push("resume"); throw new Error("lost ACK"); };
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    f.ports.status = async () => { f.calls.push("status"); return f.status(state); };
+    const terminal = ["succeeded", "cancelled"].includes(state);
+    await assert.rejects(
+      configureProvider({ ...f.configuration, key_value: "replacement-key" }, f.ports),
+      terminal ? /変更後の入力は保存していません/ : /前のProvider設定が未確認/,
+    );
+    assert.deepEqual(f.calls, ["prepare", "resume", "status"]);
+    assert.equal(f.values.size, terminal ? 0 : 1);
+    assert.doesNotMatch(JSON.stringify([...f.values]), /replacement-key|fixture-private-key/);
+  }
+});
+
+test("changed provider input retains its receipt on foreign status or transport failure", async () => {
+  for (const failure of ["foreign", "transport"]) {
+    const f = providerConfigurationFixture();
+    f.ports.resume = async () => { throw new Error("lost ACK"); };
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    const before = [...f.values];
+    f.ports.status = async () => {
+      f.calls.push("status");
+      if (failure === "transport") throw new Error("private transport details");
+      return { ...f.status("succeeded"), effect_id: "foreign" };
+    };
+    await assert.rejects(
+      configureProvider({ ...f.configuration, key_value: "replacement-key" }, f.ports),
+      (error: Error) => {
+        assert.doesNotMatch(error.message, /private transport details|replacement-key/);
+        return true;
+      },
+    );
+    assert.deepEqual([...f.values], before);
+    assert.deepEqual(f.calls, ["prepare", "status"]);
+  }
+});
+
+test("provider configuration does not resume denied or mismatched approval", async () => {
+  for (const approval of [
+    { request_id: "approval-1", state: "denied" },
+    { request_id: "foreign", state: "approved" },
+  ]) {
+    const f = providerConfigurationFixture();
+    f.ports.approval = async () => approval;
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    assert.deepEqual(f.calls, approval.state === "denied" ? ["prepare", "cancel"] : ["prepare"]);
+    assert.equal(f.values.size, approval.state === "denied" ? 0 : 1);
+  }
 });
 
 test("renameProviderApiKey serializes rename action", async () => {

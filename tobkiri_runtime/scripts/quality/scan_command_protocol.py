@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from tempfile import TemporaryDirectory
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,29 @@ SECRET_FRAGMENTS = {
 }
 
 
+class _PackagedCommandRegistry(CommandProtocolRegistry):
+    """Build inventory includes packaged commands, never personal registrations."""
+
+    def _registered_settings_commands(self) -> list[dict[str, Any]]:
+        return []
+
+    def query_states(self, refs: list[str] | None = None) -> dict[str, Any]:
+        """Build inventories contain declarations, not live user-state snapshots."""
+        return {"states": []}
+
+
 def scan() -> dict[str, Any]:
-    registry = CommandProtocolRegistry()
+    """Scan packaged commands independently of the invoking user's settings."""
+    with TemporaryDirectory(prefix="tobkiri-command-scan-") as directory:
+        root = Path(directory)
+        registry = _PackagedCommandRegistry(
+            DEFAULTSPACK,
+            command_state_dir=root / "commands",
+        )
+        return _scan_registry(registry)
+
+
+def _scan_registry(registry: CommandProtocolRegistry) -> dict[str, Any]:
     catalog = registry.catalog()
     commands = catalog["commands"]
     failures: list[str] = []

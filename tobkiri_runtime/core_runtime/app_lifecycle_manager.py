@@ -216,7 +216,9 @@ class AppLifecycleManager:
         result.update(get_runtime_readiness())
         return result
 
-    def activate_bootstrap_profile(self, confirmation: Mapping[str, Any]) -> Any:
+    def activate_bootstrap_profile(
+        self, confirmation: Mapping[str, Any], *, include_source_additions: bool = False
+    ) -> Any:
         """Commit one Pack-selected activation and construct a restart-only check."""
 
         from .authority.v4 import AuthorityStore
@@ -229,6 +231,7 @@ class AppLifecycleManager:
             active = capture_bootstrap_profile(
                 base_dir=self.base_dir,
                 confirmation=confirmation,
+                include_source_additions=include_source_additions,
             )
             try:
                 user_data = runtime_user_data_root(self.base_dir)

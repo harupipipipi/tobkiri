@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import plistlib
+import shlex
 import shutil
 import signal
 import struct
@@ -320,9 +321,15 @@ def _fixture_app(root: Path) -> Path:
     return app
 
 
-def _formal_binding() -> tuple[str, str]:
-    interpreter = Path(os.path.realpath(sys.executable))
-    return str(interpreter), hashlib.sha256(interpreter.read_bytes()).hexdigest()
+def _formal_binding(root: Path) -> tuple[str, str]:
+    # Keep the active venv while providing the regular, digest-bound fixture
+    # entrypoint required by the packager; realpath loses venv dependencies.
+    wrapper = root / "formal-python-binding"
+    _write_executable(
+        wrapper,
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n',
+    )
+    return str(wrapper), hashlib.sha256(wrapper.read_bytes()).hexdigest()
 
 
 def _prepare(root: Path, mode: str) -> tuple[Path, Path, Path, dict[str, str]]:
@@ -336,7 +343,7 @@ def _prepare(root: Path, mode: str) -> tuple[Path, Path, Path, dict[str, str]]:
     victim = root / "external-victim"
     victim.mkdir()
     (victim / "keep.txt").write_text("keep", encoding="utf-8")
-    interpreter, digest = _formal_binding()
+    interpreter, digest = _formal_binding(root)
     environment = os.environ.copy()
     if mode == "fifo_substitution":
         fifo_wrapper = root / "formal-python-fifo-substitution"
@@ -381,7 +388,7 @@ raise SystemExit(result.returncode)
         environment.update(
             {
                 "FAKE_FIFO_SUBSTITUTION": "1",
-                "FORMAL_PYTHON_DELEGATE": str(Path(os.path.realpath(sys.executable))),
+                "FORMAL_PYTHON_DELEGATE": sys.executable,
             }
         )
     if mode == "extra_helper_entitlement":
@@ -531,7 +538,7 @@ def test_formal_python_helpers_use_verified_interpreter_and_digest(
 def test_formal_python_runs_from_the_sealed_snapshot_root(tmp_path: Path) -> None:
     app, output_dir, state_path, environment = _prepare(tmp_path, "permanent")
     snapshot = tmp_path / "formal-python-snapshot"
-    delegate = Path(os.path.realpath(sys.executable))
+    delegate = sys.executable
     wrapper = tmp_path / "formal-python"
     _write_executable(
         wrapper,

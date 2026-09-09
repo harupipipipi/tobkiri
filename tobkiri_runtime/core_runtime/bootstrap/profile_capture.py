@@ -417,7 +417,9 @@ def _genesis_authority_snapshot_digest(bundle_lock_digest: str) -> str:
     )
 
 
-def _bootstrap_review_candidate(*, base_dir: Path | None = None) -> tuple[Any, tuple[str, ...]]:
+def _bootstrap_review_candidate(
+    *, base_dir: Path | None = None, include_source_additions: bool = False
+) -> tuple[Any, tuple[str, ...]]:
     """Return the exact bootstrap candidate without dropping active Pack selections."""
     runtime = require_profile_runtime()
     user_data = _user_data_root(base_dir)
@@ -427,6 +429,7 @@ def _bootstrap_review_candidate(*, base_dir: Path | None = None) -> tuple[Any, t
             catalog=runtime.load_catalog(_bundle_root(base_dir)),
             user_data=user_data,
             profile_id=_bootstrap_profile_id(),
+            include_source_additions=include_source_additions,
         )
 
 
@@ -580,9 +583,13 @@ def prepare_bootstrap_profile_confirmation(*, base_dir: Path | None = None) -> d
     return confirmation
 
 
-def prepare_bootstrap_profile_review(*, base_dir: Path | None = None) -> tuple[Any, dict[str, Any]]:
+def prepare_bootstrap_profile_review(
+    *, base_dir: Path | None = None, include_source_additions: bool = False
+) -> tuple[Any, dict[str, Any]]:
     """Bind the displayed Pack selection and confirmation to one captured candidate."""
-    candidate = _bootstrap_review_candidate(base_dir=base_dir)
+    candidate = _bootstrap_review_candidate(
+        base_dir=base_dir, include_source_additions=include_source_additions
+    )
     resolved, confirmation = _resolve_bootstrap_candidate(
         base_dir=base_dir, review_candidate=candidate
     )
@@ -958,6 +965,7 @@ def capture_bootstrap_profile(
     *,
     base_dir: Path | None = None,
     confirmation: Mapping[str, Any] | None = None,
+    include_source_additions: bool = False,
 ) -> Any:
     """Load or create the Pack-selected verified bootstrap activation.
 
@@ -965,6 +973,8 @@ def capture_bootstrap_profile(
     Authority Kernel epoch, resolve the application-selected Profile, and
     atomically activate it. Restart only reloads the digest-bound envelope.
     """
+    if include_source_additions and confirmation is None:
+        raise ProfileResolutionDenied("source update requires explicit confirmation")
     user_data = _user_data_root(base_dir)
     runtime = require_profile_runtime()
     profile_id = _bootstrap_profile_id()
@@ -972,6 +982,8 @@ def capture_bootstrap_profile(
     active_pointer = state_root / "active.json"
     if state_root.is_symlink() or active_pointer.is_symlink():
         raise ProfileResolutionDenied("bootstrap activation state must not be symlinked")
+    if include_source_additions and not active_pointer.is_file():
+        raise ProfileResolutionDenied("source update requires an active Profile")
     cache = _PROFILE_CAPTURE_SCOPE.get()
     if confirmation is None and cache is not None:
         signature = _activation_pointer_signature(active_pointer)
@@ -982,7 +994,9 @@ def capture_bootstrap_profile(
             cache.pop(user_data, None)
     if active_pointer.is_file():
         workspace = user_data / "workspaces" / profile_id
-        candidate = _bootstrap_review_candidate(base_dir=base_dir)
+        candidate = _bootstrap_review_candidate(
+            base_dir=base_dir, include_source_additions=include_source_additions
+        )
         catalog = candidate[0]
         resolved_reconciliation: Any | None = None
         if confirmation is not None:

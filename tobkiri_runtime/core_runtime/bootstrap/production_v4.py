@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import secrets
 import stat
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -52,6 +54,11 @@ from tobkiri_host.workspace_mutation import (
 )
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
 from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.saved_conversation import (
+    SAVED_CONVERSATION_CONTRACT,
+    SAVED_CONVERSATION_OPERATION,
+    validate_saved_conversation_input,
+)
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
 from tobkiri_protocol.secure_persistence import (
     SecureDirectory,
@@ -1342,6 +1349,11 @@ def capture_production_dispatch(
             )
             function_principals.append(principal)
         principals_by_function[function.function_id] = tuple(function_principals)
+    shell_principal_ids = frozenset(
+        principal.principal_id
+        for principals in principals_by_function.values()
+        for principal in principals
+    )
     for binding in plan["bindings"]:
         principal = FunctionPrincipal.from_dict(binding["function_principal"])
         existing = list(principals_by_function.get(principal.function_id, ()))
@@ -1789,10 +1801,19 @@ def capture_production_dispatch(
     dispatch_holder: list[V4DispatchSession] = []
     bridge_targets = _bridge_targets_by_outer_edge(captured_edges)
 
-    def capability_bridge(
-        outer_request: object,
-        bridge_request: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
+    def resolve_bridge_outer(outer_request: object) -> _CapturedPlanEdge:
+        """Resolve bridge authority only from the captured authenticated outer edge."""
+        deadline = getattr(outer_request, "deadline_monotonic", None)
+        cancellation = getattr(outer_request, "cancellation_requested", None)
+        if (
+            not isinstance(deadline, (int, float))
+            or isinstance(deadline, bool)
+            or not math.isfinite(deadline)
+            or deadline <= time.monotonic()
+            or type(cancellation) is not threading.Event
+            or cancellation.is_set()
+        ):
+            raise AuthorityDenied("PackVM capability bridge outer budget is invalid")
         outer_context = getattr(outer_request, "context", None)
         outer_target = getattr(
             getattr(outer_request, "target_principal", None),
@@ -1832,6 +1853,8 @@ def capture_production_dispatch(
             outer_target != outer_edge.target.principal_id
             or outer_domain != expected_target_domain
             or outer_caller != outer_edge.caller.principal_id
+            or getattr(outer_request, "contract_version", None)
+            != outer_edge.resolved_binding.operation.contract_version
             or getattr(outer_context, "profile_id", None) != profile["profile_id"]
             or getattr(outer_context, "profile_revision", "") not in {"", plan["profile_revision"]}
             or getattr(outer_context, "activation_id", None) != active.activation["activation_id"]
@@ -1847,6 +1870,71 @@ def capture_production_dispatch(
             != expected_target_backend_digest
         ):
             raise AuthorityDenied("PackVM capability bridge outer identity is invalid")
+        return outer_edge
+
+    def invoke_bridge_provider(
+        outer_request: object,
+        outer_edge: _CapturedPlanEdge,
+        bridge_edge: _CapturedPlanEdge,
+        request: Mapping[str, Any],
+        *,
+        result_projector: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Invoke the selected Provider with one Host session and original budget."""
+        outer_context = getattr(outer_request, "context", None)
+        if not dispatch_holder:
+            raise AuthorityDenied("PackVM capability bridge is not initialized")
+        dispatch = dispatch_holder[0]
+        dispatch.assert_current()
+        authority_target_domain(bridge_edge.resolved_binding)
+        if target_backend_digests.get(bridge_edge.target.principal_id) is None:
+            raise AuthorityDenied("PackVM capability bridge target is not ready")
+        request_id = getattr(outer_context, "request_id", None)
+        if not isinstance(request_id, str) or not request_id or len(request_id) > 160:
+            raise AuthorityDenied("PackVM capability bridge request identity is invalid")
+        # This session identity is generated in the Host.  The guest nonce
+        # binds its continuation but never becomes an Authority session id.
+        bridge_session_id = f"session.packvm-bridge.{request_id}.{secrets.token_hex(16)}"
+        parent_deadline = getattr(outer_request, "deadline_monotonic", None)
+        if parent_deadline is None:
+            raise AuthorityDenied("PackVM capability bridge outer deadline is missing")
+        parent_cancellation = getattr(outer_request, "cancellation_requested", None)
+        if type(parent_cancellation) is not threading.Event:
+            raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
+        with caller_session_bindings_lock:
+            caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
+        try:
+            provider_result = dispatch.invoke(
+                bridge_edge.resolved_binding.operation.contract_id,
+                bridge_edge.resolved_binding.operation.operation_id,
+                {**dict(request), "_session_id": bridge_session_id},
+                parent_deadline_monotonic=parent_deadline,
+                parent_cancellation=parent_cancellation,
+            )
+            if not isinstance(provider_result, Mapping):
+                raise TypeError("verified Provider capability returned a non-object")
+            if result_projector is not None:
+                provider_result = result_projector(provider_result)
+            result = {"status": "ok", "value": dict(provider_result)}
+            if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
+                raise ValueError("verified Provider capability result is too large")
+        except Exception as error:
+            # Do not project provider/backend details through the PackVM ABI.
+            # The guest receives a typed, bounded result it can safely render.
+            from .bridge_diagnostics import record_bridge_failure
+
+            record_bridge_failure(error)
+            result = _provider_unavailable_bridge_result()
+        finally:
+            with caller_session_bindings_lock:
+                caller_session_bindings.pop(bridge_session_id, None)
+        return result
+
+    def capability_bridge(
+        outer_request: object,
+        bridge_request: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        outer_edge = resolve_bridge_outer(outer_request)
 
         expected_fields = {
             "kind",
@@ -1921,42 +2009,7 @@ def capture_production_dispatch(
         ):
             raise AuthorityDenied("PackVM capability bridge continuation is invalid")
 
-        if not dispatch_holder:
-            raise AuthorityDenied("PackVM capability bridge is not initialized")
-        dispatch = dispatch_holder[0]
-        dispatch.assert_current()
-        authority_target_domain(bridge_edge.resolved_binding)
-        if target_backend_digests.get(bridge_edge.target.principal_id) is None:
-            raise AuthorityDenied("PackVM capability bridge target is not ready")
-        request_id = getattr(outer_context, "request_id", None)
-        if not isinstance(request_id, str) or not request_id or len(request_id) > 160:
-            raise AuthorityDenied("PackVM capability bridge request identity is invalid")
-        # This session identity is generated in the Host.  The guest nonce
-        # binds its continuation but never becomes an Authority session id.
-        bridge_session_id = f"session.packvm-bridge.{request_id}.{secrets.token_hex(16)}"
-        with caller_session_bindings_lock:
-            caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
-        try:
-            provider_result = dispatch.invoke(
-                bridge_edge.resolved_binding.operation.contract_id,
-                bridge_edge.resolved_binding.operation.operation_id,
-                {**dict(request), "_session_id": bridge_session_id},
-            )
-            if not isinstance(provider_result, Mapping):
-                raise TypeError("verified Provider capability returned a non-object")
-            result = {"status": "ok", "value": dict(provider_result)}
-            if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
-                raise ValueError("verified Provider capability result is too large")
-        except Exception as error:
-            # Do not project provider/backend details through the PackVM ABI.
-            # The guest receives a typed, bounded result it can safely render.
-            from .bridge_diagnostics import record_bridge_failure
-
-            record_bridge_failure(error)
-            result = _provider_unavailable_bridge_result()
-        finally:
-            with caller_session_bindings_lock:
-                caller_session_bindings.pop(bridge_session_id, None)
+        result = invoke_bridge_provider(outer_request, outer_edge, bridge_edge, request)
 
         response = {
             "kind": "tobkiri.packvm.bridge.result.v1",
@@ -1974,6 +2027,69 @@ def capture_production_dispatch(
             response["result_digest"] = canonical_digest(response["result"])
         return response
 
+    from .saved_bridge import (
+        REQUIRED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result,
+    )
+
+    def saved_target(outer_request: object, target: tuple[str, str]) -> _CapturedPlanEdge:
+        outer_edge = resolve_bridge_outer(outer_request)
+        if (
+            outer_edge.resolved_binding.operation.contract_id != SAVED_CONVERSATION_CONTRACT
+            or outer_edge.resolved_binding.operation.operation_id != SAVED_CONVERSATION_OPERATION
+            or target not in REQUIRED_TARGETS
+        ):
+            raise AuthorityDenied("saved bridge outer operation is not selected")
+        candidates = tuple(
+            edge for edge in bridge_targets[outer_edge.key]
+            if (edge.resolved_binding.operation.contract_id,
+                edge.resolved_binding.operation.operation_id) == target
+        )
+        if len(candidates) != 1:
+            raise AuthorityDenied("saved bridge target is missing or ambiguous")
+        edge = candidates[0]
+        if not dispatch_holder:
+            raise AuthorityDenied("saved bridge dispatch is not initialized")
+        dispatch_holder[0].assert_current()
+        authority_target_domain(edge.resolved_binding)
+        if target_backend_digests.get(edge.target.principal_id) is None:
+            raise AuthorityDenied("saved bridge target backend is unavailable")
+        return edge
+
+    def require_saved_targets(outer_request: object, targets: tuple[tuple[str, str], ...]) -> None:
+        for target in targets:
+            saved_target(outer_request, target)
+
+    def saved_dispatch(
+        outer_request: object, target: tuple[str, str], payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        edge = saved_target(outer_request, target)
+        if "profile_id" in payload or "_session_id" in payload:
+            raise AuthorityDenied("saved bridge payload cannot select Host identity")
+        arguments = dict(payload)
+        if target[0] == "tobkiri.action.message.manage.v1" and payload.get("operation") == "append":
+            initial = getattr(outer_request, "payload", None)
+            if not isinstance(initial, Mapping):
+                raise AuthorityDenied("saved bridge initial input is missing")
+            arguments["operation"] = "append_saved"
+            arguments["saved_input"] = validate_saved_conversation_input(initial)
+        if target[0] in {"tobkiri.resource.conversation.v1", "tobkiri.action.message.manage.v1"}:
+            arguments["profile_id"] = profile["profile_id"]
+        runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
+        return invoke_bridge_provider(
+            outer_request, resolve_bridge_outer(outer_request), edge, arguments,
+            result_projector=(
+                project_saved_ai_result
+                if target[0] == "tobkiri.service.ai.generate.v1" else None
+            ),
+        )
+
+    saved_callbacks = SavedBridgeCallbacks(saved_dispatch, require_saved_targets)
+    saved_backend_ids = {
+        edge.resolved_binding.variant.backend for edge in captured_edges
+        if edge.resolved_binding.operation.contract_id == SAVED_CONVERSATION_CONTRACT
+        and edge.resolved_binding.operation.operation_id == SAVED_CONVERSATION_OPERATION
+        and edge.resolved_binding.variant.execution_kind is ExecutionKind.PACK_VM
+    }
     packvm_backend_ids = {
         edge.resolved_binding.variant.backend
         for edge in captured_edges
@@ -1996,6 +2112,11 @@ def capture_production_dispatch(
         bridge_binder = getattr(registered_backend, "bind_capability_bridge", None)
         if bridge_targets and callable(bridge_binder):
             bridge_binder(capability_bridge)
+        if registered_backend.status.backend_id in saved_backend_ids:
+            saved_binder = getattr(registered_backend, "bind_saved_capability_bridge", None)
+            if not callable(saved_binder):
+                raise AuthorityDenied("production PackVM backend cannot bind saved callbacks")
+            saved_binder(saved_callbacks, saved_callbacks.preflight)
     registered_backend_ids = {item.status.backend_id for item in registered_backends}
     for backend_id in sorted(packvm_backend_ids - registered_backend_ids):
         registered_backends += (_UnavailablePackVmBackend(backend_id),)
@@ -2126,6 +2247,8 @@ def capture_production_dispatch(
                     operation_id,
                     {**dict(payload), "_session_id": nested_session_id},
                     version_range=version_range,
+                    parent_deadline_monotonic=self._envelope.deadline_monotonic,
+                    parent_cancellation=self._envelope.cancellation_requested,
                 )
             finally:
                 release_nested_session(nested_session_id, nested_authority_session_id)
@@ -2140,7 +2263,7 @@ def capture_production_dispatch(
                 self._presentation_owner_session_id,
             ) = presentation_owner_for(envelope)
             self._client: GlobalContractClient | None = None
-            self._client_binding: tuple[frozenset[str], str] | None = None
+            self._client_binding: tuple[frozenset[str], str, bool] | None = None
 
         @property
         def envelope(self) -> Any:
@@ -2159,9 +2282,12 @@ def capture_production_dispatch(
             *,
             allowed_contract_ids: frozenset[str],
             consumer_pack_id: str,
+            include_credentials: bool = True,
         ) -> GlobalContractClient:
             expected_pack_id = pack_by_principal.get(self._envelope.target_principal.value)
-            binding = (allowed_contract_ids, consumer_pack_id)
+            if type(include_credentials) is not bool:
+                raise AuthorityDenied("Host Provider credential selection is invalid")
+            binding = (allowed_contract_ids, consumer_pack_id, include_credentials)
             if expected_pack_id != consumer_pack_id:
                 raise AuthorityDenied("Host Provider consumer identity is invalid")
             if self._client is not None:
@@ -2181,7 +2307,7 @@ def capture_production_dispatch(
                     credential_key_version=credential_store_binding.key_version,
                     consumer_pack_id=consumer_pack_id,
                 )
-                if credential_store_binding is not None
+                if include_credentials and credential_store_binding is not None
                 else None
             )
             self._client = GlobalContractClient(
@@ -2198,6 +2324,17 @@ def capture_production_dispatch(
             )
             self._client_binding = binding
             return self._client
+
+        def assert_current(self) -> None:
+            """Fence durable coordination with the original Host invocation."""
+            if (
+                self._envelope.cancellation_requested.is_set()
+                or self._envelope.deadline_monotonic <= time.monotonic()
+            ):
+                raise AuthorityDenied("Host Provider invocation is no longer active")
+            if not dispatch_holder:
+                raise AuthorityDenied("Host Provider dispatch is not initialized")
+            dispatch_holder[0].assert_current()
 
     def invocation_context(envelope: Any) -> HostProviderInvocationContextV4:
         return _HostInvocation(envelope)
@@ -2390,11 +2527,17 @@ def capture_production_dispatch(
             if len(matches) != 1:
                 raise AuthorityDenied("authenticated nested caller edge is invalid")
             return matches[0]
-        if len(candidates) != 1:
+        # An external panel session belongs to the captured Shell, never to
+        # an arbitrary Provider which happens to call the same operation.
+        # Nested Provider sessions above retain their exact Host binding.
+        shell_candidates = tuple(
+            edge for edge in candidates if edge.caller.principal_id in shell_principal_ids
+        )
+        if len(shell_candidates) != 1:
             raise AuthorityDenied(
-                "operation has multiple caller edges without an authenticated binding"
+                "operation does not identify one captured Shell caller edge"
             )
-        return candidates[0]
+        return shell_candidates[0]
 
     def context_for(contract_id: str, operation_id: str, session_id: str) -> RequestContext:
         if not isinstance(session_id, str) or not session_id.strip() or len(session_id) > 512:
@@ -2690,16 +2833,18 @@ def capture_production_dispatch(
             dispatch.close()
             raise AuthorityDenied("capability invocation binding is absent or ambiguous")
 
-        def capability_binding_reader() -> Mapping[str, Any]:
+        def capability_binding_reader() -> tuple[Mapping[str, object], Mapping[str, Any]]:
             from ..pack_control_v4 import capture_pack_catalog_reader
 
             if capability_binding_snapshot_factory is None:
                 raise AuthorityDenied("capability projection factory is unavailable")
-            return capability_binding_snapshot_factory(
+            catalog = capture_pack_catalog_reader().read()
+            capability = capability_binding_snapshot_factory(
                 capability_binding,
                 session=dispatch,
-                catalog=capture_pack_catalog_reader().read(),
+                catalog=catalog,
             )
+            return capability, catalog
 
         control_session.bind_capability_reader(capability_binding_reader)
     return dispatch

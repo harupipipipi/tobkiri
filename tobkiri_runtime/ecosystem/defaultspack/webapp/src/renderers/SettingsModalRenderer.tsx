@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCircle, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
@@ -2849,7 +2850,7 @@ function SettingsField({
                     : "bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed",
                 )}
               >
-                {apiSaveState === "saving" ? "Saving" : "Save"}
+                {apiSaveState === "saving" ? "承認・保存結果を確認中" : "Save"}
               </button>
             </div>
             {isCustomProvider && (
@@ -2859,8 +2860,8 @@ function SettingsField({
                   : "Custom LLM provider として保存されます。"}
               </p>
             )}
-            <details className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs">
-              <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">Advanced (任意): base_url / model 制限 / quota / notes</summary>
+            <details open className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs">
+              <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">接続先HTTPS URL（必須）・モデル設定（別途）</summary>
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 <input
                   value={apiBaseUrl}
@@ -2868,7 +2869,8 @@ function SettingsField({
                     setApiBaseUrl(event.target.value);
                     resetApiSaveFeedback();
                   }}
-                  placeholder="base_url (optional)"
+                  placeholder="HTTPS base URL (required)"
+                  aria-label="Provider HTTPS base URL"
                   className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
                 />
                 <input
@@ -2912,6 +2914,7 @@ function SettingsField({
                 次に保存する API key にだけ適用されます。通常はそのまま空欄で大丈夫です。
               </p>
             </details>
+            <ModelRouteSetup />
           </div>
           {apiFeedback?.text && (
             apiFeedback.tone === "success" ? (

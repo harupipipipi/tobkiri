@@ -1,4 +1,4 @@
-"""Shared release-test policy for keeping Command Protocol transport dark."""
+"""Shared release-test policy for exact captured Command Protocol routes."""
 
 from __future__ import annotations
 
@@ -23,11 +23,17 @@ _HIGH_RISK_TARGET = {
 _HIGH_RISK_PAYLOAD_KEYS = frozenset(
     {"phase", "invocation_id", "command_ref", "arguments", "presentation"}
 )
+_CATALOG_TARGET = {
+    "contribution_id": "defaults.commands.catalog.read",
+    "contract_id": "tobkiri.resource.command.catalog.v1",
+    "operation_id": "command.catalog.read",
+    "provider_id": "rumi_command_protocol_pack.catalog.read",
+    "function_id": "rumi_command_protocol_pack.catalog.read",
+}
 
 # These aliases are conservative test policy, not production URL rewriting.
 COMMAND_PROTOCOL_HTTP_CASES = (
     ("GET", "/api/command-protocol/v1", None),
-    ("GET", "/api/command-protocol/v1/catalog", None),
     ("GET", "/api/%63ommand-protocol/v1/catalog", None),
     ("POST", "/api/command-protocol/v1/invoke", {"command_ref": "help"}),
     ("POST", "/api/command-protocol%2fv1/invoke", {}),
@@ -205,7 +211,18 @@ def command_protocol_binding_findings(
             )
             and getattr(targets[0], "allowed_payload_keys", None) == _HIGH_RISK_PAYLOAD_KEYS
         )
-        if exact_high_risk:
+        exact_catalog = (
+            getattr(binding, "method", "").upper() == "GET"
+            and path == f"{_COMMAND_NAMESPACE}/catalog"
+            and getattr(binding, "presentation", None) == "broker_result"
+            and len(targets) == 1
+            and all(
+                getattr(targets[0], field, None) == expected
+                for field, expected in _CATALOG_TARGET.items()
+            )
+            and getattr(targets[0], "allowed_payload_keys", None) == frozenset()
+        )
+        if exact_high_risk or exact_catalog:
             continue
         findings.append(
             {

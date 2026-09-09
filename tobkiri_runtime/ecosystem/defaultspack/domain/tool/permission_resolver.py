@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import json
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from pathlib import Path
 from typing import Any
 
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.tool.service_catalog import (
     infer_action_class,
     infer_service_id,
@@ -30,9 +31,15 @@ DEFAULT_ACTION_PERMISSIONS: dict[str, str] = {
 
 
 class ToolPermissionResolver:
-    def __init__(self, settings: dict[str, Any] | None = None, *, pack_root: Path | None = None) -> None:
+    def __init__(
+        self, settings: dict[str, Any] | None = None, *,
+        pack_root: Path | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._settings = settings if isinstance(settings, dict) else read_frontend_settings(self._pack_root)
+        self._settings = settings if isinstance(settings, dict) else read_frontend_settings(
+            self._pack_root, settings_owner=settings_owner,
+        )
         self._tool_settings = mapping_or_empty(self._settings.get("tools"))
 
     def resolve(self, tool: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -104,17 +111,12 @@ class ToolPermissionResolver:
         return value if value in PERMISSION_MODES else DEFAULT_ACTION_PERMISSIONS.get(action_class, "confirm")
 
 
-def _read_frontend_settings(pack_root: Path) -> dict[str, Any]:
-    path = frontend_settings_path(pack_root)
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+def _read_frontend_settings(pack_root: Path, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return read_optional_frontend_settings(pack_root, settings_owner=settings_owner)
 
 
-def read_frontend_settings(pack_root: Path | None = None) -> dict[str, Any]:
-    return _read_frontend_settings(pack_root or Path(__file__).resolve().parents[2])
+def read_frontend_settings(pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return _read_frontend_settings(pack_root or Path(__file__).resolve().parents[2], settings_owner=settings_owner)
 
 
 def _override_value(container: Any, target_id: str, action_class: str) -> str:

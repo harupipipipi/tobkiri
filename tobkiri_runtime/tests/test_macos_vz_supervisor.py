@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, Mapping
 
@@ -31,6 +32,42 @@ from tobkiri_host.macos_vz_supervisor import (
     verify_macos_vz_helper_identity,
 )
 from tobkiri_host.platform_backends import IsolationLaunch, IsolationLease
+
+
+@pytest.mark.parametrize("kind", [
+    "tobkiri.packvm.continuation.intent.v2",
+    "tobkiri.packvm.continuation.request.v2",
+    "tobkiri.packvm.continuation.result.v2",
+    "tobkiri.packvm.bridge.request.v1",
+    "tobkiri.packvm.invoke.result.v1",
+])
+def test_host_independently_rejects_control_frames_wrapped_as_completion(kind: str) -> None:
+    with pytest.raises(BackendUnavailableError, match="not a terminal outcome"):
+        macos_vz_supervisor._validated_invoke_outcome({
+            "kind": "tobkiri.packvm.invoke.result.v1", "outcome": {"kind": kind},
+        })
+
+
+@pytest.mark.parametrize("model", [None, True, 1, "", " x", "x\n", "x\x00y", "x" * 257])
+def test_host_rejects_invalid_bridge_model_reference(model: object) -> None:
+    """The Host independently checks a compromised guest's model reference."""
+    assert not macos_vz_supervisor._valid_bridge_payload({
+        "messages": [{"role": "user", "content": "hello"}],
+        "requirements": {"request_surface": "defaultspack.conversation"},
+        "model_reference": model,
+    })
+
+
+def test_host_accepts_only_model_reference_not_caller_authority() -> None:
+    """Selecting a model does not allow guest-selected Profile or credentials."""
+    payload = {
+        "messages": [{"role": "user", "content": "hello"}],
+        "requirements": {"request_surface": "defaultspack.conversation"},
+        "model_reference": "local/selected",
+    }
+    assert macos_vz_supervisor._valid_bridge_payload(payload)
+    for extra in ({"profile_id": "other"}, {"credential_handle": "untrusted"}, {"approved": True}):
+        assert not macos_vz_supervisor._valid_bridge_payload({**payload, **extra})
 
 
 def _digest(value: str | bytes) -> str:
@@ -516,6 +553,7 @@ def _request(domain_id: str, request_id: str = "request-1") -> SimpleNamespace:
         context=SimpleNamespace(request_id=request_id), request_digest=_digest(request_id),
         contract_id="conversation.turn.v1", contract_version="1.0.0", operation_id="complete",
         payload={"messages": [{"role": "user", "content": "hello"}]}, deadline_monotonic=50.0,
+        cancellation_requested=Event(),
     )
 
 
@@ -637,6 +675,56 @@ def test_concurrent_domains_have_distinct_helpers_and_close_after_cleanup(tmp_pa
     assert catalog.closed
 
 
+def _bridge_result(bridge_request: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return a correctly bound result from the test capability callback."""
+    continuation = bridge_request["continuation"]
+    result = {"status": "ok", "value": {"model": "host-bound"}}
+    return {
+        "kind": "tobkiri.packvm.bridge.result.v1",
+        "protocol": "io.tobkiri.packvm.bridge.v1",
+        "version": 1,
+        "operation_id": "complete",
+        "nonce": continuation["nonce"],
+        "target": continuation["target"],
+        "request_digest": continuation["request_digest"],
+        "result": result,
+        "result_digest": canonical_digest(result),
+    }
+
+
+@pytest.mark.parametrize("lost_ack", [False, True])
+def test_cancel_during_host_callback_fences_late_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_ack: bool,
+) -> None:
+    """No resume is sent after cancellation, including an uncertain guest ACK."""
+    driver, allocator = _driver(tmp_path)
+
+    def callback(outer_request: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if lost_ack:
+            with pytest.raises(BackendUnavailableError):
+                driver.cancel("request-1")
+        else:
+            driver.cancel("request-1")
+        assert getattr(outer_request, "cancellation_requested").is_set()
+        return _bridge_result(request)
+
+    driver.bind_capability_bridge(callback)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.pending_bridge = True
+    original_exchange = transport.exchange
+
+    def exchange(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if lost_ack and request.get("operation") == "cancel":
+            raise BackendUnavailableError("test cancellation response lost")
+        return original_exchange(request)
+
+    monkeypatch.setattr(transport, "exchange", exchange)
+    with pytest.raises(BackendUnavailableError, match="cancellation was requested"):
+        driver.invoke(_request("domain.provider.conversation"))
+    assert not any(item["operation"] == "bridge_result" for item in transport.requests)
+
+
 def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Path) -> None:
     """A strict signed bridge resumes once and its continuation cannot replay."""
 
@@ -648,19 +736,7 @@ def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Pat
         bridge_request: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         observed.append((outer_request, bridge_request))
-        continuation = bridge_request["continuation"]
-        result = {"status": "ok", "value": {"model": "host-bound"}}
-        return {
-            "kind": "tobkiri.packvm.bridge.result.v1",
-            "protocol": "io.tobkiri.packvm.bridge.v1",
-            "version": 1,
-            "operation_id": "complete",
-            "nonce": continuation["nonce"],
-            "target": continuation["target"],
-            "request_digest": continuation["request_digest"],
-            "result": result,
-            "result_digest": canonical_digest(result),
-        }
+        return _bridge_result(bridge_request)
 
     driver.bind_capability_bridge(capability_bridge)
     _launch(driver)
@@ -688,6 +764,156 @@ def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Pat
     with pytest.raises(BackendUnavailableError, match="bridge nonce replay"):
         driver.invoke(_request("domain.provider.conversation", "request-2"))
     assert driver.capability()[0] is False
+
+
+@pytest.mark.parametrize("tamper", [
+    None, "target", "binding", "predecessor", "cancel", "early_success",
+    "assistant_content", "assistant_revision", "terminal_content", "terminal_revision",
+])
+def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str | None,
+) -> None:
+    """Real codecs, ledgers, HMAC/Ed25519 and owner; injected VM/AI and readiness."""
+    import time
+    from ecosystem.defaultspack.runtime import saved_conversation as saved
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.saved_guest_dispatch import SavedGuestTurns
+
+    driver, allocator = _driver(tmp_path)
+    owner = ConversationStore("defaults", user_data_root=tmp_path / "owner")
+    owner.create({"id": "conversation", "model_reference": "model"}, expected_revision=0)
+    observed = []
+    preflight = []
+    request = _request("domain.provider.conversation")
+    request.contract_id = "conversation.saved-turn.v1"
+    request.operation_id = "saved_complete"
+    request.deadline_monotonic = time.monotonic() + 50
+    request.payload = {"request": {"turn_id": "turn", "conversation_id": "conversation",
+                                   "conversation_revision": 1, "content": "Hello"}}
+
+    def dispatch(outer: object, frame: Mapping[str, Any]) -> Mapping[str, Any]:
+        assert preflight == [request]
+        assert outer is request
+        observed.append(frame["hop"])
+        payload = frame["payload"]
+        if frame["hop"] == 0:
+            value = {"conversation": owner.get("conversation")}
+        elif frame["hop"] == 2:
+            if tamper == "cancel":
+                request.cancellation_requested.set()
+            value = {"status": "ok", "output": "Hi"}
+        else:
+            value = owner.append_message("conversation", payload["message"],
+                                         expected_conversation_revision=payload["expected_conversation_revision"])
+        return {"status": "ok", "value": value}
+
+    driver.bind_saved_capability_bridge(dispatch, lambda outer: preflight.append(outer))
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    signed = transport._guest
+    guest = SavedGuestTurns()
+
+    def execute(captured: dict, arguments: dict, deadline: float, guard: Any) -> dict:
+        guard()
+        value = saved.tobkiri_packvm_invoke("saved_complete", arguments)
+        if value.get("kind") != "tobkiri.packvm.continuation.intent.v2":
+            if value.get("status") == "ok":
+                if tamper == "terminal_content":
+                    value["message"]["content"] = "forged terminal content"
+                elif tamper == "terminal_revision":
+                    value["conversation_revision"] += 1
+            return {"kind": "tobkiri.packvm.invoke.result.v1", "outcome": value}
+        # Tamper before the guest root seals and signs the frame. A valid
+        # signature authenticates its sender, not the sandbox's assertions.
+        if value["hop"] == 3:
+            if tamper == "assistant_content":
+                value["payload"]["message"]["content"] = "forged assistant content"
+                value["state"]["assistant"] = "forged assistant content"
+            elif tamper == "assistant_revision":
+                value["payload"]["expected_conversation_revision"] += 1
+        return value
+
+    def guest_reply(envelope: Mapping[str, Any], **kwargs: Any) -> Mapping[str, Any]:
+        if kwargs["operation"] == "invoke":
+            captured = {**envelope["request"], "target_domain": request.target_domain.value,
+                        "guest_artifact_identity": canonical_digest(transport.binding_digests)}
+            data = guest.begin(captured, canonical_digest(transport.binding_digests), execute)
+            wrapper = data["host_bridge_request"]
+            if tamper == "target":
+                wrapper["bridge_request"]["target"]["operation_id"] = "foreign"
+            elif tamper == "binding":
+                wrapper["binding_digest"] = _digest("foreign")
+            elif tamper == "predecessor":
+                wrapper["bridge_request"]["previous_digest"] = _digest("foreign")
+            wrapper["bridge_request_digest"] = canonical_digest(wrapper["bridge_request"])
+        else:
+            data = guest.resume(request.target_domain.value, request.context.request_id,
+                                envelope["host_bridge_result"], execute)
+            if tamper == "early_success":
+                data = {"kind": "tobkiri.packvm.invoke.result.v1", "outcome": {"status": "ok"}}
+        return signed(envelope, **{**kwargs, "data": data})
+
+    monkeypatch.setattr(transport, "_guest", guest_reply)
+    if tamper is None:
+        assert driver.invoke(request).payload is not None
+        assert observed == [0, 1, 2, 3]
+        assert [entry["operation"] for entry in transport.requests] == [
+            "launch", "invoke", "bridge_result", "bridge_result", "bridge_result", "bridge_result",
+        ]
+    else:
+        with pytest.raises(BackendUnavailableError, match="saved bridge rejected"):
+            driver.invoke(request)
+        if tamper in {"cancel", "assistant_content", "assistant_revision"}:
+            assert observed == [0, 1, 2]
+            assert [item["role"] for item in owner.get("conversation")["messages"]] == ["user"]
+        elif tamper in {"terminal_content", "terminal_revision"}:
+            assert observed == [0, 1, 2, 3]
+            assert owner.get("conversation")["messages"][-1]["content"] == "Hi"
+        else:
+            assert observed == ([0] if tamper == "early_success" else [])
+
+
+def test_saved_invoke_requires_dedicated_preflight_before_guest_dispatch(tmp_path: Path) -> None:
+    driver, allocator = _driver(tmp_path)
+    _launch(driver)
+    request = _request("domain.provider.conversation")
+    request.contract_id = "conversation.saved-turn.v1"
+    request.operation_id = "saved_complete"
+    request.payload = {"request": {"turn_id": "turn", "conversation_id": "conversation",
+                                   "conversation_revision": 1, "content": "Hello"}}
+    with pytest.raises(BackendUnavailableError, match="saved Host bridge is unavailable"):
+        driver.invoke(request)
+    assert len(allocator.transports[request.target_domain.value].requests) == 1
+
+
+@pytest.mark.parametrize("cancel_at", ["invoke", "bridge_result"])
+def test_cancellation_fences_authenticated_guest_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel_at: str,
+) -> None:
+    """Signed late outcomes do not override an already requested cancellation."""
+    driver, allocator = _driver(tmp_path)
+    callbacks: list[object] = []
+
+    def callback(outer_request: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        callbacks.append(outer_request)
+        return _bridge_result(request)
+
+    driver.bind_capability_bridge(callback)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.pending_bridge = cancel_at == "bridge_result"
+    original_exchange = transport.exchange
+
+    def exchange(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        response = original_exchange(request)
+        if request.get("operation") == cancel_at:
+            driver.cancel("request-1")
+        return response
+
+    monkeypatch.setattr(transport, "exchange", exchange)
+    with pytest.raises(BackendUnavailableError, match="cancellation was requested"):
+        driver.invoke(_request("domain.provider.conversation"))
+    assert len(callbacks) == (1 if cancel_at == "bridge_result" else 0)
 
 
 def test_runtime_bounds_are_fail_closed() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -71,6 +72,46 @@ def test_defaultspack_integrity_scan_strict_passes():
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "passed" in result.stdout
+
+
+def test_saved_turn_code_and_registered_variant_share_the_sealed_identity() -> None:
+    pack = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
+    executables = json.loads((DEFAULTSPACK_ROOT / "executables.v4.json").read_text(encoding="utf-8"))
+    path = "runtime/saved_conversation.py"
+    artifacts = [item for item in pack["artifacts"] if item["path"] == path]
+    assert len(artifacts) == 1
+    assert artifacts[0]["kind"] == "executable"
+    assert artifacts[0]["digest"] == "sha256:" + hashlib.sha256(
+        (DEFAULTSPACK_ROOT / path).read_bytes()
+    ).hexdigest()
+    variants = [item for item in executables["variants"] if item["implementation_path"] == path]
+    assert len(variants) == 1
+    assert variants[0]["function_id"] == "defaultspack.conversation.saved"
+    assert variants[0]["implementation_digest"] == artifacts[0]["digest"]
+    assert variants[0]["execution_kind"] == "pack_vm"
+    functions = [item for item in pack["functions"] if "saved_complete" in item["operations"]]
+    assert len(functions) == 1
+    assert functions[0]["id"] == "defaultspack.conversation.saved"
+    assert functions[0]["operations"] == ["saved_complete"]
+    assert functions[0]["implementation_digest"] == artifacts[0]["digest"]
+
+
+def test_projection_catalog_order_matches_canonical_independent_of_function_order():
+    """Multiple Functions must not reorder the canonical operation catalog."""
+    from scripts.generate_defaultspack_v4_bundle import _normalize_pack
+
+    canonical = json.loads(
+        (DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8")
+    )
+    expected_operations = canonical["operation_catalog"]
+    expected_providers = canonical["provider_catalog"]
+    assert len(canonical["functions"]) > 1
+    canonical["functions"].reverse()
+
+    projection = _normalize_pack(canonical)
+
+    assert projection["operation_catalog"] == expected_operations
+    assert projection["provider_catalog"] == expected_providers
 
 
 def test_v4_integrity_rejects_byte_identical_defaultspack_projection(tmp_path):

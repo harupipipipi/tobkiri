@@ -9,6 +9,8 @@ import stat
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -205,90 +207,90 @@ class HostBoundedProcessRunner:
                 0x00000200,
             )
         try:
-            process = subprocess.Popen(**popen_kwargs)
-        finally:
-            # Popen has either copied these descriptors into the child or
-            # failed. The parent-owned pinned duplicates never outlive spawn.
-            self._close_inherited_fds(pass_fds)
-        io_threads = [
-            threading.Thread(
-                target=self._drain,
-                args=(process.stdout, stdout_buffer),
-                daemon=True,
-            ),
-            threading.Thread(
-                target=self._drain,
-                args=(process.stderr, stderr_buffer),
-                daemon=True,
-            ),
-        ]
-        if request["stdin"] is not None and process.stdin is not None:
-            io_threads.append(
-                threading.Thread(
-                    target=self._write_stdin,
-                    args=(process.stdin, request["stdin"]),
-                    daemon=True,
+            with self._spawn_process(popen_kwargs) as process:
+                self._close_inherited_fds(pass_fds)
+                pass_fds = ()
+                io_threads = [
+                    threading.Thread(
+                        target=self._drain,
+                        args=(process.stdout, stdout_buffer),
+                        daemon=True,
+                    ),
+                    threading.Thread(
+                        target=self._drain,
+                        args=(process.stderr, stderr_buffer),
+                        daemon=True,
+                    ),
+                ]
+                if request["stdin"] is not None and process.stdin is not None:
+                    io_threads.append(
+                        threading.Thread(
+                            target=self._write_stdin,
+                            args=(process.stdin, request["stdin"]),
+                            daemon=True,
+                        )
+                    )
+                for io_thread in io_threads:
+                    io_thread.start()
+                timed_out = False
+                cancelled = False
+                process_tree_termination_failed = False
+                deadline = time.monotonic() + request["timeout_seconds"]
+                while process.poll() is None:
+                    if cancel_event is not None and cancel_event.is_set():
+                        cancelled = True
+                        process_tree_termination_failed = not self._terminate_process_tree(process)
+                        break
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        timed_out = True
+                        process_tree_termination_failed = not self._terminate_process_tree(process)
+                        break
+                    try:
+                        # Polling keeps the cancellation latency bounded without
+                        # moving process ownership out of this Host boundary.
+                        process.wait(timeout=min(remaining, 0.05))
+                    except subprocess.TimeoutExpired:
+                        continue
+                self._reap_process(process)
+                self._join_io_threads(io_threads)
+                stdout_incomplete = io_threads[0].is_alive()
+                stderr_incomplete = io_threads[1].is_alive()
+                attestation = HostProcessAttestation(
+                    authority=self.AUTHORITY,
+                    boundary="bounded_host_process",
+                    sandboxed=False,
+                    process_tree_kill=self._process_tree_kill_attestation(
+                        termination_failed=process_tree_termination_failed,
+                    ),
                 )
-            )
-        for io_thread in io_threads:
-            io_thread.start()
-        timed_out = False
-        cancelled = False
-        process_tree_termination_failed = False
-        deadline = time.monotonic() + request["timeout_seconds"]
-        while process.poll() is None:
-            if cancel_event is not None and cancel_event.is_set():
-                cancelled = True
-                process_tree_termination_failed = not self._terminate_process_tree(process)
-                break
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                timed_out = True
-                process_tree_termination_failed = not self._terminate_process_tree(process)
-                break
-            try:
-                # Polling keeps the cancellation latency bounded without
-                # moving process ownership out of this Host boundary.
-                process.wait(timeout=min(remaining, 0.05))
-            except subprocess.TimeoutExpired:
-                continue
-        self._reap_process(process)
-        self._join_io_threads(io_threads)
-        stdout_incomplete = io_threads[0].is_alive()
-        stderr_incomplete = io_threads[1].is_alive()
-        attestation = HostProcessAttestation(
-            authority=self.AUTHORITY,
-            boundary="bounded_host_process",
-            sandboxed=False,
-            process_tree_kill=self._process_tree_kill_attestation(
-                termination_failed=process_tree_termination_failed,
-            ),
-        )
-        result = self._result(
-            exit_code=process.returncode,
-            stdout=bytes(stdout_buffer.data),
-            stderr=bytes(stderr_buffer.data),
-            timed_out=timed_out,
-            stdout_truncated=(
-                stdout_buffer.truncated
-                or len(stdout_buffer.data) > policy.max_stdout_bytes
-                or stdout_incomplete
-            ),
-            stderr_truncated=(
-                stderr_buffer.truncated
-                or len(stderr_buffer.data) > policy.max_stderr_bytes
-                or stderr_incomplete
-            ),
-            attestation=attestation,
-            transport_error=None,
-            policy=policy,
-        )
-        # Preserve the historical cancellation contract: a cancellation that
-        # races with normal child completion is still reported as cancelled.
-        # A timeout observed first remains a timeout, not a cancellation.
-        if not timed_out and (cancelled or (cancel_event is not None and cancel_event.is_set())):
-            raise ProcessExecutionCancelled(result)
-        return result
+                result = self._result(
+                    exit_code=process.returncode,
+                    stdout=bytes(stdout_buffer.data),
+                    stderr=bytes(stderr_buffer.data),
+                    timed_out=timed_out,
+                    stdout_truncated=(
+                        stdout_buffer.truncated
+                        or len(stdout_buffer.data) > policy.max_stdout_bytes
+                        or stdout_incomplete
+                    ),
+                    stderr_truncated=(
+                        stderr_buffer.truncated
+                        or len(stderr_buffer.data) > policy.max_stderr_bytes
+                        or stderr_incomplete
+                    ),
+                    attestation=attestation,
+                    transport_error=None,
+                    policy=policy,
+                )
+                # Preserve the historical cancellation contract: a cancellation that
+                # races with normal child completion is still reported as cancelled.
+                # A timeout observed first remains a timeout, not a cancellation.
+                if not timed_out and (cancelled or (cancel_event is not None and cancel_event.is_set())):
+                    raise ProcessExecutionCancelled(result)
+                return result
+        finally:
+            self._close_inherited_fds(pass_fds)
 
     @staticmethod
     def _pin_inherited_fds(
@@ -524,40 +526,40 @@ class HostBoundedProcessRunner:
                     "CREATE_NEW_PROCESS_GROUP",
                     0x00000200,
                 )
-            process = subprocess.Popen(**popen_kwargs)
-            io_threads = [
-                threading.Thread(
-                    target=self._drain,
-                    args=(process.stdout, stdout_file),
-                    daemon=True,
-                ),
-                threading.Thread(
-                    target=self._drain,
-                    args=(process.stderr, stderr_buffer),
-                    daemon=True,
-                ),
-            ]
-            if request["stdin"] is not None and process.stdin is not None:
-                io_threads.append(
+            with self._spawn_process(popen_kwargs) as process:
+                io_threads = [
                     threading.Thread(
-                        target=self._write_stdin,
-                        args=(process.stdin, request["stdin"]),
+                        target=self._drain,
+                        args=(process.stdout, stdout_file),
                         daemon=True,
+                    ),
+                    threading.Thread(
+                        target=self._drain,
+                        args=(process.stderr, stderr_buffer),
+                        daemon=True,
+                    ),
+                ]
+                if request["stdin"] is not None and process.stdin is not None:
+                    io_threads.append(
+                        threading.Thread(
+                            target=self._write_stdin,
+                            args=(process.stdin, request["stdin"]),
+                            daemon=True,
+                        )
                     )
-                )
-            for io_thread in io_threads:
-                io_thread.start()
-            try:
-                process.wait(timeout=request["timeout_seconds"])
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                process_tree_termination_failed = not self._terminate_process_tree(process)
-            self._reap_process(process)
-            self._join_io_threads(io_threads)
-            output_handle.flush()
-            os.fsync(output_handle.fileno())
-            stdout_incomplete = io_threads[0].is_alive()
-            stderr_incomplete = io_threads[1].is_alive()
+                for io_thread in io_threads:
+                    io_thread.start()
+                try:
+                    process.wait(timeout=request["timeout_seconds"])
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    process_tree_termination_failed = not self._terminate_process_tree(process)
+                self._reap_process(process)
+                self._join_io_threads(io_threads)
+                output_handle.flush()
+                os.fsync(output_handle.fileno())
+                stdout_incomplete = io_threads[0].is_alive()
+                stderr_incomplete = io_threads[1].is_alive()
         return self._result(
             exit_code=process.returncode,
             stdout=b"",
@@ -770,7 +772,47 @@ class HostBoundedProcessRunner:
             stream.close()
 
     @classmethod
+    @contextmanager
+    def _spawn_process(cls, kwargs: Mapping[str, Any]) -> Iterator[subprocess.Popen[Any]]:
+        """Keep a Windows Job alive across execution and every failure path."""
+        from .windows_process_job import CREATE_SUSPENDED, WindowsProcessJob
+
+        job = None
+        process = None
+        started = False
+        options = dict(kwargs)
+        try:
+            if os.name == "nt":
+                job = WindowsProcessJob()
+                options["creationflags"] = options.get("creationflags", 0) | CREATE_SUSPENDED
+            process = subprocess.Popen(**options)
+            if job is not None:
+                setattr(process, "_tobkiri_process_job", job)
+                job.assign_and_resume(int(getattr(process, "_handle")), process.pid)
+            started = True
+            yield process
+        finally:
+            if job is not None:
+                try:
+                    job.close()
+                finally:
+                    if process is not None:
+                        if process.poll() is None:
+                            process.kill()
+                        cls._reap_process(process)
+                        # Before yield there are no drain threads. Afterwards
+                        # they own their streams; close() could block on their
+                        # read locks if an unrelated process holds a pipe.
+                        if not started:
+                            for stream in (process.stdin, process.stdout, process.stderr):
+                                if stream is not None:
+                                    stream.close()
+
+    @classmethod
     def _terminate_process_tree(cls, process: subprocess.Popen[Any]) -> bool:
+        job = getattr(process, "_tobkiri_process_job", None)
+        if job is not None:
+            return bool(job.terminate(_PROCESS_TERM_GRACE_SECONDS))
         if os.name == "posix":
             process_group = process.pid
             try:
@@ -861,6 +903,11 @@ class HostBoundedProcessRunner:
 
     @staticmethod
     def _reap_process(process: subprocess.Popen[Any]) -> None:
+        job = getattr(process, "_tobkiri_process_job", None)
+        if job is not None:
+            # A normally exiting parent must not leave descendants running
+            # while the Host waits for pipe-drain threads.
+            job.close()
         if process.poll() is not None:
             return
         try:

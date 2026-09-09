@@ -5,13 +5,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from domain.frontend.command_protocol import CommandProtocolRegistry
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from domain.frontend.offline_queue import OfflineQueueError
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
+    """Run with a trusted caller-supplied owner, never one from request data."""
     payload = input_data if isinstance(input_data, dict) else {}
     action = str(payload.get("action") or "enqueue").strip()
-    registry = CommandProtocolRegistry()
+    registry = CommandProtocolRegistry(settings_owner=settings_owner)
     try:
         owner_key = registry.owner_key(payload, context or {})
         if action == "enqueue":

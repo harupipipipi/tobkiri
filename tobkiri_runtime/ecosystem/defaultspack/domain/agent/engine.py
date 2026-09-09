@@ -2,6 +2,8 @@ import json
 import os
 import sys
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
@@ -259,6 +261,7 @@ def _route_agent_model(
     required_capabilities,
     modalities,
     context,
+    settings_owner: SettingsOwnerPort | None = None,
 ):
     model_requirements = model_requirements_from_tokens(required_capabilities)
     thinking_level = str((params or {}).get("thinking_level") or (params or {}).get("requested_thinking_level") or "").strip()
@@ -275,7 +278,7 @@ def _route_agent_model(
     )
     if not route_needed:
         return model if model else "default"
-    settings = ModelRuntimeSettingsService().get_settings()
+    settings = ModelRuntimeSettingsService(settings_owner=settings_owner).get_settings()
     preferred_model = str(
         model
         if model and model != "default"
@@ -307,7 +310,8 @@ def _route_agent_model(
 
 
 class AgentEngine:
-    def __init__(self):
+    def __init__(self, *, settings_owner: SettingsOwnerPort | None = None):
+        self._settings_owner = settings_owner
         self._executions = {}
         self._run_store = AgentRunStore()
         self._transcripts = TranscriptStore()
@@ -841,6 +845,7 @@ class AgentEngine:
             required_capabilities=required_capabilities,
             modalities=modalities,
             context=execution_context,
+            settings_owner=self._settings_owner,
         )
         selected_capabilities = get_model_capabilities(model if model else "default") or {}
         missing_capabilities = missing_model_capabilities(required_capabilities, selected_capabilities)

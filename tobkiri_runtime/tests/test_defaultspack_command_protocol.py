@@ -30,12 +30,62 @@ from transport.registry import (  # noqa: E402
 )
 
 
-def test_resolved_catalog_projects_all_legacy_commands_to_v1() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def _owner_bound_protocol(tmp_path: Path) -> CommandProtocolRegistry:
+    """Bind the settings owner explicitly to this test's isolated location."""
+    from domain.frontend_settings_store import defaultspack_frontend_settings_path
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    path = defaultspack_frontend_settings_path(DEFAULTSPACK_ROOT)
+    # Existing tests choose a temporary compatibility path through the environment.
+    # Otherwise the test owns a new empty store; never read real user settings.
+    if not path.is_relative_to(tmp_path):
+        path = tmp_path / "frontend_settings.json"
+    return CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT, settings_owner=FrontendSettingsStore(path),
+        command_state_dir=tmp_path / "command-state",
+    )
+
+
+def test_resolved_catalog_projects_all_legacy_commands_to_v1(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
 
     assert catalog["api_version"] == "tobkiri.commands/v1"
     assert len(catalog["commands"]) == 55
     assert len({item["canonical_id"] for item in catalog["commands"]}) == 55
+
+
+def test_command_state_binding_does_not_resolve_settings_path(tmp_path, monkeypatch):
+    """An explicit owner location takes precedence without opening either DB."""
+    from domain.frontend import command_protocol
+
+    def unexpected_path(*args):
+        raise AssertionError("settings location must not select command state")
+
+    monkeypatch.setattr(
+        command_protocol, "defaultspack_frontend_settings_path", unexpected_path,
+    )
+    configured = tmp_path / "configured"
+    explicit = tmp_path / "explicit"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", str(configured))
+    registry = CommandProtocolRegistry(tmp_path, command_state_dir=explicit)
+    assert registry._event_store_path == explicit / "command_invocation_events.sqlite3"
+    assert registry._offline_queue_path == explicit / "command_offline_queue.sqlite3"
+    registry = CommandProtocolRegistry(tmp_path)
+    assert registry._event_store_path.parent == configured
+    assert registry._offline_queue_path.parent == configured
+    assert not explicit.exists()
+    assert not configured.exists()
+
+
+def test_command_state_legacy_location_is_preserved_without_binding(tmp_path, monkeypatch):
+    """Compatibility startup does not silently abandon existing command DBs."""
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", raising=False)
+    settings = tmp_path / "legacy" / "settings.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings))
+    registry = CommandProtocolRegistry(tmp_path)
+    assert registry._event_store_path.parent == settings.parent
+    assert registry._offline_queue_path.parent == settings.parent
+    assert not settings.parent.exists()
 
 
 def test_pack_generation_reads_the_canonical_v4_manifest(tmp_path: Path) -> None:
@@ -69,7 +119,7 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     catalog = protocol.catalog()
     matrix = protocol.conformance_matrix()
@@ -84,7 +134,8 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
     assert len(matrix) == 55
     assert all(item["verified_handler"] is True for item in matrix)
     assert all(item["concrete_binding"] for item in matrix)
-    assert fast["status"] == "succeeded"
+    assert fast["status"] == "succeeded", fast
+    assert protocol._settings_store.read_snapshot()["models"]["fast_mode_enabled"] is True
     assert {item["execution"]["kind"] for item in catalog["commands"]} <= {
         "state_mutation",
         "host_operation",
@@ -145,8 +196,8 @@ def test_owner_scope_comes_only_from_trusted_context() -> None:
         )
 
 
-def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
     unavailable = [
         item
         for item in catalog["commands"]
@@ -170,8 +221,8 @@ def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter() -> No
     assert not any(item["code"] == "handler_missing" for item in catalog["diagnostics"])
 
 
-def test_all_55_commands_have_authority_and_completion_conformance() -> None:
-    matrix = CommandProtocolRegistry(DEFAULTSPACK_ROOT).conformance_matrix()
+def test_all_55_commands_have_authority_and_completion_conformance(tmp_path: Path) -> None:
+    matrix = _owner_bound_protocol(tmp_path).conformance_matrix()
 
     assert len(matrix) == 55
     assert len({item["command_id"] for item in matrix}) == 55
@@ -192,7 +243,7 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     enabled = protocol.invoke(
         {
@@ -222,8 +273,8 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
     assert disabled["state_changes"][0]["revision"] == 2
 
 
-def test_home_title_invocation_returns_frontend_action() -> None:
-    result = CommandProtocolRegistry(DEFAULTSPACK_ROOT).invoke(
+def test_home_title_invocation_returns_frontend_action(tmp_path: Path) -> None:
+    result = _owner_bound_protocol(tmp_path).invoke(
         {
             "command_ref": "defaultspack:home_title",
             "args": {"value": "My Tobkiri"},
@@ -245,7 +296,7 @@ def test_protocol_invocation_events_can_resume_after_last_event_id(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     result = protocol.invoke(
         {
@@ -284,8 +335,8 @@ def test_provider_datasource_uses_same_option_item_contract() -> None:
     assert all("model_count" in item["metadata"] for item in result["items"])
 
 
-def test_protocol_schema_rejects_unknown_normative_fields_and_major() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def test_protocol_schema_rejects_unknown_normative_fields_and_major(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
     catalog["unexpected"] = True
     try:
         validate_protocol_document(catalog)
@@ -325,7 +376,7 @@ def test_settings_registered_command_is_resolved_and_invoked_through_protocol(
         encoding="utf-8",
     )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings_path))
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     command = next(
         item
@@ -385,7 +436,7 @@ def test_high_risk_command_requires_the_captured_host_adapter(
         ["git", "-C", str(workspace), "commit", "-qm", "seed"],
         check=True,
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
     durable_secret = "durable-raw-execution-secret-62e6099b"
     payload = {
         "command_ref": "defaultspack:terminal",
@@ -685,7 +736,7 @@ def test_only_captured_command_protocol_route_is_not_legacy_transport() -> None:
     assert command_protocol_binding_findings(bindings) == []
 
     high_risk = next(
-        binding for binding in bindings if "command-protocol" in binding.path
+        binding for binding in bindings if binding.path == "/api/command-protocol/v1/high-risk"
     )
     assert command_protocol_binding_findings(
         (replace(high_risk, path="/api/command-protocol/v1/invoke"),)
@@ -700,6 +751,21 @@ def test_only_captured_command_protocol_route_is_not_legacy_transport() -> None:
             ),
         )
     )
+
+
+def test_command_catalog_route_policy_rejects_widening() -> None:
+    bindings = load_current_signed_application_bindings()
+    catalog = next(binding for binding in bindings
+                   if binding.path == "/api/command-protocol/v1/catalog")
+    for changed in (
+        replace(catalog, method="POST"),
+        replace(catalog, path="/api/command-protocol/v1/invoke"),
+        replace(catalog, targets=(replace(catalog.targets[0],
+                                         allowed_payload_keys=frozenset({"approved"})),)),
+        replace(catalog, targets=(replace(catalog.targets[0],
+                                         function_id="untrusted.function"),)),
+    ):
+        assert command_protocol_binding_findings((changed,))
 
 
 def test_interactive_command_routes_are_captured_host_contract_operations() -> None:
@@ -768,7 +834,7 @@ def test_invocation_id_is_idempotent_and_conflict_safe(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    registry = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    registry = _owner_bound_protocol(tmp_path)
     payload = {
         "command_ref": "defaultspack:help",
         "invocation_id": "inv-idempotent",

@@ -3319,6 +3319,12 @@ mod tests {
             "ecosystem/defaultspack/host_contract_contributions.v1.json",
             "ecosystem/defaultspack/domain/runtime_surface_v4.py",
             "ecosystem/defaultspack/update_metadata.v1.json",
+            "ecosystem/defaultspack/domain/frontend_settings_catalog.py",
+            "ecosystem/defaultspack/domain/frontend_builtin_catalog.py",
+            "ecosystem/defaultspack/domain/frontend_command_catalog.py",
+            "ecosystem/defaultspack/commands/default_commands.json",
+            "ecosystem/defaultspack/schemas/command-protocol-v1.schema.json",
+            "ecosystem/defaultspack/domain/frontend_settings_store.py",
         ] {
             let path = runtime_root.join(relative);
             let metadata = fs::symlink_metadata(&path).expect("source file should exist");
@@ -3724,7 +3730,9 @@ mod tests {
             "executables.v4.json",
             "host_contract_contributions.v1.json",
             "update_metadata.v1.json",
+            "runtime/application_presentation.py",
             "runtime/conversation.py",
+            "runtime/saved_conversation.py",
             "defaultspack/desktop_app.py",
             "defaultspack/frontend_contract_map.v4.json",
         ] {

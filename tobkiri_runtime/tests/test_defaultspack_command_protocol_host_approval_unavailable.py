@@ -34,8 +34,11 @@ def _workspace(tmp_path: Path) -> Path:
 
 
 def _protocol(tmp_path: Path) -> CommandProtocolRegistry:
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     return CommandProtocolRegistry(
         DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
         event_store=InvocationEventStore(tmp_path / "events.sqlite3"),
         offline_queue=OfflineOperationQueue(tmp_path / "offline.sqlite3"),
     )

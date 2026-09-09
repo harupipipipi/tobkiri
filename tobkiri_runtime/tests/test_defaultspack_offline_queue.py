@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 from domain.frontend.command_protocol import CommandProtocolRegistry  # noqa: E402
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore  # noqa: E402
 from domain.frontend.offline_queue import (  # noqa: E402
     OfflineOperationQueue,
     OfflineQueueConflict,
@@ -25,7 +26,10 @@ def _commands(tmp_path: Path, monkeypatch) -> dict[str, dict]:
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "settings.json"),
     )
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+    catalog = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+    ).catalog()
     return {command["canonical_id"]: command for command in catalog["commands"]}
 
 
@@ -122,7 +126,10 @@ def test_protocol_replays_offline_desired_state_through_normal_invocation(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+    )
 
     queued = protocol.enqueue_offline(
         {
@@ -139,6 +146,42 @@ def test_protocol_replays_offline_desired_state_through_normal_invocation(
     assert protocol.query_states(
         ["defaultspack:models.deepthink_enabled"]
     )["states"][0]["value"] is True
+
+
+def test_independent_command_state_reopens_queue_after_settings_path_change(
+    tmp_path, monkeypatch,
+):
+    """Changing the preferences owner does not hide a retained pending request."""
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(tmp_path / "old-settings.json"),
+    )
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", str(tmp_path / "commands"))
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(tmp_path / "old-settings.json"),
+    )
+    queued = protocol.enqueue_offline({
+        "command_ref": "defaultspack:deepthink",
+        "args": {"enabled": True},
+        "idempotency_key": "retained-queue",
+        "expected_revision": 0,
+    })
+    assert queued["status"] == "queued"
+    owner_key = protocol._owner_key({}, None)
+    pending = protocol.offline.pending(owner_key=owner_key)
+    assert len(pending) == 1
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+        str(tmp_path / "new-owner" / "settings.json"),
+    )
+    reopened = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(tmp_path / "new-owner" / "settings.json"),
+    )
+    assert reopened.offline.pending(owner_key=owner_key) == pending
+    assert reopened.offline.pending(owner_key="another-owner") == []
+    assert reopened._event_store_path == protocol._event_store_path
+    assert not (tmp_path / "new-owner").exists()
 
 
 def test_replay_lease_is_atomic_owner_scoped_and_cancellable(

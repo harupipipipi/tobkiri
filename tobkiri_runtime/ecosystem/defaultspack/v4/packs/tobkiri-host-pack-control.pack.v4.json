@@ -104,6 +104,94 @@
   },
   "operation_catalog": [
     {
+      "operation_id": "approval.approve",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "approval.candidate",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "approval.revoke",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "catalog.read",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "dashboard.read",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "operation.status.read",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "pack.disable",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "pack.enable",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "pack.install",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "pack.status",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "profile.catalog.read",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
       "operation_id": "profile.change.activate",
       "owner": "tobkiri_host_pack_control",
       "contract_reference": "tobkiri.host.control-presentation.v4",
@@ -136,26 +224,26 @@
       "effect_ceiling": []
     },
     {
-      "operation_id": "profile.catalog.read",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.control-presentation.v4",
-      "provider_id": "tobkiri.host.control-presentation",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "operation.status.read",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.control-presentation.v4",
-      "provider_id": "tobkiri.host.control-presentation",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
       "operation_id": "profile.read",
       "owner": "tobkiri_host_pack_control",
       "contract_reference": "tobkiri.host.control-presentation.v4",
       "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "profile.reload",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "runtime.restart",
+      "owner": "tobkiri_host_pack_control",
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "provider_id": "tobkiri.host.pack-control",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
     },
@@ -198,94 +286,6 @@
       "provider_id": "tobkiri.host.control-presentation",
       "source_kind": "canonical_v4_contract",
       "effect_ceiling": []
-    },
-    {
-      "operation_id": "approval.approve",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "approval.candidate",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "approval.revoke",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "catalog.read",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "dashboard.read",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "pack.disable",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "pack.enable",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "pack.install",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "pack.status",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "profile.reload",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
-    },
-    {
-      "operation_id": "runtime.restart",
-      "owner": "tobkiri_host_pack_control",
-      "contract_reference": "tobkiri.host.pack-control.v4",
-      "provider_id": "tobkiri.host.pack-control",
-      "source_kind": "canonical_v4_contract",
-      "effect_ceiling": []
     }
   ],
   "pack": {
@@ -303,18 +303,18 @@
     "source_digest": "sha256:0cddafd92ed8a54c8b24871a49924918f6044f22e9798d84584cb3c61017b95f",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:4c2dc97fd46238567fdbb3cca4184303e6ac40bf7cf7429745893fc915931d47",
+    "content_root_digest": "sha256:f3060cdc821dbdab07393429ce0da9a876b212c76d0ff57461e64340c1f9cf67",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943",
+    "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
     "input_inventory_digest": "sha256:c76266c6c97452c8203720da17badd9662385ae694d69643e838441adeeb32ef",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:b12bf4b488bc71de3b95715bc86cbf1791181392e922d1e8e6be926f08288943"
+        "digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231"
       },
       {
         "path": "ecosystem/tobkiri_host_pack_control/pack.v4.json",

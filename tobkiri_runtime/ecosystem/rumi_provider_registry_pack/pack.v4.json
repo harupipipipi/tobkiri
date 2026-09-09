@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:30899adf6f026034e07d01149aaf65fb411de317b2354207a4a968c3d163d51d",
+      "digest": "sha256:b5b8667e1f1f7f692e08091513b52e7ac9a72e79a3bac6d72960c4eab45ae42f",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,12 +11,17 @@
       "path": "runtime/__init__.py"
     },
     {
+      "digest": "sha256:1ac0e5c5a405a8bc0610b626260e9c42a56debb160831d8a8e0e417fa8404d44",
+      "kind": "executable",
+      "path": "runtime/configuration.py"
+    },
+    {
       "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
       "kind": "executable",
       "path": "runtime/health_process.py"
     },
     {
-      "digest": "sha256:740c36b4d83fd920b1dccf6f3848f942838db624add1fae4e136e122c8fff286",
+      "digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "kind": "executable",
       "path": "runtime/process.py"
     },
@@ -35,9 +40,11 @@
     {
       "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
       "operations": [
-        "rumi_provider_registry_pack.provider-registry-manage"
+        "rumi_provider_registry_pack.provider-registry-manage",
+        "rumi_provider_registry_pack.provider-configure-prepare",
+        "rumi_provider_registry_pack.provider-configure"
       ],
-      "revision_digest": "sha256:7eac676bffbf63fba0b70ba49917d6fa818e9b64a084f304ae512a6fc23e678b"
+      "revision_digest": "sha256:a714d68b67a922348c528b65c3f44f1acd979832fec29af27b92c184135769a5"
     },
     {
       "contract_id": "tobkiri.resource.ai.provider.health.v1",
@@ -60,6 +67,26 @@
   ],
   "functions": [
     {
+      "contract_revision_digest": "sha256:a714d68b67a922348c528b65c3f44f1acd979832fec29af27b92c184135769a5",
+      "id": "rumi_provider_registry_pack.provider-configure.execute",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_provider_registry_pack.provider-configure"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:a714d68b67a922348c528b65c3f44f1acd979832fec29af27b92c184135769a5",
+      "id": "rumi_provider_registry_pack.provider-configure.prepare",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_provider_registry_pack.provider-configure-prepare"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
       "contract_revision_digest": "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
       "id": "rumi_provider_registry_pack.provider-registry.health",
       "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
@@ -72,9 +99,9 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:7eac676bffbf63fba0b70ba49917d6fa818e9b64a084f304ae512a6fc23e678b",
+      "contract_revision_digest": "sha256:a714d68b67a922348c528b65c3f44f1acd979832fec29af27b92c184135769a5",
       "id": "rumi_provider_registry_pack.provider-registry.manage",
-      "implementation_digest": "sha256:740c36b4d83fd920b1dccf6f3848f942838db624add1fae4e136e122c8fff286",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_registry_pack.provider-registry-manage"
@@ -84,7 +111,7 @@
     {
       "contract_revision_digest": "sha256:ae3b4954e4d3ccfce933d44a9fd23409ef9626e5916a280ed304780437088e34",
       "id": "rumi_provider_registry_pack.provider-registry.resource",
-      "implementation_digest": "sha256:740c36b4d83fd920b1dccf6f3848f942838db624add1fae4e136e122c8fff286",
+      "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_registry_pack.provider-registry-resource",
@@ -95,9 +122,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:78002895814927587ab79cc83f9a93de560c8e85ae53b789d3b91a1674b71a7a",
-    "contract_catalog_digest": "sha256:b9cb0f9841c35480dd8da2b57a9f34f9527098d423248413baf13be946bbdc8f",
-    "source_identity": "sha256:cb5179586989b5f7e70c893cb17aaa2c8a41fefbff15ea22a2516d1ab3ad4149"
+    "artifact_set_digest": "sha256:7f2411f72d05bdb8decc44406e9234ce6d1d381d4318ff9e8b42b05ce0ccde7f",
+    "contract_catalog_digest": "sha256:60d8c341576ddfd51378b5762619f598623f8534daa18435dd6cccec4a03dd6b",
+    "source_identity": "sha256:8f86a2fa4081813de93265e551a0893dfefedd94747a8b9efe1644212a543c9f"
   },
   "migration": {
     "compatibility": "read_only",
@@ -112,6 +139,28 @@
     "sunset_at": "2027-12-31"
   },
   "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.ai.provider.registry.manage.v1",
+      "effect_ceiling": [
+        "capability:ai.provider.registry.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_provider_registry_pack.provider-configure",
+      "owner": "rumi_provider_registry_pack",
+      "provider_id": "rumi_provider_registry_pack.provider-configure.execute",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.ai.provider.registry.manage.v1",
+      "effect_ceiling": [
+        "capability:ai.provider.registry.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_provider_registry_pack.provider-configure-prepare",
+      "owner": "rumi_provider_registry_pack",
+      "provider_id": "rumi_provider_registry_pack.provider-configure.prepare",
+      "source_kind": "canonical_v4_contract"
+    },
     {
       "contract_reference": "tobkiri.resource.ai.provider.health.v1",
       "effect_ceiling": [
@@ -191,7 +240,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:78002895814927587ab79cc83f9a93de560c8e85ae53b789d3b91a1674b71a7a",
+    "artifact_digest": "sha256:7f2411f72d05bdb8decc44406e9234ce6d1d381d4318ff9e8b42b05ce0ccde7f",
     "display_name": "Rumi Provider Registry",
     "id": "rumi_provider_registry_pack",
     "kind": "host_extension",
@@ -201,7 +250,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:cb5179586989b5f7e70c893cb17aaa2c8a41fefbff15ea22a2516d1ab3ad4149",
+        "digest": "sha256:8f86a2fa4081813de93265e551a0893dfefedd94747a8b9efe1644212a543c9f",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -212,11 +261,27 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:cb5179586989b5f7e70c893cb17aaa2c8a41fefbff15ea22a2516d1ab3ad4149",
+    "source_digest": "sha256:8f86a2fa4081813de93265e551a0893dfefedd94747a8b9efe1644212a543c9f",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_provider_registry_pack"
   },
   "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.ai.provider.registry.manage.v1",
+      "operations": [
+        "rumi_provider_registry_pack.provider-configure"
+      ],
+      "owner": "rumi_provider_registry_pack",
+      "provider_id": "rumi_provider_registry_pack.provider-configure.execute"
+    },
+    {
+      "contract_reference": "tobkiri.action.ai.provider.registry.manage.v1",
+      "operations": [
+        "rumi_provider_registry_pack.provider-configure-prepare"
+      ],
+      "owner": "rumi_provider_registry_pack",
+      "provider_id": "rumi_provider_registry_pack.provider-configure.prepare"
+    },
     {
       "contract_reference": "tobkiri.resource.ai.provider.health.v1",
       "operations": [
@@ -253,7 +318,14 @@
       "ai.provider.registry.manage",
       "ai.provider.registry.read"
     ],
-    "contract_dependencies": [],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.credential.manage.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
     "execution_boundary": "host_brokered",
     "network": {
       "allowed_domains": [],

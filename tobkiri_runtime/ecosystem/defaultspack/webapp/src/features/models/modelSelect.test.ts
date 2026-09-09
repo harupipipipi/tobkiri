@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { userFacingModelProfiles, profileNeedsApiKey } from "../../App";
 
 import {
   buildVisibleModelOptions,
@@ -14,6 +15,18 @@ import {
   serializeModelAllowlist,
   type ModelSelectOption,
 } from "./modelSelect";
+
+test("saved canonical routes remain selectable without claiming Provider health", () => {
+  const route = {
+    profile_id: "daily", display_name: "Daily", model_id: "deepseek-chat",
+    provider_id: "provider.deepseek.main", route_configured: true,
+  };
+  assert.deepEqual(userFacingModelProfiles([route], "stub/default"), [route]);
+  assert.equal(profileNeedsApiKey(route), false);
+  assert.equal("availability" in route, false);
+  assert.deepEqual(userFacingModelProfiles([{ ...route, route_configured: false }], "stub/default"), []);
+  assert.deepEqual(userFacingModelProfiles([{ ...route, type: "embedding" }], "stub/default"), []);
+});
 
 function makeModelOption(index: number): ModelSelectOption {
   return {

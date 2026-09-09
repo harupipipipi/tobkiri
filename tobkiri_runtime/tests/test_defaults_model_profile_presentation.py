@@ -15,8 +15,15 @@ from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
 from ecosystem.defaultspack.defaultspack.model_profile_presentation import (
     MODEL_PROFILE_LIST_TARGET,
     present_model_profiles,
+    present_model_profile_saved,
 )
 from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+
+
+def test_model_save_preserves_broker_error_response() -> None:
+    """A rejected write remains an error envelope, not a disconnected socket."""
+    error = {"state": "error", "code": "provider_execution_failed"}
+    assert present_model_profile_saved(error) == error
 
 
 def test_model_list_is_bound_to_captured_profile() -> None:
@@ -63,6 +70,7 @@ def test_model_list_projects_real_registry_without_opaque_credentials(tmp_path: 
             "model_profile_id": "local-test",
             "display_name": "Local test",
             "model_id": "test-model",
+            "requirements": {"preferred_provider_instance_id": "provider.fixture"},
             "credential_handle": "opaque:test-only",
             "parameters": {"private-note": "not-for-ui"},
             "metadata": {"private-note": "not-for-ui"},
@@ -75,13 +83,17 @@ def test_model_list_projects_real_registry_without_opaque_credentials(tmp_path: 
                 "profile_id": "local-test",
                 "display_name": "Local test",
                 "model_id": "test-model",
+                "provider_id": "provider.fixture",
+                "route_configured": True,
             }
         ],
         "count": 1,
+        "registry_revision": 1,
     }
     assert present_model_profiles(ModelRegistry("other", user_data_root=tmp_path).snapshot()) == {
         "profiles": [],
         "count": 0,
+        "registry_revision": 0,
     }
 
 

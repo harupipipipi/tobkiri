@@ -355,6 +355,7 @@ def _invoke(
         health,
         streaming=streaming,
         explicit_pricing=request.get("_resolved_model_pricing"),
+        explicit_connection=request.get("_resolved_provider_connection_id"),
     )
     exact_binding = bool(
         requirement.preferred_model_id
@@ -624,6 +625,31 @@ def _resolve_model_reference(
         request["credential_handle"] = profile.get("credential_handle")
     metadata = profile.get("metadata")
     metadata = metadata if isinstance(metadata, Mapping) else {}
+    connection_id = metadata.get("provider_connection_id")
+    if connection_id is not None:
+        if not isinstance(connection_id, str) or not connection_id.startswith(
+            "provider."
+        ) or len(connection_id) <= len("provider."):
+            raise GlobalContractInvocationError(
+                "unresolved_profile", "saved Provider connection is invalid"
+            )
+        # Connection identity belongs to the registry; execution identity belongs
+        # to the captured contract. Never use one as a substitute for the other.
+        contract = STREAM_PROVIDER_CONTRACT if streaming else GENERATE_PROVIDER_CONTRACT
+        operation = STREAM_PROVIDER_OPERATION if streaming else GENERATE_PROVIDER_OPERATION
+        adapters = [
+            str(item.get("provider_instance_id") or "")
+            for item in client.providers(contract)
+            if item.get("operation_id") == operation
+        ]
+        if len(adapters) != 1 or not adapters[0]:
+            raise GlobalContractInvocationError(
+                "unresolved_profile", "saved Provider adapter is not uniquely selected"
+            )
+        request["_resolved_provider_connection_id"] = connection_id
+        request["requirements"]["preferred_model_id"] = str(profile.get("model_id") or "")
+        request["requirements"]["preferred_provider_instance_id"] = adapters[0]
+        request["allow_failover"] = False
     pricing = metadata.get("pricing")
     if isinstance(pricing, Mapping):
         request["_resolved_model_pricing"] = {
@@ -703,6 +729,7 @@ def _catalog_candidates(
     *,
     streaming: bool,
     explicit_pricing: Any = None,
+    explicit_connection: Any = None,
 ) -> tuple[list[Candidate], list[dict[str, str]]]:
     catalog_models: list[dict[str, Any]] = []
     for catalog_provider in client.providers(CATALOG_CONTRACT):
@@ -722,11 +749,26 @@ def _catalog_candidates(
             descriptor = dict(raw)
             descriptor["catalog_provider_instance_id"] = catalog_provider_id
             catalog_models.append(descriptor)
-    _append_explicit_live_model(
-        catalog_models,
-        requirement,
-        explicit_pricing=explicit_pricing,
-    )
+    if explicit_connection is not None:
+        # A saved raw model/connection pair is an explicit route, not a catalog
+        # brand/model identifier. Unknown capabilities stay unknown; requests
+        # cannot manufacture tool, image, context-size or residency evidence.
+        catalog_models = [{
+            "model_id": requirement.preferred_model_id,
+            "provider_model_id": requirement.preferred_model_id,
+            "provider_id": explicit_connection.removeprefix("provider."),
+            "execution_provider_instance_id": requirement.preferred_provider_instance_id,
+            "health_provider_instance_id": explicit_connection,
+            "catalog_revision": "saved-connection:v1",
+            "modalities": ["text"],
+            "capabilities": [],
+        }]
+    else:
+        _append_explicit_live_model(
+            catalog_models,
+            requirement,
+            explicit_pricing=explicit_pricing,
+        )
     routed = client.invoke(
         ROUTING_CONTRACT,
         ROUTING_STREAM_OPERATION if streaming else ROUTING_GENERATE_OPERATION,

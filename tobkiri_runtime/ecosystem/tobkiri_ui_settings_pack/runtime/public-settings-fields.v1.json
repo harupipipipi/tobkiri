@@ -1,0 +1,137 @@
+{
+  "general": [
+    "composer_placeholder",
+    "show_activity_in_messages",
+    "keyboard_button_navigation",
+    "spotlight_shortcut_enabled",
+    "spotlight_shortcut",
+    "spotlight_shortcut_text_input",
+    "language",
+    "voice_input_enabled",
+    "voice_input_use_ai",
+    "manual_runtime_mode_selection"
+  ],
+  "preview": [
+    "auto_open",
+    "default_mode",
+    "max_items"
+  ],
+  "mobile": [
+    "pairing_review_id"
+  ],
+  "calendar": [
+    "quick_add_enabled",
+    "default_item_type",
+    "default_time",
+    "time_slot_minutes",
+    "show_time_picker",
+    "agent_task_default",
+    "agent_model",
+    "agent_current_chat",
+    "week_start",
+    "show_outside_days",
+    "dim_weekends",
+    "task_color",
+    "event_color",
+    "max_items_per_day"
+  ],
+  "chat_rendering": [
+    "show_widgets",
+    "unknown_block_strategy"
+  ],
+  "models": [
+    "main_model",
+    "lightweight_model",
+    "preferred_model",
+    "preferred_model_group",
+    "auto_route_within_group",
+    "on_switch_to_non_vision_with_images",
+    "utility_models",
+    "model_api_routes",
+    "api_routes",
+    "api_bound_profiles",
+    "composite_models",
+    "model_notes",
+    "thinking_level",
+    "deepthink_enabled",
+    "favorite_profiles",
+    "thinking_level_by_profile"
+  ],
+  "continuity": [
+    "handoff"
+  ],
+  "apis": [],
+  "line": [
+    "mention_policy"
+  ],
+  "commands": [
+    "show_advanced_commands"
+  ],
+  "external_input": [
+    "input_setup_guide",
+    "endpoint_summary",
+    "input_provider",
+    "input_template_id",
+    "input_profile_id",
+    "input_endpoint_id",
+    "public_url_launcher",
+    "provider_route_copy",
+    "input_template_summary",
+    "input_profile_summary",
+    "include_source_context",
+    "default_response_mode",
+    "input_response_preset",
+    "policy_summary",
+    "saved_sources_summary"
+  ],
+  "external_output": [
+    "output_setup_guide",
+    "output_provider",
+    "output_template_id",
+    "output_profile_id",
+    "output_send_mode",
+    "output_target_id",
+    "output_callback_token_id",
+    "output_template_summary",
+    "output_profile_summary",
+    "response_summary",
+    "response_prompt_preset",
+    "public_url_summary"
+  ],
+  "external_custom": [
+    "custom_template_path",
+    "custom_profile_paths",
+    "custom_prompt_examples"
+  ],
+  "triggers": [
+    "mode",
+    "filter_unrelated",
+    "model",
+    "vector_threshold"
+  ],
+  "tools": [
+    "default_target",
+    "default_mode",
+    "selection_strategy",
+    "show_selection_summary",
+    "show_selection_reasons",
+    "semantic_backend",
+    "selector_trace",
+    "final_tool_limit",
+    "semantic_candidate_limit"
+  ],
+  "computer_use_haze": [
+    "enabled",
+    "preset",
+    "start_color",
+    "end_color",
+    "accent_color",
+    "opacity",
+    "edge_width",
+    "animation_speed"
+  ],
+  "debug": [
+    "ai_request_logging"
+  ],
+  "system_info": []
+}

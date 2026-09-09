@@ -159,9 +159,6 @@ class Kernel:
                 selected_pointer = ActiveProfileStore(user_data).load(verify_snapshot=True)
                 try:
                     active = capture_active_profile()
-                    authority_store = AuthorityStore(
-                        user_data / "authority" / "v4.sqlite3"
-                    )
                     capture_factory = self._runtime_capture_factory
                     if capture_factory is None:
                         raise RuntimeError(
@@ -169,6 +166,9 @@ class Kernel:
                         )
                     inputs = capture_factory(active)
                     contract_bindings = inputs.contract_bindings
+                    authority_store = AuthorityStore(
+                        user_data / "authority" / "v4.sqlite3"
+                    )
                     try:
                         dispatch_session = capture_production_dispatch(
                             active,

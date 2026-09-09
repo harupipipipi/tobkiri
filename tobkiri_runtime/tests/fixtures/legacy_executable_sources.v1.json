@@ -1,6 +1,98 @@
 {
   "schema": "io.tobkiri.legacy-executable-source-input.v1",
   "source_format": "legacy-entrypoint-map",
+  "implementation_adapters": [
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.action.turn.lifecycle.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-lifecycle"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-resource"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.event.turn.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-events"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+    },
+    {
+      "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
+      "legacy": {
+        "pack_id": "rumi_conversation_store_pack",
+        "owner": "rumi_conversation_store_pack",
+        "contract_id": "tobkiri.action.message.manage.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/store.py",
+        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "operation_ids": ["rumi_conversation_store_pack.message-manage"]
+      },
+      "implementation_path": "runtime/message_host.py",
+      "implementation_digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71"
+    },
+    {
+      "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+      "legacy": {
+        "pack_id": "rumi_conversation_store_pack",
+        "owner": "rumi_conversation_store_pack",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/store.py",
+        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "operation_ids": ["rumi_conversation_store_pack.conversation-manage"]
+      },
+      "implementation_path": "runtime/manage_host.py",
+      "implementation_digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981"
+    },
+    {
+      "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+      "legacy": {
+        "pack_id": "rumi_conversation_store_pack",
+        "owner": "rumi_conversation_store_pack",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/store.py",
+        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "operation_ids": ["rumi_conversation_store_pack.conversation-resource"]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062"
+    }
+  ],
   "operation_id_overrides": [
     {
       "pack_id": "rumi_ai_gateway_pack",
@@ -31,8 +123,382 @@
     }
   ],
   "packs": {
+    "rumi_turn_runtime_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-reconcile"
+          ],
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-saved"
+          ],
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "rumi_ai_gateway_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "operation_ids": [
+            "rumi_ai_gateway_pack.ai-gateway.preflight"
+          ],
+          "contract_id": "tobkiri.resource.ai.readiness.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/preflight.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model_profile_id",
+                "messages"
+              ],
+              "properties": {
+                "model_profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "messages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 2048,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "role",
+                      "content"
+                    ],
+                    "properties": {
+                      "role": {
+                        "enum": [
+                          "system",
+                          "user",
+                          "assistant"
+                        ]
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ready",
+                "model_profile_id",
+                "model_id",
+                "provider_instance_id",
+                "catalog_revision"
+              ],
+              "properties": {
+                "ready": {
+                  "const": true
+                },
+                "model_profile_id": {
+                  "type": "string"
+                },
+                "model_id": {
+                  "type": "string"
+                },
+                "provider_instance_id": {
+                  "type": "string"
+                },
+                "catalog_revision": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
     "defaultspack": {
       "entries": [
+        {
+          "function_id": "defaultspack.application-presentation",
+          "operation_ids": [
+            "defaultspack.presentation.read"
+          ],
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/application_presentation.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "ui",
+                    "commands"
+                  ]
+                },
+                "model_options": {
+                  "type": "array",
+                  "maxItems": 256,
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "value",
+                      "label"
+                    ],
+                    "properties": {
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "profile_id": {
+                  "type": "string"
+                },
+                "_session_id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "function_id": "defaultspack.conversation.saved",
+          "operation_ids": [
+            "saved_complete"
+          ],
+          "contract_id": "conversation.saved-turn.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/saved_conversation.py",
+          "schemas": {
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
         {
           "function_id": "defaultspack.conversation",
           "operation_ids": ["complete"],
@@ -174,6 +640,20 @@
     },
     "rumi_provider_registry_pack": {
       "entries": [
+        {
+          "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-configure-prepare"
+          ],
+          "contract_id": "rumi.action.ai.provider.registry.manage.v1",
+          "implementation_path": "runtime/process.py"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-configure.execute",
+          "operation_ids": ["rumi_provider_registry_pack.provider-configure"],
+          "contract_id": "rumi.action.ai.provider.registry.manage.v1",
+          "implementation_path": "runtime/process.py"
+        },
         {
           "function_id": "rumi_provider_registry_pack.provider-registry.health",
           "operation_ids": [
@@ -342,11 +822,190 @@
     "rumi_command_protocol_pack": {
       "entries": [
         {
+          "function_id": "rumi_command_protocol_pack.catalog.read",
+          "operation_ids": ["command.catalog.read"],
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/catalog.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
           "function_id": "rumi_command_protocol_pack.high-risk-command.service",
           "operation_ids": ["high_risk_command.manage"],
           "contract_id": "tobkiri.service.command.high-risk.v1",
           "contract_version": "1.0.0",
           "implementation_path": "runtime/high_risk_adapter.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        }
+      ]
+    },
+    "tobkiri_ui_settings_pack": {
+      "entries": [
+        {
+          "function_id": "tobkiri.ui.preferences.write",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.preferences-write"
+          ],
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profile_id",
+                "changes",
+                "expected_revision"
+              ],
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "changes": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "additionalProperties": false,
+                  "properties": {
+                    "general": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "composer_placeholder": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    },
+                    "chat_rendering": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    }
+                  }
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "values",
+                "document_revision"
+              ],
+              "properties": {
+                "values": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "additionalProperties": false,
+                  "properties": {
+                    "general": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "composer_placeholder": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    },
+                    "chat_rendering": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    }
+                  }
+                },
+                "document_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "tobkiri.ui.settings.read",
+          "operation_ids": ["tobkiri_ui_settings_pack.settings-read"],
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
+          "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "tobkiri.ui.catalog.read",
+          "operation_ids": ["tobkiri_ui_settings_pack.catalog-read"],
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
           "schemas": {"input": {"type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
         }
       ]
