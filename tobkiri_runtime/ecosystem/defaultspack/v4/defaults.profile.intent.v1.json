@@ -219,6 +219,22 @@
     },
     {
       "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.turn.stop.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-stop",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": ["tobkiri.action.turn.stop.v1"],
+          "operation": ["rumi_turn_runtime_pack.turn-stop"]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.stop"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
       "contract_id": "tobkiri.action.turn.reconcile.v1",
       "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
       "requested_scope_template": {

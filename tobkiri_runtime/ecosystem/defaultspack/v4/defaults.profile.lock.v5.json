@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:751863ad0949ea0e7454627eba36d91b42ce8604a07b7ec5cadcc36ba6eb3187",
-  "profile_definition_digest": "sha256:b5415de5228047494c04dd89687a8b82fdf406d7bf841ad37c6f701c35e8506e",
+  "profile_revision": "sha256:ad404e68aea4f71ad2284d7bdba0153222fed946da4852ec59f37efaf2ccf068",
+  "profile_definition_digest": "sha256:0ad8bc139bbe76d7a0cc4f436b67f514a2a83de0a0f7a4afc3a6c0d892d55625",
   "catalog_revision": "sha256:64483aa8d40ae67724c741d551cc985f66dce58d69e31f5aa5a1df2d0091608e",
-  "bundle_digest": "sha256:84f61d43383dc66b6cb089706efa58a44f477b178f014f8a1465d9a1c9891c4a",
+  "bundle_digest": "sha256:82ebbf8658acec0a37b38a9a8eb7f0177eb5ebf8dfb57083ad2c758080313ac9",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -703,6 +703,18 @@
       "domain_kind": "dedicated_process"
     },
     {
+      "pack_id": "rumi_turn_runtime_pack",
+      "artifact_digest": "sha256:834d31184b2d9497f64cd3deca5f7bb0be8fee8c90b7cb278d6b7ed7483d3c59",
+      "executable_catalog_digest": "sha256:970fd87ba0339f1c3d6ce2f5367d64b707bdd9cee7d5cbd74dfbe0a43fd35372",
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.stop.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
       "pack_id": "rumi_workspace_mount_pack",
       "artifact_digest": "sha256:8cea2c82b3d585d04b5b0adec918a4ecb4a6db957e8593feb423b0b646d918b2",
       "executable_catalog_digest": "sha256:5515806c8f7829ea0bdb155336a5119ff7192bfc09a8a7369627296be6fe0f73",
@@ -775,9 +787,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:2b06f309feb63781d8be0cc073130510a2cfc17d3d98a61808c7b9a4f3a3f7f0",
+  "requested_edges_digest": "sha256:d41ca05c17112508b1bb805c84cb610715c2e287b8bef44c4345e144e0954cd5",
   "constraints_digest": "sha256:fd852c508f79eda39f8a77be5efc0a19dc72a9fd0b89c162d2d47753d6a17654",
   "closure_digest": "sha256:677bf5703b3564c8b0856296317fb8cfa5a63ee061f682bfdd44dad238dccc5f",
-  "provenance_digest": "sha256:d4abfcc033ebd7f44098946ed2569b94f6eefa0fd9af96e01af86f6ca4a80fe8",
-  "lock_digest": "sha256:add04936b4e2271ad306cc815f4d4e1816b151be9a46073db080355319ba895b"
+  "provenance_digest": "sha256:7d4c07f68467796122f6ecda8ca44816162457aae5b646a20ac4995f6d721407",
+  "lock_digest": "sha256:4e362ddd0edf5962f5699fe4185b2791a4a3f93398728174ade53da3d2ad8ad3"
 }

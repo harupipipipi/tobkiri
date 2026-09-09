@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49
+// Raw source digest: sha256:0ff2adacb5201f23fb9750ab9b7dc60086194faecd5f53063609a8a475a43f14
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,14 +28,31 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:0ff2adacb5201f23fb9750ab9b7dc60086194faecd5f53063609a8a475a43f14" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49",
+  "artifact_digest": "sha256:0ff2adacb5201f23fb9750ab9b7dc60086194faecd5f53063609a8a475a43f14",
   "routes": [
+    {
+      "method": "POST",
+      "path": "/api/chat/turn/stop",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.turn.stop",
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-stop",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "allowed_payload_keys": [
+            "turn_id"
+          ]
+        }
+      ]
+    },
     {
       "method": "POST",
       "path": "/api/ai/provider-key",
@@ -51,7 +68,8 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "phase",
             "effect_kind",
             "request",
-            "effect_id"
+            "effect_id",
+            "correlation_id"
           ]
         }
       ]
@@ -878,6 +896,21 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
 };
 
 const EXPECTED_ROUTES = {
+  "POST /api/chat/turn/stop": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.turn.stop",
+        "contract_id": "tobkiri.action.turn.stop.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-stop",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "allowed_payload_keys": [
+          "turn_id"
+        ]
+      }
+    ]
+  },
   "POST /api/ai/provider-key": {
     "presentation": "broker_result",
     "targets": [
@@ -891,7 +924,8 @@ const EXPECTED_ROUTES = {
           "phase",
           "effect_kind",
           "request",
-          "effect_id"
+          "effect_id",
+          "correlation_id"
         ]
       }
     ]

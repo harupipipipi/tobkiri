@@ -272,7 +272,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57299,
-      "sha256": "84f61d43383dc66b6cb089706efa58a44f477b178f014f8a1465d9a1c9891c4a",
+      "sha256": "82ebbf8658acec0a37b38a9a8eb7f0177eb5ebf8dfb57083ad2c758080313ac9",
       "executable": false
     },
     {
@@ -285,29 +285,29 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
       "type": "regular-file",
-      "size": 78403,
-      "sha256": "ce7b51c855b13338d93dcb40e9c7e16b631f29b679dbb205e674c19ee059ea67",
+      "size": 78969,
+      "sha256": "4c797bacb014ad7bede8abe3b92c06520bc6341c82058a60a5b33dc7a8d19bee",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
-      "size": 35206,
-      "sha256": "072d554ce0f28614eaf61b1d1cfe2f3e64f9b27a74c7d9dfc158fb7ef1c36702",
+      "size": 35758,
+      "sha256": "35d5a42d2d0c6546c633c7c8a20a4e29c19bebe263d14e860f3587b91fd8cb8e",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
       "type": "regular-file",
-      "size": 92241,
-      "sha256": "4f2e1a295be3b9a061e3c47061c3af47f46c4c99d407ac932f7745ad243d7895",
+      "size": 92958,
+      "sha256": "f961adf2dd8af8f2e6ffad3d53ac7eb4785f585659604a3beee8eabf6b314027",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 64723,
-      "sha256": "82ef2a4cfc1f1ffc6143ea92eba77d9449184bce9eea12fea577e0e34793111e",
+      "sha256": "980dc994eda45ab04cc017aa6fa8fc1ca833d4228cc86d2661b063fc57084901",
       "executable": false
     },
     {
@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 848607,
-      "sha256": "a990848378f84204d69702bed6bc1bc0c9c1a3f0fde6c53cfa49cee4640a3510",
+      "sha256": "47c34da756473c4589c8011fdbe1a3c4610c4b140c9a6d7191bc4ce0635aceda",
       "executable": false
     },
     {
