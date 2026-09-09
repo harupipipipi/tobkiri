@@ -806,6 +806,31 @@ def test_invalid_worker_memory_reservation_never_starts_or_charges(worker_memory
     assert "queue_reserved" not in fixture.events
 
 
+@pytest.mark.parametrize("overhead", [-1, True, False, 1.5, "1", None, float("nan")])
+def test_worker_floor_cannot_hide_invalid_backend_estimate(overhead: object) -> None:
+    """Reject the original estimate before max() can turn it into valid input."""
+    from tobkiri_host.errors import AdmissionError
+
+    class WorkerBackend(FakeBackend):
+        memory_reservation_bytes = 1024
+
+        def release_materialization(self, reservation_id: str) -> None:
+            raise AssertionError("no worker or reservation should exist")
+
+    fixture = make_broker(backend=WorkerBackend([]))
+    estimate = fixture.admission.estimate
+    fixture.admission.estimate = lambda *args: replace(
+        estimate(*args), backend_overhead_bytes=overhead,
+    )
+    try:
+        with pytest.raises(AdmissionError, match="backend estimate is invalid"):
+            fixture.broker.invoke(frame(), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.starts == 0
+    assert "queue_reserved" not in fixture.events
+
+
 def test_singleflight_materialization_never_merges_distinct_principals() -> None:
     events: list[str] = []
 

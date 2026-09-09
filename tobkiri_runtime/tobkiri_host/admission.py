@@ -190,8 +190,9 @@ class DurableResourceLedger(ResourceLedger):
     """Persist short-lived reservations across a Host restart.
 
     The persisted record is deliberately a reservation ledger, not a caller
-    supplied quota.  Every row is tied to the captured Profile/activation
-    identity and expires if the owning Broker crashed before releasing it.
+    supplied quota. Every row is tied to the captured Profile/activation
+    identity. Time passing is not proof that its worker has exited: only the
+    owning supervisor's explicit release can make that capacity reusable.
     Invalid or unreadable state fails closed so a damaged ledger cannot turn
     admission into an unbounded path.
     """
@@ -208,7 +209,11 @@ class DurableResourceLedger(ResourceLedger):
         identity: Mapping[str, str],
         lease_ttl_seconds: float = 120.0,
     ) -> None:
-        if lease_ttl_seconds <= 0:
+        if (
+            type(lease_ttl_seconds) not in (int, float)
+            or not math.isfinite(lease_ttl_seconds)
+            or lease_ttl_seconds <= 0
+        ):
             raise ValueError("admission reservation TTL must be positive")
         super().__init__(
             runtime_limit=runtime_limit,
@@ -228,8 +233,9 @@ class DurableResourceLedger(ResourceLedger):
     ) -> ResourceReservation:
         """Reserve and durably journal resources before queue acceptance."""
         with self._lock:
-            self._reap_expired_locked()
             reservation = super().reserve(profile_id, amount)
+            # Keep the v1 timestamp for persisted-format compatibility and
+            # diagnostics; it must not authorize automatic reclamation.
             self._expires_at[reservation.reservation_id] = (
                 time.time() + self._lease_ttl_seconds
             )
@@ -260,15 +266,13 @@ class DurableResourceLedger(ResourceLedger):
                 raise ValueError("ledger root is not an object")
             if raw.get("schema") != self._SCHEMA:
                 raise ValueError("ledger schema is not supported")
-            if dict(raw.get("identity") or {}) != self._identity:
-                # A Profile may reuse its workspace for a successor
-                # activation.  Reservations from the old generation are not
-                # admissible in the new one.
-                return
             rows = raw.get("reservations")
             if not isinstance(rows, list):
                 raise ValueError("ledger reservations are not an array")
-            now = time.time()
+            if dict(raw.get("identity") or {}) != self._identity:
+                if rows:
+                    raise ValueError("predecessor reservations require confirmed release")
+                return
             for row in rows:
                 if not isinstance(row, Mapping):
                     raise ValueError("ledger reservation is not an object")
@@ -281,9 +285,8 @@ class DurableResourceLedger(ResourceLedger):
                     or isinstance(expires_at, bool)
                     or not isinstance(expires_at, (int, float))
                     or not math.isfinite(float(expires_at))
-                    or expires_at <= now
                 ):
-                    continue
+                    raise ValueError("ledger reservation identity or timestamp is invalid")
                 amount_value = row.get("amount")
                 if not isinstance(amount_value, Mapping):
                     raise ValueError("ledger reservation amount is not an object")
@@ -328,13 +331,6 @@ class DurableResourceLedger(ResourceLedger):
             json.JSONDecodeError,
         ) as exc:
             raise AdmissionError("durable admission ledger is invalid") from exc
-
-    def _reap_expired_locked(self) -> None:
-        now = time.time()
-        for reservation_id, expires_at in tuple(self._expires_at.items()):
-            if expires_at <= now:
-                super().release(reservation_id)
-                self._expires_at.pop(reservation_id, None)
 
     def _persist_locked(self) -> None:
         rows = [

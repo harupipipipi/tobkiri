@@ -428,9 +428,13 @@ class RequestBroker:
             floor = backend.memory_reservation_bytes
             if isinstance(floor, bool) or not isinstance(floor, int) or floor <= 0:
                 raise AdmissionError("request worker memory reservation is invalid")
+            # max() must not hide an invalid estimate behind a valid floor.
+            overhead = estimate.backend_overhead_bytes
+            if type(overhead) is not int or overhead < 0:
+                raise AdmissionError("request worker backend estimate is invalid")
             estimate = replace(
                 estimate,
-                backend_overhead_bytes=max(estimate.backend_overhead_bytes, floor),
+                backend_overhead_bytes=max(overhead, floor),
             )
         remaining = deadline - monotonic_clock()
         if remaining <= 0:
