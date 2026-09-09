@@ -14,20 +14,26 @@ import pytest
 
 from tobkiri_host.errors import InvalidArtifactError, ProviderExecutionError
 from tobkiri_host.wasm_component import PureComponent
+from tobkiri_host.wasm_worker import ComponentWorker
 
 wasmtime = pytest.importorskip("wasmtime")
 
 
-def invoke_worker(request: object, *, isolated: bool = True) -> subprocess.CompletedProcess:
-    """Launch a real child; fixture roots are trusted, never read from its request."""
+def worker_command(*, isolated: bool = True) -> tuple[str, ...]:
+    """Pin fixture roots explicitly; never read import configuration from a request."""
     roots = [str(Path(__file__).resolve().parents[1]),
              str(Path(wasmtime.__file__).resolve().parent.parent)]
     code = (
         "import sys, runpy; sys.path[:0] = " + repr(roots) + "; "
         "runpy.run_module('tobkiri_host.wasm_component', run_name='__main__')"
     )
+    return (sys.executable, *(["-I"] if isolated else []), "-B", "-c", code)
+
+
+def invoke_worker(request: object, *, isolated: bool = True) -> subprocess.CompletedProcess:
+    """Launch a real child; fixture roots are trusted, never read from its request."""
     return subprocess.run(
-        [sys.executable, *(["-I"] if isolated else []), "-B", "-c", code],
+        worker_command(isolated=isolated),
         input=json.dumps(request).encode(), capture_output=True,
         env={}, close_fds=True, timeout=15, check=False,
     )
@@ -48,6 +54,12 @@ def test_child_worker_compiles_and_returns_one_result() -> None:
     assert result.returncode == 0
     assert json.loads(result.stdout) == {"status": "ok", "data": {"ok": True}}
     assert result.stderr == b""
+
+
+def test_supervised_real_component_returns_after_child_exit() -> None:
+    owned = ComponentWorker(worker_command())
+    assert owned.invoke(worker_request(), cancelled=threading.Event()) == {"ok": True}
+    assert owned._process is None
 
 
 @pytest.mark.parametrize("change", [
