@@ -115,7 +115,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnSnapshotState, savedTurnSnapshotNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnSnapshotState, savedTurnSnapshotNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -4231,11 +4231,13 @@ export function ChatApp() {
         setError("送信の操作IDを確認できないため、停止要求は送信していません。");
         return;
       }
-      setError("停止を要求しています。停止済みとは扱わず、結果の照合を続けます。");
+      const notice = (status: string) => updatePendingRequests((current) =>
+        updateSavedTurnNotice(current, conversationId, turnId, status));
+      notice("停止を要求しています。停止済みとは扱わず、結果の照合を続けます。");
       void api.stopSavedTurn(turnId).then(() => {
-        setError("停止要求を受け付けました。実行・保存結果の照合を続けます。");
+        notice("停止要求を受け付けました。実行・保存結果の照合を続けます。");
       }).catch(() => {
-        setError("停止要求の結果を確認できません。自動再送せず、実行・保存結果の照合を続けます。");
+        notice("停止要求の結果を確認できません。自動再送せず、実行・保存結果の照合を続けます。");
       });
       return;
     }

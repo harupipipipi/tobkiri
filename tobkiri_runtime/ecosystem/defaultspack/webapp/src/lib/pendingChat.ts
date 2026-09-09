@@ -45,6 +45,18 @@ export type PendingChatRequest = {
   recoveredFromLocation?: boolean;
 };
 
+export function updateSavedTurnNotice(
+  current: Record<string, PendingChatRequest>, conversationId: string,
+  turnId: string, status: string,
+): Record<string, PendingChatRequest> {
+  const entry = current[conversationId];
+  // A delayed stop receipt belongs to the original turn, not the currently
+  // visible conversation or a newer request. Never restore a completed entry.
+  if (!entry?.savedTurn || entry.conversationId !== conversationId
+    || entry.operationId !== turnId || entry.status === status) return current;
+  return { ...current, [conversationId]: { ...entry, status } };
+}
+
 export const PENDING_CHAT_REQUEST_TTL_MS = 6 * 60 * 60_000;
 export const PENDING_USER_ONLY_GRACE_MS = 8_000;
 
