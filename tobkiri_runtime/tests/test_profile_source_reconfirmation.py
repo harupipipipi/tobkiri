@@ -18,11 +18,16 @@ from tests.test_profile_architecture_review_c import _packaged_catalog_revision,
 
 
 @pytest.mark.parametrize("unpinned_scope", [False, True])
+@pytest.mark.parametrize("same_catalog", [False, True])
 def test_source_additions_require_their_own_confirmation_and_survive_restart(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unpinned_scope: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unpinned_scope: bool,
+    same_catalog: bool,
 ) -> None:
     predecessor_catalog = _packaged_catalog_revision(tmp_path / "predecessor", b"before")
-    successor_catalog = _packaged_catalog_revision(tmp_path / "successor", b"after")
+    successor_catalog = (
+        predecessor_catalog if same_catalog
+        else _packaged_catalog_revision(tmp_path / "successor", b"after")
+    )
     runtime = require_profile_runtime()
     previous_definition = deepcopy(predecessor_catalog.profiles["defaults"])
     previous_definition["display_name"] = "My retained Defaults"
@@ -101,7 +106,7 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     }
     assert added_packs <= {row["pack_id"] for row in proposed.profiles["defaults"]["packs"]}
     assert proposed.profiles["defaults"]["display_name"] == "My retained Defaults"
-    if unpinned_scope:
+    if unpinned_scope and not same_catalog:
         assert all(
             "semantics_digest" in edge["requested_scope_template"]
             for edge in unchanged.profiles["defaults"]["requested_edges"]

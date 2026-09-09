@@ -80,14 +80,16 @@ def bootstrap_review_catalog(
     candidate = deepcopy(dict(registered.profile))
     if successor_required:
         candidate["shell"] = deepcopy(catalog.profiles[profile_id]["shell"])
+    if successor_required or include_source_additions:
         candidate = profile_scope_successor(candidate, catalog.profiles[profile_id])
     if include_source_additions:
-        if not successor_required:
-            raise runtime.denied("source update requires reconfirmation")
         try:
-            candidate = profile_source_additions(candidate, catalog.profiles[profile_id])
+            updated = profile_source_additions(candidate, catalog.profiles[profile_id])
         except ProfileDefinitionStoreConflict as error:
             raise runtime.denied("source update conflicts with the registered Profile") from error
+        if not successor_required and updated == candidate:
+            raise runtime.denied("source update requires reconfirmation")
+        candidate = updated
     declared_ids = {item["pack_id"] for item in candidate["packs"]}
     selected_ids = {item["pack_id"] for item in active_profile["packs"]}
     closure_ids = selected_ids | {

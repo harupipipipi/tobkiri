@@ -1017,14 +1017,21 @@ def capture_bootstrap_profile(
                 catalog=catalog,
             )
             if resolved_reconciliation is not None:
+                predecessor = None
                 try:
-                    store.load_active_snapshot()
+                    predecessor = store.load_active_snapshot()
                 except Exception as error:
                     if not runtime.is_reconfirmation_required(error):
                         raise
                     predecessor_digest = getattr(error, "verified_profile_definition_digest", None)
                 else:
-                    raise ProfileResolutionDenied("activation confirmation was replayed")
+                    if (
+                        not include_source_additions
+                        or predecessor.resolved.plan["plan_digest"]
+                        == resolved_reconciliation.plan["plan_digest"]
+                    ):
+                        raise ProfileResolutionDenied("activation confirmation was replayed")
+                    predecessor_digest = predecessor.resolved.plan["profile_definition_digest"]
                 register_bootstrap_definition(
                     user_data,
                     catalog.profiles[profile_id],
@@ -1035,11 +1042,21 @@ def capture_bootstrap_profile(
                     + resolved_reconciliation.plan["plan_digest"].removeprefix("sha256:")[:16]
                 )
                 created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                store.reconcile_active(
-                    resolved_reconciliation,
-                    activation_id=activation_id,
-                    created_at=created_at,
-                )
+                if predecessor is None:
+                    store.reconcile_active(
+                        resolved_reconciliation,
+                        activation_id=activation_id,
+                        created_at=created_at,
+                    )
+                else:
+                    store.activate(
+                        resolved_reconciliation,
+                        activation_id=activation_id,
+                        created_at=created_at,
+                        expected_predecessor_profile_revision=predecessor.resolved.plan["profile_revision"],
+                        expected_predecessor_plan_digest=predecessor.resolved.plan["plan_digest"],
+                        expected_predecessor_activation_id=predecessor.activation["activation_id"],
+                    )
             active = store.load_active_snapshot()
             _publish_host_active_pointer(
                 active,

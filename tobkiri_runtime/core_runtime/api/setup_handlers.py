@@ -90,7 +90,10 @@ class SetupHandlersMixin:
         if active_profile_exists():
             try:
                 capture_active_profile()
-                active = True
+                active = (
+                    getattr(self._dispatch_session, "session_kind", None)
+                    != "host_profile_control"
+                )
             except Exception as error:
                 runtime = require_profile_runtime()
                 if runtime.is_reconfirmation_required(error):
@@ -102,11 +105,12 @@ class SetupHandlersMixin:
                     raise
         runtime = require_profile_runtime()
         try:
+            review_options = self._setup_review_options()
             listing = self._setup_listing(
-                active=active,
+                active=active and not review_options.get("include_source_additions", False),
                 activation_denied=activation_denied,
                 denial_diagnostic=denial_diagnostic,
-                **self._setup_review_options(),
+                **review_options,
             )
         except Exception as error:
             response = self._setup_resolution_denied_response(runtime, error)

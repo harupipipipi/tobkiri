@@ -20,6 +20,29 @@ class _Handler(SetupHandlersMixin):
     pass
 
 
+@pytest.mark.parametrize("control_session,additions,expected_active", [
+    (False, False, True), (True, False, False),
+    (False, True, False), (True, True, False),
+])
+def test_setup_does_not_report_pending_runtime_or_proposal_as_active(
+    control_session: bool, additions: bool, expected_active: bool,
+) -> None:
+    handler = _Handler()
+    handler._dispatch_session = SimpleNamespace(
+        session_kind="host_profile_control" if control_session else "production",
+    )
+    handler.path = "/api/setup/packs" + (
+        "?include_source_additions=true" if additions else ""
+    )
+    with (
+        patch.object(profile_capture, "active_profile_exists", return_value=True),
+        patch.object(profile_capture, "capture_active_profile"),
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value={}) as listing,
+    ):
+        handler._setup_list_packs()
+    assert listing.call_args.kwargs["active"] is expected_active
+
+
 @pytest.mark.parametrize("query", [
     "include_source_additions=false",
     "include_source_additions=1",
