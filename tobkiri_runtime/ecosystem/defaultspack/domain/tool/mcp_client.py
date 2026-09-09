@@ -292,6 +292,7 @@ class _ServerConnection:
         self._transport = None
         self._id_counter = 0
         self._lock = threading.Lock()
+        self._request_lock = threading.Lock()
 
     # -- public API --
 
@@ -379,33 +380,37 @@ class _ServerConnection:
             return self._id_counter
 
     def _send_request(self, method, params=None):
-        if self._transport is None:
+        # Each transport has one response queue. Keep a request and its response
+        # together so another caller cannot consume and discard that response.
+        transport = self._transport
+        if transport is None:
             raise RuntimeError("Not connected to server '{}'".format(self.server_name))
-        msg_id = self._next_id()
-        request = {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "method": method,
-        }
-        if params is not None:
-            request["params"] = params
-        raw = json.dumps(request).encode("utf-8")
-        self._transport.send(raw)
         deadline = time.monotonic() + _DEFAULT_TIMEOUT
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(
-                    "Timeout waiting for response to '{}' (id={})".format(method, msg_id)
-                )
-            msg = self._transport.recv(timeout=remaining)
-            if msg is None:
-                raise TimeoutError(
-                    "Timeout waiting for response to '{}' (id={})".format(method, msg_id)
-                )
-            if msg.get("id") == msg_id:
-                return msg
-            # else: notification or response to different id — ignore for now
+        if not self._request_lock.acquire(timeout=_DEFAULT_TIMEOUT):
+            raise TimeoutError("Timeout waiting for the MCP connection")
+        try:
+            if self._transport is not transport:
+                raise RuntimeError("MCP connection changed while waiting")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timeout waiting for the MCP connection")
+            msg_id = self._next_id()
+            request = {"jsonrpc": "2.0", "id": msg_id, "method": method}
+            if params is not None:
+                request["params"] = params
+            transport.send(json.dumps(request).encode("utf-8"))
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Timeout waiting for the MCP response")
+                msg = transport.recv(timeout=remaining)
+                if msg is None:
+                    raise TimeoutError("Timeout waiting for the MCP response")
+                if msg.get("id") == msg_id:
+                    return msg
+                # Notifications and late replies to timed-out requests do not
+                # belong to this call. Never replay a request after timeout.
+        finally:
+            self._request_lock.release()
 
     def _send_notification(self, method, params=None):
         if self._transport is None:

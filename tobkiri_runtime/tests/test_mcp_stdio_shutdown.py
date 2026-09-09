@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import queue
 import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
@@ -11,6 +13,89 @@ import pytest
 
 from ecosystem.defaultspack.domain.tool.mcp_client import McpConnections, _StdioTransport
 from ecosystem.defaultspack.domain.tool import mcp_client
+
+
+class _BlockingReplies:
+    """Hold the first reply while another caller attempts the same connection."""
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.sent: list[dict] = []
+        self.replies: queue.Queue = queue.Queue()
+
+    def send(self, data: bytes) -> None:
+        request = json.loads(data)
+        self.sent.append(request)
+        self.replies.put({
+            "id": request["id"],
+            "result": {"content": [{"type": "text", "text": request["params"]["name"]}]},
+        })
+
+    def recv(self, timeout: float) -> dict | None:
+        if not self.entered.is_set():
+            self.entered.set()
+            assert self.release.wait(5)
+        try:
+            return self.replies.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+
+def test_concurrent_calls_keep_each_response_with_its_request() -> None:
+    """Two callers cannot consume and discard each other's shared-queue reply."""
+    connection = mcp_client._ServerConnection("owned", {})
+    transport = _BlockingReplies()
+    connection._transport = transport
+    attempted = threading.Event()
+
+    def second_call() -> dict:
+        attempted.set()
+        return connection.call_tool("second", {})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(connection.call_tool, "first", {})
+        try:
+            assert transport.entered.wait(2)
+            second = pool.submit(second_call)
+            assert attempted.wait(2)
+            with pytest.raises(TimeoutError):
+                second.result(timeout=0.1)
+            assert len(transport.sent) == 1
+        finally:
+            transport.release.set()
+        assert first.result(timeout=2)["result"] == "first"
+        assert second.result(timeout=2)["result"] == "second"
+    assert [request["params"]["name"] for request in transport.sent] == ["first", "second"]
+
+
+def test_busy_connection_does_not_serialize_another_connection() -> None:
+    """An unrelated owner's transport continues while the first reply waits."""
+    first = mcp_client._ServerConnection("first", {})
+    second = mcp_client._ServerConnection("second", {})
+    first._transport, second._transport = _BlockingReplies(), _BlockingReplies()
+    second._transport.release.set()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending = pool.submit(first.call_tool, "first", {})
+        try:
+            assert first._transport.entered.wait(2)
+            independent = pool.submit(second.call_tool, "second", {})
+            assert independent.result(timeout=2)["result"] == "second"
+        finally:
+            first._transport.release.set()
+        assert pending.result(timeout=2)["result"] == "first"
+
+
+def test_queued_call_expires_without_sending_or_consuming_reply(monkeypatch) -> None:
+    """Waiting for the connection uses the request budget without executing."""
+    connection = mcp_client._ServerConnection("owned", {})
+    connection._transport = Mock()
+    monkeypatch.setattr(mcp_client, "_DEFAULT_TIMEOUT", 0.01)
+    with connection._request_lock:
+        with pytest.raises(TimeoutError, match="waiting for the MCP connection"):
+            connection.call_tool("not-sent", {})
+    connection._transport.send.assert_not_called()
+    connection._transport.recv.assert_not_called()
 
 
 @pytest.mark.parametrize("next_action", ["connect", "disconnect", "reconnect"])
