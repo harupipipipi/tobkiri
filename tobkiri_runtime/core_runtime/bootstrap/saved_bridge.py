@@ -53,7 +53,9 @@ def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
         conversation.get("conversation_kind") not in (None, "", "chat")
         or conversation.get("group_id")
         or any(metadata.get(key) for key in (
-            "group_id", "workspace_id", "workspace_root", "rumi_data_path",
+            "group_id", "groupId", "workspace_id", "workspaceId",
+            "workspace_root", "workspaceRoot", "rootPath",
+            "rumi_data_path", "rumiDataPath", "rumi_dp_path",
             "shared_read_only",
         ))
         or metadata.get("mode") not in (None, "", "chat")
