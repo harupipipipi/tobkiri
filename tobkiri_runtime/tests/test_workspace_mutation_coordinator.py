@@ -731,6 +731,63 @@ def test_scoped_close_failure_retains_but_disables_lease(
         port.close()
 
 
+def test_namespace_cleanup_failure_does_not_skip_peers_or_close_foreign_leases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _identity()
+    foreign = replace(
+        identity, target_namespace="foreign-handles",
+        context=replace(identity.context, handle_namespace="foreign-handles"),
+    )
+    bindings = {}
+    for index in range(3):
+        root = tmp_path / f"workspace-{index}"
+        root.mkdir()
+        (root / "document.txt").write_bytes(b"original")
+        binding = replace(_binding(root), workspace_id=f"workspace-{index}")
+        bindings[binding.workspace_id] = binding
+    port = HostWorkspaceMutationPort(
+        WorkspaceMutationCoordinator(tmp_path / "host-locks"),
+        binding_resolver=lambda _profile_id, workspace_id: bindings[workspace_id],
+    )
+    leases = [
+        port.acquire_lease(WorkspaceMutationLeaseRequest(
+            identity=foreign if index == 2 else identity, binding=binding,
+        ))
+        for index, binding in enumerate(bindings.values())
+    ]
+    records = [port._leases[lease.value] for lease in leases]
+    original = port._close_record
+    attempts = []
+
+    def close_record(record):
+        attempts.append(record)
+        if record is records[0]:
+            raise OSError("injected first-lease failure")
+        original(record)
+
+    monkeypatch.setattr(port, "_close_record", close_record)
+    try:
+        with pytest.raises(WorkspaceMutationError, match="cleanup is incomplete"):
+            port.close_namespace(identity.target_namespace)
+        assert attempts == records[:2]
+        assert records[0].closing and not records[0].lease.closed
+        assert records[1].lease.closed
+        assert not records[2].closing and not records[2].lease.closed
+        assert set(port._leases) == {leases[0].value, leases[2].value}
+        port.bind_existing(
+            leases[2], foreign, relative_path="document.txt",
+            ttl_seconds=30, max_uses=1, max_bytes=100,
+        )
+        monkeypatch.setattr(port, "_close_record", original)
+        port.close_namespace(identity.target_namespace)
+        assert records[0].lease.closed
+        assert set(port._leases) == {leases[2].value}
+    finally:
+        monkeypatch.setattr(port, "_close_record", original)
+        port.close()
+
+
 def _bind_batch_handles(port, lease, identity):
     replace_handle = port.bind_existing(
         lease,
