@@ -37,10 +37,17 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
         "tobkiri_ui_settings_pack.settings-read",
         "rumi_conversation_store_pack.conversation-resource",
     }
+    added_functions = {
+        function["id"]
+        for pack_id in added_packs
+        for function in predecessor_catalog.packs[pack_id]["functions"]
+    }
     previous_definition["requested_edges"] = [
         edge
         for edge in previous_definition["requested_edges"]
         if edge["operation_id"] not in added_operations
+        and edge["caller_function_id"] not in added_functions
+        and edge["target_provider_id"] not in added_functions
     ]
     predecessor_catalog = runtime.catalog_with_profiles(
         predecessor_catalog, {**predecessor_catalog.profiles, "defaults": previous_definition}
