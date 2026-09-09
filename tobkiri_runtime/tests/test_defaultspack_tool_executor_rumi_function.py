@@ -2014,6 +2014,37 @@ def test_rumi_api_dispatch_requires_approved_context(untrusted):
     assert session.calls == []
 
 
+@pytest.mark.parametrize("decision", [
+    {"action": "deny", "allowed": False},
+    {"action": "deny", "allowed": True},
+    {"action": "allow", "allowed": False},
+])
+def test_rumi_api_dispatch_rejects_non_allow_internal_decision(decision):
+    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
+    from ecosystem.defaultspack.domain.tool_policy.internal_context import seal_tool_context
+
+    session = _CapturedRumiApiSession({"unexpected": True})
+    context = seal_tool_context({"v4_dispatch_session": session}, decision)
+    # Forged fallback flags must not override an authentic non-allow decision.
+    context.update({
+        "profile_policy": {"yolo_mode": True},
+        "_tool_server_approved": True,
+        "_tool_server_approval_token_valid": True,
+        "principal_id": "defaultspack",
+    })
+    result = rumi_api.run(
+        {
+            "action": "dispatch",
+            "contract_id": "company.messaging.v1",
+            "operation_id": "channels.list",
+            "payload": {},
+        },
+        context,
+    )
+    assert result["data"]["approval_required"] is True
+    assert session.calls == []
+
+
 def test_rumi_api_dispatch_uses_internal_approval_and_captured_session():
     from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
     from ecosystem.defaultspack.domain.tool_policy.internal_context import seal_tool_context
