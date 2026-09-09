@@ -658,7 +658,16 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
     # provider's repeated tool call is retained as an activity event but is
     # suppressed by the replay guard instead of invoking the host a second
     # time.
-    assert len(router_calls) == 1
+    replay_request = approval.get_approval_request(request_id)
+    assert len(router_calls) == 1, [{
+        "request_status": replay_request.get("status"),
+        "operation": replay_request.get("operation"),
+        "detail_fields": sorted(replay_request.get("details", {})),
+    }, *[
+        (event.get("type"), event.get("phase"), event.get("message"))
+        for event in resumed_events
+        if event.get("type") in {"status", "error", "approval_requested"}
+    ]]
     assert router_calls[0]["context"]["_tool_server_approved"] is True
     assert router_calls[0]["payload"]["approval_token"] == decision["token"]
     assert router_calls[0]["tool_arguments"] == {

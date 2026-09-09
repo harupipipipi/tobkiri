@@ -1,18 +1,18 @@
 import os
 import sys
-import time
 
 from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error
-from domain.ai_client.gateway import AIClient
+from domain.ai_client.gateway import AIClient as AIClient
 from domain.ai_client.gateway_contract_client import ContractLLMGateway
 from domain.chat.run_request import validate_chat_run_input
 from domain.chat.idempotency import IdempotencyConflictError, reserve_chat_operation
 from domain.chat.store import ChatStore
-from domain.chat.stream_engine import ChatRunEngine, _InlineThoughtFilter
+from domain.chat.stream_engine import ChatRunEngine
+from domain.chat.stream_engine import _InlineThoughtFilter as _InlineThoughtFilter
 from domain.stream.events import to_legacy_chat_stream_event
 
 
