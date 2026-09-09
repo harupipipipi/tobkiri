@@ -677,6 +677,24 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
         assert store.path.read_bytes() == after_stop
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello"]
         assert len(signals) == 1
+        previous_capture = server._dispatch_session
+        status, restarted, _ = post("/api/pack-control/restart", {})
+        assert status == 200, restarted
+        assert server._dispatch_session is not previous_capture
+        cookie, csrf, origin = _authenticate(server)
+        status, lost_handle, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
+        assert status != 200, lost_handle
+        # A fresh capture is not permission to claim the durable turn again.
+        for path, payload in (
+            ("/api/chat/turn/reconcile", {"turn_id": "turn-stop-1"}),
+            ("/api/chat/turn", body),
+        ):
+            status, recovered, _ = post(path, payload)
+            assert status == 200, recovered
+            assert recovered["data"]["turn"]["status"] in {"running", "waiting"}
+            assert recovered["data"]["turn"].get("result_reference") is None
+        assert store.path.read_bytes() == after_stop
+        assert len(signals) == 1
     finally:
         servers.close()
 
