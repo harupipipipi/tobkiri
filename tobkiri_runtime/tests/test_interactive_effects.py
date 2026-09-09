@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import uuid
+from dataclasses import replace
 from typing import Any, Mapping
 
 import pytest
@@ -143,6 +145,7 @@ def _controller(
 def _prepare(
     controller: PendingEffectController,
     broker: Any,
+    correlation_id: str | None = None,
 ) -> tuple[object, Any]:
     """Prepare one canonical Broker snapshot behind a pending approval."""
 
@@ -164,8 +167,73 @@ def _prepare(
         },
         expires_at=1_000.0,
         typed_confirmation_phrase="SEND",
+        correlation_id=correlation_id,
     )
     return status, prepared
+
+
+def test_prepare_reply_lookup_is_owned_read_only_and_survives_controller_restart() -> None:
+    """A correlation ID recovers a receipt, never authority or an execution."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    correlation = str(uuid.uuid4())
+    try:
+        status, _ = _prepare(_controller(persistence, approvals), fixture.broker, correlation)
+        original = copy.deepcopy(persistence.records)
+        restarted = _controller(persistence, approvals)
+        query = dict(
+            correlation_id=correlation,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+            context=context(),
+            contract_id=frame().contract_id,
+            operation_id=frame().operation_id,
+            target_principal=OpaqueAuthorityRef("authority:notification-send"),
+        )
+        for _ in range(2):
+            assert restarted.find_for_presentation(**query) == status
+        for patch in (
+            {"correlation_id": str(uuid.uuid4())},
+            {"presentation_owner_principal_id": "authority:other"},
+            {"presentation_owner_session_id": "other-session"},
+            {"operation_id": "other-operation"},
+            {"contract_id": "other.contract.v1"},
+            {"target_principal": OpaqueAuthorityRef("authority:other-target")},
+            {"context": replace(context(), profile_id="other")},
+            {"context": replace(context(), activation_id="activation:other")},
+            {"context": replace(context(), plan_digest="sha256:" + "f" * 64)},
+            {"context": replace(context(), security_epoch=context().security_epoch + 1)},
+        ):
+            with pytest.raises(PendingEffectError, match="unavailable"):
+                restarted.find_for_presentation(**{**query, **patch})
+        assert persistence.records == original
+        assert len(approvals.commands) == 1
+        assert approvals.attestations == []
+        _prepare(restarted, fixture.broker, correlation)
+        duplicate_records = copy.deepcopy(persistence.records)
+        with pytest.raises(PendingEffectError, match="unavailable"):
+            restarted.find_for_presentation(**query)
+        assert persistence.records == duplicate_records
+    finally:
+        fixture.broker.close()
+
+
+@pytest.mark.parametrize("correlation", ["", "../receipt", "A" * 36, 42, True])
+def test_invalid_prepare_correlation_cannot_create_effect(correlation: Any) -> None:
+    """Malformed correlation fails before durable state or approval creation."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    try:
+        with pytest.raises(PendingEffectError):
+            _prepare(_controller(persistence, approvals), fixture.broker, correlation)
+        assert persistence.records == {}
+        assert approvals.commands == []
+    finally:
+        fixture.broker.close()
 
 
 def test_prepare_uses_canonical_broker_snapshot_and_redacts_payload() -> None:
