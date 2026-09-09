@@ -12,7 +12,7 @@
         "operation_id": "interactive_effect.manage",
         "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
         "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-        "allowed_payload_keys": ["phase", "effect_kind", "request", "effect_id"]
+        "allowed_payload_keys": ["phase", "effect_kind", "request", "effect_id", "correlation_id"]
       }]
     },
     {
