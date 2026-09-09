@@ -272,7 +272,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57299,
-      "sha256": "82ebbf8658acec0a37b38a9a8eb7f0177eb5ebf8dfb57083ad2c758080313ac9",
+      "sha256": "058776e9c25db9f7b15ded33779bf49de4f2a5fdecea5139e8039141fd73d822",
       "executable": false
     },
     {
@@ -293,7 +293,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 35758,
-      "sha256": "35d5a42d2d0c6546c633c7c8a20a4e29c19bebe263d14e860f3587b91fd8cb8e",
+      "sha256": "14db0665606395acae88fc6fcb8123bba3b64718170c94c1db3612bba4eaf2b1",
       "executable": false
     },
     {
@@ -307,7 +307,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 64723,
-      "sha256": "980dc994eda45ab04cc017aa6fa8fc1ca833d4228cc86d2661b063fc57084901",
+      "sha256": "e40dc91569b5765bb5f536960b94f58dfd036c92f3232f10e6d592d1c8da56a4",
       "executable": false
     },
     {
@@ -2169,14 +2169,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.executables.v4.json",
       "type": "regular-file",
       "size": 12104,
-      "sha256": "d6d012b99d7642619a7dd38267501d01f46eda6fb222ea13a0b25a7dbf153110",
+      "sha256": "4ad5db0601f7cd8c18b40e5a8472f6b117de97e2eb2e4b670b8d914e0203a03d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 11841,
-      "sha256": "194360d268c51491f5b01d2d7c97bbd942680d22142c202c754dd21f1f12da88",
+      "sha256": "bcee0cdc5614cdfedb3b9db79a669c7d30b814067e81005cda7e99598ff4af36",
       "executable": false
     },
     {
@@ -2470,7 +2470,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 848607,
-      "sha256": "47c34da756473c4589c8011fdbe1a3c4610c4b140c9a6d7191bc4ce0635aceda",
+      "sha256": "6478a3bd7703ab914a65c933b79a61a7751398bfb30cf881e89055ef014e1e18",
       "executable": false
     },
     {
@@ -2756,8 +2756,8 @@
     {
       "path": "tobkiri_protocol/saved_conversation.py",
       "type": "regular-file",
-      "size": 2011,
-      "sha256": "364931c995cadca691c4e1e7057a724fc055a0f3ae3050e4fb10f88bcf9ad223",
+      "size": 3228,
+      "sha256": "f2f089cfd9c842cda5a6966fba7bbd26fa992262ca78afc8e50e2941a9a17414",
       "executable": false
     },
     {

@@ -13,6 +13,30 @@ SAVED_CONVERSATION_OPERATION = "saved_complete"
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 
 
+def validate_saved_conversation_context(conversation: Mapping[str, Any]) -> None:
+    """Reject unresolved owned context; this pure check grants no authority."""
+    metadata = conversation.get("metadata") or {}
+    tags = conversation.get("tags") or []
+    if not isinstance(metadata, Mapping) or not isinstance(tags, list):
+        raise ValueError("saved bridge owned context is invalid")
+    if (
+        conversation.get("system_prompt_id") or conversation.get("agent_id")
+        or conversation.get("conversation_kind") not in (None, "", "chat")
+        or conversation.get("group_id")
+        or any(metadata.get(key) for key in (
+            "group_id", "groupId", "workspace_id", "workspaceId",
+            "workspace_root", "workspaceRoot", "rootPath",
+            "rumi_data_path", "rumiDataPath", "rumi_dp_path", "shared_read_only",
+        ))
+        or metadata.get("mode") not in (None, "", "chat")
+        or metadata.get("profile_id") in (
+            "defaultspack.operations_company", "defaultspack.mimo_coding_company",
+        )
+        or any(tag in tags for tag in ("operations-company", "mimo-coding-company"))
+    ):
+        raise ValueError("saved bridge context resolution is required")
+
+
 def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Return a fresh initial request, never guest-owned continuation state.
 

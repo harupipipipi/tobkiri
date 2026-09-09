@@ -3385,7 +3385,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-          "sha256": "bd88f03da5d6ec38400dc3662d28a0fd2736aa47e47a541f6d0c1e9793ee5dba"
+          "sha256": "e55effc67b1149d49ef5652dbdf72daa3751721e8115e00a286232a87db98cb5"
         }
       ]
     },

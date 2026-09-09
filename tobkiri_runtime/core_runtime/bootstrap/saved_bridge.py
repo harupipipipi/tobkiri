@@ -11,7 +11,10 @@ from typing import Any, Callable, Mapping
 
 from tobkiri_host.saved_guest_dispatch import TARGETS
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
-from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_conversation import (
+    validate_saved_conversation_context,
+    validate_saved_conversation_input,
+)
 
 from ..authority.v4 import AuthorityDenied
 
@@ -43,28 +46,10 @@ def _request(outer: object) -> dict[str, Any]:
 
 def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
     """Reject owned context that the text-only saved path cannot resolve."""
-    metadata = conversation.get("metadata") or {}
-    tags = conversation.get("tags") or []
-    if not isinstance(metadata, Mapping) or not isinstance(tags, list):
-        raise AuthorityDenied("saved bridge owned context is invalid")
-    if conversation.get("system_prompt_id") or conversation.get("agent_id"):
-        raise AuthorityDenied("saved bridge context resolution is required")
-    if (
-        conversation.get("conversation_kind") not in (None, "", "chat")
-        or conversation.get("group_id")
-        or any(metadata.get(key) for key in (
-            "group_id", "groupId", "workspace_id", "workspaceId",
-            "workspace_root", "workspaceRoot", "rootPath",
-            "rumi_data_path", "rumiDataPath", "rumi_dp_path",
-            "shared_read_only",
-        ))
-        or metadata.get("mode") not in (None, "", "chat")
-        or metadata.get("profile_id") in (
-            "defaultspack.operations_company", "defaultspack.mimo_coding_company",
-        )
-        or any(tag in tags for tag in ("operations-company", "mimo-coding-company"))
-    ):
-        raise AuthorityDenied("saved bridge context resolution is required")
+    try:
+        validate_saved_conversation_context(conversation)
+    except ValueError as error:
+        raise AuthorityDenied(str(error)) from error
 
 
 def _messages(conversation: Mapping[str, Any]) -> list[dict[str, str]]:

@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:d2c51269fe768c0f08fbb05182544d5c71767af8ebfc0ef68b6b4b0a3bc0b99a",
+  "source_identity": "sha256:1b030419770a098782f17c2d2e77fcf15684751875a2998f53b73b89e67c5305",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -343,6 +343,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:970fd87ba0339f1c3d6ce2f5367d64b707bdd9cee7d5cbd74dfbe0a43fd35372",
-  "catalog_digest": "sha256:1a7640d9798d445268973c7e23ecb425660bbb9b865fc8fbc4c90f6deab77482"
+  "materialization_catalog_digest": "sha256:5cde6dd40b3143f8a001faf1a42896226032d57a7cfe1319991695f9f9a54159",
+  "catalog_digest": "sha256:b4777b03c8d4eed808d42950f0619628557ea09e0f528ee287a964f7638a463a"
 }

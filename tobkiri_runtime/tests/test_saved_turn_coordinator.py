@@ -40,6 +40,12 @@ class _Session:
 
     def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
         if (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION):
+            if payload.get("operation") == "get":
+                assert payload == {
+                    "profile_id": "defaults", "operation": "get",
+                    "conversation_id": self.initial["request"]["conversation_id"],
+                }
+                return {"conversation": self.conversations.get(payload["conversation_id"])}
             assert payload == {
                 "profile_id": "defaults", "operation": "saved_receipt", "turn_id": "turn-1",
             }
@@ -65,6 +71,31 @@ def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None, **opt
         consumer_pack_id="rumi_turn_runtime_pack",
     )
     return execute_saved_turn(store, session.initial, client=client, guard=guard, **options)
+
+
+def test_unresolved_context_rejects_before_claim_or_execution(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    conversation_id = session.initial["request"]["conversation_id"]
+    session.conversations.update(conversation_id, {"metadata": {"workspaceId": "work"}},
+                                 expected_conversation_revision=1)
+    before = session.conversations.path.read_bytes()
+    with pytest.raises(ValueError, match="context resolution"):
+        _run(store, session)
+    assert not store.path.exists()
+    assert session.calls == session.ai_calls == 0
+    assert session.conversations.path.read_bytes() == before
+
+
+def test_completed_turn_repeats_after_owned_context_changes(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    assert _run(store, session)["status"] == "completed"
+    conversation_id = session.initial["request"]["conversation_id"]
+    session.conversations.update(conversation_id, {"metadata": {"workspaceId": "work"}},
+                                 expected_conversation_revision=3)
+    assert _run(store, session)["status"] == "existing"
+    assert session.calls == session.ai_calls == 1
 
 
 def test_only_claim_winner_tracks_execution_and_releases_handle(tmp_path: Path) -> None:

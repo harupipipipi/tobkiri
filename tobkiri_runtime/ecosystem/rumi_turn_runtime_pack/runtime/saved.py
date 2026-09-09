@@ -17,6 +17,7 @@ from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT,
     SAVED_CONVERSATION_OPERATION,
+    validate_saved_conversation_context,
     validate_saved_conversation_input,
 )
 
@@ -75,6 +76,21 @@ def execute_saved_turn(
     ):
         raise PermissionError("saved execution client does not match the owner")
     guard()
+    if store.get(initial["request"]["turn_id"]) is None:
+        # Existing turns must remain reconcilable after the conversation changes.
+        # Only new execution reads context before claiming any durable work.
+        response = client.invoke(RECEIPT_CONTRACT, RECEIPT_OPERATION, {
+            "profile_id": store.profile_id, "operation": "get",
+            "conversation_id": initial["request"]["conversation_id"],
+        })
+        guard()
+        conversation = response.get("conversation")
+        if (
+            not isinstance(conversation, Mapping)
+            or conversation.get("id") != initial["request"]["conversation_id"]
+        ):
+            raise ValueError("saved conversation owner response is invalid")
+        validate_saved_conversation_context(conversation)
     claim = store.claim_saved(initial)
     if not claim["claimed"]:
         # A running snapshot may still have a live executor. Do not rewrite it
