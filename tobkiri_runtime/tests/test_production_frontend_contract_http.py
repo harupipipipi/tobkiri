@@ -593,6 +593,73 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         servers.close()
 
 
+def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise owned context rejection through real HTTP, Broker and stores."""
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.runtime import V4DispatchSession
+
+    original = V4DispatchSession.invoke
+    reads, ai_calls = [], []
+
+    def invoke(self, contract_id, operation_id, payload, **kwargs):
+        if (contract_id, operation_id) == READINESS:
+            return {"ready": True, "model_profile_id": "model-profile-1"}
+        if (contract_id, operation_id) == TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Hi"}
+        result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (contract_id, operation_id) == TARGETS[0] and payload.get("operation") == "get":
+            reads.append(payload["conversation_id"])
+        return result
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    servers = _captured_production_server(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    )
+    server, _session, _authority = next(servers)
+    try:
+        store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+        cookie, csrf, origin = _authenticate(server)
+        contexts = (
+            {"metadata": {"workspaceId": "workspace-1"}},
+            {"metadata": {"shared_read_only": True}},
+            {"conversation_kind": "operations_company"},
+            {"metadata": {"icon": "chat"}},
+        )
+        for index, context in enumerate(contexts):
+            conversation_id = f"context-{index}"
+            store.create({
+                "id": conversation_id, "model_reference": "model-profile-1", **context,
+            }, expected_revision=index)
+            before = store.path.read_bytes()
+            status, payload, _ = _request(
+                server, "POST", _contract("POST", "/api/chat/turn"),
+                body={"request": {
+                    "turn_id": f"turn-{index}", "conversation_id": conversation_id,
+                    "conversation_revision": 1, "content": "Hello",
+                }},
+                headers={"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                         "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+            )
+            assert conversation_id in reads  # Not a missing route/auth rejection.
+            if index < 3:
+                assert status != 200, payload
+                assert store.path.read_bytes() == before
+                assert not ai_calls
+            else:
+                assert status == 200, payload
+                assert len(ai_calls) == 1
+                assert [item["content"] for item in store.get(conversation_id)["messages"]] == [
+                    "Hello", "Hi",
+                ]
+    finally:
+        servers.close()
+
+
 def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) -> None:
     """Real HTTP/Host/Broker cancellation; the AI and guest remain explicit adapters."""
     from core_runtime.bootstrap.saved_bridge import READINESS
