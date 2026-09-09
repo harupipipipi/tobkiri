@@ -23,6 +23,7 @@ from .v4_models import (
     GrantLifetime,
     GrantRecord,
     HostExtensionTrustRecord,
+    InteractiveApprovalBatch,
     InteractiveApprovalDecision,
     InteractiveApprovalRequest,
     InteractiveApprovalSettlement,
@@ -221,6 +222,8 @@ class AuthorityKernelProtocol(Protocol):
     def settle_interactive_approvals(
         self,
         settlements: tuple[InteractiveApprovalSettlement, ...],
+        *,
+        batch: InteractiveApprovalBatch | None = None,
     ) -> None:
         """Atomically settle all selected requests after validating every item."""
 
@@ -555,6 +558,8 @@ class AuthorityKernel:
     def settle_interactive_approvals(
         self,
         settlements: tuple[InteractiveApprovalSettlement, ...],
+        *,
+        batch: InteractiveApprovalBatch | None = None,
     ) -> None:
         """Validate every selected request, then commit all decisions or none."""
 
@@ -566,7 +571,7 @@ class AuthorityKernel:
             raise AuthorityValidationError("approval selection contains duplicates")
         for item in settlements:
             self._validate_interactive_settlement(item)
-        self.store.settle_interactive_approvals(settlements)
+        self.store.settle_interactive_approvals(settlements, batch=batch)
 
     def _validate_interactive_settlement(
         self,

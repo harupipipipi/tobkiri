@@ -8930,7 +8930,7 @@
         {
           "contract_id": "tobkiri.service.host.authorize.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180",
           "operation_ids": [
             "rumi_host_authority_bridge_pack.host-authority"
           ]
@@ -8938,7 +8938,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180",
           "operation_ids": [
             "interactive_approval.get",
             "interactive_approval.list",
@@ -8949,7 +8949,7 @@
     {
       "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180",
           "operation_ids": [
             "interactive_effect.manage"
       ]
@@ -8957,7 +8957,7 @@
     {
       "contract_id": "tobkiri.action.chat.approval-continuation.v1",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180",
       "operation_ids": [
         "chat_approval.approve",
         "chat_approval.resume"
@@ -8966,7 +8966,7 @@
     {
       "contract_id": "tobkiri.action.authority.approval-window.v1",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180",
       "operation_ids": [
         "authority_approval.open"
       ]
@@ -9006,7 +9006,7 @@
               ],
               "entrypoint_id": "host-authority",
               "id": "rumi_host_authority_bridge_pack.host-authority",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -9063,7 +9063,7 @@
               ],
               "entrypoint_id": "get",
               "id": "interactive_approval.get",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
             },
             {
               "effect_ceiling": [
@@ -9072,7 +9072,7 @@
               ],
               "entrypoint_id": "list",
               "id": "interactive_approval.list",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
             },
             {
               "effect_ceiling": [
@@ -9081,7 +9081,7 @@
               ],
               "entrypoint_id": "approve",
               "id": "interactive_approval.approve",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
             },
             {
               "effect_ceiling": [
@@ -9090,7 +9090,7 @@
               ],
               "entrypoint_id": "deny",
               "id": "interactive_approval.deny",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -9143,7 +9143,7 @@
               ],
               "entrypoint_id": "manage",
               "id": "interactive_effect.manage",
-              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+              "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -9217,7 +9217,7 @@
           ],
           "entrypoint_id": "approve",
           "id": "chat_approval.approve",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+          "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
         },
         {
           "effect_ceiling": [
@@ -9226,7 +9226,7 @@
           ],
           "entrypoint_id": "resume",
           "id": "chat_approval.resume",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+          "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
         }
       ],
       "owner": "rumi_host_authority_bridge_pack",
@@ -9270,7 +9270,7 @@
           ],
           "entrypoint_id": "open",
           "id": "authority_approval.open",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+          "implementation_digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180"
         }
       ],
       "owner": "rumi_host_authority_bridge_pack",
@@ -9322,7 +9322,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "digest": "sha256:e8bb0b65f69479f92b21d8d15b290f9f7c8ea95feffe1f63acda9caa503ac180",
           "kind": "executable",
           "path": "runtime/bridge.py"
         }
