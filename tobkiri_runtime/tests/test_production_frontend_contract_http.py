@@ -1113,6 +1113,7 @@ def test_saved_settings_reach_host_credential_transport(
     import io
     from core_runtime import credential_transport
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.runtime import V4DispatchSession
 
     requests = []
 
@@ -1143,6 +1144,21 @@ def test_saved_settings_reach_host_credential_transport(
         test_provider_configuration_http_requires_approval_and_saves_once(
             fixture, tmp_path, monkeypatch,
         )
+        failures = []
+        original_invoke = V4DispatchSession.invoke
+
+        def observe(self, *args, **kwargs):
+            try:
+                return original_invoke(self, *args, **kwargs)
+            except Exception as error:
+                chain = []
+                while error is not None:
+                    chain.append(f"{type(error).__name__}: {error}")
+                    error = error.__cause__
+                failures.append(chain)
+                raise
+
+        monkeypatch.setattr(V4DispatchSession, "invoke", observe)
         cookie, csrf, origin = _authenticate(server)
 
         def post(path, body):
@@ -1164,7 +1180,7 @@ def test_saved_settings_reach_host_credential_transport(
             "conversation_revision": 1, "content": "Hello",
         }})
         assert status == 200, result
-        assert result["data"]["status"] == "completed", result
+        assert result["data"]["status"] == "completed", (result, failures)
         assert len(requests) == 1
         assert [item["content"] for item in store.get("chat")["messages"]] == [
             "Hello", "Host transport reply",
