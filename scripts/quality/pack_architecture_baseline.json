@@ -33,21 +33,6 @@
       "violation_category": "cross_pack_import"
     },
     {
-      "identity": "cross_pack_import|tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/browser_computer.py|ast-v1:071d19d6b7f6167ffc3f|rumi_default_tools_pack|defaultspack",
-      "rule": "cross_pack_import",
-      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/browser_computer.py",
-      "line": 8404,
-      "fingerprint": "ast-v1:071d19d6b7f6167ffc3f",
-      "source": "rumi_default_tools_pack",
-      "target": "defaultspack",
-      "owner": "pack-architecture",
-      "reason": "Observed in the integrated full-v4 candidate and left unreviewed by Phase 0; remove or explicitly adjudicate before the sunset.",
-      "introduced_at": "2026-09-01",
-      "fix_by_wave": 10,
-      "sunset_at": "2027-09-01",
-      "violation_category": "cross_pack_import"
-    },
-    {
       "identity": "cross_pack_import|tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/rumi_api.py|ast-v1:2829f4a234ff601ae2f0|rumi_default_tools_pack|defaultspack",
       "rule": "cross_pack_import",
       "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/rumi_api.py",

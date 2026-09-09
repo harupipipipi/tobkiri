@@ -26,9 +26,14 @@ from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool.browser_compu
 
 @pytest.fixture
 def controller(tmp_path, monkeypatch):
+    from domain.host_bridge.computer_router import _verify_controller_approval
+
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "computer seat delegation")
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
-    instance = BrowserComputerController(artifact_root=tmp_path / "artifacts")
+    instance = BrowserComputerController(
+        artifact_root=tmp_path / "artifacts",
+        approval_verifier=_verify_controller_approval,
+    )
     shared = tmp_path / "user_data" / "shared"
     instance._session_path = shared / "browser_sessions.json"
     instance._approval_path = shared / "browser_computer_approvals.json"
@@ -74,8 +79,7 @@ def _approval_token_for(controller: BrowserComputerController, action: str, payl
     token = str(request.get("approval_token") or "")
     if token:
         return token
-    approval_module = getattr(controller, "_approval_module", lambda: None)()
-    assert approval_module is not None
+    from domain.safety import approval as approval_module
     approval_args = {"action": action, "payload": payload}
     approval = approval_module.create_approval_request(
         action,

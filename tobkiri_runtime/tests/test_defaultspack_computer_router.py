@@ -99,8 +99,9 @@ def test_run_computer_action_wraps_controller_approval_with_request_id(monkeypat
     monkeypatch.setenv("RUMI_COMPUTER_HOST_INTERNAL", "1")
 
     class _FakeController:
-        def __init__(self, artifact_root=None):
+        def __init__(self, artifact_root=None, *, approval_verifier=None):
             self.artifact_root = artifact_root
+            assert callable(approval_verifier)
 
         def run(self, action, payload, *, yolo_mode=False):
             return {

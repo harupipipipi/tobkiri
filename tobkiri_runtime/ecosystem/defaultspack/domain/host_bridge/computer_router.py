@@ -199,7 +199,10 @@ def _run_local_controller(
                 "reason": str(exc),
             }
     else:
-        result = controller_cls(artifact_root=artifact_root).run(
+        result = controller_cls(
+            artifact_root=artifact_root,
+            approval_verifier=_verify_controller_approval,
+        ).run(
             action,
             payload,
             yolo_mode=yolo_mode,
@@ -457,6 +460,20 @@ def _approval_module():
     from ..safety import approval
 
     return approval
+
+
+def _verify_controller_approval(
+    token: str, action: str, payload: dict[str, Any],
+) -> bool:
+    """Consume one signed token at its owner before an embedded local action."""
+    approval = _approval_module()
+    verification = approval.verify_execution_token(
+        token,
+        action,
+        approval.hash_arguments({"action": action, "payload": payload}),
+        pack_id="defaultspack",
+    )
+    return verification.valid is True
 
 
 def _approval_modules() -> list[Any]:

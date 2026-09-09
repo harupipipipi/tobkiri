@@ -9,10 +9,12 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "ecosystem" / "defaultspack"))
 
 
-def _controller(tmp_path):
+def _controller(tmp_path, *, approval_verifier=None):
     from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
 
-    controller = BrowserComputerController(artifact_root=tmp_path)
+    controller = BrowserComputerController(
+        artifact_root=tmp_path, approval_verifier=approval_verifier,
+    )
     controller._session_path = tmp_path / "shared" / "browser_sessions.json"
     controller._approval_path = tmp_path / "shared" / "browser_computer_approvals.json"
     return controller
@@ -400,6 +402,7 @@ def test_browser_computer_approval_response_does_not_self_issue_token(tmp_path):
 
 
 def test_browser_computer_accepts_only_signed_trusted_approval_token(tmp_path, monkeypatch):
+    from domain.host_bridge import computer_router
     from domain.safety import approval
     from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
 
@@ -429,13 +432,47 @@ def test_browser_computer_accepts_only_signed_trusted_approval_token(tmp_path, m
         details={"tool_name": "browser_computer", "action": "browser.open_url", "pack_id": "defaultspack"},
     )
     decision = approval.approve(request["request_id"])
-    result = controller.run(
-        "browser.open_url",
-        {**initial["payload"], "approval_token": decision["token"]},
-    )
+    supplied = {**initial["payload"], "approval_token": decision["token"]}
+    # A valid token cannot discover its verifier via a foreign Pack import.
+    assert controller.run("browser.open_url", supplied)["requires_approval"]
+    assert opened == {}
+
+    def embedded_controller(*, artifact_root, approval_verifier):
+        return _controller(artifact_root, approval_verifier=approval_verifier)
+
+    def invoke(payload):
+        return computer_router.run_computer_action(
+            "browser.open_url", payload, artifact_root=tmp_path,
+            controller_cls=embedded_controller,
+        )
+
+    assert invoke({**supplied, "url": "https://different.test"})["requires_approval"]
+    assert opened == {}
+    result = invoke(supplied)
 
     assert result["opened"] is True
     assert opened["url"] == "https://example.test"
+    opened.clear()
+    assert invoke(supplied)["requires_approval"]
+    assert opened == {}
+
+
+def test_verifier_failure_cannot_fall_back_to_another_approval_owner(tmp_path):
+    import pytest
+
+    def unavailable(_token, _action, _payload):
+        raise RuntimeError("approval owner unavailable")
+
+    controller = _controller(tmp_path, approval_verifier=unavailable)
+    expected = {"x": 3, "y": 4}
+    token = controller._issue_legacy_approval("computer.click", expected)
+    before = controller._approval_path.read_bytes()
+    with pytest.raises(RuntimeError, match="approval owner unavailable"):
+        controller._consume_approval(
+            {"approval_token": token}, "computer.click", expected,
+        )
+    assert controller._approval_path.read_bytes() == before
+    assert controller._consume_legacy_approval(token, "computer.click", expected)
 
 
 def test_local_browser_computer_rejects_forged_server_approval_context(tmp_path, monkeypatch):

@@ -235,7 +235,6 @@ def test_pid_event_function_consumes_scoped_stored_token_once(tmp_path, monkeypa
 
     controller = BrowserComputerController(artifact_root=tmp_path / "artifacts")
     controller._approval_path = tmp_path / "shared" / "approvals.json"
-    monkeypatch.setattr(controller, "_approval_module", lambda: None)
     monkeypatch.setattr(_computer_approval, "BrowserComputerController", lambda: controller)
     service = MagicMock()
     service.pid_event.return_value = {"executed": True}
