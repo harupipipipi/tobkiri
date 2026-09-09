@@ -16,6 +16,15 @@ from tobkiri_protocol.saved_conversation import validate_saved_conversation_inpu
 from ..authority.v4 import AuthorityDenied
 
 Target = tuple[str, str]
+def project_saved_ai_result(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Cross the strict guest ABI with reply data, not floating-point telemetry."""
+    return {
+        "status": value.get("status"),
+        "output": value.get("output"),
+        "tool_intents": value.get("tool_intents", []),
+    }
+
+
 READINESS: Target = (
     "tobkiri.resource.ai.readiness.v1",
     "rumi_ai_gateway_pack.ai-gateway.preflight",

@@ -1877,6 +1877,8 @@ def capture_production_dispatch(
         outer_edge: _CapturedPlanEdge,
         bridge_edge: _CapturedPlanEdge,
         request: Mapping[str, Any],
+        *,
+        result_projector: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Invoke the selected Provider with one Host session and original budget."""
         outer_context = getattr(outer_request, "context", None)
@@ -1911,6 +1913,8 @@ def capture_production_dispatch(
             )
             if not isinstance(provider_result, Mapping):
                 raise TypeError("verified Provider capability returned a non-object")
+            if result_projector is not None:
+                provider_result = result_projector(provider_result)
             result = {"status": "ok", "value": dict(provider_result)}
             if len(canonical_json(result)) > _PACKVM_BRIDGE_MAX_RESULT_BYTES:
                 raise ValueError("verified Provider capability result is too large")
@@ -2023,7 +2027,9 @@ def capture_production_dispatch(
             response["result_digest"] = canonical_digest(response["result"])
         return response
 
-    from .saved_bridge import REQUIRED_TARGETS, SavedBridgeCallbacks
+    from .saved_bridge import (
+        REQUIRED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result,
+    )
 
     def saved_target(outer_request: object, target: tuple[str, str]) -> _CapturedPlanEdge:
         outer_edge = resolve_bridge_outer(outer_request)
@@ -2071,6 +2077,10 @@ def capture_production_dispatch(
         runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
         return invoke_bridge_provider(
             outer_request, resolve_bridge_outer(outer_request), edge, arguments,
+            result_projector=(
+                project_saved_ai_result
+                if target[0] == "tobkiri.service.ai.generate.v1" else None
+            ),
         )
 
     saved_callbacks = SavedBridgeCallbacks(saved_dispatch, require_saved_targets)

@@ -1154,8 +1154,6 @@ def test_saved_settings_reach_host_credential_transport(
         def observe(self, *args, **kwargs):
             try:
                 value = original_invoke(self, *args, **kwargs)
-                if args[0] == "tobkiri.service.ai.generate.v1":
-                    print("Fixture Gateway response:", value)
                 return value
             except Exception as error:
                 chain = []
