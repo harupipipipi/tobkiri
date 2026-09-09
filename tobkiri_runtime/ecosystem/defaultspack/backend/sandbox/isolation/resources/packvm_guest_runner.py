@@ -1714,49 +1714,15 @@ def _resume_bridge_invocation(
     """Resume exactly once in a fresh Pack sandbox after Host authorization."""
 
     guest_deadline = _local_guest_deadline(guest_deadline)
-    identity = _verify_invocation_artifact(request)
-    artifact_digest = _digest(request["artifact_digest"], "artifact_digest")
-    materialization_digest = _digest(
-        request["materialization_digest"], "materialization_digest"
+    result = _execute_invocation_step(
+        request,
+        {"continuation": bridge_request["continuation"], "bridge_result": bridge_result},
+        guest_deadline,
     )
-    target = (
-        ARTIFACT_ROOT
-        / artifact_digest.removeprefix("sha256:")
-        / materialization_digest.removeprefix("sha256:")
-    )
-    manifest = _load_manifest(target)
-    implementation_path = _relative_path(manifest.get("implementation_path"))
-    implementation = target.joinpath(*PurePosixPath(implementation_path).parts)
-    child_request: dict[str, object] = {
-        "contract_id": _identifier(request["contract_id"], "contract_id"),
-        "operation_id": _identifier(request["operation_id"], "operation_id"),
-        "payload": {
-            "continuation": bridge_request["continuation"],
-            "bridge_result": bridge_result,
-        },
-    }
-    cancel_token = str(request["cancel_token"])
-    _remaining_guest_budget(guest_deadline)
-    process = _spawn_staged_implementation(target, implementation)
-    try:
-        _register_request(request, process.pid, cancel_token)
-    except BaseException:
-        _stop_staged_implementation(process)
-        raise
-    try:
-        result = _communicate_staged_implementation(
-            process, child_request, guest_deadline=guest_deadline,
-        )
-    finally:
-        _unregister_request(str(request["request_id"]), process.pid)
-    if _looks_like_bridge_request(result):
+    payload = result.get("payload")
+    if isinstance(payload, dict) and _looks_like_bridge_request(payload):
         raise ValueError("PackVM bridge requested more than one Host exchange")
-    return {
-        "ok": True,
-        "protocol": PROTOCOL,
-        "guest_artifact_identity": identity,
-        "payload": result,
-    }
+    return result
 
 
 def _execute_staged_module(path: Path) -> int:
