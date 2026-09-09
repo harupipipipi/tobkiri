@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -417,4 +418,51 @@ def test_factory_mapping_may_omit_an_unrelated_function(
     assert host_provider_hooks_v4.load_host_provider_factory(
         tmp_path,
         _binding(),
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        b"def create_local_operation(client):\n    raise AssertionError\n",
+        b"def create_source_operation(client):\n    raise AssertionError\n",
+        b"def nested():\n    HOST_PROVIDER_FACTORY = object()\n",
+        (
+            Path(__file__).resolve().parents[1]
+            / "ecosystem/rumi_default_tool_projection_pack/runtime/projection.py"
+        ).read_bytes(),
+    ],
+    ids=["legacy-local", "legacy-source", "nested-export", "actual-legacy-projection"],
+)
+def test_unexported_legacy_factories_are_not_imported_or_discovered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: bytes
+) -> None:
+    """Legacy receipt adapters must not become hooks through name discovery.
+
+    Materialization is stubbed here; this tests the real loader's export gate,
+    not artifact verification or public HTTP reachability.
+    """
+    implementation_path = "runtime/provider.py"
+    captured = SimpleNamespace(
+        files=(SimpleNamespace(path=implementation_path, content=source),),
+        implementation_path=implementation_path,
+        materialization_digest=_digest("8"),
+    )
+    monkeypatch.setattr(
+        host_provider_hooks_v4,
+        "capture_materialized_artifact",
+        lambda *_args: captured,
+    )
+
+    def reject_import(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unexported legacy implementation must not be imported")
+
+    monkeypatch.setattr(
+        host_provider_hooks_v4.importlib.util,
+        "spec_from_file_location",
+        reject_import,
+    )
+
+    assert host_provider_hooks_v4.load_host_provider_factory(
+        tmp_path, _binding()
     ) is None
