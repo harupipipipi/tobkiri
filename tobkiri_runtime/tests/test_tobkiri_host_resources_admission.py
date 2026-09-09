@@ -205,6 +205,29 @@ def test_admission_charge_uses_maximum_and_concurrency() -> None:
     assert estimate.charge().memory_bytes == 600
 
 
+@pytest.mark.parametrize("field", [
+    "measured_p95_bytes", "declared_minimum_bytes", "runtime_floor_bytes",
+    "profile_reservation_bytes", "backend_overhead_bytes", "disk_bytes",
+    "declared_upper_bound_bytes", "concurrency",
+])
+@pytest.mark.parametrize("value", [-1, True, 1.5, float("nan"), float("inf")])
+def test_admission_rejects_each_invalid_input_before_maximum(
+    field: str, value: object
+) -> None:
+    estimate = AdmissionEstimate(100, 100, 100, 100, 100)
+    with pytest.raises(AdmissionError):
+        replace(estimate, **{field: value}).charge()
+
+
+@pytest.mark.parametrize("field", [
+    "memory_bytes", "disk_bytes", "process_slots", "start_slots",
+])
+@pytest.mark.parametrize("value", [-1, True, 1.5, float("nan"), float("inf")])
+def test_resource_amount_rejects_invalid_axes(field: str, value: object) -> None:
+    with pytest.raises(ValueError):
+        replace(ResourceAmount(100), **{field: value})
+
+
 def test_admission_charge_honors_declared_upper_bound() -> None:
     estimate = AdmissionEstimate(
         measured_p95_bytes=300,
