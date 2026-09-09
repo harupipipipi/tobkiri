@@ -1893,10 +1893,20 @@ def test_home_and_pack_workflow_use_only_real_broker_contracts(
     mutation_headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
     assert post("/api/pack-control/restart", {})[0] == 200
     cookie, csrf, origin = _authenticate(server)
-    status, selection, _ = _request(
-        server, "GET", _contract("GET", "/api/runtime-surface/profile"),
-        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
-    )
+    # Restart invalidates the projection. Reconcile only a bounded read timeout;
+    # never replay restart/approval or hide any other response failure.
+    read_deadline = time.monotonic() + EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS
+    while True:
+        status, selection, _ = _request(
+            server, "GET", _contract("GET", "/api/runtime-surface/profile"),
+            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+            timeout_seconds=max(0.1, read_deadline - time.monotonic()),
+        )
+        if status != 504 or selection.get("data", {}).get("code") != "TIMEOUT":
+            break
+        if time.monotonic() >= read_deadline:
+            break
+        time.sleep(0.1)
     assert status == 200, selection
     selected_ids = [
         item["pack_id"] for item in selection["data"]["data"]["profile_document"]["packs"]
