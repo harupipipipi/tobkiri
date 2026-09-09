@@ -906,7 +906,7 @@ def test_model_profile_save_http_rejects_authority_and_stale_revision(
     assert status == 200, result
     assert result["data"] == {
         "registry_revision": 1, "count": 1,
-        "profiles": [{"profile_id": "daily", "model_id": "provider-model", "display_name": "Daily", "provider_id": "provider.fixture"}],
+        "profiles": [{"profile_id": "daily", "model_id": "provider-model", "display_name": "Daily", "provider_id": "provider.fixture", "route_configured": True}],
     }
     assert registry.resolve("daily")["profile"]["requirements"] == {"preferred_provider_instance_id": "provider.fixture"}
     before = registry.path.read_bytes()

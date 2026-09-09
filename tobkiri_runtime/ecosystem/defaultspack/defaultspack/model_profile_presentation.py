@@ -86,6 +86,8 @@ def present_model_profiles(result: Mapping[str, object]) -> dict[str, object]:
             provider = requirements.get("preferred_provider_instance_id")
             if isinstance(provider, str) and provider:
                 record["provider_id"] = provider
+                # This confirms a stored route, not credentials or reachability.
+                record["route_configured"] = True
         if not isinstance(enabled, bool):
             raise ValueError("model registry returned an invalid enabled state")
         # A configured model is not evidence that its Provider is reachable.

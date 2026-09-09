@@ -70,6 +70,7 @@ def test_model_list_projects_real_registry_without_opaque_credentials(tmp_path: 
             "model_profile_id": "local-test",
             "display_name": "Local test",
             "model_id": "test-model",
+            "requirements": {"preferred_provider_instance_id": "provider.fixture"},
             "credential_handle": "opaque:test-only",
             "parameters": {"private-note": "not-for-ui"},
             "metadata": {"private-note": "not-for-ui"},
@@ -82,6 +83,8 @@ def test_model_list_projects_real_registry_without_opaque_credentials(tmp_path: 
                 "profile_id": "local-test",
                 "display_name": "Local test",
                 "model_id": "test-model",
+                "provider_id": "provider.fixture",
+                "route_configured": True,
             }
         ],
         "count": 1,

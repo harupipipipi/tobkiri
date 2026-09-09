@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "661fb96fb6874a96a61d798746a41dc93d2f083adac3480fb72b56c224fb3c9b",
+    "digest": "6b5e0c9af2992bd6f0496bb4f0dbb2965251db584d5051bdac4a142b0f583c7e",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 338789,
-        "sha256": "e1abe534b20d567ee702386f9c9d5bd30ea43c4e931668ee2dd37909ca420541"
+        "size": 338868,
+        "sha256": "edf4334b83fd8912cce2509b2559e7d85e4f63cb8fcd6ff13261ad873340a8ed"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -875,8 +875,8 @@
       },
       {
         "path": "src/features/models/modelSelect.test.ts",
-        "size": 4888,
-        "sha256": "99d35d84c6dadc787770a3f1ec33e2da6dc85a60ab0c6dc690c556e36dfdde62"
+        "size": 5604,
+        "sha256": "d6685a872940f2a2c71550234a94fe04c9057d4ee2f364e95d6fc8e26628e8a4"
       },
       {
         "path": "src/features/models/modelSelect.ts",
@@ -1125,8 +1125,8 @@
       },
       {
         "path": "src/lib/api.ts",
-        "size": 183573,
-        "sha256": "a42945e1d01439cfe89c7039fe1939706f46b68138cd6b4ffc7c45e387fc5ede"
+        "size": 183681,
+        "sha256": "c287e24164959e7e72cebf9dcbb5a554aa447a25b13f85a93f9c5dd590c664a5"
       },
       {
         "path": "src/lib/approvalPresentation.ts",
@@ -1886,7 +1886,7 @@
     ]
   },
   "bundle": {
-    "digest": "f2d30bacab42b919b206a1b8d66c1f46279fb7a354f5377a63b6d348c45f8f75",
+    "digest": "75d7499620f55079d2870fa91cd31033d22fd2524125bb816563317d69f5db28",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1900,8 +1900,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2215729,
-        "sha256": "c091d840d407e2bd9657afff8ee116ce7a068abbfea7b750d0fe9af6bc11780c"
+        "size": 2215763,
+        "sha256": "6ea602983bad3be14ee51f32c6cd9d2b8fd7201d21ba51cf026193207414d0fa"
       },
       {
         "path": "shell-rolldown-runtime.js",

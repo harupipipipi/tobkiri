@@ -1365,6 +1365,8 @@ export function conversationArtifactFileUrl(conversationId: string, path: string
 export type ModelProfile = {
   profile_id: string;
   display_name: string;
+  /** A saved routing record, not proof of credentials or Provider health. */
+  route_configured?: boolean;
   provider_id?: string;
   provider_display_name?: string;
   model_id?: string;

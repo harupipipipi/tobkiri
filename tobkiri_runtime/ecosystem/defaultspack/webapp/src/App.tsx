@@ -2025,6 +2025,7 @@ function isUserFacingModelProfile(profile: ModelProfile, preferredModel: string)
 
   if (profileId === preferredModel) return true;
   if (!profileIsChatSelectable(profile)) return false;
+  if (profile.route_configured === true && providerId && modelId) return true;
   if (providerId === "rumi") return false;
   if (providerId === "stub") return modelId === "default";
   if (profile.local || profile.availability?.local || profile.availability?.offline || LOCAL_MODEL_PROVIDER_IDS.has(providerId)) return true;
