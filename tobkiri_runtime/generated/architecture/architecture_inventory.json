@@ -8166,7 +8166,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:c47abb1c9ebd2daf88ac44c4f1d6d70c110951aa037651504d8667fff5bf28e8",
+        "digest": "sha256:5b364d39016369964f6083a26c511ee879e09308ac6a277abe5ec8543e361794",
         "identity": "rumi.ai_gateway",
         "kind": "manifest",
         "legacy": true,
@@ -12930,13 +12930,13 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:c47abb1c9ebd2daf88ac44c4f1d6d70c110951aa037651504d8667fff5bf28e8",
+        "evidence_digest": "sha256:5b364d39016369964f6083a26c511ee879e09308ac6a277abe5ec8543e361794",
         "line": 184,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:c47abb1c9ebd2daf88ac44c4f1d6d70c110951aa037651504d8667fff5bf28e8",
+        "evidence_digest": "sha256:5b364d39016369964f6083a26c511ee879e09308ac6a277abe5ec8543e361794",
         "line": 209,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -15492,7 +15492,7 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:c47abb1c9ebd2daf88ac44c4f1d6d70c110951aa037651504d8667fff5bf28e8",
+        "evidence_digest": "sha256:5b364d39016369964f6083a26c511ee879e09308ac6a277abe5ec8543e361794",
         "line": 294,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -16661,7 +16661,7 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:c47abb1c9ebd2daf88ac44c4f1d6d70c110951aa037651504d8667fff5bf28e8",
+        "manifest_digest": "sha256:5b364d39016369964f6083a26c511ee879e09308ac6a277abe5ec8543e361794",
         "pack_id": "rumi.ai_gateway",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "version": "1.0.0"
@@ -18394,8 +18394,8 @@
     ]
   },
   "repository": {
-    "commit": "54bd3be65c7d66ac7f1febd8c98bd8c28e89c085",
-    "tree_digest": "dc2d2c6a6d35ddb6057d2ef5ed87fc011165e5fd5afac8fd63cd4267b6d954b0"
+    "commit": "423aed4d493568b3cef409996bbe49c22a74577f",
+    "tree_digest": "f582857693e852cf444642f5c5c1610abe826561c884f7f67d0fe57ff23ed556"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"
