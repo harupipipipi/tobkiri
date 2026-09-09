@@ -2001,7 +2001,47 @@ test("provider configuration reconciles lost resume ACK and refuses changed inpu
   await assert.rejects(configureProvider({ ...f.configuration, key_value: "replacement" }, f.ports), /入力を変更せず/);
   f.ports.status = async () => { f.calls.push("status"); return f.status("succeeded"); };
   await configureProvider(f.configuration, f.ports);
-  assert.deepEqual(f.calls, ["prepare", "resume", "status"]);
+  assert.deepEqual(f.calls, ["prepare", "resume", "status", "status"]);
+});
+
+test("changed provider input reconciles only a confirmed previous result without submitting the new key", async () => {
+  for (const state of ["succeeded", "cancelled", "ambiguous", "failed", "approval_pending"]) {
+    const f = providerConfigurationFixture();
+    f.ports.resume = async () => { f.calls.push("resume"); throw new Error("lost ACK"); };
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    f.ports.status = async () => { f.calls.push("status"); return f.status(state); };
+    const terminal = ["succeeded", "cancelled"].includes(state);
+    await assert.rejects(
+      configureProvider({ ...f.configuration, key_value: "replacement-key" }, f.ports),
+      terminal ? /変更後の入力は保存していません/ : /前のProvider設定が未確認/,
+    );
+    assert.deepEqual(f.calls, ["prepare", "resume", "status"]);
+    assert.equal(f.values.size, terminal ? 0 : 1);
+    assert.doesNotMatch(JSON.stringify([...f.values]), /replacement-key|fixture-private-key/);
+  }
+});
+
+test("changed provider input retains its receipt on foreign status or transport failure", async () => {
+  for (const failure of ["foreign", "transport"]) {
+    const f = providerConfigurationFixture();
+    f.ports.resume = async () => { throw new Error("lost ACK"); };
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    const before = [...f.values];
+    f.ports.status = async () => {
+      f.calls.push("status");
+      if (failure === "transport") throw new Error("private transport details");
+      return { ...f.status("succeeded"), effect_id: "foreign" };
+    };
+    await assert.rejects(
+      configureProvider({ ...f.configuration, key_value: "replacement-key" }, f.ports),
+      (error: Error) => {
+        assert.doesNotMatch(error.message, /private transport details|replacement-key/);
+        return true;
+      },
+    );
+    assert.deepEqual([...f.values], before);
+    assert.deepEqual(f.calls, ["prepare", "status"]);
+  }
 });
 
 test("provider configuration does not resume denied or mismatched approval", async () => {

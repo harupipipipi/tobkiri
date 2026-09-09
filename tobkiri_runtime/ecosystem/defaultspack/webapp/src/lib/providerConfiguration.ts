@@ -42,6 +42,20 @@ export async function configureProvider(
       connection: request.connection_name, effect: null, digest,
     };
     if (pending.connection !== request.connection_name || pending.digest !== digest) {
+      if (typeof pending.effect === "string" && pending.effect) {
+        // A changed key must not prevent reading the previous operation's result.
+        // Never treat that result as success for the new input or replay either key.
+        const previous = await ports.status(pending.effect);
+        if (previous.effect_id !== pending.effect) {
+          throw new ConfigurationError("Provider設定の操作IDが一致しません。");
+        }
+        if (["succeeded", "cancelled"].includes(previous.state)) {
+          ports.storage.removeItem(STORAGE_KEY);
+          throw new ConfigurationError(
+            "前のProvider設定の完了または取消を確認しました。変更後の入力は保存していません。内容を確認して、改めて保存してください。",
+          );
+        }
+      }
       throw new ConfigurationError("前のProvider設定が未確認です。入力を変更せず同じ設定の保存から状態を確認してください。");
     }
     if (stored && (typeof pending.effect !== "string" || !pending.effect)) {
