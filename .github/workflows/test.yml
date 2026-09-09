@@ -269,6 +269,7 @@ jobs:
             tests/test_authority_security_hardening.py \
             tests/test_bounded_process_runner.py \
             tests/test_bounded_child_io.py \
+            tests/test_wasm_worker.py \
             tests/test_computer_approval_audit_bridge.py::test_pid_event_function_consumes_signed_owner_token_once \
             tests/test_mcp_stdio_shutdown.py \
             tests/test_continuation_chain.py \

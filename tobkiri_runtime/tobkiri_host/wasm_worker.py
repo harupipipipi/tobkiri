@@ -110,6 +110,8 @@ class ComponentWorker:
             raise ProviderExecutionError("Wasm worker request failed")
         if cancelled.is_set():
             raise ProviderExecutionError("Wasm worker request was cancelled")
+        if time.monotonic() >= deadline:
+            raise ProviderExecutionError("Wasm worker deadline exceeded")
         return response["data"]
 
     def close(self) -> None:

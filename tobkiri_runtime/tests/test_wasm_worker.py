@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Iterator
 
 import pytest
@@ -61,6 +62,37 @@ def test_deadline_covers_blocked_input_and_reaps_child(children: list) -> None:
         owned.invoke({"input": "x" * (1024 * 1024)}, cancelled=threading.Event(), timeout=0.2)
     assert len(children) == 1 and children[0].returncode is not None
     assert owned._process is None
+
+
+@pytest.mark.parametrize("stage", ["close", "decode"])
+def test_deadline_still_applies_after_process_exit(
+    children: list, monkeypatch: pytest.MonkeyPatch, stage: str,
+) -> None:
+    """A timely child reply cannot extend the budget for cleanup or validation."""
+    owned = worker(
+        'import sys; sys.stdin.buffer.read(); print(\'{"status":"ok","data":{}}\')'
+    )
+    clock = wasm_worker.time.monotonic
+    expired = threading.Event()
+    monkeypatch.setattr(wasm_worker, "time", SimpleNamespace(
+        monotonic=lambda: clock() + (60 if expired.is_set() else 0),
+    ))
+    target = owned if stage == "close" else wasm_worker
+    method = "close" if stage == "close" else "strict_loads"
+    original = getattr(target, method)
+
+    def expire_afterwards(*args, **kwargs):
+        result = original(*args, **kwargs)
+        expired.set()
+        return result
+
+    monkeypatch.setattr(target, method, expire_afterwards)
+    with pytest.raises(ProviderExecutionError, match="deadline exceeded"):
+        owned.invoke({}, cancelled=threading.Event())
+    assert expired.is_set()
+    assert len(children) == 1 and children[0].returncode == 0
+    assert owned._process is None
+    assert children[0].stdout.closed
 
 
 def test_precancel_never_starts_process(children: list) -> None:
