@@ -650,6 +650,7 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
                 assert status != 200, payload
                 assert store.path.read_bytes() == before
                 assert not ai_calls
+                assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
             else:
                 assert status == 200, payload
                 assert len(ai_calls) == 1
