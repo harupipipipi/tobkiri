@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Callable, Mapping
 
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.credential_transport import CredentialMaterialStoreFactory
+from core_runtime.global_contracts.http_contract_dispatch import HTTPContractBinding
 from core_runtime.pack_api_server import RuntimeCaptureInputs
 from tobkiri_host.backends import ExecutionBackend
 from tobkiri_host.credential_store import host_credential_store_factory
@@ -88,6 +89,7 @@ def defaultspack_runtime_capture_inputs(
         artifact_root=pack_root,
         **context,
     )
+    _require_http_provider_selection(active, bindings)
     return RuntimeCaptureInputs(
         bundle_root=bundle_root,
         ecosystem_root=runtime_root / "ecosystem",
@@ -103,6 +105,34 @@ def defaultspack_runtime_capture_inputs(
         ),
         credential_store_factory=credential_store_factory,
     )
+
+
+def _require_http_provider_selection(
+    active: object | None, bindings: tuple[HTTPContractBinding, ...]
+) -> None:
+    """Keep Setup reachable when a previous Profile lacks new application edges."""
+    if active is None:
+        return
+    from ecosystem.defaultspack.domain.runtime_v4 import ProfileReconfirmationRequired
+
+    plan = getattr(getattr(active, "resolved", None), "plan", None)
+    if not isinstance(plan, Mapping):
+        raise RuntimeError("active Profile plan is unavailable")
+    selected = {
+        (edge["contract_id"], edge["operation_id"],
+         edge["function_principal"]["function_id"])
+        for edge in plan["bindings"]
+    }
+    for binding in bindings:
+        for target in binding.targets:
+            identity = (target.contract_id, target.operation_id, target.provider_id)
+            if identity not in selected:
+                raise ProfileReconfirmationRequired(
+                    "Active Profile lacks an application HTTP Provider binding: "
+                    f"{target.contract_id}/{target.operation_id}. "
+                    "Review new bundled Profile Packs and operation bindings "
+                    "before activating; existing selections are retained."
+                )
 
 
 def defaultspack_packvm_backend_factory(

@@ -91,9 +91,11 @@ def _publish_launcher_contract(
     return path
 
 
+@pytest.mark.parametrize("failure_stage", ["profile_capture", "http_composition"])
 def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
 ) -> None:
     """A valid predecessor transition serves setup instead of wedging startup."""
 
@@ -118,14 +120,21 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
         raise ProfileReconfirmationRequired(diagnostic)
 
     monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: True)
-    monkeypatch.setattr(
-        runtime_bootstrap,
-        "capture_active_profile",
-        require_reconfirmation,
-    )
+    if failure_stage == "profile_capture":
+        monkeypatch.setattr(
+            runtime_bootstrap,
+            "capture_active_profile",
+            require_reconfirmation,
+        )
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: port)
 
     kernel = _kernel()
+    if failure_stage == "http_composition":
+        def unavailable_composition(active):
+            del active
+            require_reconfirmation()
+
+        kernel._runtime_capture_factory = unavailable_composition
     try:
         result = kernel.run_startup_until(kernel.API_INIT_STEP)
         readiness = get_runtime_readiness()

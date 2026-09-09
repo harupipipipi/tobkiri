@@ -4,8 +4,38 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+
+@pytest.mark.parametrize("missing", [None, "contract", "operation", "provider"])
+def test_http_selection_requires_exact_profile_binding(missing: str | None) -> None:
+    """Unselected application routes require review, not implicit new grants."""
+    from core_runtime.global_contracts.http_contract_dispatch import (
+        HTTPContractBinding, HTTPContractTarget,
+    )
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        _require_http_provider_selection,
+    )
+    from ecosystem.defaultspack.domain.runtime_v4 import ProfileReconfirmationRequired
+
+    target = HTTPContractTarget("ui", "contract", "operation", "provider", "provider")
+    route = HTTPContractBinding("POST", "/api/chat/turn", "broker_result", (target,))
+    edge = {
+        "contract_id": "different" if missing == "contract" else "contract",
+        "operation_id": "different" if missing == "operation" else "operation",
+        "function_principal": {
+            "function_id": "different" if missing == "provider" else "provider",
+        },
+    }
+    active = SimpleNamespace(resolved=SimpleNamespace(plan={"bindings": [edge]}))
+    if missing is None:
+        _require_http_provider_selection(active, (route,))
+    else:
+        with pytest.raises(ProfileReconfirmationRequired, match="contract/operation"):
+            _require_http_provider_selection(active, (route,))
+    assert active.resolved.plan == {"bindings": [edge]}
 
 
 @pytest.mark.parametrize("explicit", [False, True])

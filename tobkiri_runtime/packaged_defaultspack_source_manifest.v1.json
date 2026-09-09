@@ -138,8 +138,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/runtime_composition.py",
       "type": "regular-file",
-      "size": 9501,
-      "sha256": "f49fa7abe2e45e5be57afe7c8536cdd9ac43e9d1c329b3ab810a9ea91f531cac",
+      "size": 10875,
+      "sha256": "4c27e30d9e8ca6bff385901a83cef6f5ccd56ff6013dbb9e187f6b56b34d445b",
       "executable": false
     },
     {
