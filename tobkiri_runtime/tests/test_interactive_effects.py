@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import uuid
+from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any, Mapping
 
@@ -436,6 +437,51 @@ def test_resume_marks_dispatched_before_provider_and_returns_only_status() -> No
     assert complete.state is PendingEffectState.SUCCEEDED
     assert "audit_dispatched" in fixture.events
     assert len(approvals.attestations) >= 2
+
+
+@pytest.mark.parametrize("provider_fails", [False, True])
+def test_resume_scopes_persisted_presentation_owner_and_releases_after_dispatch(provider_fails):
+    fixture = make_broker()
+    persistence, approvals = _MemoryPendingEffects(), _Approvals()
+    bound = []
+
+    @contextmanager
+    def owner_scope(execute_context, principal, session):
+        assert execute_context.caller_session_id == "caller-session"
+        bound.append((principal, session))
+        try:
+            yield
+        finally:
+            bound.pop()
+
+    controller = PendingEffectController(
+        persistence=persistence, approvals=approvals,
+        coordinator_principal=OpaqueAuthorityRef("authority:caller"),
+        coordinator_publisher_lineage="publisher.coordinator",
+        presentation_owner_scope=owner_scope, clock=lambda: 100.0,
+    )
+    try:
+        pending, _ = _prepare(controller, fixture.broker)
+        assert bound == []
+        approvals.approve(pending.approval_request_id)
+
+        def invoke(envelope):
+            assert bound == [("authority:presenter", "presenter-session")]
+            if provider_fails:
+                raise RuntimeError("fixture failure")
+            return fixture.backend.outcome
+
+        fixture.backend.invoke = invoke
+        result = controller.resume(
+            pending.effect_id, fixture.broker,
+            wall_clock=lambda: 100.0, monotonic_clock=lambda: 10.0,
+        )
+        assert result.state is (
+            PendingEffectState.AMBIGUOUS if provider_fails else PendingEffectState.SUCCEEDED
+        )
+        assert bound == []
+    finally:
+        fixture.broker.close()
 
 
 def test_resume_fails_closed_as_stale_before_dispatch() -> None:

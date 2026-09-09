@@ -1246,6 +1246,26 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     root = tmp_path / "user-data"
     registry = ProviderRegistry("defaults", user_data_root=root)
     secret = "fixture-secret-provider-configuration"
+    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+
+    provider_owners = []
+    original_host_invoke = ExactHostProviderBackendV4.invoke
+
+    def observe_owner(self, envelope):
+        if envelope.operation_id in {
+            "rumi_provider_registry_pack.provider-configure-prepare",
+            "rumi_provider_registry_pack.provider-configure",
+        }:
+            invocation = self._invocation_context(envelope)
+            provider_owners.append((
+                envelope.operation_id,
+                invocation.presentation_owner_principal_id,
+                invocation.presentation_owner_session_id,
+                envelope.context.caller_principal.value,
+            ))
+        return original_host_invoke(self, envelope)
+
+    monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", observe_owner)
     failures = []
     original_invoke = V4DispatchSession.invoke
 
@@ -1337,6 +1357,10 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in stored.read_text()
     assert len(json.loads(stored.read_text())["credentials"]) == 1
     assert secret not in json.dumps(authority.audit_events(), default=str)
+    assert len(provider_owners) == 2
+    assert provider_owners[0][1:3] == provider_owners[1][1:3]
+    # The originating UI owner survives the approved coordinator resume.
+    assert provider_owners[1][1] != provider_owners[1][3]
 
 
 def test_saved_settings_reach_host_credential_transport(

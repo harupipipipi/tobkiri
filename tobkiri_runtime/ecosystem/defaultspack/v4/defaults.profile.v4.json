@@ -133,7 +133,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:e2ba4eb765df71504137f5c27feb544b0ad2224c62cc1776dc5b52927c15130a",
+    "source_digest": "sha256:3e7d37a7c7e79c70317072a7370a6e20051f48fc70b07489c811ced814d09516",
     "repository_commit": "working-tree",
     "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
     "generator": "tobkiri-profile-artifacts",
@@ -213,7 +213,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:7d888ac96000975e6519f751bbef0418aceb9f479df76dcc97917a3e2d33c305",
+        "semantics_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-effect.v1"
@@ -2148,7 +2148,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:7d888ac96000975e6519f751bbef0418aceb9f479df76dcc97917a3e2d33c305",
+        "semantics_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-effect.v1"

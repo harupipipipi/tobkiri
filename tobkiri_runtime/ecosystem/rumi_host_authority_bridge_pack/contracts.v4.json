@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:61339e3b305ce9ef917957922c9f47084876bd94be4caefd29a44101cf02ed35",
+            "digest": "sha256:898dd826665e1eb90ca785cf015d987dc54b2dd7388e7f8d42fc177d0d6de7c8",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:61339e3b305ce9ef917957922c9f47084876bd94be4caefd29a44101cf02ed35",
+        "source_digest": "sha256:898dd826665e1eb90ca785cf015d987dc54b2dd7388e7f8d42fc177d0d6de7c8",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -148,7 +148,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:61339e3b305ce9ef917957922c9f47084876bd94be4caefd29a44101cf02ed35",
+            "digest": "sha256:898dd826665e1eb90ca785cf015d987dc54b2dd7388e7f8d42fc177d0d6de7c8",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -159,7 +159,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:61339e3b305ce9ef917957922c9f47084876bd94be4caefd29a44101cf02ed35",
+        "source_digest": "sha256:898dd826665e1eb90ca785cf015d987dc54b2dd7388e7f8d42fc177d0d6de7c8",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -216,7 +216,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:4780b3066f647cf52a8e12b53cf21ba7a06caed239cf8cc79a05e9ff6114eda0",
+          "input_schema_digest": "sha256:c8863e7d0d673a16f8a42fd7d94b5a7d6701948ef8ffcfd682bbef522df8b034",
           "operation_id": "interactive_effect.manage",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -226,7 +226,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:61339e3b305ce9ef917957922c9f47084876bd94be4caefd29a44101cf02ed35",
+            "digest": "sha256:898dd826665e1eb90ca785cf015d987dc54b2dd7388e7f8d42fc177d0d6de7c8",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -237,7 +237,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:61339e3b305ce9ef917957922c9f47084876bd94be4caefd29a44101cf02ed35",
+        "source_digest": "sha256:898dd826665e1eb90ca785cf015d987dc54b2dd7388e7f8d42fc177d0d6de7c8",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_host_authority_bridge_pack"
       },
@@ -255,9 +255,12 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:7d888ac96000975e6519f751bbef0418aceb9f479df76dcc97917a3e2d33c305",
+      "revision_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f",
       "schema_catalog": {
-        "sha256:4780b3066f647cf52a8e12b53cf21ba7a06caed239cf8cc79a05e9ff6114eda0": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:c8863e7d0d673a16f8a42fd7d94b5a7d6701948ef8ffcfd682bbef522df8b034": {
           "additionalProperties": false,
           "properties": {
             "correlation_id": {
@@ -276,7 +279,8 @@
                 "git_commit",
                 "git_restore",
                 "git_apply_patch",
-                "git_push"
+                "git_push",
+                "mcp_connect"
               ]
             },
             "phase": {
@@ -293,9 +297,6 @@
             }
           },
           "type": "object"
-        },
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
         }
       },
       "status": "accepted",
@@ -303,5 +304,5 @@
     }
   ],
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:61339e3b305ce9ef917957922c9f47084876bd94be4caefd29a44101cf02ed35"
+  "source_identity": "sha256:898dd826665e1eb90ca785cf015d987dc54b2dd7388e7f8d42fc177d0d6de7c8"
 }

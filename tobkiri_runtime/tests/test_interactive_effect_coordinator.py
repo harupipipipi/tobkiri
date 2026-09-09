@@ -41,6 +41,27 @@ def _git_plan(operation: str, **details: object) -> dict[str, object]:
     return {**plan, "plan_digest": canonical_digest(plan)}
 
 
+def test_mcp_connect_freezes_provider_plan_and_redacts_argv_environment():
+    request = {
+        "server_id": "fixture", "allowed_tools": ["ping"],
+        "config": {"command": ["/bin/server", "private-arg"], "env": {"KEY": "private-key"}},
+    }
+    plan = {
+        "version": "tobkiri.mcp.connection-plan.v1",
+        "request_digest": canonical_digest(request),
+        "workspace": {"id": "workspace"}, "executable": {"path": "/bin/server"},
+    }
+    spec = INTERACTIVE_EFFECT_SPECS["mcp_connect"]
+    payload = _execute_payload(spec, request, plan)
+    assert payload == {"request": request, "plan": plan}
+    presentation = _presentation_metadata(spec, _prepared_presentation(payload))
+    assert presentation["action"] == "Connect MCP server"
+    assert "ping" in str(presentation) and "/bin/server" in str(presentation)
+    assert "private-arg" not in str(presentation) and "private-key" not in str(presentation)
+    with pytest.raises(InteractiveEffectUnavailable):
+        _execute_payload(spec, {**request, "server_id": "different"}, plan)
+
+
 def test_shell_execute_transform_preserves_only_prepare_result_and_arguments() -> None:
     """Shell execution receives a coordinator-built plan, never a UI plan."""
 

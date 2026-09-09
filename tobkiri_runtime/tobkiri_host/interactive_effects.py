@@ -14,9 +14,10 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, replace
+from contextlib import nullcontext
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, ContextManager, Mapping
 
 from core_runtime.authority.v4 import AuthorityScope, authority_digest
 from core_runtime.authority.v4_models import canonical_json
@@ -228,6 +229,9 @@ class PendingEffectController:
         approvals: InteractiveApprovalPort,
         coordinator_principal: OpaqueAuthorityRef,
         coordinator_publisher_lineage: str,
+        presentation_owner_scope: Callable[
+            [RequestContext, str, str], ContextManager[None]
+        ] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._persistence = persistence
@@ -236,6 +240,7 @@ class PendingEffectController:
         if not coordinator_publisher_lineage:
             raise PendingEffectError("pending effect is unavailable")
         self._coordinator_publisher_lineage = coordinator_publisher_lineage
+        self._presentation_owner_scope = presentation_owner_scope
         self._clock = clock
 
     def prepare(
@@ -539,15 +544,27 @@ class PendingEffectController:
             self.mark_dispatched(effect_id)
 
         try:
-            outcome = broker.invoke_prepared(
-                record.prepared,
-                record.context,
-                _thaw_json(record.effect_scope),
-                execute_not_after_wall=record.expires_at,
-                wall_clock=wall_clock,
-                monotonic_clock=monotonic_clock,
-                before_dispatch=mark_dispatched,
+            # Restore identity only from the encrypted, claimed Host record.
+            # This scope supplies no Grant and never changes Broker authority.
+            owner_scope = (
+                self._presentation_owner_scope(
+                    record.context,
+                    record.presentation_owner_principal_id,
+                    record.presentation_owner_session_id,
+                )
+                if self._presentation_owner_scope is not None
+                else nullcontext()
             )
+            with owner_scope:
+                outcome = broker.invoke_prepared(
+                    record.prepared,
+                    record.context,
+                    _thaw_json(record.effect_scope),
+                    execute_not_after_wall=record.expires_at,
+                    wall_clock=wall_clock,
+                    monotonic_clock=monotonic_clock,
+                    before_dispatch=mark_dispatched,
+                )
         except Exception as exc:
             try:
                 current_revision, current = self._load(effect_id)

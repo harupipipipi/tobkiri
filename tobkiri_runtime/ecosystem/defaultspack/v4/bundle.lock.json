@@ -29,7 +29,7 @@
     {
       "path": "packs/rumi-host-authority-bridge.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:ee017d424b1bf452b95fd04222ae351c7834213c5669d60de75d81c05973bd9a"
+      "digest": "sha256:58462fac35d8edc955d1afd64161879e198748e4d5de3d5154b9e31c017eca96"
     },
     {
       "path": "packs/rumi-workspace-mount.pack.v4.json",
@@ -654,7 +654,7 @@
     {
       "path": "packs/rumi_host_authority_bridge_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:ba4f066632873314059f52bb0633df9c9d22c551a06f756c0f6ff9a7264f0267"
+      "digest": "sha256:fcacd8ba035d4ab48e7f85c3adce028b8e98036b8236e2628f98adeb7fe5943e"
     },
     {
       "path": "packs/rumi_host_capabilities_pack.executables.v4.json",
@@ -1407,6 +1407,16 @@
       "digest": "sha256:e4fa4f1d441e204d3ac666c249a915474fbb62da74a08152c2bdcab9754edf63"
     },
     {
+      "path": "packs/tobkiri_mcp_connection_pack.executables.v4.json",
+      "kind": "executable_catalog",
+      "digest": "sha256:095ea6b32ad08d667f8dc6457e774fc8cff9746e29291a68ccfb47ca9c77a756"
+    },
+    {
+      "path": "packs/tobkiri_mcp_connection_pack.pack.v4.json",
+      "kind": "pack",
+      "digest": "sha256:42e757ebe28f0c07b4bf551ee5cdb6c64278c3246f0a7d0a277f732642cc1d90"
+    },
+    {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",
       "kind": "executable_catalog",
       "digest": "sha256:cb1505ae61e050ed3f155ff448fe2040784f867a40487994bb700a144c5efce6"
@@ -1444,7 +1454,7 @@
     {
       "path": "defaults.profile.v4.json",
       "kind": "profile",
-      "digest": "sha256:f961adf2dd8af8f2e6ffad3d53ac7eb4785f585659604a3beee8eabf6b314027"
+      "digest": "sha256:38f4ee1741814b16d3b4cb1675194b34e8c1a081c635b494366406d1f3e1e91c"
     }
   ]
 }

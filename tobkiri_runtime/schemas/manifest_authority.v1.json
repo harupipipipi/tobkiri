@@ -139,6 +139,7 @@
     "rumi_workspace_pack": "v4-authoritative",
     "search_home_pack": "v4-authoritative",
     "tobkiri_host_pack_control": "v4-authoritative",
+    "tobkiri_mcp_connection_pack": "v4-authoritative",
     "tobkiri_ui_settings_pack": "v4-authoritative",
     "tobkiri_workflow_pack": "v4-authoritative"
   },

@@ -19,12 +19,15 @@ from typing import Any, Mapping
 
 from core_runtime.host_provider_backend_v4 import HostProviderInvocationContextV4
 from core_runtime.mcp.transport import McpConnections
+from core_runtime.mcp.preparation import connection_plan
 
 
 CONTRACT_ID = "tobkiri.service.mcp.connection.v1"
+PREPARE = "mcp.connection.prepare"
 CONNECT = "mcp.connection.connect"
 CALL = "mcp.connection.call"
 DISCONNECT = "mcp.connection.disconnect"
+LIST = "mcp.connection.list"
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
 _MAX_CONNECTIONS = 8
 _MAX_PAYLOAD_BYTES = 64 * 1024
@@ -36,6 +39,14 @@ class _Connection:
     server_id: str
     allowed_tools: frozenset[str]
     ready: bool = False
+
+
+@dataclass(frozen=True)
+class _PreparedConnection:
+    server_id: str
+    config: dict[str, Any]
+    allowed_tools: frozenset[str]
+    plan: dict[str, Any]
 
 
 class CapturedMcpConnectionOwner:
@@ -56,6 +67,8 @@ class CapturedMcpConnectionOwner:
         principal_id: str,
         consumer_pack_id: str,
         workspace_root: Path,
+        workspace_id: str,
+        workspace_revision: str | int,
     ) -> None:
         if (
             not all((profile_id, activation_id, plan_digest, principal_id, consumer_pack_id))
@@ -70,6 +83,16 @@ class CapturedMcpConnectionOwner:
         self._capture = (profile_id, activation_id, plan_digest, security_epoch)
         self._principal_id = principal_id
         self._consumer_pack_id = consumer_pack_id
+        self._workspace_id = _text(workspace_id)
+        if (
+            type(workspace_revision) not in (str, int)
+            or isinstance(workspace_revision, str)
+            and not 0 < len(workspace_revision) <= 256
+            or isinstance(workspace_revision, int)
+            and workspace_revision < 0
+        ):
+            raise ValueError("MCP workspace revision is invalid")
+        self._workspace_revision = workspace_revision
         self._workspace_root = root
         self._connections = McpConnections()
         self._records: dict[str, _Connection] = {}
@@ -113,15 +136,40 @@ class CapturedMcpConnectionOwner:
         payload = _payload(envelope.payload)
         operation = envelope.operation_id
         fields = {
-            CONNECT: {"server_id", "config", "allowed_tools"},
+            PREPARE: {"server_id", "config", "allowed_tools"},
+            CONNECT: {"request", "plan"},
             CALL: {"connection_id", "tool", "arguments"},
             DISCONNECT: {"connection_id"},
+            LIST: set(),
         }.get(operation)
         if fields is None or set(payload) != fields:
             raise ValueError("MCP operation payload is invalid")
         self._check_current(invocation)
+        if operation == LIST:
+            with self._lock:
+                return {
+                    "connections": [
+                        {
+                            "connection_id": key,
+                            "server_id": record.server_id,
+                            "workspace_id": self._workspace_id,
+                            "tools": sorted(record.allowed_tools),
+                            "status": "connected" if record.ready else "cleanup_pending",
+                        }
+                        for key, record in self._records.items()
+                        if record.owner == owner
+                    ]
+                }
+        if operation == PREPARE:
+            return self._prepare(payload, owner, invocation).plan
         if operation == CONNECT:
-            return self._connect(payload, owner, invocation)
+            request = payload["request"]
+            if not isinstance(request, Mapping) or not isinstance(payload["plan"], dict):
+                raise ValueError("MCP prepared connection is invalid")
+            prepared = self._prepare(request, owner, invocation)
+            if payload["plan"] != prepared.plan:
+                raise PermissionError("MCP connection changed after preparation")
+            return self._connect(prepared, owner, invocation)
         connection_id = _text(payload["connection_id"])
         with self._lock:
             record = self._records.get(connection_id)
@@ -179,6 +227,12 @@ class CapturedMcpConnectionOwner:
         with self._lock:
             self._records.clear()
 
+    @property
+    def connection_ids(self) -> frozenset[str]:
+        """Identify live and uncollected resources for Host-only routing/accounting."""
+        with self._lock:
+            return frozenset(self._records)
+
     def _check_current(self, invocation: HostProviderInvocationContextV4) -> None:
         invocation.assert_current()
         envelope = invocation.envelope
@@ -190,12 +244,14 @@ class CapturedMcpConnectionOwner:
             if self._closed:
                 raise PermissionError("MCP connection owner is closed")
 
-    def _connect(
+    def _prepare(
         self,
         payload: Mapping[str, Any],
         owner: tuple[str, str],
         invocation: HostProviderInvocationContextV4,
-    ) -> Mapping[str, Any]:
+    ) -> _PreparedConnection:
+        if set(payload) != {"server_id", "config", "allowed_tools"}:
+            raise ValueError("MCP connection request is invalid")
         server_id = _text(payload["server_id"])
         tools = payload["allowed_tools"]
         if not isinstance(tools, list) or not 0 < len(tools) <= 64:
@@ -204,11 +260,39 @@ class CapturedMcpConnectionOwner:
         if len(allowed_tools) != len(tools):
             raise ValueError("MCP tool scope contains duplicates")
         config = self._config(payload["config"])
+        plan = connection_plan(
+            request=payload,
+            config=config,
+            capture=self._capture,
+            owner=owner,
+            workspace_root=self._workspace_root,
+            workspace_id=self._workspace_id,
+            workspace_revision=self._workspace_revision,
+            deadline=invocation.envelope.deadline_monotonic,
+            cancellation=invocation.envelope.cancellation_requested,
+        )
+        self._check_current(invocation)
+        config["command"] = [plan["executable"]["path"], *config["command"][1:]]
+        return _PreparedConnection(server_id, config, allowed_tools, plan)
+
+    def _connect(
+        self,
+        prepared: _PreparedConnection,
+        owner: tuple[str, str],
+        invocation: HostProviderInvocationContextV4,
+    ) -> Mapping[str, Any]:
+        server_id = prepared.server_id
+        allowed_tools = prepared.allowed_tools
         connection_id = "mcp_" + secrets.token_hex(16)
         record = _Connection(owner, server_id, allowed_tools)
         with self._lock:
             if self._closed or len(self._records) >= _MAX_CONNECTIONS:
                 raise PermissionError("MCP connection capacity is unavailable")
+            if any(
+                record.owner == owner and record.server_id == server_id
+                for record in self._records.values()
+            ):
+                raise PermissionError("MCP server already has an owned connection")
             # Publish ownership before the first operation which can spawn.
             self._records[connection_id] = record
         envelope = invocation.envelope
@@ -216,7 +300,7 @@ class CapturedMcpConnectionOwner:
             self._check_current(invocation)
             self._connections.connect(
                 connection_id,
-                config,
+                prepared.config,
                 deadline=envelope.deadline_monotonic,
                 cancellation=envelope.cancellation_requested,
                 inherit_environment=False,

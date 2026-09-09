@@ -275,6 +275,7 @@ jobs:
             tests/test_mcp_sse_origin.py \
             tests/test_mcp_sse_bounds.py \
             tests/test_mcp_connection_owner.py \
+            tests/test_mcp_host_provider.py \
             tests/test_defaultspack_mcp_approval_gate.py \
             tests/test_continuation_chain.py \
             tests/test_continuation_envelope.py \

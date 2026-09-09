@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:ba4f066632873314059f52bb0633df9c9d22c551a06f756c0f6ff9a7264f0267",
+      "digest": "sha256:fcacd8ba035d4ab48e7f85c3adce028b8e98036b8236e2628f98adeb7fe5943e",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -34,7 +34,7 @@
       "operations": [
         "interactive_effect.manage"
       ],
-      "revision_digest": "sha256:7d888ac96000975e6519f751bbef0418aceb9f479df76dcc97917a3e2d33c305"
+      "revision_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f"
     }
   ],
   "functions": [
@@ -62,7 +62,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:7d888ac96000975e6519f751bbef0418aceb9f479df76dcc97917a3e2d33c305",
+      "contract_revision_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f",
       "id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
       "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
       "isolation": "dedicated_process",
@@ -73,9 +73,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:462384583109b5b43b59e3b5bef86802aa8799b0e80147ee276b2822f81dc5f6",
-    "artifact_set_digest": "sha256:9aae4f5ef601413ad2e194a227f18c9992c8b400481eca0af96b0a250485ebab",
-    "contract_catalog_digest": "sha256:90cb203b30b49603c1236746fe6134cb35238cdc8f5f2d82bc43b8e6eaaf42f1"
+    "source_identity": "sha256:41603ca6a32e04f9d63b96039cfe64add1cf7588172da1faab05cd06556f7798",
+    "artifact_set_digest": "sha256:a034accd385537dded1b7c59ec315da3c6b52921c6d3996031eef3e9709ab7b2",
+    "contract_catalog_digest": "sha256:ccee0c4454b0aaba9f90ea6e371afcc163b2143e702c4ca512840814f638fa81"
   },
   "migration": {
     "compatibility": "read_only",
@@ -138,7 +138,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:7884bd76979a5902a839a1dfe983a381a8a66e60f385aaf4c951429b298868f0",
+    "artifact_digest": "sha256:bb8dd4775610a4cb0534dceea917bfc24db30f5701bb7f040c3a79db9178ee74",
     "display_name": "Rumi Host Authority Bridge",
     "id": "rumi_host_authority_bridge_pack",
     "kind": "host_extension",
@@ -149,15 +149,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_host_authority_bridge_pack/pack.v4.json",
-    "source_digest": "sha256:462384583109b5b43b59e3b5bef86802aa8799b0e80147ee276b2822f81dc5f6",
+    "source_digest": "sha256:41603ca6a32e04f9d63b96039cfe64add1cf7588172da1faab05cd06556f7798",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:6ab39a8bd0ca12a5ff52eb0c20943351d25b85496b52bad1bea89938df6e144b",
+    "content_root_digest": "sha256:6d5a0c7e965fce032b1eb4c405a96624908fc16d2a75ac8eaaa97b8793564898",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:7922643e3386de189574e3e4eeb100ae59398ddb1b3be912557358de907ec0da",
+    "input_inventory_digest": "sha256:936fa1c9806a28ab23e99fb9b062b323b844256506a1e06cf64846507cea998b",
     "normative": true,
     "evidence": [
       {
@@ -168,7 +168,7 @@
       {
         "path": "ecosystem/rumi_host_authority_bridge_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:462384583109b5b43b59e3b5bef86802aa8799b0e80147ee276b2822f81dc5f6"
+        "digest": "sha256:41603ca6a32e04f9d63b96039cfe64add1cf7588172da1faab05cd06556f7798"
       }
     ]
   },
@@ -217,6 +217,12 @@
         "cardinality": "one",
         "contract_id": "tobkiri.service.git.write.v1",
         "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.mcp.connection.v1",
+        "optional": true,
         "version_range": ">=1.0.0 <2.0.0"
       },
       {

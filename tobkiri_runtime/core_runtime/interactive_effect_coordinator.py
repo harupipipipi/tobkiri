@@ -54,6 +54,13 @@ class InteractiveEffectSpec:
 
 
 INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
+    "mcp_connect": InteractiveEffectSpec(
+        kind="mcp_connect",
+        prepare_contract_id="tobkiri.service.mcp.connection.v1",
+        prepare_operation_id="mcp.connection.prepare",
+        execute_contract_id="tobkiri.service.mcp.connection.v1",
+        execute_operation_id="mcp.connection.connect",
+    ),
     "provider_configure": InteractiveEffectSpec(
         kind="provider_configure",
         prepare_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
@@ -407,6 +414,14 @@ def _execute_payload(
 ) -> dict[str, Any]:
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
+    if spec.kind == "mcp_connect":
+        mcp_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
+        if (
+            mcp_plan.get("version") != "tobkiri.mcp.connection-plan.v1"
+            or mcp_plan.get("request_digest") != canonical_digest(dict(request))
+        ):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        return {"request": dict(request), "plan": mcp_plan}
     if spec.kind == "provider_configure":
         configuration_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
         if (
@@ -579,6 +594,29 @@ def _presentation_metadata(
         prepared.normalized_payload,
         HostInteractiveEffectService._MAX_REQUEST_BYTES,
     )
+    if spec.kind == "mcp_connect":
+        plan, request = payload.get("plan"), payload.get("request")
+        if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        _execute_payload(spec, request, plan)
+        executable, workspace = plan.get("executable"), plan.get("workspace")
+        tools = request.get("allowed_tools")
+        if (
+            not isinstance(executable, Mapping) or not isinstance(workspace, Mapping)
+            or not isinstance(tools, list) or not 0 < len(tools) <= 64
+        ):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        return _presentation(
+            action="Connect MCP server",
+            summary="Start the prepared local MCP server for this session.",
+            detail=(
+                f"Server: {_display_text(_required_text(request.get('server_id')))}\n"
+                f"Executable: {_display_text(_required_text(executable.get('path')))}\n"
+                f"Workspace: {_display_text(_required_text(workspace.get('id')))}\n"
+                "Tools: " + ", ".join(_display_text(_required_text(tool)) for tool in tools)
+                + f"\nArguments and environment: {_REDACTED}"
+            ),
+        )
     if spec.kind == "provider_configure":
         plan = payload.get("plan")
         request = payload.get("request")

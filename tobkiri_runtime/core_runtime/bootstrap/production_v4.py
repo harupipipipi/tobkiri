@@ -10,9 +10,10 @@ import stat
 import threading
 import time
 from dataclasses import dataclass
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Iterator, Mapping, Protocol
 from tobkiri_host.admission import (
     AdmissionEstimate,
     DurableResourceLedger,
@@ -1902,8 +1903,11 @@ def capture_production_dispatch(
         parent_cancellation = getattr(outer_request, "cancellation_requested", None)
         if type(parent_cancellation) is not threading.Event:
             raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
-        with caller_session_bindings_lock:
-            caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
+        bridge_authority_session_id = bind_nested_session(
+            bridge_session_id,
+            outer_edge.target.principal_id,
+            presentation_owner_for(outer_request),
+        )
         try:
             provider_result = dispatch.invoke(
                 bridge_edge.resolved_binding.operation.contract_id,
@@ -1927,8 +1931,7 @@ def capture_production_dispatch(
             record_bridge_failure(error)
             result = _provider_unavailable_bridge_result()
         finally:
-            with caller_session_bindings_lock:
-                caller_session_bindings.pop(bridge_session_id, None)
+            release_nested_session(bridge_session_id, bridge_authority_session_id)
         return result
 
     def capability_bridge(
@@ -2155,6 +2158,7 @@ def capture_production_dispatch(
     }
     caller_session_bindings: dict[str, str] = {}
     presentation_owner_bindings: dict[str, tuple[str, str]] = {}
+    presentation_owner_refcounts: dict[str, int] = {}
     nested_session_refcounts: dict[str, int] = {}
     caller_session_bindings_lock = threading.RLock()
 
@@ -2174,6 +2178,36 @@ def capture_production_dispatch(
             return inherited
         return context.caller_principal.value, context.caller_session_id
 
+    def retain_presentation_owner(session_id: str, owner: tuple[str, str]) -> None:
+        """Share one Host-derived owner across concurrent nested and resumed calls."""
+        with caller_session_bindings_lock:
+            if presentation_owner_bindings.get(session_id) not in {None, owner}:
+                raise AuthorityDenied("nested Host Provider owner binding changed")
+            presentation_owner_bindings[session_id] = owner
+            presentation_owner_refcounts[session_id] = (
+                presentation_owner_refcounts.get(session_id, 0) + 1
+            )
+
+    def release_presentation_owner(session_id: str) -> None:
+        with caller_session_bindings_lock:
+            remaining = presentation_owner_refcounts[session_id] - 1
+            if remaining:
+                presentation_owner_refcounts[session_id] = remaining
+            else:
+                presentation_owner_refcounts.pop(session_id)
+                presentation_owner_bindings.pop(session_id)
+
+    @contextmanager
+    def pending_effect_owner_scope(
+        context: RequestContext, principal_id: str, session_id: str,
+    ) -> Iterator[None]:
+        """Restore only the owner persisted by the Host pending-effect controller."""
+        retain_presentation_owner(context.caller_session_id, (principal_id, session_id))
+        try:
+            yield
+        finally:
+            release_presentation_owner(context.caller_session_id)
+
     def bind_nested_session(
         session_id: str,
         caller_principal_id: str,
@@ -2184,13 +2218,10 @@ def capture_production_dispatch(
         resolved_session_id = authority_session_id(session_id, caller_principal_id)
         with caller_session_bindings_lock:
             existing_caller = caller_session_bindings.get(session_id)
-            existing_owner = presentation_owner_bindings.get(resolved_session_id)
             if existing_caller not in {None, caller_principal_id}:
                 raise AuthorityDenied("nested Host Provider caller binding changed")
-            if existing_owner not in {None, presentation_owner}:
-                raise AuthorityDenied("nested Host Provider owner binding changed")
+            retain_presentation_owner(resolved_session_id, presentation_owner)
             caller_session_bindings[session_id] = caller_principal_id
-            presentation_owner_bindings[resolved_session_id] = presentation_owner
             nested_session_refcounts[session_id] = (
                 nested_session_refcounts.get(session_id, 0) + 1
             )
@@ -2200,13 +2231,13 @@ def capture_production_dispatch(
         """Release one stable nested-session user without racing a peer call."""
 
         with caller_session_bindings_lock:
+            release_presentation_owner(resolved_session_id)
             remaining = nested_session_refcounts.get(session_id, 0) - 1
             if remaining > 0:
                 nested_session_refcounts[session_id] = remaining
                 return
             nested_session_refcounts.pop(session_id, None)
             caller_session_bindings.pop(session_id, None)
-            presentation_owner_bindings.pop(resolved_session_id, None)
 
     class _InvocationSession:
         """Bind nested dispatch to the authenticated provider invocation."""
@@ -2799,6 +2830,7 @@ def capture_production_dispatch(
             approvals=authority_control,
             coordinator_principal=coordinator_principal,
             coordinator_publisher_lineage=coordinator_binding.artifact.publisher_lineage,
+            presentation_owner_scope=pending_effect_owner_scope,
         )
         _recover_interactive_effect_controller(interactive_effect_controller)
         interactive_effect_port.bind(

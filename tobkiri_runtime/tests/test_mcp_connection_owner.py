@@ -15,6 +15,7 @@ import pytest
 
 from core_runtime.mcp.connection_owner import (
     CALL,
+    PREPARE,
     CONNECT,
     CONTRACT_ID,
     DISCONNECT,
@@ -67,6 +68,8 @@ def owner(tmp_path: Path):
         principal_id="gateway",
         consumer_pack_id="mcp-owner",
         workspace_root=tmp_path,
+        workspace_id="workspace",
+        workspace_revision=1,
     )
     yield value
     value.close()
@@ -111,6 +114,11 @@ for line in sys.stdin:
     }
 
 
+def _prepared_invocation(owner, connection_request):
+    plan = owner.invoke(_Invocation(PREPARE, connection_request))
+    return _Invocation(CONNECT, {"request": connection_request, "plan": plan})
+
+
 def _call(connection_id: str, **updates: Any) -> _Invocation:
     return _Invocation(
         CALL, {"connection_id": connection_id, "tool": "ping", "arguments": {}, **updates}
@@ -124,7 +132,7 @@ def test_owned_real_connection_binds_session_tools_and_exact_environment(
     tmp_path,
 ) -> None:
     monkeypatch.setenv("MCP_TEST_AMBIENT", "must-not-inherit")
-    invocation = _Invocation(CONNECT, connection_request)
+    invocation = _prepared_invocation(owner, connection_request)
     connected = owner.invoke(invocation)
     connection_id = connected["connection_id"]
     assert connected["tools"] == ["ping", "wait"]
@@ -170,7 +178,7 @@ def test_owned_real_connection_binds_session_tools_and_exact_environment(
     ],
 )
 def test_wrong_scope_never_reaches_connected_child(owner, connection_request, tmp_path, change):
-    connection_id = owner.invoke(_Invocation(CONNECT, connection_request))["connection_id"]
+    connection_id = owner.invoke(_prepared_invocation(owner, connection_request))["connection_id"]
     invocation = _call(connection_id)
     if change in {"session", "principal"}:
         field = (
@@ -212,7 +220,7 @@ def test_wrong_scope_never_reaches_connected_child(owner, connection_request, tm
 
 
 def test_cancelled_in_flight_request_is_not_replayed(owner, connection_request, tmp_path):
-    connection_id = owner.invoke(_Invocation(CONNECT, connection_request))["connection_id"]
+    connection_id = owner.invoke(_prepared_invocation(owner, connection_request))["connection_id"]
     invocation = _call(connection_id, tool="wait")
     failures = []
 
@@ -242,13 +250,13 @@ def test_cancelled_in_flight_request_is_not_replayed(owner, connection_request, 
 def test_unknown_tool_during_registration_reaps_child(owner, connection_request):
     connection_request["allowed_tools"] = ["not-discovered"]
     with pytest.raises(RuntimeError, match="connection failed"):
-        owner.invoke(_Invocation(CONNECT, connection_request))
+        owner.invoke(_prepared_invocation(owner, connection_request))
     assert owner._records == {}
     assert owner._connections.list_servers() == []
 
 
 def test_close_retains_failed_cleanup_for_retry(owner, connection_request, monkeypatch):
-    connection_id = owner.invoke(_Invocation(CONNECT, connection_request))["connection_id"]
+    connection_id = owner.invoke(_prepared_invocation(owner, connection_request))["connection_id"]
     original = owner._connections.close
     monkeypatch.setattr(
         owner._connections,
@@ -270,7 +278,7 @@ def test_stale_registration_does_not_create_a_transport(owner, connection_reques
         pytest.fail("transport must not start")
 
     monkeypatch.setattr(McpConnections, "connect", forbidden)
-    invocation = _Invocation(CONNECT, connection_request)
+    invocation = _prepared_invocation(owner, connection_request)
     invocation.stale = True
     with pytest.raises(PermissionError, match="stale"):
         owner.invoke(invocation)
@@ -283,7 +291,7 @@ def test_local_timeout_before_host_deadline_fences_and_reaps(
     """The local 30-second budget may expire while the Host lease is current."""
     from core_runtime.mcp import transport
 
-    connection_id = owner.invoke(_Invocation(CONNECT, connection_request))["connection_id"]
+    connection_id = owner.invoke(_prepared_invocation(owner, connection_request))["connection_id"]
     process = owner._connections._servers[connection_id]._transport._proc
     monkeypatch.setattr(transport, "_DEFAULT_TIMEOUT", 0.05)
     invocation = _call(connection_id, tool="wait")
@@ -298,7 +306,61 @@ def test_local_timeout_before_host_deadline_fences_and_reaps(
 
 def test_remote_tool_error_keeps_a_healthy_connection(owner, connection_request):
     """A server's normal isError reply must not be treated as broken IO."""
-    connection_id = owner.invoke(_Invocation(CONNECT, connection_request))["connection_id"]
+    connection_id = owner.invoke(_prepared_invocation(owner, connection_request))["connection_id"]
     result = owner.invoke(_call(connection_id, arguments={"fail": True}))
     assert result["is_error"] is True
     assert owner.invoke(_call(connection_id))["is_error"] is False
+
+
+@pytest.mark.parametrize("change", ["env", "argv", "tools", "cwd", "executable", "session"])
+def test_connect_rejects_changed_preparation_before_start(
+    owner,
+    connection_request,
+    tmp_path,
+    monkeypatch,
+    change,
+):
+    """The Host-private prepared snapshot cannot authorize changed resources."""
+    if change == "cwd":
+        (tmp_path / "subdir").mkdir()
+        connection_request["config"]["cwd"] = "subdir"
+    elif change == "executable":
+        executable = tmp_path / "executable"
+        executable.write_text("#!/bin/sh\nexit 0\n")
+        executable.chmod(0o755)
+        connection_request["config"]["command"] = [str(executable)]
+    invocation = _prepared_invocation(owner, connection_request)
+    if change == "env":
+        connection_request["config"]["env"]["LITERAL"] = "different"
+    elif change == "argv":
+        connection_request["config"]["command"].append("different")
+    elif change == "tools":
+        connection_request["allowed_tools"].append("blocked")
+    elif change == "cwd":
+        (tmp_path / "subdir").rename(tmp_path / "old-subdir")
+        (tmp_path / "subdir").mkdir()
+    elif change == "executable":
+        executable.write_text("#!/bin/sh\nexit 1\n")
+    else:
+        invocation.presentation_owner_session_id = "different"
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("changed preparation must not start a process")
+
+    monkeypatch.setattr(McpConnections, "connect", forbidden)
+    with pytest.raises(PermissionError, match="changed after preparation"):
+        owner.invoke(invocation)
+    assert owner._records == {}
+
+
+def test_preparation_has_no_process_or_environment_secret(owner, connection_request, monkeypatch):
+    connection_request["config"]["env"]["LITERAL"] = "fixture-secret-not-in-plan"
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("prepare must not start a process")
+
+    monkeypatch.setattr(McpConnections, "connect", forbidden)
+    plan = owner.invoke(_Invocation(PREPARE, connection_request))
+    assert "fixture-secret-not-in-plan" not in json.dumps(plan)
+    assert owner._records == {}
+    assert owner._connections.list_servers() == []

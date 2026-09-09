@@ -147,6 +147,7 @@
     "rumi_workspace_pack",
     "search_home_pack",
     "tobkiri_host_pack_control",
+    "tobkiri_mcp_connection_pack",
     "tobkiri_ui_settings_pack",
     "tobkiri_workflow_pack"
   ],
@@ -5417,13 +5418,13 @@
         {
           "digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
           "kind": "executable",
-        "path": "runtime/message_host.py"
-      },
-      {
-        "digest": "sha256:b3128006115b96b9e4ab8aa7aced0ad260d9dda978db7f66de4266b3724735d2",
-        "kind": "executable",
-        "path": "runtime/saved_receipt.py"
-      }
+          "path": "runtime/message_host.py"
+        },
+        {
+          "digest": "sha256:b3128006115b96b9e4ab8aa7aced0ad260d9dda978db7f66de4266b3724735d2",
+          "kind": "executable",
+          "path": "runtime/saved_receipt.py"
+        }
       ],
       "secrets": [],
       "source_evidence": [
@@ -7805,7 +7806,8 @@
                     "git_commit",
                     "git_restore",
                     "git_apply_patch",
-                    "git_push"
+                    "git_push",
+                    "mcp_connect"
                   ]
                 },
                 "phase": {
@@ -7842,6 +7844,12 @@
           "cardinality": "one",
           "contract_id": "tobkiri.service.git.write.v1",
           "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "optional": true,
           "version_range": ">=1.0.0 <2.0.0"
         },
         {
@@ -10195,17 +10203,17 @@
             {
               "entrypoint_id": "bundled-model-catalog",
               "id": "rumi_model_catalog_pack.bundled-model-catalog",
-          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
+              "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
             },
             {
               "entrypoint_id": "bundled-model-catalog.generate",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
-          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
+              "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
             },
             {
               "entrypoint_id": "bundled-model-catalog.stream",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
-          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
+              "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
             }
           ],
           "owner": "rumi_model_catalog_pack",
@@ -10233,7 +10241,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
+          "digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
           "kind": "executable",
           "path": "runtime/catalog.py"
         }
@@ -11644,17 +11652,17 @@
             {
               "entrypoint_id": "provider-registry-health",
               "id": "rumi_provider_registry_pack.provider-registry-health",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.generate",
               "id": "rumi_provider_registry_pack.provider-registry-health.generate",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.stream",
               "id": "rumi_provider_registry_pack.provider-registry-health.stream",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -11734,7 +11742,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
+          "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "kind": "executable",
           "path": "runtime/health_process.py"
         },
@@ -15664,105 +15672,154 @@
           "security": "sensitive",
           "version": "1.0.0"
         },
-      {
-        "cardinality": "one",
-        "contract_id": "tobkiri.action.turn.stop.v1",
-        "failure": "fail_closed",
-        "isolation": "in_process",
-        "lifecycle": {"data_owner": "rumi_turn_runtime_pack", "deprecated": false, "introduced": "1.0.0"},
-        "operations": [{
-          "entrypoint_id": "turn-stop",
-          "id": "rumi_turn_runtime_pack.turn-stop",
-          "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
-        }],
-        "owner": "rumi_turn_runtime_pack",
-        "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
-        "required_capabilities": ["turn.stop"],
-        "schemas": {
-          "input": {
-            "type": "object", "additionalProperties": false, "required": ["turn_id"],
-            "properties": {"turn_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9]", "not": {"pattern": "[^A-Za-z0-9._:-]"}}}
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
           },
-          "output": {
-            "type": "object", "additionalProperties": false,
-            "required": ["status", "turn_id", "stopped"],
-            "properties": {
-              "status": {"const": "cancellation_requested"},
-              "turn_id": {"type": "string"}, "stopped": {"const": false}
+          "operations": [
+            {
+              "entrypoint_id": "turn-stop",
+              "id": "rumi_turn_runtime_pack.turn-stop",
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
             }
-          },
-          "error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}, "additionalProperties": false}
-        },
-        "security": "restricted",
-        "version": "1.0.0"
-      },
-      {
-        "cardinality": "one",
-        "contract_id": "tobkiri.action.turn.reconcile.v1",
-        "failure": "fail_closed",
-        "isolation": "in_process",
-        "lifecycle": {
-          "data_owner": "rumi_turn_runtime_pack",
-          "deprecated": false,
-          "introduced": "1.0.0"
-        },
-        "operations": [
-          {
-            "entrypoint_id": "turn-reconcile",
-            "id": "rumi_turn_runtime_pack.turn-reconcile",
-            "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
-          }
-        ],
-        "owner": "rumi_turn_runtime_pack",
-        "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-        "required_capabilities": [
-          "turn.reconcile"
-        ],
-        "schemas": {
-          "input": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "turn_id"
-            ],
-            "properties": {
-              "turn_id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 256,
-                "pattern": "^[A-Za-z0-9]",
-                "not": {
-                  "pattern": "[^A-Za-z0-9._:-]"
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "required_capabilities": [
+            "turn.stop"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
                 }
               }
-            }
-          },
-          "output": {
-            "type": "object"
-          },
-          "error": {
-            "type": "object",
-            "required": [
-              "code",
-              "message"
-            ],
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "status",
+                "turn_id",
+                "stopped"
+              ],
+              "properties": {
+                "status": {
+                  "const": "cancellation_requested"
+                },
+                "turn_id": {
+                  "type": "string"
+                },
+                "stopped": {
+                  "const": false
+                }
               }
             },
-            "additionalProperties": false
-          }
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         },
-        "security": "restricted",
-        "version": "1.0.0"
-      },
-      {
-        "cardinality": "one",
-        "contract_id": "tobkiri.action.turn.saved.v1",
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-reconcile",
+              "id": "rumi_turn_runtime_pack.turn-reconcile",
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "required_capabilities": [
+            "turn.reconcile"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.saved.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
@@ -16879,6 +16936,343 @@
         "historical_classification": "modern-only",
         "mode": "canonical-v4",
         "owner": "tobkiri_host_pack_control",
+        "source_format": "pack.v4.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "host_brokered"
+    },
+    {
+      "approval_policy": "capability_gated",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "mcp.connection.prepare",
+        "mcp.connection.connect",
+        "mcp.tool.call",
+        "mcp.connection.disconnect",
+        "mcp.connection.read"
+      ],
+      "dependencies": {},
+      "description": "Host-owned, approval-gated MCP process connections scoped to a captured Profile, workspace and originating session.",
+      "display_name": "Tobkiri MCP Connections",
+      "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "function_id": "tobkiri.mcp.connections",
+          "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+          "operation_ids": [
+            "mcp.connection.prepare",
+            "mcp.connection.connect",
+            "mcp.connection.call",
+            "mcp.connection.disconnect",
+            "mcp.connection.list"
+          ]
+        }
+      ],
+      "kind": "host_extension",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "compatibility": "none",
+        "removal_wave": 13,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0",
+            "data_owner": "captured-host-mcp-connections"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "mcp.connection.prepare",
+              "id": "mcp.connection.prepare",
+              "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+              "effect_ceiling": [
+                "capability:mcp.connection.prepare"
+              ]
+            },
+            {
+              "entrypoint_id": "mcp.connection.connect",
+              "id": "mcp.connection.connect",
+              "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+              "effect_ceiling": [
+                "capability:mcp.connection.connect",
+                "host:brokered-execution"
+              ]
+            },
+            {
+              "effect_ceiling": [
+                "capability:mcp.tool.call",
+                "host:brokered-execution"
+              ],
+              "entrypoint_id": "mcp.connection.call",
+              "id": "mcp.connection.call",
+              "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11"
+            },
+            {
+              "effect_ceiling": [
+                "capability:mcp.connection.disconnect",
+                "host:brokered-execution"
+              ],
+              "entrypoint_id": "mcp.connection.disconnect",
+              "id": "mcp.connection.disconnect",
+              "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11"
+            },
+            {
+              "effect_ceiling": [
+                "capability:mcp.connection.read"
+              ],
+              "entrypoint_id": "mcp.connection.list",
+              "id": "mcp.connection.list",
+              "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11"
+            }
+          ],
+          "owner": "tobkiri_mcp_connection_pack",
+          "provider_id": "tobkiri.mcp.connections",
+          "required_capabilities": [
+            "mcp.connection.prepare",
+            "mcp.connection.connect",
+            "mcp.tool.call",
+            "mcp.connection.disconnect",
+            "mcp.connection.read"
+          ],
+          "schemas": {
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_tools": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "command": {
+                              "items": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "cwd": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            },
+                            "env": {
+                              "additionalProperties": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxProperties": 128,
+                              "type": "object"
+                            },
+                            "transport": {
+                              "const": "stdio"
+                            }
+                          },
+                          "required": [
+                            "transport",
+                            "command",
+                            "env",
+                            "cwd"
+                          ],
+                          "type": "object"
+                        },
+                        "server_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "server_id",
+                        "config",
+                        "allowed_tools"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "type": "object"
+                    },
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "tool": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id",
+                    "tool",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "maxProperties": 0,
+                  "type": "object"
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+          "kind": "executable",
+          "path": "runtime/host.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [],
+      "source_provenance": {
+        "historical_classification": "modern-only",
+        "mode": "canonical-v4",
+        "owner": "tobkiri_mcp_connection_pack",
         "source_format": "pack.v4.json"
       },
       "version": "1.0.0",
