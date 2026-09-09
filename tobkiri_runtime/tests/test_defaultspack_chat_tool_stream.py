@@ -17,6 +17,34 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
+@pytest.mark.parametrize("helper_name", ["_engine_events", "_fallback_send"])
+@pytest.mark.parametrize("bound", [False, True])
+def test_stream_helpers_forward_only_explicit_settings_owner(
+    tmp_path, monkeypatch, helper_name, bound,
+):
+    from blocks.chat import stream as stream_module
+
+    owner = FrontendSettingsStore(tmp_path / "settings.json") if bound else None
+    observed = []
+
+    class RecordingEngine:
+        def __init__(self, *, gateway, settings_owner):
+            observed.append(settings_owner)
+
+        def stream(self, input_data, context, *, stream_mode):
+            return iter(())
+
+    monkeypatch.setattr(stream_module, "ChatRunEngine", RecordingEngine)
+    monkeypatch.setattr(stream_module, "ContractLLMGateway", lambda: object())
+    forged_owner = object()
+    assert list(getattr(stream_module, helper_name)(
+        {"settings_owner": forged_owner}, {"settings_owner": forged_owner},
+        settings_owner=owner,
+    )) == []
+    assert len(observed) == 1
+    assert observed[0] is owner
+
+
 def test_chat_run_engine_streams_tool_call_events_and_final_message(tmp_path, monkeypatch):
     from domain.chat.store import ChatStore
     from domain.chat.stream_engine import ChatRunEngine
@@ -243,6 +271,7 @@ def test_stream_with_selected_tools_uses_chat_run_engine_not_legacy_fallback(tmp
             },
         },
         {"principal_capabilities": ["developer"]},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     events = list(result["events"])
