@@ -2833,16 +2833,18 @@ def capture_production_dispatch(
             dispatch.close()
             raise AuthorityDenied("capability invocation binding is absent or ambiguous")
 
-        def capability_binding_reader() -> Mapping[str, Any]:
+        def capability_binding_reader() -> tuple[Mapping[str, object], Mapping[str, Any]]:
             from ..pack_control_v4 import capture_pack_catalog_reader
 
             if capability_binding_snapshot_factory is None:
                 raise AuthorityDenied("capability projection factory is unavailable")
-            return capability_binding_snapshot_factory(
+            catalog = capture_pack_catalog_reader().read()
+            capability = capability_binding_snapshot_factory(
                 capability_binding,
                 session=dispatch,
-                catalog=capture_pack_catalog_reader().read(),
+                catalog=catalog,
             )
+            return capability, catalog
 
         control_session.bind_capability_reader(capability_binding_reader)
     return dispatch

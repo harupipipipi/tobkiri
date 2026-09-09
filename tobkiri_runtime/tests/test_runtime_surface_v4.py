@@ -155,6 +155,44 @@ def _capability_snapshot(active_runtime, operations) -> dict[str, object]:
     }
 
 
+@pytest.mark.parametrize("surface", ["profile", "operations"])
+def test_projection_reuses_host_catalog_only_within_one_read(
+    active_runtime, monkeypatch, surface,
+) -> None:
+    catalog = runtime_surface._captured_lifecycle_projection()
+    calls = []
+
+    def reader():
+        calls.append(True)
+        return _capability_snapshot(active_runtime, []), catalog
+
+    def reject_duplicate(*args, **kwargs):
+        pytest.fail("projection must reuse the Host-owned catalog")
+
+    monkeypatch.setattr(runtime_surface, "_captured_lifecycle_projection", reject_duplicate)
+    service = _service(active_runtime, capability_binding_reader=reader)
+    for _ in range(2):
+        if surface == "profile":
+            service.read_profile()
+        else:
+            service.read_advanced(surface)
+    assert len(calls) == 2  # No cache across requests.
+
+
+@pytest.mark.parametrize(
+    "field", ["profile_id", "profile_revision", "plan_digest", "catalog_revision"],
+)
+def test_projection_rejects_host_catalog_from_another_snapshot(active_runtime, field):
+    catalog = {**runtime_surface._captured_lifecycle_projection(), field: "wrong"}
+    service = _service(
+        active_runtime,
+        capability_binding_reader=lambda: (_capability_snapshot(active_runtime, []), catalog),
+    )
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        service.read_profile()
+    assert caught.value.code == RuntimeSurfaceErrorCode.STALE_REVISION
+
+
 def test_profile_read_model_is_derived_from_verified_v4_graph(active_runtime) -> None:
     result = _service(active_runtime).read_profile()
     Draft202012Validator(_control_output_schema()).validate(result)
@@ -461,9 +499,9 @@ def test_packvm_invocation_requires_fresh_matching_host_attestation(
     ready = _service(
         active_runtime,
         packvm_readiness_reader=lambda: snapshot,
-        capability_binding_reader=lambda: _capability_snapshot(
-            active_runtime,
-            packvm_rows,
+        capability_binding_reader=lambda: (
+            _capability_snapshot(active_runtime, packvm_rows),
+            runtime_surface._captured_lifecycle_projection(),
         ),
     ).read_advanced("operations")["data"]["operations"]
     ready_packvm = [item for item in ready if item["domain_kind"] == "pack_vm"]

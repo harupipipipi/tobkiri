@@ -105,7 +105,9 @@ SnapshotLoader = Callable[[], ActiveDefaultProfile]
 CatalogLoader = Callable[[], BundledCatalog]
 UserSettingsReader = Callable[[], Mapping[str, object]]
 PackVMReadinessReader = Callable[[], Mapping[str, object]]
-CapabilityBindingReader = Callable[[], Mapping[str, object]]
+CapabilityBindingReader = Callable[
+    [], tuple[Mapping[str, object], Mapping[str, Any]]
+]
 
 
 _READ_WORKER_COUNT = 4
@@ -1209,10 +1211,12 @@ class RuntimeSurfaceService:
                 data=data,
                 selected_profile_id=selected_profile_id,
             )
+        capability, lifecycle = self._capability_binding(deadline)
         advanced = self._advanced_projection(
             snapshot,
             packvm_readiness=self._packvm_readiness(deadline),
-            capability_binding=self._capability_binding(deadline),
+            capability_binding=capability,
+            lifecycle=lifecycle,
             frontend_bindings=self._frontend_bindings(snapshot, deadline),
         )
         deadline.checkpoint()
@@ -1454,10 +1458,12 @@ class RuntimeSurfaceService:
         profile = active.resolved.profile
         lock = active.resolved.lock
         plan = active.resolved.plan
+        capability, lifecycle = self._capability_binding(deadline)
         advanced = self._advanced_projection(
             snapshot,
             packvm_readiness=self._packvm_readiness(deadline),
-            capability_binding=self._capability_binding(deadline),
+            capability_binding=capability,
+            lifecycle=lifecycle,
             frontend_bindings=self._frontend_bindings(snapshot, deadline),
         )
         deadline.checkpoint()
@@ -1715,10 +1721,24 @@ class RuntimeSurfaceService:
         packvm_readiness: Mapping[str, object] | None,
         capability_binding: Mapping[str, object] | None,
         frontend_bindings: tuple[object, ...],
+        lifecycle: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         active = snapshot.active
         contract_catalogs = _validated_contract_catalogs(snapshot)
-        lifecycle = _captured_lifecycle_projection(snapshot)
+        if lifecycle is None:
+            lifecycle = _captured_lifecycle_projection(snapshot)
+        else:
+            expected = {
+                "profile_id": str(active.resolved.profile["profile_id"]),
+                "profile_revision": str(active.resolved.plan["profile_revision"]),
+                "plan_digest": str(active.resolved.plan["plan_digest"]),
+                "catalog_revision": str(active.resolved.lock["catalog_revision"]),
+            }
+            if any(lifecycle.get(key) != value for key, value in expected.items()):
+                raise RuntimeSurfaceError(
+                    RuntimeSurfaceErrorCode.STALE_REVISION,
+                    "Host lifecycle projection does not match the active snapshot",
+                )
         lifecycle_packs = {str(item["pack_id"]): item for item in lifecycle["packs"]}
         selected = {
             str(item["identity"]): dict(item) for item in active.resolved.lock["effective_set"]
@@ -2030,18 +2050,19 @@ class RuntimeSurfaceService:
     def _capability_binding(
         self,
         deadline: _ReadDeadline,
-    ) -> Mapping[str, object] | None:
+    ) -> tuple[Mapping[str, object] | None, Mapping[str, Any] | None]:
         deadline.checkpoint()
         if self._capability_binding_reader is None:
-            return None
+            return None, None
         try:
-            result = dict(self._capability_binding_reader())
+            capability, lifecycle = self._capability_binding_reader()
+            result = dict(capability), dict(lifecycle)
             deadline.checkpoint()
             return result
         except RuntimeSurfaceError:
             raise
         except Exception:
-            return None
+            return None, None
 
 
 def create_runtime_surface_services(
