@@ -289,7 +289,7 @@ class _ServerConnection:
         self.status = "disconnected"
         self.tools = []
         self.server_capabilities = {}
-        self._transport = None
+        self._transport: _TransportBase | None = None
         self._id_counter = 0
         self._lock = threading.Lock()
         self._request_lock = threading.Lock()
