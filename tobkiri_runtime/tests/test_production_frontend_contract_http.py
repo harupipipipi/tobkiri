@@ -634,11 +634,17 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
                 "X-Tobkiri-Request-ID": str(uuid.uuid4()),
             })
 
+        before = store.path.read_bytes()
+        status, absent, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
+        assert status != 200, absent
+        assert store.path.read_bytes() == before
+        assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
+        body = {"request": {
+            "turn_id": "turn-stop-1", "conversation_id": "conversation-1",
+            "conversation_revision": 1, "content": "Hello",
+        }}
         with ThreadPoolExecutor(max_workers=1) as pool:
-            sent = pool.submit(post, "/api/chat/turn", {"request": {
-                "turn_id": "turn-stop-1", "conversation_id": "conversation-1",
-                "conversation_revision": 1, "content": "Hello",
-            }})
+            sent = pool.submit(post, "/api/chat/turn", body)
             try:
                 assert entered.wait(8), "saved execution did not reach the AI adapter"
                 status, denied, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"}, foreign=True)
@@ -657,6 +663,20 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
             finally:
                 for signal in signals:
                     signal.set()
+        # No assistant result was produced. Reconciliation and duplicate send
+        # cannot invent one, replay the Provider, or append the user twice.
+        after_stop = store.path.read_bytes()
+        for path, payload in (
+            ("/api/chat/turn/reconcile", {"turn_id": "turn-stop-1"}),
+            ("/api/chat/turn", body),
+        ):
+            status, pending, _ = post(path, payload)
+            assert status == 200, pending
+            assert pending["data"]["turn"]["status"] in {"running", "waiting"}
+            assert pending["data"]["turn"].get("result_reference") is None
+        assert store.path.read_bytes() == after_stop
+        assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello"]
+        assert len(signals) == 1
     finally:
         servers.close()
 
