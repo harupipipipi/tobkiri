@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 from unittest.mock import Mock
 
 import pytest
@@ -125,3 +126,70 @@ def test_post_cannot_succeed_when_reading_or_closing_passes_the_original_deadlin
     assert response.closed
     assert transport._endpoint_policy.open.call_count == 1
     assert transport._endpoint_policy.open.call_args.kwargs == {"timeout": 1.0}
+
+
+def test_failed_reader_join_retains_response_and_connection_for_cleanup_retry() -> None:
+    transport = mcp_client._SseTransport("http://approved.invalid/events")
+    response = io.BytesIO(b"pending")
+    reader = Mock(ident=1)
+    reader.is_alive.return_value = True
+    transport._reader_thread = reader
+    transport._response = response
+    connection = mcp_client._ServerConnection("owned", {})
+    connection._transport = transport
+    with pytest.raises(RuntimeError, match="reader did not stop"):
+        connection.disconnect()
+    assert connection._transport is transport
+    assert transport._response is response
+    assert not response.closed
+    reader.join.assert_called_once_with(timeout=5)
+    reader.is_alive.return_value = False
+    connection.disconnect()
+    assert response.closed
+    assert connection._transport is None
+    assert transport._response is None
+
+
+def test_opener_finishing_after_stop_does_not_enter_a_new_read() -> None:
+    transport = mcp_client._SseTransport("http://approved.invalid/events")
+    opening, release = threading.Event(), threading.Event()
+    response = Mock()
+
+    def open_response(*_args: object, **_kwargs: object) -> Mock:
+        opening.set()
+        assert release.wait(3)
+        return response
+
+    transport._endpoint_policy.open = open_response
+    reader = threading.Thread(target=transport._sse_loop, daemon=True)
+    transport._reader_thread = reader
+    reader.start()
+    try:
+        assert opening.wait(2)
+        transport._stop_event.set()
+        release.set()
+        transport.stop()
+        response.readline.assert_not_called()
+        response.close.assert_called()
+        assert transport._response is None
+        assert not reader.is_alive()
+    finally:
+        release.set()
+        reader.join(timeout=3)
+
+
+def test_failed_reader_start_is_collectable_and_cannot_restart_the_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = mcp_client._SseTransport("http://approved.invalid/events")
+
+    def fail_start(_thread: threading.Thread) -> None:
+        raise RuntimeError("reader start failed")
+
+    monkeypatch.setattr(threading.Thread, "start", fail_start)
+    with pytest.raises(RuntimeError, match="reader start failed"):
+        transport.start()
+    transport.stop()
+    assert transport._response is None
+    with pytest.raises(RuntimeError, match="already been started"):
+        transport.start()

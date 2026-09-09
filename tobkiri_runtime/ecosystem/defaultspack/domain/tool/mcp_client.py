@@ -15,7 +15,7 @@ import urllib.request
 import urllib.error
 from typing import Any, BinaryIO
 
-from .mcp_sse_policy import SseEndpointPolicy
+from .mcp_sse_policy import SseEndpointPolicy, interrupt_sse_response
 from .mcp_sse_events import SSE_EVENT_LIMIT, SSE_QUEUE_LIMIT, read_sse_events
 
 
@@ -292,8 +292,12 @@ class _SseTransport(_TransportBase):
         self._response = None
         self._ready_event = threading.Event()
         self._failure: str | None = None
+        self._started = False
 
     def start(self):
+        if self._started:
+            raise RuntimeError("SSE transport has already been started")
+        self._started = True
         self._stop_event.clear()
         self._ready_event.clear()
         self._reader_thread = threading.Thread(target=self._sse_loop, daemon=True)
@@ -305,11 +309,18 @@ class _SseTransport(_TransportBase):
 
     def stop(self):
         self._stop_event.set()
+        response = self._response
+        if response is not None:
+            interrupt_sse_response(response)
+        reader = self._reader_thread
+        if reader is not None and reader.ident is not None:
+            reader.join(timeout=5)
+            if reader.is_alive():
+                raise RuntimeError("MCP SSE reader did not stop")
+        # A late opener may publish its response while stop waits for the reader.
+        # Only release the current response after that reader actually exits.
         if self._response is not None:
-            try:
-                self._response.close()
-            except Exception:
-                pass
+            self._response.close()
             self._response = None
 
     def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
@@ -378,6 +389,8 @@ class _SseTransport(_TransportBase):
                 },
             )
             self._response = self._endpoint_policy.open(req, timeout=None)
+            if self._stop_event.is_set():
+                return
             for event_type, data_str in read_sse_events(self._response):
                 if self._stop_event.is_set():
                     break

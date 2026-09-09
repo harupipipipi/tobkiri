@@ -3,9 +3,29 @@
 from __future__ import annotations
 
 from http.client import HTTPMessage
+import socket
 from typing import Any, IO
 from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+def interrupt_sse_response(response: Any) -> None:
+    """Interrupt urllib's socket read without taking its buffered-reader lock.
+
+    CPython HTTPResponse owns a BufferedReader over SocketIO for HTTP and HTTPS.
+    If that socket is unavailable, the caller must retain the response until its
+    reader finishes; closing a buffer concurrently with read can block forever.
+    """
+    buffer = getattr(response, "fp", None)
+    raw = getattr(buffer, "raw", None)
+    owned_socket = getattr(raw, "_sock", None)
+    if isinstance(owned_socket, socket.socket):
+        try:
+            owned_socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            # EOF or another concurrent shutdown is harmless. Reader termination
+            # remains the caller's responsibility before it releases ownership.
+            pass
 
 
 def _origin(url: str) -> tuple[str, str, int]:

@@ -233,3 +233,46 @@ def test_real_http_post_byte_limits_keep_unsent_rejections_distinct_from_failure
         finally:
             _collect(transport)
     assert observed == ["GET", "POST"]
+
+
+def test_stopping_idle_http_reader_does_not_wait_for_the_server_to_close() -> None:
+    release = threading.Event()
+    stopped = threading.Event()
+    failures: list[Exception] = []
+
+    def source(handler: BaseHTTPRequestHandler) -> None:
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.end_headers()
+        handler.wfile.write(b"event: endpoint\ndata: /messages\n\n")
+        handler.wfile.flush()
+        release.wait(10)
+
+    with _server(source) as origin:
+        transport = mcp_client._SseTransport(f"{origin}/events")
+        transport.start()
+        response = transport._response
+
+        def stop() -> None:
+            try:
+                transport.stop()
+            except Exception as error:
+                failures.append(error)
+            finally:
+                stopped.set()
+
+        stopper = threading.Thread(target=stop, daemon=True)
+        try:
+            stopper.start()
+            assert stopped.wait(2), "stop waited on the live reader's buffer lock"
+            assert failures == []
+            assert response.closed
+            assert transport._response is None
+            assert not transport._reader_thread.is_alive()
+        finally:
+            # Release the real server even if this test runs against an old
+            # implementation which is blocked inside BufferedReader.close().
+            release.set()
+            stopper.join(timeout=3)
+            _collect(transport)
+        assert not stopper.is_alive()
