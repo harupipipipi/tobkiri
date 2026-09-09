@@ -4,6 +4,7 @@ import json
 import sys
 import threading
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -202,6 +203,99 @@ def test_mcp_environment_change_invalidates_approved_review(tmp_path, monkeypatc
     assert changed["status"] == "error"
     assert changed["error"]["code"] == "APPROVAL_ARGUMENTS_CHANGED"
     assert changed["error"]["details"]["recoverable"] is True
+
+
+def test_approved_snapshot_reaches_real_child_without_second_expansion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Signed approval must bind the actual argv/env, including literal dollars."""
+    from blocks.tool import mcp_connect
+    from domain.safety import approval
+    from domain.tool.mcp_client import McpConnections
+
+    literal = "${TOBKIRI_MCP_SECOND_PASS}"
+    monkeypatch.setenv("TOBKIRI_MCP_FIRST_PASS", literal)
+    monkeypatch.setenv("TOBKIRI_MCP_SECOND_PASS", "not-in-the-approved-snapshot")
+    server = tmp_path / "server.py"
+    server.write_text(
+        "import json, os, sys\n"
+        "for line in sys.stdin:\n"
+        " request = json.loads(line)\n"
+        " if 'id' not in request: continue\n"
+        " if request['method'] == 'initialize': result = {'capabilities': {'tools': {}}}\n"
+        " elif request['method'] == 'tools/list': result = {'tools': []}\n"
+        " else:\n"
+        "  observed = {'argument': sys.argv[1], 'env': os.environ['MCP_VALUE']}\n"
+        "  result = {'content': [{'type': 'text', 'text': json.dumps(observed)}]}\n"
+        " print(json.dumps({'id': request['id'], 'result': result}), flush=True)\n"
+    )
+    owner = McpConnections()
+    monkeypatch.setattr(mcp_connect, "McpClient", lambda: owner)
+    monkeypatch.setattr(mcp_connect, "ToolRegistry", Mock())
+    args = {
+        "server_id": "literal-snapshot",
+        "workspace_root": str(tmp_path),
+        "config": {
+            "transport": "stdio",
+            "command": sys.executable,
+            "args": ["-I", "-u", str(server), "${TOBKIRI_MCP_FIRST_PASS}"],
+            "env": {"MCP_VALUE": "${TOBKIRI_MCP_FIRST_PASS}"},
+        },
+    }
+    requested = mcp_connect.run(args, {})
+    assert owner.list_servers() == []
+    token = approval.approve(requested["data"]["approval_request_id"])["token"]
+    try:
+        connected = mcp_connect.run({**args, "approval_token": token}, {})
+        assert connected["status"] == "ok", connected
+        connection = owner._servers["literal-snapshot"]
+        process = connection._transport._proc
+        observed = owner.invoke("literal-snapshot", "inspect", {})
+        assert observed["is_error"] is False
+        assert json.loads(observed["result"]) == {"argument": literal, "env": literal}
+        replay = mcp_connect.run({**args, "approval_token": token}, {})
+        assert replay["error"]["code"] == "APPROVAL_TOKEN_USED"
+    finally:
+        owner.close()
+    assert process.poll() is not None
+    assert all(pipe.closed for pipe in (process.stdin, process.stdout, process.stderr))
+
+
+def test_sse_transport_receives_resolved_url_and_headers_verbatim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An already reviewed URL/header cannot read a second ambient placeholder."""
+    from domain.tool import mcp_client
+    from domain.tool.mcp_approval import build_mcp_snapshot
+
+    literal = "${TOBKIRI_MCP_SECOND_PASS}"
+    monkeypatch.setenv("TOBKIRI_MCP_FIRST_PASS", literal)
+    monkeypatch.setenv("TOBKIRI_MCP_SECOND_PASS", "not-approved")
+    snapshot = build_mcp_snapshot(
+        "sse-literal",
+        {
+            "transport": "sse",
+            "url": "http://localhost/events?value=${TOBKIRI_MCP_FIRST_PASS}",
+            "headers": {"Authorization": "${TOBKIRI_MCP_FIRST_PASS}"},
+        },
+        server_source="inline",
+        input_data={"workspace_root": str(tmp_path)},
+        context={},
+    )
+    factory = Mock()
+    monkeypatch.setattr(mcp_client, "_SseTransport", factory)
+    connection = mcp_client._ServerConnection("sse-literal", snapshot["effective_config"])
+    monkeypatch.setattr(connection, "_initialize", lambda: None)
+    monkeypatch.setattr(connection, "_list_tools", lambda: [])
+    try:
+        connection.connect()
+        factory.assert_called_once_with(
+            "http://localhost/events?value=" + literal,
+            headers={"Authorization": literal},
+        )
+    finally:
+        connection.disconnect()
+    factory.return_value.stop.assert_called_once_with()
 
 
 def test_registry_mutation_obsoletes_pending_mcp_review(tmp_path):

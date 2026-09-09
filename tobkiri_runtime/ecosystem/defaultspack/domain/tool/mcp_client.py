@@ -6,7 +6,6 @@ JSON-RPC 2.0 準拠。stdio / SSE トランスポート対応。
 
 import json
 import os
-import re
 import shlex
 import subprocess
 import threading
@@ -22,22 +21,6 @@ _CLIENT_INFO = {"name": "rumiai-defaults", "version": "0.1.0"}
 _DEFAULT_TIMEOUT = 30
 _STDIO_FRAME_LIMIT = 2 * 1024 * 1024
 _STDIO_QUEUE_LIMIT = 16
-_PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
-
-
-def _expand_placeholders(value):
-    if isinstance(value, str):
-        return _PLACEHOLDER_RE.sub(
-            lambda match: os.environ.get(match.group(1), ""),
-            value,
-        )
-    if isinstance(value, list):
-        return [_expand_placeholders(item) for item in value]
-    if isinstance(value, tuple):
-        return [_expand_placeholders(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _expand_placeholders(item) for key, item in value.items()}
-    return value
 
 
 def _normalize_stdio_command(command, args=None):
@@ -424,25 +407,27 @@ class _ServerConnection:
     # -- public API --
 
     def connect(self):
+        # The owner already resolved and approved this snapshot. Expanding it
+        # again could replace literal ${...} values after approval verification.
         transport_type = self.config.get("transport", "stdio")
         if transport_type == "stdio":
-            command = _expand_placeholders(self.config.get("command"))
-            command_args = _expand_placeholders(self.config.get("args"))
+            command = self.config.get("command")
+            command_args = self.config.get("args")
             command_parts = _normalize_stdio_command(command, command_args)
             if not command_parts:
                 raise ValueError("stdio transport requires 'command' in config")
             env = os.environ.copy()
-            config_env = _expand_placeholders(self.config.get("env"))
+            config_env = self.config.get("env")
             if isinstance(config_env, dict):
                 for key, value in config_env.items():
                     env[str(key)] = str(value)
-            cwd = _expand_placeholders(self.config.get("cwd"))
+            cwd = self.config.get("cwd")
             self._transport = _StdioTransport(command_parts, env=env, cwd=cwd)
         elif transport_type == "sse":
-            url = _expand_placeholders(self.config.get("url"))
+            url = self.config.get("url")
             if not url:
                 raise ValueError("sse transport requires 'url' in config")
-            headers = _expand_placeholders(self.config.get("headers"))
+            headers = self.config.get("headers")
             self._transport = _SseTransport(url, headers=headers)
         else:
             raise ValueError("Unknown transport type: {}".format(transport_type))
@@ -612,7 +597,8 @@ class McpConnections:
 
     def connect(self, server_name, config):
         """
-        MCP サーバーに接続する。
+        所有元が解決・承認した設定で MCP サーバーに接続する。
+        接続時・再接続時に設定の環境変数展開は行わない。
         config:
             transport: "stdio" | "sse"
             command: str or list  (stdio 用)
