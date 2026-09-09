@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 import pytest
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,7 +64,7 @@ def test_chat_run_engine_streams_tool_call_events_and_final_message(tmp_path, mo
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=FakeClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=FakeClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "use a tool"},
@@ -149,7 +150,7 @@ def test_chat_run_engine_provider_tool_stream_support_uses_injected_client(tmp_p
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=client).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=client).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "use a tool"},
@@ -319,7 +320,7 @@ def test_chat_run_engine_streams_browser_state_events_with_timestamped_tool_resu
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=FakeClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=FakeClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "click"},
@@ -404,7 +405,7 @@ def test_chat_run_engine_stops_for_permission_required_tool_result(tmp_path, mon
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=FakeClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=FakeClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "click"},
@@ -563,7 +564,7 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
     tool_schema = {"kind": "tool", "id": "computer_use"}
 
     first_events = list(
-        ChatRunEngine(client=ApprovalClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=ApprovalClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "show apps"},
@@ -587,7 +588,7 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
 
     resume_client = ResumeClient()
     resumed_events = list(
-        ChatRunEngine(client=resume_client).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=resume_client).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {
@@ -735,7 +736,7 @@ def test_approval_followup_replay_unwraps_controller_shaped_computer_payload(tmp
         },
     }
     events = list(
-        ChatRunEngine(client=SummaryClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=SummaryClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {
