@@ -30,6 +30,7 @@ from tobkiri_host.contracts import (
     StructuralAdapter,
 )
 from tobkiri_host.effects import InMemoryReconciliationStore
+from tobkiri_host.operation_cancellation import OwnedCancellationBinding, OwnedCancellationHandles
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.models import (
     ArtifactVariant,
@@ -2133,6 +2134,9 @@ def capture_production_dispatch(
                 provider_bindings.append(resolved_binding)
     host_contributions_by_backend: dict[str, list[Any]] = {}
     close_callbacks: list[Callable[[], None]] = []
+    cancellation_handles = OwnedCancellationHandles()
+    cancellation_roles: dict[str, tuple[str, str, str]] = {}
+    close_callbacks.append(cancellation_handles.close)
     credential_store_binding = (
         credential_store_factory(user_data_root=authority_user_data)
         if credential_store_factory is not None
@@ -2277,6 +2281,19 @@ def capture_production_dispatch(
         def presentation_owner_session_id(self) -> str:
             return self._presentation_owner_session_id
 
+        @property
+        def cancellation(self) -> OwnedCancellationBinding:
+            declaration = cancellation_roles.get(self._envelope.target_principal.value)
+            if declaration is None:
+                raise AuthorityDenied("Host Provider cancellation role is unavailable")
+            pack_id, group, role = declaration
+            return cancellation_handles.bind(
+                group=(pack_id, group), role=role, envelope=self._envelope,
+                owner_principal=self.presentation_owner_principal_id,
+                owner_session=self.presentation_owner_session_id,
+                guard=self.assert_current,
+            )
+
         def contract_client(
             self,
             *,
@@ -2380,6 +2397,19 @@ def capture_production_dispatch(
         if factory.function_id != function_id:
             raise AuthorityDenied("Host Provider hook Function identity changed")
         loaded_host_factories.append((function_id, captured_bindings, factory, backend_id))
+        cancellation_group = getattr(factory, "cancellation_group", None)
+        if cancellation_group is not None:
+            role = getattr(factory, "cancellation_role", None)
+            if (
+                not isinstance(cancellation_group, str)
+                or not 0 < len(cancellation_group) <= 128
+                or role not in {"execute", "stop"}
+            ):
+                raise AuthorityDenied("Host Provider cancellation declaration is invalid")
+            for binding in captured_bindings:
+                cancellation_roles[binding.principal_ref.value] = (
+                    binding.artifact.pack_id, cancellation_group, role,
+                )
 
     interactive_effect_coordinator = _interactive_effect_coordinator_factory(
         tuple(loaded_host_factories)
@@ -2820,7 +2850,8 @@ def capture_production_dispatch(
             ),
         ),
         stop_callbacks=(
-            (control_session.cancel_pending_reads,) if control_session is not None else ()
+            cancellation_handles.close,
+            *((control_session.cancel_pending_reads,) if control_session is not None else ()),
         ),
     )
     dispatch_holder.append(dispatch)

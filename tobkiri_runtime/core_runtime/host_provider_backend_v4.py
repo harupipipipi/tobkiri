@@ -21,6 +21,7 @@ from tobkiri_host.ports import (
     InteractiveEffectPort,
     WorkspaceMutationPort,
 )
+from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -38,6 +39,10 @@ class HostProviderInvocationContextV4(Protocol):
     @property
     def presentation_owner_session_id(self) -> str:
         """Return the Host-preserved session which originated this call chain."""
+
+    @property
+    def cancellation(self) -> OwnedCancellationBinding:
+        """Return only this verified factory's owner-scoped cancellation role."""
 
     def contract_client(
         self,
