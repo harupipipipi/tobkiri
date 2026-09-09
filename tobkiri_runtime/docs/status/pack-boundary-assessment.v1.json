@@ -2065,7 +2065,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/ecosystem.json",
-          "sha256": "f330630a1889127402ddd7afedf0c4d36901dcbc6d71ea5e87e385b51a97d564"
+          "sha256": "fdd1ee95d2ae6b2c0ba275b6c494f620bea80c41f12e8f35b6772758efcfa847"
         }
       ]
     },
