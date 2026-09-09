@@ -64,13 +64,13 @@ class CapturedMcpConnectionOwner:
         activation_id: str,
         plan_digest: str,
         security_epoch: int,
-        principal_id: str,
+        operation_principals: Mapping[str, str],
         workspace_root: Path,
         workspace_id: str,
         workspace_revision: str | int,
     ) -> None:
         if (
-            not all((profile_id, activation_id, plan_digest, principal_id))
+            not all((profile_id, activation_id, plan_digest))
             or type(security_epoch) is not int
         ):
             raise ValueError("MCP capture is incomplete")
@@ -80,7 +80,13 @@ class CapturedMcpConnectionOwner:
         if not root.is_dir():
             raise ValueError("MCP workspace is unavailable")
         self._capture = (profile_id, activation_id, plan_digest, security_epoch)
-        self._principal_id = principal_id
+        if not operation_principals or any(
+            operation not in {PREPARE, CONNECT, CALL, DISCONNECT, LIST}
+            or not isinstance(principal, str) or not principal
+            for operation, principal in operation_principals.items()
+        ):
+            raise ValueError("MCP operation principals are invalid")
+        self._operation_principals = dict(operation_principals)
         self._workspace_id = _text(workspace_id)
         if (
             type(workspace_revision) not in (str, int)
@@ -108,7 +114,7 @@ class CapturedMcpConnectionOwner:
         if (
             envelope.contract_id != CONTRACT_ID
             or envelope.contract_version != "1.0.0"
-            or envelope.target_principal.value != self._principal_id
+            or envelope.target_principal.value != self._operation_principals.get(envelope.operation_id)
             or (
                 context.profile_id,
                 context.activation_id,

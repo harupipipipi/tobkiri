@@ -30,7 +30,7 @@ from tests.test_mcp_connection_owner import connection_request as connection_req
 _EFFECT = "tobkiri.service.interactive-effect.v1"
 _APPROVAL = "tobkiri.service.interactive-approval.v1"
 _COORDINATOR = "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
-_OWNER = "tobkiri.mcp.connections"
+_OWNER = {op: op + ".service" for op in (PREPARE, CONNECT, LIST, DISCONNECT)}
 _RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -70,12 +70,18 @@ def mcp_session(tmp_path, monkeypatch):
     )
     intent["requested_edges"].extend(
         [
-            _edge(_COORDINATOR, _OWNER, CONTRACT_ID, PREPARE),
-            _edge(_COORDINATOR, _OWNER, CONTRACT_ID, CONNECT, "interactive_only"),
-            _edge("shell.tauri.default", _OWNER, CONTRACT_ID, LIST),
-            _edge("shell.tauri.default", _OWNER, CONTRACT_ID, DISCONNECT),
+            _edge(_COORDINATOR, _OWNER[PREPARE], CONTRACT_ID, PREPARE),
+            _edge(_COORDINATOR, _OWNER[CONNECT], CONTRACT_ID, CONNECT, "interactive_only"),
+            _edge("shell.tauri.default", _OWNER[LIST], CONTRACT_ID, LIST),
+            _edge("shell.tauri.default", _OWNER[DISCONNECT], CONTRACT_ID, DISCONNECT),
             _edge(
-                _OWNER,
+                _OWNER[PREPARE],
+                "rumi_workspace_mount_pack.workspace-mount.resource",
+                "tobkiri.resource.workspace.v1",
+                "rumi_workspace_mount_pack.workspace-resource",
+            ),
+            _edge(
+                _OWNER[CONNECT],
                 "rumi_workspace_mount_pack.workspace-mount.resource",
                 "tobkiri.resource.workspace.v1",
                 "rumi_workspace_mount_pack.workspace-resource",
@@ -100,10 +106,18 @@ def mcp_session(tmp_path, monkeypatch):
     shell = json.loads((source_bundle / "shell.tauri.default.shell.v1.json").read_text())
     variant = shell["launch"]["variants"][0]
     package_bundle(
-        bundle_root=bundle, artifact_root=destination / "platform-artifacts",
-        **{key: variant[key] for key in (
-            "relative_path", "entrypoint", "platform", "architecture", "bundle_identity",
-        )},
+        bundle_root=bundle,
+        artifact_root=destination / "platform-artifacts",
+        **{
+            key: variant[key]
+            for key in (
+                "relative_path",
+                "entrypoint",
+                "platform",
+                "architecture",
+                "bundle_identity",
+            )
+        },
         source_provenance_file=(
             source_bundle.parent.parent
             / "sealed-source-owner/source/packaging-source-provenance.v1.json"

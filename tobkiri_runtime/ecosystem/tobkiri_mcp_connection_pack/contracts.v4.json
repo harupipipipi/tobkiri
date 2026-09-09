@@ -78,7 +78,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b",
+            "digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -89,7 +89,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b",
+        "source_digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_mcp_connection_pack"
       },
@@ -102,7 +102,7 @@
           "deprecated": false,
           "introduced": "1.0.0"
         },
-        "provider_id": "tobkiri.mcp.connections",
+        "provider_id": "mcp.connection.prepare.service",
         "required_capabilities": [
           "mcp.connection.prepare",
           "mcp.connection.connect",
@@ -112,7 +112,7 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:b01c4441ca8b30f55a495f0f01e39f2846c17a2755a4ded41914d5a721361a82",
+      "revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
       "schema_catalog": {
         "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc": {
           "oneOf": [
@@ -316,5 +316,5 @@
     }
   ],
   "pack_id": "tobkiri_mcp_connection_pack",
-  "source_identity": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b"
+  "source_identity": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6"
 }

@@ -6,6 +6,7 @@ import ast
 import importlib.util
 from pathlib import Path
 import sys
+from typing import Any, Sequence
 
 from tobkiri_host.artifact_materialization import capture_materialized_artifact
 from tobkiri_host.contracts import ResolvedOperationBinding
@@ -25,9 +26,7 @@ def load_host_provider_factory(
     """
     captured_before = capture_materialized_artifact(pack_root, binding)
     implementation = next(
-        item
-        for item in captured_before.files
-        if item.path == captured_before.implementation_path
+        item for item in captured_before.files if item.path == captured_before.implementation_path
     )
     try:
         tree = ast.parse(
@@ -40,18 +39,15 @@ def load_host_provider_factory(
         isinstance(node, (ast.Assign, ast.AnnAssign))
         and any(
             isinstance(target, ast.Name) and target.id == "HOST_PROVIDER_FACTORY"
-            for target in (
-                node.targets if isinstance(node, ast.Assign) else (node.target,)
-            )
+            for target in (node.targets if isinstance(node, ast.Assign) else (node.target,))
         )
         for node in tree.body
     )
     if not exports_factory:
         return None
     implementation_path = pack_root / captured_before.implementation_path
-    module_name = (
-        "_tobkiri_host_provider_"
-        + binding.function.implementation_digest.removeprefix("sha256:")
+    module_name = "_tobkiri_host_provider_" + binding.function.implementation_digest.removeprefix(
+        "sha256:"
     )
     spec = importlib.util.spec_from_file_location(module_name, implementation_path)
     if spec is None or spec.loader is None:
@@ -86,4 +82,63 @@ def load_host_provider_factory(
     return factory
 
 
-__all__ = ["load_host_provider_factory"]
+def group_host_provider_captures(
+    loaded: Sequence[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]],
+) -> tuple[tuple[tuple[ResolvedOperationBinding, ...], HostProviderFactoryV4, str], ...]:
+    """Share resource lifetime only within one verified implementation/artifact.
+
+    Authority principals and edges remain operation-specific. An explicit finite
+    factory declaration only groups capture/close; it creates no dispatch edge.
+    The caller still checks the exact contribution set against these bindings.
+    """
+    groups: dict[tuple[Any, ...], tuple[list[ResolvedOperationBinding], Any, str]] = {}
+    for function_id, bindings, factory, backend_id in loaded:
+        key: tuple[Any, ...]
+        declaration = getattr(factory, "capture_group", None)
+        if declaration is None:
+            key = ("single", function_id)
+        else:
+            if (
+                not isinstance(declaration, tuple)
+                or not 1 <= len(declaration) <= 16
+                or any(
+                    not isinstance(item, str) or not 0 < len(item) <= 256 for item in declaration
+                )
+                or len(set(declaration)) != len(declaration)
+                or tuple(sorted(declaration)) != declaration
+                or function_id not in declaration
+                or not bindings
+            ):
+                raise AuthorizationError("Host Provider capture group is invalid")
+            first = bindings[0]
+            identity = (
+                first.artifact.pack_id,
+                first.artifact.publisher_lineage,
+                first.artifact.digest,
+                first.function.implementation_digest,
+            )
+            if any(
+                (
+                    binding.artifact.pack_id,
+                    binding.artifact.publisher_lineage,
+                    binding.artifact.digest,
+                    binding.function.implementation_digest,
+                )
+                != identity
+                for binding in bindings
+            ):
+                raise AuthorizationError("Host Provider capture group identity changed")
+            key = ("shared", *identity, backend_id, declaration)
+        if key in groups:
+            members, representative, _ = groups[key]
+            if type(representative).__qualname__ != type(factory).__qualname__:
+                raise AuthorizationError("Host Provider capture group factory changed")
+            members.extend(bindings)
+        else:
+            groups[key] = (list(bindings), factory, backend_id)
+    return tuple(
+        (tuple(bindings), factory, backend) for bindings, factory, backend in groups.values()
+    )
+
+
+__all__ = ["load_host_provider_factory", "group_host_provider_captures"]

@@ -65,7 +65,7 @@ def owner(tmp_path: Path):
         activation_id="active",
         plan_digest="plan",
         security_epoch=1,
-        principal_id="gateway",
+        operation_principals={op: "gateway" for op in (PREPARE, CONNECT, CALL, DISCONNECT, "mcp.connection.list")},
         workspace_root=tmp_path,
         workspace_id="workspace",
         workspace_revision=1,

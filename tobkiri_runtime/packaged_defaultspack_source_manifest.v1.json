@@ -272,7 +272,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57698,
-      "sha256": "e1a87e220694cffbdb2aefe7244380716398fd2053fd8369bcd64b2d65c27898",
+      "sha256": "949a1e710001720953a5dc99c87f8654ff803ac7b6f4ec6526a7bbe42cb5ffb9",
       "executable": false
     },
     {
@@ -293,7 +293,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 35758,
-      "sha256": "9d98d17ef428f8bef7c118a1a8a4350c7a43a723b250e63a8169474a907eed03",
+      "sha256": "825b0f84ecb1e87e32f3087c5a864dd291ac6914c6e910cef30d74b8c477faa5",
       "executable": false
     },
     {
@@ -307,7 +307,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "bd9d8e8168042259c912dc08252dbd85626d2643ffa61e07d0c6a13cae82ca62",
+      "sha256": "a3b0b05774cfe62eae76e9999777fab8f815b3334ef5ce9b2f3f88b0389aec89",
       "executable": false
     },
     {
@@ -2280,15 +2280,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_mcp_connection_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 37378,
-      "sha256": "66fd89736d2851bc6599cce167fa951121203af52d210c4b5203d382abf7e7d9",
+      "size": 39754,
+      "sha256": "8ddf9f60685eadb0c8263614d5a55aa1aa3898aaf1f6332d1538f20ac86d2958",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_mcp_connection_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 5987,
-      "sha256": "f1d938f887dd097486ad6f72db770a1a740568cbd4e9da7705384ecc0405565b",
+      "size": 8399,
+      "sha256": "a2e516a7fe575b74ca2733209a439ecaad5c00424179353375aa2c4a27579a1d",
       "executable": false
     },
     {
@@ -2484,7 +2484,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 852766,
-      "sha256": "55f2466917213404552a79681002f2208a15056991a106e5236ccf62c1ec3866",
+      "sha256": "a5d825f15073eb25bf038f2ea393bc07854844f5f01078fc6b2a83c47556a019",
       "executable": false
     },
     {

@@ -35,14 +35,16 @@ class _Workspace:
 def captured(tmp_path):
     bindings = tuple(
         SimpleNamespace(
-            function=SimpleNamespace(function_id=host.FUNCTION_ID, implementation_digest="impl"),
+            function=SimpleNamespace(
+                function_id=host.FUNCTION_IDS[operation], implementation_digest="impl"
+            ),
             operation=SimpleNamespace(
                 contract_id=CONTRACT_ID,
                 contract_version="1.0.0",
                 operation_id=operation,
             ),
             artifact=SimpleNamespace(digest="artifact"),
-            principal_ref=OpaqueAuthorityRef("gateway"),
+            principal_ref=OpaqueAuthorityRef("gateway:" + operation),
         )
         for operation in (PREPARE, CONNECT, CALL, DISCONNECT, LIST)
     )
@@ -54,13 +56,19 @@ def captured(tmp_path):
         state_root=tmp_path,
         provider_bindings=bindings,
         catalog_bindings=bindings,
-        domain_ids={(CONTRACT_ID, b.operation.operation_id, "gateway"): "domain" for b in bindings},
+        domain_ids={
+            (CONTRACT_ID, b.operation.operation_id, b.principal_ref.value): "domain"
+            for b in bindings
+        },
     )
-    provider = host.HOST_PROVIDER_FACTORY.capture(context)
+    provider = next(iter(host.HOST_PROVIDER_FACTORY.values())).capture(context)
     workspace = _Workspace(tmp_path)
 
     def invoke(operation, payload, *, session="origin-session", context_change=None):
         invocation = _Invocation(operation, payload)
+        invocation.envelope = replace(
+            invocation.envelope, target_principal=OpaqueAuthorityRef("gateway:" + operation)
+        )
         invocation.presentation_owner_session_id = session
         if context_change:
             invocation.envelope = replace(invocation.envelope, **context_change)

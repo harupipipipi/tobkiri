@@ -481,6 +481,2161 @@
       ],
       "variant_id": "defaultspack.conversation.saved.python"
     },
+    "mcp.connection.call.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.call.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.call",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.call",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.call",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.call",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.call.service.python"
+    },
+    "mcp.connection.connect.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.connect.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.connect",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.connect",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.connect",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.connect",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.connect.service.python"
+    },
+    "mcp.connection.disconnect.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.disconnect.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.disconnect",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.disconnect",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.disconnect",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.disconnect",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.disconnect.service.python"
+    },
+    "mcp.connection.list.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.list.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.list",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.list",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.list",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.list",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.list.service.python"
+    },
+    "mcp.connection.prepare.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.prepare.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.prepare",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.prepare",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.prepare",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.prepare.service.python"
+    },
     "rumi_agent_runtime_service_pack.agent-runtime.control": {
       "contract_id": "tobkiri.action.agent.run.v1",
       "contract_version": "1.0.0",
@@ -11381,1300 +13536,6 @@
       ],
       "variant_id": "tobkiri.host.pack-control.python"
     },
-    "tobkiri.mcp.connections": {
-      "contract_id": "tobkiri.service.mcp.connection.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "tobkiri.mcp.connections",
-      "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
-      "implementation_path": "runtime/host.py",
-      "input_schema": {
-        "oneOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "allowed_tools": {
-                "items": {
-                  "maxLength": 256,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                  "type": "string"
-                },
-                "maxItems": 64,
-                "minItems": 1,
-                "type": "array",
-                "uniqueItems": true
-              },
-              "config": {
-                "additionalProperties": false,
-                "properties": {
-                  "command": {
-                    "items": {
-                      "maxLength": 16384,
-                      "type": "string"
-                    },
-                    "maxItems": 256,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "cwd": {
-                    "maxLength": 4096,
-                    "type": "string"
-                  },
-                  "env": {
-                    "additionalProperties": {
-                      "maxLength": 16384,
-                      "type": "string"
-                    },
-                    "maxProperties": 128,
-                    "type": "object"
-                  },
-                  "transport": {
-                    "const": "stdio"
-                  }
-                },
-                "required": [
-                  "transport",
-                  "command",
-                  "env",
-                  "cwd"
-                ],
-                "type": "object"
-              },
-              "server_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "server_id",
-              "config",
-              "allowed_tools"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "plan": {
-                "type": "object"
-              },
-              "request": {
-                "additionalProperties": false,
-                "properties": {
-                  "allowed_tools": {
-                    "items": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                      "type": "string"
-                    },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array",
-                    "uniqueItems": true
-                  },
-                  "config": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "command": {
-                        "items": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxItems": 256,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "cwd": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "env": {
-                        "additionalProperties": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxProperties": 128,
-                        "type": "object"
-                      },
-                      "transport": {
-                        "const": "stdio"
-                      }
-                    },
-                    "required": [
-                      "transport",
-                      "command",
-                      "env",
-                      "cwd"
-                    ],
-                    "type": "object"
-                  },
-                  "server_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "server_id",
-                  "config",
-                  "allowed_tools"
-                ],
-                "type": "object"
-              }
-            },
-            "required": [
-              "request",
-              "plan"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "arguments": {
-                "type": "object"
-              },
-              "connection_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                "type": "string"
-              },
-              "tool": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "connection_id",
-              "tool",
-              "arguments"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "connection_id": {
-                "maxLength": 256,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "connection_id"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "maxProperties": 0,
-            "type": "object"
-          }
-        ]
-      },
-      "operations": [
-        {
-          "contract_id": "tobkiri.service.mcp.connection.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "mcp.connection.call",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
-          "implementation_path": "runtime/host.py",
-          "input_schema": {
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "allowed_tools": {
-                    "items": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                      "type": "string"
-                    },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array",
-                    "uniqueItems": true
-                  },
-                  "config": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "command": {
-                        "items": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxItems": 256,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "cwd": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "env": {
-                        "additionalProperties": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxProperties": 128,
-                        "type": "object"
-                      },
-                      "transport": {
-                        "const": "stdio"
-                      }
-                    },
-                    "required": [
-                      "transport",
-                      "command",
-                      "env",
-                      "cwd"
-                    ],
-                    "type": "object"
-                  },
-                  "server_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "server_id",
-                  "config",
-                  "allowed_tools"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "plan": {
-                    "type": "object"
-                  },
-                  "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "allowed_tools": {
-                        "items": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "minItems": 1,
-                        "type": "array",
-                        "uniqueItems": true
-                      },
-                      "config": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "command": {
-                            "items": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxItems": 256,
-                            "minItems": 1,
-                            "type": "array"
-                          },
-                          "cwd": {
-                            "maxLength": 4096,
-                            "type": "string"
-                          },
-                          "env": {
-                            "additionalProperties": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxProperties": 128,
-                            "type": "object"
-                          },
-                          "transport": {
-                            "const": "stdio"
-                          }
-                        },
-                        "required": [
-                          "transport",
-                          "command",
-                          "env",
-                          "cwd"
-                        ],
-                        "type": "object"
-                      },
-                      "server_id": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "server_id",
-                      "config",
-                      "allowed_tools"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "request",
-                  "plan"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "arguments": {
-                    "type": "object"
-                  },
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  },
-                  "tool": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id",
-                  "tool",
-                  "arguments"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "maxProperties": 0,
-                "type": "object"
-              }
-            ]
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "mcp.connection.call",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "contract_id": "tobkiri.service.mcp.connection.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "mcp.connection.connect",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
-          "implementation_path": "runtime/host.py",
-          "input_schema": {
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "allowed_tools": {
-                    "items": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                      "type": "string"
-                    },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array",
-                    "uniqueItems": true
-                  },
-                  "config": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "command": {
-                        "items": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxItems": 256,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "cwd": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "env": {
-                        "additionalProperties": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxProperties": 128,
-                        "type": "object"
-                      },
-                      "transport": {
-                        "const": "stdio"
-                      }
-                    },
-                    "required": [
-                      "transport",
-                      "command",
-                      "env",
-                      "cwd"
-                    ],
-                    "type": "object"
-                  },
-                  "server_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "server_id",
-                  "config",
-                  "allowed_tools"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "plan": {
-                    "type": "object"
-                  },
-                  "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "allowed_tools": {
-                        "items": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "minItems": 1,
-                        "type": "array",
-                        "uniqueItems": true
-                      },
-                      "config": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "command": {
-                            "items": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxItems": 256,
-                            "minItems": 1,
-                            "type": "array"
-                          },
-                          "cwd": {
-                            "maxLength": 4096,
-                            "type": "string"
-                          },
-                          "env": {
-                            "additionalProperties": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxProperties": 128,
-                            "type": "object"
-                          },
-                          "transport": {
-                            "const": "stdio"
-                          }
-                        },
-                        "required": [
-                          "transport",
-                          "command",
-                          "env",
-                          "cwd"
-                        ],
-                        "type": "object"
-                      },
-                      "server_id": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "server_id",
-                      "config",
-                      "allowed_tools"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "request",
-                  "plan"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "arguments": {
-                    "type": "object"
-                  },
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  },
-                  "tool": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id",
-                  "tool",
-                  "arguments"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "maxProperties": 0,
-                "type": "object"
-              }
-            ]
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "mcp.connection.connect",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "contract_id": "tobkiri.service.mcp.connection.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "mcp.connection.disconnect",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
-          "implementation_path": "runtime/host.py",
-          "input_schema": {
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "allowed_tools": {
-                    "items": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                      "type": "string"
-                    },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array",
-                    "uniqueItems": true
-                  },
-                  "config": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "command": {
-                        "items": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxItems": 256,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "cwd": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "env": {
-                        "additionalProperties": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxProperties": 128,
-                        "type": "object"
-                      },
-                      "transport": {
-                        "const": "stdio"
-                      }
-                    },
-                    "required": [
-                      "transport",
-                      "command",
-                      "env",
-                      "cwd"
-                    ],
-                    "type": "object"
-                  },
-                  "server_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "server_id",
-                  "config",
-                  "allowed_tools"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "plan": {
-                    "type": "object"
-                  },
-                  "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "allowed_tools": {
-                        "items": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "minItems": 1,
-                        "type": "array",
-                        "uniqueItems": true
-                      },
-                      "config": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "command": {
-                            "items": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxItems": 256,
-                            "minItems": 1,
-                            "type": "array"
-                          },
-                          "cwd": {
-                            "maxLength": 4096,
-                            "type": "string"
-                          },
-                          "env": {
-                            "additionalProperties": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxProperties": 128,
-                            "type": "object"
-                          },
-                          "transport": {
-                            "const": "stdio"
-                          }
-                        },
-                        "required": [
-                          "transport",
-                          "command",
-                          "env",
-                          "cwd"
-                        ],
-                        "type": "object"
-                      },
-                      "server_id": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "server_id",
-                      "config",
-                      "allowed_tools"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "request",
-                  "plan"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "arguments": {
-                    "type": "object"
-                  },
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  },
-                  "tool": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id",
-                  "tool",
-                  "arguments"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "maxProperties": 0,
-                "type": "object"
-              }
-            ]
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "mcp.connection.disconnect",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "contract_id": "tobkiri.service.mcp.connection.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "mcp.connection.list",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
-          "implementation_path": "runtime/host.py",
-          "input_schema": {
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "allowed_tools": {
-                    "items": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                      "type": "string"
-                    },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array",
-                    "uniqueItems": true
-                  },
-                  "config": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "command": {
-                        "items": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxItems": 256,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "cwd": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "env": {
-                        "additionalProperties": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxProperties": 128,
-                        "type": "object"
-                      },
-                      "transport": {
-                        "const": "stdio"
-                      }
-                    },
-                    "required": [
-                      "transport",
-                      "command",
-                      "env",
-                      "cwd"
-                    ],
-                    "type": "object"
-                  },
-                  "server_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "server_id",
-                  "config",
-                  "allowed_tools"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "plan": {
-                    "type": "object"
-                  },
-                  "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "allowed_tools": {
-                        "items": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "minItems": 1,
-                        "type": "array",
-                        "uniqueItems": true
-                      },
-                      "config": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "command": {
-                            "items": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxItems": 256,
-                            "minItems": 1,
-                            "type": "array"
-                          },
-                          "cwd": {
-                            "maxLength": 4096,
-                            "type": "string"
-                          },
-                          "env": {
-                            "additionalProperties": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxProperties": 128,
-                            "type": "object"
-                          },
-                          "transport": {
-                            "const": "stdio"
-                          }
-                        },
-                        "required": [
-                          "transport",
-                          "command",
-                          "env",
-                          "cwd"
-                        ],
-                        "type": "object"
-                      },
-                      "server_id": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "server_id",
-                      "config",
-                      "allowed_tools"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "request",
-                  "plan"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "arguments": {
-                    "type": "object"
-                  },
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  },
-                  "tool": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id",
-                  "tool",
-                  "arguments"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "maxProperties": 0,
-                "type": "object"
-              }
-            ]
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "mcp.connection.list",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "contract_id": "tobkiri.service.mcp.connection.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "mcp.connection.prepare",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
-          "implementation_path": "runtime/host.py",
-          "input_schema": {
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "allowed_tools": {
-                    "items": {
-                      "maxLength": 256,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                      "type": "string"
-                    },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array",
-                    "uniqueItems": true
-                  },
-                  "config": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "command": {
-                        "items": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxItems": 256,
-                        "minItems": 1,
-                        "type": "array"
-                      },
-                      "cwd": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "env": {
-                        "additionalProperties": {
-                          "maxLength": 16384,
-                          "type": "string"
-                        },
-                        "maxProperties": 128,
-                        "type": "object"
-                      },
-                      "transport": {
-                        "const": "stdio"
-                      }
-                    },
-                    "required": [
-                      "transport",
-                      "command",
-                      "env",
-                      "cwd"
-                    ],
-                    "type": "object"
-                  },
-                  "server_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "server_id",
-                  "config",
-                  "allowed_tools"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "plan": {
-                    "type": "object"
-                  },
-                  "request": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "allowed_tools": {
-                        "items": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "minItems": 1,
-                        "type": "array",
-                        "uniqueItems": true
-                      },
-                      "config": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "command": {
-                            "items": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxItems": 256,
-                            "minItems": 1,
-                            "type": "array"
-                          },
-                          "cwd": {
-                            "maxLength": 4096,
-                            "type": "string"
-                          },
-                          "env": {
-                            "additionalProperties": {
-                              "maxLength": 16384,
-                              "type": "string"
-                            },
-                            "maxProperties": 128,
-                            "type": "object"
-                          },
-                          "transport": {
-                            "const": "stdio"
-                          }
-                        },
-                        "required": [
-                          "transport",
-                          "command",
-                          "env",
-                          "cwd"
-                        ],
-                        "type": "object"
-                      },
-                      "server_id": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "server_id",
-                      "config",
-                      "allowed_tools"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "request",
-                  "plan"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "arguments": {
-                    "type": "object"
-                  },
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  },
-                  "tool": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id",
-                  "tool",
-                  "arguments"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "connection_id": {
-                    "maxLength": 256,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "connection_id"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "maxProperties": 0,
-                "type": "object"
-              }
-            ]
-          },
-          "kind": "legacy-explicit-entrypoint",
-          "operation_id": "mcp.connection.prepare",
-          "output_schema": {
-            "type": "object"
-          },
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "tobkiri_mcp_connection_pack",
-      "pack_id": "tobkiri_mcp_connection_pack",
-      "source": [
-        {
-          "entrypoint_id": "mcp.connection.call",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "entrypoint_id": "mcp.connection.connect",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "entrypoint_id": "mcp.connection.disconnect",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "entrypoint_id": "mcp.connection.list",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        },
-        {
-          "entrypoint_id": "mcp.connection.prepare",
-          "kind": "legacy-explicit-entrypoint",
-          "pack_source_id": "tobkiri_mcp_connection_pack",
-          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
-        }
-      ],
-      "variant_id": "tobkiri.mcp.connections.python"
-    },
     "tobkiri.ui.catalog.read": {
       "contract_id": "tobkiri.resource.ui.settings.v1",
       "contract_version": "1.0.0",
@@ -13640,7 +14501,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:acf94cc97b42df4368faa8c53fe1f5fdd1df8cb0ce3ef545d3f1606ed1875583",
+    "input_digest": "sha256:d97388ec716dafe6ccd9da2e8814bc079e5eb44af7267a5f77c19695aa7849d9",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -14347,7 +15208,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:3c6ee8736c7b1de8f3c0d33470a9cb6694c516df003fce60d936f99caba28a06",
+        "digest": "sha256:f94d5066fc85101bad69f2ebcb0cb153a4c729a3805fcaebe49409fd7e059864",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

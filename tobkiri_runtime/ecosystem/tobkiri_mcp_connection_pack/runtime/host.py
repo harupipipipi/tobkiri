@@ -25,8 +25,8 @@ from core_runtime.mcp.connection_owner import (
 
 
 PACK_ID = "tobkiri_mcp_connection_pack"
-FUNCTION_ID = "tobkiri.mcp.connections"
 _OPERATIONS = frozenset({PREPARE, CONNECT, CALL, DISCONNECT, LIST})
+FUNCTION_IDS = {operation: operation + ".service" for operation in _OPERATIONS}
 _WORKSPACE_CONTRACT = "tobkiri.resource.workspace.v1"
 _WORKSPACE_OPERATION = "rumi_workspace_mount_pack.workspace-resource"
 _CAPACITY = 8
@@ -43,6 +43,10 @@ class _CapturedConnections:
 
     def __init__(self, context: HostProviderCaptureContextV4) -> None:
         self.context = context
+        self._principals = {
+            binding.operation.operation_id: binding.principal_ref.value
+            for binding in context.provider_bindings
+        }
         self._owners: dict[str, _WorkspaceOwner] = {}
         self._routes: dict[str, tuple[_WorkspaceOwner, tuple[str, str]]] = {}
         # Serialize startup admission, not tool calls on separate connections.
@@ -64,7 +68,7 @@ class _CapturedConnections:
             expected.activation["activation_id"],
             expected.plan_digest,
             expected.security_epoch,
-        ) or invocation.envelope.target_principal != expected.provider_bindings[0].principal_ref:
+        ) or invocation.envelope.target_principal.value != self._principals.get(operation):
             raise PermissionError("MCP capture binding changed")
         if (
             operation not in _OPERATIONS
@@ -169,7 +173,7 @@ class _CapturedConnections:
                     activation_id=str(context.activation["activation_id"]),
                     plan_digest=context.plan_digest,
                     security_epoch=context.security_epoch,
-                    principal_id=context.provider_bindings[0].principal_ref.value,
+                    operation_principals=self._principals,
                     workspace_root=Path(workspace["root"]),
                     workspace_id=workspace["id"],
                     workspace_revision=workspace["revision"],
@@ -253,9 +257,12 @@ def _workspace(client: Any, profile_id: str, *, workspace_id: str | None = None)
 
 
 class McpConnectionsHostFactoryV4:
-    """Contribute one finite lifecycle Function under exact Host verification."""
+    """Keep separate operation principals over one captured resource lifetime."""
 
-    function_id = FUNCTION_ID
+    capture_group = tuple(sorted(FUNCTION_IDS.values()))
+
+    def __init__(self, function_id: str) -> None:
+        self.function_id = function_id
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Own one captured Profile's connections and close them at deactivation."""
@@ -264,7 +271,7 @@ class McpConnectionsHostFactoryV4:
             not bindings
             or not context.activation.get("activation_id")
             or any(
-                binding.function.function_id != FUNCTION_ID
+                binding.function.function_id != FUNCTION_IDS.get(binding.operation.operation_id)
                 or binding.operation.contract_id != CONTRACT_ID
                 or binding.operation.operation_id not in _OPERATIONS
                 for binding in bindings
@@ -292,4 +299,6 @@ class McpConnectionsHostFactoryV4:
         return CapturedHostProviderV4(tuple(contributions), service.close)
 
 
-HOST_PROVIDER_FACTORY = McpConnectionsHostFactoryV4()
+HOST_PROVIDER_FACTORY = {
+    function_id: McpConnectionsHostFactoryV4(function_id) for function_id in FUNCTION_IDS.values()
+}

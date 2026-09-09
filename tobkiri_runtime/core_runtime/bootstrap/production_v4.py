@@ -2475,7 +2475,9 @@ def capture_production_dispatch(
         else None
     )
 
-    for _function_id, captured_bindings, factory, backend_id in loaded_host_factories:
+    from core_runtime.host_provider_hooks_v4 import group_host_provider_captures
+
+    for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
         captured_provider = factory.capture(
             host_provider_capture_context(
                 captured_bindings,

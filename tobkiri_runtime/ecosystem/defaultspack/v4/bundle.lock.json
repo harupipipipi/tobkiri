@@ -1409,12 +1409,12 @@
     {
       "path": "packs/tobkiri_mcp_connection_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:66fd89736d2851bc6599cce167fa951121203af52d210c4b5203d382abf7e7d9"
+      "digest": "sha256:8ddf9f60685eadb0c8263614d5a55aa1aa3898aaf1f6332d1538f20ac86d2958"
     },
     {
       "path": "packs/tobkiri_mcp_connection_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:f1d938f887dd097486ad6f72db770a1a740568cbd4e9da7705384ecc0405565b"
+      "digest": "sha256:a2e516a7fe575b74ca2733209a439ecaad5c00424179353375aa2c4a27579a1d"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",

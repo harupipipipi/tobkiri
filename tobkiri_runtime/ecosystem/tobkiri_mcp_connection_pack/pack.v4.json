@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:e65052a35de1763b70a517316ff63c05f97a043a3bbd92d4f821fe0c33d908c1",
+      "digest": "sha256:98ff6274f3b9f1c4c1c3ed30b4073cac99a5344289965278f06d455acb79df5b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
+      "digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
       "kind": "executable",
       "path": "runtime/host.py"
     }
@@ -21,29 +21,65 @@
         "mcp.connection.disconnect",
         "mcp.connection.list"
       ],
-      "revision_digest": "sha256:b01c4441ca8b30f55a495f0f01e39f2846c17a2755a4ded41914d5a721361a82"
+      "revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:b01c4441ca8b30f55a495f0f01e39f2846c17a2755a4ded41914d5a721361a82",
-      "id": "tobkiri.mcp.connections",
-      "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
+      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "id": "mcp.connection.call.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
       "isolation": "dedicated_process",
       "operations": [
-        "mcp.connection.prepare",
-        "mcp.connection.connect",
-        "mcp.connection.call",
-        "mcp.connection.disconnect",
+        "mcp.connection.call"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "id": "mcp.connection.connect.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "isolation": "dedicated_process",
+      "operations": [
+        "mcp.connection.connect"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "id": "mcp.connection.disconnect.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "isolation": "dedicated_process",
+      "operations": [
+        "mcp.connection.disconnect"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "id": "mcp.connection.list.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "isolation": "dedicated_process",
+      "operations": [
         "mcp.connection.list"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "id": "mcp.connection.prepare.service",
+      "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
+      "isolation": "dedicated_process",
+      "operations": [
+        "mcp.connection.prepare"
       ],
       "role": "host_capability_provider"
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:d4238be66e8ad30b46aaa45cd56632b04811db9e847612239286798d170fb228",
-    "contract_catalog_digest": "sha256:9e966bc2acb1733dd0df4d8e4745f7f15dbffbb8dabcd105321c371723529515",
-    "source_identity": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b"
+    "artifact_set_digest": "sha256:008502311e76f4687bc98872422ed4ff10cd7551c412f413310c9da413556a40",
+    "contract_catalog_digest": "sha256:3f31bf9525b924bcd00ea7bb58991d33f15f2a00aa7fc942a196bd62e0f2b2b0",
+    "source_identity": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6"
   },
   "migration": {
     "compatibility": "none",
@@ -60,7 +96,7 @@
       ],
       "operation_id": "mcp.connection.call",
       "owner": "tobkiri_mcp_connection_pack",
-      "provider_id": "tobkiri.mcp.connections",
+      "provider_id": "mcp.connection.call.service",
       "source_kind": "canonical_v4_contract"
     },
     {
@@ -71,7 +107,7 @@
       ],
       "operation_id": "mcp.connection.connect",
       "owner": "tobkiri_mcp_connection_pack",
-      "provider_id": "tobkiri.mcp.connections",
+      "provider_id": "mcp.connection.connect.service",
       "source_kind": "canonical_v4_contract"
     },
     {
@@ -82,7 +118,7 @@
       ],
       "operation_id": "mcp.connection.disconnect",
       "owner": "tobkiri_mcp_connection_pack",
-      "provider_id": "tobkiri.mcp.connections",
+      "provider_id": "mcp.connection.disconnect.service",
       "source_kind": "canonical_v4_contract"
     },
     {
@@ -92,7 +128,7 @@
       ],
       "operation_id": "mcp.connection.list",
       "owner": "tobkiri_mcp_connection_pack",
-      "provider_id": "tobkiri.mcp.connections",
+      "provider_id": "mcp.connection.list.service",
       "source_kind": "canonical_v4_contract"
     },
     {
@@ -102,12 +138,12 @@
       ],
       "operation_id": "mcp.connection.prepare",
       "owner": "tobkiri_mcp_connection_pack",
-      "provider_id": "tobkiri.mcp.connections",
+      "provider_id": "mcp.connection.prepare.service",
       "source_kind": "canonical_v4_contract"
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:d4238be66e8ad30b46aaa45cd56632b04811db9e847612239286798d170fb228",
+    "artifact_digest": "sha256:008502311e76f4687bc98872422ed4ff10cd7551c412f413310c9da413556a40",
     "display_name": "Tobkiri MCP Connections",
     "id": "tobkiri_mcp_connection_pack",
     "kind": "host_extension",
@@ -117,7 +153,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b",
+        "digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -128,7 +164,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b",
+    "source_digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_mcp_connection_pack"
   },
@@ -136,14 +172,42 @@
     {
       "contract_reference": "tobkiri.service.mcp.connection.v1",
       "operations": [
-        "mcp.connection.prepare",
-        "mcp.connection.connect",
-        "mcp.connection.call",
-        "mcp.connection.disconnect",
+        "mcp.connection.call"
+      ],
+      "owner": "tobkiri_mcp_connection_pack",
+      "provider_id": "mcp.connection.call.service"
+    },
+    {
+      "contract_reference": "tobkiri.service.mcp.connection.v1",
+      "operations": [
+        "mcp.connection.connect"
+      ],
+      "owner": "tobkiri_mcp_connection_pack",
+      "provider_id": "mcp.connection.connect.service"
+    },
+    {
+      "contract_reference": "tobkiri.service.mcp.connection.v1",
+      "operations": [
+        "mcp.connection.disconnect"
+      ],
+      "owner": "tobkiri_mcp_connection_pack",
+      "provider_id": "mcp.connection.disconnect.service"
+    },
+    {
+      "contract_reference": "tobkiri.service.mcp.connection.v1",
+      "operations": [
         "mcp.connection.list"
       ],
       "owner": "tobkiri_mcp_connection_pack",
-      "provider_id": "tobkiri.mcp.connections"
+      "provider_id": "mcp.connection.list.service"
+    },
+    {
+      "contract_reference": "tobkiri.service.mcp.connection.v1",
+      "operations": [
+        "mcp.connection.prepare"
+      ],
+      "owner": "tobkiri_mcp_connection_pack",
+      "provider_id": "mcp.connection.prepare.service"
     }
   ],
   "requirements": {
