@@ -12,7 +12,11 @@ from ..profile_definition_store_v4 import (
     ProfileDefinitionStore,
     ProfileDefinitionStoreConflict,
 )
-from .profile_source_update import profile_scope_successor, profile_source_additions
+from .profile_source_update import (
+    interrupted_source_update_predecessor,
+    profile_scope_successor,
+    profile_source_additions,
+)
 
 
 def bootstrap_review_catalog(
@@ -66,18 +70,26 @@ def bootstrap_review_catalog(
                 active.resolved.lock["lock_digest"],
             )
             active_profile = active.resolved.profile
-    if identity != (
+    if not isinstance(definition_digest, str) or identity != (
         pointer.profile_revision,
         pointer.activation_id,
         pointer.plan_digest,
         pointer.lock_digest,
-    ) or definition_digest != canonical_digest(registered.profile):
+    ):
         raise ProfileDefinitionStoreConflict(
             "bootstrap review does not match the verified active definition"
         )
     if not isinstance(active_profile, Mapping):
         raise runtime.denied("bootstrap review has no verified Pack selection")
     candidate = deepcopy(dict(registered.profile))
+    if definition_digest != canonical_digest(registered.profile):
+        candidate = interrupted_source_update_predecessor(
+            ProfileDefinitionStore(user_data).snapshot(),
+            registered.profile,
+            definition_digest,
+            catalog.profiles[profile_id],
+            successor_required=successor_required,
+        )
     if successor_required:
         candidate["shell"] = deepcopy(catalog.profiles[profile_id]["shell"])
     if successor_required or include_source_additions:

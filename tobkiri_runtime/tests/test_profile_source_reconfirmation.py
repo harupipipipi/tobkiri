@@ -8,20 +8,25 @@ import pytest
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.bootstrap import profile_capture
 from core_runtime.bootstrap.profile_registry import register_bootstrap_definition
-from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
+from core_runtime.bootstrap.profile_source_update import interrupted_source_update_predecessor
+from core_runtime.profile_definition_store_v4 import (
+    ProfileDefinitionStore, ProfileDefinitionStoreConflict,
+)
 from core_runtime.profile_runtime_port import require_profile_runtime
 from ecosystem.defaultspack.defaultspack.runtime_composition import (
     defaultspack_runtime_capture_inputs,
 )
 from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore, ProfileResolutionDenied
 from tests.test_profile_architecture_review_c import _packaged_catalog_revision, _resolve
+from tobkiri_protocol.canonical import canonical_digest
 
 
 @pytest.mark.parametrize("unpinned_scope", [False, True])
 @pytest.mark.parametrize("same_catalog", [False, True])
+@pytest.mark.parametrize("interrupted", [False, True])
 def test_source_additions_require_their_own_confirmation_and_survive_restart(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unpinned_scope: bool,
-    same_catalog: bool,
+    same_catalog: bool, interrupted: bool,
 ) -> None:
     predecessor_catalog = _packaged_catalog_revision(tmp_path / "predecessor", b"before")
     successor_catalog = (
@@ -123,6 +128,29 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     assert ProfileDefinitionStore(user_data).snapshot() == before
     assert pointer_path.read_bytes() == pointer_before
 
+    if interrupted:
+        method = "activate" if same_catalog else "reconcile_active"
+
+        def fail_before_activation(*args, **kwargs):
+            raise OSError("activation commit interrupted")
+
+        with monkeypatch.context() as failure:
+            failure.setattr(ActivationStore, method, fail_before_activation)
+            with pytest.raises(OSError, match="commit interrupted"):
+                profile_capture.capture_bootstrap_profile(
+                    include_source_additions=True, confirmation=confirmation,
+                )
+        assert pointer_path.read_bytes() == pointer_before
+        registered_after_failure = ProfileDefinitionStore(user_data).snapshot()
+        assert registered_after_failure != before
+        _, confirmation = profile_capture.prepare_bootstrap_profile_review(
+            include_source_additions=True,
+        )
+        assert ProfileDefinitionStore(user_data).snapshot() == registered_after_failure
+        assert pointer_path.read_bytes() == pointer_before
+        with pytest.raises(ProfileResolutionDenied, match="explicit confirmation"):
+            profile_capture.capture_bootstrap_profile(include_source_additions=True)
+
     active = profile_capture.capture_bootstrap_profile(
         include_source_additions=True, confirmation=confirmation
     )
@@ -145,6 +173,50 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
         ProfileDefinitionStore(user_data).get_profile("defaults").display_name
         == "My retained Defaults"
     )
+
+
+@pytest.mark.parametrize("change", [
+    "unrelated_edit", "wrong_parent", "tampered_predecessor", "stale_current",
+    "tombstone", "wrong_profile",
+])
+def test_interrupted_update_recovery_rejects_unrelated_registry_changes(change: str) -> None:
+    """Historical ancestry alone cannot authorize an arbitrary registered edit."""
+    previous = {
+        "profile_id": "defaults", "base": {"pack_id": "base"},
+        "shell": {"pack_id": "shell"}, "packs": [{"pack_id": "old"}],
+        "requested_edges": [],
+    }
+    source = deepcopy(previous)
+    source["packs"].append({"pack_id": "new"})
+    registered = deepcopy(source)
+    if change == "unrelated_edit":
+        registered["display_name"] = "Unrelated edit"
+    prior_digest = canonical_digest(previous)
+    current_digest = canonical_digest(registered)
+    entry = {
+        "profile_id": "defaults", "tombstone": False,
+        "current_revision": current_digest,
+        "revisions": [
+            {"profile_revision": prior_digest, "profile": previous},
+            {"profile_revision": current_digest, "profile": registered,
+             "parent_revision": prior_digest},
+        ],
+    }
+    if change == "wrong_parent":
+        entry["revisions"][1]["parent_revision"] = "different"
+    elif change == "tampered_predecessor":
+        entry["revisions"][0]["profile"]["display_name"] = "Changed history"
+    elif change == "stale_current":
+        entry["current_revision"] = "different"
+    elif change == "tombstone":
+        entry["tombstone"] = True
+    elif change == "wrong_profile":
+        entry["profile_id"] = "another-profile"
+    with pytest.raises(ProfileDefinitionStoreConflict, match="verified interrupted"):
+        interrupted_source_update_predecessor(
+            {"profiles": [entry]}, registered, prior_digest, source,
+            successor_required=False,
+        )
 
 
 def test_source_update_cannot_create_an_unconfirmed_initial_profile(

@@ -271,7 +271,9 @@ class DurableResourceLedger(ResourceLedger):
                 raise ValueError("ledger reservations are not an array")
             if dict(raw.get("identity") or {}) != self._identity:
                 if rows:
-                    raise ValueError("predecessor reservations require confirmed release")
+                    raise AdmissionError(
+                        "outstanding admission reservations require confirmed supervisor release"
+                    )
                 return
             for row in rows:
                 if not isinstance(row, Mapping):

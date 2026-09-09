@@ -323,7 +323,7 @@ def test_durable_reservation_requires_release_after_deadline_and_restart(
     assert reopened.runtime_used == reservation.amount
     with pytest.raises(ResourceExhaustedError):
         reopened.reserve("p1", ResourceAmount(100))
-    with pytest.raises(AdmissionError, match="ledger is invalid"):
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
         DurableResourceLedger(
             identity={**identity, "activation_id": "b"}, **options,
         )
