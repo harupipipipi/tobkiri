@@ -276,6 +276,7 @@ jobs:
             tests/test_mcp_sse_bounds.py \
             tests/test_mcp_connection_owner.py \
             tests/test_mcp_host_provider.py \
+            tests/test_tool_registry_host.py \
             tests/test_mcp_host_broker.py \
             tests/test_mcp_gateway_bridge.py \
             tests/test_host_provider_capture_groups.py \

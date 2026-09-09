@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_tool_registry_pack",
-  "source_identity": "sha256:5493e0a0674ed2aacc015fbec1561c6f7c257b0d4ebb350d5c91bed1de8fe397",
+  "source_identity": "sha256:d13ae9fc7589c33c3c01aae28ba2037c2c3c0e7b49f0509bc08e6b7b5e49da3e",
   "variants": [
     {
       "variant_id": "rumi_tool_registry_pack.tool-registry.definition.python",
       "function_id": "rumi_tool_registry_pack.tool-registry.definition",
-      "implementation_path": "runtime/registry.py",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.resource.tool.definition.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:e3272ff086e855b23cdee25b0819732f8598c6b7e419877ed4b17f77c9af9e39",
+          "revision_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
           "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
           "input_schema": {
             "type": "object"
@@ -40,8 +40,8 @@
     {
       "variant_id": "rumi_tool_registry_pack.tool-registry.manage.python",
       "function_id": "rumi_tool_registry_pack.tool-registry.manage",
-      "implementation_path": "runtime/registry.py",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -53,7 +53,7 @@
         {
           "contract_id": "tobkiri.action.tool.definition.manage.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b721639fed8ece6b0c816ec2f3c4937ae1f308a158f75bbfcd57cd992aa190fb",
+          "revision_digest": "sha256:6714fad639623466036b29ea003c861fb81c720faef16ac8ffd8c88c56936987",
           "operation_id": "rumi_tool_registry_pack.tool-definition-manage",
           "input_schema": {
             "type": "object"
@@ -74,8 +74,8 @@
     {
       "variant_id": "rumi_tool_registry_pack.tool-registry.migrate.python",
       "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
-      "implementation_path": "runtime/registry.py",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -87,7 +87,7 @@
         {
           "contract_id": "tobkiri.action.tool.definition.migrate.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:c82dc5f6eb5885033dec4b81ec0db2044a755f340845e2af6ff5a7ce6df51ebb",
+          "revision_digest": "sha256:7dad97a1654054ad5ea9f4cf797637b05a9b868c66d8c61c2b9bd1ac7ef15983",
           "operation_id": "rumi_tool_registry_pack.tool-definition-migrate",
           "input_schema": {
             "type": "object"
@@ -106,6 +106,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:4652f469e5bc71151df5e5d29ce0cdebcced2509d55614debff12583a27f6628",
-  "catalog_digest": "sha256:47c20fc1f3fb3515ded2be16cac2a1fe8a9219de282ad6c32db081c7b8909eee"
+  "materialization_catalog_digest": "sha256:6bc15262b812797d76df5262876e846b2972d7fb83eda9d7c42f0cf775210da3",
+  "catalog_digest": "sha256:ae963010b96dd2669a1d2d5f33f8f3fdd2c4faacebb788534f321ca2ca8c5168"
 }

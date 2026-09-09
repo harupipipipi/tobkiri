@@ -15002,7 +15002,7 @@
       ],
       "dependencies": {},
       "description": "Authoritative provider-neutral tool definitions and aliases.",
-      "display_name": "Rumi Tool Registry",
+      "display_name": "Tobkiri Tool Registry",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -15037,7 +15037,11 @@
             {
               "entrypoint_id": "tool-definition-manage",
               "id": "rumi_tool_registry_pack.tool-definition-manage",
-              "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824"
+              "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542",
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:tool.definition.manage"
+              ]
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -15072,7 +15076,11 @@
             {
               "entrypoint_id": "tool-definition-migrate",
               "id": "rumi_tool_registry_pack.tool-definition-migrate",
-              "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824"
+              "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542",
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:tool.definition.migrate"
+              ]
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -15105,7 +15113,11 @@
             {
               "entrypoint_id": "tool-definition-resource",
               "id": "rumi_tool_registry_pack.tool-definition-resource",
-              "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824"
+              "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542",
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:tool.definition.read"
+              ]
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -15140,9 +15152,14 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
+          "digest": "sha256:a482061019a63e5934c5f8efdc7491ad7a06a67a224797b737ab331641eb63f5",
           "kind": "executable",
           "path": "runtime/registry.py"
+        },
+        {
+          "kind": "executable",
+          "path": "runtime/host.py",
+          "digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542"
         }
       ],
       "secrets": [],
@@ -15165,7 +15182,33 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "host_brokered"
+      "workspace_boundary": "host_brokered",
+      "functions": [
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.manage",
+          "contract_id": "tobkiri.action.tool.definition.manage.v1",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-manage"
+          ],
+          "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542"
+        },
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
+          "contract_id": "tobkiri.action.tool.definition.migrate.v1",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-migrate"
+          ],
+          "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542"
+        },
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ],
+          "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542"
+        }
+      ]
     },
     {
       "approval_policy": "none",

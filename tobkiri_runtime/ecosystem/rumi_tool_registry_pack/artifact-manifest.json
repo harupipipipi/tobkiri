@@ -6,7 +6,7 @@
     },
     {
       "path": "runtime/registry.py",
-      "sha256": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824"
+      "sha256": "sha256:a482061019a63e5934c5f8efdc7491ad7a06a67a224797b737ab331641eb63f5"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

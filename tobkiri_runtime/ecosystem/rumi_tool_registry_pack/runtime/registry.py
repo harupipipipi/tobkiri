@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 import re
 import tempfile
+import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
-from core_runtime.runtime_locks import NamedLock
+from core_runtime.runtime_locks import LockTimeout, NamedLock
 
 STORE_VERSION = "rumi.tool-definition-registry.v1"
 DEFINITION_CONTRIBUTION = "rumi.resource.tool.definition.contribution.v1"
@@ -28,8 +30,10 @@ class ToolDefinitionRegistry:
         profile_id: str,
         *,
         user_data_root: Path | None = None,
+        guard: Callable[[], None] | None = None,
     ) -> None:
         self.profile_id = validate_profile_id(profile_id)
+        self._guard = guard
         self.root = (
             Path(user_data_root or USER_DATA_DIR)
             / "packs"
@@ -77,9 +81,12 @@ class ToolDefinitionRegistry:
     def save(self, record: Mapping[str, Any], expected_revision: int) -> dict[str, Any]:
         """Save one normalized definition at an exact revision."""
         normalized = _definition(record)
-        with NamedLock(self.lock_root, "tool-definitions"):
+        with self._mutation_lock():
             state = self._read()
             _assert_revision(state, expected_revision)
+            tool_id = normalized["tool_id"]
+            if tool_id in state["aliases"] and tool_id not in state["definitions"]:
+                raise ValueError("tool definition collides with an alias")
             state["definitions"][normalized["tool_id"]] = normalized
             state["revision"] += 1
             self._write(state)
@@ -92,7 +99,7 @@ class ToolDefinitionRegistry:
     def delete(self, tool_id: str, expected_revision: int) -> dict[str, Any]:
         """Delete one definition and aliases pointing to it."""
         tool_id = _identifier(tool_id)
-        with NamedLock(self.lock_root, "tool-definitions"):
+        with self._mutation_lock():
             state = self._read()
             _assert_revision(state, expected_revision)
             if tool_id not in state["definitions"]:
@@ -117,7 +124,7 @@ class ToolDefinitionRegistry:
         """Bind an explicit compatibility alias to an existing definition."""
         alias = _identifier(alias)
         target_tool_id = _identifier(target_tool_id)
-        with NamedLock(self.lock_root, "tool-definitions"):
+        with self._mutation_lock():
             state = self._read()
             _assert_revision(state, expected_revision)
             if target_tool_id not in state["definitions"]:
@@ -161,11 +168,13 @@ class ToolDefinitionRegistry:
             raise RuntimeError("tool registry migration source changed")
         normalized = [_definition(item) for item in raw_definitions]
         normalized.sort(key=lambda item: item["tool_id"])
+        if len({item["tool_id"] for item in normalized}) != len(normalized):
+            raise ValueError("tool migration contains duplicate definitions")
         normalized_aliases = {
             _identifier(alias): _identifier(target)
             for alias, target in raw_aliases.items()
         }
-        with NamedLock(self.lock_root, "tool-definitions"):
+        with self._mutation_lock():
             if self.path.is_file():
                 raise RuntimeError("tool registry target is already initialized")
             tool_ids = {item["tool_id"] for item in normalized}
@@ -178,6 +187,7 @@ class ToolDefinitionRegistry:
                 raise ValueError("tool alias collides with a definition")
             migration_id = f"migration-{uuid.uuid4().hex}"
             backup = self.backup_root / migration_id
+            self._check_current()
             backup.mkdir(parents=True, exist_ok=False)
             os.chmod(backup, 0o700)
             _atomic_json(backup / "legacy-tool-registry.json", source)
@@ -201,21 +211,52 @@ class ToolDefinitionRegistry:
             "registry_revision": 1,
         }
 
-    def rollback_migration(self, migration_id: str) -> dict[str, Any]:
-        """Remove migrated owner state only for the exact migration marker."""
-        with NamedLock(self.lock_root, "tool-definitions"):
+    def rollback_migration(
+        self, migration_id: str, expected_revision: int = 1
+    ) -> dict[str, Any]:
+        """Roll back an exact revision; legacy calls require pristine migration."""
+        with self._mutation_lock():
             state = self._read()
+            _assert_revision(state, expected_revision)
             marker = state.get("migration")
             if (
                 not isinstance(marker, Mapping)
                 or marker.get("migration_id") != migration_id
             ):
                 raise ValueError("tool registry migration marker mismatch")
+            self._check_current()
             _atomic_json(self.root / f"rollback-{migration_id}.json", state)
+            self._check_current()
             self.path.unlink(missing_ok=True)
         return {"migration_id": migration_id, "rolled_back": True}
 
+    def _check_current(self) -> None:
+        if self._guard is not None:
+            self._guard()
+
+    @contextmanager
+    def _mutation_lock(self) -> Iterator[None]:
+        # Preserve the existing lock identity while making Host waits cancellable.
+        if self._guard is None:
+            with NamedLock(self.lock_root, "tool-definitions"):
+                yield
+            return
+        lock = NamedLock(self.lock_root, "tool-definitions", timeout_ms=0)
+        while True:
+            self._check_current()
+            try:
+                lock.acquire()
+                break
+            except LockTimeout:
+                time.sleep(0.01)
+        try:
+            self._check_current()
+            yield
+        finally:
+            lock.release()
+
     def _read(self) -> dict[str, Any]:
+        self._check_current()
         if not self.path.is_file():
             return self._empty()
         value = json.loads(self.path.read_text(encoding="utf-8"))
@@ -240,6 +281,7 @@ class ToolDefinitionRegistry:
         }
 
     def _write(self, state: Mapping[str, Any]) -> None:
+        self._check_current()
         self.root.mkdir(parents=True, exist_ok=True)
         os.chmod(self.root, 0o700)
         fd, temporary = tempfile.mkstemp(dir=self.root, prefix=".tools-", suffix=".tmp")
@@ -249,6 +291,7 @@ class ToolDefinitionRegistry:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.chmod(temporary, 0o600)
+            self._check_current()
             os.replace(temporary, self.path)
         finally:
             if os.path.exists(temporary):
@@ -270,7 +313,10 @@ def create_resource_operation(client: Any) -> Callable[[str, Mapping[str, Any]],
     return operation
 
 
-def _composed_catalog(client: Any, registry: ToolDefinitionRegistry) -> dict[str, Any]:
+def _composed_catalog(
+    client: Any, registry: ToolDefinitionRegistry, *,
+    contribution_contract: str = DEFINITION_CONTRIBUTION,
+) -> dict[str, Any]:
     """Compose stored definitions with explicit profile contributions."""
 
     snapshot = registry.snapshot()
@@ -285,16 +331,22 @@ def _composed_catalog(client: Any, registry: ToolDefinitionRegistry) -> dict[str
     }
     sources: list[dict[str, str]] = []
     providers = sorted(
-        client.providers(DEFINITION_CONTRIBUTION),
+        client.providers(contribution_contract),
         key=lambda item: str(item.get("provider_instance_id") or ""),
     )
     for provider in providers:
         provider_id = str(provider.get("provider_instance_id") or "").strip()
         if not provider_id:
             raise RuntimeError("tool definition contribution provider is invalid")
+        operation = (
+            "list" if contribution_contract == DEFINITION_CONTRIBUTION
+            else provider.get("operation_id")
+        )
+        if not isinstance(operation, str) or not operation:
+            raise RuntimeError("tool contribution operation is unavailable")
         value = client.invoke(
-            DEFINITION_CONTRIBUTION,
-            "list",
+            contribution_contract,
+            operation,
             {"profile_id": registry.profile_id},
             provider_instance_id=provider_id,
         )
@@ -433,7 +485,8 @@ def _definition(value: Mapping[str, Any]) -> dict[str, Any]:
     authority = str(value.get("authority") or "").strip()
     if not authority:
         raise ValueError("tool authority operation is required")
-    aliases = value.get("aliases") if isinstance(value.get("aliases"), list) else []
+    aliases = value.get("aliases")
+    aliases = aliases if isinstance(aliases, list) else []
     normalized = {
         "tool_id": tool_id,
         "display_name": str(value.get("display_name") or tool_id)[:200],
@@ -501,4 +554,3 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-
