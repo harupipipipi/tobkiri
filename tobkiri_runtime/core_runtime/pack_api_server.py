@@ -2346,6 +2346,8 @@ class PackAPIServer:
         # server captures itself become server-owned so their Broker,
         # authority store, and provider close callbacks have a bounded owner.
         self._dispatch_session_owned_by_server = False
+        self._retired_dispatch_sessions: list[DispatchSession] = []
+        self._dispatch_cleanup_lock = threading.RLock()
         self.app_lifecycle_manager = app_lifecycle_manager
         self._contract_routes = contract_binding_map(contract_bindings)
         self._runtime_capture_factory = runtime_capture_factory
@@ -2381,7 +2383,9 @@ class PackAPIServer:
         with self._lifecycle_lock:
             if self._lifecycle_state == "stopping":
                 raise RuntimeError("Pack v4 API server is stopping")
-            if self._lifecycle_state == "drain_failed":
+            if self._lifecycle_state == "drain_failed" or (
+                self._retired_dispatch_sessions and not self.is_running()
+            ):
                 raise RuntimeError("Pack v4 API server teardown is incomplete")
             if self.is_running():
                 return
@@ -2701,19 +2705,41 @@ class PackAPIServer:
                 if self.server is not None:
                     self.server.RequestHandlerClass = handler
                 install_dispatch_session(get_container(), session)
+                if previous is not None and previous is not session:
+                    self._retired_dispatch_sessions.append(previous)
         if stale_refresh:
             self._close_unpublished_session(session, base_session=base_session)
             return
         if previous is not None and previous is not session:
-            close = getattr(previous, "close", None)
-            if callable(close):
-                close()
+            self._close_retired_session(previous)
         from .app_lifecycle_manager import mark_runtime_ready
 
         mark_runtime_ready()
 
-    @staticmethod
+    def _close_retired_session(self, session: DispatchSession) -> None:
+        """Release a retired capture, retaining ownership until close succeeds."""
+
+        with self._dispatch_cleanup_lock:
+            with self._lifecycle_lock:
+                if not any(item is session for item in self._retired_dispatch_sessions):
+                    return
+            close = getattr(session, "close", None)
+            try:
+                if callable(close):
+                    close()
+            except Exception:
+                with self._lifecycle_lock:
+                    if self._lifecycle_state == "stopped":
+                        self._lifecycle_state = "drain_failed"
+                        self._stop_failed = True
+                raise
+            with self._lifecycle_lock:
+                self._retired_dispatch_sessions = [
+                    item for item in self._retired_dispatch_sessions if item is not session
+                ]
+
     def _close_unpublished_session(
+        self,
         session: DispatchSession | None,
         *,
         base_session: DispatchSession | None,
@@ -2722,12 +2748,15 @@ class PackAPIServer:
 
         if session is None or session is base_session:
             return
-        close = getattr(session, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                logger.exception("failed to close an unpublished dispatch session")
+        with self._lifecycle_lock:
+            if session is self._dispatch_session:
+                return
+            if not any(item is session for item in self._retired_dispatch_sessions):
+                self._retired_dispatch_sessions.append(session)
+        try:
+            self._close_retired_session(session)
+        except Exception:
+            logger.exception("failed to close an unpublished dispatch session")
 
     def stop(self) -> None:
         """Stop the server and discard its captured handler bindings."""
@@ -2735,7 +2764,7 @@ class PackAPIServer:
         owned_dispatch_session: DispatchSession | None = None
 
         with self._lifecycle_lock:
-            if self._lifecycle_state == "stopped":
+            if self._lifecycle_state == "stopped" and not self._retired_dispatch_sessions:
                 return
             if self._lifecycle_state == "stopping":
                 stop_complete = self._stop_complete
@@ -2804,6 +2833,13 @@ class PackAPIServer:
         if not drained or serving_thread_alive:
             logger.error("Pack v4 API server teardown incomplete: %s", diagnostics)
             raise RuntimeError(f"Pack v4 API server teardown incomplete: {diagnostics}")
+        with self._lifecycle_lock:
+            retired_sessions = tuple(self._retired_dispatch_sessions)
+        for retired in retired_sessions:
+            try:
+                self._close_retired_session(retired)
+            except Exception:
+                logger.exception("failed to close a retired dispatch session")
         if owned_dispatch_session is not None:
             close = getattr(owned_dispatch_session, "close", None)
             if callable(close):
@@ -2822,6 +2858,11 @@ class PackAPIServer:
             if owned_dispatch_session is not None:
                 self._dispatch_session = None
                 self._dispatch_session_owned_by_server = False
+            if self._retired_dispatch_sessions:
+                self._lifecycle_state = "drain_failed"
+                self._stop_failed = True
+                self._stop_complete.set()
+                raise RuntimeError("Pack v4 API server teardown incomplete")
             self._lifecycle_state = "stopped"
             self._stop_failed = False
             self._stop_complete.set()

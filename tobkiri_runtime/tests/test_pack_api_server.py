@@ -1116,6 +1116,50 @@ def test_failed_latest_refresh_invalidates_older_pending_capture(
         server.stop()
 
 
+@pytest.mark.parametrize("retired_kind", ("previous", "unpublished"))
+def test_refresh_cleanup_failure_is_retained_until_stop_retries(
+    monkeypatch: pytest.MonkeyPatch,
+    retired_kind: str,
+) -> None:
+    initial = _RefreshDispatch("initial")
+    candidate = _RefreshDispatch("candidate")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
+        dispatch_session=initial,  # type: ignore[arg-type]
+    )
+    generation = _prepare_refresh_race(server, monkeypatch)
+    retired = initial if retired_kind == "previous" else candidate
+
+    def fail_close() -> None:
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(retired, "close", fail_close)
+    if retired_kind == "unpublished":
+        def fail_inputs(_active: object | None = None) -> RuntimeCaptureInputs:
+            raise RuntimeError("capture inputs failed")
+
+        server._runtime_capture_factory = fail_inputs
+    with pytest.raises(RuntimeError):
+        server._refresh_runtime_capture(candidate, lifecycle_generation=generation)
+    assert server._retired_dispatch_sessions == [retired]
+    expected_current = candidate if retired_kind == "previous" else initial
+    assert server._dispatch_session is expected_current
+
+    with pytest.raises(RuntimeError, match="teardown incomplete"):
+        server.stop()
+    assert server._retired_dispatch_sessions == [retired]
+    with pytest.raises(RuntimeError, match="teardown is incomplete"):
+        server.start()
+    monkeypatch.setattr(retired, "close", lambda: _RefreshDispatch.close(retired))
+    server.stop()
+    server.stop()
+    assert retired.close_calls == 1
+    assert expected_current.close_calls == 0  # Caller-owned, never server-captured.
+    assert server._retired_dispatch_sessions == []
+    assert server._lifecycle_state == "stopped"
+
+
 def test_capture_input_failure_closes_unpublished_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
