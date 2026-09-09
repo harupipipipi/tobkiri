@@ -1981,6 +1981,33 @@ class _CapturedRumiApiSession:
         return self.result
 
 
+@pytest.mark.parametrize("action,expected", [
+    ("list_routes", {
+        "status": "ok", "data": {
+            "routes": [], "count": 0,
+            "dispatch": "captured_v4_qualified_operations_only",
+        },
+    }),
+    ("request", {
+        "status": "error", "error": {
+            "code": "LEGACY_HTTP_DISABLED",
+            "message": "Legacy HTTP routes are disabled; use a captured v4 dispatch session",
+        },
+    }),
+    ("unknown", {
+        "status": "error", "error": {
+            "code": "INVALID_ACTION", "message": "unsupported action: unknown",
+        },
+    }),
+])
+def test_rumi_api_pack_owned_response_preserves_wire_envelope(action, expected):
+    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
+
+    session = _CapturedRumiApiSession({"unexpected": True})
+    assert rumi_api.run({"action": action}, {"v4_dispatch_session": session}) == expected
+    assert session.calls == []
+
+
 @pytest.mark.parametrize("untrusted", [
     {},
     {"profile_policy": {"yolo_mode": True}},

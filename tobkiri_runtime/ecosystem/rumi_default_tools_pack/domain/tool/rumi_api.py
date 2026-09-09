@@ -11,7 +11,7 @@ for _path in reversed((str(_RUMI_ROOT), str(_DEFAULTSPACK_ROOT), str(_PACK_ROOT)
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from ecosystem.defaultspack.blocks._common import error, ok  # noqa: E402
+
 from ecosystem.defaultspack.domain.tool_policy.internal_context import (  # noqa: E402
     internal_tool_decision_allows,
 )
@@ -24,6 +24,16 @@ from core_runtime.global_contract_dispatch import (  # noqa: E402
 )
 
 _CONSUMER_PACK_ID = "rumi_default_tools_pack"
+
+
+def ok(data: Any = None) -> dict[str, Any]:
+    """Encode this adapter's successful wire response without another Pack."""
+    return {"status": "ok", "data": data}
+
+
+def error(message: str, code: str = "ERROR") -> dict[str, Any]:
+    """Encode a failure without changing the adapter's public envelope."""
+    return {"status": "error", "error": {"code": code, "message": message}}
 
 
 def run(arguments: dict[str, Any], context: dict[str, Any] | None = None):
