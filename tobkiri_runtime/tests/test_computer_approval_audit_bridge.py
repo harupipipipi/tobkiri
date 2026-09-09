@@ -235,6 +235,7 @@ def test_pid_event_function_consumes_scoped_stored_token_once(tmp_path, monkeypa
 
     controller = BrowserComputerController(artifact_root=tmp_path / "artifacts")
     controller._approval_path = tmp_path / "shared" / "approvals.json"
+    monkeypatch.setattr(controller, "_approval_module", lambda: None)
     monkeypatch.setattr(_computer_approval, "BrowserComputerController", lambda: controller)
     service = MagicMock()
     service.pid_event.return_value = {"executed": True}
@@ -251,6 +252,37 @@ def test_pid_event_function_consumes_scoped_stored_token_once(tmp_path, monkeypa
     assert main.run({}, {**arguments, "pid": 456, "approval_token": changed_token})[
         "requires_approval"
     ]
+    service.pid_event.assert_called_once()
+
+
+def test_pid_event_function_consumes_signed_owner_token_once(tmp_path, monkeypatch):
+    """The standalone caller retains its real signed-token path during migration."""
+    from ecosystem.defaultspack.domain.safety import approval
+    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import (
+        BrowserComputerController,
+    )
+    from ecosystem.rumi_default_tools_pack.functions import _computer_approval
+    from ecosystem.rumi_default_tools_pack.functions.computer_pid_event import main
+
+    controller = BrowserComputerController(artifact_root=tmp_path / "artifacts")
+    controller._approval_path = tmp_path / "shared" / "approvals.json"
+    monkeypatch.setattr(_computer_approval, "BrowserComputerController", lambda: controller)
+    service = MagicMock()
+    service.pid_event.return_value = {"executed": True}
+    monkeypatch.setattr(main, "_get_service", lambda: service)
+    arguments = {"pid": 123, "action": "type_text", "text": "approved fixture"}
+    request = approval.create_approval_request(
+        "computer.pid_event", "high",
+        {"action": "computer.pid_event", "payload": arguments},
+        details={"pack_id": "defaultspack"},
+    )
+    token = approval.approve(request["request_id"])["token"]
+    supplied = {**arguments, "approval_token": token}
+
+    assert main.run({}, {**supplied, "pid": 456})["requires_approval"]
+    service.pid_event.assert_not_called()
+    assert main.run({}, supplied)["executed"] is True
+    assert main.run({"_tool_server_approved": True}, supplied)["requires_approval"]
     service.pid_event.assert_called_once()
 
 

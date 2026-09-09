@@ -16,7 +16,7 @@ import webbrowser
 import zlib
 import base64
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from time import monotonic as _trace_monotonic
 
 from tobkiri_protocol.secure_persistence import SecureDirectory
@@ -187,21 +187,7 @@ def _current_python_snippet_command(code: str) -> list[str]:
 class BrowserComputerController:
     """Generic browser/computer action controller with approval gates."""
 
-    def __init__(
-        self,
-        artifact_root: Path | None = None,
-        *,
-        approval_verifier: Callable[[str, str, dict[str, Any]], bool] | None = None,
-    ) -> None:
-        """Accept a token verifier only from the trusted embedding owner.
-
-        Payloads and function context cannot supply this capability. Without
-        it, this compatibility controller can consume only its own stored
-        legacy tokens; canonical execution uses the captured Host contract.
-        """
-        if approval_verifier is not None and not callable(approval_verifier):
-            raise TypeError("computer approval verifier must be callable")
-        self._approval_verifier = approval_verifier
+    def __init__(self, artifact_root: Path | None = None) -> None:
         pack_root = Path(__file__).resolve().parents[2]
         self._custom_artifact_root = artifact_root is not None
         self._artifact_root = artifact_root or pack_root / "user_data" / "artifacts" / "computer"
@@ -8377,9 +8363,17 @@ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         token = str(payload.get("approval_token") or "").strip()
         if not token:
             return False
-        if self._approval_verifier is not None and self._approval_verifier(
-            token, action, expected_payload,
-        ) is True:
+        approval = self._approval_module()
+        if approval is None:
+            return self._consume_legacy_approval(token, action, expected_payload)
+        expected_args = {"action": action, "payload": expected_payload}
+        verification = approval.verify_execution_token(
+            token,
+            action,
+            approval.hash_arguments(expected_args),
+            pack_id="defaultspack",
+        )
+        if bool(getattr(verification, "valid", False)):
             return True
         return self._consume_legacy_approval(token, action, expected_payload)
 
@@ -8409,6 +8403,20 @@ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         if float(record.get("expires_at") or 0) < time.time():
             return False
         return True
+
+    @staticmethod
+    def _approval_module():
+        try:
+            from ecosystem.defaultspack.domain.safety import approval
+
+            return approval
+        except Exception:
+            try:
+                from domain.safety import approval
+
+                return approval
+            except Exception:
+                return None
 
     def _read_approvals(self) -> dict[str, Any]:
         try:
