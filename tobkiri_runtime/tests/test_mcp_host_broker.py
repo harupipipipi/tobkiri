@@ -11,10 +11,9 @@ import shutil
 import pytest
 
 from core_runtime.authority.ui_operator import sign_ui_operator
-from core_runtime.authority.v4 import AuthorityStore
+from core_runtime.authority.v4 import AuthorityDenied, AuthorityStore
 from core_runtime.bootstrap import profile_capture, runtime
 from core_runtime.bootstrap.production_v4 import capture_production_dispatch
-from core_runtime.global_contract_dispatch import GlobalContractInvocationError
 from core_runtime.mcp.connection_owner import CONNECT, CONTRACT_ID, DISCONNECT, LIST, PREPARE
 from ecosystem.defaultspack.defaultspack.runtime_composition import (
     defaultspack_activation_snapshot_loader,
@@ -24,7 +23,9 @@ from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountSto
 from scripts.generate_profile_artifacts import render
 from scripts.generate_packaged_defaultspack_v4_bundle import package_bundle
 from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
+from tests.conformance_support.host_contract import host_contract
 from tests.test_mcp_connection_owner import connection_request as connection_request
+from tobkiri_host.errors import ProviderExecutionError
 
 
 _EFFECT = "tobkiri.service.interactive-effect.v1"
@@ -131,23 +132,41 @@ def mcp_session(tmp_path, monkeypatch):
     active = profile_capture.capture_default_profile(
         confirmation=profile_capture.prepare_default_profile_confirmation(),
     )
-    store = AuthorityStore(user_data / "authority/v4.sqlite3")
-    session = capture_production_dispatch(
-        active,
-        bundle_root=bundle,
-        ecosystem_root=_RUNTIME_ROOT / "ecosystem",
-        authority_store=store,
-        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
-        runtime_surface_factory=create_runtime_surface_services,
+    contract_path = user_data / "host_contract.json"
+    contract_path.write_text(
+        json.dumps(
+            host_contract(
+                profile_id=str(active.resolved.profile["profile_id"]),
+                profile_revision=str(active.resolved.plan["profile_revision"]),
+                activation_id=str(active.activation["activation_id"]),
+                plan_digest=str(active.resolved.plan["plan_digest"]),
+                values={"panel_bootstrap_secret": "mcp-fixture-bootstrap"},
+            )
+        )
     )
-    mounts = WorkspaceMountStore("defaults", user_data_root=user_data)
-    mounted = mounts.mount("workspace", str(tmp_path), expected_revision=0)
-    mounts.select("workspace", expected_revision=mounted["revision"])
+    contract_path.chmod(0o600)
+    monkeypatch.setenv("TOBKIRI_HOST_CONTRACT_PATH", str(contract_path))
+    store = AuthorityStore(user_data / "authority/v4.sqlite3")
+    session = None
     try:
+        session = capture_production_dispatch(
+            active,
+            bundle_root=bundle,
+            ecosystem_root=_RUNTIME_ROOT / "ecosystem",
+            authority_store=store,
+            activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+            runtime_surface_factory=create_runtime_surface_services,
+        )
+        mounts = WorkspaceMountStore("defaults", user_data_root=user_data)
+        mounted = mounts.mount("workspace", str(tmp_path), expected_revision=0)
+        mounts.select("workspace", expected_revision=mounted["revision"])
         yield session, store
     finally:
-        session.close()
-        store.close()
+        try:
+            if session is not None:
+                session.close()
+        finally:
+            store.close()
 
 
 def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
@@ -172,10 +191,10 @@ def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
     assert invoke(CONTRACT_ID, LIST, {}) == {"connections": []}
     resume = {"phase": "resume", "effect_id": pending["effect_id"]}
     assert invoke(_EFFECT, "interactive_effect.manage", resume)["state"] == "approval_pending"
-    with pytest.raises(GlobalContractInvocationError):
+    with pytest.raises(ProviderExecutionError, match="provider execution failed"):
         invoke(_EFFECT, "interactive_effect.manage", resume, owner="foreign-session")
     # An identifier or a request-shaped payload does not grant the execute edge.
-    with pytest.raises(GlobalContractInvocationError):
+    with pytest.raises(AuthorityDenied, match="captured Shell caller edge"):
         invoke(CONTRACT_ID, CONNECT, {"request": connection_request, "plan": {}})
     approval_id = pending["approval_request_id"]
     approval = invoke(_APPROVAL, "interactive_approval.get", {"request_id": approval_id})

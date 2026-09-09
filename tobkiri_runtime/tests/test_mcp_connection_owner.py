@@ -24,6 +24,7 @@ from core_runtime.mcp.connection_owner import (
 from core_runtime.mcp.transport import McpConnections
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.models import OpaqueAuthorityRef
+from tobkiri_protocol.canonical import canonical_json, strict_loads
 
 
 class _Invocation:
@@ -364,6 +365,10 @@ def test_preparation_has_no_process_or_environment_secret(owner, connection_requ
 
     monkeypatch.setattr(McpConnections, "connect", forbidden)
     plan = owner.invoke(_Invocation(PREPARE, connection_request))
+    assert strict_loads(canonical_json(plan)) == plan
+    metadata = Path(connection_request["config"]["command"][0]).stat()
+    assert plan["executable"]["mtime_ns"] == str(metadata.st_mtime_ns)
+    assert plan["executable"]["ctime_ns"] == str(metadata.st_ctime_ns)
     assert "fixture-secret-not-in-plan" not in json.dumps(plan)
     assert owner._records == {}
     assert owner._connections.list_servers() == []

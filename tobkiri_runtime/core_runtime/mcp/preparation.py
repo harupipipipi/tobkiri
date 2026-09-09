@@ -84,18 +84,20 @@ def _directory(path: Path) -> dict[str, Any]:
         raise PermissionError("MCP workspace is unavailable")
     return {
         "path": str(path),
-        "device": metadata.st_dev,
-        "inode": metadata.st_ino,
+        "device": str(metadata.st_dev),
+        "inode": str(metadata.st_ino),
         "mode": stat.S_IMODE(metadata.st_mode),
     }
 
 
-def _file_identity(metadata: os.stat_result) -> dict[str, int]:
+def _file_identity(metadata: os.stat_result) -> dict[str, str | int]:
+    # Filesystem identifiers and nanosecond times may exceed I-JSON's exact
+    # integer range. Decimal strings preserve their full value in snapshots.
     return {
-        "device": metadata.st_dev,
-        "inode": metadata.st_ino,
+        "device": str(metadata.st_dev),
+        "inode": str(metadata.st_ino),
         "mode": stat.S_IMODE(metadata.st_mode),
-        "size": metadata.st_size,
-        "mtime_ns": metadata.st_mtime_ns,
-        "ctime_ns": metadata.st_ctime_ns,
+        "size": str(metadata.st_size),
+        "mtime_ns": str(metadata.st_mtime_ns),
+        "ctime_ns": str(metadata.st_ctime_ns),
     }
