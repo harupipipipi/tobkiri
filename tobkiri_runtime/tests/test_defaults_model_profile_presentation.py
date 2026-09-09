@@ -15,8 +15,15 @@ from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
 from ecosystem.defaultspack.defaultspack.model_profile_presentation import (
     MODEL_PROFILE_LIST_TARGET,
     present_model_profiles,
+    present_model_profile_saved,
 )
 from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+
+
+def test_model_save_preserves_broker_error_response() -> None:
+    """A rejected write remains an error envelope, not a disconnected socket."""
+    error = {"state": "error", "code": "provider_execution_failed"}
+    assert present_model_profile_saved(error) == error
 
 
 def test_model_list_is_bound_to_captured_profile() -> None:

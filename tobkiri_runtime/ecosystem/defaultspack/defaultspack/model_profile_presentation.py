@@ -50,6 +50,8 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
 
 def present_model_profile_saved(result: Mapping[str, object]) -> dict[str, object]:
     """Return only the saved model selector identity and owner revision."""
+    if result.get("state") == "error":
+        return dict(result)
     revision = result.get("store_revision")
     if result.get("action") != "saved" or type(revision) is not int:
         raise ValueError("model configuration save was not confirmed")
