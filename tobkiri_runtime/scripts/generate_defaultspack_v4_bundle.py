@@ -36,7 +36,7 @@ from tobkiri_protocol.provenance import (  # noqa: E402
     normative_generated_provenance,
 )
 from tobkiri_protocol.validation import validate_document  # noqa: E402
-from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog  # noqa: E402
+from tobkiri_protocol.bundle_catalog import BundledCatalog  # noqa: E402
 from scripts.profile_compatibility_provenance import (  # noqa: E402
     compatibility_profile_provenance,
     validate_compatibility_profile,

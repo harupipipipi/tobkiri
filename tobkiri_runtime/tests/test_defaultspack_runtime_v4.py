@@ -211,6 +211,18 @@ def _cas_activation_process(
         authority.close()
 
 
+def test_bundle_catalog_is_shared_with_generator_without_pack_implementation() -> None:
+    """Compatibility imports retain the exact neutral verifier and error types."""
+    from tobkiri_protocol import bundle_catalog
+    from ecosystem.defaultspack.domain import runtime_v4
+    from scripts import generate_defaultspack_v4_bundle
+
+    assert runtime_v4.BundledCatalog is bundle_catalog.BundledCatalog
+    assert generate_defaultspack_v4_bundle.BundledCatalog is bundle_catalog.BundledCatalog
+    assert runtime_v4.BundleIntegrityError is bundle_catalog.BundleIntegrityError
+    assert runtime_v4.DefaultProfileV4Error is bundle_catalog.DefaultProfileV4Error
+
+
 def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     catalog = _catalog()
     resolved = _resolve(catalog)

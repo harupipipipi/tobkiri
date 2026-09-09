@@ -8020,6 +8020,7 @@
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/ecosystem.json",
       "tobkiri_runtime/tobkiri_protocol/README.md",
       "tobkiri_runtime/tobkiri_protocol/__init__.py",
+      "tobkiri_runtime/tobkiri_protocol/bundle_catalog.py",
       "tobkiri_runtime/tobkiri_protocol/canonical.py",
       "tobkiri_runtime/tobkiri_protocol/composition.py",
       "tobkiri_runtime/tobkiri_protocol/defaultspack_bundle_order.py",
@@ -18406,8 +18407,8 @@
     ]
   },
   "repository": {
-    "commit": "764bc67e3b8dff9594c5724802917386c6e629a1",
-    "tree_digest": "f2e76ca9aeb0e8f6b28f5736208bf352dbe07bb26c4da3c3537a8f6918ece128"
+    "commit": "a1839ad901378fab4bdbb27144fb92596ec8e2da",
+    "tree_digest": "dc2d2c6a6d35ddb6057d2ef5ed87fc011165e5fd5afac8fd63cd4267b6d954b0"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"
