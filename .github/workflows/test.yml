@@ -274,6 +274,7 @@ jobs:
             tests/test_mcp_stdio_shutdown.py \
             tests/test_mcp_sse_origin.py \
             tests/test_mcp_sse_bounds.py \
+            tests/test_mcp_sse_cancellation.py \
             tests/test_mcp_connection_owner.py \
             tests/test_mcp_host_provider.py \
             tests/test_tool_registry_host.py \

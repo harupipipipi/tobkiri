@@ -142,7 +142,8 @@ def test_failed_reader_join_retains_response_and_connection_for_cleanup_retry() 
     assert connection._transport is transport
     assert transport._response is response
     assert not response.closed
-    reader.join.assert_called_once_with(timeout=5)
+    reader.join.assert_called_once()
+    assert 0 < reader.join.call_args.kwargs["timeout"] <= 5
     reader.is_alive.return_value = False
     connection.disconnect()
     assert response.closed
@@ -193,3 +194,25 @@ def test_failed_reader_start_is_collectable_and_cannot_restart_the_transport(
     assert transport._response is None
     with pytest.raises(RuntimeError, match="already been started"):
         transport.start()
+
+
+def test_stop_after_endpoint_publication_cannot_report_startup_success() -> None:
+    transport = mcp_client._SseTransport("http://approved.invalid/events")
+    response = io.BytesIO(b"event: endpoint\ndata: /messages\n\n")
+    transport._endpoint_policy.open = Mock(return_value=response)
+    wait_for_endpoint = transport._ready_event.wait
+
+    def stop_after_endpoint(timeout: float) -> bool:
+        ready = wait_for_endpoint(timeout)
+        if ready:
+            transport.stop()
+        return ready
+
+    transport._ready_event.wait = stop_after_endpoint
+    try:
+        with pytest.raises(RuntimeError, match="connection closed"):
+            transport.start()
+        assert response.closed
+        assert not transport._reader_thread.is_alive()
+    finally:
+        transport.stop()

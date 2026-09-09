@@ -15,7 +15,9 @@ import urllib.request
 import urllib.error
 from typing import Any, BinaryIO
 
-from .sse_policy import SseEndpointPolicy, interrupt_sse_response
+from .sse_policy import (
+    SseEndpointPolicy, allow_idle_sse_response, interrupt_sse_response,
+)
 from .sse_events import SSE_EVENT_LIMIT, SSE_QUEUE_LIMIT, read_sse_events
 
 
@@ -322,74 +324,170 @@ class _SseTransport(_TransportBase):
         self._ready_event = threading.Event()
         self._failure: str | None = None
         self._started = False
+        self._state_lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self._post_thread: threading.Thread | None = None
+        self._post_response: Any = None
+        self._post_error: Exception | None = None
+        self._post_done = threading.Event()
+        self._startup_deadline: float | None = None
 
-    def start(self):
-        if self._started:
-            raise RuntimeError("SSE transport has already been started")
-        self._started = True
-        self._stop_event.clear()
-        self._ready_event.clear()
-        self._reader_thread = threading.Thread(target=self._sse_loop, daemon=True)
-        self._reader_thread.start()
-        if not self._ready_event.wait(timeout=_DEFAULT_TIMEOUT):
-            raise RuntimeError("SSE transport: failed to receive endpoint event within timeout")
-        if self._failure is not None or self._post_url is None:
-            raise RuntimeError(self._failure or "MCP SSE endpoint is unavailable")
+    def start(self, *, deadline=None, cancellation=None):
+        deadline = min(
+            deadline if deadline is not None else float("inf"),
+            time.monotonic() + _DEFAULT_TIMEOUT,
+        )
+        _check_request_lifetime(deadline, cancellation)
+        with self._state_lock:
+            if self._started:
+                raise RuntimeError("SSE transport has already been started")
+            if self._stop_event.is_set():
+                raise RuntimeError("MCP SSE connection closed")
+            self._started = True
+            self._startup_deadline = deadline
+            self._reader_thread = threading.Thread(target=self._sse_loop, daemon=True)
+            self._reader_thread.start()
+        try:
+            while not self._ready_event.wait(max(0, min(0.05, deadline - time.monotonic()))):
+                _check_request_lifetime(deadline, cancellation)
+                if self._stop_event.is_set():
+                    raise RuntimeError(self._failure or "MCP SSE connection closed")
+            _check_request_lifetime(deadline, cancellation)
+        except (TimeoutError, InterruptedError):
+            self._fail("MCP SSE startup interrupted")
+            raise
+        if self._failure is not None or self._stop_event.is_set() or self._post_url is None:
+            raise RuntimeError(
+                self._failure or (
+                    "MCP SSE connection closed" if self._stop_event.is_set()
+                    else "MCP SSE endpoint is unavailable"
+                )
+            )
 
     def stop(self):
-        self._stop_event.set()
-        response = self._response
-        if response is not None:
-            interrupt_sse_response(response)
-        reader = self._reader_thread
-        if reader is not None and reader.ident is not None:
-            reader.join(timeout=5)
-            if reader.is_alive():
-                raise RuntimeError("MCP SSE reader did not stop")
+        self._interrupt()
+        deadline = time.monotonic() + 5
+        for label, worker in (("reader", self._reader_thread), ("POST worker", self._post_thread)):
+            if worker is not None and worker.ident is not None:
+                worker.join(timeout=max(0, deadline - time.monotonic()))
+                if worker.is_alive():
+                    raise RuntimeError(f"MCP SSE {label} did not stop")
         # A late opener may publish its response while stop waits for the reader.
-        # Only release the current response after that reader actually exits.
+        # Only release IO after every worker actually exits.
         if self._response is not None:
             self._response.close()
             self._response = None
+        if self._post_response is not None:
+            self._post_response.close()
+            self._post_response = None
+        self._post_thread = None
+        self._post_error = None
 
     def send(
         self, message_bytes: bytes, *, deadline: float | None = None,
         cancellation: threading.Event | None = None,
     ) -> None:
         deadline = time.monotonic() + _DEFAULT_TIMEOUT if deadline is None else deadline
-        _check_request_lifetime(
-            deadline, cancellation, timeout_message="Timeout waiting for the MCP writer",
-        )
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("Timeout waiting for the MCP writer")
         if len(message_bytes) > SSE_EVENT_LIMIT:
             raise ValueError("MCP SSE request exceeds the byte limit")
-        if self._failure is not None or self._stop_event.is_set():
-            raise RuntimeError(self._failure or "MCP SSE connection closed")
-        if self._post_url is None:
-            raise RuntimeError("SSE transport: post URL not yet received")
-        req = urllib.request.Request(
-            self._post_url,
-            data=message_bytes,
-            headers={
-                "Content-Type": "application/json",
-                **self._extra_headers,
-            },
-            method="POST",
-        )
-        try:
-            with self._endpoint_policy.open(req, timeout=remaining) as resp:
-                if len(resp.read(SSE_EVENT_LIMIT + 1)) > SSE_EVENT_LIMIT:
-                    self._failure = "MCP SSE POST response exceeds the byte limit"
-                    raise RuntimeError(self._failure)
-            if time.monotonic() >= deadline:
-                self._failure = "MCP SSE POST deadline exceeded"
-                raise TimeoutError(self._failure)
+        while True:
             _check_request_lifetime(deadline, cancellation)
-        except urllib.error.HTTPError as exc:
-            exc.close()
-            raise RuntimeError("MCP SSE POST failed") from None
+            if self._stop_event.is_set():
+                raise RuntimeError(self._failure or "MCP SSE connection closed")
+            if self._write_lock.acquire(timeout=max(0, min(0.05, deadline - time.monotonic()))):
+                break
+        queued = False
+        try:
+            _check_request_lifetime(deadline, cancellation)
+            with self._state_lock:
+                if self._failure is not None or self._stop_event.is_set():
+                    raise RuntimeError(self._failure or "MCP SSE connection closed")
+                if self._post_url is None:
+                    raise RuntimeError("SSE transport: post URL not yet received")
+                self._post_done.clear()
+                self._post_error = None
+                worker = threading.Thread(
+                    target=self._post,
+                    args=(self._post_url, message_bytes, deadline, cancellation),
+                    daemon=True,
+                )
+                self._post_thread = worker
+                queued = True
+                worker.start()
+            while not self._post_done.wait(max(0, min(0.05, deadline - time.monotonic()))):
+                _check_request_lifetime(
+                    deadline, cancellation, timeout_message="MCP SSE POST deadline exceeded",
+                )
+                if self._stop_event.is_set():
+                    raise RuntimeError(self._failure or "MCP SSE connection closed")
+            _check_request_lifetime(
+                deadline, cancellation, timeout_message="MCP SSE POST deadline exceeded",
+            )
+            if self._post_error is not None:
+                raise self._post_error
+            if self._stop_event.is_set():
+                raise RuntimeError(self._failure or "MCP SSE connection closed")
+            # done is the worker's last action. Keep its handle until exit is
+            # confirmed, so a later send cannot overwrite uncollected IO.
+            worker.join(timeout=0.05)
+            if worker.is_alive():
+                raise RuntimeError("MCP SSE POST cleanup is incomplete")
+        except Exception as error:
+            if queued:
+                self._fail(
+                    "MCP SSE POST cancelled" if isinstance(error, InterruptedError)
+                    else "MCP SSE POST deadline exceeded" if isinstance(error, TimeoutError)
+                    else str(error) if isinstance(error, (RuntimeError, PermissionError))
+                    else "MCP SSE POST failed"
+                )
+            raise
+        finally:
+            self._write_lock.release()
+
+    def _post(
+        self, url: str, message_bytes: bytes, deadline: float,
+        cancellation: threading.Event | None,
+    ) -> None:
+        try:
+            _check_request_lifetime(deadline, cancellation)
+            if self._stop_event.is_set():
+                raise InterruptedError("MCP SSE connection closed")
+            req = urllib.request.Request(
+                url, data=message_bytes,
+                headers={"Content-Type": "application/json", **self._extra_headers},
+                method="POST",
+            )
+            with self._endpoint_policy.open(req, timeout=max(0, deadline - time.monotonic())) as resp:
+                self._post_response = resp
+                _check_request_lifetime(deadline, cancellation)
+                if self._stop_event.is_set():
+                    raise InterruptedError("MCP SSE connection closed")
+                if len(resp.read(SSE_EVENT_LIMIT + 1)) > SSE_EVENT_LIMIT:
+                    raise RuntimeError("MCP SSE POST response exceeds the byte limit")
+            _check_request_lifetime(deadline, cancellation)
+        except Exception as error:
+            if isinstance(error, urllib.error.HTTPError):
+                error.close()
+            self._post_error = (
+                error if isinstance(error, (TimeoutError, InterruptedError, PermissionError, RuntimeError))
+                else RuntimeError("MCP SSE POST failed")
+            )
+        finally:
+            self._post_done.set()
+
+    def _interrupt(self) -> None:
+        with self._state_lock:
+            self._stop_event.set()
+        self._endpoint_policy.interrupt()
+        for response in (self._response, self._post_response):
+            if response is not None:
+                interrupt_sse_response(response)
+
+    def _fail(self, reason: str) -> None:
+        with self._state_lock:
+            if self._failure is None:
+                self._failure = reason
+        self._interrupt()
 
     def recv(self, timeout=_DEFAULT_TIMEOUT):
         deadline = time.monotonic() + timeout
@@ -424,15 +522,22 @@ class _SseTransport(_TransportBase):
                     **self._extra_headers,
                 },
             )
-            self._response = self._endpoint_policy.open(req, timeout=None)
+            _check_request_lifetime(self._startup_deadline, None)
+            timeout = (
+                max(0, self._startup_deadline - time.monotonic())
+                if self._startup_deadline is not None else _DEFAULT_TIMEOUT
+            )
+            self._response = self._endpoint_policy.open(req, timeout=timeout)
             if self._stop_event.is_set():
                 return
+            allow_idle_sse_response(self._response)
             for event_type, data_str in read_sse_events(self._response):
                 if self._stop_event.is_set():
                     break
                 self._handle_event(event_type, data_str)
         except Exception:
-            self._failure = "MCP SSE connection failed"
+            if not self._stop_event.is_set():
+                self._fail("MCP SSE connection failed")
         finally:
             self._ready_event.set()
             if self._response is not None:
@@ -482,6 +587,7 @@ class _ServerConnection:
         # The owner already resolved and approved this snapshot. Expanding it
         # again could replace literal ${...} values after approval verification.
         transport_type = self.config.get("transport", "stdio")
+        sse_transport: _SseTransport | None = None
         if transport_type == "stdio":
             command = self.config.get("command")
             command_args = self.config.get("args")
@@ -500,13 +606,17 @@ class _ServerConnection:
             if not url:
                 raise ValueError("sse transport requires 'url' in config")
             headers = self.config.get("headers")
-            self._transport = _SseTransport(url, headers=headers)
+            sse_transport = _SseTransport(url, headers=headers)
+            self._transport = sse_transport
         else:
             raise ValueError("Unknown transport type: {}".format(transport_type))
 
         try:
             _check_request_lifetime(deadline, cancellation)
-            self._transport.start()
+            if sse_transport is not None:
+                sse_transport.start(deadline=deadline, cancellation=cancellation)
+            else:
+                self._transport.start()
             self._initialize(deadline=deadline, cancellation=cancellation)
             self.tools = self._list_tools(deadline=deadline, cancellation=cancellation)
             _check_request_lifetime(deadline, cancellation)

@@ -293,6 +293,7 @@ def test_sse_transport_receives_resolved_url_and_headers_verbatim(
             "http://localhost/events?value=" + literal,
             headers={"Authorization": literal},
         )
+        factory.return_value.start.assert_called_once_with(deadline=None, cancellation=None)
     finally:
         connection.disconnect()
     factory.return_value.stop.assert_called_once_with()
