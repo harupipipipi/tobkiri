@@ -1142,19 +1142,19 @@ def test_tool_file_reader_ignores_caller_supplied_workspace_root(
     outside = tmp_path / "outside"
     workspace.mkdir()
     outside.mkdir()
+    (workspace / "secret.txt").write_text("SELECTED WORKSPACE", encoding="utf-8")
     (outside / "secret.txt").write_text("SECRET", encoding="utf-8")
     bind_verified_coding_contracts(monkeypatch, workspace)
 
     result = run_defaultspack_function(
         "tool_file_reader",
         {"path": "secret.txt", "workspace_root": str(outside)},
-        {"workspace_root": str(workspace), "workspace_id": "workspace-test"},
+        {"workspace_root": str(workspace), "workspace_id": "trusted"},
     )
 
     assert result["status"] == "ok"
-    assert result["data"]["is_error"] is True
-    assert "workspace mount is unknown" in result["data"]["result"]
-    assert result["data"]["widget"]["error"]["code"] == "READ_ERROR"
+    assert result["data"]["is_error"] is False
+    assert result["data"]["result"] == "SELECTED WORKSPACE"
     assert "SECRET" not in str(result)
 
 
