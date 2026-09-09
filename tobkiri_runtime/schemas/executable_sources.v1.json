@@ -8019,7 +8019,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_mcp_gateway_pack.mcp-gateway.call",
-      "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -8033,7 +8033,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+          "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -11715,7 +11715,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
-      "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+      "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
       "implementation_path": "runtime/executor.py",
       "input_schema": {
         "type": "object"
@@ -11729,7 +11729,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+          "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
           "implementation_path": "runtime/executor.py",
           "input_schema": {
             "type": "object"
@@ -14501,7 +14501,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:d97388ec716dafe6ccd9da2e8814bc079e5eb44af7267a5f77c19695aa7849d9",
+    "input_digest": "sha256:245c97f931dfe9d4cd80e22292c7e7428261b56dacec1981e1f609b51e4503dc",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -14988,7 +14988,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_line_connector_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:27d3ad435cc7368f161393aacc7d6d34eb054bd011721f7a96ebe1fcd2828f75",
+        "digest": "sha256:5bb93c36859b2746213e2e7e6698bc151475a65d9c202c6dac06c9e99ed2f501",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/artifact-manifest.json"
       },
@@ -15163,7 +15163,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:5c3ade7f2f98e1a652e38ca8738a5683f979687173a5bae12b94f9238e13d0cf",
+        "digest": "sha256:e3e049fc846f0780ff364d2bf6d1cd15fe2d0c4db805ce807a71473dd6594ddc",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/artifact-manifest.json"
       },
@@ -15468,7 +15468,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_line_connector_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d2dec41e14bfd335b125f03db77ff45332d2825ffdbd006f75439ca5804d00b6",
+        "digest": "sha256:582ff500c026cb59696f2347e898c62b970e255da4b14d95eb6a2b7462c1dbb9",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/rumi.pack.v3.json"
       },
@@ -15643,7 +15643,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:2db2baed54d54fd3860964b8623a28d7c350887328d5bae1d7b273774d2da01f",
+        "digest": "sha256:8d44b18571237edff6a57d15cf004544a5817a06ec0323ee5cdcc6696309efe0",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/rumi.pack.v3.json"
       },

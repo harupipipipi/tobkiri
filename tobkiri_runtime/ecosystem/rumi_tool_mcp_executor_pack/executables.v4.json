@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:a9e04ea15c982150a1bd0aae79ca445edd43beb125c890dbc6e7cc215df6f708",
+  "catalog_digest": "sha256:0cd90f2bdeec763c3074c8d6c9928c76b9b0c77328ea6ff4d999102f85770068",
   "pack_id": "rumi_tool_mcp_executor_pack",
-  "source_identity": "sha256:334b4f2904fb4688e5dc5896746c34602da5050de6b1a53173c2798451d70bed",
+  "source_identity": "sha256:1bcde662dc952c403ca3a757f5537aa4a35c9527d9add09dbe68745f96b275a7",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
-      "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+      "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
       "implementation_path": "runtime/executor.py",
       "materialization_mode": "on_demand",
       "operations": [

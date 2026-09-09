@@ -7,7 +7,8 @@
       "operations": [
         {
           "effect_ceiling": [
-            "capability:mcp.connection.prepare"
+            "capability:mcp.connection.prepare",
+            "host:brokered-execution"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
@@ -62,7 +63,8 @@
         },
         {
           "effect_ceiling": [
-            "capability:mcp.connection.read"
+            "capability:mcp.connection.read",
+            "host:brokered-execution"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
@@ -78,7 +80,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
+            "digest": "sha256:dbae533cf79d5072940356ab417f73107ed436e57183d8c491d8b731f5064f6b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -89,7 +91,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
+        "source_digest": "sha256:dbae533cf79d5072940356ab417f73107ed436e57183d8c491d8b731f5064f6b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_mcp_connection_pack"
       },
@@ -112,7 +114,7 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f",
       "schema_catalog": {
         "sha256:34981289ad32eae11883495f6f333de425f3a743108c07bb64900eecbe3d89fc": {
           "oneOf": [
@@ -316,5 +318,5 @@
     }
   ],
   "pack_id": "tobkiri_mcp_connection_pack",
-  "source_identity": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6"
+  "source_identity": "sha256:dbae533cf79d5072940356ab417f73107ed436e57183d8c491d8b731f5064f6b"
 }

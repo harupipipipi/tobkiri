@@ -779,12 +779,12 @@
     {
       "path": "packs/rumi_mcp_gateway_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:837860f24ff781572c54f7adf2495a8ac57db9f6e021a7aa5f0ce2bba1034c6a"
+      "digest": "sha256:0232aec50db368100001ab44715aaee4b76e560996ac7fc5c44a8ba1935fe255"
     },
     {
       "path": "packs/rumi_mcp_gateway_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:2b8f17984487d6aa86ed5ce52aeb9fc9c2d3e80b7c255a76610b88a68002371e"
+      "digest": "sha256:8796833a32416b5f8ce10b39002971622b2bfacba4dc1fb05e6b733661c8035f"
     },
     {
       "path": "packs/rumi_mcp_server_pack.executables.v4.json",
@@ -1259,12 +1259,12 @@
     {
       "path": "packs/rumi_tool_mcp_executor_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:32732a95463444e4a3d0c3a858322b617113073c88849c027b2b3652bed59adf"
+      "digest": "sha256:fe51eb061677faf19a199d6488a420a40ffa528ea4960a469bf82a523a173847"
     },
     {
       "path": "packs/rumi_tool_mcp_executor_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:1324b476c593454f8f8c8d6d01b5e5b204145b3cd112f82df732b6da7f168bd1"
+      "digest": "sha256:ff8f7fde42cc0ffb45bce6f41bc505f6bf49a687e4743adf806ae553f8c7dd63"
     },
     {
       "path": "packs/rumi_tool_policy_pack.executables.v4.json",
@@ -1409,12 +1409,12 @@
     {
       "path": "packs/tobkiri_mcp_connection_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:8ddf9f60685eadb0c8263614d5a55aa1aa3898aaf1f6332d1538f20ac86d2958"
+      "digest": "sha256:8a2018e5e1852556f49c14243f89679a4fb5c487bd9ec40638e171364fb8729c"
     },
     {
       "path": "packs/tobkiri_mcp_connection_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:a2e516a7fe575b74ca2733209a439ecaad5c00424179353375aa2c4a27579a1d"
+      "digest": "sha256:6698b8a5261e16d074de77458ebc04c9628c4ee37b59c1464103ae802c0c3923"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",

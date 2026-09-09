@@ -65,6 +65,16 @@ PACKVM_BRIDGE_TARGET = {
     "contract_id": "tobkiri.service.ai.generate.v1",
     "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
 }
+PACKVM_MCP_CONTRACT = "tobkiri.service.mcp.tool.call.v1"
+PACKVM_MCP_OPERATION = "rumi_mcp_gateway_pack.mcp-tool-call"
+PACKVM_MCP_TARGET = {
+    "contract_id": "tobkiri.service.mcp.connection.v1",
+    "operation_id": "mcp.connection.call",
+}
+_BRIDGE_OPERATION_TARGETS = {
+    "complete": PACKVM_BRIDGE_TARGET,
+    PACKVM_MCP_OPERATION: PACKVM_MCP_TARGET,
+}
 MAX_BRIDGE_REQUEST_BYTES = 64 * 1024
 MAX_BRIDGE_RESULT_BYTES = 512 * 1024
 MAX_CHILD_REQUEST_BYTES = 1024 * 1024
@@ -238,6 +248,17 @@ def _invoke(
     invocation_payload = request["payload"]
     if not isinstance(invocation_payload, dict):
         raise ValueError("PackVM invocation payload must be an object")
+    if (
+        request["contract_id"] == PACKVM_MCP_CONTRACT
+        or request["operation_id"] == PACKVM_MCP_OPERATION
+    ):
+        if (
+            request["contract_id"] != PACKVM_MCP_CONTRACT
+            or request["operation_id"] != PACKVM_MCP_OPERATION
+            or request["contract_version"] != "1.0.0"
+        ):
+            raise ValueError("PackVM MCP gateway operation is invalid")
+        invocation_payload = _mcp_bridge_payload(invocation_payload)
     from tobkiri_protocol.saved_conversation import (
         SAVED_CONVERSATION_CONTRACT,
         SAVED_CONVERSATION_OPERATION,
@@ -306,7 +327,7 @@ def _execute_invocation_step(
             process, child_request, guest_deadline=guest_deadline,
         )
         if _looks_like_bridge_request(result):
-            result = _validate_bridge_request(result)
+            result = _validate_bridge_request(result, operation_id=request["operation_id"])
     finally:
         _unregister_request(str(request["request_id"]), process.pid)
     return {
@@ -434,8 +455,10 @@ def _host_invoke_result(value: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _validate_bridge_request(value: object) -> dict[str, object]:
-    """Accept only the fixed Conversation-to-AI bridge request ABI."""
+def _validate_bridge_request(
+    value: object, *, operation_id: object = None,
+) -> dict[str, object]:
+    """Accept only the finite Conversation/AI and MCP/connection request ABIs."""
 
     bridge_request = _exact_bridge_object(
         value,
@@ -458,6 +481,58 @@ def _validate_bridge_request(value: object) -> dict[str, object]:
         raise ValueError("PackVM bridge request identity is invalid")
     target = _validate_bridge_target(bridge_request["target"])
     raw_request = bridge_request["request"]
+    request_payload = (
+        _mcp_bridge_payload(raw_request)
+        if target == PACKVM_MCP_TARGET else _conversation_bridge_payload(raw_request)
+    )
+    if len(_bridge_canonical_json(request_payload)) > MAX_BRIDGE_REQUEST_BYTES:
+        raise ValueError("PackVM bridge request exceeds the size limit")
+    request_digest = _digest(
+        bridge_request["request_digest"],
+        "PackVM bridge request digest",
+    )
+    if not hmac.compare_digest(
+        request_digest,
+        _bridge_canonical_digest(request_payload),
+    ):
+        raise ValueError("PackVM bridge request digest is invalid")
+    continuation = _validate_bridge_continuation(
+        bridge_request["continuation"],
+        target=target,
+        request_digest=request_digest,
+    )
+    if operation_id is not None and continuation["operation_id"] != operation_id:
+        raise ValueError("PackVM bridge outer operation changed")
+    return {
+        "kind": PACKVM_BRIDGE_REQUEST_KIND,
+        "protocol": PACKVM_BRIDGE_PROTOCOL,
+        "version": PACKVM_BRIDGE_VERSION,
+        "target": target,
+        "request": request_payload,
+        "request_digest": request_digest,
+        "continuation": continuation,
+    }
+
+
+def _mcp_bridge_payload(value: object) -> dict[str, object]:
+    requested = _exact_bridge_object(
+        value, {"connection_id", "tool", "arguments"}, "PackVM MCP call",
+    )
+    for field in ("connection_id", "tool"):
+        name = requested[field]
+        if not isinstance(name, str) or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", name,
+        ) is None:
+            raise ValueError("PackVM MCP call identity is invalid")
+    if not isinstance(requested["arguments"], dict):
+        raise ValueError("PackVM MCP arguments must be an object")
+    requested["arguments"] = _bounded_bridge_json(requested["arguments"])
+    if len(_bridge_canonical_json(requested)) > MAX_BRIDGE_REQUEST_BYTES:
+        raise ValueError("PackVM MCP call exceeds the size limit")
+    return requested
+
+
+def _conversation_bridge_payload(raw_request: object) -> dict[str, object]:
     fields = {"messages", "requirements"}
     if isinstance(raw_request, dict) and "model_reference" in raw_request:
         fields.add("model_reference")
@@ -482,31 +557,7 @@ def _validate_bridge_request(value: object) -> dict[str, object]:
         ):
             raise ValueError("PackVM bridge model reference is invalid")
         request_payload["model_reference"] = model
-    if len(_bridge_canonical_json(request_payload)) > MAX_BRIDGE_REQUEST_BYTES:
-        raise ValueError("PackVM bridge request exceeds the size limit")
-    request_digest = _digest(
-        bridge_request["request_digest"],
-        "PackVM bridge request digest",
-    )
-    if not hmac.compare_digest(
-        request_digest,
-        _bridge_canonical_digest(request_payload),
-    ):
-        raise ValueError("PackVM bridge request digest is invalid")
-    continuation = _validate_bridge_continuation(
-        bridge_request["continuation"],
-        target=target,
-        request_digest=request_digest,
-    )
-    return {
-        "kind": PACKVM_BRIDGE_REQUEST_KIND,
-        "protocol": PACKVM_BRIDGE_PROTOCOL,
-        "version": PACKVM_BRIDGE_VERSION,
-        "target": target,
-        "request": request_payload,
-        "request_digest": request_digest,
-        "continuation": continuation,
-    }
+    return request_payload
 
 
 def _validate_host_bridge_result(
@@ -619,7 +670,8 @@ def _validate_bridge_continuation(
         continuation["kind"] != PACKVM_CONTINUATION_KIND
         or continuation["protocol"] != PACKVM_BRIDGE_PROTOCOL
         or continuation["version"] != PACKVM_BRIDGE_VERSION
-        or continuation["operation_id"] != "complete"
+        or not isinstance(continuation["operation_id"], str)
+        or _BRIDGE_OPERATION_TARGETS.get(continuation["operation_id"]) != target
         or _validate_bridge_target(continuation["target"]) != target
         or not hmac.compare_digest(str(continuation["request_digest"]), request_digest)
     ):
@@ -631,7 +683,7 @@ def _validate_bridge_continuation(
         "kind": PACKVM_CONTINUATION_KIND,
         "protocol": PACKVM_BRIDGE_PROTOCOL,
         "version": PACKVM_BRIDGE_VERSION,
-        "operation_id": "complete",
+        "operation_id": continuation["operation_id"],
         "nonce": nonce,
         "target": dict(target),
         "request_digest": request_digest,
@@ -663,7 +715,7 @@ def _validate_bridge_result(
         bridge_result["kind"] != PACKVM_BRIDGE_RESULT_KIND
         or bridge_result["protocol"] != PACKVM_BRIDGE_PROTOCOL
         or bridge_result["version"] != PACKVM_BRIDGE_VERSION
-        or bridge_result["operation_id"] != "complete"
+        or bridge_result["operation_id"] != continuation["operation_id"]
         or not hmac.compare_digest(
             str(bridge_result["nonce"]), str(continuation["nonce"])
         )
@@ -683,9 +735,9 @@ def _validate_bridge_result(
         "kind": PACKVM_BRIDGE_RESULT_KIND,
         "protocol": PACKVM_BRIDGE_PROTOCOL,
         "version": PACKVM_BRIDGE_VERSION,
-        "operation_id": "complete",
+        "operation_id": continuation["operation_id"],
         "nonce": continuation["nonce"],
-        "target": dict(PACKVM_BRIDGE_TARGET),
+        "target": _validate_bridge_target(continuation["target"]),
         "request_digest": continuation["request_digest"],
         "result": outcome,
         "result_digest": result_digest,
@@ -723,9 +775,9 @@ def _validate_bridge_target(value: object) -> dict[str, str]:
     """Ensure the Pack cannot select a different Host capability target."""
 
     target = _exact_bridge_object(value, set(PACKVM_BRIDGE_TARGET), "PackVM bridge target")
-    if target != PACKVM_BRIDGE_TARGET:
+    if target not in _BRIDGE_OPERATION_TARGETS.values():
         raise ValueError("PackVM bridge target is not permitted")
-    return dict(PACKVM_BRIDGE_TARGET)
+    return {key: str(value) for key, value in target.items()}
 
 
 def _exact_bridge_object(
@@ -1294,7 +1346,9 @@ def _dispatch_agent_request(
         _remaining_guest_budget(guest_deadline)
         bridge = result.get("payload")
         if isinstance(bridge, dict) and _looks_like_bridge_request(bridge):
-            checked_bridge = _validate_bridge_request(bridge)
+            checked_bridge = _validate_bridge_request(
+                bridge, operation_id=payload["operation_id"],
+            )
             ledger.add(
                 domain_id=config.domain_id,
                 request=dict(payload),

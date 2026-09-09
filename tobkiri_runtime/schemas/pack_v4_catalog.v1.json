@@ -9165,8 +9165,8 @@
         "mcp.tool.call"
       ],
       "dependencies": {},
-      "description": "Namespace-isolated approved MCP tool-call adapter and declarative gateway catalog.",
-      "display_name": "Rumi MCP Gateway",
+      "description": "Sandboxed finite adapter for a captured Host-owned MCP connection.",
+      "display_name": "Tobkiri MCP Gateway",
       "execution_boundary": "sandbox",
       "kind": "normal_sandbox",
       "legacy_ids": [
@@ -9191,7 +9191,7 @@
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
-            "data_owner": "defaultspack-mcp-compat",
+            "data_owner": "none",
             "deprecated": false,
             "introduced": "1.1.0"
           },
@@ -9199,7 +9199,7 @@
             {
               "entrypoint_id": "mcp-tool-call",
               "id": "rumi_mcp_gateway_pack.mcp-tool-call",
-              "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162"
+              "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1"
             }
           ],
           "owner": "rumi_mcp_gateway_pack",
@@ -9222,10 +9222,17 @@
           "version": "1.0.0"
         }
       ],
-      "required_contracts": [],
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": "^1.0.0"
+        }
+      ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+          "digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
           "kind": "executable",
           "path": "runtime/gateway.py"
         }
@@ -14799,8 +14806,8 @@
         "tool.execute"
       ],
       "dependencies": {},
-      "description": "Namespace-bound selected MCP gateway executor.",
-      "display_name": "Rumi Tool MCP Executor",
+      "description": "Captured Host executor forwarding one owned MCP tool call through the selected sandbox Gateway.",
+      "display_name": "Tobkiri Tool MCP Executor",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -14833,7 +14840,7 @@
             {
               "entrypoint_id": "tool-mcp-execute",
               "id": "rumi_tool_mcp_executor_pack.tool-mcp-execute",
-              "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc"
+              "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20"
             }
           ],
           "owner": "rumi_tool_capability_executor_pack",
@@ -14866,7 +14873,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+          "digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
           "kind": "executable",
           "path": "runtime/executor.py"
         }
@@ -17027,7 +17034,8 @@
               "id": "mcp.connection.prepare",
               "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
               "effect_ceiling": [
-                "capability:mcp.connection.prepare"
+                "capability:mcp.connection.prepare",
+                "host:brokered-execution"
               ]
             },
             {
@@ -17059,7 +17067,8 @@
             },
             {
               "effect_ceiling": [
-                "capability:mcp.connection.read"
+                "capability:mcp.connection.read",
+                "host:brokered-execution"
               ],
               "entrypoint_id": "mcp.connection.list",
               "id": "mcp.connection.list",

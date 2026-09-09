@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:98ff6274f3b9f1c4c1c3ed30b4073cac99a5344289965278f06d455acb79df5b",
+      "digest": "sha256:0f7c89afc1daff3811ea65b37808532ce9c39e9c751eb7ba9cee62859240bcdb",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -21,12 +21,12 @@
         "mcp.connection.disconnect",
         "mcp.connection.list"
       ],
-      "revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265"
+      "revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "contract_revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f",
       "id": "mcp.connection.call.service",
       "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
       "isolation": "dedicated_process",
@@ -36,7 +36,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "contract_revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f",
       "id": "mcp.connection.connect.service",
       "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
       "isolation": "dedicated_process",
@@ -46,7 +46,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "contract_revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f",
       "id": "mcp.connection.disconnect.service",
       "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
       "isolation": "dedicated_process",
@@ -56,7 +56,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "contract_revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f",
       "id": "mcp.connection.list.service",
       "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
       "isolation": "dedicated_process",
@@ -66,7 +66,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:c2a811237ef5b52ee45fe6463929d3386797f36c5ee572dd13f7b782dd66c265",
+      "contract_revision_digest": "sha256:57c40f4779dce5e36c9a5ed5a8cbd483ef657246035494d4c3409bf5f7411d8f",
       "id": "mcp.connection.prepare.service",
       "implementation_digest": "sha256:cb4035ffdab6020a567c0f4a27fde768b29412bc05c5d002bb7f44017238f13f",
       "isolation": "dedicated_process",
@@ -77,9 +77,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:008502311e76f4687bc98872422ed4ff10cd7551c412f413310c9da413556a40",
-    "contract_catalog_digest": "sha256:3f31bf9525b924bcd00ea7bb58991d33f15f2a00aa7fc942a196bd62e0f2b2b0",
-    "source_identity": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6"
+    "artifact_set_digest": "sha256:5ecd52ea88536d62d224989a4d27ad37ce84346fda9f6ef0474d07f4825baa59",
+    "contract_catalog_digest": "sha256:847834c910c59ec0654411c3c0fd97c0e07bad01aabbf5a097df8c33cb70884c",
+    "source_identity": "sha256:dbae533cf79d5072940356ab417f73107ed436e57183d8c491d8b731f5064f6b"
   },
   "migration": {
     "compatibility": "none",
@@ -124,7 +124,8 @@
     {
       "contract_reference": "tobkiri.service.mcp.connection.v1",
       "effect_ceiling": [
-        "capability:mcp.connection.read"
+        "capability:mcp.connection.read",
+        "host:brokered-execution"
       ],
       "operation_id": "mcp.connection.list",
       "owner": "tobkiri_mcp_connection_pack",
@@ -134,7 +135,8 @@
     {
       "contract_reference": "tobkiri.service.mcp.connection.v1",
       "effect_ceiling": [
-        "capability:mcp.connection.prepare"
+        "capability:mcp.connection.prepare",
+        "host:brokered-execution"
       ],
       "operation_id": "mcp.connection.prepare",
       "owner": "tobkiri_mcp_connection_pack",
@@ -143,7 +145,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:008502311e76f4687bc98872422ed4ff10cd7551c412f413310c9da413556a40",
+    "artifact_digest": "sha256:5ecd52ea88536d62d224989a4d27ad37ce84346fda9f6ef0474d07f4825baa59",
     "display_name": "Tobkiri MCP Connections",
     "id": "tobkiri_mcp_connection_pack",
     "kind": "host_extension",
@@ -153,7 +155,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
+        "digest": "sha256:dbae533cf79d5072940356ab417f73107ed436e57183d8c491d8b731f5064f6b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -164,7 +166,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:62fe60fea309e9fef93d55ad4192e49a003b9e0a955c93f30d187b354f2535f6",
+    "source_digest": "sha256:dbae533cf79d5072940356ab417f73107ed436e57183d8c491d8b731f5064f6b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_mcp_connection_pack"
   },

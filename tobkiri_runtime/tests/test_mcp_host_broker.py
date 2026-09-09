@@ -5,8 +5,11 @@ external-provider, process-containment, or ordinary Defaults UI acceptance.
 """
 
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 
 import pytest
 
@@ -25,6 +28,10 @@ from scripts.generate_packaged_defaultspack_v4_bundle import package_bundle
 from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
 from tests.conformance_support.host_contract import host_contract
 from tests.test_mcp_connection_owner import connection_request as connection_request
+from tests.test_production_frontend_contract_http import _ShellPolicyPackVmBackend
+from ecosystem.defaultspack.backend.sandbox.isolation.resources import packvm_guest_runner as runner
+from tobkiri_host.backends import BackendRegistry
+from tobkiri_host.effects import ProviderOutcome
 from tobkiri_host.errors import ProviderExecutionError, ResolutionError
 
 
@@ -33,6 +40,65 @@ _APPROVAL = "tobkiri.service.interactive-approval.v1"
 _COORDINATOR = "rumi_host_authority_bridge_pack.host-authority.interactive-effect"
 _OWNER = {op: op + ".service" for op in (PREPARE, CONNECT, CALL, LIST, DISCONNECT)}
 _RUNTIME_ROOT = Path(__file__).resolve().parents[1]
+_GATEWAY = "rumi_mcp_gateway_pack.mcp-gateway.call"
+_EXECUTOR = "rumi_tool_mcp_executor_pack.tool-executor.mcp"
+_EXECUTE = "rumi_tool_mcp_executor_pack.tool-mcp-execute"
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="staged child fixture requires POSIX")
+
+
+class _McpGatewayBackend(_ShellPolicyPackVmBackend):
+    """Test transport: execute verified bytes in fresh isolated Python children.
+
+    The production Broker/Host bridge and Pack entrypoint are real. This adapter
+    does not claim the VM, attested channel, or full OS sandbox acceptance.
+    """
+
+    _PACK_ID = "rumi_mcp_gateway_pack"
+    _FUNCTION_ID = _GATEWAY
+    _CONTRACT_ID = runner.PACKVM_MCP_CONTRACT
+    _OPERATION_ID = runner.PACKVM_MCP_OPERATION
+
+    def __init__(self, root):
+        super().__init__()
+        self._staged = root / "gateway.py"
+        self._bridge = None
+        self._execute_abi = self._child
+
+    def bind_capability_bridge(self, callback):
+        assert self._bridge is None
+        self._bridge = callback
+
+    def materialize(self, binding, reservation_id):
+        evidence = super().materialize(binding, reservation_id)
+        artifact = self._artifact_resolver(binding)
+        contents = next(item.content for item in artifact.files
+                        if item.path == artifact.implementation_path)
+        if self._staged.exists():
+            self._staged.chmod(0o600)
+        self._staged.write_bytes(contents)
+        self._staged.chmod(0o400)
+        return evidence
+
+    def _child(self, operation_id, payload):
+        child = subprocess.run(
+            [sys.executable, "-I", "-S", runner.__file__, "--execute", str(self._staged)],
+            input=json.dumps({"contract_id": self._CONTRACT_ID,
+                              "operation_id": operation_id, "payload": payload}),
+            text=True, capture_output=True, timeout=5, check=True,
+        )
+        return json.loads(child.stdout)
+
+    def invoke(self, request):
+        bridge = runner._validate_bridge_request(
+            dict(super().invoke(request).payload), operation_id=request.operation_id,
+        )
+        response = self._bridge(request, bridge)
+        checked = runner._validate_bridge_result(response, bridge["continuation"])
+        terminal = self._child(request.operation_id, {
+            "continuation": bridge["continuation"], "bridge_result": checked,
+        })
+        assert terminal["kind"] == runner.PACKVM_INVOKE_RESULT_KIND
+        return ProviderOutcome(terminal["outcome"])
 
 
 def _edge(caller, provider, contract, operation, mode="profile_grant"):
@@ -62,15 +128,16 @@ def mcp_session(tmp_path, monkeypatch):
     # The packaged bundle intentionally omits source-only intent files.
     source_intent = _RUNTIME_ROOT / "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
     intent = json.loads(source_intent.read_text())
-    intent["packs"].append(
-        {
-            "artifact_digest": None,
-            "pack_id": "tobkiri_mcp_connection_pack",
-            "role": "provider",
-        }
-    )
+    for pack_id in ("tobkiri_mcp_connection_pack", "rumi_mcp_gateway_pack",
+                    "rumi_tool_mcp_executor_pack"):
+        intent["packs"].append({"artifact_digest": None, "pack_id": pack_id, "role": "provider"})
     intent["requested_edges"].extend(
         [
+            _edge("shell.tauri.default", _GATEWAY,
+                  runner.PACKVM_MCP_CONTRACT, runner.PACKVM_MCP_OPERATION),
+            _edge("shell.tauri.default", _EXECUTOR, "tobkiri.service.tool.execute.v1", _EXECUTE),
+            _edge(_EXECUTOR, _GATEWAY, runner.PACKVM_MCP_CONTRACT, runner.PACKVM_MCP_OPERATION),
+            _edge(_GATEWAY, _OWNER[CALL], CONTRACT_ID, CALL),
             _edge(_COORDINATOR, _OWNER[PREPARE], CONTRACT_ID, PREPARE),
             _edge(_COORDINATOR, _OWNER[CONNECT], CONTRACT_ID, CONNECT, "interactive_only"),
             _edge("shell.tauri.default", _OWNER[LIST], CONTRACT_ID, LIST),
@@ -163,6 +230,7 @@ def mcp_session(tmp_path, monkeypatch):
             authority_store=store,
             activation_snapshot_loader=defaultspack_activation_snapshot_loader,
             runtime_surface_factory=create_runtime_surface_services,
+            backends=BackendRegistry((_McpGatewayBackend(tmp_path),)),
         )
         mounts = WorkspaceMountStore("defaults", user_data_root=user_data)
         mounted = mounts.mount("workspace", str(tmp_path), expected_revision=0)
@@ -248,6 +316,17 @@ def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
         invoke(CONTRACT_ID, CALL, {**call, "approved": True})
     assert len(calls.read_text().splitlines()) == 1
     assert invoke(CONTRACT_ID, LIST, {})["connections"] == connections
+    for count, (contract, operation) in enumerate((
+        (runner.PACKVM_MCP_CONTRACT, runner.PACKVM_MCP_OPERATION),
+        ("tobkiri.service.tool.execute.v1", _EXECUTE),
+    ), start=2):
+        nested = invoke(contract, operation, call)
+        assert nested["is_error"] is False, nested
+        assert json.loads(nested["result"])["arguments"] == {"value": 42}
+        assert len(calls.read_text().splitlines()) == count
+        denied = invoke(contract, operation, call, owner="foreign-session")
+        assert denied["is_error"] is True
+        assert len(calls.read_text().splitlines()) == count
     invoke(CONTRACT_ID, DISCONNECT, {"connection_id": connections[0]["connection_id"]})
     assert invoke(CONTRACT_ID, LIST, {}) == {"connections": []}
     assert "committed" in {event["event_state"] for event in authority.audit_events()}
