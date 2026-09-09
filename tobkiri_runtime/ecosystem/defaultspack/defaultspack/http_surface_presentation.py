@@ -23,6 +23,9 @@ from tobkiri_protocol.saved_conversation import validate_saved_conversation_inpu
 
 from .model_profile_presentation import (
     MODEL_PROFILE_LIST_TARGET,
+    MODEL_PROFILE_SAVE_TARGET,
+    normalize_model_profile_save,
+    present_model_profile_saved,
     present_model_profiles,
 )
 from .conversation_list_presentation import (
@@ -157,6 +160,12 @@ class DefaultspackHTTPPresentation:
                 raise ValueError("provider configuration phase is invalid")
             return dict(payload)
 
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        ) == MODEL_PROFILE_SAVE_TARGET:
+            session.assert_current()
+            return normalize_model_profile_save(payload)
         if (
             target.contribution_id, target.contract_id, target.operation_id,
             target.provider_id, target.function_id,
@@ -331,6 +340,8 @@ class DefaultspackHTTPPresentation:
 
         if binding.presentation == "model_profile_list":
             return present_model_profiles(result)
+        if binding.presentation == "model_profile_saved":
+            return present_model_profile_saved(result)
         if binding.presentation == "conversation_list":
             return present_conversation_list(result)
         if binding.presentation == "conversation_created":

@@ -867,6 +867,7 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
             "model_id": "test-model",
         }],
         "count": 1,
+        "registry_revision": 1,
     }
     status, payload, _headers = _request(
         server, "GET", _contract("GET", "/api/ai/profiles?profile_id=other"),
@@ -874,6 +875,44 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
     )
     assert status == 400, payload
     assert payload["data"]["code"] == "invalid_contract_payload"
+
+
+def test_model_profile_save_http_rejects_authority_and_stale_revision(
+    production_server, tmp_path: Path,
+) -> None:
+    """Save a selectable model through the signed Defaults edge and real owner."""
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
+    payload = {
+        "model_profile_id": "daily", "model_id": "provider-model",
+        "provider_instance_id": "provider.fixture", "display_name": "Daily",
+        "expected_revision": 0,
+    }
+
+    def post(body):
+        return _request(server, "POST", _contract("POST", "/api/ai/profiles"), body=body, headers={
+            "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        })
+
+    for extra in ({"profile_id": "other"}, {"approved": True}, {"credential_handle": "credential:forged"}, {"expected_revision": True}):
+        status, result, _ = post({**payload, **extra})
+        assert status == 400, result
+        assert not registry.path.exists()
+    status, result, _ = post(payload)
+    assert status == 200, result
+    assert result["data"] == {
+        "registry_revision": 1, "count": 1,
+        "profiles": [{"profile_id": "daily", "model_id": "provider-model", "display_name": "Daily", "provider_id": "provider.fixture"}],
+    }
+    assert registry.resolve("daily")["profile"]["requirements"] == {"preferred_provider_instance_id": "provider.fixture"}
+    before = registry.path.read_bytes()
+    status, result, _ = post(payload)
+    assert status != 200, result
+    assert registry.path.read_bytes() == before
 
 
 def test_external_session_cannot_borrow_a_provider_only_edge(production_server) -> None:

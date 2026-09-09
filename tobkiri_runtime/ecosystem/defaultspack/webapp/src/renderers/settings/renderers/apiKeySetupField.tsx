@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ModelRouteSetup } from "../../../features/models/ModelRouteSetup";
 
 import { CredentialTransferModal } from "../../../components/CredentialTransferModal";
 import { ErrorNotice } from "../../../components/ErrorNotice";
@@ -220,6 +221,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
               <textarea value={notes} onChange={(event) => { setNotes(event.target.value); resetFeedback(); }} placeholder="notes for routing" className="min-h-20 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none md:col-span-2" />
             </div>
           </details>
+          <ModelRouteSetup />
         </div>
         {feedback?.text && (
           feedback.tone === "success" ? (

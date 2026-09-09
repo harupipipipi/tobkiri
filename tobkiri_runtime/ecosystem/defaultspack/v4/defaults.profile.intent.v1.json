@@ -120,6 +120,21 @@
   "requested_edges": [
     {
       "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_model_registry_pack.model-registry.manage",
+      "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": ["tobkiri.action.ai.model.profile.manage.v1"],
+          "operation": ["rumi_model_registry_pack.model-profile-manage"]
+        },
+        "quotas": {}, "exact_request_digest": null, "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
       "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
       "contract_id": "tobkiri.service.interactive-effect.v1",
       "operation_id": "interactive_effect.manage",

@@ -133,7 +133,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:7ad09289ba8715707b5d7bd87712685665e48bc012333d2ada25b946a06d5f09",
+    "source_digest": "sha256:a2c15dbb1b49c2c951f72a6d33b66ab1ddded3c6bb5594dd14516c4698ba7913",
     "repository_commit": "working-tree",
     "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
     "generator": "tobkiri-profile-artifacts",
@@ -183,6 +183,28 @@
     ]
   },
   "requested_edges": [
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_model_registry_pack.model-registry.manage",
+      "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:e6a4c0eb6f5dd04d117aa8343af2319b3d5d06a502b14ecebfbba08e0b2dd052",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.ai.model.profile.manage.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
     {
       "caller_function_id": "shell.tauri.default",
       "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",

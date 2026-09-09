@@ -78,10 +78,12 @@ def test_model_list_projects_real_registry_without_opaque_credentials(tmp_path: 
             }
         ],
         "count": 1,
+        "registry_revision": 1,
     }
     assert present_model_profiles(ModelRegistry("other", user_data_root=tmp_path).snapshot()) == {
         "profiles": [],
         "count": 0,
+        "registry_revision": 0,
     }
 
 

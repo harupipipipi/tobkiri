@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCircle, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
@@ -2913,6 +2914,7 @@ function SettingsField({
                 次に保存する API key にだけ適用されます。通常はそのまま空欄で大丈夫です。
               </p>
             </details>
+            <ModelRouteSetup />
           </div>
           {apiFeedback?.text && (
             apiFeedback.tone === "success" ? (

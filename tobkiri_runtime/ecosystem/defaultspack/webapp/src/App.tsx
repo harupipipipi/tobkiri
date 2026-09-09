@@ -2517,6 +2517,19 @@ function modelCommandInputQuery(value: string): string | null {
 export function ChatApp() {
   const [catalog, setCatalog] = useState<UICatalog | null>(null);
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
+  useEffect(() => {
+    let disposed = false;
+    const refreshModels = () => {
+      void api.listModelProfiles().then((result) => {
+        if (!disposed) setModelProfiles(result.profiles);
+      }).catch(() => { /* Keep the last confirmed list on a read failure. */ });
+    };
+    window.addEventListener("tobkiri-model-profiles-changed", refreshModels);
+    return () => {
+      disposed = true;
+      window.removeEventListener("tobkiri-model-profiles-changed", refreshModels);
+    };
+  }, []);
   const [settingsSections, setSettingsSections] = useState<SettingsSection[]>([]);
   const [settingsValues, setSettingsValues] = useState<Record<string, Record<string, unknown>>>({});
   const settingsValuesRef = useRef(settingsValues);

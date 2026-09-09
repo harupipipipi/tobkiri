@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:52daf82a3203afd15add970a7e36daf0ea5c0219d171bc388c2ee06ff5530421",
-  "profile_definition_digest": "sha256:f6d5024e02492d0930fec456fc537df4aa38db2b07d0ee4033fb9a57e7c95583",
-  "catalog_revision": "sha256:7d7cdb79726437fdd78012452b27ab7fef876e81b9ecf522ae84f808a1239164",
-  "bundle_digest": "sha256:1b9e65c123cb7dc8fcd93e625d58e817c45c41a52c8950bb85006346fdcee277",
+  "profile_revision": "sha256:aeda378160eb60951c72b7016a424978769bcdbd736aaa5d86e29203b4a52b89",
+  "profile_definition_digest": "sha256:b5415de5228047494c04dd89687a8b82fdf406d7bf841ad37c6f701c35e8506e",
+  "catalog_revision": "sha256:5218041027c9fcb59f84729cc929f7b5fa3c5a3912de6a03a4ac0f429fb08838",
+  "bundle_digest": "sha256:9ffc238f707349884d444a78f23913d8ff7665765cdb424e25966136ae5f6a36",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -27,7 +27,7 @@
     "pack_id": "runtime.tauri.application.default",
     "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
     "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
-    "definition_digest": "sha256:b71cd4a815f7b7d59b5e2ee156654a5cd412910f91409a58d000b1f219a7c7a8"
+    "definition_digest": "sha256:2e3a53cbf7de038101cdc6840b91c1b755167b30de2bf7d039c2c30185d4e780"
   },
   "effective_set": [
     {
@@ -538,6 +538,18 @@
       "pack_id": "rumi_model_registry_pack",
       "artifact_digest": "sha256:b158195cc0e56919778ca062577ca22b55e1ab93dcaf3f05d3f5710836785a5f",
       "executable_catalog_digest": "sha256:64b67caf5295751b528323a42525a6475e2e9bac3e6d892b6d9bea59a04946cc",
+      "variant_id": "rumi_model_registry_pack.model-registry.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_model_registry_pack",
+      "artifact_digest": "sha256:b158195cc0e56919778ca062577ca22b55e1ab93dcaf3f05d3f5710836785a5f",
+      "executable_catalog_digest": "sha256:64b67caf5295751b528323a42525a6475e2e9bac3e6d892b6d9bea59a04946cc",
       "variant_id": "rumi_model_registry_pack.model-registry.profile.python",
       "platform": "any",
       "architecture": "any",
@@ -763,9 +775,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:4e89a22a4fc9e5d5628c26baa0d091d603fcd89a7157eb32080931b1537833cf",
+  "requested_edges_digest": "sha256:83f3b642d6dfe9d4e843654513162237eb444d3cd0d3a0cbd5aa4ae39f5050f5",
   "constraints_digest": "sha256:13be5ca7af1e3cc4f73bff6672e60845335d1cccaa4daec3edf65464ca30b1b8",
   "closure_digest": "sha256:0f2fc5a7815ada9c23c15bf2cb6581dbfd43d502c065fb14e749696b5d9f304d",
-  "provenance_digest": "sha256:d58e68d31eadd80a5869d426d8e404665dad2cac31956c4058d9cddbec42594b",
-  "lock_digest": "sha256:dd800be334ab9a0215293abea712cc8192644b659447f3e60ffc46755bab21ac"
+  "provenance_digest": "sha256:f2b3a2358d0ef76d237e58e916c881d7b33c226220f799704040ec654b17e205",
+  "lock_digest": "sha256:c3d04d3fbbd398825e8495f0a13ae5416ca543f819c7a52eaf8bc7528d78f8e3"
 }

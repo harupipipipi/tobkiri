@@ -413,6 +413,21 @@
       ]
     },
     {
+      "method": "POST",
+      "path": "/api/ai/profiles",
+      "presentation": "model_profile_saved",
+      "targets": [
+        {
+          "contribution_id": "defaults.models.profiles.save",
+          "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+          "operation_id": "rumi_model_registry_pack.model-profile-manage",
+          "provider_id": "rumi_model_registry_pack.model-registry.manage",
+          "function_id": "rumi_model_registry_pack.model-registry.manage",
+          "allowed_payload_keys": ["model_profile_id", "model_id", "provider_instance_id", "display_name", "expected_revision"]
+        }
+      ]
+    },
+    {
       "method": "GET",
       "path": "/api/interactive-approval/v1/list",
       "presentation": "broker_result",

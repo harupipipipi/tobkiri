@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:79e7d162738f4d86d5d08f05fbca2c2ca2ff3ba996e5f09469e29f0b07986ee9
+// Raw source digest: sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:79e7d162738f4d86d5d08f05fbca2c2ca2ff3ba996e5f09469e29f0b07986ee9" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:79e7d162738f4d86d5d08f05fbca2c2ca2ff3ba996e5f09469e29f0b07986ee9",
+  "artifact_digest": "sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49",
   "routes": [
     {
       "method": "POST",
@@ -656,6 +656,27 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "provider_id": "rumi_model_registry_pack.model-registry.profile",
           "function_id": "rumi_model_registry_pack.model-registry.profile",
           "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/profiles",
+      "presentation": "model_profile_saved",
+      "targets": [
+        {
+          "contribution_id": "defaults.models.profiles.save",
+          "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+          "operation_id": "rumi_model_registry_pack.model-profile-manage",
+          "provider_id": "rumi_model_registry_pack.model-registry.manage",
+          "function_id": "rumi_model_registry_pack.model-registry.manage",
+          "allowed_payload_keys": [
+            "model_profile_id",
+            "model_id",
+            "provider_instance_id",
+            "display_name",
+            "expected_revision"
+          ]
         }
       ]
     },
@@ -1405,6 +1426,25 @@ const EXPECTED_ROUTES = {
         "provider_id": "rumi_model_registry_pack.model-registry.profile",
         "function_id": "rumi_model_registry_pack.model-registry.profile",
         "allowed_payload_keys": []
+      }
+    ]
+  },
+  "POST /api/ai/profiles": {
+    "presentation": "model_profile_saved",
+    "targets": [
+      {
+        "contribution_id": "defaults.models.profiles.save",
+        "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+        "operation_id": "rumi_model_registry_pack.model-profile-manage",
+        "provider_id": "rumi_model_registry_pack.model-registry.manage",
+        "function_id": "rumi_model_registry_pack.model-registry.manage",
+        "allowed_payload_keys": [
+          "model_profile_id",
+          "model_id",
+          "provider_instance_id",
+          "display_name",
+          "expected_revision"
+        ]
       }
     ]
   },

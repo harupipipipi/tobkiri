@@ -3626,9 +3626,35 @@ export const api = {
   },
 
   listModelProfiles() {
-    return request<{ profiles: ModelProfile[]; count: number }>(defaultspackContractRoute("api/ai/profiles"), {
+    return request<{ profiles: ModelProfile[]; count: number; registry_revision?: number }>(defaultspackContractRoute("api/ai/profiles"), {
       cache: "no-store",
     }, isModelProfilesResponse);
+  },
+
+  async createModelProfile(input: {
+    model_profile_id: string; model_id: string; provider_instance_id: string; display_name: string;
+  }) {
+    const current = await api.listModelProfiles();
+    const matches = (profile: ModelProfile) => profile.profile_id === input.model_profile_id
+      && profile.model_id === input.model_id && profile.provider_id === input.provider_instance_id
+      && profile.display_name === input.display_name;
+    const existing = current.profiles.find((profile) => profile.profile_id === input.model_profile_id);
+    if (existing) {
+      if (matches(existing)) return existing;
+      throw new Error("同じモデル設定IDが既に存在します。別のIDを指定してください。");
+    }
+    if (!Number.isInteger(current.registry_revision) || current.registry_revision! < 0) {
+      throw new Error("モデル設定のrevisionを確認できません。");
+    }
+    const saved = await request<{ profiles: ModelProfile[]; count: number }>(
+      defaultspackContractRoute("api/ai/profiles"), {
+        method: "POST", body: JSON.stringify({ ...input, expected_revision: current.registry_revision }),
+      }, isModelProfilesResponse,
+    );
+    if (saved.profiles.length !== 1 || !matches(saved.profiles[0])) {
+      throw new Error("モデル設定の保存結果が一致しません。再送せず一覧を確認してください。");
+    }
+    return saved.profiles[0];
   },
 
   searchModels(filters: Record<string, unknown>) {

@@ -286,6 +286,7 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     assert [
         item["function_principal"]["function_id"] for item in resolved.plan["bindings"]
     ] == [
+        "rumi_model_registry_pack.model-registry.manage",
         "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
         "rumi_provider_registry_pack.provider-configure.prepare",
         "rumi_provider_registry_pack.provider-configure.execute",

@@ -1852,6 +1852,29 @@ test("searchConversations serializes spotlight search filters", async () => {
   });
 });
 
+test("createModelProfile uses revisioned model writes and reconciles existing identity", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  const input = { model_profile_id: "daily", model_id: "model-1", provider_instance_id: "provider.fixture", display_name: "Daily" };
+  const profile = { profile_id: "daily", model_id: "model-1", provider_id: "provider.fixture", display_name: "Daily" };
+  let saved = false;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      bodies.push(JSON.parse(String(init.body)));
+      saved = true;
+    }
+    return new Response(JSON.stringify({ status: "ok", data: {
+      profiles: saved ? [profile] : [], count: saved ? 1 : 0, registry_revision: saved ? 1 : 0,
+    } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await api.createModelProfile(input), profile);
+    assert.deepEqual(await api.createModelProfile(input), profile);
+    await assert.rejects(api.createModelProfile({ ...input, model_id: "different" }), /既に存在/);
+    assert.deepEqual(bodies, [{ ...input, expected_revision: 0 }]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("saveProviderApiKey rejects unsupported metadata before sending a key", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;

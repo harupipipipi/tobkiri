@@ -391,7 +391,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_shell_policy_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:f19e62967bdad1bd1e910598433e75fda5937c47262ea7cd7fdb2d6ecf2d20a1",
+  "default_profile_digest": "sha256:e51039239d226ec0ee4e9c8be15dc9816ac2d71e9128303e53111bea183c2694",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
   "default_selection": {
@@ -410,6 +410,7 @@
         "effect_scope": [
           "app.shell.v1",
           "conversation.turn.v1",
+          "tobkiri.action.ai.model.profile.manage.v1",
           "tobkiri.action.conversation.manage.v1",
           "tobkiri.action.turn.reconcile.v1",
           "tobkiri.action.turn.saved.v1",
@@ -516,6 +517,7 @@
       ],
       "consumes_contracts": [
         "conversation.turn.v1",
+        "tobkiri.action.ai.model.profile.manage.v1",
         "tobkiri.service.interactive-effect.v1",
         "tobkiri.action.turn.reconcile.v1",
         "tobkiri.action.turn.saved.v1",
@@ -565,7 +567,7 @@
     "rumi_shell_policy_pack": "sha256:e592b9ff92762cb0bd7983f86f7fa73da590c1960719daa21f05a0cd8067a34a",
     "rumi_turn_runtime_pack": "sha256:0bee8aa7723bd5e51fb57a3d062290768b80a8bf6135fdf510c4b11937c57ebd",
     "rumi_workspace_mount_pack": "sha256:11e99c880a7599703a10d0875c10ce3a2c2c04b04157024938df5021855b63de",
-    "runtime.tauri.application.default": "sha256:172bfdbdee6dad4c02525a99e772b5e3b7976a79147698e22907e5a53157046b",
+    "runtime.tauri.application.default": "sha256:1d455afbd8f133429ce237d2f5ac97df0ee72a7f243736f5917b23f4aa9e21e9",
     "shell.tauri.default": "sha256:13dc6522500ee1b16880aa81e37b9cafb0e7e7bb138b3c3e67df881d0221ab64",
     "tobkiri_host_pack_control": "sha256:6969315ed077df458702e7a878572fbebfcce61030ace1f58863d8c71e83e9b8",
     "tobkiri_ui_settings_pack": "sha256:817cd00b7386d0dada22323698f6f762284726623506dfb2531a062dd653b15a"
