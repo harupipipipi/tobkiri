@@ -803,6 +803,82 @@ def test_server_closes_server_captured_refresh_session_on_stop(
     assert server._dispatch_session_owned_by_server is False
 
 
+def test_server_stop_retains_failed_owned_cleanup_for_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _RefreshDispatch("captured")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
+        dispatch_session=captured,  # type: ignore[arg-type]
+    )
+    server.start()
+    server._dispatch_session_owned_by_server = True
+
+    def fail_close() -> None:
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(captured, "close", fail_close)
+    with pytest.raises(RuntimeError, match="teardown incomplete"):
+        server.stop()
+    assert server._lifecycle_state == "drain_failed"
+    assert server._dispatch_session is captured
+    assert server._dispatch_session_owned_by_server is True
+    assert not server.is_running()
+
+    monkeypatch.setattr(captured, "close", lambda: _RefreshDispatch.close(captured))
+    server.stop()
+    server.stop()
+    assert captured.close_calls == 1
+    assert server._dispatch_session is None
+    assert server._dispatch_session_owned_by_server is False
+    assert server._lifecycle_state == "stopped"
+
+
+def test_server_stop_waiters_wait_for_owned_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _RefreshDispatch("captured")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
+        dispatch_session=captured,  # type: ignore[arg-type]
+    )
+    server.start()
+    server._dispatch_session_owned_by_server = True
+    closing = threading.Event()
+    release = threading.Event()
+    waiting = threading.Event()
+    original_wait = server._stop_complete.wait
+
+    def close() -> None:
+        closing.set()
+        assert release.wait(timeout=5)
+        captured.close_calls += 1
+
+    def wait(timeout: float | None = None) -> bool:
+        waiting.set()
+        return original_wait(timeout)
+
+    monkeypatch.setattr(captured, "close", close)
+    monkeypatch.setattr(server._stop_complete, "wait", wait)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(server.stop)
+        try:
+            assert closing.wait(timeout=5)
+            second = executor.submit(server.stop)
+            assert waiting.wait(timeout=5)
+            assert not second.done()
+            assert server._lifecycle_state == "stopping"
+            assert server._dispatch_session is captured
+        finally:
+            release.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+    assert captured.close_calls == 1
+    assert server._lifecycle_state == "stopped"
+
+
 def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

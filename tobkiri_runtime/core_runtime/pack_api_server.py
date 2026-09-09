@@ -2796,11 +2796,6 @@ class PackAPIServer:
                 self.handler_class = None
                 if self._dispatch_session_owned_by_server:
                     owned_dispatch_session = self._dispatch_session
-                    self._dispatch_session = None
-                    self._dispatch_session_owned_by_server = False
-                self._lifecycle_state = "stopped"
-                self._stop_failed = False
-                self._stop_complete.set()
             else:
                 self._lifecycle_state = "drain_failed"
                 self._stop_failed = True
@@ -2816,6 +2811,20 @@ class PackAPIServer:
                     close()
                 except Exception:
                     logger.exception("failed to close server-owned dispatch session")
+                    with self._lifecycle_lock:
+                        self._lifecycle_state = "drain_failed"
+                        self._stop_failed = True
+                        self._stop_complete.set()
+                    raise RuntimeError(
+                        "Pack v4 API server teardown incomplete"
+                    ) from None
+        with self._lifecycle_lock:
+            if owned_dispatch_session is not None:
+                self._dispatch_session = None
+                self._dispatch_session_owned_by_server = False
+            self._lifecycle_state = "stopped"
+            self._stop_failed = False
+            self._stop_complete.set()
         logger.info("Pack v4 API server stopped")
 
     def is_running(self) -> bool:
