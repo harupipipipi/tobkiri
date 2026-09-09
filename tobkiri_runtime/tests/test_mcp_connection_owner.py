@@ -66,7 +66,6 @@ def owner(tmp_path: Path):
         plan_digest="plan",
         security_epoch=1,
         principal_id="gateway",
-        consumer_pack_id="mcp-owner",
         workspace_root=tmp_path,
         workspace_id="workspace",
         workspace_revision=1,
@@ -136,13 +135,7 @@ def test_owned_real_connection_binds_session_tools_and_exact_environment(
     connected = owner.invoke(invocation)
     connection_id = connected["connection_id"]
     assert connected["tools"] == ["ping", "wait"]
-    assert invocation.client_requests == [
-        {
-            "allowed_contract_ids": frozenset(),
-            "consumer_pack_id": "mcp-owner",
-            "include_credentials": False,
-        }
-    ]
+    assert invocation.client_requests == []
     result = owner.invoke(_call(connection_id, arguments={"value": 42}))
     assert json.loads(result["result"]) == {
         "literal": "${MCP_TEST_AMBIENT}",
@@ -253,6 +246,16 @@ def test_unknown_tool_during_registration_reaps_child(owner, connection_request)
         owner.invoke(_prepared_invocation(owner, connection_request))
     assert owner._records == {}
     assert owner._connections.list_servers() == []
+
+
+def test_prepare_reserves_space_for_the_execute_plan(owner, connection_request):
+    connection_request["config"]["env"] = {
+        f"BLOB{i}": "x" * 16250 for i in range(4)
+    }
+    assert len(json.dumps(connection_request).encode()) < 64 * 1024
+    with pytest.raises(ValueError):
+        owner.invoke(_Invocation(PREPARE, connection_request))
+    assert not owner.connection_ids
 
 
 def test_close_retains_failed_cleanup_for_retry(owner, connection_request, monkeypatch):

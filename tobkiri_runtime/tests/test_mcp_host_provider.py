@@ -7,6 +7,7 @@ import pytest
 
 from core_runtime.host_provider_backend_v4 import HostProviderCaptureContextV4
 from core_runtime.mcp.connection_owner import CALL, CONNECT, CONTRACT_ID, DISCONNECT, LIST, PREPARE
+from core_runtime.mcp.transport import McpConnections
 from ecosystem.tobkiri_mcp_connection_pack.runtime import host
 from tests.test_mcp_connection_owner import _Invocation
 from tests.test_mcp_connection_owner import connection_request as connection_request
@@ -63,14 +64,16 @@ def captured(tmp_path):
         invocation.presentation_owner_session_id = session
         if context_change:
             invocation.envelope = replace(invocation.envelope, **context_change)
+        client_binding = None
 
         def contract_client(**kwargs):
+            nonlocal client_binding
+            if client_binding is not None:
+                assert kwargs == client_binding, "Host invocation client binding changed"
+            client_binding = kwargs
             assert kwargs["consumer_pack_id"] == host.PACK_ID
             assert kwargs["include_credentials"] is False
-            assert kwargs["allowed_contract_ids"] in (
-                frozenset(),
-                frozenset({"tobkiri.resource.workspace.v1"}),
-            )
+            assert kwargs["allowed_contract_ids"] == frozenset({"tobkiri.resource.workspace.v1"})
             return workspace
 
         invocation.contract_client = contract_client
@@ -86,6 +89,29 @@ def captured(tmp_path):
 def _connect(invoke, connection_request):
     plan = invoke(PREPARE, connection_request)
     return invoke(CONNECT, {"request": connection_request, "plan": plan})["connection_id"]
+
+
+def test_failed_startup_remains_reachable_for_owned_cleanup(
+    captured, connection_request, monkeypatch
+):
+    _, _, invoke = captured
+    connection_request["allowed_tools"] = ["not-discovered"]
+    original = McpConnections.disconnect
+
+    def fail_cleanup(self, connection_id):
+        raise RuntimeError("fixture cleanup failure")
+
+    monkeypatch.setattr(McpConnections, "disconnect", fail_cleanup)
+    with pytest.raises(RuntimeError, match="cleanup"):
+        _connect(invoke, connection_request)
+    monkeypatch.setattr(McpConnections, "disconnect", original)
+    retained = invoke(LIST, {})["connections"]
+    assert len(retained) == 1 and retained[0]["status"] == "cleanup_pending"
+    connection_id = retained[0]["connection_id"]
+    with pytest.raises(PermissionError):
+        invoke(DISCONNECT, {"connection_id": connection_id}, session="foreign")
+    invoke(DISCONNECT, {"connection_id": connection_id})
+    assert invoke(LIST, {}) == {"connections": []}
 
 
 def test_factory_preserves_owner_across_operations_and_disconnect_after_unmount(

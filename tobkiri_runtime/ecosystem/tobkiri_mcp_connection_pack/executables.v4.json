@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:93fee952605383224d46de51b37c31e3074e387af8382dd3d30b5bbe99a5b7e5",
+  "catalog_digest": "sha256:21704f42735f3e44a5d8858c267510caf76cc1ff83d1ce89d772b3ac20ef9602",
   "pack_id": "tobkiri_mcp_connection_pack",
-  "source_identity": "sha256:ee3401f9d79032ba660006cee881c2357e89fbed5eb23e069aed365d23e7cca6",
+  "source_identity": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.mcp.connections",
-      "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+      "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [

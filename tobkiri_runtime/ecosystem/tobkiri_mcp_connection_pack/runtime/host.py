@@ -68,6 +68,8 @@ class _CapturedConnections:
             raise PermissionError("MCP capture binding changed")
         if (
             operation not in _OPERATIONS
+            or invocation.envelope.contract_id != CONTRACT_ID
+            or invocation.envelope.contract_version != "1.0.0"
             or operation != invocation.envelope.operation_id
             or dict(payload) != dict(invocation.envelope.payload)
         ):
@@ -75,6 +77,11 @@ class _CapturedConnections:
         with self._lock:
             if self._closed:
                 raise PermissionError("MCP capture is closed")
+        client = invocation.contract_client(
+            allowed_contract_ids=frozenset({_WORKSPACE_CONTRACT}),
+            consumer_pack_id=PACK_ID,
+            include_credentials=False,
+        )
         if operation == LIST:
             if payload:
                 raise ValueError("MCP list payload is invalid")
@@ -84,11 +91,6 @@ class _CapturedConnections:
             for entry in owners:
                 connections.extend(entry.connections.invoke(invocation)["connections"])
             return {"connections": connections}
-        client = invocation.contract_client(
-            allowed_contract_ids=frozenset({_WORKSPACE_CONTRACT}),
-            consumer_pack_id=PACK_ID,
-            include_credentials=False,
-        )
         if operation in {PREPARE, CONNECT}:
             with self._starts:
                 workspace = _workspace(client, self.context.profile_id)
@@ -101,11 +103,15 @@ class _CapturedConnections:
                     >= _CAPACITY
                 ):
                     raise PermissionError("MCP connection capacity is unavailable")
-                result = owner.connections.invoke(invocation)
-                if operation == CONNECT:
+                before = owner.connections.connection_ids
+                try:
+                    return owner.connections.invoke(invocation)
+                finally:
+                    # Failed startup can retain a child whose first cleanup
+                    # failed. Keep it reachable for an owned disconnect retry.
                     with self._lock:
-                        self._routes[str(result["connection_id"])] = (owner, _origin(invocation))
-                return result
+                        for created_id in owner.connections.connection_ids - before:
+                            self._routes[created_id] = (owner, _origin(invocation))
         connection_id = payload.get("connection_id")
         if not isinstance(connection_id, str):
             raise ValueError("MCP connection is invalid")
@@ -164,7 +170,6 @@ class _CapturedConnections:
                     plan_digest=context.plan_digest,
                     security_epoch=context.security_epoch,
                     principal_id=context.provider_bindings[0].principal_ref.value,
-                    consumer_pack_id=PACK_ID,
                     workspace_root=Path(workspace["root"]),
                     workspace_id=workspace["id"],
                     workspace_revision=workspace["revision"],

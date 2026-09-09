@@ -2800,7 +2800,13 @@ def capture_production_dispatch(
                 plan_digest=presentation_context.plan_digest,
             )
             with caller_session_bindings_lock:
-                caller_session_bindings[session_id] = route.coordinator_principal.value
+                owner = presentation_owner_bindings.get(
+                    presentation_context.caller_session_id,
+                    (presentation_context.caller_principal.value, presentation_context.caller_session_id),
+                )
+            resolved_session_id = bind_nested_session(
+                session_id, route.coordinator_principal.value, owner,
+            )
             try:
                 context = context_for(
                     route.spec.execute_contract_id,
@@ -2808,8 +2814,7 @@ def capture_production_dispatch(
                     session_id,
                 )
             finally:
-                with caller_session_bindings_lock:
-                    caller_session_bindings.pop(session_id, None)
+                release_nested_session(session_id, resolved_session_id)
             expected_domain = dynamic_domain_ids.get(
                 (
                     route.spec.execute_contract_id,

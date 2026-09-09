@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_mcp_connection_pack",
-  "source_identity": "sha256:6db315fd9aaad8e73debf634ddc899c5c1304a722aa6440b0896ae90dbe123d8",
+  "source_identity": "sha256:3a5a053dbdb0cc0e636812a0e6ccc348c152d0b56b354b02ad0c798f9d97fafb",
   "variants": [
     {
       "variant_id": "tobkiri.mcp.connections.python",
       "function_id": "tobkiri.mcp.connections",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+      "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -1064,6 +1064,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:93fee952605383224d46de51b37c31e3074e387af8382dd3d30b5bbe99a5b7e5",
-  "catalog_digest": "sha256:39ee559fb0b98280c623e754859a2505b7f8d258c46d6290fbdad4c9dfd72f84"
+  "materialization_catalog_digest": "sha256:21704f42735f3e44a5d8858c267510caf76cc1ff83d1ce89d772b3ac20ef9602",
+  "catalog_digest": "sha256:79237eff1a214822f44f1ba7cf4bc55478400cd9ecb31f03f384cab347ae9e63"
 }

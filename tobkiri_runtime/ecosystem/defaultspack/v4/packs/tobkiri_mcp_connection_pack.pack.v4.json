@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:095ea6b32ad08d667f8dc6457e774fc8cff9746e29291a68ccfb47ca9c77a756",
+      "digest": "sha256:66fd89736d2851bc6599cce167fa951121203af52d210c4b5203d382abf7e7d9",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+      "digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
       "kind": "executable",
       "path": "runtime/host.py"
     }
@@ -28,7 +28,7 @@
     {
       "contract_revision_digest": "sha256:b01c4441ca8b30f55a495f0f01e39f2846c17a2755a4ded41914d5a721361a82",
       "id": "tobkiri.mcp.connections",
-      "implementation_digest": "sha256:168cc9e9f74df17436737db9c861c5502a3723e0b06a79682a9a1e197b6dcd11",
+      "implementation_digest": "sha256:719d05946b4294c2902dae9c569b567f933d28fc6ba0b839cc8bed4d41f4f285",
       "isolation": "dedicated_process",
       "operations": [
         "mcp.connection.prepare",
@@ -41,8 +41,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:6db315fd9aaad8e73debf634ddc899c5c1304a722aa6440b0896ae90dbe123d8",
-    "artifact_set_digest": "sha256:c4625333dd0c0a79f51dfb3f26805e92bcd67cabd48940568c12973f343075a7",
+    "source_identity": "sha256:3a5a053dbdb0cc0e636812a0e6ccc348c152d0b56b354b02ad0c798f9d97fafb",
+    "artifact_set_digest": "sha256:09a5f09a7713d3bc62941e8ba0cdd37492fc9e2ce1c01e4c6e779e3b2edfceed",
     "contract_catalog_digest": "sha256:3f6386e738ea67483bb79eef68f4b04bdfe24d5276b53b3839f59795901c7f4e"
   },
   "migration": {
@@ -94,7 +94,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:c39ffb112336a08afac1ec3825083583ad4b73ca05f1e7f33aeacd4431e10242",
+    "artifact_digest": "sha256:d4238be66e8ad30b46aaa45cd56632b04811db9e847612239286798d170fb228",
     "display_name": "Tobkiri MCP Connections",
     "id": "tobkiri_mcp_connection_pack",
     "kind": "host_extension",
@@ -105,15 +105,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/tobkiri_mcp_connection_pack/pack.v4.json",
-    "source_digest": "sha256:6db315fd9aaad8e73debf634ddc899c5c1304a722aa6440b0896ae90dbe123d8",
+    "source_digest": "sha256:3a5a053dbdb0cc0e636812a0e6ccc348c152d0b56b354b02ad0c798f9d97fafb",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:28540714d272f5a485a314e77eff9aebcb7269b1adddcbc1b57ec68ba55b16dd",
+    "content_root_digest": "sha256:59f8f23497afcefea627a8616b4b14faa87f26a86c9cf5fe87f315a358150286",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:9a587fe2691724054a8cc22b8d9791ff6a20502505b5bcaa2bcdb4c9ec320a5e",
+    "input_inventory_digest": "sha256:60894bb61e39933a28ffe9a4f12117a6dc4c362b272b4f4b9cf78b5f4b6fd752",
     "normative": true,
     "evidence": [
       {
@@ -124,7 +124,7 @@
       {
         "path": "ecosystem/tobkiri_mcp_connection_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:6db315fd9aaad8e73debf634ddc899c5c1304a722aa6440b0896ae90dbe123d8"
+        "digest": "sha256:3a5a053dbdb0cc0e636812a0e6ccc348c152d0b56b354b02ad0c798f9d97fafb"
       }
     ]
   },

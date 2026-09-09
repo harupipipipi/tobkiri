@@ -65,13 +65,12 @@ class CapturedMcpConnectionOwner:
         plan_digest: str,
         security_epoch: int,
         principal_id: str,
-        consumer_pack_id: str,
         workspace_root: Path,
         workspace_id: str,
         workspace_revision: str | int,
     ) -> None:
         if (
-            not all((profile_id, activation_id, plan_digest, principal_id, consumer_pack_id))
+            not all((profile_id, activation_id, plan_digest, principal_id))
             or type(security_epoch) is not int
         ):
             raise ValueError("MCP capture is incomplete")
@@ -82,7 +81,6 @@ class CapturedMcpConnectionOwner:
             raise ValueError("MCP workspace is unavailable")
         self._capture = (profile_id, activation_id, plan_digest, security_epoch)
         self._principal_id = principal_id
-        self._consumer_pack_id = consumer_pack_id
         self._workspace_id = _text(workspace_id)
         if (
             type(workspace_revision) not in (str, int)
@@ -126,13 +124,9 @@ class CapturedMcpConnectionOwner:
         )
         if not all(isinstance(value, str) and value for value in owner):
             raise PermissionError("MCP originating session is unavailable")
-        # Authenticate this provider's identity without acquiring ambient
-        # credentials or an unrestricted contract client.
-        invocation.contract_client(
-            allowed_contract_ids=frozenset(),
-            consumer_pack_id=self._consumer_pack_id,
-            include_credentials=False,
-        )
+        # The verified factory owns nested contract dispatch. This resource
+        # owner checks the exact admitted principal/capture without creating
+        # a second, conflicting client on that same Host invocation.
         payload = _payload(envelope.payload)
         operation = envelope.operation_id
         fields = {
@@ -272,6 +266,9 @@ class CapturedMcpConnectionOwner:
             cancellation=invocation.envelope.cancellation_requested,
         )
         self._check_current(invocation)
+        # A prepare result must fit the later execute envelope too; otherwise
+        # the user could approve a request that can never reach this owner.
+        _payload({"request": payload, "plan": plan})
         config["command"] = [plan["executable"]["path"], *config["command"][1:]]
         return _PreparedConnection(server_id, config, allowed_tools, plan)
 

@@ -78,7 +78,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:ee3401f9d79032ba660006cee881c2357e89fbed5eb23e069aed365d23e7cca6",
+            "digest": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -89,7 +89,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:ee3401f9d79032ba660006cee881c2357e89fbed5eb23e069aed365d23e7cca6",
+        "source_digest": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_mcp_connection_pack"
       },
@@ -316,5 +316,5 @@
     }
   ],
   "pack_id": "tobkiri_mcp_connection_pack",
-  "source_identity": "sha256:ee3401f9d79032ba660006cee881c2357e89fbed5eb23e069aed365d23e7cca6"
+  "source_identity": "sha256:15b018303c6d268a88edec4521772f96329b30884e2e46d3fd85077e2b67cb5b"
 }
