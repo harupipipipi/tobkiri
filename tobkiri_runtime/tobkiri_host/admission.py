@@ -84,7 +84,7 @@ class AdmissionEstimate:
             self.profile_reservation_bytes,
             self.backend_overhead_bytes,
         )
-        amounts = (*estimates, self.disk_bytes)
+        amounts: tuple[int, ...] = (*estimates, self.disk_bytes)
         if self.declared_upper_bound_bytes is not None:
             amounts = (*amounts, self.declared_upper_bound_bytes)
         if any(type(value) is not int for value in amounts):
