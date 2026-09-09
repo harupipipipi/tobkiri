@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import base64
+import json
+from pathlib import Path
+import subprocess
+import sys
 import threading
 
 import pytest
@@ -11,6 +16,63 @@ from tobkiri_host.errors import InvalidArtifactError, ProviderExecutionError
 from tobkiri_host.wasm_component import PureComponent
 
 wasmtime = pytest.importorskip("wasmtime")
+
+
+def invoke_worker(request: object, *, isolated: bool = True) -> subprocess.CompletedProcess:
+    """Launch a real child; fixture roots are trusted, never read from its request."""
+    roots = [str(Path(__file__).resolve().parents[1]),
+             str(Path(wasmtime.__file__).resolve().parent.parent)]
+    code = (
+        "import sys, runpy; sys.path[:0] = " + repr(roots) + "; "
+        "runpy.run_module('tobkiri_host.wasm_component', run_name='__main__')"
+    )
+    return subprocess.run(
+        [sys.executable, *(["-I"] if isolated else []), "-B", "-c", code],
+        input=json.dumps(request).encode(), capture_output=True,
+        env={}, close_fds=True, timeout=15, check=False,
+    )
+
+
+def worker_request() -> dict[str, object]:
+    """Return a complete request for an import-free fixture component."""
+    binary = component()
+    return {
+        "artifact": base64.b64encode(binary).decode(),
+        "digest": "sha256:" + hashlib.sha256(binary).hexdigest(),
+        "operation_id": "inspect", "payload": {},
+    }
+
+
+def test_child_worker_compiles_and_returns_one_result() -> None:
+    result = invoke_worker(worker_request())
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {"status": "ok", "data": {"ok": True}}
+    assert result.stderr == b""
+
+
+@pytest.mark.parametrize("change", [
+    {"digest": "sha256:" + "0" * 64},
+    {"artifact": "not-base64!"},
+    {"payload": []},
+    {"operation_id": None},
+    {"python_path": "/untrusted"},
+])
+def test_child_worker_rejects_invalid_frames_without_echo(change: dict) -> None:
+    request = worker_request()
+    request.update(change)
+    result = invoke_worker(request)
+    assert result.returncode == 1
+    assert json.loads(result.stdout) == {
+        "status": "error", "code": "wasm_worker_failed"
+    }
+    assert result.stderr == b""
+
+
+def test_child_worker_refuses_nonisolated_python() -> None:
+    result = invoke_worker(worker_request(), isolated=False)
+    assert result.returncode == 2
+    assert result.stdout == b""
+    assert result.stderr == b""
 
 
 def component(body: str = "i32.const 0", *, output: str = '{"ok":true}') -> bytes:
