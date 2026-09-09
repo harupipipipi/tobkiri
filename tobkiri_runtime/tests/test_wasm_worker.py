@@ -12,6 +12,7 @@ from typing import Iterator
 import pytest
 
 from tobkiri_host.errors import ProviderExecutionError
+from tobkiri_host import wasm_worker
 from tobkiri_host.wasm_worker import ComponentWorker
 
 _REAL_POPEN = subprocess.Popen
@@ -83,10 +84,11 @@ def test_cancel_reaps_live_child(children: list) -> None:
     assert len(children) == 1 and children[0].returncode is not None
 
 
-def test_output_flood_is_bounded_and_child_reaped(children: list) -> None:
+@pytest.mark.parametrize("descriptor", [1, 2])
+def test_output_flood_is_bounded_and_child_reaped(children: list, descriptor: int) -> None:
     owned = worker(
         "import os, sys; sys.stdin.buffer.read(); "
-        "chunk = b'x' * 65536\nwhile True: os.write(1, chunk)"
+        f"chunk = b'x' * 65536\nwhile True: os.write({descriptor}, chunk)"
     )
     with pytest.raises(ProviderExecutionError, match="output exceeds"):
         owned.invoke({}, cancelled=threading.Event())
@@ -119,17 +121,17 @@ def test_failed_exit_confirmation_retains_handle_for_retry(
     def unconfirmed(self, timeout=None):
         raise subprocess.TimeoutExpired("test-owned worker", timeout)
 
-    original_exchange = owned._exchange
+    original_exchange = wasm_worker.communicate_bounded
 
-    def exchange(*args):
+    def exchange(*args, **kwargs):
         monkeypatch.setattr(owned._process, "wait", unconfirmed.__get__(owned._process))
-        return original_exchange(*args)
+        return original_exchange(*args, **kwargs)
 
-    monkeypatch.setattr(owned, "_exchange", exchange)
+    monkeypatch.setattr(wasm_worker, "communicate_bounded", exchange)
     with pytest.raises(ProviderExecutionError, match="termination is unconfirmed"):
         owned.invoke({}, cancelled=threading.Event(), timeout=0.2)
     assert owned._process is children[0]
-    assert not children[0].stdout.closed
+    assert children[0].stdout.closed
     monkeypatch.setattr(children[0], "wait", original_wait.__get__(children[0]))
     owned.close()
     assert owned._process is None

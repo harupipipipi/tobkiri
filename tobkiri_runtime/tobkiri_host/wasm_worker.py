@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 import os
-import selectors
 import subprocess
 import threading
 import time
@@ -18,6 +17,7 @@ from typing import Any, Mapping
 
 from tobkiri_protocol.canonical import canonical_json, strict_loads
 
+from .bounded_child_io import communicate_bounded
 from .errors import ProviderExecutionError
 
 _INPUT_LIMIT = 45 * 1024 * 1024
@@ -70,13 +70,29 @@ class ComponentWorker:
                 self._command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 env={},
                 close_fds=True,
                 cwd="/",
                 start_new_session=True,
             )
-            output = self._exchange(encoded, deadline, cancelled)
+            output = communicate_bounded(
+                self._process,
+                encoded,
+                stdout_limit=_OUTPUT_LIMIT,
+                stderr_limit=_OUTPUT_LIMIT,
+                timeout=timeout,
+                deadline=deadline,
+                cancelled=cancelled,
+            )
+            if self._process.returncode != 0:
+                raise ProviderExecutionError("Wasm worker exited unsuccessfully")
+        except InterruptedError:
+            raise ProviderExecutionError("Wasm worker request was cancelled") from None
+        except TimeoutError:
+            raise ProviderExecutionError("Wasm worker deadline exceeded") from None
+        except ValueError:
+            raise ProviderExecutionError("Wasm worker output exceeds the limit") from None
         except OSError:
             raise ProviderExecutionError("Wasm worker transport failed") from None
         finally:
@@ -96,46 +112,6 @@ class ComponentWorker:
             raise ProviderExecutionError("Wasm worker request was cancelled")
         return response["data"]
 
-    def _exchange(self, encoded: bytes, deadline: float, cancelled: threading.Event) -> bytes:
-        process = self._process
-        assert process is not None and process.stdin and process.stdout
-        output = bytearray()
-        remaining = memoryview(encoded)
-        with selectors.DefaultSelector() as selector:
-            os.set_blocking(process.stdin.fileno(), False)
-            os.set_blocking(process.stdout.fileno(), False)
-            selector.register(process.stdin, selectors.EVENT_WRITE)
-            selector.register(process.stdout, selectors.EVENT_READ)
-            while True:
-                if cancelled.is_set():
-                    raise ProviderExecutionError("Wasm worker request was cancelled")
-                budget = deadline - time.monotonic()
-                if budget <= 0:
-                    raise ProviderExecutionError("Wasm worker deadline exceeded")
-                for key, mask in selector.select(min(0.05, budget)):
-                    try:
-                        if mask & selectors.EVENT_WRITE:
-                            count = os.write(key.fd, remaining[:65536])
-                            remaining = remaining[count:]
-                            if not remaining:
-                                selector.unregister(process.stdin)
-                                process.stdin.close()
-                        else:
-                            chunk = os.read(key.fd, min(65536, _OUTPUT_LIMIT + 1 - len(output)))
-                            if not chunk:
-                                selector.unregister(process.stdout)
-                                process.stdout.close()
-                            output.extend(chunk)
-                            if len(output) > _OUTPUT_LIMIT:
-                                raise ProviderExecutionError("Wasm worker output exceeds the limit")
-                    except BlockingIOError:
-                        continue
-                if process.poll() is not None:
-                    if process.returncode != 0:
-                        raise ProviderExecutionError("Wasm worker exited unsuccessfully")
-                    if not selector.get_map():
-                        return bytes(output)
-
     def close(self) -> None:
         """Kill/reap this child; retain its handle if exit is not confirmed.
 
@@ -151,7 +127,7 @@ class ComponentWorker:
             process.wait(timeout=2)
         except (OSError, subprocess.TimeoutExpired):
             raise ProviderExecutionError("Wasm worker termination is unconfirmed") from None
-        for pipe in (process.stdin, process.stdout):
+        for pipe in (process.stdin, process.stdout, process.stderr):
             if pipe is not None:
                 pipe.close()
         self._process = None

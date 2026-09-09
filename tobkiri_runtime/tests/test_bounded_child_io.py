@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -130,6 +131,28 @@ def test_absolute_deadline_is_not_renewed_by_a_fresh_relative_timeout() -> None:
         with pytest.raises(TimeoutError, match="timed out"):
             communicate_bounded(process, b"input", stdout_limit=10, stderr_limit=10,
                                 timeout=60, deadline=time.monotonic() - 1)
+        assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
+
+
+@pytest.mark.parametrize("close_pipes", [False, True])
+def test_cancel_interrupts_both_pipe_exchange_and_wait_after_eof(close_pipes: bool) -> None:
+    source = "import os,time; "
+    if close_pipes:
+        source += "os.close(0); os.close(1); os.close(2); "
+    source += "time.sleep(30)"
+    with _child(source) as process:
+        cancelled = threading.Event()
+        timer = threading.Timer(0.2, cancelled.set)
+        timer.start()
+        try:
+            with pytest.raises(InterruptedError, match="cancelled"):
+                communicate_bounded(
+                    process, b"", stdout_limit=10, stderr_limit=10,
+                    timeout=5, cancelled=cancelled,
+                )
+        finally:
+            timer.cancel()
+            timer.join()
         assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
 
 
