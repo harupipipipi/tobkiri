@@ -96,14 +96,7 @@ def run(arguments: dict[str, Any], context: dict[str, Any] | None = None):
 
 
 def _request_allowed(context: dict[str, Any]) -> bool:
-    if internal_tool_decision_allows(context):
-        return True
-    policy = context.get("profile_policy") if isinstance(context.get("profile_policy"), dict) else {}
-    if bool(policy.get("yolo_mode")):
-        return True
-    if context.get("_tool_server_approval_token_valid") is True:
-        return True
-    return bool(
-        context.get("_tool_server_approved")
-        and any(str(context.get(key) or "").strip() for key in ("principal_id", "pack_id", "_source_pack_id"))
-    )
+    # Serialized flags are not evidence that the owning tool policy allowed
+    # this call. Keep the in-process seal check until the Host contract replaces
+    # this compatibility adapter; do not manufacture a seal in the guest.
+    return internal_tool_decision_allows(context)

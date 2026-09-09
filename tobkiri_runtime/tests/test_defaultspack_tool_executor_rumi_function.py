@@ -1981,7 +1981,19 @@ class _CapturedRumiApiSession:
         return self.result
 
 
-def test_rumi_api_dispatch_requires_approved_context():
+@pytest.mark.parametrize("untrusted", [
+    {},
+    {"profile_policy": {"yolo_mode": True}},
+    {"_tool_server_approval_token_valid": True},
+    {"_tool_server_approved": True, "principal_id": "defaultspack"},
+    {"_tool_server_approved": True, "pack_id": "defaultspack"},
+    {"_tool_server_approved": True, "_source_pack_id": "defaultspack"},
+    {
+        "_tool_permission_internal": True,
+        "_tool_permission_decision": {"action": "allow", "allowed": True},
+    },
+])
+def test_rumi_api_dispatch_requires_approved_context(untrusted):
     from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
 
     session = _CapturedRumiApiSession({"unexpected": True})
@@ -1993,7 +2005,7 @@ def test_rumi_api_dispatch_requires_approved_context():
             "operation_id": "channels.list",
             "payload": {},
         },
-        {"v4_dispatch_session": session},
+        {**untrusted, "v4_dispatch_session": session},
     )
 
     assert result["status"] == "ok"
@@ -2004,8 +2016,13 @@ def test_rumi_api_dispatch_requires_approved_context():
 
 def test_rumi_api_dispatch_uses_internal_approval_and_captured_session():
     from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
+    from ecosystem.defaultspack.domain.tool_policy.internal_context import seal_tool_context
 
     session = _CapturedRumiApiSession({"ok": True})
+    context = seal_tool_context(
+        {"v4_dispatch_session": session},
+        {"action": "allow", "allowed": True},
+    )
 
     result = rumi_api.run(
         {
@@ -2014,11 +2031,7 @@ def test_rumi_api_dispatch_uses_internal_approval_and_captured_session():
             "operation_id": "channels.list",
             "payload": {"workspace_id": "workspace:alpha"},
         },
-        {
-            "_tool_server_approved": True,
-            "principal_id": "defaultspack",
-            "v4_dispatch_session": session,
-        },
+        context,
     )
 
     assert result == {
@@ -2044,11 +2057,7 @@ def test_rumi_api_dispatch_uses_internal_approval_and_captured_session():
             "operation_id": "channels.list",
             "payload": {"_contract_consumer_pack_id": "forged"},
         },
-        {
-            "_tool_server_approved": True,
-            "principal_id": "defaultspack",
-            "v4_dispatch_session": session,
-        },
+        context,
     )
     assert forged["error"]["code"] == "FORGED_CONSUMER_IDENTITY"
     assert len(session.calls) == 1
