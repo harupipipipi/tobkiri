@@ -17,6 +17,33 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
+def test_permission_resolver_keeps_explicit_owners_isolated(tmp_path):
+    from domain.tool.permission_resolver import ToolPermissionResolver
+
+    blocked_path = tmp_path / "blocked.json"
+    blocked_path.write_text(json.dumps({
+        "tools": {"disabled_tool_ids": ["calculator"]},
+    }), encoding="utf-8")
+    blocked_owner = FrontendSettingsStore(blocked_path)
+    other_owner = FrontendSettingsStore(tmp_path / "other.json")
+    tool = {"tool_id": "calculator", "action_class": "read"}
+    blocked = ToolPermissionResolver(settings_owner=blocked_owner)
+    other = ToolPermissionResolver(settings_owner=other_owner)
+    assert blocked.resolve(tool)["permission"] == "block"
+    assert other.resolve(tool)["permission"] != "block"
+    assert blocked.resolve(tool, context={
+        "settings_owner": other_owner,
+    })["permission"] == "block"
+    assert not (tmp_path / "other.json").exists()
+
+
+def test_permission_resolver_still_requires_an_explicit_owner():
+    from domain.tool.permission_resolver import ToolPermissionResolver
+
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        ToolPermissionResolver()
+
+
 def test_owner_bound_actions_preserve_custom_handlers_without_global_binding(tmp_path, monkeypatch):
     from domain.input import action_registry
     from domain.input.actions.chat_message import handle
