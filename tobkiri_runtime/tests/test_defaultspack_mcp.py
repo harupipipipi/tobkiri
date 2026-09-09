@@ -9,7 +9,7 @@ import pytest
 
 from ecosystem.defaultspack.blocks.tool import mcp_connect as mcp_connect_block
 from ecosystem.defaultspack.blocks.tool import mcp_list as mcp_list_block
-from ecosystem.defaultspack.domain.tool.mcp_client import McpClient
+from ecosystem.defaultspack.domain.tool.mcp_client import McpClient, McpConnections
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
 from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 from domain.tool_policy.internal_context import mark_tool_server_approval_context
@@ -182,6 +182,30 @@ def test_mcp_client_supports_stdio_command_and_args(tmp_path):
     assert tools_added == 1
     assert [tool["name"] for tool in client.get_server_tools("demo")] == ["ping"]
     assert client.invoke("demo", "ping", {"message": "hello"})["result"] == "pong:hello"
+
+
+def test_owned_connections_do_not_share_names_or_disconnect_each_other(tmp_path):
+    """Two real stdio connections may use the same name without sharing state."""
+    server_path = tmp_path / "owned_mcp_server.py"
+    _write_demo_mcp_server(server_path)
+    first, second = McpConnections(), McpConnections()
+    legacy = McpClient()
+    config = {"transport": "stdio", "command": sys.executable,
+              "args": [str(server_path)]}
+    try:
+        first.connect("same", config)
+        assert second.list_servers() == []
+        assert second.invoke("same", "ping", {})["is_error"] is True
+        second.connect("same", config)
+        assert first.invoke("same", "ping", {"message": "first"})["result"] == "pong:first"
+        assert second.invoke("same", "ping", {"message": "second"})["result"] == "pong:second"
+        first.disconnect("same")
+        assert second.invoke("same", "ping", {"message": "retained"})["result"] == "pong:retained"
+        assert legacy.list_servers() == []
+        assert McpClient() is legacy
+    finally:
+        first.disconnect("same")
+        second.disconnect("same")
 
 
 def test_mcp_connect_accepts_server_id_and_saved_config(monkeypatch, tmp_path):

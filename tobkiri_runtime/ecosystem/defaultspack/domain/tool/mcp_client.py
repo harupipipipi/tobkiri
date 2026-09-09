@@ -442,28 +442,17 @@ class _ServerConnection:
 
 
 # ---------------------------------------------------------------------------
-# McpClient — シングルトン
+# Explicitly owned connection collection and legacy singleton compatibility
 # ---------------------------------------------------------------------------
-class McpClient:
+class McpConnections:
+    """One owner's connections; construction never accesses the legacy pool.
+
+    This class does not authorize connection configuration or tool invocation.
+    Its owner must obtain those permissions through the captured Host boundary.
     """
-    MCP クライアント（シングルトン）。
-    複数の MCP サーバー接続を管理する。
-    """
 
-    _instance = None
-    _initialized: bool
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
-    def __init__(self):
-        if self._initialized:
-            return
-        self._initialized = True
-        self._servers = {}
+    def __init__(self) -> None:
+        self._servers: dict[str, _ServerConnection] = {}
         self._lock = threading.Lock()
 
     def connect(self, server_name, config):
@@ -570,3 +559,21 @@ class McpClient:
                 "is_error": True,
                 "widget": None,
             }
+
+
+class McpClient(McpConnections):
+    """Legacy process-wide pool retained until callers migrate to an owner."""
+
+    _instance = None
+    _initialized: bool
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self) -> None:
+        if not self._initialized:
+            super().__init__()
+            self._initialized = True
