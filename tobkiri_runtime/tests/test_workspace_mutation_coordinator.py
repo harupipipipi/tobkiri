@@ -682,6 +682,55 @@ def test_port_close_retains_failed_lease_until_retry(
         port.close()
 
 
+@pytest.mark.parametrize("scope", ["lease", "namespace"])
+def test_scoped_close_failure_retains_but_disables_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str,
+) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "document.txt").write_bytes(b"original")
+    port, identity, lease, binding = _batch_port(tmp_path, root)
+    record = port._leases[lease.value]
+    original = port._close_record
+
+    def fail_close(value):
+        raise OSError("injected cleanup failure")
+
+    def close_scope():
+        if scope == "lease":
+            port.close_lease(lease, identity)
+        else:
+            port.close_namespace(identity.target_namespace)
+
+    monkeypatch.setattr(port, "_close_record", fail_close)
+    try:
+        with pytest.raises(WorkspaceMutationError, match="cleanup is incomplete"):
+            close_scope()
+        assert port._leases[lease.value] is record
+        assert not record.lease.closed
+        with pytest.raises(WorkspaceMutationError, match="unknown"):
+            port.bind_existing(
+                lease, identity, relative_path="document.txt",
+                ttl_seconds=30, max_uses=1, max_bytes=100,
+            )
+        foreign = replace(identity, target_namespace="foreign")
+        with pytest.raises(WorkspaceMutationError):
+            port.close_lease(lease, foreign)
+        assert port._leases[lease.value] is record
+        monkeypatch.setattr(port, "_close_record", original)
+        close_scope()
+        assert lease.value not in port._leases
+        assert record.lease.closed
+        replacement = port.acquire_lease(
+            WorkspaceMutationLeaseRequest(identity=identity, binding=binding)
+        )
+        port.close_lease(replacement, identity)
+        assert (root / "document.txt").read_bytes() == b"original"
+    finally:
+        monkeypatch.setattr(port, "_close_record", original)
+        port.close()
+
+
 def _bind_batch_handles(port, lease, identity):
     replace_handle = port.bind_existing(
         lease,

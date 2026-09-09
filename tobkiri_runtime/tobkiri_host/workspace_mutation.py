@@ -426,6 +426,7 @@ class _PortLeaseRecord:
     identity: "WorkspaceMutationIdentity"
     binding: WorkspaceMutationBinding
     handles: set[str] = field(default_factory=set)
+    closing: bool = False
 
 
 class HostWorkspaceMutationPort:
@@ -670,9 +671,10 @@ class HostWorkspaceMutationPort:
         """Close one exact identity-bound lease and its handles."""
 
         with self._guard:
-            record = self._claim(lease, identity)
-            self._leases.pop(lease.value, None)
-        self._close_record(record)
+            record = self._leases.get(lease.value)
+            if record is None or record.identity != identity:
+                raise WorkspaceMutationError("workspace mutation lease is unknown")
+            self._close_records((lease.value,))
 
     def close_namespace(self, namespace: str) -> None:
         """Close every lease and handle owned by one execution namespace."""
@@ -683,29 +685,33 @@ class HostWorkspaceMutationPort:
                 for key, record in self._leases.items()
                 if record.identity.target_namespace == namespace
             ]
-            records = [self._leases.pop(key) for key in values]
-        for record in records:
-            self._close_record(record)
-        self._resources.revoke_namespace(namespace)
-        self._coordinator.close_namespace(namespace)
+            self._close_records(values)
+            self._resources.revoke_namespace(namespace)
+            self._coordinator.close_namespace(namespace)
 
     def close(self) -> None:
         """Release every lease and handle owned by this Host port."""
 
         with self._guard:
             self._closed = True
-            failed = False
-            for key, record in list(self._leases.items()):
-                try:
-                    self._close_record(record)
-                except Exception:
-                    failed = True
-                else:
-                    self._leases.pop(key, None)
-            if failed:
-                raise WorkspaceMutationError("workspace cleanup is incomplete")
+            self._close_records(tuple(self._leases))
             self._resources.close()
             self._coordinator.close()
+
+    def _close_records(self, keys: tuple[str, ...] | list[str]) -> None:
+        """Retain failed records, but deny their reuse while cleanup is pending."""
+        failed = False
+        for key in keys:
+            record = self._leases[key]
+            record.closing = True
+            try:
+                self._close_record(record)
+            except Exception:
+                failed = True
+            else:
+                self._leases.pop(key, None)
+        if failed:
+            raise WorkspaceMutationError("workspace cleanup is incomplete")
 
     def _claim(
         self,
@@ -717,7 +723,7 @@ class HostWorkspaceMutationPort:
         if self._closed:
             raise WorkspaceMutationError("workspace mutation port is closed")
         record = self._leases.get(opaque.value)
-        if record is None or record.lease.closed:
+        if record is None or record.closing or record.lease.closed:
             raise WorkspaceMutationError("workspace mutation lease is unknown")
         if record.identity != identity:
             raise WorkspaceMutationError("workspace mutation identity mismatch")
