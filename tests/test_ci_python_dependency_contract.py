@@ -41,6 +41,28 @@ def test_launcher_route_scan_targets_the_current_ci_build() -> None:
     assert f'--panel-root "{output}"' in job
 
 
+def test_recovery_regressions_run_without_contract_marker_filtering() -> None:
+    """Keep the Profile/Host recovery suite explicit and preserve failure logs."""
+    workflow = (ROOT / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    job = _job_blocks(workflow)["tobkiri-contract-checks"]
+    recovery = job.split("- name: Run Profile and Host recovery regressions", 1)[1]
+    invocation, remaining = recovery.split("- name: Upload recovery pytest log", 1)
+    assert "-- pytest -v" in invocation
+    assert "-m contract" not in invocation
+    for name in (
+        "test_tobkiri_host_resources_admission.py",
+        "test_tobkiri_host_execution_integration.py",
+        "test_production_v4_host_extension_admission.py",
+        "test_profile_source_reconfirmation.py",
+        "test_setup_handlers.py",
+        "test_profile_architecture_review_c.py",
+    ):
+        assert f"tests/{name}" in invocation
+        assert (ROOT / "tobkiri_runtime/tests" / name).is_file()
+    assert "steps.recovery_pytest.outcome == 'failure'" in remaining
+    assert "-- pytest -m contract -v" in remaining
+
+
 def test_locked_python_test_installer_uses_both_project_exports() -> None:
     installer = (ROOT / LOCKED_INSTALLER).read_text(encoding="utf-8")
     for export in LOCKED_EXPORTS:
