@@ -12,7 +12,7 @@ from ..profile_definition_store_v4 import (
     ProfileDefinitionStore,
     ProfileDefinitionStoreConflict,
 )
-from .profile_source_update import profile_source_additions
+from .profile_source_update import profile_scope_successor, profile_source_additions
 
 
 def bootstrap_review_catalog(
@@ -80,6 +80,7 @@ def bootstrap_review_catalog(
     candidate = deepcopy(dict(registered.profile))
     if successor_required:
         candidate["shell"] = deepcopy(catalog.profiles[profile_id]["shell"])
+        candidate = profile_scope_successor(candidate, catalog.profiles[profile_id])
     if include_source_additions:
         if not successor_required:
             raise runtime.denied("source update requires reconfirmation")

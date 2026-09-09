@@ -14,14 +14,18 @@ from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore, ProfileRes
 from tests.test_profile_architecture_review_c import _packaged_catalog_revision, _resolve
 
 
+@pytest.mark.parametrize("unpinned_scope", [False, True])
 def test_source_additions_require_their_own_confirmation_and_survive_restart(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unpinned_scope: bool
 ) -> None:
     predecessor_catalog = _packaged_catalog_revision(tmp_path / "predecessor", b"before")
     successor_catalog = _packaged_catalog_revision(tmp_path / "successor", b"after")
     runtime = require_profile_runtime()
     previous_definition = deepcopy(predecessor_catalog.profiles["defaults"])
     previous_definition["display_name"] = "My retained Defaults"
+    if unpinned_scope:
+        for edge in previous_definition["requested_edges"]:
+            edge["requested_scope_template"].pop("semantics_digest", None)
     added_packs = {"tobkiri_ui_settings_pack", "rumi_conversation_store_pack"}
     previous_definition["packs"] = [
         row for row in previous_definition["packs"] if row["pack_id"] not in added_packs
@@ -75,6 +79,11 @@ def test_source_additions_require_their_own_confirmation_and_survive_restart(
     assert not added_packs & {row["pack_id"] for row in unchanged.profiles["defaults"]["packs"]}
     assert added_packs <= {row["pack_id"] for row in proposed.profiles["defaults"]["packs"]}
     assert proposed.profiles["defaults"]["display_name"] == "My retained Defaults"
+    if unpinned_scope:
+        assert all(
+            "semantics_digest" in edge["requested_scope_template"]
+            for edge in unchanged.profiles["defaults"]["requested_edges"]
+        )
     assert confirmation != old_confirmation
     assert ProfileDefinitionStore(user_data).snapshot() == before
     assert pointer_path.read_bytes() == pointer_before

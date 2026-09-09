@@ -4,7 +4,10 @@ from copy import deepcopy
 
 import pytest
 
-from core_runtime.bootstrap.profile_source_update import profile_source_additions
+from core_runtime.bootstrap.profile_source_update import (
+    profile_scope_successor,
+    profile_source_additions,
+)
 from core_runtime.profile_definition_store_v4 import ProfileDefinitionStoreConflict
 
 
@@ -55,6 +58,43 @@ def test_source_omissions_do_not_remove_existing_selections_or_edges() -> None:
     source["packs"] = []
     source["requested_edges"] = []
     assert profile_source_additions(current, source) == current
+
+
+def test_scope_successor_changes_only_matching_semantics_pins() -> None:
+    current = _profile()
+    current["requested_edges"][0]["requested_scope_template"]["semantics_digest"] = (
+        "sha256:" + "1" * 64
+    )
+    source = deepcopy(current)
+    source["display_name"] = "New packaged name"
+    source["packs"].append({"pack_id": "new", "role": "provider"})
+    new_digest = "sha256:" + "2" * 64
+    source["requested_edges"][0]["requested_scope_template"]["semantics_digest"] = new_digest
+    before = deepcopy((current, source))
+    expected = deepcopy(current)
+    expected["requested_edges"][0]["requested_scope_template"]["semantics_digest"] = new_digest
+    assert profile_scope_successor(current, source) == expected
+    assert (current, source) == before
+
+
+@pytest.mark.parametrize("change", ["scope", "authority", "provider", "missing"])
+def test_scope_successor_does_not_replace_other_edge_changes(change: str) -> None:
+    current = _profile()
+    current["requested_edges"][0]["requested_scope_template"]["semantics_digest"] = (
+        "sha256:" + "1" * 64
+    )
+    source = deepcopy(current)
+    edge = source["requested_edges"][0]
+    edge["requested_scope_template"]["semantics_digest"] = "sha256:" + "2" * 64
+    if change == "scope":
+        edge["requested_scope_template"]["dimensions"]["operation"].append("write")
+    elif change == "authority":
+        edge["authority_mode"] = "profile_grant"
+    elif change == "provider":
+        edge["target_provider_id"] = "other.read"
+    else:
+        source["requested_edges"] = []
+    assert profile_scope_successor(current, source) == current
 
 
 @pytest.mark.parametrize("field", ["profile_id", "base", "shell"])
