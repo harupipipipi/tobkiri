@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import queue
 import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from unittest.mock import Mock
@@ -13,6 +14,158 @@ import pytest
 
 from ecosystem.defaultspack.domain.tool.mcp_client import McpConnections, _StdioTransport
 from ecosystem.defaultspack.domain.tool import mcp_client
+
+
+def _child(source: str) -> _StdioTransport:
+    return _StdioTransport([sys.executable, "-I", "-u", "-c", source], env={})
+
+
+def _assert_collected(transport: _StdioTransport, process: subprocess.Popen) -> None:
+    assert process.poll() is not None
+    assert transport._proc is None
+    assert all(pipe.closed for pipe in (process.stdin, process.stdout, process.stderr))
+    assert not transport._reader_thread.is_alive()
+    assert not transport._stderr_thread.is_alive()
+
+
+def test_stderr_larger_than_pipe_does_not_block_the_reply() -> None:
+    """A real child can emit diagnostics before reading and answering a request."""
+    transport = _child(
+        "import json, sys\n"
+        "sys.stderr.buffer.write(b'diagnostic' * 500_000)\n"
+        "request = json.loads(sys.stdin.buffer.readline())\n"
+        "print(json.dumps({'id': request['id'], 'result': 'ok'}))\n"
+    )
+    transport.start()
+    process = transport._proc
+    try:
+        transport.send(b'{"id": 1}')
+        assert transport.recv(timeout=5) == {"id": 1, "result": "ok"}
+        # A queued reply remains readable even if stdout closes immediately after it.
+        with pytest.raises(RuntimeError, match="closed"):
+            transport.recv(timeout=1)
+    finally:
+        transport.stop()
+    _assert_collected(transport, process)
+
+
+def test_shutdown_unblocks_a_writer_when_child_does_not_read_stdin() -> None:
+    """Closing buffered stdin must not deadlock on the blocked writer's lock."""
+    transport = _child("import time; time.sleep(60)")
+    transport.start()
+    process = transport._proc
+    writing, written, stopped = threading.Event(), threading.Event(), threading.Event()
+    failures: list[Exception] = []
+
+    def write() -> None:
+        writing.set()
+        try:
+            transport.send(b'x' * (2 * 1024 * 1024))
+        except (BrokenPipeError, ValueError, RuntimeError):
+            pass
+        finally:
+            written.set()
+
+    def stop() -> None:
+        try:
+            transport.stop()
+        except Exception as error:
+            failures.append(error)
+        finally:
+            stopped.set()
+
+    writer = threading.Thread(target=write, daemon=True)
+    stopper = threading.Thread(target=stop, daemon=True)
+    try:
+        writer.start()
+        assert writing.wait(2)
+        assert not written.wait(0.1)
+        stopper.start()
+        assert stopped.wait(2), "shutdown waited on buffered stdin before stopping child"
+    finally:
+        # Also release both threads when this regression is run against the old
+        # implementation, so a failed assertion cannot hang the test process.
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=2)
+        writer.join(timeout=2)
+        if stopper.ident is not None:
+            stopper.join(timeout=2)
+        transport.stop()
+    assert not failures
+    assert not writer.is_alive() and not stopper.is_alive()
+    _assert_collected(transport, process)
+
+
+@pytest.mark.parametrize("output,reason", [
+    (f"b'x' * {mcp_client._STDIO_FRAME_LIMIT + 1}", "frame exceeds limit"),
+    (f"b'{{}}\\n' * {mcp_client._STDIO_QUEUE_LIMIT + 1}", "queue exceeds limit"),
+    ("b'[]\\n'", "message is invalid"),
+    ("b'{invalid-json}\\n'", "message is invalid"),
+    ("b'\\xff\\n'", "message is invalid"),
+])
+def test_invalid_or_excessive_stdout_stops_child_without_unbounded_buffering(
+    output: str, reason: str,
+) -> None:
+    """No-newline floods and unsolicited replies have finite receive budgets."""
+    transport = _child(
+        "import sys, time\n"
+        f"sys.stdout.buffer.write({output})\n"
+        "sys.stdout.buffer.flush()\n"
+        "time.sleep(60)\n"
+    )
+    transport.start()
+    process = transport._proc
+    try:
+        assert transport._stdout_closed.wait(5)
+        assert transport._queue.qsize() <= mcp_client._STDIO_QUEUE_LIMIT
+        with pytest.raises(RuntimeError, match=reason):
+            transport.recv(timeout=1)
+        with pytest.raises(RuntimeError, match=reason):
+            transport.send(b'{"id": 1}')
+        # Rejecting the stream requests real child death but preserves ownership.
+        process.wait(timeout=2)
+        assert transport._proc is process
+    finally:
+        transport.stop()
+    _assert_collected(transport, process)
+
+
+def test_reader_cleanup_failure_retains_handles_for_retry() -> None:
+    """A reaped child alone does not establish that its pipe readers finished."""
+    transport = _StdioTransport(["unused"])
+    process, reader = Mock(), Mock()
+    transport._proc = process
+    transport._reader_thread = reader
+    reader.is_alive.return_value = True
+    with pytest.raises(RuntimeError, match="reader cleanup is incomplete"):
+        transport.stop()
+    assert transport._proc is process
+    process.stdout.close.assert_not_called()
+    reader.is_alive.return_value = False
+    transport.stop()
+    assert transport._proc is None
+    process.stdout.close.assert_called_once_with()
+
+
+def test_reader_start_failure_does_not_prevent_child_cleanup(monkeypatch) -> None:
+    """Partially started transports must also close readers that never started."""
+    transport = _child("import time; time.sleep(60)")
+    start = threading.Thread.start
+
+    def fail_stderr_start(reader: threading.Thread) -> None:
+        if reader is transport._stderr_thread:
+            raise RuntimeError("cannot start diagnostic reader")
+        start(reader)
+
+    monkeypatch.setattr(threading.Thread, "start", fail_stderr_start)
+    try:
+        with pytest.raises(RuntimeError, match="cannot start diagnostic reader"):
+            transport.start()
+    finally:
+        process = transport._proc
+        transport.stop()
+    _assert_collected(transport, process)
 
 
 class _BlockingReplies:

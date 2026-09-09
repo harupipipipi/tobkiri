@@ -14,12 +14,14 @@ import time
 import queue
 import urllib.request
 import urllib.error
-from typing import Any
+from typing import Any, BinaryIO
 
 
 _PROTOCOL_VERSION = "2024-11-05"
 _CLIENT_INFO = {"name": "rumiai-defaults", "version": "0.1.0"}
 _DEFAULT_TIMEOUT = 30
+_STDIO_FRAME_LIMIT = 2 * 1024 * 1024
+_STDIO_QUEUE_LIMIT = 16
 _PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
@@ -96,11 +98,17 @@ class _StdioTransport(_TransportBase):
         self._cwd = cwd
         self._proc = None
         self._reader_thread = None
-        self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._stderr_thread = None
+        self._queue: queue.Queue[dict[str, Any]] = queue.Queue(_STDIO_QUEUE_LIMIT)
         self._stop_event = threading.Event()
+        self._stdout_closed = threading.Event()
+        self._failure: str | None = None
+        self._started = False
 
     def start(self):
-        self._stop_event.clear()
+        if self._started:
+            raise RuntimeError("stdio transport has already been started")
+        self._started = True
         self._proc = subprocess.Popen(
             self._command,
             stdin=subprocess.PIPE,
@@ -109,16 +117,20 @@ class _StdioTransport(_TransportBase):
             env=self._env,
             cwd=self._cwd,
         )
-        self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+        self._reader_thread = threading.Thread(
+            target=self._read_loop, args=(self._proc.stdout,), daemon=True,
+        )
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr, args=(self._proc.stderr,), daemon=True,
+        )
         self._reader_thread.start()
+        self._stderr_thread.start()
 
     def stop(self):
         self._stop_event.set()
         if self._proc is not None:
-            try:
-                self._proc.stdin.close()
-            except Exception:
-                pass
+            # Stop the child before closing buffered stdin: a concurrent blocked
+            # writer can otherwise hold its buffer lock indefinitely.
             try:
                 self._proc.terminate()
                 self._proc.wait(timeout=5)
@@ -127,19 +139,44 @@ class _StdioTransport(_TransportBase):
                 # A failed kill/wait leaves the handle available for cleanup retry.
                 self._proc.kill()
                 self._proc.wait(timeout=5)
+            deadline = time.monotonic() + 5
+            for reader in (self._reader_thread, self._stderr_thread):
+                if reader is not None and reader.ident is not None:
+                    reader.join(timeout=max(0, deadline - time.monotonic()))
+                    if reader.is_alive():
+                        raise RuntimeError("stdio transport reader cleanup is incomplete")
+            for pipe in (self._proc.stdin, self._proc.stdout, self._proc.stderr):
+                if pipe is not None:
+                    pipe.close()
             self._proc = None
 
     def send(self, message_bytes):
+        if self._stop_event.is_set():
+            raise RuntimeError(self._failure or "stdio transport is closed")
         if self._proc is None or self._proc.stdin is None:
             raise RuntimeError("stdio transport not started")
         self._proc.stdin.write(message_bytes + b"\n")
         self._proc.stdin.flush()
 
     def recv(self, timeout=_DEFAULT_TIMEOUT):
-        try:
-            return self._queue.get(timeout=timeout)
-        except queue.Empty:
-            return None
+        deadline = time.monotonic() + timeout
+        while True:
+            if self._failure is not None:
+                raise RuntimeError(self._failure)
+            remaining = deadline - time.monotonic()
+            try:
+                message = self._queue.get(timeout=max(0, min(remaining, 0.05)))
+            except queue.Empty:
+                if self._stdout_closed.is_set() or self._stop_event.is_set():
+                    if self._failure is not None:
+                        raise RuntimeError(self._failure)
+                    raise RuntimeError("stdio transport is closed")
+                if remaining <= 0:
+                    return None
+            else:
+                if self._failure is not None:
+                    raise RuntimeError(self._failure)
+                return message
 
     @property
     def is_alive(self):
@@ -147,24 +184,56 @@ class _StdioTransport(_TransportBase):
 
     # -- internal --
 
-    def _read_loop(self):
+    def _read_loop(self, stdout: BinaryIO) -> None:
         try:
             while not self._stop_event.is_set():
-                if self._proc is None or self._proc.stdout is None:
-                    break
-                line = self._proc.stdout.readline()
+                # Include the newline in the frame budget. Never allocate an
+                # unbounded line before deciding whether it is acceptable.
+                line = stdout.readline(_STDIO_FRAME_LIMIT + 1)
                 if not line:
+                    break
+                if len(line) > _STDIO_FRAME_LIMIT:
+                    self._fail("stdio transport frame exceeds limit")
                     break
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     msg = json.loads(line)
-                    self._queue.put(msg)
-                except json.JSONDecodeError:
-                    pass
-        except Exception:
-            pass
+                    if not isinstance(msg, dict):
+                        raise ValueError("invalid message")
+                    self._queue.put_nowait(msg)
+                except (ValueError, RecursionError):
+                    self._fail("stdio transport message is invalid")
+                    break
+                except queue.Full:
+                    self._fail("stdio transport receive queue exceeds limit")
+                    break
+        except (OSError, ValueError):
+            if not self._stop_event.is_set():
+                self._fail("stdio transport read failed")
+        finally:
+            self._stdout_closed.set()
+
+    def _drain_stderr(self, stderr: BinaryIO) -> None:
+        try:
+            # Diagnostics may contain secrets. Drain bounded chunks without
+            # retaining them or allowing a full pipe to block protocol replies.
+            while not self._stop_event.is_set() and stderr.read(64 * 1024):
+                pass
+        except (OSError, ValueError):
+            if not self._stop_event.is_set():
+                self._fail("stdio transport diagnostic read failed")
+
+    def _fail(self, reason: str) -> None:
+        self._failure = reason
+        self._stop_event.set()
+        if self._proc is not None:
+            try:
+                self._proc.kill()
+            except OSError:
+                pass
+        # Keep the process and reader handles: only stop() confirms their cleanup.
 
 
 # ---------------------------------------------------------------------------
