@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from ecosystem.defaultspack.domain.tool.mcp_client import _StdioTransport
+from ecosystem.defaultspack.domain.tool.mcp_client import McpConnections, _StdioTransport
 
 
 def test_shutdown_reaps_child_after_termination_timeout() -> None:
@@ -23,6 +23,22 @@ def test_shutdown_reaps_child_after_termination_timeout() -> None:
     process.kill.assert_called_once_with()
     assert process.wait.call_count == 2
     assert transport._proc is None
+
+
+def test_connection_owner_retains_failed_disconnect_for_retry() -> None:
+    """Transport ownership must also survive at the server registry boundary."""
+    owner = McpConnections()
+    connection = Mock()
+    connection.disconnect.side_effect = OSError("still running")
+    owner._servers["owned"] = connection
+
+    with pytest.raises(OSError, match="still running"):
+        owner.disconnect("owned")
+    assert owner._servers["owned"] is connection
+
+    connection.disconnect.side_effect = None
+    owner.disconnect("owned")
+    assert "owned" not in owner._servers
 
 
 @pytest.mark.parametrize("failure_stage", ["kill", "wait"])

@@ -490,9 +490,10 @@ class McpConnections:
     def disconnect(self, server_name):
         """MCP サーバーから切断する"""
         with self._lock:
-            conn = self._servers.pop(server_name, None)
-        if conn is not None:
-            conn.disconnect()
+            conn = self._servers.get(server_name)
+            if conn is not None:
+                conn.disconnect()
+                del self._servers[server_name]
 
     def reconnect(self, server_name):
         """MCP サーバーに再接続する"""
