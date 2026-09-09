@@ -1106,6 +1106,73 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in json.dumps(authority.audit_events(), default=str)
 
 
+def test_saved_settings_reach_host_credential_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real settings/approval/owners/Gateway/Broker; guest and HTTPS are doubles."""
+    import io
+    from core_runtime import credential_transport
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+
+    requests = []
+
+    def open_provider(request, *, timeout):
+        assert timeout > 0
+        assert request.full_url == "https://provider.example/v1/chat/completions"
+        assert request.get_header("Authorization") == (
+            "Bearer fixture-secret-provider-configuration"
+        )
+        body = json.loads(request.data)
+        assert body["model"] == "organization/raw-model"
+        assert body["messages"] == [{"role": "user", "content": "Hello"}]
+        requests.append(body)
+        return io.BytesIO(json.dumps({
+            "choices": [{"message": {"content": "Host transport reply"},
+                         "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }).encode())
+
+    monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
+    servers = _captured_production_server(
+        tmp_path, monkeypatch,
+        packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    )
+    fixture = next(servers)
+    server, _session, _authority = fixture
+    try:
+        test_provider_configuration_http_requires_approval_and_saves_once(
+            fixture, tmp_path, monkeypatch,
+        )
+        cookie, csrf, origin = _authenticate(server)
+
+        def post(path, body):
+            return _request(server, "POST", _contract("POST", path), body=body,
+                            headers={"Cookie": cookie, "Origin": origin,
+                                     "X-Rumi-CSRF": csrf,
+                                     "X-Tobkiri-Request-ID": str(uuid.uuid4())})
+
+        status, result, _ = post("/api/ai/profiles", {
+            "model_profile_id": "daily", "model_id": "organization/raw-model",
+            "provider_instance_id": "provider.fixture", "display_name": "Daily",
+            "expected_revision": 0,
+        })
+        assert status == 200, result
+        store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+        store.create({"id": "chat", "model_reference": "daily"}, expected_revision=0)
+        status, result, _ = post("/api/chat/turn", {"request": {
+            "turn_id": "turn", "conversation_id": "chat",
+            "conversation_revision": 1, "content": "Hello",
+        }})
+        assert status == 200, result
+        assert result["data"]["status"] == "completed", result
+        assert len(requests) == 1
+        assert [item["content"] for item in store.get("chat")["messages"]] == [
+            "Hello", "Host transport reply",
+        ]
+    finally:
+        servers.close()
+
+
 def test_all_high_risk_commands_http_require_host_approval_and_run_once(
     command_vertical_server,
     tmp_path: Path,
