@@ -693,15 +693,19 @@ class HostWorkspaceMutationPort:
         """Release every lease and handle owned by this Host port."""
 
         with self._guard:
-            if self._closed:
-                return
             self._closed = True
-            records = list(self._leases.values())
-            self._leases.clear()
-        for record in records:
-            self._close_record(record)
-        self._resources.close()
-        self._coordinator.close()
+            failed = False
+            for key, record in list(self._leases.items()):
+                try:
+                    self._close_record(record)
+                except Exception:
+                    failed = True
+                else:
+                    self._leases.pop(key, None)
+            if failed:
+                raise WorkspaceMutationError("workspace cleanup is incomplete")
+            self._resources.close()
+            self._coordinator.close()
 
     def _claim(
         self,

@@ -644,6 +644,44 @@ def _batch_port(
     return port, identity, lease, binding
 
 
+def test_port_close_retains_failed_lease_until_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    port, identity, _lease, binding = _batch_port(tmp_path, root)
+    record = next(iter(port._leases.values()))
+    original = port._close_record
+    attempts = 0
+
+    def close_record(value):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("injected cleanup failure")
+        original(value)
+
+    monkeypatch.setattr(port, "_close_record", close_record)
+    try:
+        with pytest.raises(WorkspaceMutationError, match="cleanup is incomplete"):
+            port.close()
+        assert list(port._leases.values()) == [record]
+        assert not record.lease.closed
+        with pytest.raises(WorkspaceMutationError):
+            port.acquire_lease(WorkspaceMutationLeaseRequest(identity=identity, binding=binding))
+        port.close()
+        port.close()
+        assert attempts == 2
+        assert not port._leases
+        assert record.lease.closed
+        # A new owner must be able to reacquire the actual OS-backed lock.
+        restarted, _identity_value, _lease_value, _binding_value = _batch_port(tmp_path, root)
+        restarted.close()
+    finally:
+        monkeypatch.setattr(port, "_close_record", original)
+        port.close()
+
+
 def _bind_batch_handles(port, lease, identity):
     replace_handle = port.bind_existing(
         lease,
