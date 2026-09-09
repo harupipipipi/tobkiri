@@ -41,6 +41,8 @@ class TurnHostFactoryV4:
         self.kind = kind
         self.function_id = f"{_PACK}.turn-runtime.{kind}"
         self.operation_id = f"{_PACK}.{operation}"
+        self.cancellation_group = "saved-turn" if kind == "saved" else None
+        self.cancellation_role = "execute" if kind == "saved" else None
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Capture immutable routing identity without creating durable files."""
@@ -96,6 +98,7 @@ class TurnHostFactoryV4:
                     {key: value for key, value in payload.items() if key != "_session_id"},
                     client=client,
                     guard=invocation.assert_current,
+                    track_execution=invocation.cancellation.track,
                 )
             if operation_id != self.operation_id or payload.get("profile_id") != store.profile_id:
                 raise PermissionError("turn request does not match capture")

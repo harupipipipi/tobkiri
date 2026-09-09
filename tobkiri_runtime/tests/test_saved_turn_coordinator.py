@@ -59,12 +59,57 @@ class _Session:
         return self.transform(intent)
 
 
-def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None) -> dict:
+def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None, **options) -> dict:
     client = GlobalContractClient(
         session=session, allowed_contract_ids=SAVED_CONTRACTS,
         consumer_pack_id="rumi_turn_runtime_pack",
     )
-    return execute_saved_turn(store, session.initial, client=client, guard=guard)
+    return execute_saved_turn(store, session.initial, client=client, guard=guard, **options)
+
+
+def test_only_claim_winner_tracks_execution_and_releases_handle(tmp_path: Path) -> None:
+    """An idempotent repeat never replaces the original cancellation handle."""
+    from contextlib import contextmanager
+
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    events = []
+
+    @contextmanager
+    def track(turn_id):
+        events.append(("enter", turn_id))
+        try:
+            yield
+        finally:
+            events.append(("exit", turn_id))
+
+    def observe(outcome):
+        assert events == [("enter", "turn-1")]
+        return outcome
+
+    session.transform = observe
+    assert _run(store, session, track_execution=track)["status"] == "completed"
+    assert _run(store, session, track_execution=track)["status"] == "existing"
+    assert events == [("enter", "turn-1"), ("exit", "turn-1")]
+    assert session.calls == 1
+
+
+def test_unavailable_execution_handle_never_dispatches(tmp_path: Path) -> None:
+    """A failed Host handle registration leaves an uncertain claim, never a retry."""
+    from contextlib import contextmanager
+
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+
+    @contextmanager
+    def unavailable(turn_id):
+        raise PermissionError("stale capture")
+        yield  # pragma: no cover
+
+    result = _run(store, session, track_execution=unavailable)
+    assert result["status"] == "reconciliation_required"
+    assert result["turn"]["status"] == "waiting"
+    assert session.calls == 0
 
 
 def test_saved_execution_completes_once_and_keeps_transcript_in_conversation_owner(

@@ -16,7 +16,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+      "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
@@ -32,7 +32,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+      "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
@@ -48,7 +48,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+      "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",

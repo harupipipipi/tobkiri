@@ -7,6 +7,7 @@ read-only reconciliation and authenticated stop remain separate requirements.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Callable, Mapping
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
@@ -56,6 +57,7 @@ def execute_saved_turn(
     *,
     client: GlobalContractClient,
     guard: Callable[[], None],
+    track_execution: Callable[[str], AbstractContextManager[None]] = lambda _: nullcontext(),
 ) -> dict[str, Any]:
     """Dispatch only a claim winner through a captured, restricted client.
 
@@ -81,12 +83,13 @@ def execute_saved_turn(
         return recovered or {"status": "existing", "turn": claim["turn"]}
     record = claim["turn"]
     try:
-        guard()
-        outcome = client.invoke(
-            SAVED_CONVERSATION_CONTRACT, SAVED_CONVERSATION_OPERATION, initial
-        )
-        guard()
-        reference = _completed_reference(initial["request"], outcome)
+        with track_execution(record["id"]):
+            guard()
+            outcome = client.invoke(
+                SAVED_CONVERSATION_CONTRACT, SAVED_CONVERSATION_OPERATION, initial
+            )
+            guard()
+            reference = _completed_reference(initial["request"], outcome)
     except Exception:
         # Dispatch may have committed effects before raising or losing its
         # reply. Never retry it or expose provider/parser exception contents.

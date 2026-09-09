@@ -15578,7 +15578,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15611,7 +15611,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15644,7 +15644,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15677,7 +15677,7 @@
           {
             "entrypoint_id": "turn-reconcile",
             "id": "rumi_turn_runtime_pack.turn-reconcile",
-            "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+            "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
           }
         ],
         "owner": "rumi_turn_runtime_pack",
@@ -15741,7 +15741,7 @@
             {
               "entrypoint_id": "turn-saved",
               "id": "rumi_turn_runtime_pack.turn-saved",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15848,7 +15848,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+          "digest": "sha256:8559909666c256d5042617e274ed1df9629ab8229e411a7b6e161e7cc15a7477",
           "kind": "executable",
           "path": "runtime/host.py"
         },
@@ -15863,7 +15863,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:697a63efeeb60748b5da75afce9607f8f3825c7ef976d7e1017fe93c33edd185",
+          "digest": "sha256:6b129f502f175920460bcb2f13cf297866762e8ba4eb2df87eb363236ce45c20",
           "kind": "executable",
           "path": "runtime/saved.py"
         }
