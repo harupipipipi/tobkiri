@@ -45,8 +45,10 @@ from .v4_models import (
     ExecutionDomain,
     GrantRecord,
     HostExtensionTrustRecord,
+    InteractiveApprovalBatch,
     InteractiveApprovalDecision,
     InteractiveApprovalRequest,
+    InteractiveApprovalSettlement,
     InvocationLease,
     LeaseState,
     ProviderAuthorityRecord,
@@ -70,6 +72,7 @@ Record: TypeAlias = (
     | GrantRecord
     | ExecutionDomain
     | HostExtensionTrustRecord
+    | InteractiveApprovalBatch
     | InteractiveApprovalRequest
     | InteractiveApprovalDecision
 )
@@ -1194,6 +1197,8 @@ class AuthorityStore:
             return "approval"
         if isinstance(record, GrantRecord):
             return "grant"
+        if isinstance(record, InteractiveApprovalBatch):
+            return "interactive_approval_batch"
         if isinstance(record, InteractiveApprovalRequest):
             return "interactive_approval_request"
         if isinstance(record, InteractiveApprovalDecision):
@@ -1212,7 +1217,7 @@ class AuthorityStore:
             return record.approval_id
         if isinstance(record, GrantRecord):
             return record.grant_id
-        if isinstance(record, InteractiveApprovalRequest):
+        if isinstance(record, (InteractiveApprovalBatch, InteractiveApprovalRequest)):
             return record.request_id
         if isinstance(record, InteractiveApprovalDecision):
             return record.decision_id
@@ -1256,6 +1261,8 @@ class AuthorityStore:
             raise AuthorityValidationError(
                 "interactive approvals require their dedicated state machine"
             )
+        if isinstance(record, InteractiveApprovalBatch) and replace:
+            raise AuthorityValidationError("approval batch cannot be replaced")
         record_type = self._record_type(record)
         record_id = self._record_id(record)
         payload = record.to_dict()
@@ -1605,75 +1612,34 @@ class AuthorityStore:
     ) -> None:
         """Atomically settle one pending request and mint only approved authority."""
 
-        approved = decision.decision == "approved"
-        if approved != (approval is not None and grant is not None):
+        self.settle_interactive_approvals(
+            (InteractiveApprovalSettlement(decision, approval, grant),)
+        )
+
+    @_process_owned
+    def settle_interactive_approvals(
+        self,
+        settlements: tuple[InteractiveApprovalSettlement, ...],
+        *,
+        batch: InteractiveApprovalBatch | None = None,
+    ) -> None:
+        """Commit the complete selected set, including audits, in one transaction."""
+
+        if not settlements or len(settlements) > 64:
             raise AuthorityValidationError(
-                "interactive approval settlement has an invalid authority bundle"
+                "approval selection must contain 1 to 64 items"
             )
-        if not approved and (approval is not None or grant is not None):
-            raise AuthorityValidationError(
-                "denied interactive approval cannot mint authority"
-            )
+        if len({item.decision.request_id for item in settlements}) != len(settlements):
+            raise AuthorityValidationError("approval selection contains duplicates")
         try:
             with self._lock, self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
-                request_row = connection.execute(
-                    "SELECT record_digest, encrypted_payload FROM authority_records"
-                    " WHERE record_type='interactive_approval_request' AND record_id=?",
-                    (decision.request_id,),
-                ).fetchone()
-                if request_row is None:
-                    raise AuthorityDenied("interactive approval request is unavailable")
-                request_payload = self._decrypt(request_row["encrypted_payload"])
-                if not hmac.compare_digest(
-                    str(request_row["record_digest"]), authority_digest(request_payload)
-                ):
-                    raise AuthorityStoreError(
-                        "interactive approval request digest mismatch"
-                    )
-                request = InteractiveApprovalRequest.from_dict(request_payload)
-                if decision.request_snapshot_digest != request.digest:
-                    raise AuthorityDenied("interactive approval request changed")
-                if request.expires_at <= self._clock():
-                    raise AuthorityDenied("interactive approval request is expired")
-                epoch = connection.execute(
-                    "SELECT value FROM authority_meta WHERE key='security_epoch'"
-                ).fetchone()
-                if (
-                    epoch is None
-                    or int(epoch["value"]) != request.security_epoch
-                    or decision.security_epoch != request.security_epoch
-                ):
-                    raise AuthorityDenied(
-                        "interactive approval has a stale SecurityEpoch",
-                        code="stale_epoch",
-                    )
-                existing = connection.execute(
-                    "SELECT 1 FROM authority_records"
-                    " WHERE record_type='interactive_approval_decision' AND record_id=?",
-                    (decision.request_id,),
-                ).fetchone()
-                if existing is not None:
-                    raise AuthorityDenied(
-                        "interactive approval request is already settled"
-                    )
-                self._insert_record(connection, decision)
-                if approval is not None and grant is not None:
-                    self._insert_record(connection, approval)
-                    self._insert_record(connection, grant)
-                self._append_audit(
-                    connection,
-                    event_id="interactive-approval-decision-" + secrets.token_hex(16),
-                    event_type="interactive_approval",
-                    event_state=decision.decision,
-                    payload={
-                        "request_id": request.request_id,
-                        "request_snapshot_digest": request.digest,
-                        "decision_digest": decision.digest,
-                        "security_epoch": request.security_epoch,
-                        "authority_minted": approved,
-                    },
-                )
+                if batch is not None:
+                    self._validate_approval_batch(connection, batch, settlements)
+                for item in settlements:
+                    self._insert_interactive_settlement(connection, item)
+                if batch is not None and batch.expires_at <= self._clock():
+                    raise AuthorityDenied("approval batch is expired")
                 connection.commit()
         except (AuthorityDenied, AuthorityValidationError, AuditUnavailable):
             raise
@@ -1683,6 +1649,110 @@ class AuthorityStore:
             ) from exc
         except sqlite3.Error as exc:
             raise AuthorityStoreError("interactive approval settlement failed") from exc
+
+    def _validate_approval_batch(
+        self,
+        connection: _IdentityBoundConnection,
+        batch: InteractiveApprovalBatch,
+        settlements: tuple[InteractiveApprovalSettlement, ...],
+    ) -> None:
+        """Check the exact frozen selection inside the settlement transaction."""
+
+        row = connection.execute(
+            "SELECT encrypted_payload, record_digest FROM authority_records"
+            " WHERE record_type='interactive_approval_batch' AND record_id=?",
+            (batch.request_id,),
+        ).fetchone()
+        if row is None:
+            raise AuthorityDenied("approval batch is unavailable")
+        payload = self._decrypt(row["encrypted_payload"])
+        if authority_digest(payload) != row["record_digest"]:
+            raise AuthorityStoreError("approval batch authentication failed")
+        if InteractiveApprovalBatch.from_dict(payload) != batch:
+            raise AuthorityDenied("approval batch changed")
+        selected = tuple(sorted(
+            (item.decision.request_id, item.decision.request_snapshot_digest)
+            for item in settlements
+        ))
+        if selected != batch.request_snapshots:
+            raise AuthorityDenied("approval batch selection changed")
+        if batch.expires_at <= self._clock():
+            raise AuthorityDenied("approval batch is expired")
+
+    def _insert_interactive_settlement(
+        self,
+        connection: _IdentityBoundConnection,
+        settlement: InteractiveApprovalSettlement,
+    ) -> None:
+        decision = settlement.decision
+        approval = settlement.approval
+        grant = settlement.grant
+        approved = decision.decision == "approved"
+        if approved != (approval is not None and grant is not None):
+            raise AuthorityValidationError(
+                "interactive approval settlement has an invalid authority bundle"
+            )
+        if not approved and (approval is not None or grant is not None):
+            raise AuthorityValidationError(
+                "denied interactive approval cannot mint authority"
+            )
+        request_row = connection.execute(
+            "SELECT record_digest, encrypted_payload FROM authority_records"
+            " WHERE record_type='interactive_approval_request' AND record_id=?",
+            (decision.request_id,),
+        ).fetchone()
+        if request_row is None:
+            raise AuthorityDenied("interactive approval request is unavailable")
+        request_payload = self._decrypt(request_row["encrypted_payload"])
+        if not hmac.compare_digest(
+            str(request_row["record_digest"]), authority_digest(request_payload)
+        ):
+            raise AuthorityStoreError(
+                "interactive approval request digest mismatch"
+            )
+        request = InteractiveApprovalRequest.from_dict(request_payload)
+        if decision.request_snapshot_digest != request.digest:
+            raise AuthorityDenied("interactive approval request changed")
+        if request.expires_at <= self._clock():
+            raise AuthorityDenied("interactive approval request is expired")
+        epoch = connection.execute(
+            "SELECT value FROM authority_meta WHERE key='security_epoch'"
+        ).fetchone()
+        if (
+            epoch is None
+            or int(epoch["value"]) != request.security_epoch
+            or decision.security_epoch != request.security_epoch
+        ):
+            raise AuthorityDenied(
+                "interactive approval has a stale SecurityEpoch",
+                code="stale_epoch",
+            )
+        existing = connection.execute(
+            "SELECT 1 FROM authority_records"
+            " WHERE record_type='interactive_approval_decision' AND record_id=?",
+            (decision.request_id,),
+        ).fetchone()
+        if existing is not None:
+            raise AuthorityDenied(
+                "interactive approval request is already settled"
+            )
+        self._insert_record(connection, decision)
+        if approval is not None and grant is not None:
+            self._insert_record(connection, approval)
+            self._insert_record(connection, grant)
+        self._append_audit(
+            connection,
+            event_id="interactive-approval-decision-" + secrets.token_hex(16),
+            event_type="interactive_approval",
+            event_state=decision.decision,
+            payload={
+                "request_id": request.request_id,
+                "request_snapshot_digest": request.digest,
+                "decision_digest": decision.digest,
+                "security_epoch": request.security_epoch,
+                "authority_minted": approved,
+            },
+        )
 
     @_process_owned
     def get_provider_authority(self, record_id: str) -> ProviderAuthorityRecord | None:
@@ -1697,6 +1767,15 @@ class AuthorityStore:
 
         value = self._get_record("approval", approval_id)
         return ApprovalRecord.from_dict(value) if value else None
+
+    @_process_owned
+    def get_interactive_approval_batch(
+        self, request_id: str,
+    ) -> InteractiveApprovalBatch | None:
+        """Load a frozen selection from the same encrypted Authority database."""
+
+        value = self._get_record("interactive_approval_batch", request_id)
+        return InteractiveApprovalBatch.from_dict(value) if value else None
 
     @_process_owned
     def get_interactive_approval_request(

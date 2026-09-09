@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from threading import RLock
 from typing import Mapping, Protocol
 
@@ -23,8 +23,10 @@ from core_runtime.authority.v4 import (
     GrantLifetime,
     GrantRecord,
     HostExtensionTrustRecord,
+    InteractiveApprovalBatch,
     InteractiveApprovalDecision,
     InteractiveApprovalRequest,
+    InteractiveApprovalSettlement,
     InvocationContext,
     InvocationLease,
     LeaseState,
@@ -209,6 +211,41 @@ class AuthorityV4Adapter:
     ) -> InteractiveApprovalStatus:
         """Approve once after Host-side phrase and UI-provenance verification."""
 
+        return self.approve_interactive_approvals((command,))[0]
+
+    def approve_interactive_approvals(
+        self,
+        commands: tuple[InteractiveApprovalDecisionCommand, ...],
+    ) -> tuple[InteractiveApprovalStatus, ...]:
+        """Commit selected, individually authenticated one-shot decisions atomically.
+
+        Every item still requires the native operator's exact snapshot signature.
+        No client-approved flag, scope expansion, or synthetic operator is accepted.
+        """
+
+        if not commands or len(commands) > 64:
+            raise AuthorityDenied("approval selection must contain 1 to 64 items")
+        if len({command.request_id for command in commands}) != len(commands):
+            raise AuthorityDenied("approval selection contains duplicates")
+        owner = commands[0].context
+        if any(
+            command.context.profile_id != owner.profile_id
+            or command.context.caller_principal != owner.caller_principal
+            or command.context.caller_session_id != owner.caller_session_id
+            or command.actor_id != commands[0].actor_id
+            for command in commands
+        ):
+            raise AuthorityDenied("approval selection has different owners")
+        prepared = tuple(
+            self._prepare_interactive_approval(command) for command in commands
+        )
+        self._kernel.settle_interactive_approvals(tuple(item[0] for item in prepared))
+        return tuple(item[1] for item in prepared)
+
+    def _prepare_interactive_approval(
+        self,
+        command: InteractiveApprovalDecisionCommand,
+    ) -> tuple[InteractiveApprovalSettlement, InteractiveApprovalStatus]:
         request, state = self._interactive_approval_for_presentation(
             command.context,
             command.request_id,
@@ -220,6 +257,16 @@ class AuthorityV4Adapter:
             request,
             action="approve",
         )
+        return self._build_approved_settlement(command, request, ui_operator_digest)
+
+    def _build_approved_settlement(
+        self,
+        command: InteractiveApprovalDecisionCommand,
+        request: InteractiveApprovalRequest,
+        ui_operator_digest: str,
+    ) -> tuple[InteractiveApprovalSettlement, InteractiveApprovalStatus]:
+        """Build after either an exact request or whole-batch native proof passes."""
+
         confirmed = self._verify_typed_confirmation(command, request)
         decided_at = self._kernel.interactive_approval_now()
         approval_id = "interactive-approval-" + secrets.token_urlsafe(18)
@@ -267,13 +314,144 @@ class AuthorityV4Adapter:
             max_uses=1,
             session_id=request.caller_session_id,
         )
-        self._kernel.settle_interactive_approval(
-            decision,
-            approval=approval,
-            grant=grant,
-            confirmation_text=command.confirmation_text,
+        return (
+            InteractiveApprovalSettlement(
+                decision, approval, grant, command.confirmation_text
+            ),
+            self._interactive_status(request, "approved"),
         )
-        return self._interactive_status(request, "approved")
+
+    def create_interactive_approval_batch(
+        self,
+        context: RequestContext,
+        request_ids: tuple[str, ...],
+    ) -> Mapping[str, object]:
+        """Freeze a selected set of already prepared requests without granting it."""
+
+        if not 1 <= len(request_ids) <= 64 or len(set(request_ids)) != len(request_ids):
+            raise AuthorityDenied("approval selection is empty, duplicated, or too large")
+        requests = []
+        for request_id in request_ids:
+            request, state = self._interactive_approval_for_presentation(context, request_id)
+            if state != "pending":
+                raise AuthorityDenied("selected approval is unavailable")
+            requests.append(request)
+        now = self._kernel.interactive_approval_now()
+        batch = InteractiveApprovalBatch(
+            request_id="approval-batch-" + secrets.token_urlsafe(18),
+            request_snapshots=tuple((r.request_id, r.digest) for r in requests),
+            profile_id=context.profile_id,
+            presentation_owner_principal_id=self._resolve_exact(
+                context.caller_principal
+            ).principal_id,
+            presentation_owner_session_id=context.caller_session_id,
+            security_epoch=context.security_epoch,
+            created_at=now,
+            expires_at=min(now + 180, *(r.expires_at for r in requests)),
+        )
+        self._kernel.store.put_records_atomically((batch,))
+        return self.get_interactive_approval_batch(context, batch.request_id)
+
+    def _batch_for_presentation(
+        self, context: RequestContext, request_id: str,
+    ) -> tuple[InteractiveApprovalBatch, tuple[InteractiveApprovalRequest, ...]]:
+        batch = self._kernel.store.get_interactive_approval_batch(request_id)
+        if batch is None or (
+            batch.profile_id != context.profile_id
+            or batch.presentation_owner_principal_id
+            != self._resolve_exact(context.caller_principal).principal_id
+            or batch.presentation_owner_session_id != context.caller_session_id
+            or batch.security_epoch != context.security_epoch
+        ):
+            raise AuthorityDenied("approval batch is unavailable")
+        requests = []
+        for selected_id, snapshot_digest in batch.request_snapshots:
+            request, _state = self._interactive_approval_for_presentation(
+                context, selected_id
+            )
+            if request.digest != snapshot_digest:
+                raise AuthorityDenied("approval batch snapshot changed")
+            requests.append(request)
+        return batch, tuple(requests)
+
+    def get_interactive_approval_batch(
+        self, context: RequestContext, request_id: str,
+    ) -> Mapping[str, object]:
+        """Return the complete frozen selection to its exact authenticated owner."""
+
+        batch, requests = self._batch_for_presentation(context, request_id)
+        states = {
+            self._kernel.interactive_approval(request.request_id)[1]
+            for request in requests
+        }
+        state = next(iter(states)) if len(states) == 1 else "unavailable"
+        if state == "pending" and batch.expires_at <= self._kernel.interactive_approval_now():
+            state = "expired"
+        return {
+            "request_id": batch.request_id,
+            "request_snapshot_digest": _interactive_ui_operator_digest(batch.digest),
+            "profile_id": batch.profile_id,
+            "expires_at": batch.expires_at,
+            "state": state,
+            "items": tuple({
+                "request_id": request.request_id,
+                "request_snapshot_digest": _interactive_ui_operator_digest(request.digest),
+                "caller": request.caller.to_dict(),
+                "target": request.target.to_dict(),
+                "scope": request.base_scope.to_dict(),
+                "lifetime": GrantLifetime.ONE_SHOT.value,
+                "expires_at": request.expires_at,
+                "typed_confirmation_required": request.typed_confirmation_digest is not None,
+                "redacted_metadata": dict(request.redacted_metadata),
+            } for request in requests),
+        }
+
+    def settle_interactive_approval_batch(
+        self,
+        command: InteractiveApprovalDecisionCommand,
+        *,
+        approved: bool,
+        confirmation_texts: Mapping[str, str],
+    ) -> Mapping[str, object]:
+        """Verify one native proof over the entire selection and settle all or none."""
+
+        batch, requests = self._batch_for_presentation(command.context, command.request_id)
+        if batch.expires_at <= self._kernel.interactive_approval_now():
+            raise AuthorityDenied("approval batch is expired")
+        required = {
+            r.request_id for r in requests if r.typed_confirmation_digest is not None
+        } if approved else set()
+        if set(confirmation_texts) != required:
+            raise AuthorityDenied("approval batch confirmations do not match selection")
+        proof = self._verified_interactive_operator_audit_digest(
+            command, batch, action="approve" if approved else "deny",
+        )
+        settlements = []
+        for request in requests:
+            item_command = replace(
+                command,
+                request_id=request.request_id,
+                confirmation_text=confirmation_texts.get(request.request_id, ""),
+            )
+            if approved:
+                item, _status = self._build_approved_settlement(
+                    item_command, request, proof,
+                )
+            else:
+                item = InteractiveApprovalSettlement(InteractiveApprovalDecision(
+                    decision_id=request.request_id,
+                    request_id=request.request_id,
+                    request_snapshot_digest=request.digest,
+                    decision="denied",
+                    actor_id=command.actor_id,
+                    decided_at=self._kernel.interactive_approval_now(),
+                    security_epoch=request.security_epoch,
+                    ui_operator_digest=proof,
+                    typed_confirmation_verified=False,
+                ))
+            settlements.append(item)
+        self._kernel.settle_interactive_approvals(tuple(settlements), batch=batch)
+        return self.get_interactive_approval_batch(command.context, command.request_id)
 
     def interactive_approval_status(
         self,
@@ -786,7 +964,7 @@ class AuthorityV4Adapter:
     @staticmethod
     def _verified_interactive_operator_audit_digest(
         command: InteractiveApprovalDecisionCommand,
-        request: InteractiveApprovalRequest,
+        request: InteractiveApprovalRequest | InteractiveApprovalBatch,
         *,
         action: str,
     ) -> str:

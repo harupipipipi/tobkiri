@@ -1194,10 +1194,12 @@ def test_saved_settings_reach_host_credential_transport(
         servers.close()
 
 
+@pytest.mark.parametrize("approval_mode", ("single", "batch"))
 def test_all_high_risk_commands_http_require_host_approval_and_run_once(
     command_vertical_server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    approval_mode: str,
 ) -> None:
     """Exercise every Command ref through HTTP, Host approval, and one resume.
 
@@ -1326,6 +1328,34 @@ def test_all_high_risk_commands_http_require_host_approval_and_run_once(
         assert status == 200, approval
         approval_data = approval["data"]
         assert approval_data["typed_confirmation_required"] is True
+        if approval_mode == "batch":
+            status, frozen = post(
+                "/api/interactive-approval/v1/batch-create",
+                {"request_ids": [approval_request_id]},
+            )
+            assert status == 200, frozen
+            batch = frozen["data"]
+            assert batch["state"] == "pending"
+            assert [item["request_id"] for item in batch["items"]] == [
+                approval_request_id
+            ]
+            status, approved = post(
+                "/api/interactive-approval/v1/batch-approve",
+                {
+                    "request_id": batch["request_id"],
+                    "confirmation_texts": {approval_request_id: "EXECUTE"},
+                    "ui_operator": sign_ui_operator(
+                        batch["request_id"],
+                        nonce=nonce,
+                        decision="approve",
+                        request_snapshot_digest=batch["request_snapshot_digest"],
+                        typed_confirmation_digest=None,
+                    ),
+                },
+            )
+            assert status == 200, approved
+            assert approved["data"]["state"] == "approved"
+            return
         status, approved = post(
             "/api/interactive-approval/v1/approve",
             {

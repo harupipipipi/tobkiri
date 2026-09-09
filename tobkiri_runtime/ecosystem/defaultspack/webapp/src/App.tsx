@@ -12,6 +12,7 @@ import { AdaptiveRuntimePage } from "./adaptive";
 import { ambientTriggerClient, type AmbientRoutingConfig } from "./ambient/ambientTriggerClient";
 import { publishAmbientFinalAnswer } from "./ambient/finalAnswerBridge";
 import { AuthorityApprovalNotice } from "./components/AuthorityApprovalNotice";
+import { ApprovalBatchPicker, ApprovalBatchWindow } from "./components/ApprovalBatch";
 import { AuthorityApprovalWindow } from "./components/AuthorityApprovalWindow";
 import { ApprovalDecisionSurface } from "./components/ApprovalDecisionSurface";
 import { ErrorNotice } from "./components/ErrorNotice";
@@ -7274,6 +7275,7 @@ export function ChatApp() {
                     >
                       承認ウィンドウを開く
                     </button>
+                    <ApprovalBatchPicker />
                   </section>
                 )}
                 {commandProgressEvents.length > 0 && (
@@ -7583,7 +7585,8 @@ export default function App() {
   const explicitDebugConversationId = fingerDebugMode ? chatIdFromLocation() : null;
 
   if (pathname === "/approval") {
-    return <AuthorityApprovalWindow />;
+    return new URLSearchParams(window.location.search).get("request_id")?.startsWith("approval-batch-")
+      ? <ApprovalBatchWindow /> : <AuthorityApprovalWindow />;
   }
   if (pathname === "/ui-precision" || searchParams.get("ui-precision") === "1") {
     return <UiPrecisionComparator />;

@@ -4943,7 +4943,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-      "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+      "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -4957,7 +4957,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -4996,7 +4996,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-      "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+      "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -5009,7 +5009,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5025,11 +5025,91 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "contract_version": "1.0.0",
+          "entrypoint_id": "interactive_approval.batch_approve",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
+          "implementation_path": "runtime/bridge.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "interactive_approval.batch_approve",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "interactive_approval.batch_create",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
+          "implementation_path": "runtime/bridge.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "interactive_approval.batch_create",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "interactive_approval.batch_deny",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
+          "implementation_path": "runtime/bridge.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "interactive_approval.batch_deny",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "interactive_approval.batch_get",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
+          "implementation_path": "runtime/bridge.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "interactive_approval.batch_get",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
           "entrypoint_id": "interactive_approval.deny",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5049,7 +5129,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5069,7 +5149,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5091,6 +5171,30 @@
       "source": [
         {
           "entrypoint_id": "interactive_approval.approve",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "entrypoint_id": "interactive_approval.batch_approve",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "entrypoint_id": "interactive_approval.batch_create",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "entrypoint_id": "interactive_approval.batch_deny",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "entrypoint_id": "interactive_approval.batch_get",
           "kind": "legacy-explicit-entrypoint",
           "pack_source_id": "rumi_host_authority_bridge_pack",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
@@ -5124,7 +5228,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+      "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -5138,7 +5242,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -12205,7 +12309,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 197,
-    "input_digest": "sha256:2cf0000fff0d0eb7f57811f33c66f25cc41c610cb8a9a6a9f564dd73cb9c785b",
+    "input_digest": "sha256:fa6b31762fa9167595b31eaaff0f3b42325967df07b043eb631c32f3d3850a11",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -12642,7 +12746,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:5e22099b13eafd5826fe0360bc3f0c3fb072474a37b872428ed7b198efcb2fd6",
+        "digest": "sha256:85364b2d9f7a78f2124f2f466e3db7b03546518d326f24250391e050f5bb4b25",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-manifest.json"
       },
@@ -12912,7 +13016,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:17d751da0208ba1131d9d8b0f3be73a5df902898454e4dac176043f389bcbf57",
+        "digest": "sha256:a2e1825f6acde6d085b0afdee766826577202ccc2373e48d7cefe0bf8e9bf3b8",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -13122,7 +13226,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:cd9b1207a1ebae3482471e04166f0df346102f5b880823f4931fd0d190bfba04",
+        "digest": "sha256:b45705e5a1cee8f686460b5378e42a4c014673036dc8b7784bcfdd1136371014",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/rumi.pack.v3.json"
       },

@@ -4,6 +4,77 @@
   "routes": [
     {
       "method": "POST",
+      "path": "/api/interactive-approval/v1/batch-create",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.batch-create",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.batch_create",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": [
+            "request_ids"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/interactive-approval/v1/batch-get",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.batch-get",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.batch_get",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": [
+            "request_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/interactive-approval/v1/batch-approve",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.batch-approve",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.batch_approve",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": [
+            "request_id",
+            "confirmation_texts",
+            "ui_operator"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/interactive-approval/v1/batch-deny",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.batch-deny",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.batch_deny",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": [
+            "request_id",
+            "ui_operator"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/ai/provider-key",
       "presentation": "broker_result",
       "targets": [{

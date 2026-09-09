@@ -23,8 +23,10 @@ from .v4_models import (
     GrantLifetime,
     GrantRecord,
     HostExtensionTrustRecord,
+    InteractiveApprovalBatch,
     InteractiveApprovalDecision,
     InteractiveApprovalRequest,
+    InteractiveApprovalSettlement,
     InvocationContext,
     InvocationLease,
     LeaseState,
@@ -203,6 +205,14 @@ class AuthorityKernelProtocol(Protocol):
         confirmation_text: str | None = None,
     ) -> None:
         """Atomically settle one interactive approval request."""
+
+    def settle_interactive_approvals(
+        self,
+        settlements: tuple[InteractiveApprovalSettlement, ...],
+        *,
+        batch: InteractiveApprovalBatch | None = None,
+    ) -> None:
+        """Atomically settle all selected requests after validating every item."""
 
     def interactive_approval_now(self) -> float:
         """Return the Host-owned clock used to create a decision timestamp."""
@@ -528,6 +538,36 @@ class AuthorityKernel:
     ) -> None:
         """Validate an immutable decision before its single durable settlement."""
 
+        self.settle_interactive_approvals(
+            (InteractiveApprovalSettlement(decision, approval, grant, confirmation_text),)
+        )
+
+    def settle_interactive_approvals(
+        self,
+        settlements: tuple[InteractiveApprovalSettlement, ...],
+        *,
+        batch: InteractiveApprovalBatch | None = None,
+    ) -> None:
+        """Validate every selected request, then commit all decisions or none."""
+
+        if not settlements or len(settlements) > 64:
+            raise AuthorityValidationError(
+                "approval selection must contain 1 to 64 items"
+            )
+        if len({item.decision.request_id for item in settlements}) != len(settlements):
+            raise AuthorityValidationError("approval selection contains duplicates")
+        for item in settlements:
+            self._validate_interactive_settlement(item)
+        self.store.settle_interactive_approvals(settlements, batch=batch)
+
+    def _validate_interactive_settlement(
+        self,
+        settlement: InteractiveApprovalSettlement,
+    ) -> None:
+        decision = settlement.decision
+        approval = settlement.approval
+        grant = settlement.grant
+        confirmation_text = settlement.confirmation_text
         request = self.store.get_interactive_approval_request(decision.request_id)
         if request is None:
             raise AuthorityDenied("interactive approval request is unavailable")
@@ -612,11 +652,6 @@ class AuthorityKernel:
             raise AuthorityValidationError(
                 "denied decision cannot claim typed confirmation"
             )
-        self.store.settle_interactive_approval(
-            decision,
-            approval=approval,
-            grant=grant,
-        )
 
     def _validate_interactive_request_binding(
         self,

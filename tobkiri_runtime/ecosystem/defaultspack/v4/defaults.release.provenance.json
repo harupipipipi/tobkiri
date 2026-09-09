@@ -1,8 +1,8 @@
 {
   "schema": "io.tobkiri.profile-release-provenance.v1",
   "profile_id": "defaults",
-  "profile_revision": "sha256:aeda378160eb60951c72b7016a424978769bcdbd736aaa5d86e29203b4a52b89",
-  "profile_definition_digest": "sha256:b5415de5228047494c04dd89687a8b82fdf406d7bf841ad37c6f701c35e8506e",
+  "profile_revision": "sha256:7e9b86cb1ef713692c0d9764415c78cafd9486ea09243edd0b3dbf947840b09a",
+  "profile_definition_digest": "sha256:4de3c578b8dfddddb756a5c2053482ed976826aa779371d0441eed1821166099",
   "source_inputs": [
     {
       "path": "core_runtime/profile_content_projection.py",
@@ -14,7 +14,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
-      "digest": "sha256:ce7b51c855b13338d93dcb40e9c7e16b631f29b679dbb205e674c19ee059ea67"
+      "digest": "sha256:1feb3a5ef74051e581cab419351578a81af30b5ebc240182407c7bb56234981b"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
@@ -38,7 +38,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json",
-      "digest": "sha256:c5a0c53d646032d266ed3a8412cfcf00bd7a5b18a443441976af91d381e20cfd"
+      "digest": "sha256:8c2633a9fd1f39da55d74ec770de1d82e66557a4fc3105b73dec333bfbe49fe1"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json",
@@ -538,7 +538,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_authority_bridge_pack.executables.v4.json",
-      "digest": "sha256:42d982543552832bc5088067c0d895d9463d2614456e3531c9ec37e6c161d51e"
+      "digest": "sha256:3a368eeee53bb6f989516b79ae7f096fe8397006c3d31d776384ae44f7f967d1"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_capabilities_pack.executables.v4.json",
@@ -1114,7 +1114,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-      "digest": "sha256:796f62933db939b7f5e57d6adbcd904586d1e8c1224fc842515db107d8063bf0"
+      "digest": "sha256:de1adf83a898eb4ee272994b88b1dea498980ed1b4dea84162705968499d932e"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/search_home_pack.executables.v4.json",
@@ -1329,19 +1329,19 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:d6307f46b9fa490e27d0f3a33dd396b336dce945053d1ca56597fbf022494320",
-    "catalog_revision": "sha256:73c5de6f953cb38cbaf7c6a940e5f909afff25fa1a117b1d7c5be3539d2985bb",
-    "closure_digest": "sha256:9ade5c38cf80ed76381cb07181a8d55501df8a6cba06757440ebda43d6f63e0a"
+    "bundle_digest": "sha256:addf7536ae26bd7ea12ef337565c7c9015c1518742031d4f87ad17481eb6d782",
+    "catalog_revision": "sha256:66a8590e58295596e61eb76678d5cd0318cfa01631b4eef75ada5dd56e0c2e40",
+    "closure_digest": "sha256:21dd1e73035e648b2087256a5ab89be64d5a08fc783285c4678f33bde471fd6b"
   },
   "outputs": [
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-      "digest": "sha256:e51039239d226ec0ee4e9c8be15dc9816ac2d71e9128303e53111bea183c2694"
+      "digest": "sha256:a192f847195fffede70b1a45895f05a7f1b9bd2a0162b62379e2a0c28422b0e7"
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:cf704afbe73af7a34f4076187d601786af8f562ad7eb20cbece52da9a21995b6"
+      "digest": "sha256:8e813a7f37252fec1a6f419a5da08f9659937a88fb077ebd0f9f276005fef70d"
     }
   ],
-  "release_digest": "sha256:af44d35450b6240e903c2647d255da650f80ae055ec9280d1a3db1dbd9065011"
+  "release_digest": "sha256:6b08b0fc61650ab1de3998902f4744ae89622a9a6cda66a2bce871b7f03a3adf"
 }

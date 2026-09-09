@@ -414,7 +414,7 @@ _V4_GET_OPERATION = "interactive_approval.get"
 _V4_LIST_OPERATION = "interactive_approval.list"
 _V4_APPROVE_OPERATION = "interactive_approval.approve"
 _V4_DENY_OPERATION = "interactive_approval.deny"
-_V4_OPERATIONS = frozenset(
+_V4_SINGLE_OPERATIONS = frozenset(
     {
         _V4_GET_OPERATION,
         _V4_LIST_OPERATION,
@@ -422,6 +422,11 @@ _V4_OPERATIONS = frozenset(
         _V4_DENY_OPERATION,
     }
 )
+_V4_BATCH_OPERATIONS = frozenset(
+    f"interactive_approval.batch_{action}"
+    for action in ("create", "get", "approve", "deny")
+)
+_V4_OPERATIONS = _V4_SINGLE_OPERATIONS | _V4_BATCH_OPERATIONS
 _V4_UNTRUSTED_AUTHORITY_FIELDS = frozenset(
     {
         "approved",
@@ -486,6 +491,8 @@ class InteractiveApprovalBridgeV4:
         if not isinstance(payload, Mapping):
             raise PermissionError("interactive approval payload is invalid")
         _reject_v4_client_authority(payload)
+        if operation_id in _V4_BATCH_OPERATIONS:
+            return self._batch(envelope, payload, operation_id)
         if operation_id == _V4_GET_OPERATION:
             return self._get(envelope, payload)
         if operation_id == _V4_LIST_OPERATION:
@@ -495,6 +502,53 @@ class InteractiveApprovalBridgeV4:
         if operation_id == _V4_DENY_OPERATION:
             return self._decide(envelope, payload, approved=False)
         raise PermissionError("interactive approval operation is not allowed")
+
+    def _batch(
+        self, envelope: RequestEnvelope, payload: Mapping[str, Any],
+        operation_id: str,
+    ) -> Mapping[str, Any]:
+        if operation_id == "interactive_approval.batch_create":
+            _require_exact_payload_keys(payload, {"request_ids"})
+            selected = payload.get("request_ids")
+            if (
+                not isinstance(selected, list) or not 1 <= len(selected) <= 64
+                or any(not isinstance(item, str) or not item.strip()
+                       or len(item) > 255 for item in selected)
+                or len(set(selected)) != len(selected)
+            ):
+                raise PermissionError("interactive approval selection is invalid")
+            return self._approval_port.create_interactive_approval_batch(
+                envelope.context, tuple(selected),
+            )
+        if operation_id == "interactive_approval.batch_get":
+            _require_exact_payload_keys(payload, {"request_id"})
+            return self._approval_port.get_interactive_approval_batch(
+                envelope.context, _payload_id(payload, "request_id"),
+            )
+        approved = operation_id == "interactive_approval.batch_approve"
+        _require_exact_payload_keys(
+            payload, {"request_id", "ui_operator", "confirmation_texts"}
+            if approved else {"request_id", "ui_operator"},
+        )
+        operator = payload.get("ui_operator")
+        confirmations = payload.get("confirmation_texts") if approved else {}
+        if not isinstance(operator, Mapping):
+            raise PermissionError("interactive approval ui_operator is required")
+        if (
+            not isinstance(confirmations, Mapping) or len(confirmations) > 64
+            or any(not isinstance(key, str) or not isinstance(value, str)
+                   or len(value) > 512 for key, value in confirmations.items())
+        ):
+            raise PermissionError("interactive approval confirmations are invalid")
+        command = InteractiveApprovalDecisionCommand(
+            context=envelope.context,
+            request_id=_payload_id(payload, "request_id"),
+            actor_id=_ui_actor_id(operator),
+            ui_operator=dict(operator),
+        )
+        return self._approval_port.settle_interactive_approval_batch(
+            command, approved=approved, confirmation_texts=dict(confirmations),
+        )
 
     def _get(
         self,
@@ -613,7 +667,8 @@ class InteractiveApprovalBridgeFactoryV4:
                 or binding.operation.operation_id not in _V4_OPERATIONS
                 for binding in bindings
             )
-            or {binding.operation.operation_id for binding in bindings} != _V4_OPERATIONS
+            or {binding.operation.operation_id for binding in bindings}
+            not in (_V4_SINGLE_OPERATIONS, _V4_OPERATIONS)
         ):
             raise PermissionError("interactive approval provider bindings are incomplete")
         bridge = InteractiveApprovalBridgeV4(

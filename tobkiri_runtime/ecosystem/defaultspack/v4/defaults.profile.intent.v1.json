@@ -120,6 +120,90 @@
   "requested_edges": [
     {
       "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_create",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_create"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_get",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_get"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_approve",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_approve"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_deny",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_deny"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
       "target_provider_id": "rumi_model_registry_pack.model-registry.manage",
       "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
       "operation_id": "rumi_model_registry_pack.model-profile-manage",

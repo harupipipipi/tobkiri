@@ -803,7 +803,7 @@
       "entries": [
         {
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "operation_ids": ["interactive_approval.get", "interactive_approval.list", "interactive_approval.approve", "interactive_approval.deny"],
+          "operation_ids": ["interactive_approval.get", "interactive_approval.list", "interactive_approval.approve", "interactive_approval.deny", "interactive_approval.batch_create", "interactive_approval.batch_get", "interactive_approval.batch_approve", "interactive_approval.batch_deny"],
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "contract_version": "1.0.0",
           "implementation_path": "runtime/bridge.py",

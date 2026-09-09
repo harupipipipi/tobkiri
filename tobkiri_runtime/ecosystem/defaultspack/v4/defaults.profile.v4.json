@@ -133,7 +133,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:a2c15dbb1b49c2c951f72a6d33b66ab1ddded3c6bb5594dd14516c4698ba7913",
+    "source_digest": "sha256:8c66656777340434c85a78124bde7d073e3fa15298f4cae03fa2c1fad8473134",
     "repository_commit": "working-tree",
     "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
     "generator": "tobkiri-profile-artifacts",
@@ -183,6 +183,94 @@
     ]
   },
   "requested_edges": [
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_create",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_create"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_get",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_get"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_approve",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_approve"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.batch_deny",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.batch_deny"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
     {
       "caller_function_id": "shell.tauri.default",
       "target_provider_id": "rumi_model_registry_pack.model-registry.manage",
@@ -2017,7 +2105,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-approval.v1"
@@ -2039,7 +2127,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-approval.v1"
@@ -2061,7 +2149,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-approval.v1"
@@ -2083,7 +2171,7 @@
       "authority_mode": "profile_grant",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "semantics_digest": "sha256:d5d1e9c1d7183a419bcbeebc18e41110cfa20b98790bece1ff246a5b3946adcd",
         "dimensions": {
           "contract": [
             "tobkiri.service.interactive-approval.v1"

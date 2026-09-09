@@ -7578,7 +7578,7 @@
         {
           "contract_id": "tobkiri.service.host.authorize.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "operation_ids": [
             "rumi_host_authority_bridge_pack.host-authority"
           ]
@@ -7586,18 +7586,22 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "operation_ids": [
             "interactive_approval.get",
             "interactive_approval.list",
             "interactive_approval.approve",
-            "interactive_approval.deny"
+            "interactive_approval.deny",
+            "interactive_approval.batch_create",
+            "interactive_approval.batch_get",
+            "interactive_approval.batch_approve",
+            "interactive_approval.batch_deny"
           ]
         },
         {
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "operation_ids": [
             "interactive_effect.manage"
           ]
@@ -7637,7 +7641,7 @@
               ],
               "entrypoint_id": "host-authority",
               "id": "rumi_host_authority_bridge_pack.host-authority",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -7694,7 +7698,7 @@
               ],
               "entrypoint_id": "get",
               "id": "interactive_approval.get",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
             },
             {
               "effect_ceiling": [
@@ -7703,7 +7707,7 @@
               ],
               "entrypoint_id": "list",
               "id": "interactive_approval.list",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
             },
             {
               "effect_ceiling": [
@@ -7712,7 +7716,7 @@
               ],
               "entrypoint_id": "approve",
               "id": "interactive_approval.approve",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
             },
             {
               "effect_ceiling": [
@@ -7721,7 +7725,43 @@
               ],
               "entrypoint_id": "deny",
               "id": "interactive_approval.deny",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_create",
+              "id": "interactive_approval.batch_create",
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_get",
+              "id": "interactive_approval.batch_get",
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_approve",
+              "id": "interactive_approval.batch_approve",
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "batch_deny",
+              "id": "interactive_approval.batch_deny",
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -7746,6 +7786,25 @@
                 },
                 "ui_operator": {
                   "type": "object"
+                },
+                "request_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  }
+                },
+                "confirmation_texts": {
+                  "type": "object",
+                  "maxProperties": 64,
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 512
+                  }
                 }
               },
               "type": "object"
@@ -7774,7 +7833,7 @@
               ],
               "entrypoint_id": "manage",
               "id": "interactive_effect.manage",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -7847,7 +7906,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "digest": "sha256:7c3f3049ceb75a49d0ad49dc7254f08ed55e300dc4906cb0ccd4a33e03f8d8aa",
           "kind": "executable",
           "path": "runtime/bridge.py"
         }
@@ -11638,17 +11697,17 @@
             {
               "entrypoint_id": "provider-registry-health",
               "id": "rumi_provider_registry_pack.provider-registry-health",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.generate",
               "id": "rumi_provider_registry_pack.provider-registry-health.generate",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.stream",
               "id": "rumi_provider_registry_pack.provider-registry-health.stream",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -11728,7 +11787,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
+          "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "kind": "executable",
           "path": "runtime/health_process.py"
         },
