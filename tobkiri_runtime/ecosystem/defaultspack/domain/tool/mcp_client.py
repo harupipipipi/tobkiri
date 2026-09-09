@@ -16,6 +16,7 @@ import urllib.error
 from typing import Any, BinaryIO
 
 from .mcp_sse_policy import SseEndpointPolicy
+from .mcp_sse_events import SSE_EVENT_LIMIT, SSE_QUEUE_LIMIT, read_sse_events
 
 
 _PROTOCOL_VERSION = "2024-11-05"
@@ -286,7 +287,7 @@ class _SseTransport(_TransportBase):
         self._extra_headers = headers or {}
         self._post_url = None
         self._reader_thread = None
-        self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._queue: queue.Queue[dict[str, Any]] = queue.Queue(SSE_QUEUE_LIMIT)
         self._stop_event = threading.Event()
         self._response = None
         self._ready_event = threading.Event()
@@ -312,11 +313,14 @@ class _SseTransport(_TransportBase):
             self._response = None
 
     def send(self, message_bytes: bytes, *, deadline: float | None = None) -> None:
-        remaining = (
-            _DEFAULT_TIMEOUT if deadline is None else deadline - time.monotonic()
-        )
+        deadline = time.monotonic() + _DEFAULT_TIMEOUT if deadline is None else deadline
+        remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("Timeout waiting for the MCP writer")
+        if len(message_bytes) > SSE_EVENT_LIMIT:
+            raise ValueError("MCP SSE request exceeds the byte limit")
+        if self._failure is not None or self._stop_event.is_set():
+            raise RuntimeError(self._failure or "MCP SSE connection closed")
         if self._post_url is None:
             raise RuntimeError("SSE transport: post URL not yet received")
         req = urllib.request.Request(
@@ -330,16 +334,33 @@ class _SseTransport(_TransportBase):
         )
         try:
             with self._endpoint_policy.open(req, timeout=remaining) as resp:
-                resp.read()
+                if len(resp.read(SSE_EVENT_LIMIT + 1)) > SSE_EVENT_LIMIT:
+                    self._failure = "MCP SSE POST response exceeds the byte limit"
+                    raise RuntimeError(self._failure)
+            if time.monotonic() >= deadline:
+                self._failure = "MCP SSE POST deadline exceeded"
+                raise TimeoutError(self._failure)
         except urllib.error.HTTPError as exc:
             exc.close()
             raise RuntimeError("MCP SSE POST failed") from None
 
     def recv(self, timeout=_DEFAULT_TIMEOUT):
-        try:
-            return self._queue.get(timeout=timeout)
-        except queue.Empty:
-            return None
+        deadline = time.monotonic() + timeout
+        while True:
+            if self._failure is not None:
+                raise RuntimeError(self._failure)
+            remaining = deadline - time.monotonic()
+            try:
+                message = self._queue.get(timeout=max(0, min(remaining, 0.05)))
+            except queue.Empty:
+                if not self.is_alive or self._stop_event.is_set():
+                    raise RuntimeError(self._failure or "MCP SSE connection closed")
+                if remaining <= 0:
+                    return None
+            else:
+                if self._failure is not None:
+                    raise RuntimeError(self._failure)
+                return message
 
     @property
     def is_alive(self):
@@ -357,22 +378,10 @@ class _SseTransport(_TransportBase):
                 },
             )
             self._response = self._endpoint_policy.open(req, timeout=None)
-            event_type = ""
-            data_buf = []
-            for raw_line in self._response:
+            for event_type, data_str in read_sse_events(self._response):
                 if self._stop_event.is_set():
                     break
-                line = raw_line.decode("utf-8", errors="replace").rstrip("\n").rstrip("\r")
-                if line.startswith("event:"):
-                    event_type = line[len("event:") :].strip()
-                elif line.startswith("data:"):
-                    data_buf.append(line[len("data:") :].strip())
-                elif line == "":
-                    if data_buf:
-                        data_str = "\n".join(data_buf)
-                        self._handle_event(event_type, data_str)
-                    event_type = ""
-                    data_buf = []
+                self._handle_event(event_type, data_str)
         except Exception:
             self._failure = "MCP SSE connection failed"
         finally:
@@ -390,9 +399,14 @@ class _SseTransport(_TransportBase):
         elif event_type == "message" or event_type == "":
             try:
                 msg = json.loads(data_str)
-                self._queue.put(msg)
-            except json.JSONDecodeError:
-                pass
+            except (ValueError, RecursionError):
+                raise ValueError("MCP SSE response is not valid JSON") from None
+            if not isinstance(msg, dict):
+                raise ValueError("MCP SSE response must be an object")
+            try:
+                self._queue.put_nowait(msg)
+            except queue.Full:
+                raise ValueError("MCP SSE response queue is full") from None
 
 
 # ---------------------------------------------------------------------------

@@ -97,7 +97,7 @@ def test_cross_origin_endpoint_cannot_receive_the_approved_credentials() -> None
                 with pytest.raises(RuntimeError, match="MCP SSE connection failed"):
                     transport.start()
                 assert transport._post_url is None
-                with pytest.raises(RuntimeError, match="post URL"):
+                with pytest.raises(RuntimeError, match="connection failed"):
                     transport.send(b'{"id":1}')
             finally:
                 _collect(transport)
@@ -174,3 +174,62 @@ def test_explicit_default_port_and_case_keep_the_same_origin() -> None:
 def test_invalid_configured_url_is_rejected_before_transport_start(url: str) -> None:
     with pytest.raises(ValueError, match="MCP SSE URL is invalid"):
         mcp_client._SseTransport(url)
+
+
+def test_real_http_oversized_event_closes_reader_without_a_post(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ecosystem.defaultspack.domain.tool import mcp_sse_events
+
+    monkeypatch.setattr(mcp_sse_events, "SSE_EVENT_LIMIT", 64)
+    observed: list[str] = []
+
+    def source(handler: BaseHTTPRequestHandler) -> None:
+        observed.append(handler.command)
+        _reply(handler, b"event: endpoint\ndata: /messages\n\ndata: " + b"x" * 128)
+
+    with _server(source) as origin:
+        transport = mcp_client._SseTransport(f"{origin}/events")
+        try:
+            try:
+                transport.start()
+            except RuntimeError:
+                pass
+            transport._reader_thread.join(timeout=3)
+            assert not transport._reader_thread.is_alive()
+            assert transport._response.closed
+            with pytest.raises(RuntimeError, match="connection failed"):
+                transport.recv(timeout=0)
+            with pytest.raises(RuntimeError, match="connection failed"):
+                transport.send(b'{"id":1}')
+        finally:
+            _collect(transport)
+    assert observed == ["GET"]
+
+
+def test_real_http_post_byte_limits_keep_unsent_rejections_distinct_from_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mcp_client, "SSE_EVENT_LIMIT", 64)
+    observed: list[str] = []
+
+    def source(handler: BaseHTTPRequestHandler) -> None:
+        observed.append(handler.command)
+        _reply(handler, b"event: endpoint\ndata: /messages\n\n"
+               if handler.command == "GET" else b"x" * 128)
+
+    with _server(source) as origin:
+        transport = mcp_client._SseTransport(f"{origin}/events")
+        try:
+            transport.start()
+            with pytest.raises(ValueError, match="request exceeds the byte limit"):
+                transport.send(b"x" * 65)
+            assert observed == ["GET"]
+            assert transport._failure is None
+            with pytest.raises(RuntimeError, match="response exceeds the byte limit"):
+                transport.send(b'{"id":1}')
+            with pytest.raises(RuntimeError, match="response exceeds the byte limit"):
+                transport.send(b'{"id":2}')
+        finally:
+            _collect(transport)
+    assert observed == ["GET", "POST"]
