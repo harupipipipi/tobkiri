@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "runtime/projection.py",
-      "sha256": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9"
+      "sha256": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

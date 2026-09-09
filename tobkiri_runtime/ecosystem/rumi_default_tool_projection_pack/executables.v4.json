@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:63ba233b911938f324605e3e1340e16e869a92aec8ca5868fd1b6699e181b6e4",
+  "catalog_digest": "sha256:19e898186cc252765d9075615016bd2a1ebdf0909054742abba28775ccd97402",
   "pack_id": "rumi_default_tool_projection_pack",
-  "source_identity": "sha256:39748e508c7b15b53ec189953fddaf4389c9ff8ad9fbf87c14ef3f202e90812f",
+  "source_identity": "sha256:f81ec1645cccf0b4aa1ec1de5e9ceab964a11805a145ff3d3c0ddc26d22234e9",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_default_tool_projection_pack.default-tools.migration-source",
-      "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
       "implementation_path": "runtime/projection.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat",
-      "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
       "implementation_path": "runtime/projection.py",
       "materialization_mode": "on_demand",
       "operations": [
