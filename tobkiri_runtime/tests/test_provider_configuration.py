@@ -104,6 +104,56 @@ def test_configuration_revokes_only_new_unused_handle_on_failed_connection_save(
     assert not registry.path.exists()
 
 
+def test_configuration_does_not_retry_or_revoke_an_unknown_credential_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ACK loss after credential commit must not trigger a second mutation."""
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    request = _request()
+    plan = prepare_configuration(registry, request)
+    original_invoke = client.invoke
+
+    def lose_ack(contract: str, operation: str, payload: dict[str, Any]) -> Any:
+        original_invoke(contract, operation, payload)
+        raise OSError(request["key_value"])
+
+    monkeypatch.setattr(client, "invoke", lose_ack)
+    with pytest.raises(RuntimeError, match="credential save was not confirmed") as exc:
+        execute_configuration(
+            registry, client, {"request": request, "plan": plan},
+            consumer_pack_id="fixture.consumer",
+        )
+    assert request["key_value"] not in str(exc.value)
+    assert client.calls == ["create"]
+    assert not registry.path.exists()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("profile_id", "foreign"),
+    ("provider_instance_id", "provider.foreign"),
+    ("adapter_id", "anthropic"),
+    ("endpoint", "https://foreign.example/v1"),
+    ("expected_revision", 1),
+    ("request_digest", "sha256:" + "0" * 64),
+])
+def test_configuration_rejects_changed_plan_before_credential_creation(
+    tmp_path: Path, field: str, value: Any,
+) -> None:
+    """Prepared owner, endpoint, protocol and revision cannot be substituted."""
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    request = _request()
+    plan = {**prepare_configuration(registry, request), field: value}
+    with pytest.raises(PermissionError, match="changed after preparation"):
+        execute_configuration(
+            registry, client, {"request": request, "plan": plan},
+            consumer_pack_id="fixture.consumer",
+        )
+    assert client.calls == []
+    assert not registry.path.exists()
+
+
 @pytest.mark.parametrize("change", [
     {"profile_id": "other"}, {"approved": True}, {"protocol": "unknown"},
     {"endpoint": "http://provider.example/v1"},
