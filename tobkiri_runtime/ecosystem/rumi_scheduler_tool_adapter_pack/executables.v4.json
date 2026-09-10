@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:0434ceb7b626ac8113ef96057232fe0e44854e15a78ca12abfd965a5dcac9ec5",
+  "catalog_digest": "sha256:af184bb6eda988db47fd3088617d20d423d5ac6dd72858e3dfd3434c67fb2b1e",
   "pack_id": "rumi_scheduler_tool_adapter_pack",
-  "source_identity": "sha256:8dedf4533d1dc5b1163a066df1bba8eac56b0a3f57020ae4e6d95aeaf19b7459",
+  "source_identity": "sha256:3bc1bed735228efdfc9622d919d1db1af5a5fff0223a41c82c60d8931d45a689",
   "variants": [
     {
       "architecture": "any",
@@ -44,7 +44,7 @@
       "execution_domain_profile": "wasm.component.default.v1",
       "execution_kind": "wasm",
       "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "implementation_digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4",
       "implementation_path": "runtime/definitions_component.wasm",
       "materialization_mode": "on_demand",
       "operations": [

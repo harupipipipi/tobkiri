@@ -10555,7 +10555,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "implementation_digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4",
       "implementation_path": "runtime/definitions_component.wasm",
       "input_schema": {
         "type": "object"
@@ -10569,7 +10569,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+          "implementation_digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4",
           "implementation_path": "runtime/definitions_component.wasm",
           "input_schema": {
             "type": "object"
@@ -14582,7 +14582,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 202,
-    "input_digest": "sha256:fd0d82f3b626e820c6adf0b0d4b7d67c2e413be125cc12a13d2f1a5dec7252ae",
+    "input_digest": "sha256:8ca701c2a15400cd3522a577168b2489cb0c645055f5374b21081971335ca3aa",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -14809,7 +14809,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/runtime/resource_host.py"
       },
       {
-        "digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+        "digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/definitions_component.wasm"
       },
@@ -15319,7 +15319,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:c1715013d6bdbfa0a844ceac3c35ffcb76f6c0e66e727686c2b3db57d72092cf",
+        "digest": "sha256:4c369e0c76bfe9346d62d66214f96fe149bead546d20223bee1e17fe810dac8c",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -15684,7 +15684,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_surface_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:1edec022ab57c04c1f18b6b24c4e3383f8aab1ae652d608c41b9c85e9232d16f",
+        "digest": "sha256:3dd207b18e70f542e2b2c0e650801f3850ff15a32f3ed55a51c7613d9b235152",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/rumi.pack.v3.json"
       },

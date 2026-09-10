@@ -176,7 +176,7 @@
         ]
       },
       "implementation_path": "runtime/definitions_component.wasm",
-      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951"
+      "implementation_digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4"
     }
   ],
   "operation_id_overrides": [

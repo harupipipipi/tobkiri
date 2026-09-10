@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:945e4eb21311a6192e611ba16a1fa0c1151514030b84146ba16fc6ee99bd76a0",
+      "digest": "sha256:6e2ec7bfc6aa75a45d453b101d8d27fd2e7bf59ab5d5ddb2eac05fe5941f39ac",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/adapter.py"
     },
     {
-      "digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4",
       "kind": "executable",
       "path": "runtime/definitions_component.wasm"
     }
@@ -46,7 +46,7 @@
     {
       "contract_revision_digest": "sha256:a32b5e69496d1488bb466105b0836d9f2e30adf57b0ef821de625d392220e395",
       "id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "implementation_digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4",
       "isolation": "wasm_component",
       "operations": [
         "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
@@ -55,9 +55,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:e5a5525229884e3600a8c67194ebb602aeffe94bb83f14b1b8ff71c31af1f79d",
-    "contract_catalog_digest": "sha256:d689ff2208b3d3d5e00364d2051b5885df0eb5c321dfbe29ea9d5ce6eb2c9a45",
-    "source_identity": "sha256:8dedf4533d1dc5b1163a066df1bba8eac56b0a3f57020ae4e6d95aeaf19b7459"
+    "artifact_set_digest": "sha256:31481960e112c8da491b216b79fcf51a8c226c0c8ff8625168550d2de16f4b81",
+    "contract_catalog_digest": "sha256:64f3d228866b447efd8ea2a2a62d54724494feb1ecee82adca7e624d575dd945",
+    "source_identity": "sha256:3bc1bed735228efdfc9622d919d1db1af5a5fff0223a41c82c60d8931d45a689"
   },
   "migration": {
     "compatibility": "read_only",
@@ -93,7 +93,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:e5a5525229884e3600a8c67194ebb602aeffe94bb83f14b1b8ff71c31af1f79d",
+    "artifact_digest": "sha256:31481960e112c8da491b216b79fcf51a8c226c0c8ff8625168550d2de16f4b81",
     "display_name": "Rumi Scheduler Tool Adapter",
     "id": "rumi_scheduler_tool_adapter_pack",
     "kind": "normal_sandbox",
@@ -103,7 +103,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:8dedf4533d1dc5b1163a066df1bba8eac56b0a3f57020ae4e6d95aeaf19b7459",
+        "digest": "sha256:3bc1bed735228efdfc9622d919d1db1af5a5fff0223a41c82c60d8931d45a689",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -114,7 +114,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:8dedf4533d1dc5b1163a066df1bba8eac56b0a3f57020ae4e6d95aeaf19b7459",
+    "source_digest": "sha256:3bc1bed735228efdfc9622d919d1db1af5a5fff0223a41c82c60d8931d45a689",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_tool_adapter_pack"
   },

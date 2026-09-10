@@ -14,6 +14,7 @@ from ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter import (
 )
 from scripts.generate_scheduler_definitions_component import build_component
 from tests.conformance_support.host_profile import captured_host_profile
+from tobkiri_host.errors import ProviderExecutionError
 from tobkiri_host.wasm_component import PureComponent
 from tobkiri_host.wasm_backend import production_wasm_backend
 
@@ -37,7 +38,7 @@ def test_checked_in_component_is_deterministically_generated() -> None:
 
 @pytest.mark.parametrize(
     "payload",
-    ({}, {"ignored": True}, {"nested": {"value": [1, "two", None]}}),
+    ({}, {"approved": True}, {"nested": {"value": [1, "two", None]}}),
 )
 def test_component_matches_the_previous_python_catalog(payload: dict) -> None:
     expected = create_definition_contribution(None)("catalog", payload)
@@ -64,6 +65,14 @@ def test_only_the_pure_definition_function_moves_to_wasm() -> None:
     assert functions[privileged]["isolation"] == "pack_vm"
     assert variants[privileged]["execution_kind"] == "pack_vm"
     assert variants[privileged]["backend"] == "tobkiri.python-pack-v4"
+
+
+def test_component_and_previous_python_catalog_both_reject_unknown_operation() -> None:
+    with pytest.raises(ValueError, match="unknown scheduler tool catalog operation"):
+        create_definition_contribution(None)("unknown", {})
+    binary = COMPONENT.read_bytes()
+    with pytest.raises(ProviderExecutionError, match="component rejected"):
+        PureComponent(binary, _digest(binary)).invoke("unknown", {})
 
 
 def test_wasm_definition_operation_keeps_its_read_only_contract_ceiling() -> None:
