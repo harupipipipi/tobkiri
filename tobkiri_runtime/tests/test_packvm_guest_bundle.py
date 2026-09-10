@@ -28,7 +28,9 @@ MEMBERS = {
     "tobkiri_protocol/__init__.py",
     "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py",
+    "tobkiri_protocol/saved_context.py",
     "tobkiri_protocol/saved_conversation.py",
+    "tobkiri_protocol/saved_tools.py",
 }
 
 
