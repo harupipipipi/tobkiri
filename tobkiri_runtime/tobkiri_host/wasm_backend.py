@@ -288,30 +288,49 @@ def production_wasm_backend() -> WasmComponentBackend:
 
     import sys
 
-    if importlib.metadata.version("wasmtime") != "48.0.0":
+    distribution = importlib.metadata.distribution("wasmtime")
+    if distribution.version != "48.0.0":
         raise BackendUnavailableError("the pinned Wasmtime engine is unavailable")
     interpreter = Path(sys.executable).resolve(strict=True)
     if not interpreter.is_file():
         raise BackendUnavailableError("the sealed Python interpreter is unavailable")
-    origins: dict[str, Path] = {"python": interpreter}
-    for module_name in (
-        "wasmtime",
-        "wasmtime._ffi",
-        "wasmtime.component",
-        "tobkiri_host.wasm_component",
+    runtime_files: dict[str, str] = {
+        "python": "sha256:" + hashlib.sha256(interpreter.read_bytes()).hexdigest()
+    }
+    wasmtime_files = tuple(
+        item
+        for item in distribution.files or ()
+        if item.parts
+        and item.parts[0] == "wasmtime"
+        and "__pycache__" not in item.parts
+        and item.suffix != ".pyc"
+    )
+    if not wasmtime_files or not any(
+        item.name.startswith("_libwasmtime.") for item in wasmtime_files
     ):
-        spec = importlib.util.find_spec(module_name)
-        if spec is None or spec.origin is None:
-            raise BackendUnavailableError("the pinned Wasm runtime is incomplete")
-        origin = Path(spec.origin).resolve(strict=True)
-        if not origin.is_file():
-            raise BackendUnavailableError("the pinned Wasm runtime file is invalid")
-        origins[module_name] = origin
+        raise BackendUnavailableError("the pinned Wasmtime native engine is incomplete")
+    for relative in sorted(wasmtime_files, key=str):
+        located = Path(distribution.locate_file(relative))
+        if located.is_symlink():
+            raise BackendUnavailableError("the pinned Wasmtime runtime contains a symlink")
+        path = located.resolve(strict=True)
+        if not path.is_file():
+            raise BackendUnavailableError("the pinned Wasmtime runtime file is invalid")
+        runtime_files[str(relative)] = (
+            "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+        )
+    spec = importlib.util.find_spec("tobkiri_host.wasm_component")
+    if spec is None or spec.origin is None:
+        raise BackendUnavailableError("the Wasm worker entry point is unavailable")
+    worker_entry = Path(spec.origin)
+    if worker_entry.is_symlink():
+        raise BackendUnavailableError("the Wasm worker entry point is linked")
+    worker_entry = worker_entry.resolve(strict=True)
+    runtime_files["tobkiri_host.wasm_component"] = (
+        "sha256:" + hashlib.sha256(worker_entry.read_bytes()).hexdigest()
+    )
     runtime_digest = canonical_digest(
-        {
-            name: "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
-            for name, path in sorted(origins.items())
-        }
+        runtime_files
     )
     command = (
         str(interpreter),
