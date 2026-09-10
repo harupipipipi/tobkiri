@@ -134,6 +134,13 @@ def _minimal_v4_stage(tmp_path: Path) -> Path:
         "update_metadata.v1.json",
     ):
         shutil.copy2(DEFAULTSPACK_ROOT / filename, pack_root / filename)
+    manifest = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text())
+    for artifact in manifest["artifacts"]:
+        relative = artifact["path"]
+        if relative.startswith("tools/"):
+            target = pack_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(DEFAULTSPACK_ROOT / relative, target)
     shutil.copytree(
         DEFAULTSPACK_ROOT / "runtime",
         pack_root / "runtime",
