@@ -36,7 +36,7 @@ def _copy_v4_pack(tmp_path: Path) -> Path:
     manifest = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text())
     for artifact in manifest["artifacts"]:
         relative = artifact["path"]
-        if relative.startswith("tools/"):
+        if relative.startswith(("tools/", "extensions/tools/")):
             target = pack_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(DEFAULTSPACK_ROOT / relative, target)

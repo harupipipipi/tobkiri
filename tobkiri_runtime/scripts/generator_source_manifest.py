@@ -30,6 +30,8 @@ SOURCE_ROOTS = (
     "ecosystem/defaultspack/v4",
     "ecosystem/defaultspack/runtime",
     "ecosystem/defaultspack/defaultspack",
+    "ecosystem/defaultspack/tools",
+    "ecosystem/defaultspack/extensions/tools",
 )
 SOURCE_FILES = (
     "ecosystem/defaultspack/pack.v4.json",

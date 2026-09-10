@@ -2856,6 +2856,8 @@ mod tests {
                 "ecosystem/defaultspack/v4",
                 "ecosystem/defaultspack/runtime",
                 "ecosystem/defaultspack/defaultspack",
+                "ecosystem/defaultspack/tools",
+                "ecosystem/defaultspack/extensions/tools",
             ])),
             "source manifest roots drifted"
         );
@@ -3307,6 +3309,8 @@ mod tests {
             "ecosystem/defaultspack/v4",
             "ecosystem/defaultspack/runtime",
             "ecosystem/defaultspack/defaultspack",
+            "ecosystem/defaultspack/tools",
+            "ecosystem/defaultspack/extensions/tools",
         ];
         for root in roots {
             collect_source_files(&runtime_root, &runtime_root.join(root), &mut actual);
@@ -3723,6 +3727,9 @@ mod tests {
         let source_pack = source_checkout.join("tobkiri_runtime/ecosystem/defaultspack");
         let destination_pack = app_dir.join("ecosystem/defaultspack");
         copy_tree(&source_pack.join("v4"), &destination_pack.join("v4"));
+        for relative in ["tools", "extensions/tools"] {
+            copy_tree(&source_pack.join(relative), &destination_pack.join(relative));
+        }
         for relative in [
             "pack.v4.json",
             "contracts.v4.json",

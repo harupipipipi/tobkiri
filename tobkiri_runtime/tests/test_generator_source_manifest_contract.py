@@ -17,6 +17,25 @@ COMMIT = "0123456789abcdef0123456789abcdef01234567"
 TREE = "89abcdef0123456789abcdef0123456789abcdef"
 
 
+def test_packaged_source_contains_every_declared_tool_descriptor() -> None:
+    """Sparse relocated packaging retains the exact data sealed by the Pack."""
+    root = Path(__file__).resolve().parents[1]
+    pack_root = root / "ecosystem/defaultspack"
+    pack = json.loads((pack_root / "pack.v4.json").read_bytes())
+    declared = {
+        item["path"]: item["digest"]
+        for item in pack["artifacts"]
+        if item["path"].startswith(("tools/", "extensions/tools/"))
+    }
+    assert len(declared) == 119
+    manifest = generator_source_manifest.load_source_manifest(root)
+    captured = {item["path"]: item for item in manifest["files"]}
+    for relative, digest in declared.items():
+        item = captured[f"ecosystem/defaultspack/{relative}"]
+        assert f"sha256:{item['sha256']}" == digest
+        assert item["type"] == "regular-file" and item["executable"] is False
+
+
 def _provenance_bytes(manifest_digest: str, fields: list[tuple[str, object]]) -> bytes:
     """Encode a provenance object with caller-selected field ordering."""
     return json.dumps(dict(fields), separators=(",", ":")).encode("utf-8")
