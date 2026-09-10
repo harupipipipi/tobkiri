@@ -173,9 +173,9 @@ def test_capture_rejects_pack_root_swap(
     original_reader = materialization_module._read_regular_file
     swapped = False
 
-    def swap_after_first_read(descriptor: int, relative: str):
+    def swap_after_first_read(descriptor: int, relative: str, **kwargs):
         nonlocal swapped
-        result = original_reader(descriptor, relative)
+        result = original_reader(descriptor, relative, **kwargs)
         if not swapped:
             swapped = True
             root.rename(tmp_path / "original")
