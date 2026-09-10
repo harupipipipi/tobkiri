@@ -673,7 +673,7 @@
     "rumi_shell_policy_pack": "sha256:1b98e72f1a1126f072ecc5cbaa05718ccb6e1126c0f18ee74e71af52094147b8",
     "rumi_tool_broker_pack": "sha256:809a859c8f145df58f0a1e1de3b4230e03c2655d92e0bce8fdf78a7debbd2eed",
     "rumi_tool_local_executor_pack": "sha256:850b27cd09b361e42ebf0ebe4585b2a97988ef765c508223ad672c99b5bdb406",
-    "rumi_tool_registry_pack": "sha256:e5746a1ea096061df3003dbdaa3fdd3ca4ce3dc43112e14c436b383c05553403",
+    "rumi_tool_registry_pack": "sha256:85c0a04f08c04fba14e923ee8b1d00578fe1dcea8833df881c085d5cdafea922",
     "rumi_tool_result_pack": "sha256:6ba8e9f278200935fe3e5a118d35b773e2ad9774ceecc73092c37cd43fb19a23",
     "rumi_tool_validation_pack": "sha256:9e88016a8cbf1c3ac289858553e9676fbcbd054ac2c2df5301c50639a0458f57",
     "rumi_turn_runtime_pack": "sha256:f68c6fef13e800572d83ccb501b00c03d5eae17191ca3f8883b79deca75eb73f",

@@ -23,7 +23,7 @@ from ecosystem.rumi_tool_registry_pack.runtime.registry import (
     _resolve_composed,
 )
 
-from .selection import ROUTE_CONTRACTS, select_tools
+from ecosystem.rumi_tool_registry_pack.runtime.selection import ROUTE_CONTRACTS, select_tools
 
 PACK_ID = "rumi_tool_registry_pack"
 CONTRIBUTION = "tobkiri.resource.tool.definition.contribution.v1"

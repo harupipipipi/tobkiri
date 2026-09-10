@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import hashlib
 import http.client
 import json
@@ -98,8 +100,8 @@ def _authenticate(server: PackAPIServer) -> tuple[str, str, str]:
     return cookie.split(";", 1)[0], str(exchange["data"]["csrf_token"]), origin
 
 
-def _load_conversation_target() -> FrontendContractTarget:
-    """Load the committed target through the map's digest-checked parser."""
+def _load_application_bindings() -> tuple[FrontendContractBinding, ...]:
+    """Load the committed map through its digest-checked parser."""
 
     raw = MAP_PATH.read_bytes()
     bindings = load_frontend_contract_bindings(
@@ -118,9 +120,14 @@ def _load_conversation_target() -> FrontendContractTarget:
             ]
         },
     )
+    return bindings
+
+
+def _load_conversation_target() -> FrontendContractTarget:
+    """Load the exact executable capability independently of display entries."""
     binding = next(
         item
-        for item in bindings
+        for item in _load_application_bindings()
         if item.method == "POST" and item.path == "/api/ui/capability/invoke"
     )
     target = next(item for item in binding.targets if item.contribution_id == _CONVERSATION_ID)
@@ -194,6 +201,19 @@ class _CapturedConversationSession:
         return {"profile_id": self.profile_id}
 
 
+def _captured_catalog_binding(catalog: FrontendContractTarget) -> FrontendContractBinding:
+    """Use the sealed Application declaration with this test's captured identity."""
+    binding = next(item for item in _load_application_bindings()
+                   if item.method == "GET" and item.path == "/api/ui/catalog")
+    return replace(
+        binding, targets=(catalog,),
+        profile_id=_CapturedConversationSession.profile_id,
+        profile_revision=_CapturedConversationSession.profile_revision,
+        activation_id=_CapturedConversationSession.activation_id,
+        plan_digest=_CapturedConversationSession.plan_digest,
+    )
+
+
 def test_conversation_capability_is_capture_gated_and_http_brokered(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -221,18 +241,7 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         activation_id=_CapturedConversationSession.activation_id,
         plan_digest=_CapturedConversationSession.plan_digest,
     )
-    catalog_binding = FrontendContractBinding(
-        method="GET",
-        path="/api/ui/catalog",
-        presentation="dynamic_pack_catalog",
-        targets=(catalog,),
-        application_id="runtime.tauri.application.default",
-        route_namespace="defaultspack",
-        profile_id=_CapturedConversationSession.profile_id,
-        profile_revision=_CapturedConversationSession.profile_revision,
-        activation_id=_CapturedConversationSession.activation_id,
-        plan_digest=_CapturedConversationSession.plan_digest,
-    )
+    catalog_binding = _captured_catalog_binding(catalog)
     session = _CapturedConversationSession((conversation, catalog))
     server = PackAPIServer(
         port=0,
@@ -269,17 +278,20 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
             for item in host["contributions"]
             if item["contribution_id"] == _CONVERSATION_ID
         )
-        assert contribution["kind"] == "route"
+        assert contribution["kind"] == "action"
         assert contribution["mode"] == "declarative"
-        assert contribution["route"] == "/chat"
+        assert "route" not in contribution
         assert contribution["action_contract"] == _CONVERSATION_CONTRACT
         assert contribution["resolved_profile_id"] == session.profile_id
         assert contribution["resolved_profile_revision"] == session.profile_revision
         assert contribution["resolved_activation_id"] == session.activation_id
         assert contribution["resolved_plan_hash"] == session.plan_digest
-        assert contribution["view"]["type"] == "conversation_v4"
-        assert contribution["view"]["title"] == "Tobkiri Conversation"
-        assert contribution["view"]["body"]
+        entry = next(item for item in host["contributions"]
+                     if item.get("route") == "/chat")
+        assert entry["mode"] == "application_builtin"
+        assert entry["implementation"] == "defaultspack.chat"
+        assert entry["contribution_id"] == "defaultspack.frontend.chat"
+        assert "action_contract" not in entry
 
         capability_request = {
             "request_id": str(uuid.uuid4()),
@@ -340,6 +352,15 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         )
         assert rejected_payload == 400, rejected_response
         assert rejected_response["data"]["code"] == "invalid_contract_payload"
+        assert len(session.broker_invocations) == before
+
+        display_invoke_status, _, _ = _request(
+            server, "POST", route,
+            body={**capability_request, "request_id": str(uuid.uuid4()),
+                  "contribution_id": entry["contribution_id"]},
+            headers={**mutation_headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert display_invoke_status == 404
         assert len(session.broker_invocations) == before
 
         invoked, invoked_response, _ = _request(
@@ -416,7 +437,7 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         )
         assert status == 200, unready_catalog
         assert any(
-            item["contribution_id"] == _CONVERSATION_ID
+            item["contribution_id"] == "defaultspack.frontend.chat"
             for item in unready_catalog["data"]["dynamic_host"]["contributions"]
         )
         before_unready = len(session.broker_invocations)
@@ -478,18 +499,7 @@ def test_unready_conversation_keeps_verified_ui_without_admitting_execution(
                 activation_id=_CapturedConversationSession.activation_id,
                 plan_digest=_CapturedConversationSession.plan_digest,
             ),
-            FrontendContractBinding(
-                method="GET",
-                path="/api/ui/catalog",
-                presentation="dynamic_pack_catalog",
-                targets=(catalog,),
-                application_id="runtime.tauri.application.default",
-                route_namespace="defaultspack",
-                profile_id=_CapturedConversationSession.profile_id,
-                profile_revision=_CapturedConversationSession.profile_revision,
-                activation_id=_CapturedConversationSession.activation_id,
-                plan_digest=_CapturedConversationSession.plan_digest,
-            ),
+            _captured_catalog_binding(catalog),
         ),
         capability_snapshot_factory=defaultspack_capability_snapshot,
         application_presentation=DefaultspackHTTPPresentation(),
@@ -511,7 +521,7 @@ def test_unready_conversation_keeps_verified_ui_without_admitting_execution(
         )
         assert status == 200, response
         assert any(
-            item["contribution_id"] == _CONVERSATION_ID
+            item["contribution_id"] == "defaultspack.frontend.chat"
             for item in response["data"]["dynamic_host"]["contributions"]
         )
         snapshot = defaultspack_capability_snapshot(

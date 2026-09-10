@@ -16010,7 +16010,7 @@
             {
               "entrypoint_id": "tool-definition-manage",
               "id": "rumi_tool_registry_pack.tool-definition-manage",
-              "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7",
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.manage"
@@ -16049,7 +16049,7 @@
             {
               "entrypoint_id": "tool-definition-migrate",
               "id": "rumi_tool_registry_pack.tool-definition-migrate",
-              "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7",
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.migrate"
@@ -16086,7 +16086,7 @@
             {
               "entrypoint_id": "tool-definition-resource",
               "id": "rumi_tool_registry_pack.tool-definition-resource",
-              "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7",
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.read"
@@ -16150,7 +16150,7 @@
         {
           "kind": "executable",
           "path": "runtime/host.py",
-          "digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
+          "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
         },
         {
           "kind": "executable",
@@ -16191,7 +16191,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-manage"
           ],
-          "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
         },
         {
           "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
@@ -16199,7 +16199,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-migrate"
           ],
-          "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
         },
         {
           "function_id": "rumi_tool_registry_pack.tool-registry.definition",
@@ -16207,7 +16207,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-resource"
           ],
-          "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
         }
       ]
     },

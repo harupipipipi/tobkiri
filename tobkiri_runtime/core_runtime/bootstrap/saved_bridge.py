@@ -95,7 +95,7 @@ def _messages(
             selected.append(by_id[node])
             node = by_id[node].get("parent_id")
         selected.reverse()
-    result = []
+    result: list[dict[str, Any]] = []
     for message in selected:
         content = message.get("content")
         text_only = isinstance(content, str) or (
@@ -111,7 +111,7 @@ def _messages(
             or message.get("status") != "complete"
             or not text_only
             or message.get("parts")
-                        or message.get("widget")
+            or message.get("widget")
         ):
             raise AuthorityDenied("saved bridge additional content resolution is required")
         metadata = message.get("metadata") or {}
@@ -200,7 +200,7 @@ class SavedBridgeCallbacks:
         model = conversation.get("model_reference")
         if not isinstance(model, str) or not model.strip():
             raise AuthorityDenied("saved bridge owned model is unavailable")
-        payload = {
+        payload: dict[str, Any] = {
             "model_profile_id": model,
             "messages": [
                 *_messages(conversation, flatten_text_blocks=True),

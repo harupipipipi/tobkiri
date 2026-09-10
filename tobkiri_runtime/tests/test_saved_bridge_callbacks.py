@@ -334,7 +334,11 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     # Defaults now has coordinator edges, verified separately below.
     profile["requested_edges"] = [
         item for item in profile["requested_edges"]
-        if item["caller_function_id"] != saved_function
+        if item["caller_function_id"] not in {
+            saved_function,
+            "rumi_tool_broker_pack.tool-broker.invoke",
+            "rumi_tool_local_executor_pack.tool-executor.local",
+        }
         and not (missing_readiness and item["caller_function_id"] == READINESS[1])
     ]
 
