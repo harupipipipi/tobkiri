@@ -20,7 +20,7 @@ export function applicationBuiltin(item: VerifiedFrontendContribution) {
       || !digestPattern.test(item.owner_pack_hash)
       || !digestPattern.test(item.descriptor_hash)) return null;
   const identity = item.implementation;
-  if (!identity || !Object.hasOwn(implementations, identity)) return null;
+  if (!identity || !Object.prototype.hasOwnProperty.call(implementations, identity)) return null;
   return implementations[identity as keyof typeof implementations];
 }
 
