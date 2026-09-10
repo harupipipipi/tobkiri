@@ -84,6 +84,7 @@ generated-check python="python":
     {{python}} -B tobkiri_runtime/scripts/quality/scan_defaultspack_integrity.py --strict
     {{python}} -B scripts/quality/generate_presentation_catalog.py --check
     {{python}} -B scripts/quality/validate_pack_architecture.py
+    {{python}} -B scripts/quality/scan_pack_boundaries.py
     {{python}} -B tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
     {{python}} -B tobkiri_runtime/scripts/quality/run_independent_migration_proof.py --check
     {{python}} -B tobkiri_runtime/scripts/quality/scan_complete_v4_migration.py --check --freshness-only
