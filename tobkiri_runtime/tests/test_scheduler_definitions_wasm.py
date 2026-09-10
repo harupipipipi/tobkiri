@@ -12,7 +12,9 @@ from core_runtime.authority.v4 import DomainBoundary
 from ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter import (
     create_definition_contribution,
 )
-from scripts.generate_scheduler_definitions_component import build_component
+from ecosystem.rumi_scheduler_tool_adapter_pack.runtime.generate_definitions_component import (
+    build_component,
+)
 from tests.conformance_support.host_profile import captured_host_profile
 from tobkiri_host.errors import ProviderExecutionError
 from tobkiri_host.wasm_component import PureComponent

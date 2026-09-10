@@ -77,7 +77,7 @@ presentation-catalog:
 # Check generated artifacts together without rewriting them; this is not full CI.
 generated-check python="python":
     {{python}} -B -c 'import runpy; from pathlib import Path; runpy.run_path(".github/scripts/prepare_tauri_resources.py")["canonical_host_files"](Path("tobkiri_runtime"))'
-    {{python}} -B tobkiri_runtime/scripts/generate_scheduler_definitions_component.py --check
+    {{python}} -B tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/generate_definitions_component.py --check
     node tobkiri_launcher/frontend/scripts/generate-frontend-contract-map.mjs --check
     node tobkiri_launcher/frontend/scripts/generate-defaults-setup-contract.mjs --check
     {{python}} -B tobkiri_runtime/scripts/migrate_pack_artifacts_v4.py --check

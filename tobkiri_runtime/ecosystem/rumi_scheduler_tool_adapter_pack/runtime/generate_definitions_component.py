@@ -10,14 +10,7 @@ from ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter import _definiti
 from tobkiri_protocol.canonical import canonical_json
 
 
-ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = (
-    ROOT
-    / "ecosystem"
-    / "rumi_scheduler_tool_adapter_pack"
-    / "runtime"
-    / "definitions_component.wasm"
-)
+OUTPUT = Path(__file__).with_name("definitions_component.wasm")
 OPERATION = "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
 
 

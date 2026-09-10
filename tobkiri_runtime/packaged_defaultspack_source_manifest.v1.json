@@ -3246,13 +3246,6 @@
       "executable": false
     },
     {
-      "path": "scripts/generate_scheduler_definitions_component.py",
-      "type": "regular-file",
-      "size": 3764,
-      "sha256": "bb141c22e85a4333c34c4bd3c61b9ff057697e6fe7a6fa8189f232b35c906960",
-      "executable": false
-    },
-    {
       "path": "scripts/generator_source_manifest.py",
       "type": "regular-file",
       "size": 33267,
