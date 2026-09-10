@@ -153,6 +153,29 @@ def test_display_only_metadata_does_not_block_saved_preflight(tmp_path: Path) ->
     assert calls[-1][0] == READINESS
 
 
+@pytest.mark.parametrize("content", [
+    [{"type": "image", "url": "https://example.invalid/private.png"}],
+    [{"type": "text", "text": "visible"}, {"type": "tool_result", "content": "hidden"}],
+    [{"type": "text", "text": "visible", "attachment_id": "unresolved"}],
+    [{"type": "text", "text": {"url": "https://example.invalid"}}],
+    ["untyped text"],
+])
+def test_saved_text_blocks_do_not_admit_unresolved_content(
+    tmp_path: Path, content: list,
+) -> None:
+    """Reject mixed/unknown blocks before a readiness probe or user write."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.append_message("conversation-1", {
+        "id": "prior-assistant", "role": "assistant", "content": content,
+    }, expected_conversation_revision=1)
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="additional content resolution"):
+        callbacks.preflight(outer)
+    assert store.path.read_bytes() == before
+    assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
+
+
 def test_missing_target_rejects_before_first_owner_read(tmp_path: Path) -> None:
     _, outer, calls, callbacks = _setup(tmp_path)
 

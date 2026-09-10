@@ -52,7 +52,7 @@ def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
         raise AuthorityDenied(str(error)) from error
 
 
-def _messages(conversation: Mapping[str, Any]) -> list[dict[str, str]]:
+def _messages(conversation: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Independently constrain the selected owner history to resolved text."""
     _require_resolved_context(conversation)
     messages = conversation.get("messages")
@@ -88,16 +88,27 @@ def _messages(conversation: Mapping[str, Any]) -> list[dict[str, str]]:
         selected.reverse()
     result = []
     for message in selected:
+        content = message.get("content")
+        text_only = isinstance(content, str) or (
+            isinstance(content, list) and bool(content)
+            and all(
+                isinstance(part, Mapping) and set(part) == {"type", "text"}
+                and part["type"] == "text" and isinstance(part["text"], str)
+                for part in content
+            )
+        )
         if (
             message.get("role") not in {"system", "user", "assistant"}
             or message.get("status") != "complete"
-            or not isinstance(message.get("content"), str)
+            or not text_only
             or message.get("parts")
             or message.get("tool_logs")
             or message.get("widget")
         ):
             raise AuthorityDenied("saved bridge additional content resolution is required")
-        result.append({"role": message["role"], "content": message["content"]})
+        # Retain the owner's exact text blocks for guest equality checks and
+        # provider compilation. Attachments and tool content need their owners.
+        result.append({"role": message["role"], "content": content})
     return result
 
 
