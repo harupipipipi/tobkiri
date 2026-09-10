@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:dc42144e3ad993d52a07a51cc7c0ddf8f2718fcd92fa4c8110b933ccdd422b1c"
+      "digest": "sha256:4b1564f16782896e9ca0032096ed36f805e36519cf5a2b849dc10b5a517f779f"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:787fd18a2800302e4e2b9acdb9e700fecc56d8cdc907f1d70afd0a9f153f9b8a"
+      "digest": "sha256:f73dc7c42cca98e5c45858a37f04a986609af66b42f7c303286c7374d5075a7c"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -1279,12 +1279,12 @@
     {
       "path": "packs/rumi_tool_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:24be28ce51b26ddb07585d1659e3e09431a680e0744bdb948fe7475b59e77123"
+      "digest": "sha256:646290cd1ec0692fcccab31833584be225de6238b55eb8aa69782c5b5e652b7b"
     },
     {
       "path": "packs/rumi_tool_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:9b61f9dfc62f6741386c839060e391a26a1948e65d20df41019201c3d68ccc18"
+      "digest": "sha256:040927321fb6347557e74ebbade92754427fd0664b0bb7b898347502f3628bb6"
     },
     {
       "path": "packs/rumi_tool_remote_executor_pack.executables.v4.json",

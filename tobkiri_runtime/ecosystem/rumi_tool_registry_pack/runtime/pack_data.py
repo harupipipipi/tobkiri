@@ -1,4 +1,4 @@
-"""Project sealed Default Tools descriptors without loading their Python services."""
+"""Project sealed tool descriptors without loading their Python services."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from core_runtime.host_provider_backend_v4 import CapturedHostPackDataV4
 from ecosystem.rumi_tool_registry_pack.runtime.registry import _definition
 
 DEFAULT_TOOLS_PACK = "rumi_default_tools_pack"
+DEFAULTS_PACK = "defaultspack"
+_DATA_PACKS = frozenset({DEFAULT_TOOLS_PACK, DEFAULTS_PACK})
 _LOCAL_PROVIDER = "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat"
 _LOCAL_OPERATION = "rumi_default_tool_projection_pack.default-tool-local-operation"
 _AUTHORITIES = frozenset(
@@ -38,11 +40,11 @@ def definitions_from_pack_data(
     This intake covers sealed ``tools/*/manifest.json`` data only. Dynamic,
     component and memo definitions remain separate explicit owner contributions.
     """
-    if len(data) > 1:
+    if len(data) > len(_DATA_PACKS) or len({item.pack_id for item in data}) != len(data):
         raise ValueError("tool descriptor source is duplicated")
     definitions = []
     for source in data:
-        if source.pack_id != DEFAULT_TOOLS_PACK or source.path_prefix != "tools/":
+        if source.pack_id not in _DATA_PACKS or source.path_prefix != "tools/":
             raise ValueError("tool descriptor source is invalid")
         if not source.files:
             raise ValueError("selected tool descriptor source is empty")
@@ -51,13 +53,18 @@ def definitions_from_pack_data(
             if len(parts) != 3 or parts[0] != "tools" or parts[2] != "manifest.json":
                 raise ValueError("tool descriptor path is invalid")
             raw = json.loads(item.content)
-            if not isinstance(raw, dict) or raw.get("category") != "tool":
+            if not isinstance(raw, dict):
                 raise ValueError("tool descriptor is invalid")
             config = raw.get("config")
-            if not isinstance(config, dict) or (
-                raw.get("id") != parts[1] or config.get("name") != parts[1]
-            ):
+            if not isinstance(config, dict) or raw.get("id") != parts[1]:
                 raise ValueError("tool descriptor identity is invalid")
+            if source.pack_id == DEFAULT_TOOLS_PACK:
+                if raw.get("category") != "tool" or config.get("name") != parts[1]:
+                    raise ValueError("tool descriptor identity is invalid")
+            elif raw.get("category") is not None or config.get("tool_id") != parts[1]:
+                # Defaults' existing format uses tool_id as identity and name
+                # as display text. Do not rewrite source IDs from those labels.
+                raise ValueError("Defaults tool descriptor identity is invalid")
             enabled = raw.get("enabled", True)
             if type(enabled) is not bool:
                 raise ValueError("tool descriptor enabled flag is invalid")
@@ -81,7 +88,9 @@ def definitions_from_pack_data(
                 _definition(
                     {
                         "tool_id": parts[1],
-                        "display_name": raw.get("display_name", parts[1]),
+                        "display_name": (
+                            raw.get("display_name") or config.get("name") or parts[1]
+                        ),
                         "description": raw.get("description") or config.get("summary", ""),
                         "input_schema": schema["parameters"],
                         "execution": {
@@ -95,7 +104,7 @@ def definitions_from_pack_data(
                         "policy_tags": config.get("tags", []),
                         "aliases": config.get("aliases", []),
                         "widget": config.get("ui", {}),
-                        "source_adapter_id": DEFAULT_TOOLS_PACK,
+                        "source_adapter_id": source.pack_id,
                     }
                 )
             )

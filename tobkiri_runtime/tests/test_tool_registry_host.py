@@ -286,7 +286,7 @@ def test_registry_uses_real_broker_profile_grants_and_rejects_undeclared_write(
             session.invoke(read_contract, read_operation, {"operation": "list"})
         root = tmp_path / "user-data" / "packs" / host.PACK_ID
         listed = invoke(read_contract, read_operation, {"operation": "list"})
-        assert listed["profile_id"] == "defaults" and len(listed["definitions"]) == 30
+        assert listed["profile_id"] == "defaults" and len(listed["definitions"]) == 139
         assert not root.exists(), "resource read initialized persistence"
         request = {
             "operation": "save",
@@ -319,7 +319,7 @@ def test_registry_uses_real_broker_profile_grants_and_rejects_undeclared_write(
         with pytest.raises(ProviderExecutionError):
             invoke(write_contract, write_operation, request)
         listed = invoke(read_contract, read_operation, {"operation": "list"})
-        assert listed["revision"] == 1 and len(listed["definitions"]) == 31
+        assert listed["revision"] == 1 and len(listed["definitions"]) == 140
         assert not (root / "profiles" / "other").exists()
 
 

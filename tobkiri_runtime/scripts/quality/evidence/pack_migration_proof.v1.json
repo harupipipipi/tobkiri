@@ -81,19 +81,19 @@
       "status": "generated-draft",
       "target": {
         "artifact_verification": {
-          "artifact_count": 8,
-          "artifact_index_digest": "sha256:43ab112ccbf76ef7e0b291bf32b10e6bd0884ed29ddeebc90db869f6a1c6f495",
-          "artifact_set_digest": "sha256:690d5915222d4f200ff6d12ca7c6ba329acdd64a9d7e483b89775f4b73a04288",
-          "executable_catalog_digest": "sha256:ed105c30e98c688e83856a4c7c9816985b30f477104b83f122dd806a3956d115",
+          "artifact_count": 117,
+          "artifact_index_digest": "sha256:6e37f021d867cca4bce441e7847d42c0c6db9054c238f3469d991ce481057f18",
+          "artifact_set_digest": "sha256:48c380d7e360aa0e5c3b6ad35d846a5ba86565c6d34a233613a1f01df16ee145",
+          "executable_catalog_digest": "sha256:44f8c009d527da00ce7eb96ff5f8878f29077431562b9bb95c02de10f7763743",
           "pack_id": "defaultspack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:43ab112ccbf76ef7e0b291bf32b10e6bd0884ed29ddeebc90db869f6a1c6f495",
-            "contracts.v4.json": "sha256:b012fab5f98c74f75021bf011c6493fc6f69a270dc4c204acafdb1322b165226",
-            "executables.v4.json": "sha256:cceeca20e4ab1d218273f9c29f8c111b384701002c78458fd0642a2260c20e74",
-            "pack.v4.json": "sha256:148f8744771a02a268612fcdea7b54045adda2f552a757d761dfc69c1a8999ef"
+            "artifact-index.v4.json": "sha256:6e37f021d867cca4bce441e7847d42c0c6db9054c238f3469d991ce481057f18",
+            "contracts.v4.json": "sha256:826d002b50019956771525a425df3d389985bb1f8a6056abad25f1d523456a57",
+            "executables.v4.json": "sha256:c3267a10ff1c5ea0dd3b1087ea271b65869c7815d7954bde4c0f2fd6187c313c",
+            "pack.v4.json": "sha256:44730398c631f32714910e9a8856f391f437972e3da0f6418891b88f5eb92583"
           }
         },
-        "digest": "sha256:690d5915222d4f200ff6d12ca7c6ba329acdd64a9d7e483b89775f4b73a04288",
+        "digest": "sha256:48c380d7e360aa0e5c3b6ad35d846a5ba86565c6d34a233613a1f01df16ee145",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "defaultspack",
         "status": "artifact-integrity-verified"
@@ -10838,15 +10838,15 @@
         "status": "unverified"
       },
       "source": {
-        "digest": "sha256:2f78d972f883a2e8cc993054ff7fb4ca26da0d3f4573f861c5b7072883fe499a",
+        "digest": "sha256:ad2468031c7d780687c27c8f101a164ead6405fc91bdf1b918dad8e73f006025",
         "executable_source_registry": {
-          "digest": "sha256:226ac704048d7fba1af4a25530295cf356601912a097faedc405846c8ba17ab7",
+          "digest": "sha256:5b21c27fc88648e2e1d505d264970c27afacd478bbeff89aff3e54b45b0fc84f",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 3
         },
         "files": [
           {
-            "digest": "sha256:dd696c2f9d620e0b30b668e67e0cbc7efa7e11c8d0b856044719819df7b4abab",
+            "digest": "sha256:62475fa20aa5017ffbedc9f7a7d6f3f5b10e055e9fa061757da8c84020cd804e",
             "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json"
           },
           {
@@ -10862,18 +10862,18 @@
       "target": {
         "artifact_verification": {
           "artifact_count": 7,
-          "artifact_index_digest": "sha256:25ad6facfbe84395c5490ab24f7e5676257e64de8103efff7f8eb27854f0d4d7",
-          "artifact_set_digest": "sha256:925499a9dd6e27200820ed84842374b0bd7ed671b2f19242910a5192bcd827ee",
-          "executable_catalog_digest": "sha256:da2ce861cb72832a7792ccd14a4e23693eaf757e28622cf5565d0a1664d8c7f9",
+          "artifact_index_digest": "sha256:097fdd484fb7245b075bf30ad72a07d711efce10d1ed7337ce835afd47149310",
+          "artifact_set_digest": "sha256:0e6f8f910887d03445b40705bedda576cde2ab7cb8ad044f1c23404edebfe540",
+          "executable_catalog_digest": "sha256:060f32bc936599b597e98927de33b47a0b631285202978fd86076faf95d679e5",
           "pack_id": "rumi_tool_registry_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:25ad6facfbe84395c5490ab24f7e5676257e64de8103efff7f8eb27854f0d4d7",
-            "contracts.v4.json": "sha256:7e586cc7de4e89a97686bd5cc43366c5e6181eeb5970e5e7632eebf3277de7dd",
-            "executables.v4.json": "sha256:5828f30fb7d94f6932438fc7bbc949f100c6ac65023b25f1d4185962ba991786",
-            "pack.v4.json": "sha256:7964c88222b4a5432de03fa2af6a0270adc80bd10f6fc26c4db9ec1b961b5173"
+            "artifact-index.v4.json": "sha256:097fdd484fb7245b075bf30ad72a07d711efce10d1ed7337ce835afd47149310",
+            "contracts.v4.json": "sha256:e8db6210abe27717e776f26a246159f41da82d7042714dd8b18fc19c4e9ea526",
+            "executables.v4.json": "sha256:c7222cbad005a6183b8852c3c0ee863c2ada176d4f4e88f4f542711525a7aca0",
+            "pack.v4.json": "sha256:121363955949da917b4d3ffb1ae2196949bf736a32472c333a4cb7848a9e5eb4"
           }
         },
-        "digest": "sha256:925499a9dd6e27200820ed84842374b0bd7ed671b2f19242910a5192bcd827ee",
+        "digest": "sha256:0e6f8f910887d03445b40705bedda576cde2ab7cb8ad044f1c23404edebfe540",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "rumi_tool_registry_pack",
         "status": "artifact-integrity-verified"
@@ -11752,7 +11752,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:5df0ff91fd5eae190f5716282500fa7d0a0b407d6cd0330aece2569e216545ff",
+    "content_digest": "sha256:1e633ecb1a8f2151f82352f16b9e64a3cbea34b6758716762275416796faffc3",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 40,
@@ -11996,7 +11996,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:d6fc7556778d9aeed9c44704cca189375c47ca4f89cacb5421986ca12f43d50f",
+    "input_digest": "sha256:98f3364402cf4fbe33b86e913b825ee9b6903ce0bc708b8ddc2b1048ea20bde7",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaults/artifact-index.v4.json",
@@ -12011,6 +12011,115 @@
       "tobkiri_runtime/ecosystem/defaultspack/runtime/application_presentation.py",
       "tobkiri_runtime/ecosystem/defaultspack/runtime/conversation.py",
       "tobkiri_runtime/ecosystem/defaultspack/runtime/saved_conversation.py",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_delete/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_list/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_patch/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_read/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_write/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_preview/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_zip/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/audio_transcribe/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/audio_transcribe_local/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/browser_download_collect/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/browser_extract_table/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/browser_save_page/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/browser_upload_file/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/calendar_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/chart_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_access_grant/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_access_request/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_control_acquire/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_control_release/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_control_renew/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_frame/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_input/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_list/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_rules_update/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/discord_send/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/doc_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/doc_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/doc_to_pdf/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/doc_update/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/drive_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/drive_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/external_send/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/github_issue_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/github_issue_list/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/github_issue_update/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/github_pr_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/github_search/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/gmail_draft/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/gmail_search/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/html_preview/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/human_operator_canvas_open/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/image_convert/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/image_generate_local_or_provider/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/image_render/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/image_resize/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/jira_issue_sync/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/job_artifacts/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/job_cancel/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/job_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/job_history/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/job_resume/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/job_status/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/line_push/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/linear_issue_sync/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/node_exec/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/ocr_extract/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/package_install_plan/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_extract/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_extract_tables/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_preview/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/project_scaffold/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/python_exec/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/research_report_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_exec/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_files_apply_patch/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_files_read/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_port_expose/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_analyze/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_read/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_update/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/slack_send/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/slides_create/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/slides_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/slides_from_markdown/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/slides_update/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/source_extract/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/source_rank/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/static_site_export/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_names/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_search/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_task_board/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_task_board_agent_session/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_build_recursive/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_commit_plan/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_compile_plan/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_compose_page/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_generate_candidates/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_generate_foundation/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_inspect_compression/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_render_matrix/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_select_candidates/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_verify_recursive_build/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tts_generate/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/tts_generate_local/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_build/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_export_static/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_lint/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_preview/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/wide_research/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_cancel/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_define/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_retry/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_run/manifest.json",
+      "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_status/manifest.json",
       "tobkiri_runtime/ecosystem/defaultspack/update_metadata.v1.json",
       "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/artifact-index.v4.json",
       "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/contracts.v4.json",
@@ -13007,17 +13116,17 @@
         "path": "tobkiri_runtime/ecosystem/defaults/pack.v4.json"
       },
       {
-        "digest": "sha256:43ab112ccbf76ef7e0b291bf32b10e6bd0884ed29ddeebc90db869f6a1c6f495",
+        "digest": "sha256:6e37f021d867cca4bce441e7847d42c0c6db9054c238f3469d991ce481057f18",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json"
       },
       {
-        "digest": "sha256:b012fab5f98c74f75021bf011c6493fc6f69a270dc4c204acafdb1322b165226",
+        "digest": "sha256:826d002b50019956771525a425df3d389985bb1f8a6056abad25f1d523456a57",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/defaultspack/contracts.v4.json"
       },
       {
-        "digest": "sha256:cceeca20e4ab1d218273f9c29f8c111b384701002c78458fd0642a2260c20e74",
+        "digest": "sha256:c3267a10ff1c5ea0dd3b1087ea271b65869c7815d7954bde4c0f2fd6187c313c",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json"
       },
@@ -13027,7 +13136,7 @@
         "path": "tobkiri_runtime/ecosystem/defaultspack/host_contract_contributions.v1.json"
       },
       {
-        "digest": "sha256:148f8744771a02a268612fcdea7b54045adda2f552a757d761dfc69c1a8999ef",
+        "digest": "sha256:44730398c631f32714910e9a8856f391f437972e3da0f6418891b88f5eb92583",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json"
       },
@@ -13045,6 +13154,551 @@
         "digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/defaultspack/runtime/saved_conversation.py"
+      },
+      {
+        "digest": "sha256:857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_export/manifest.json"
+      },
+      {
+        "digest": "sha256:ecb43e92268971bd540a46bcc2f1f5180e53dced7490fcbd2ee3d1712c51ac70",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_delete/manifest.json"
+      },
+      {
+        "digest": "sha256:dd62382bc82f95d2edc5235f1dc152a1ccf1e9994d3621999085437755a6d3a9",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_list/manifest.json"
+      },
+      {
+        "digest": "sha256:250122f96b6805d51863fde10f2cffafc40d98faecffdf72d9e9dffa513bdf59",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_patch/manifest.json"
+      },
+      {
+        "digest": "sha256:2ae379bf7ae987b793b79222192252b48956c2ff08c85056177db2baf50a110e",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_read/manifest.json"
+      },
+      {
+        "digest": "sha256:b57fb2e3882a07574c1663aa869b6145d5e54eaaf933da03cfe844b64d61ad96",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_file_write/manifest.json"
+      },
+      {
+        "digest": "sha256:abb476014c85b37553d0a15189f93aea579831f545c44c7b6c6ca5656c484f1c",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_preview/manifest.json"
+      },
+      {
+        "digest": "sha256:60059ecb5fc3cd66f73cbc36716e1e9c16d06ebdf6b02a1273ecb2a1af03eaaf",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/artifact_zip/manifest.json"
+      },
+      {
+        "digest": "sha256:9ef3e19e8c30dcd038a942d7095c82f63769611e9b956cb0251cbea7c2040ec7",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/audio_transcribe/manifest.json"
+      },
+      {
+        "digest": "sha256:f5ae159e58c886bfd4b71a75f4e897c52550bd55f13bf8cc0174ea4f518e7696",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/audio_transcribe_local/manifest.json"
+      },
+      {
+        "digest": "sha256:a78ece887cef2bf945972333b5641bb07a3991645261f6e808c72404ee05f6e2",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/browser_download_collect/manifest.json"
+      },
+      {
+        "digest": "sha256:353ca7439ccaa42f704a0b3218f4ef0a55f9762f859c8714600f763a8bb63718",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/browser_extract_table/manifest.json"
+      },
+      {
+        "digest": "sha256:c9eac8b6f4dd81830ece8447a8d917fa58cd7137241f513987e7180da97817cc",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/browser_save_page/manifest.json"
+      },
+      {
+        "digest": "sha256:c0e3194557c0bc093965411104f11c8d365e734882de6308142da6e569489204",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/browser_upload_file/manifest.json"
+      },
+      {
+        "digest": "sha256:159b665b36e5da95d8cf73ca6b8423c6e10dad3b9f1631ceeb0232bb29d2c6e5",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/calendar_create/manifest.json"
+      },
+      {
+        "digest": "sha256:d293cd2511b356b9986f2d1ea181a40f3dbdef4f2c38251d6c263f67cbe49f4c",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/chart_create/manifest.json"
+      },
+      {
+        "digest": "sha256:14bf8ef957d7df523dbb7f4d4870eafd997eb7f345177632b96f13e651c83c9b",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_access_grant/manifest.json"
+      },
+      {
+        "digest": "sha256:349e1ce836ed330ecc79342cec9095f88cdfc81b0e3611168401521528686907",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_access_request/manifest.json"
+      },
+      {
+        "digest": "sha256:a6c302474745b2bb37265bd218732ee57cd322ba5dcf2f13447d00fb10043471",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_control_acquire/manifest.json"
+      },
+      {
+        "digest": "sha256:a74e45fe373a1f4ac0be2fafc88e105d8dc9f9cd979a7feb730f5de960af2301",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_control_release/manifest.json"
+      },
+      {
+        "digest": "sha256:464597aeaa1cbf471b808a5810d18faf6582c6e538faf7f0c1dd557189a0791a",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_control_renew/manifest.json"
+      },
+      {
+        "digest": "sha256:8b4f135c150ebe7c46de8205b757e0c76bc4f17e804a62e2c540476368b9a076",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_create/manifest.json"
+      },
+      {
+        "digest": "sha256:ee78e05f215a858f09b00468b0908f3115133ac5489e74d04dffee5de1e70bfd",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_frame/manifest.json"
+      },
+      {
+        "digest": "sha256:fe52b8b9fe6335bdaa6b5f29a5162a34a735ee09f4bce2ce2344335190823b34",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_input/manifest.json"
+      },
+      {
+        "digest": "sha256:d09e9967fb36a862595961c8a8f3cabd7b6e9f1e49cb90a1961cd1c986c3c793",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_list/manifest.json"
+      },
+      {
+        "digest": "sha256:5354be425fa1f56b6b7d406742b18c6d201f8e359c82fc3f2fe1b07b21e9c6f8",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/desktop_rules_update/manifest.json"
+      },
+      {
+        "digest": "sha256:d6bbf71c4d4e974a1c8eb2eb0030ac5fb4455ceec24079432b24dadccdf68cfd",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/discord_send/manifest.json"
+      },
+      {
+        "digest": "sha256:0857ef9e1b892728dfee04fde01b1f7a4eeb8740bc4c80e98a73cf656d258d0c",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/doc_create/manifest.json"
+      },
+      {
+        "digest": "sha256:7536ea42d3152a08727a2048b2782e47db7d225839be0135ad0c81d069f6177a",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/doc_export/manifest.json"
+      },
+      {
+        "digest": "sha256:8cf8adea65b8ec688e05c084a6b7161abf1b1d40a42cd15a8f98a888b0eee7ee",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/doc_to_pdf/manifest.json"
+      },
+      {
+        "digest": "sha256:0adf29db977b9d1894948f16b8d2eaf2f54184fd121d79baad75878e9c45e1a3",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/doc_update/manifest.json"
+      },
+      {
+        "digest": "sha256:0dd24b72b6dace7c9f299e7a0a028f11f6f488a4f2c82ea55c60425849a952c7",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/drive_create/manifest.json"
+      },
+      {
+        "digest": "sha256:e15a533667298d0103f78b3eaa4e3fe87cd536a649f25670b4e820cb887c52b1",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/drive_export/manifest.json"
+      },
+      {
+        "digest": "sha256:b744ba6aa6c689548044af0199de519302b506044013b9d4b9f6e5248f0ca24e",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/external_send/manifest.json"
+      },
+      {
+        "digest": "sha256:13fb0e4fdcb024abeca4ab4dcc222e148d6f6ee97a67598dd9c3d3983df5ddac",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/github_issue_create/manifest.json"
+      },
+      {
+        "digest": "sha256:4d091127dc4686ecdde0c63101b100a962e7a37e09aed3ffac65078d944945a2",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/github_issue_list/manifest.json"
+      },
+      {
+        "digest": "sha256:b77f49f70b8019e4ef7a31317c141ac71b4a255894da1cfaaf8cbe3bf0b04c7f",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/github_issue_update/manifest.json"
+      },
+      {
+        "digest": "sha256:acbd598c9c354964daf67c256d4ee62431ad53db382efec15763bc1476222c50",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/github_pr_create/manifest.json"
+      },
+      {
+        "digest": "sha256:4b20e11f0558dad62d6c1bb3984cdfabaa15907dcc57c28ac523d1acbb258cea",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/github_search/manifest.json"
+      },
+      {
+        "digest": "sha256:82710d702fdb2b694abc2dc1f635bc27209373e964ba6b15710950a8c7875651",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/gmail_draft/manifest.json"
+      },
+      {
+        "digest": "sha256:ebafadb37b0bed32190570902599bbd1bbff1fd67606e61a3b51b25a7312053c",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/gmail_search/manifest.json"
+      },
+      {
+        "digest": "sha256:145862a82bce5bc8b2a4e5fbe0e1f10a33ced10fa2dff4eb7133c585072c0e36",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/html_preview/manifest.json"
+      },
+      {
+        "digest": "sha256:d5b42f3e77afe2a7a7e20bb8666be49609649e84105c7680f0ec02a881e4dbbd",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/human_operator_canvas_open/manifest.json"
+      },
+      {
+        "digest": "sha256:a9270c5b2694f81a8c40c31fd522b9973e1dce0ac4adae4417eb5cadde415fe0",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/image_convert/manifest.json"
+      },
+      {
+        "digest": "sha256:9aa6e032a376d92e40edc5c0af01a245378ea4794ecd1238feca97b2f15f68a7",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/image_generate_local_or_provider/manifest.json"
+      },
+      {
+        "digest": "sha256:9c5a0f04b316ab236e4c2eca9152da87a2c1cafbb12a5499978293fc5730d33c",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/image_render/manifest.json"
+      },
+      {
+        "digest": "sha256:3c9b0cea637cab5732013d252a72e3bebb5427331c40f57c0bb5692292b1f1df",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/image_resize/manifest.json"
+      },
+      {
+        "digest": "sha256:62d7ea6f57aa8e0a15c5120663f9584b31895c858966cc88a1478a93408d5418",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/jira_issue_sync/manifest.json"
+      },
+      {
+        "digest": "sha256:b90b5e7e8bdedf2a1d84abff8c86920944ee3fc6f78b739b26c0e3ae89e84407",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/job_artifacts/manifest.json"
+      },
+      {
+        "digest": "sha256:7df7de369ff7ef2db2ed6ba5518905d37dc17c50ddbce8d3529077ed147c56c0",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/job_cancel/manifest.json"
+      },
+      {
+        "digest": "sha256:6ddf1347b47f1361e4d66f600d3ae6c7d8b9cd61cca505f4ae821c5bc239d567",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/job_create/manifest.json"
+      },
+      {
+        "digest": "sha256:f47d9989f25edad7c4c5fc7a70a5ddf0a7d049f96ef518d17f29a049d91951c9",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/job_history/manifest.json"
+      },
+      {
+        "digest": "sha256:6f42339b4005a6216da7cf1a9a386e0bd18691132ce4d60f261e400d5f3a4392",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/job_resume/manifest.json"
+      },
+      {
+        "digest": "sha256:691fc0a17fb09bb7cf8d7a32a31ba9ebb77df22fcc59b47f885a004eb7a0bbd0",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/job_status/manifest.json"
+      },
+      {
+        "digest": "sha256:2cc7c0bafbbd23255641f661923f0c507502665e6500b5840c787b89702c545e",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/line_push/manifest.json"
+      },
+      {
+        "digest": "sha256:783bab82ea2c76d14c7051a953446b55239d118644f66f9b53096bde26f253f2",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/linear_issue_sync/manifest.json"
+      },
+      {
+        "digest": "sha256:b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/node_exec/manifest.json"
+      },
+      {
+        "digest": "sha256:ad8ada4efd788d9465f4039ee261b2bf84b7c08374bcd42bb7f5f5d18deda4d0",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/ocr_extract/manifest.json"
+      },
+      {
+        "digest": "sha256:6abb602f93637c762713de1b71ecaebe31eeb67c459da759acfa5cbb81f26b66",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/package_install_plan/manifest.json"
+      },
+      {
+        "digest": "sha256:2ef870cd4a062c3a9e612ec13da14509e24e6ae85af2608e748b08b3cd8ee570",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_export/manifest.json"
+      },
+      {
+        "digest": "sha256:cdefeb2b4b0e11e9f8f6deca2d9813e9517f47b8cd8c7c3f64ac9a4789874aac",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_extract/manifest.json"
+      },
+      {
+        "digest": "sha256:af6f3c37b24b7033fa963b416f6a107a04b623abc6ffbe7c3243a1003a81cc13",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_extract_tables/manifest.json"
+      },
+      {
+        "digest": "sha256:bf79b85a5ab4d6b4352831e8b39318f47f5688a34e96d956780e8b9bc3f7e038",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/pdf_preview/manifest.json"
+      },
+      {
+        "digest": "sha256:9b3b341e31e0d8f88071e2d8d535e5b984d2dec73e20f9bb82f79e98046f9901",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/project_scaffold/manifest.json"
+      },
+      {
+        "digest": "sha256:9edde2db4dcd713aa5314c58679f7b4e03f063dce89e16ad7ff799e0df31525e",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/python_exec/manifest.json"
+      },
+      {
+        "digest": "sha256:2cb232170261ee13388995e07bdc0e8ef7bf7944d9e3393215d44e905842d6f4",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/research_report_export/manifest.json"
+      },
+      {
+        "digest": "sha256:5e7cb9e8c3ab28465ce748dff3e99fb80401380cd930754bcb1962019f5c84a3",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_exec/manifest.json"
+      },
+      {
+        "digest": "sha256:803d0a46957ff80bc7e1862389dfa9b87c6679c9fc98cd6cb542aecbe2470f2f",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_files_apply_patch/manifest.json"
+      },
+      {
+        "digest": "sha256:b1fd3bfe874eb3c6f0b575034c2732f4ce0b6822cdde2bc7797ee7a8550d0cdb",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_files_read/manifest.json"
+      },
+      {
+        "digest": "sha256:c623d0744e89e3edf4be3dfae055d91a773cd59140be08ed82d8fd37b13ef048",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sandbox_port_expose/manifest.json"
+      },
+      {
+        "digest": "sha256:dd1fff081a7c7f096d2abace3432ef2378aab6e9eec62c914b6bddc8077266df",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_analyze/manifest.json"
+      },
+      {
+        "digest": "sha256:b85f022e055ef542bea962ef5b10e01f34a362d34ef314eb87939225b61ae2ee",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_create/manifest.json"
+      },
+      {
+        "digest": "sha256:e9bc8384c891ab6fa775228e19c7f7bd07858e8b2c7be71c6f29deaea87569ba",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_export/manifest.json"
+      },
+      {
+        "digest": "sha256:85806ee62be6f990813d35f5867c9331ca6db7df82b569106a296abe5e83dd7b",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_read/manifest.json"
+      },
+      {
+        "digest": "sha256:133bfae7c54e89e8237c86d1701c47ae6f8404433f758076c2c1d590ea1eed75",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/sheet_update/manifest.json"
+      },
+      {
+        "digest": "sha256:cd09b7f0fd1b3a193ce296bc8ecb2e4b195a24d4af2ae25b0d2a3f5f6f148d31",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/slack_send/manifest.json"
+      },
+      {
+        "digest": "sha256:107fff4bf6bcd7e9a05341bb5fec773f165989cc34b226379e10589ca7e61890",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/slides_create/manifest.json"
+      },
+      {
+        "digest": "sha256:ef1e8c78609602d74c77608b145d3a6f9225a8a6c66223b3ab6027b0481d4bc4",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/slides_export/manifest.json"
+      },
+      {
+        "digest": "sha256:a66f67c981f747faa71343e8845e1aa56fb9a21b3e694d6998c36283ce7f7f2e",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/slides_from_markdown/manifest.json"
+      },
+      {
+        "digest": "sha256:08760fe6152b00b002b1d0c28f0ff17818e1eff3a0d1f4a10a565fb1b003b1bd",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/slides_update/manifest.json"
+      },
+      {
+        "digest": "sha256:c1a3d951a7d132bfde3a4ad7f69e9dc06b4f14a2869a9164a317e2d2e1ff9cbe",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/source_extract/manifest.json"
+      },
+      {
+        "digest": "sha256:2132368e36e351cf994f6d921567ca820657ae0e32a071a05e851a33c3e710fc",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/source_rank/manifest.json"
+      },
+      {
+        "digest": "sha256:d889c07fd06c6052ea3a1e04127f7bada7836decb232c5953d2c0b34946d1144",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/static_site_export/manifest.json"
+      },
+      {
+        "digest": "sha256:6bfd31cfd1b5d56ea107a538fcfc642b6910d4eec4bb5bac81af230614830f90",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_names/manifest.json"
+      },
+      {
+        "digest": "sha256:b29acd14a290b37933d34e39f80c43ac16dfaf771fba00a789b90a0b4a4dec20",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_search/manifest.json"
+      },
+      {
+        "digest": "sha256:79427ba0cc2f5ea776a6f97445b2387033d6f9d4ffb6b606afdc22ebda6fac89",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_task_board/manifest.json"
+      },
+      {
+        "digest": "sha256:25361ace0070f54669e6332814f1b5f63bc15de5f2c6c08399c360934c9ce14d",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_task_board_agent_session/manifest.json"
+      },
+      {
+        "digest": "sha256:56ac4bb2053997f8bb49c6f8f9d950640c05af6782bf1a2369f388def74f3a22",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_build_recursive/manifest.json"
+      },
+      {
+        "digest": "sha256:48e3d22ad8f83b7b4a70a24bebba906fe479b8b429002084d99ecb7cd59848d7",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_commit_plan/manifest.json"
+      },
+      {
+        "digest": "sha256:86eca5b318611a5f0bf80bd49192810592b57eb6701d6af1f1e32785a9bd511a",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_compile_plan/manifest.json"
+      },
+      {
+        "digest": "sha256:499ac42f6285f3e8faca687d80ad2ee0fd0bad3039fa4505fd56f89b2ee2eaa5",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_compose_page/manifest.json"
+      },
+      {
+        "digest": "sha256:dd4551c053303aae48aef5ccb0c6152689b233174f91947e2853f9ecd0e3d0f8",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_generate_candidates/manifest.json"
+      },
+      {
+        "digest": "sha256:f2d199aa9e0005ca135f845f76676c639dda59b6f53053a85c22a2089277fa5b",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_generate_foundation/manifest.json"
+      },
+      {
+        "digest": "sha256:585f7daba94cf8d1ce6ed72f8689d6b2ec3d12be2d66536d9cb1d9febf913d90",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_inspect_compression/manifest.json"
+      },
+      {
+        "digest": "sha256:05e3600dbcd9158bac780a4696e5ef434c309b5341f751855e2aca00b1810a47",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_render_matrix/manifest.json"
+      },
+      {
+        "digest": "sha256:955fd354b396563fed1b1abe5859cf426831a3065ad612bd7b60528514826053",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_select_candidates/manifest.json"
+      },
+      {
+        "digest": "sha256:958fe0be1b44a61f4e70dad420977f83bf9812a44f979a6273cc982fd0184ff2",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tool_ui_verify_recursive_build/manifest.json"
+      },
+      {
+        "digest": "sha256:439ce53127ca10a95fa64e126faeefc751be5f38c224719f620335011dc5983b",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tts_generate/manifest.json"
+      },
+      {
+        "digest": "sha256:f03103076d6a699ced0ba1905567b02503aad16293e540e6833ba5dab843a979",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/tts_generate_local/manifest.json"
+      },
+      {
+        "digest": "sha256:5a096e9b0e4f24d30cbe7544d862886d118023026c2e4187f3b14cf4f2314589",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_build/manifest.json"
+      },
+      {
+        "digest": "sha256:a08cc56ca71bc212ebccd21f25a9640bd12576fe877aac3a3925dbacc5c98145",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_export_static/manifest.json"
+      },
+      {
+        "digest": "sha256:82b1b73c85d2f2ff925ee17ed885ead1971e910a6a05b847f0582d523ca0329f",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_lint/manifest.json"
+      },
+      {
+        "digest": "sha256:be36c3d8118b4f5afd90d143ffbb6a22c8082a03a13d87ef4c466d6f15d9ee63",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/webapp_preview/manifest.json"
+      },
+      {
+        "digest": "sha256:7a66d93b0fe1bf7bb4c79a0f78c64d8e21aac48b5214e04561d18b195c9a7f0f",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/wide_research/manifest.json"
+      },
+      {
+        "digest": "sha256:536a760efd88f0e6d64d5453d1ae08ed4c2eedf0d3711e7446b15a289d5be957",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_cancel/manifest.json"
+      },
+      {
+        "digest": "sha256:53d04be10116abf8beef3da8d2a782f57acb8b0c7d496f481c85ac803a9d9e09",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_define/manifest.json"
+      },
+      {
+        "digest": "sha256:ed9d29a4fdff2e3b78e371dcf7a91254edd7be53fc866a2601b455ad5d47b340",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_retry/manifest.json"
+      },
+      {
+        "digest": "sha256:e45139d87ec0cf1c994f093a0c8870f506108f74b915abd7a33cab53cc199781",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_run/manifest.json"
+      },
+      {
+        "digest": "sha256:29c29d561afc578369c44158904e9dda619b7414cf86cfeefb4b785f71159fa5",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/tools/workflow_status/manifest.json"
       },
       {
         "digest": "sha256:5623895308596889104518081c539647de80ee8d070228311ec263c6ef85bcdd",
@@ -17332,7 +17986,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_policy_pack/runtime/policy.py"
       },
       {
-        "digest": "sha256:25ad6facfbe84395c5490ab24f7e5676257e64de8103efff7f8eb27854f0d4d7",
+        "digest": "sha256:097fdd484fb7245b075bf30ad72a07d711efce10d1ed7337ce835afd47149310",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-index.v4.json"
       },
@@ -17342,22 +17996,22 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:7e586cc7de4e89a97686bd5cc43366c5e6181eeb5970e5e7632eebf3277de7dd",
+        "digest": "sha256:e8db6210abe27717e776f26a246159f41da82d7042714dd8b18fc19c4e9ea526",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:5828f30fb7d94f6932438fc7bbc949f100c6ac65023b25f1d4185962ba991786",
+        "digest": "sha256:c7222cbad005a6183b8852c3c0ee863c2ada176d4f4e88f4f542711525a7aca0",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:7964c88222b4a5432de03fa2af6a0270adc80bd10f6fc26c4db9ec1b961b5173",
+        "digest": "sha256:121363955949da917b4d3ffb1ae2196949bf736a32472c333a4cb7848a9e5eb4",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:dd696c2f9d620e0b30b668e67e0cbc7efa7e11c8d0b856044719819df7b4abab",
+        "digest": "sha256:62475fa20aa5017ffbedc9f7a7d6f3f5b10e055e9fa061757da8c84020cd804e",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json"
       },
@@ -17367,12 +18021,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/__init__.py"
       },
       {
-        "digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+        "digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:b4502df21e394b7fa8c91aac4b09731291f35b819074988a01e4033585c81cd4",
+        "digest": "sha256:42718cc640898cadb18a39000eb732739c4d32a1ee58c6db1ed59d11cdc98fd9",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/pack_data.py"
       },
@@ -17832,7 +18486,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:97a0d968a7f7776ef8f53e7b3850634c7be999cf58d06e3faaa2aafcbc1b66a3",
+        "digest": "sha256:ec04f3f0bf23c4d18034a5fed19afe280dea3fd39b46d736d571a40920ba2b5e",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -17842,7 +18496,7 @@
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
       {
-        "digest": "sha256:8f1aca34209a643e5f994f7cc5191192bf71f579d3bc906c012887f07d5a9de7",
+        "digest": "sha256:16b9f4d0f4e07a033169d759f625d1df9ccda69c393210f2603ef5cbee216962",
         "kind": "legacy-executable-source-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -17893,7 +18547,7 @@
       "release-verified": 0,
       "semantically-reviewed": 40
     },
-    "observed_head_sha": "2afb88e47f655b645a77520a3bf1fde4a14d315f",
+    "observed_head_sha": "4da2d24d0bcdfdddda306ed562f531b40e55572d",
     "pack_count": 142,
     "profile_collection_proof": {
       "identity_proof": {

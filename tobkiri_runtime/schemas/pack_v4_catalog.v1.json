@@ -520,6 +520,660 @@
           "index_role": "host_contract_update_metadata",
           "kind": "sidecar",
           "path": "update_metadata.v1.json"
+        },
+        {
+          "path": "tools/artifact_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_delete/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ecb43e92268971bd540a46bcc2f1f5180e53dced7490fcbd2ee3d1712c51ac70",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_list/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:dd62382bc82f95d2edc5235f1dc152a1ccf1e9994d3621999085437755a6d3a9",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_patch/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:250122f96b6805d51863fde10f2cffafc40d98faecffdf72d9e9dffa513bdf59",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_read/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2ae379bf7ae987b793b79222192252b48956c2ff08c85056177db2baf50a110e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_write/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b57fb2e3882a07574c1663aa869b6145d5e54eaaf933da03cfe844b64d61ad96",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:abb476014c85b37553d0a15189f93aea579831f545c44c7b6c6ca5656c484f1c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_zip/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:60059ecb5fc3cd66f73cbc36716e1e9c16d06ebdf6b02a1273ecb2a1af03eaaf",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/audio_transcribe/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9ef3e19e8c30dcd038a942d7095c82f63769611e9b956cb0251cbea7c2040ec7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/audio_transcribe_local/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f5ae159e58c886bfd4b71a75f4e897c52550bd55f13bf8cc0174ea4f518e7696",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_download_collect/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a78ece887cef2bf945972333b5641bb07a3991645261f6e808c72404ee05f6e2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_extract_table/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:353ca7439ccaa42f704a0b3218f4ef0a55f9762f859c8714600f763a8bb63718",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_save_page/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c9eac8b6f4dd81830ece8447a8d917fa58cd7137241f513987e7180da97817cc",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_upload_file/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c0e3194557c0bc093965411104f11c8d365e734882de6308142da6e569489204",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/calendar_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:159b665b36e5da95d8cf73ca6b8423c6e10dad3b9f1631ceeb0232bb29d2c6e5",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/chart_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d293cd2511b356b9986f2d1ea181a40f3dbdef4f2c38251d6c263f67cbe49f4c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_access_grant/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:14bf8ef957d7df523dbb7f4d4870eafd997eb7f345177632b96f13e651c83c9b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_access_request/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:349e1ce836ed330ecc79342cec9095f88cdfc81b0e3611168401521528686907",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_control_acquire/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a6c302474745b2bb37265bd218732ee57cd322ba5dcf2f13447d00fb10043471",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_control_release/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a74e45fe373a1f4ac0be2fafc88e105d8dc9f9cd979a7feb730f5de960af2301",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_control_renew/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:464597aeaa1cbf471b808a5810d18faf6582c6e538faf7f0c1dd557189a0791a",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:8b4f135c150ebe7c46de8205b757e0c76bc4f17e804a62e2c540476368b9a076",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_frame/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ee78e05f215a858f09b00468b0908f3115133ac5489e74d04dffee5de1e70bfd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_input/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:fe52b8b9fe6335bdaa6b5f29a5162a34a735ee09f4bce2ce2344335190823b34",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_list/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d09e9967fb36a862595961c8a8f3cabd7b6e9f1e49cb90a1961cd1c986c3c793",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_rules_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:5354be425fa1f56b6b7d406742b18c6d201f8e359c82fc3f2fe1b07b21e9c6f8",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/discord_send/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d6bbf71c4d4e974a1c8eb2eb0030ac5fb4455ceec24079432b24dadccdf68cfd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:0857ef9e1b892728dfee04fde01b1f7a4eeb8740bc4c80e98a73cf656d258d0c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:7536ea42d3152a08727a2048b2782e47db7d225839be0135ad0c81d069f6177a",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_to_pdf/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:8cf8adea65b8ec688e05c084a6b7161abf1b1d40a42cd15a8f98a888b0eee7ee",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:0adf29db977b9d1894948f16b8d2eaf2f54184fd121d79baad75878e9c45e1a3",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/drive_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:0dd24b72b6dace7c9f299e7a0a028f11f6f488a4f2c82ea55c60425849a952c7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/drive_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:e15a533667298d0103f78b3eaa4e3fe87cd536a649f25670b4e820cb887c52b1",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/external_send/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b744ba6aa6c689548044af0199de519302b506044013b9d4b9f6e5248f0ca24e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_issue_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:13fb0e4fdcb024abeca4ab4dcc222e148d6f6ee97a67598dd9c3d3983df5ddac",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_issue_list/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:4d091127dc4686ecdde0c63101b100a962e7a37e09aed3ffac65078d944945a2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_issue_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b77f49f70b8019e4ef7a31317c141ac71b4a255894da1cfaaf8cbe3bf0b04c7f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_pr_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:acbd598c9c354964daf67c256d4ee62431ad53db382efec15763bc1476222c50",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_search/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:4b20e11f0558dad62d6c1bb3984cdfabaa15907dcc57c28ac523d1acbb258cea",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/gmail_draft/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:82710d702fdb2b694abc2dc1f635bc27209373e964ba6b15710950a8c7875651",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/gmail_search/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ebafadb37b0bed32190570902599bbd1bbff1fd67606e61a3b51b25a7312053c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/html_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:145862a82bce5bc8b2a4e5fbe0e1f10a33ced10fa2dff4eb7133c585072c0e36",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/human_operator_canvas_open/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d5b42f3e77afe2a7a7e20bb8666be49609649e84105c7680f0ec02a881e4dbbd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_convert/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a9270c5b2694f81a8c40c31fd522b9973e1dce0ac4adae4417eb5cadde415fe0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_generate_local_or_provider/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9aa6e032a376d92e40edc5c0af01a245378ea4794ecd1238feca97b2f15f68a7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_render/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9c5a0f04b316ab236e4c2eca9152da87a2c1cafbb12a5499978293fc5730d33c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_resize/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:3c9b0cea637cab5732013d252a72e3bebb5427331c40f57c0bb5692292b1f1df",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/jira_issue_sync/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:62d7ea6f57aa8e0a15c5120663f9584b31895c858966cc88a1478a93408d5418",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_artifacts/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b90b5e7e8bdedf2a1d84abff8c86920944ee3fc6f78b739b26c0e3ae89e84407",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_cancel/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:7df7de369ff7ef2db2ed6ba5518905d37dc17c50ddbce8d3529077ed147c56c0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6ddf1347b47f1361e4d66f600d3ae6c7d8b9cd61cca505f4ae821c5bc239d567",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_history/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f47d9989f25edad7c4c5fc7a70a5ddf0a7d049f96ef518d17f29a049d91951c9",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_resume/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6f42339b4005a6216da7cf1a9a386e0bd18691132ce4d60f261e400d5f3a4392",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_status/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:691fc0a17fb09bb7cf8d7a32a31ba9ebb77df22fcc59b47f885a004eb7a0bbd0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/line_push/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2cc7c0bafbbd23255641f661923f0c507502665e6500b5840c787b89702c545e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/linear_issue_sync/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:783bab82ea2c76d14c7051a953446b55239d118644f66f9b53096bde26f253f2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/node_exec/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/ocr_extract/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ad8ada4efd788d9465f4039ee261b2bf84b7c08374bcd42bb7f5f5d18deda4d0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/package_install_plan/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6abb602f93637c762713de1b71ecaebe31eeb67c459da759acfa5cbb81f26b66",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2ef870cd4a062c3a9e612ec13da14509e24e6ae85af2608e748b08b3cd8ee570",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_extract/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:cdefeb2b4b0e11e9f8f6deca2d9813e9517f47b8cd8c7c3f64ac9a4789874aac",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_extract_tables/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:af6f3c37b24b7033fa963b416f6a107a04b623abc6ffbe7c3243a1003a81cc13",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:bf79b85a5ab4d6b4352831e8b39318f47f5688a34e96d956780e8b9bc3f7e038",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/project_scaffold/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9b3b341e31e0d8f88071e2d8d535e5b984d2dec73e20f9bb82f79e98046f9901",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/python_exec/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9edde2db4dcd713aa5314c58679f7b4e03f063dce89e16ad7ff799e0df31525e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/research_report_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2cb232170261ee13388995e07bdc0e8ef7bf7944d9e3393215d44e905842d6f4",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_exec/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:5e7cb9e8c3ab28465ce748dff3e99fb80401380cd930754bcb1962019f5c84a3",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_files_apply_patch/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:803d0a46957ff80bc7e1862389dfa9b87c6679c9fc98cd6cb542aecbe2470f2f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_files_read/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b1fd3bfe874eb3c6f0b575034c2732f4ce0b6822cdde2bc7797ee7a8550d0cdb",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_port_expose/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c623d0744e89e3edf4be3dfae055d91a773cd59140be08ed82d8fd37b13ef048",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_analyze/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:dd1fff081a7c7f096d2abace3432ef2378aab6e9eec62c914b6bddc8077266df",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b85f022e055ef542bea962ef5b10e01f34a362d34ef314eb87939225b61ae2ee",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:e9bc8384c891ab6fa775228e19c7f7bd07858e8b2c7be71c6f29deaea87569ba",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_read/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:85806ee62be6f990813d35f5867c9331ca6db7df82b569106a296abe5e83dd7b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:133bfae7c54e89e8237c86d1701c47ae6f8404433f758076c2c1d590ea1eed75",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slack_send/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:cd09b7f0fd1b3a193ce296bc8ecb2e4b195a24d4af2ae25b0d2a3f5f6f148d31",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:107fff4bf6bcd7e9a05341bb5fec773f165989cc34b226379e10589ca7e61890",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ef1e8c78609602d74c77608b145d3a6f9225a8a6c66223b3ab6027b0481d4bc4",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_from_markdown/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a66f67c981f747faa71343e8845e1aa56fb9a21b3e694d6998c36283ce7f7f2e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:08760fe6152b00b002b1d0c28f0ff17818e1eff3a0d1f4a10a565fb1b003b1bd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/source_extract/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c1a3d951a7d132bfde3a4ad7f69e9dc06b4f14a2869a9164a317e2d2e1ff9cbe",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/source_rank/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2132368e36e351cf994f6d921567ca820657ae0e32a071a05e851a33c3e710fc",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/static_site_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d889c07fd06c6052ea3a1e04127f7bada7836decb232c5953d2c0b34946d1144",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_names/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6bfd31cfd1b5d56ea107a538fcfc642b6910d4eec4bb5bac81af230614830f90",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_search/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b29acd14a290b37933d34e39f80c43ac16dfaf771fba00a789b90a0b4a4dec20",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_task_board/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:79427ba0cc2f5ea776a6f97445b2387033d6f9d4ffb6b606afdc22ebda6fac89",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_task_board_agent_session/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:25361ace0070f54669e6332814f1b5f63bc15de5f2c6c08399c360934c9ce14d",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_build_recursive/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:56ac4bb2053997f8bb49c6f8f9d950640c05af6782bf1a2369f388def74f3a22",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_commit_plan/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:48e3d22ad8f83b7b4a70a24bebba906fe479b8b429002084d99ecb7cd59848d7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_compile_plan/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:86eca5b318611a5f0bf80bd49192810592b57eb6701d6af1f1e32785a9bd511a",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_compose_page/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:499ac42f6285f3e8faca687d80ad2ee0fd0bad3039fa4505fd56f89b2ee2eaa5",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_generate_candidates/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:dd4551c053303aae48aef5ccb0c6152689b233174f91947e2853f9ecd0e3d0f8",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_generate_foundation/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f2d199aa9e0005ca135f845f76676c639dda59b6f53053a85c22a2089277fa5b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_inspect_compression/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:585f7daba94cf8d1ce6ed72f8689d6b2ec3d12be2d66536d9cb1d9febf913d90",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_render_matrix/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:05e3600dbcd9158bac780a4696e5ef434c309b5341f751855e2aca00b1810a47",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_select_candidates/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:955fd354b396563fed1b1abe5859cf426831a3065ad612bd7b60528514826053",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_verify_recursive_build/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:958fe0be1b44a61f4e70dad420977f83bf9812a44f979a6273cc982fd0184ff2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tts_generate/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:439ce53127ca10a95fa64e126faeefc751be5f38c224719f620335011dc5983b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tts_generate_local/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f03103076d6a699ced0ba1905567b02503aad16293e540e6833ba5dab843a979",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_build/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:5a096e9b0e4f24d30cbe7544d862886d118023026c2e4187f3b14cf4f2314589",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_export_static/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a08cc56ca71bc212ebccd21f25a9640bd12576fe877aac3a3925dbacc5c98145",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_lint/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:82b1b73c85d2f2ff925ee17ed885ead1971e910a6a05b847f0582d523ca0329f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:be36c3d8118b4f5afd90d143ffbb6a22c8082a03a13d87ef4c466d6f15d9ee63",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/wide_research/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:7a66d93b0fe1bf7bb4c79a0f78c64d8e21aac48b5214e04561d18b195c9a7f0f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_cancel/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:536a760efd88f0e6d64d5453d1ae08ed4c2eedf0d3711e7446b15a289d5be957",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_define/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:53d04be10116abf8beef3da8d2a782f57acb8b0c7d496f481c85ac803a9d9e09",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_retry/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ed9d29a4fdff2e3b78e371dcf7a91254edd7be53fc866a2601b455ad5d47b340",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_run/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:e45139d87ec0cf1c994f093a0c8870f506108f74b915abd7a33cab53cc199781",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_status/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:29c29d561afc578369c44158904e9dda619b7414cf86cfeefb4b785f71159fa5",
+          "index_role": "sidecar"
         }
       ],
       "secrets": [],
@@ -15187,7 +15841,7 @@
             {
               "entrypoint_id": "tool-definition-manage",
               "id": "rumi_tool_registry_pack.tool-definition-manage",
-              "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+              "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.manage"
@@ -15226,7 +15880,7 @@
             {
               "entrypoint_id": "tool-definition-migrate",
               "id": "rumi_tool_registry_pack.tool-definition-migrate",
-              "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+              "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.migrate"
@@ -15263,7 +15917,7 @@
             {
               "entrypoint_id": "tool-definition-resource",
               "id": "rumi_tool_registry_pack.tool-definition-resource",
-              "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+              "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.read"
@@ -15309,12 +15963,12 @@
         {
           "kind": "executable",
           "path": "runtime/host.py",
-          "digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39"
+          "digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca"
         },
         {
           "kind": "executable",
           "path": "runtime/pack_data.py",
-          "digest": "sha256:b4502df21e394b7fa8c91aac4b09731291f35b819074988a01e4033585c81cd4"
+          "digest": "sha256:42718cc640898cadb18a39000eb732739c4d32a1ee58c6db1ed59d11cdc98fd9"
         }
       ],
       "secrets": [],
@@ -15345,7 +15999,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-manage"
           ],
-          "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39"
+          "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca"
         },
         {
           "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
@@ -15353,7 +16007,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-migrate"
           ],
-          "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39"
+          "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca"
         },
         {
           "function_id": "rumi_tool_registry_pack.tool-registry.definition",
@@ -15361,7 +16015,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-resource"
           ],
-          "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39"
+          "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca"
         }
       ]
     },

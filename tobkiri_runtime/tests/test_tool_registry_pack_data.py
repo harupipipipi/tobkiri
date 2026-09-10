@@ -135,3 +135,45 @@ def test_descriptor_aliases_and_disabled_entries_are_data(captured_data):
 def test_only_read_factory_requests_pack_data():
     for function, factory in host.HOST_PROVIDER_FACTORY.items():
         assert bool(factory.declared_pack_data) == function.endswith(".definition")
+
+
+def test_defaults_own_descriptors_join_the_selected_catalog(captured_data, registry_host):
+    """Defaults' 109 real files preserve their IDs, display labels and schemas."""
+    from tobkiri_host.artifact_materialization import capture_declared_pack_data
+
+    root = Path(__file__).resolve().parents[1] / "ecosystem/defaultspack"
+    digest = json.loads((root / "pack.v4.json").read_bytes())["pack"]["artifact_digest"]
+    source = CapturedHostPackDataV4(
+        "defaultspack", digest, "tools/",
+        capture_declared_pack_data(
+            root, pack_id="defaultspack", artifact_digest=digest, path_prefix="tools/",
+        ),
+    )
+    assert len(source.files) == 109
+    invoke, _client = registry_host
+    data = (*captured_data, source)
+    result = invoke("definition", {"operation": "list"}, pack_data=data)
+    assert len(result["definitions"]) == 139
+    definition = invoke(
+        "definition", {"operation": "resolve", "tool_id": "artifact_file_read"},
+        pack_data=data,
+    )["definition"]
+    assert definition["display_name"] == "Artifact File Read"
+    assert definition["source_adapter_id"] == "defaultspack"
+    assert definition["input_schema"]["required"] == ["path"]
+    assert definition["widget"]["group_id"] == "artifact"
+    assert {item["pack_id"] for item in result["pack_data_sources"]} == {
+        "defaultspack", "rumi_default_tools_pack",
+    }
+    with pytest.raises(ValueError, match="duplicated"):
+        definitions_from_pack_data((source, source))
+
+    item = next(item for item in source.files if "/artifact_file_read/" in item.path)
+    raw = json.loads(item.content)
+    raw["config"]["tool_id"] = "different.identity"
+    content = json.dumps(raw).encode()
+    changed = replace(
+        item, content=content, digest="sha256:" + hashlib.sha256(content).hexdigest(),
+    )
+    with pytest.raises(ValueError, match="identity"):
+        definitions_from_pack_data((replace(source, files=(changed,)),))

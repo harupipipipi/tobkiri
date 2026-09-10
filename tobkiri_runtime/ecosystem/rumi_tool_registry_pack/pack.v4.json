@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:5828f30fb7d94f6932438fc7bbc949f100c6ac65023b25f1d4185962ba991786",
+      "digest": "sha256:c7222cbad005a6183b8852c3c0ee863c2ada176d4f4e88f4f542711525a7aca0",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,12 +11,12 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+      "digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
       "kind": "executable",
       "path": "runtime/host.py"
     },
     {
-      "digest": "sha256:b4502df21e394b7fa8c91aac4b09731291f35b819074988a01e4033585c81cd4",
+      "digest": "sha256:42718cc640898cadb18a39000eb732739c4d32a1ee58c6db1ed59d11cdc98fd9",
       "kind": "executable",
       "path": "runtime/pack_data.py"
     },
@@ -53,7 +53,7 @@
     {
       "contract_revision_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
       "id": "rumi_tool_registry_pack.tool-registry.definition",
-      "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+      "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_tool_registry_pack.tool-definition-resource"
@@ -63,7 +63,7 @@
     {
       "contract_revision_digest": "sha256:6714fad639623466036b29ea003c861fb81c720faef16ac8ffd8c88c56936987",
       "id": "rumi_tool_registry_pack.tool-registry.manage",
-      "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+      "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_tool_registry_pack.tool-definition-manage"
@@ -73,7 +73,7 @@
     {
       "contract_revision_digest": "sha256:7dad97a1654054ad5ea9f4cf797637b05a9b868c66d8c61c2b9bd1ac7ef15983",
       "id": "rumi_tool_registry_pack.tool-registry.migrate",
-      "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39",
+      "implementation_digest": "sha256:a9ca0c643040ae1a9b409c8a047fb28a6e1bf341a00c0df5b20030bc089c8fca",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_tool_registry_pack.tool-definition-migrate"
@@ -82,9 +82,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:925499a9dd6e27200820ed84842374b0bd7ed671b2f19242910a5192bcd827ee",
-    "contract_catalog_digest": "sha256:7e586cc7de4e89a97686bd5cc43366c5e6181eeb5970e5e7632eebf3277de7dd",
-    "source_identity": "sha256:0b768279fcc94b4a2dd98887e3a344b5c599bb2d22a6cd587ba1424e44494912"
+    "artifact_set_digest": "sha256:0e6f8f910887d03445b40705bedda576cde2ab7cb8ad044f1c23404edebfe540",
+    "contract_catalog_digest": "sha256:e8db6210abe27717e776f26a246159f41da82d7042714dd8b18fc19c4e9ea526",
+    "source_identity": "sha256:32f8afa66c5898764be4f12b604b036d9c6a67e78d9c6707a02fd1cfbb82b6cc"
   },
   "migration": {
     "compatibility": "read_only",
@@ -134,7 +134,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:925499a9dd6e27200820ed84842374b0bd7ed671b2f19242910a5192bcd827ee",
+    "artifact_digest": "sha256:0e6f8f910887d03445b40705bedda576cde2ab7cb8ad044f1c23404edebfe540",
     "display_name": "Tobkiri Tool Registry",
     "id": "rumi_tool_registry_pack",
     "kind": "host_extension",
@@ -144,7 +144,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:0b768279fcc94b4a2dd98887e3a344b5c599bb2d22a6cd587ba1424e44494912",
+        "digest": "sha256:32f8afa66c5898764be4f12b604b036d9c6a67e78d9c6707a02fd1cfbb82b6cc",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -155,7 +155,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:0b768279fcc94b4a2dd98887e3a344b5c599bb2d22a6cd587ba1424e44494912",
+    "source_digest": "sha256:32f8afa66c5898764be4f12b604b036d9c6a67e78d9c6707a02fd1cfbb82b6cc",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_registry_pack"
   },

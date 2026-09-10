@@ -14,6 +14,7 @@ from core_runtime.host_provider_backend_v4 import (
 )
 from ecosystem.rumi_tool_registry_pack.runtime.pack_data import (
     DEFAULT_TOOLS_PACK,
+    DEFAULTS_PACK,
     definitions_from_pack_data,
 )
 from ecosystem.rumi_tool_registry_pack.runtime.registry import (
@@ -63,7 +64,10 @@ class ToolRegistryHostFactoryV4:
             raise ValueError("tool registry Function is unavailable")
         self.function_id = function_id
         self.declared_pack_data = (
-            (HostProviderDataRequestV4(DEFAULT_TOOLS_PACK, "tools/"),)
+            (
+                HostProviderDataRequestV4(DEFAULT_TOOLS_PACK, "tools/"),
+                HostProviderDataRequestV4(DEFAULTS_PACK, "tools/"),
+            )
             if function_id.endswith(".definition") else ()
         )
 
