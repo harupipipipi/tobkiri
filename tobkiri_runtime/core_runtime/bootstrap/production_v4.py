@@ -1704,12 +1704,15 @@ def capture_production_dispatch(
             ] = target_domain.domain_id
             continue
 
-        if resolved_binding.variant.execution_kind is not ExecutionKind.PACK_VM:
+        if resolved_binding.variant.execution_kind not in {
+            ExecutionKind.PACK_VM,
+            ExecutionKind.WASM,
+        }:
             continue
         try:
             backend = selected_backend_registry.select(resolved_binding)
         except Exception:
-            # A selected PackVM remains visible in the catalog but receives no
+            # A selected isolated backend remains visible in the catalog but receives no
             # domain, Grant, or Provider authority until its exact backend is
             # authenticated and production-ready.
             continue
@@ -1734,6 +1737,12 @@ def capture_production_dispatch(
                 # recreate runtime authority for it.
                 continue
             captured_dynamic_approvals[approval_pack_id] = pack_approval_revision
+        execution_kind = resolved_binding.variant.execution_kind
+        authority_label = (
+            "profile-pack-vm"
+            if execution_kind is ExecutionKind.PACK_VM
+            else "profile-wasm-component"
+        )
         target_domain = _execution_domain(
             domain_id=(
                 f"domain.provider.{target.principal_id.removeprefix('sha256:')[:24]}."
@@ -1741,9 +1750,13 @@ def capture_production_dispatch(
             ),
             principal=target,
             active=active,
-            boundary=DomainBoundary.DEDICATED_PROCESS,
+            boundary=(
+                DomainBoundary.DEDICATED_PROCESS
+                if execution_kind is ExecutionKind.PACK_VM
+                else DomainBoundary.WASM_COMPONENT
+            ),
             channel_seed=(
-                f"packvm-provider:{resolved_binding.operation.contract_id}:"
+                f"{execution_kind.value}-provider:{resolved_binding.operation.contract_id}:"
                 f"{resolved_binding.operation.operation_id}"
             ),
         )
@@ -1752,7 +1765,7 @@ def capture_production_dispatch(
             authority_control,
             target_domain,
             session_id=(
-                f"session.provider.packvm."
+                f"session.provider.{execution_kind.value}."
                 f"{target.principal_id.removeprefix('sha256:')[:24]}."
                 f"{activation_suffix}"
             ),
@@ -1769,7 +1782,7 @@ def capture_production_dispatch(
             target_publisher_lineage=resolved_binding.artifact.publisher_lineage,
             target_domain=target_domain,
             scope=captured_edge.ceilings.caller_effect,
-            authority_label="profile-pack-vm",
+            authority_label=authority_label,
             authority_mode=captured_edge.authority_mode,
             pack_approval_revision=pack_approval_revision,
         )
@@ -1795,7 +1808,9 @@ def capture_production_dispatch(
         if domain is None or not any(
             principal.principal_id == binding.principal_ref.value for principal in domain.principals
         ):
-            raise AuthorityDenied("production PackVM target domain is not registered by Authority")
+            raise AuthorityDenied(
+                "production isolated target domain is not registered by Authority"
+            )
         return domain_id
 
     # The bridge is Host-owned and receives only an authenticated outer
@@ -2102,12 +2117,20 @@ def capture_production_dispatch(
         for edge in captured_edges
         if edge.resolved_binding.variant.execution_kind is ExecutionKind.PACK_VM
     }
+    isolated_backend_ids = {
+        edge.resolved_binding.variant.backend
+        for edge in captured_edges
+        if edge.resolved_binding.variant.execution_kind
+        in {ExecutionKind.PACK_VM, ExecutionKind.WASM}
+    }
     for registered_backend in registered_backends:
-        if registered_backend.status.backend_id not in packvm_backend_ids:
+        if registered_backend.status.backend_id not in isolated_backend_ids:
             continue
         binder = getattr(registered_backend, "bind_artifact_resolver", None)
         if not callable(binder):
-            raise AuthorityDenied("production PackVM backend cannot bind authenticated artifacts")
+            raise AuthorityDenied(
+                "production isolated backend cannot bind authenticated artifacts"
+            )
         binder(artifact_resolver)
         domain_binder = getattr(
             registered_backend,

@@ -110,6 +110,7 @@ class RequestEnvelope:
     deadline_monotonic: float
     lease: OpaqueInvocationLease
     idempotency_key: str | None
+    resource_reservation_id: str | None = None
     cancellation_requested: threading.Event = field(default_factory=threading.Event)
 
 
@@ -505,6 +506,7 @@ class RequestBroker:
                 deadline_monotonic=deadline,
                 lease=lease,
                 idempotency_key=prepared.idempotency_key,
+                resource_reservation_id=evidence.resource_reservation_id,
                 cancellation_requested=(
                     cancellation_requested
                     if cancellation_requested is not None else threading.Event()

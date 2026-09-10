@@ -35,6 +35,7 @@
     "shells.py",
     "tauri_roles.py",
     "triggers.py",
+    "wasm_backend.py",
     "wasm_component.py",
     "wasm_worker.py",
     "workspace_mutation.py"
