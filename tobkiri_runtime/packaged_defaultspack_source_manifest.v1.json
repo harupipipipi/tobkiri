@@ -98,8 +98,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_contract_composition.py",
       "type": "regular-file",
-      "size": 2901,
-      "sha256": "ca706cd2a9e31c3c9d72b146bbe155a105fdee3180fdf3cbd2bb1fee75a2980f",
+      "size": 2385,
+      "sha256": "05e71f0417c34e1af1d5cb7b764074808d987d5e50684260d0a20cf51851287c",
       "executable": false
     },
     {
@@ -203,8 +203,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_surface_v4.py",
       "type": "regular-file",
-      "size": 123307,
-      "sha256": "28f765a498e24ad3da7b015dde65e8c83d54c047f3badf95ed9cdd09c45f5db9",
+      "size": 123632,
+      "sha256": "f1858d7b2e6f2829870b6a999980fcdc1b26d7edcb0a1d41004a8651ffbd8f41",
       "executable": false
     },
     {
@@ -3319,14 +3319,14 @@
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
       "size": 84585,
-      "sha256": "134d81816f124f608a3c4caff494d82c3b0bafeb0a84e98b980f0bc1ac3dc97e",
+      "sha256": "9cce95ddc0364254b2fb5dad11e7a12f6999241d84bfdac85bce1ed4f5b9ebcf",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 903175,
-      "sha256": "0d3457c759c8c92fa68730371c40b380948bc5e168305cfe6a7422de5d800fbf",
+      "sha256": "f17bc6d93129a43cd8a344ea68f0bb6720ebb6c3fef0dd2de747bcaff29e9428",
       "executable": false
     },
     {

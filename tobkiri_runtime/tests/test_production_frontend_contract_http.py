@@ -243,6 +243,59 @@ class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
         return ProviderOutcome(intent)
 
 
+class _SavedToolPackVmBackend(_SavedPackVmBackend):
+    """Use the real saved ledgers; replace only the sandbox process transport."""
+
+    def invoke(self, request: object) -> ProviderOutcome:
+        from ecosystem.defaultspack.runtime import saved_conversation
+        from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
+        from tobkiri_host.saved_guest_dispatch import SavedGuestTurns, INVOKE_RESULT
+        from tobkiri_host.saved_host_exchange import SavedHostExchange
+
+        assert isinstance(request, RequestEnvelope)
+        assert request.target_domain.value == self._target_domain_id
+        assert (request.contract_id, request.operation_id) == (
+            self._CONTRACT_ID, self._OPERATION_ID,
+        )
+        self._saved_preflight(request)
+        payload = {"request": dict(request.payload["request"])}
+        request_id, domain = request.context.request_id, request.target_domain.value
+        binding = canonical_digest({"request_id": request_id, "domain": domain,
+                                    "principal": request.target_principal.value})
+        transport = {
+            "request_id": request_id, "target_domain": domain,
+            "guest_artifact_identity": request.target_principal.value,
+            "request_digest": canonical_digest(payload),
+            "deadline_monotonic": str(request.deadline_monotonic), "payload": payload,
+        }
+        host = SavedHostExchange(
+            ChainIdentity(domain, request_id, binding, request.deadline_monotonic),
+            request_digest=transport["request_digest"],
+            artifact_identity=transport["guest_artifact_identity"],
+            deadline_text=transport["deadline_monotonic"],
+            chains=ContinuationChains(max_hops=20), request=payload["request"],
+        )
+        guest = SavedGuestTurns()
+
+        def execute(_transport, arguments, _deadline, guard):
+            guard()
+            outcome = saved_conversation.tobkiri_packvm_invoke("saved_complete", arguments)
+            if outcome.get("kind") == "tobkiri.packvm.continuation.intent.v2":
+                return outcome
+            return {"kind": INVOKE_RESULT, "outcome": outcome}
+
+        pending = guest.begin(transport, binding, execute)
+        for _ in range(host.maximum_hops):
+            if pending.get("state") != "pending":
+                break
+            frame = host.accept(pending["host_bridge_request"])
+            result = self._saved_callback(request, host.callback_frame(frame))
+            pending = guest.resume(domain, request_id, host.result(result), execute)
+        assert pending.get("state") != "pending"
+        host.finish(pending["outcome"])
+        return ProviderOutcome(pending["outcome"])
+
+
 def _contract(method: str, target: str) -> str:
     return "/api/contracts/defaultspack/" + quote(f"{method.upper()} {target}", safe="")
 
@@ -431,12 +484,12 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
-@pytest.mark.parametrize("completion", ["normal", "reply_lost", "stop_after_commit"])
+@pytest.mark.parametrize("completion", ["normal", "auto", "reply_lost", "stop_after_commit"])
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, completion: str,
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
-    from core_runtime.bootstrap.saved_bridge import READINESS
+    from core_runtime.bootstrap.saved_bridge import DEFINITION, READINESS
     from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
@@ -444,15 +497,19 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     original = V4DispatchSession.invoke
     ai_calls = []
     stop_receipts = []
-    lose_owner_reply = completion != "normal"
+    lose_owner_reply = completion in {"reply_lost", "stop_after_commit"}
+    selected_tools = []
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
+            assert "tool_calling" not in payload
             return {"ready": True, "model_profile_id": "model-profile-1"}
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
             return {"status": "ok", "output": "Hi"}
         result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (contract_id, operation_id) == DEFINITION and payload.get("operation") == "select":
+            selected_tools.append(result)
         if (
             lose_owner_reply and (contract_id, operation_id) == TARGETS[3]
             and payload.get("operation") == "append_saved"
@@ -472,7 +529,9 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     servers = _captured_production_server(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((
+            _SavedToolPackVmBackend() if completion == "auto" else _SavedPackVmBackend(),
+        )),
     )
     server, _session, _authority = next(servers)
     try:
@@ -483,6 +542,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         route = _contract("POST", "/api/chat/turn")
         body = {"request": {"turn_id": "turn-1", "conversation_id": "conversation-1",
                             "conversation_revision": 1, "content": "Hello"}}
+        if completion == "auto":
+            body["request"]["tool_selection"] = {
+                "mode": "auto", "include": [], "exclude": [],
+                "scope": "turn", "must_use": False,
+            }
         status, payload, _ = _request(server, "POST", route, body=body)
         assert status in {401, 403}, payload
         cookie, csrf, origin = _authenticate(server)
@@ -545,6 +609,9 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         reference = completed_turn["result_reference"]
         assert reference["conversation_revision"] == 3
         assert len(ai_calls) == 1
+        assert "tools" not in ai_calls[0]
+        if completion == "auto":
+            assert selected_tools == [{"tools": [], "definitions": {}}] * 3
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, snapshot, _ = _request(

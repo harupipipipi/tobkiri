@@ -50,6 +50,8 @@ class DynamicCapabilityTargetFactory(Protocol):
 class CapabilityBindingSnapshot(HTTPCapabilitySnapshot):
     """Host-verified targets and catalog hash for an HTTP capability route."""
 
+    application_artifact_digest: str = ""
+
     def to_mapping(
         self,
         *,
@@ -66,6 +68,7 @@ class CapabilityBindingSnapshot(HTTPCapabilitySnapshot):
             "activation_id": activation_id,
             "plan_digest": plan_digest,
             "catalog_hash": self.catalog_hash,
+            "application_artifact_digest": self.application_artifact_digest,
             "targets": [
                 {
                     **_target_digest_payload(target),
@@ -108,6 +111,7 @@ def capture_capability_binding_snapshot(
         )
     captured_targets = tuple(targets)
     return CapabilityBindingSnapshot(
+        application_artifact_digest=binding.artifact_digest,
         catalog_hash=canonical_digest(
             {
                 "profile_id": session.profile_id,

@@ -6,10 +6,10 @@ from typing import Mapping, cast
 
 from core_runtime.global_contracts.capability_capture import (
     CapabilityDispatchSession,
+    CapabilityBindingSnapshot,
     capture_capability_binding_snapshot,
 )
 from core_runtime.global_contracts.http_contract_dispatch import (
-    HTTPCapabilitySnapshot,
     HTTPContractBinding,
 )
 from ecosystem.defaultspack.defaultspack.http_dynamic_targets import (
@@ -22,7 +22,7 @@ def defaultspack_capability_snapshot(
     *,
     session: CapabilityDispatchSession,
     catalog: Mapping[str, object],
-) -> HTTPCapabilitySnapshot:
+) -> CapabilityBindingSnapshot:
     """Capture Defaultspack candidates through core identity verification."""
 
     return capture_capability_binding_snapshot(
@@ -48,25 +48,12 @@ def defaultspack_capability_snapshot_mapping(
         session=cast(CapabilityDispatchSession, session),
         catalog=catalog,
     )
-    return {
-        "profile_id": str(getattr(session, "profile_id", "")),
-        "profile_revision": str(getattr(session, "profile_revision", "")),
-        "activation_id": str(getattr(session, "activation_id", "")),
-        "plan_digest": str(getattr(session, "plan_digest", "")),
-        "catalog_hash": snapshot.catalog_hash,
-        "targets": [
-            {
-                "contribution_id": target.contribution_id,
-                "contract_id": target.contract_id,
-                "operation_id": target.operation_id,
-                "provider_id": target.provider_id,
-                "function_id": target.function_id,
-                "artifact_digest": target.artifact_digest,
-                "owner_pack_id": target.owner_pack_id,
-            }
-            for target in snapshot.targets
-        ],
-    }
+    return snapshot.to_mapping(
+        profile_id=str(getattr(session, "profile_id", "")),
+        profile_revision=str(getattr(session, "profile_revision", "")),
+        activation_id=str(getattr(session, "activation_id", "")),
+        plan_digest=str(getattr(session, "plan_digest", "")),
+    )
 
 
 def defaultspack_capability_binding(
