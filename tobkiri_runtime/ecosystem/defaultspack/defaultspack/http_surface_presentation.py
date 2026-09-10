@@ -33,6 +33,7 @@ from .conversation_list_presentation import (
     CONVERSATION_LIST_TARGET,
     present_conversation_list,
 )
+from .tool_catalog_presentation import TOOL_CATALOG_TARGET, present_tool_catalog
 from .conversation_create_presentation import (
     CONVERSATION_CREATE_TARGET,
     normalize_conversation_create,
@@ -270,7 +271,7 @@ class DefaultspackHTTPPresentation:
             target.operation_id,
             target.provider_id,
             target.function_id,
-        ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET}:
+        ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET, TOOL_CATALOG_TARGET}:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))
             if not profile_id or payload:
@@ -354,6 +355,8 @@ class DefaultspackHTTPPresentation:
             return present_model_profile_saved(result)
         if binding.presentation == "conversation_list":
             return present_conversation_list(result)
+        if binding.presentation == "tool_catalog":
+            return present_tool_catalog(result, session=session)
         if binding.presentation == "conversation_created":
             return present_conversation_created(result)
         if binding.presentation == "conversation_record":

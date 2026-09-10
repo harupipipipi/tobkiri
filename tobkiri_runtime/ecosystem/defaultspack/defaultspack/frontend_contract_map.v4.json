@@ -3,6 +3,21 @@
   "pack_id": "defaultspack",
   "routes": [
     {
+      "method": "GET",
+      "path": "/api/tools/catalog",
+      "presentation": "tool_catalog",
+      "targets": [
+        {
+          "contribution_id": "defaults.tools.catalog",
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+          "provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
       "method": "POST",
       "path": "/api/chat/turn/stop",
       "presentation": "broker_result",

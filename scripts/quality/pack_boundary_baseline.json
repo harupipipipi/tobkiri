@@ -941,7 +941,7 @@
         "value": "io.tobkiri.profile.v5"
       },
       "fingerprint": "sha256:b359002488024336dc49fef5e0ac7a0f5fa4ef7f29252a132c15f18f00029a68",
-      "line": 129,
+      "line": 139,
       "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
       "rule_id": "pack-boundary.v4-file-uses-v5-api"
     }

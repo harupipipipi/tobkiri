@@ -30,6 +30,14 @@ display metadata and widgets without importing the legacy Registry or Executor.
 It covers sealed tool manifests only. Dynamic, component and memo sources, their
 migration, and the local execution Provider still require separate integration.
 
+The shipped Defaults Profile selects this owner and Default Tools. Its
+authenticated `/api/tools/catalog` contract route reads the catalog for the
+existing tool picker. The application projects only display metadata and the
+registry revision. Local tools appear connected only when their exact selected
+Provider and operation have a ready backend; otherwise their descriptors remain
+visible as unavailable. Remote tools require separate connection-owner health
+integration. Neither the read edge nor the UI projection authorizes execution.
+
 Read results omit private migration backup paths. Optional contributions are
 queried using their selected canonical operation, with no credentials. Host
 mutation lock waits recheck cancellation and expiry, keeping the existing lock

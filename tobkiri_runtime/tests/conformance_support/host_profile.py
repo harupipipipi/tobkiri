@@ -24,7 +24,9 @@ _RUNTIME_ROOT = Path(__file__).resolve().parents[2]
 
 
 @contextmanager
-def captured_host_profile(tmp_path, monkeypatch, *, packs, edges, backends):
+def captured_host_profile(
+    tmp_path, monkeypatch, *, packs, edges, backends, exclude_packs=(),
+):
     """Add explicit test edges without touching live activation or user data."""
     source_bundle = packaged_profile_bundle_root()
     destination = tmp_path / "packaged-defaultspack"
@@ -36,6 +38,9 @@ def captured_host_profile(tmp_path, monkeypatch, *, packs, edges, backends):
         _RUNTIME_ROOT / "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
     )
     intent = json.loads(source_intent.read_text())
+    intent["packs"] = [
+        item for item in intent["packs"] if item["pack_id"] not in exclude_packs
+    ]
     for pack_id in packs:
         intent["packs"].append(
             {"artifact_digest": None, "pack_id": pack_id, "role": "provider"}

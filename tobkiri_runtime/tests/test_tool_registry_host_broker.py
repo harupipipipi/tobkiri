@@ -9,7 +9,6 @@ import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied
 from tests.conformance_support.host_profile import captured_host_profile
-from tests.test_mcp_host_broker import _edge
 from tobkiri_host.errors import ProviderExecutionError
 
 
@@ -24,17 +23,8 @@ def test_production_registry_uses_selected_data_without_executable_bindings(
     with captured_host_profile(
         tmp_path,
         monkeypatch,
-        # The Profile has one application entrypoint (Defaults). This selected
-        # supporting Pack is declarative, regardless of its Profile role label.
-        packs=("rumi_tool_registry_pack",) + (("rumi_default_tools_pack",) if selected else ()),
-        edges=[
-            _edge(
-                "shell.tauri.default",
-                "rumi_tool_registry_pack.tool-registry.definition",
-                contract,
-                operation,
-            )
-        ],
+        packs=(), edges=(),
+        exclude_packs=() if selected else ("rumi_default_tools_pack",),
         backends=(),
     ) as (session, _store):
         result = session.invoke(

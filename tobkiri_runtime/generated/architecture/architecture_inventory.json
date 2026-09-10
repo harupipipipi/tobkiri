@@ -186,6 +186,13 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
+        "evidence": "pack_api_server",
+        "line": 7,
+        "message": "legacy execution or authority path is present",
+        "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/tool_catalog_presentation.py",
+        "rule_id": "legacy_direct_pack_route"
+      },
+      {
         "evidence": "FunctionRegistry",
         "line": 778,
         "message": "legacy execution or authority path is present",
@@ -10104,7 +10111,7 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:1477fd0ac6690f23572127ab2238cc6e3a83b7eb361f5a844a79c3d19e28c7e4",
+        "evidence_digest": "sha256:53150a6e01a9479029276442d1969bad059485897cf96c6f9de4daecda30e4d1",
         "line": 16,
         "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
         "rule_id": "legacy_direct_pack_route"
@@ -10113,6 +10120,12 @@
         "evidence_digest": "sha256:4c27e30d9e8ca6bff385901a83cef6f5ccd56ff6013dbb9e187f6b56b34d445b",
         "line": 12,
         "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/runtime_composition.py",
+        "rule_id": "legacy_direct_pack_route"
+      },
+      {
+        "evidence_digest": "sha256:8ddaa1354682cf1729449a9c7c4672caed59fcaad633fa03b68c49f5b975073b",
+        "line": 7,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/tool_catalog_presentation.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
@@ -18394,7 +18407,7 @@
     ]
   },
   "repository": {
-    "commit": "4a84a2cbb7ea554a4d14a6e50842d0de238b1709",
+    "commit": "8f8f17c0f175e99947a3a2e3eb73e53000379ef5",
     "tree_digest": "20a913d696707299f2f18f0507991a9720689983f30e7ea2f916a60df0e8b1bc"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",

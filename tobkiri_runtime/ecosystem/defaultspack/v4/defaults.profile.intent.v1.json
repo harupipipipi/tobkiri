@@ -10,6 +10,8 @@
   "display_name": "Tobkiri Defaults",
   "mode": "interactive",
   "packs": [
+    {"artifact_digest": null, "pack_id": "rumi_default_tools_pack", "role": "provider"},
+    {"artifact_digest": null, "pack_id": "rumi_tool_registry_pack", "role": "provider"},
     {"artifact_digest": null, "pack_id": "rumi_credential_broker_pack", "role": "provider"},
     {"artifact_digest": null, "pack_id": "rumi_turn_runtime_pack", "role": "provider"},
     {"artifact_digest": null, "pack_id": "tobkiri_ui_settings_pack", "role": "provider"},
@@ -118,6 +120,27 @@
   "profile_authority_snapshot_digest": null,
   "profile_id": "defaults",
   "requested_edges": [
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
     {
       "caller_function_id": "shell.tauri.default",
       "target_provider_id": "rumi_model_registry_pack.model-registry.manage",

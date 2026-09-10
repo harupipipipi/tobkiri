@@ -4,8 +4,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from domain.chat.tool_selection_schema import COMPUTER_TOOL_IDS
-from domain.tool.schema_adapter import mapping_or_empty, tool_name_from_definition
+from ..chat.tool_selection_schema import COMPUTER_TOOL_IDS
+from .normalizers import mapping_or_empty, tool_name_from_definition
 
 
 SERVICE_ORDER = [
@@ -64,7 +64,7 @@ SERVICE_SUMMARIES: dict[str, str] = {
     "memory": "記憶、知識、会話コンテキストを扱います",
     "artifacts": "成果物ファイルとプレビューを扱います",
     "mcp": "MCP接続と外部サーバーToolを扱います",
-    "system": "Rumi内部のシステム機能を扱います",
+    "system": "Tobkiri内部のシステム機能を扱います",
     "other": "その他の機能を扱います",
 }
 
