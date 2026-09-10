@@ -1329,12 +1329,12 @@
     {
       "path": "packs/rumi_turn_runtime_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:37d91d0c389764fcea0deb0a118dd777047a38209935a2f5cc56c0147cbd4c75"
+      "digest": "sha256:e757f29dc7f586457cbdc8d393d424ba54d542144ace7b0bf4aed721b127abd8"
     },
     {
       "path": "packs/rumi_turn_runtime_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:58ce001837be1fe92ed07d73337d13dd90a43682c5590fc8dcd4f8b9feea5259"
+      "digest": "sha256:4b0d545dced7324e3821d0a82d0d494527e17dde6a668ce5e46f506af8a73ab2"
     },
     {
       "path": "packs/rumi_voice_mobile_pack.executables.v4.json",

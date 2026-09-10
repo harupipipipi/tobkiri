@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import re
 import threading
@@ -154,7 +155,7 @@ class TurnRuntime:
         turn_id: str,
         *,
         expected_revision: int,
-        guidance_ids: list[str] | None = None,
+        guidance_ids: builtins.list[str] | None = None,
     ) -> dict[str, Any]:
         """Atomically mark all queued guidance consumed and return those items."""
         with self._lock:

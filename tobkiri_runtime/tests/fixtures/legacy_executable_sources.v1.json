@@ -10,7 +10,7 @@
         "contract_id": "tobkiri.action.turn.lifecycle.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/turns.py",
-        "implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+        "implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
         "operation_ids": [
           "rumi_turn_runtime_pack.turn-lifecycle"
         ]
@@ -26,7 +26,7 @@
         "contract_id": "tobkiri.resource.turn.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/turns.py",
-        "implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+        "implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
         "operation_ids": [
           "rumi_turn_runtime_pack.turn-resource"
         ]
@@ -42,7 +42,7 @@
         "contract_id": "tobkiri.event.turn.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/turns.py",
-        "implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+        "implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
         "operation_ids": [
           "rumi_turn_runtime_pack.turn-events"
         ]

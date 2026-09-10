@@ -17173,12 +17173,12 @@
           "path": "runtime/host.py"
         },
         {
-          "digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+          "digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
           "kind": "executable",
           "path": "runtime/turns.py"
         },
         {
-          "digest": "sha256:d48dbdc68d5d9c05ff5865c9db5127536f6291c6be8ee7d91101cc57cfe6f15a",
+          "digest": "sha256:b573b8b5e468024ca9e85f1254fe4560457ea8b99c096a65043098d8f97b67b8",
           "kind": "executable",
           "path": "runtime/durable.py"
         },
