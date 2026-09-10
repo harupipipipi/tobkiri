@@ -8,11 +8,14 @@ from pathlib import Path
 
 import pytest
 
+from core_runtime.authority.v4 import DomainBoundary
 from ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter import (
     create_definition_contribution,
 )
 from scripts.generate_scheduler_definitions_component import build_component
+from tests.conformance_support.host_profile import captured_host_profile
 from tobkiri_host.wasm_component import PureComponent
+from tobkiri_host.wasm_backend import production_wasm_backend
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,15 +53,13 @@ def test_only_the_pure_definition_function_moves_to_wasm() -> None:
     variants = {item["function_id"]: item for item in catalog["variants"]}
 
     assert functions[FUNCTION]["isolation"] == "wasm_component"
-    assert variants[FUNCTION] == {
-        **variants[FUNCTION],
-        "variant_id": f"{FUNCTION}.wasm",
-        "execution_kind": "wasm",
-        "backend": "tobkiri.wasmtime-pulley-v1",
-        "runtime_abi": "component-v1",
-        "execution_domain_profile": "wasm.component.default.v1",
-        "implementation_path": "runtime/definitions_component.wasm",
-    }
+    wasm_variant = variants[FUNCTION]
+    assert wasm_variant["variant_id"] == f"{FUNCTION}.wasm"
+    assert wasm_variant["execution_kind"] == "wasm"
+    assert wasm_variant["backend"] == "tobkiri.wasmtime-pulley-v1"
+    assert wasm_variant["runtime_abi"] == "component-v1"
+    assert wasm_variant["execution_domain_profile"] == "wasm.component.default.v1"
+    assert wasm_variant["implementation_path"] == "runtime/definitions_component.wasm"
     privileged = "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler"
     assert functions[privileged]["isolation"] == "pack_vm"
     assert variants[privileged]["execution_kind"] == "pack_vm"
@@ -71,3 +72,54 @@ def test_wasm_definition_operation_keeps_its_read_only_contract_ceiling() -> Non
     assert len(variant["operations"]) == 1
     assert variant["operations"][0]["operation_id"] == OPERATION
     assert variant["operations"][0]["effect_class"] == "read"
+
+
+def test_production_profile_authority_and_broker_invoke_scheduler_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Run the migrated production Pack through its captured Profile edge."""
+
+    contract = "tobkiri.resource.tool.definition.contribution.v1"
+    caller = "rumi_tool_registry_pack.tool-registry.definition"
+    edge = {
+        "caller_function_id": caller,
+        "target_provider_id": FUNCTION,
+        "contract_id": contract,
+        "operation_id": OPERATION,
+        "authority_mode": "profile_grant",
+        "requested_scope_template": {
+            "capability": "operation.invoke",
+            "dimensions": {
+                "contract": [contract],
+                "operation": [OPERATION],
+            },
+            "quotas": {},
+            "exact_request_digest": None,
+            "opaque": False,
+        },
+    }
+    backend = production_wasm_backend()
+    with captured_host_profile(
+        tmp_path,
+        monkeypatch,
+        packs=("rumi_scheduler_tool_adapter_pack",),
+        edges=(edge,),
+        backends=(backend,),
+    ) as (session, store):
+        session.assert_operation_ready(contract, OPERATION)
+        context = session.context_for(contract, OPERATION, "scheduler-wasm-candidate")
+        domain = store.get_domain(context.target_domain_id)
+        assert domain is not None
+        assert domain.boundary is DomainBoundary.WASM_COMPONENT
+        assert len(domain.principals) == 1
+        assert domain.principals[0].function_id == FUNCTION
+
+        payload = {"ignored": "production-profile-proof"}
+        actual = session.invoke(
+            contract,
+            OPERATION,
+            {**payload, "_session_id": "scheduler-wasm-candidate"},
+        )
+
+    assert actual == create_definition_contribution(None)("catalog", payload)
