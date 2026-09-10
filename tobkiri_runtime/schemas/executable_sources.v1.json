@@ -14582,7 +14582,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 202,
-    "input_digest": "sha256:c058903c904e07eb9d2d5af3be4571bf9754784d4e94ef924eca4da9db763a46",
+    "input_digest": "sha256:fd0d82f3b626e820c6adf0b0d4b7d67c2e413be125cc12a13d2f1a5dec7252ae",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -15684,7 +15684,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_surface_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:50313d9b6961d3a93723db1e568447c09c6c5602ec3f44010ba47d9009afd229",
+        "digest": "sha256:1edec022ab57c04c1f18b6b24c4e3383f8aab1ae652d608c41b9c85e9232d16f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/rumi.pack.v3.json"
       },
