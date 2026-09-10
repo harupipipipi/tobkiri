@@ -132,4 +132,4 @@ def test_production_profile_authority_and_broker_invoke_scheduler_component(
     assert expected_ids <= actual_ids
     assert {
         item["provider_instance_id"] for item in actual["contributions"]
-    } == {FUNCTION}
+    } == {"tool-definitions.scheduler"}
