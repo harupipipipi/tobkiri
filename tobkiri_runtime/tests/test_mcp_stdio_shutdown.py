@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import queue
+import os
 import subprocess
 import sys
 import threading
@@ -98,6 +99,46 @@ def test_shutdown_unblocks_a_writer_when_child_does_not_read_stdin() -> None:
     assert not failures
     assert not writer.is_alive() and not stopper.is_alive()
     _assert_collected(transport, process)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process groups are required")
+def test_shutdown_kills_the_owned_stdio_process_group(tmp_path) -> None:
+    """A server cannot orphan a descendant which ignores graceful shutdown."""
+    child_pid = tmp_path / "descendant.pid"
+    source = (
+        "import json, subprocess, sys\n"
+        "path = sys.argv[1]\n"
+        "child = subprocess.Popen([sys.executable, '-I', '-c', "
+        "'import os, signal, sys, time; signal.signal(signal.SIGTERM, "
+        "signal.SIG_IGN); open(sys.argv[1], \\\"w\\\").write(str(os.getpid())); "
+        "time.sleep(60)', path])\n"
+        "for line in sys.stdin:\n"
+        " message = json.loads(line)\n"
+        " method = message['method']\n"
+        " result = {'capabilities': {'tools': {}}} if method == 'initialize' else "
+        "{'tools': []}\n"
+        " print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], "
+        "'result': result}), flush=True)\n"
+    )
+    transport = _StdioTransport(
+        [sys.executable, "-I", "-u", "-c", source, str(child_pid)], env={}
+    )
+    connection = mcp_client._ServerConnection("owned", {})
+    connection._transport = transport
+    transport.start()
+    process = transport._proc
+    try:
+        until = time.monotonic() + 3
+        while not child_pid.exists() and time.monotonic() < until:
+            time.sleep(0.01)
+        assert child_pid.exists()
+        descendant = int(child_pid.read_text())
+        assert os.getpgid(descendant) == process.pid
+    finally:
+        connection.disconnect()
+    _assert_collected(transport, process)
+    with pytest.raises(ProcessLookupError):
+        os.kill(descendant, 0)
 
 
 def test_request_deadline_stops_a_real_child_that_never_reads_stdin(monkeypatch) -> None:

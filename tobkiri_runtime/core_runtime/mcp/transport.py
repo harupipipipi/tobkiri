@@ -6,6 +6,7 @@ JSON-RPC 2.0 準拠。stdio / SSE トランスポート対応。
 
 import json
 import os
+import signal
 import shlex
 import subprocess
 import threading
@@ -88,6 +89,7 @@ class _StdioTransport(_TransportBase):
         self._env = env
         self._cwd = cwd
         self._proc = None
+        self._process_group_id: int | None = None
         self._reader_thread = None
         self._stderr_thread = None
         self._writer_thread: threading.Thread | None = None
@@ -112,7 +114,10 @@ class _StdioTransport(_TransportBase):
             stderr=subprocess.PIPE,
             env=self._env,
             cwd=self._cwd,
+            start_new_session=os.name == "posix",
         )
+        if os.name == "posix":
+            self._process_group_id = self._proc.pid
         self._reader_thread = threading.Thread(
             target=self._read_loop, args=(self._proc.stdout,), daemon=True,
         )
@@ -132,13 +137,26 @@ class _StdioTransport(_TransportBase):
             # Stop the child before closing buffered stdin: a concurrent blocked
             # writer can otherwise hold its buffer lock indefinitely.
             try:
-                self._proc.terminate()
-                self._proc.wait(timeout=5)
+                if self._process_group_id is None:
+                    self._proc.terminate()
+                else:
+                    self._signal_process_group(signal.SIGTERM)
+                self._proc.wait(timeout=2)
             except Exception:
                 # Do not discard ownership until the child has been reaped.
                 # A failed kill/wait leaves the handle available for cleanup retry.
-                self._proc.kill()
+                if self._process_group_id is None:
+                    self._proc.kill()
+                else:
+                    self._signal_process_group(signal.SIGKILL)
                 self._proc.wait(timeout=5)
+            if self._process_group_id is not None and self._process_group_alive():
+                self._signal_process_group(signal.SIGKILL)
+                deadline = time.monotonic() + 5
+                while self._process_group_alive() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if self._process_group_alive():
+                    raise RuntimeError("stdio transport process-group cleanup is incomplete")
             deadline = time.monotonic() + 5
             for reader in (self._reader_thread, self._stderr_thread):
                 if reader is not None and reader.ident is not None:
@@ -154,6 +172,37 @@ class _StdioTransport(_TransportBase):
                 if pipe is not None:
                     pipe.close()
             self._proc = None
+            self._process_group_id = None
+
+    def _signal_process_group(self, requested_signal: int) -> None:
+        process_group_id = self._process_group_id
+        if process_group_id is None:
+            raise RuntimeError("stdio transport process group is unavailable")
+        try:
+            os.killpg(process_group_id, requested_signal)
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            # macOS may report EPERM for an empty process group after its
+            # already-reaped session leader exits. Never suppress EPERM while
+            # the owned leader is still live.
+            if self._proc is not None and self._proc.poll() is not None:
+                return
+            raise
+
+    def _process_group_alive(self) -> bool:
+        process_group_id = self._process_group_id
+        if process_group_id is None:
+            return False
+        try:
+            os.killpg(process_group_id, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            if self._proc is not None and self._proc.poll() is not None:
+                return False
+            raise
+        return True
 
     def send(
         self, message_bytes: bytes, *, deadline: float | None = None,
