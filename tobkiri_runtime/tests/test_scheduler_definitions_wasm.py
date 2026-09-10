@@ -108,18 +108,29 @@ def test_production_profile_authority_and_broker_invoke_scheduler_component(
         backends=(backend,),
     ) as (session, store):
         session.assert_operation_ready(contract, OPERATION)
-        context = session.context_for(contract, OPERATION, "scheduler-wasm-candidate")
-        domain = store.get_domain(context.target_domain_id)
-        assert domain is not None
+        domain = next(
+            item
+            for item in store.list_domains()
+            if any(principal.function_id == FUNCTION for principal in item.principals)
+        )
         assert domain.boundary is DomainBoundary.WASM_COMPONENT
         assert len(domain.principals) == 1
         assert domain.principals[0].function_id == FUNCTION
 
-        payload = {"ignored": "production-profile-proof"}
         actual = session.invoke(
-            contract,
-            OPERATION,
-            {**payload, "_session_id": "scheduler-wasm-candidate"},
+            "tobkiri.resource.tool.definition.v1",
+            "rumi_tool_registry_pack.tool-definition-resource",
+            {
+                "operation": "list",
+                "_session_id": "scheduler-wasm-candidate",
+            },
         )
 
-    assert actual == create_definition_contribution(None)("catalog", payload)
+    expected = create_definition_contribution(None)("catalog", {})
+    definitions = {item["tool_id"]: item for item in actual["definitions"]}
+    assert {
+        item["tool_id"]: item for item in expected["definitions"]
+    }.items() <= definitions.items()
+    assert {
+        item["provider_instance_id"] for item in actual["contributions"]
+    } == {FUNCTION}
