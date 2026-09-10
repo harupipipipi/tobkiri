@@ -954,7 +954,6 @@ class MacOSVZProvisioner:
         )
         state = self._load_state()
         manifest = self._require_manifest()
-        self._verify_state_bindings(state, manifest)
         allocation_name = _digest_text(f"{domain_id}\0{reservation_id}\0{lease_id}")[7:]
         root = self._state_dir / "domains" / allocation_name
         binding = {
@@ -963,6 +962,8 @@ class MacOSVZProvisioner:
             "lease_digest": _digest_text(lease_id),
         }
         with self.operation_gate("allocate", binding):
+            self._assert_state_current(state)
+            self._verify_state_bindings(state, manifest)
             if root.exists() or root.is_symlink():
                 raise ValueError("PackVM VZ domain allocation already exists")
             # Recheck while the cross-process mutation gate is held.  The
@@ -1380,7 +1381,8 @@ class MacOSVZProvisioner:
 
         state = self._load_state()
         for key in _recovery_fields():
-            if not _secure_equal(state.get(key), expected_proof.get(key)):
+            state_key = "cloud_template_digest" if key == "config_digest" else key
+            if not _secure_equal(state.get(state_key), expected_proof.get(key)):
                 raise ValueError("PackVM VZ provision recovery proof changed")
         doctor = self.doctor()
         if not doctor.ready:
