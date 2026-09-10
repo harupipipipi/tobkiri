@@ -66,10 +66,15 @@ def _catalog() -> dict[str, Any]:
     }
 
 
-def test_catalog_reuses_ui_classification_without_disclosing_owner_records() -> None:
+@pytest.mark.parametrize("identity_field", ["provider_instance_id", "function_id"])
+def test_catalog_reuses_ui_classification_without_disclosing_owner_records(
+    identity_field: str,
+) -> None:
     source = _catalog()
     before = deepcopy(source)
-    result = present_tool_catalog(source, session=Session())
+    session = Session()
+    session.metadata = ({identity_field: "local.provider", "operation_id": "local.operation"},)
+    result = present_tool_catalog(source, session=session)
     assert result["count"] == 1 and result["registry_revision"] == 3
     tool = result["tools"][0]
     assert tool["service_id"] == "coding"

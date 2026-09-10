@@ -89,7 +89,7 @@ def _local_route_ready(
         matches = [
             item
             for item in session.provider_metadata(contract)
-            if item.get("provider_instance_id") == provider
+            if provider in (item.get("provider_instance_id"), item.get("function_id"))
             and item.get("operation_id") == operation
         ]
         ready[key] = False

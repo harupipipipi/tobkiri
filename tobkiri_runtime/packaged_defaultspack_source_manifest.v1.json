@@ -168,8 +168,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/tool_catalog_presentation.py",
       "type": "regular-file",
-      "size": 3714,
-      "sha256": "8ddaa1354682cf1729449a9c7c4672caed59fcaad633fa03b68c49f5b975073b",
+      "size": 3741,
+      "sha256": "39257fbe4884693f3a1b2f7a29c247a8d183d478fb180f2900deda518e1bd555",
       "executable": false
     },
     {
@@ -3319,14 +3319,14 @@
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
       "size": 86011,
-      "sha256": "558bcf05ef2ac96f73045ecc75dc9a6d95166b2b83401280c619c2dc48b61efa",
+      "sha256": "fc29db3e5bf2a97f47b4dfff67a6e0f6a8b39f801b330d6b3b30a8b8029ac91c",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 903811,
-      "sha256": "c1e8110478e26c2c1cfc47a36a88cb19a24d28968359ac3009ffd1a0b99d135b",
+      "sha256": "ac304ef2edcac329d97697b70ff545bf7f3956306c421ea487f81984bd64d8c0",
       "executable": false
     },
     {
