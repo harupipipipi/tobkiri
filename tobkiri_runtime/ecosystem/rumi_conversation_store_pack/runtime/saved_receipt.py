@@ -46,7 +46,10 @@ def append_receipt(
         if role != "assistant" or request.get("tool_selection", {}).get("mode", "none") == "none":
             raise ValueError("saved append tool transcript is out of scope")
         metadata["saved_tool_messages"] = trace
-    if canonical_json(message.get("tool_logs") or []) != canonical_json(saved_tool_logs(trace)):
+    logs = message.get("tool_logs")
+    if canonical_json([] if logs is None else logs) != canonical_json(
+        saved_tool_logs(trace)
+    ):
         raise ValueError("saved append tool logs differ from transcript")
     if (
         conversation_id != request["conversation_id"]

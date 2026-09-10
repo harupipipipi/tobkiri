@@ -648,7 +648,7 @@
     "rumi_browser_host_service_pack": "sha256:b4fc6e28710ff136888d852b06be73ca4c5af7a6968d68aee4a279a063ac5dee",
     "rumi_clipboard_host_service_pack": "sha256:e7f3dde82122d78fc8458e514bf9ee20d2a9cdfbc88857e1f26e9a3f468c8029",
     "rumi_command_protocol_pack": "sha256:76c151889e2ca2472d6a72b4ff863d6f7c67bbf60e7c435bf58a72a98f8cc7d6",
-    "rumi_conversation_store_pack": "sha256:af9a394b8726ad98edb20431a04f9a2394efc639bfabf31f620c441f4b198c0b",
+    "rumi_conversation_store_pack": "sha256:24770ba741d24b2b6eddae387f6e56314f2380c9948dbdcb2020111402c47279",
     "rumi_credential_broker_pack": "sha256:c0bd390af1c6553948ea0ccd8b1ffde203a5fafbdde3ba257cef495aa73ad5d3",
     "rumi_default_tools_pack": "sha256:6ee925d0305c8a3459b78eb231879a3e1d31fffc19561f8c61ead11e317b8696",
     "rumi_desktop_host_service_pack": "sha256:3144dcf432699dc0b656c6c8b3b640ac415a59b446dc54171ff07bd4c33e7d1f",

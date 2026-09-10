@@ -1114,7 +1114,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57698,
-      "sha256": "256c804da68d764a38158134f95d713a7e90821361a9b2b6bfe8376a685f8fbd",
+      "sha256": "73f12cc6adc55511492086b5d3ca0bd4e7228f141960829f5d01c794c126c901",
       "executable": false
     },
     {
@@ -1135,7 +1135,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 40743,
-      "sha256": "b27cea241b48785f1ccdf78eaffe3d49f1b4d30f1c79c19d38dee0fbc5fb1e3c",
+      "sha256": "7b5affcecede6e7df05be4996ea3e8cd7a550d9e2756c4926e0aee358b87a749",
       "executable": false
     },
     {
@@ -1149,7 +1149,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "d7dae74273fa2021ddf0fb67aff240b1eaea7ca3b63f0e4a83c20cf798465513",
+      "sha256": "7e1b6d14a2c3e2cd6e55ed28374835b674e1d7ac2a3bc80efa586f142dde6399",
       "executable": false
     },
     {
@@ -1779,14 +1779,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.executables.v4.json",
       "type": "regular-file",
       "size": 7021,
-      "sha256": "003ab9dd7d8d4baf2dc5cf4f82efa450bb14d82590eb3ad6d62ed4d4078c2e07",
+      "sha256": "33e3ddbe5621d73d6545236fe8f5cb89e162d7d4a8f41fd7a8e4ae88a669d12a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 10946,
-      "sha256": "af9a394b8726ad98edb20431a04f9a2394efc639bfabf31f620c441f4b198c0b",
+      "sha256": "24770ba741d24b2b6eddae387f6e56314f2380c9948dbdcb2020111402c47279",
       "executable": false
     },
     {
@@ -3319,14 +3319,14 @@
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
       "size": 84585,
-      "sha256": "7a47dbcbfb65a6a1ec79d107613d18c7fc1fcaf1545cc84b33de7af69aea55ed",
+      "sha256": "71780025297b5fc291db2e1fd0749a76f658a595ce5488ef4fcf2ad50fff318f",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 904281,
-      "sha256": "e1ce9621879cbda9db8205c1d4d1c98ea81712dda82bf507b8a8bb4895df40bc",
+      "sha256": "f7f40e0a8f805e59e95fbc91a46b453d4431dc7cd82f027a2870cc6d483dc4a3",
       "executable": false
     },
     {

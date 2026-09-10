@@ -187,19 +187,23 @@ def test_invalid_ai_final_content_is_rejected_before_assistant_append(tmp_path, 
     assert "result_reference" not in turn.store.saved_receipt(turn.request["turn_id"])
 
 
-def test_owner_does_not_commit_malformed_saved_assistant_content(tmp_path):
+@pytest.mark.parametrize("change", [
+    {"content": [{"arbitrary": 1}, 2, ["x"]]},
+    {"tool_logs": {}}, {"tool_logs": False}, {"tool_logs": 0}, {"tool_logs": ""},
+])
+def test_owner_does_not_commit_malformed_saved_assistant(tmp_path, change):
     turn = ToolTurn(tmp_path, rounds=0)
     turn.start()
     turn.step()
     turn.step()
     before = turn.store.path.read_bytes()
     receipt = turn.store.saved_receipt(turn.request["turn_id"])
-    with pytest.raises(ValueError, match="saved assistant append"):
+    with pytest.raises(ValueError, match="saved (assistant append|append tool logs)"):
         turn.store.append_message("conversation-1", {
             "id": receipt["assistant_message_id"], "parent_id": receipt["user_message_id"],
             "role": "assistant", "status": "complete",
             "metadata": {"turn_id": turn.request["turn_id"]},
-            "content": [{"arbitrary": 1}, 2, ["x"]],
+            "content": "Hi", **change,
         }, expected_conversation_revision=receipt["user_revision"], saved_input=turn.outer.payload)
     assert turn.store.path.read_bytes() == before
     assert turn.store.saved_receipt(turn.request["turn_id"]) == receipt

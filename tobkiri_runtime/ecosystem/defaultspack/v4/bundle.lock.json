@@ -449,12 +449,12 @@
     {
       "path": "packs/rumi_conversation_store_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:003ab9dd7d8d4baf2dc5cf4f82efa450bb14d82590eb3ad6d62ed4d4078c2e07"
+      "digest": "sha256:33e3ddbe5621d73d6545236fe8f5cb89e162d7d4a8f41fd7a8e4ae88a669d12a"
     },
     {
       "path": "packs/rumi_conversation_store_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:af9a394b8726ad98edb20431a04f9a2394efc639bfabf31f620c441f4b198c0b"
+      "digest": "sha256:24770ba741d24b2b6eddae387f6e56314f2380c9948dbdcb2020111402c47279"
     },
     {
       "path": "packs/rumi_credential_broker_pack.executables.v4.json",

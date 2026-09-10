@@ -1249,7 +1249,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/ecosystem.json",
-          "sha256": "811eb865a0a2da1bc2248982aeb896d243d4f2f8ec73ae692c1e503ce20fb42d"
+          "sha256": "b884dfabc370f497d880bffd0bc63c9c24c29b4a4b82c48aa3c9e12de11d8a2b"
         }
       ]
     },

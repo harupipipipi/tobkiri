@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:003ab9dd7d8d4baf2dc5cf4f82efa450bb14d82590eb3ad6d62ed4d4078c2e07",
+      "digest": "sha256:33e3ddbe5621d73d6545236fe8f5cb89e162d7d4a8f41fd7a8e4ae88a669d12a",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -21,7 +21,7 @@
       "path": "runtime/message_host.py"
     },
     {
-      "digest": "sha256:8b43ba3d77678aa7845f35dd33c094b80914abfb274b8e575e08215576ae514f",
+      "digest": "sha256:bc21ef07c019161d7160e1b407495312aec79e530e83da522df952b792fe8a41",
       "kind": "executable",
       "path": "runtime/saved_receipt.py"
     },
@@ -121,8 +121,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:41c48690ae37acdd9c27e5782b7d40edfe9b53a9f4abf5fced9c0b41ae09261c",
-    "artifact_set_digest": "sha256:6e99a2ccb5e0a9676acf428adc68cddc9c5a2290655c97988d42349dbb17fc9d",
+    "source_identity": "sha256:700ce4d20a12eb34a6f7ddc75089be53cfa0ea4943782e6b1ebc244d5ca08e30",
+    "artifact_set_digest": "sha256:e26a838c4f1573536217ede162664bc5e04a413690bb5fb211919c491545a9f8",
     "contract_catalog_digest": "sha256:24c7cb49b160484f263299ff9ec6174657e7a9deabaf4fae8431713764d39a94"
   },
   "migration": {
@@ -182,7 +182,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:85323bdf2c5ce49d96591df2b36027d1d63e00e3584fda1ca124541b1875ff46",
+    "artifact_digest": "sha256:0cf551f65a0046ffdf459db490403b6ebcb11626409f4950c5a9ea2e74561cd1",
     "display_name": "Rumi Conversation Store",
     "id": "rumi_conversation_store_pack",
     "kind": "host_extension",
@@ -193,15 +193,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
-    "source_digest": "sha256:41c48690ae37acdd9c27e5782b7d40edfe9b53a9f4abf5fced9c0b41ae09261c",
+    "source_digest": "sha256:700ce4d20a12eb34a6f7ddc75089be53cfa0ea4943782e6b1ebc244d5ca08e30",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:6a8f85e49bdf61360cc6babacd844677e74263642fe30fd72b466598bed64825",
+    "content_root_digest": "sha256:383828f09d6f75406778c1b6012994812416a93f5e29dde0346b688f08fcee11",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:733913f202cb1947e949650cead4f2e7205244e0d18abdd3d66b0ecf206f1079",
+    "input_inventory_digest": "sha256:df9aa531a5783a6fdc3bdb71a083f762f31eb7bf4b81910a5d6f22b345b71a01",
     "normative": true,
     "evidence": [
       {
@@ -212,7 +212,7 @@
       {
         "path": "ecosystem/rumi_conversation_store_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:41c48690ae37acdd9c27e5782b7d40edfe9b53a9f4abf5fced9c0b41ae09261c"
+        "digest": "sha256:700ce4d20a12eb34a6f7ddc75089be53cfa0ea4943782e6b1ebc244d5ca08e30"
       }
     ]
   },

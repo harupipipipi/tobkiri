@@ -6,8 +6,8 @@
   "profile_id": "defaults",
   "profile_revision": "sha256:9920d2fc07b450e18a9cc5904f01e4184c71686e02cf259749be438485245745",
   "profile_definition_digest": "sha256:85c36ba30730136be846a11775c5dcb7a2057d01f1867c224b90e4bfc7fa0778",
-  "catalog_revision": "sha256:57ce6b028d6add60ad03245f1e8c835a781748a300be9cfaeb71d88ab13d2a4f",
-  "bundle_digest": "sha256:256c804da68d764a38158134f95d713a7e90821361a9b2b6bfe8376a685f8fbd",
+  "catalog_revision": "sha256:5fbc77a0db3c2e34c643b6c26b55569ed1c1919d35574b3109403ebe2b69dd36",
+  "bundle_digest": "sha256:73f12cc6adc55511492086b5d3ca0bd4e7228f141960829f5d01c794c126c901",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -68,7 +68,7 @@
     {
       "role": "pack",
       "identity": "rumi_conversation_store_pack",
-      "artifact_digest": "sha256:85323bdf2c5ce49d96591df2b36027d1d63e00e3584fda1ca124541b1875ff46"
+      "artifact_digest": "sha256:0cf551f65a0046ffdf459db490403b6ebcb11626409f4950c5a9ea2e74561cd1"
     },
     {
       "role": "pack",
@@ -389,8 +389,8 @@
     },
     {
       "pack_id": "rumi_conversation_store_pack",
-      "artifact_digest": "sha256:85323bdf2c5ce49d96591df2b36027d1d63e00e3584fda1ca124541b1875ff46",
-      "executable_catalog_digest": "sha256:0d07ba6682eaf1fffc9c8531bc3f910f5dfc1c7a53cb85703f109e36b93e2f65",
+      "artifact_digest": "sha256:0cf551f65a0046ffdf459db490403b6ebcb11626409f4950c5a9ea2e74561cd1",
+      "executable_catalog_digest": "sha256:d86289c178a32d143eac82f04f7c1e80a2926aeebc6c82245cf97dc8dc0952d0",
       "variant_id": "rumi_conversation_store_pack.conversation-store.manage.python",
       "platform": "any",
       "architecture": "any",
@@ -401,8 +401,8 @@
     },
     {
       "pack_id": "rumi_conversation_store_pack",
-      "artifact_digest": "sha256:85323bdf2c5ce49d96591df2b36027d1d63e00e3584fda1ca124541b1875ff46",
-      "executable_catalog_digest": "sha256:0d07ba6682eaf1fffc9c8531bc3f910f5dfc1c7a53cb85703f109e36b93e2f65",
+      "artifact_digest": "sha256:0cf551f65a0046ffdf459db490403b6ebcb11626409f4950c5a9ea2e74561cd1",
+      "executable_catalog_digest": "sha256:d86289c178a32d143eac82f04f7c1e80a2926aeebc6c82245cf97dc8dc0952d0",
       "variant_id": "rumi_conversation_store_pack.conversation-store.message-manage.python",
       "platform": "any",
       "architecture": "any",
@@ -413,8 +413,8 @@
     },
     {
       "pack_id": "rumi_conversation_store_pack",
-      "artifact_digest": "sha256:85323bdf2c5ce49d96591df2b36027d1d63e00e3584fda1ca124541b1875ff46",
-      "executable_catalog_digest": "sha256:0d07ba6682eaf1fffc9c8531bc3f910f5dfc1c7a53cb85703f109e36b93e2f65",
+      "artifact_digest": "sha256:0cf551f65a0046ffdf459db490403b6ebcb11626409f4950c5a9ea2e74561cd1",
+      "executable_catalog_digest": "sha256:d86289c178a32d143eac82f04f7c1e80a2926aeebc6c82245cf97dc8dc0952d0",
       "variant_id": "rumi_conversation_store_pack.conversation-store.resource.python",
       "platform": "any",
       "architecture": "any",
@@ -906,7 +906,7 @@
   ],
   "requested_edges_digest": "sha256:7c592e4ebefcb231c85826daa30c7aac196f6c4e66905dfcf9d45c647e26c6e3",
   "constraints_digest": "sha256:2f1894a8a5a9176d0a641d1e8d945b4a34d539e614b41e09850dd4d551ec23ad",
-  "closure_digest": "sha256:a3b538145b5ebb44f886af1c9deae55cc5355e9d80c914c7d6e19826d52c5bb3",
+  "closure_digest": "sha256:b5447391a6c7e7e6a345e65e43f744237bd1d62ff6e83491ae9256a19a386cdf",
   "provenance_digest": "sha256:ccb8fc8e20bce265c16e547c39adbe8e2ad918eb2625916b8ae274f937c11875",
-  "lock_digest": "sha256:29d5acf53b2b1c70c951ed44fc43e3bbf018e0850ee6df052abde0ce3ebb094b"
+  "lock_digest": "sha256:a7c675b3e60d24cf2f7038194b6cb8ca1a8b1a22594127492907fcdc21c2cf6e"
 }
