@@ -177,6 +177,19 @@
     }
   ],
   "packs": {
+    "rumi_default_tools_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_default_tools_pack.calculator",
+          "operation_ids": [
+            "rumi_default_tools_pack.calculator-evaluate"
+          ],
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/calculator.py"
+        }
+      ]
+    },
     "rumi_turn_runtime_pack": {
       "entries": [
         {

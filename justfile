@@ -83,6 +83,7 @@ generated-check python="python":
     {{python}} -B tobkiri_runtime/scripts/migrate_manifest_authority.py --check
     {{python}} -B tobkiri_runtime/scripts/generate_executable_source_registry_v1.py --check
     {{python}} -B tobkiri_runtime/scripts/generate_executable_catalogs_v4.py --check
+    {{python}} -B -m pytest tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_executable_source_registry_covers_every_executable_operation -q
     {{python}} -B tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py --check
     {{python}} -B tobkiri_runtime/scripts/quality/scan_command_protocol.py --inventory tobkiri_runtime/generated/pack_sdk/command_inventory.json --check-inventory
     {{python}} -B tobkiri_runtime/scripts/tobkiri_pack.py generate tobkiri_runtime/generated/pack_sdk --check

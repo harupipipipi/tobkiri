@@ -6176,6 +6176,57 @@
       ],
       "variant_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat.python"
     },
+    "rumi_default_tools_pack.calculator": {
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_default_tools_pack.calculator",
+      "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "implementation_path": "runtime/calculator.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_default_tools_pack.calculator-evaluate",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+          "implementation_path": "runtime/calculator.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_default_tools_pack",
+      "pack_id": "rumi_default_tools_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_default_tools_pack.calculator-evaluate",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_default_tools_pack.calculator.python"
+    },
     "rumi_desktop_host_service_pack.desktop-host.control": {
       "contract_id": "tobkiri.action.desktop.host.v1",
       "contract_version": "1.0.0",
@@ -14519,7 +14570,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 200,
-    "input_digest": "sha256:ba6c8c5c5d5f22a587f3c16db45a96c9e0aced688f2b45ed9c88e8b7ea16dc1c",
+    "input_digest": "sha256:8048b10b8df5834b753f763c5c3505b24dd5c448d562f1b57a80873624fe0dbb",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -15244,7 +15295,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:0b0188c771514f7554e8172328a1d8c08f4104f2cd9cc9a2c90c10a7d35dead9",
+        "digest": "sha256:8ba5f82f71819e8e23130edc440ecc3e24677663f05866cb78ed3134c17e171a",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

@@ -4052,23 +4052,33 @@
         "equivalent": null,
         "method": null,
         "missing_categories": [
-          "pack_specific_executable_source_missing"
+          "pack_specific_authority_source_missing"
         ],
         "operation_inventory": {
-          "legacy_count": 0,
+          "legacy_count": 1,
           "v4_count": 1
         },
         "operation_mappings": [],
-        "reason": "No hardened legacy executable source records cover the v4 operations",
+        "reason": "Explicit legacy operation/schema records exist, but no independent legacy Pack authority/role manifest is committed",
         "status": "unverified"
       },
       "source": {
-        "digest": null,
-        "files": [],
-        "format": null,
+        "digest": "sha256:40b29b89d2119086d2dabf6cbfe219c03ffac1c289585acd1b9c05364f5a92be",
+        "executable_source_registry": {
+          "digest": "sha256:b093cad3094978354c3936647fa155a10fcf1e016dff32cffeab5ac673bb7da3",
+          "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "record_count": 1
+        },
+        "files": [
+          {
+            "digest": "sha256:40b29b89d2119086d2dabf6cbfe219c03ffac1c289585acd1b9c05364f5a92be",
+            "json_pointer": "/packs/rumi_default_tools_pack",
+            "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+          }
+        ],
+        "format": "legacy-entrypoint-map",
         "pack_id": "rumi_default_tools_pack",
-        "reason": "no Pack-specific legacy source record is present",
-        "status": "missing"
+        "status": "available"
       },
       "status": "generated-draft",
       "target": {
@@ -11751,7 +11761,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:814b78ca5faa684101b62ba59eed1909e22d08168bc78232a5f9245c4e82206d",
+    "content_digest": "sha256:62e4cc90ff5f73d519ce7fd614bb260a79eb21c081f524924418b4acc90251a8",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 40,
@@ -11927,20 +11937,15 @@
           ]
         },
         "pack_specific_authority_source_missing": {
-          "count": 6,
+          "count": 7,
           "pack_ids": [
             "defaultspack",
             "rumi_command_protocol_pack",
+            "rumi_default_tools_pack",
             "tobkiri_host_pack_control",
             "tobkiri_mcp_connection_pack",
             "tobkiri_ui_settings_pack",
             "tobkiri_workflow_pack"
-          ]
-        },
-        "pack_specific_executable_source_missing": {
-          "count": 1,
-          "pack_ids": [
-            "rumi_default_tools_pack"
           ]
         },
         "pack_specific_legacy_source_missing": {
@@ -11999,7 +12004,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:6d7482be615b442af7180c49add37e09e84f2a2c28c3d010a0e9943c93e6c52d",
+    "input_digest": "sha256:d78d9cbc6cca860143f5118aabbfa15764405631444383f4872c846796d1a0db",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaults/artifact-index.v4.json",
@@ -18567,7 +18572,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:6f3acff957348b61ecb1ed7233a44dd21e200a07e99fd1b48e9296a2e64d33e7",
+        "digest": "sha256:25779bceb4c3f15c9e035fbfa855758cac6ce38b1c24663e61edd784b1f86db6",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -18577,7 +18582,7 @@
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
       {
-        "digest": "sha256:0b0188c771514f7554e8172328a1d8c08f4104f2cd9cc9a2c90c10a7d35dead9",
+        "digest": "sha256:8ba5f82f71819e8e23130edc440ecc3e24677663f05866cb78ed3134c17e171a",
         "kind": "legacy-executable-source-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -18628,7 +18633,7 @@
       "release-verified": 0,
       "semantically-reviewed": 40
     },
-    "observed_head_sha": "8e993e8359d977fc2d9e711fdf94e8a15870c1c5",
+    "observed_head_sha": "c3ab118906c084cd8b41b2722bb4e3c96647c3e8",
     "pack_count": 142,
     "profile_collection_proof": {
       "identity_proof": {
