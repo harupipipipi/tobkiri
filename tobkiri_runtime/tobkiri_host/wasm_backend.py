@@ -335,9 +335,15 @@ def production_wasm_backend() -> WasmComponentBackend:
         "sha256:" + hashlib.sha256(worker_entry.read_bytes()).hexdigest()
     )
     runtime_root = worker_entry.parents[1]
+    distribution_root = Path(str(distribution.locate_file(""))).resolve(strict=True)
+    worker_package = worker_entry.parent
     worker_bootstrap = (
-        "import runpy,sys;"
-        f"sys.path.insert(0,{str(runtime_root)!r});"
+        "import runpy,sys,types;"
+        f"sys.path[:0]=[{str(runtime_root)!r},{str(distribution_root)!r}];"
+        "package=types.ModuleType('tobkiri_host');"
+        f"package.__path__=[{str(worker_package)!r}];"
+        "package.__package__='tobkiri_host';"
+        "sys.modules['tobkiri_host']=package;"
         "runpy.run_module('tobkiri_host.wasm_component',run_name='__main__',alter_sys=True)"
     )
     runtime_digest = canonical_digest(

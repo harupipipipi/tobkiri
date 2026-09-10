@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import hashlib
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 import threading
