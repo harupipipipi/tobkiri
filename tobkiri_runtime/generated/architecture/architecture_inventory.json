@@ -8705,7 +8705,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:da75466f3d134ca63f2835c1e34a8092a6d427e115c9c389c607c10d390855c1",
+        "digest": "sha256:d9ad0dc1b322bffb6c7ff249de564510520d8019c79ffda2a87b17e3b51de2e7",
         "identity": "rumi_default_tool_projection_pack",
         "kind": "manifest",
         "legacy": true,
@@ -8713,7 +8713,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:8c5a87c44e1ef2d146bca754d61a42bed910881a273bb001a68ef7d506704540",
+        "digest": "sha256:0f799e19b8ae25984395a36ce6bf0a7e56e01a8f1cf7b443f46895c89d7db3ee",
         "identity": "rumi.default_tool_projection",
         "kind": "manifest",
         "legacy": true,
@@ -13487,19 +13487,19 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:da75466f3d134ca63f2835c1e34a8092a6d427e115c9c389c607c10d390855c1",
+        "evidence_digest": "sha256:d9ad0dc1b322bffb6c7ff249de564510520d8019c79ffda2a87b17e3b51de2e7",
         "line": 12,
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:8c5a87c44e1ef2d146bca754d61a42bed910881a273bb001a68ef7d506704540",
+        "evidence_digest": "sha256:0f799e19b8ae25984395a36ce6bf0a7e56e01a8f1cf7b443f46895c89d7db3ee",
         "line": 91,
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:8c5a87c44e1ef2d146bca754d61a42bed910881a273bb001a68ef7d506704540",
+        "evidence_digest": "sha256:0f799e19b8ae25984395a36ce6bf0a7e56e01a8f1cf7b443f46895c89d7db3ee",
         "line": 103,
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -15839,13 +15839,13 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:da75466f3d134ca63f2835c1e34a8092a6d427e115c9c389c607c10d390855c1",
+        "evidence_digest": "sha256:d9ad0dc1b322bffb6c7ff249de564510520d8019c79ffda2a87b17e3b51de2e7",
         "line": 25,
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/ecosystem.json",
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:8c5a87c44e1ef2d146bca754d61a42bed910881a273bb001a68ef7d506704540",
+        "evidence_digest": "sha256:0f799e19b8ae25984395a36ce6bf0a7e56e01a8f1cf7b443f46895c89d7db3ee",
         "line": 184,
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -17140,14 +17140,14 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:da75466f3d134ca63f2835c1e34a8092a6d427e115c9c389c607c10d390855c1",
+        "manifest_digest": "sha256:d9ad0dc1b322bffb6c7ff249de564510520d8019c79ffda2a87b17e3b51de2e7",
         "pack_id": "rumi_default_tool_projection_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/ecosystem.json",
         "version": "1.0.0"
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:8c5a87c44e1ef2d146bca754d61a42bed910881a273bb001a68ef7d506704540",
+        "manifest_digest": "sha256:0f799e19b8ae25984395a36ce6bf0a7e56e01a8f1cf7b443f46895c89d7db3ee",
         "pack_id": "rumi.default_tool_projection",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json",
         "version": "1.0.0"
@@ -18411,8 +18411,8 @@
     ]
   },
   "repository": {
-    "commit": "9d5d69cafc4c07519b016fc0d5b677ff75814eb9",
-    "tree_digest": "9c149a493127d1442095b141b8efae8d36f8c80a3577622aa0998387f5c34104"
+    "commit": "c81211bba67983a92b8cef3304d021b96528bf15",
+    "tree_digest": "8c52990c6ff3751e246d10cd7be372c26b1ee0b60705a003f9cbf5a0e62a630b"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"

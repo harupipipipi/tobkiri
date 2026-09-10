@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:e68bb3f46c30a3dddf7e60d6eb33ab6e942893b2199335f84966ed664c1cd151",
+      "digest": "sha256:1b237434ff05985d7bb7d018e82f5361daf2a54494d7bd55ab6f098f7e1ffb7e",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
+      "digest": "sha256:2c08521080b597e5c7ca53ac5bc546447dc7ba71165961a7dd2e030e21db3ebd",
       "kind": "executable",
       "path": "runtime/projection.py"
     }
@@ -31,7 +31,7 @@
     {
       "contract_revision_digest": "sha256:db31a74f3dad5d37fb4edefd83f3f24879ab52713bebdebcbd8e992463d6bd09",
       "id": "rumi_default_tool_projection_pack.default-tools.migration-source",
-      "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
+      "implementation_digest": "sha256:2c08521080b597e5c7ca53ac5bc546447dc7ba71165961a7dd2e030e21db3ebd",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_default_tool_projection_pack.default-tool-migration-source"
@@ -41,7 +41,7 @@
     {
       "contract_revision_digest": "sha256:a77395c8442f7ae695ac3b57016da5fdf1885624155168490981e7c9a2d363a5",
       "id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat",
-      "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
+      "implementation_digest": "sha256:2c08521080b597e5c7ca53ac5bc546447dc7ba71165961a7dd2e030e21db3ebd",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_default_tool_projection_pack.default-tool-local-operation"
@@ -50,8 +50,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:187047dc6774967fae4db60a9213f413fda31c29d5328b525e5090b223dfa79e",
-    "artifact_set_digest": "sha256:261600fc41b5d98ba9a863207037292d2fea8c0c8c4b55a05b3c4e805361867a",
+    "source_identity": "sha256:3c8948607977bca7cf9dee82e55f7ee47100642b0825d9bde4601a9d82507a7d",
+    "artifact_set_digest": "sha256:c4a6cfe97909c861b9808d2a8c9dd970ca4530808badc95343db8f9a329d009d",
     "contract_catalog_digest": "sha256:914588facf75ac4d127e9af494100013276d632806f218183eaa91bbc531f99e"
   },
   "migration": {
@@ -84,7 +84,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:252a311d29d29713e48d3bb18f792462e371eee7c940284ce33f3b9ff5fdc1d5",
+    "artifact_digest": "sha256:b701de6eec2dbd32ff556b40f69e82323a4d0b3d0a4a38c9660f7a4e67f026f7",
     "display_name": "Rumi Default Tool Projection",
     "id": "rumi_default_tool_projection_pack",
     "kind": "host_extension",
@@ -95,15 +95,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_default_tool_projection_pack/pack.v4.json",
-    "source_digest": "sha256:187047dc6774967fae4db60a9213f413fda31c29d5328b525e5090b223dfa79e",
+    "source_digest": "sha256:3c8948607977bca7cf9dee82e55f7ee47100642b0825d9bde4601a9d82507a7d",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:3f044c9cc7fd78ca1c30d8c09fc5a8497811232d17d8855af616ce89903a026a",
+    "content_root_digest": "sha256:e8b9ea7e682f257925ddcb4424dcf7b29716cf80f6b6c0cfcc428f67b107798c",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:60aef36054b77ec53a1474cc5b50d332a742fb30e2b17c78819078d6d1cafb47",
+    "input_inventory_digest": "sha256:e0be6fe545761bd43691b5b056cae8d1fc63f451c077afad8aa6a5c7fd74d81d",
     "normative": true,
     "evidence": [
       {
@@ -114,7 +114,7 @@
       {
         "path": "ecosystem/rumi_default_tool_projection_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:187047dc6774967fae4db60a9213f413fda31c29d5328b525e5090b223dfa79e"
+        "digest": "sha256:3c8948607977bca7cf9dee82e55f7ee47100642b0825d9bde4601a9d82507a7d"
       }
     ]
   },

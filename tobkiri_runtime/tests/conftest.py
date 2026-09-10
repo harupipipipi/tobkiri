@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import types
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -1366,6 +1367,41 @@ def defaultspack_conversation_owner(request, monkeypatch, tmp_path):
         ToolRegistry._instance = None
 
 
+_LEGACY_FIXTURE_AUTHORITIES = {
+    "file.read",
+    "file.write",
+    "shell.inspect",
+    "shell.execute",
+    "git.read",
+    "git.write",
+    "git.publish",
+    "browser.observe",
+    "browser.control",
+    "desktop.observe",
+    "desktop.control",
+    "clipboard.read",
+    "clipboard.write",
+}
+
+
+def _legacy_fixture_tool_authority(tool, metadata):
+    grants = tool.get("capability_grants") or metadata.get("capability_grants") or []
+    for grant in grants if isinstance(grants, list) else []:
+        normalized = str(grant).strip()
+        if normalized in _LEGACY_FIXTURE_AUTHORITIES:
+            return normalized
+    if bool(tool.get("requires_approval") or metadata.get("requires_approval")):
+        return "service.mutate"
+    return "service.invoke"
+
+
+def _legacy_fixture_tool_widget(tool, metadata):
+    for value in (tool.get("widget"), tool.get("ui"), metadata.get("widget")):
+        if isinstance(value, Mapping):
+            return json.loads(json.dumps(value, ensure_ascii=False))
+    return {}
+
+
 @pytest.fixture
 def defaultspack_v4_tool_dispatch(defaultspack_conversation_owner, monkeypatch):
     """Bind a test-only v4 tool-definition session to the active Defaults Profile.
@@ -1380,18 +1416,18 @@ def defaultspack_v4_tool_dispatch(defaultspack_conversation_owner, monkeypatch):
 
     from core_runtime.di_container import get_container
     from core_runtime.global_contract_dispatch import GlobalContractUnavailable
-    from ecosystem.rumi_default_tool_projection_pack.runtime import projection
-    from ecosystem.rumi_default_tool_projection_pack.runtime.projection import (
-        create_source_operation,
+    # Initialize both historical import aliases inside this test-only fixture.
+    # The retired production projection used to do this as an incidental side
+    # effect before tests replaced its Registry class.
+    from ecosystem.defaultspack.domain.tool.executor import (
+        ToolExecutor as _InstalledToolExecutor,
+    )
+    from ecosystem.defaultspack.domain.tool.registry import (
+        ToolRegistry as _InstalledToolRegistry,
     )
     from domain.tool.registry import ToolRegistry as RuntimeToolRegistry
 
-    # The projection pack is imported through its installed package name in
-    # production, while compatibility tests may import the same source as the
-    # top-level ``domain`` package.  Dynamic MCP tools must enter the same
-    # canonical registry that the MCP block mutates; otherwise the test
-    # dispatch session would silently project a second, stale registry.
-    monkeypatch.setattr(projection, "ToolRegistry", RuntimeToolRegistry)
+    del _InstalledToolExecutor, _InstalledToolRegistry
 
     snapshot = _defaultspack_v4_snapshot()
     definition_contract = "rumi.resource.tool.definition.v1"
@@ -1402,7 +1438,62 @@ def defaultspack_v4_tool_dispatch(defaultspack_conversation_owner, monkeypatch):
 
         @staticmethod
         def _catalog():
-            return create_source_operation(None)("list", {})
+            definitions = []
+            aliases = {}
+            for tool in sorted(
+                RuntimeToolRegistry().list_tools(),
+                key=lambda item: str(item.get("tool_id")),
+            ):
+                if not isinstance(tool, Mapping):
+                    continue
+                schema = tool.get("schema")
+                schema = schema if isinstance(schema, Mapping) else {}
+                parameters = schema.get("parameters")
+                input_schema = (
+                    parameters if isinstance(parameters, Mapping) else schema
+                )
+                metadata = tool.get("metadata")
+                metadata = metadata if isinstance(metadata, Mapping) else {}
+                tool_id = str(tool.get("tool_id") or tool.get("name") or "").strip()
+                raw_aliases = tool.get("aliases") or metadata.get("aliases") or []
+                raw_aliases = raw_aliases if isinstance(raw_aliases, list) else []
+                definition = {
+                    "tool_id": tool_id,
+                    "display_name": str(tool.get("display_name") or tool_id),
+                    "description": str(
+                        tool.get("description") or tool.get("summary") or ""
+                    ),
+                    "input_schema": dict(input_schema),
+                    "result_schema": {},
+                    "execution": {
+                        "kind": "local",
+                        "contract_id": "rumi.service.tool.local.operation.v1",
+                        "provider_instance_id": "tool-adapter.defaultspack-compat",
+                    },
+                    "authority": _legacy_fixture_tool_authority(tool, metadata),
+                    "risk": str(tool.get("risk") or "unknown"),
+                    "policy_tags": [str(item) for item in tool.get("tags") or []],
+                    "aliases": [
+                        str(item) for item in raw_aliases if str(item).strip()
+                    ],
+                    "widget": _legacy_fixture_tool_widget(tool, metadata),
+                    "source_adapter_id": "defaultspack.tool.compatibility",
+                }
+                definitions.append(definition)
+                for alias in definition["aliases"]:
+                    aliases.setdefault(alias, tool_id)
+            source = {
+                "definitions": definitions,
+                "aliases": dict(sorted(aliases.items())),
+            }
+            source["source_hash"] = hashlib.sha256(
+                json.dumps(
+                    source,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            return source
 
         def invoke(
             self,
