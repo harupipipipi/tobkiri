@@ -6,7 +6,7 @@
       "path": "catalog/prompt_studio_prompt_library.yaml"
     },
     {
-      "digest": "sha256:6d01a5a3dd1e780b90da9ed8e0557c54210aa8ee75b62ec2aaa8034f143e0dcf",
+      "digest": "sha256:781d2aaf8e62bbf7fd080e6c6dc35ce24141a2f6343204e2989e32fd053f7eab",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -31,12 +31,12 @@
       "path": "runtime/resource_host.py"
     },
     {
-      "digest": "sha256:d68139419887b4f96aa98bd2c99ccd70b57407b438c4c8e3498bbf5d10805a06",
+      "digest": "sha256:af96560aebb6abb1bbc422281ddbe9e9db47c1b42313b346612c488cb15fe751",
       "kind": "executable",
       "path": "runtime/service.py"
     },
     {
-      "digest": "sha256:9181326eea111b2129088f2c8167b2a4177f75c916ffb960f8e4be3e3f385e08",
+      "digest": "sha256:654ae9cee658f80e35b8725db4175151d276b19073e2a7ab0f50a7cb2abfba1a",
       "kind": "executable",
       "path": "runtime/store.py"
     },
@@ -146,9 +146,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:db65fb49dd1629256e2bcfeef1f11869d2b262e830639db29fc36c4850f0d4d6",
-    "contract_catalog_digest": "sha256:df150a652a830e95720053f66c0cdb793bbefe495f9b11479eed51fb5bcfb972",
-    "source_identity": "sha256:d93df22af6a82fccf3ead78755e92cfc34438117217aa58c70898c1fa51853e3"
+    "artifact_set_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615",
+    "contract_catalog_digest": "sha256:f0e1aef2b677494a83f856ca8563673f95cb6c9c82d656c5c0ced85dff982ce2",
+    "source_identity": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89"
   },
   "migration": {
     "compatibility": "read_only",
@@ -222,7 +222,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:db65fb49dd1629256e2bcfeef1f11869d2b262e830639db29fc36c4850f0d4d6",
+    "artifact_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615",
     "display_name": "Rumi Prompt Studio",
     "id": "rumi_prompt_studio_pack",
     "kind": "host_extension",
@@ -232,7 +232,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:d93df22af6a82fccf3ead78755e92cfc34438117217aa58c70898c1fa51853e3",
+        "digest": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -243,7 +243,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:d93df22af6a82fccf3ead78755e92cfc34438117217aa58c70898c1fa51853e3",
+    "source_digest": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_prompt_studio_pack"
   },

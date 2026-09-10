@@ -90,9 +90,7 @@ class PromptStudioService:
     @staticmethod
     def _active(store: PromptStudioStore) -> dict[str, Any]:
         snapshot = store.snapshot()
-        enabled = [
-            item for item in snapshot["prompts"] if item.get("enabled", True)
-        ]
+        enabled = [item for item in snapshot["prompts"] if item.get("enabled", True)]
         return {
             "profile_id": store.profile_id,
             "segments": enabled,
@@ -156,11 +154,7 @@ class PromptStudioService:
             variables=_strings(data.get("variables")),
             enabled=bool(data.get("enabled", True)),
             reason=str(data.get("reason") or "manual_save"),
-            metadata=(
-                data.get("metadata")
-                if isinstance(data.get("metadata"), Mapping)
-                else None
-            ),
+            metadata=(data.get("metadata") if isinstance(data.get("metadata"), Mapping) else None),
         )
 
     @staticmethod
@@ -274,11 +268,8 @@ class PromptStudioService:
         body = _body(data)
         if not body and prompt_id:
             body = str((store.get(prompt_id) or {}).get("body") or "")
-        variables = (
-            data.get("variables")
-            if isinstance(data.get("variables"), Mapping)
-            else {}
-        )
+        raw_variables = data.get("variables")
+        variables = raw_variables if isinstance(raw_variables, Mapping) else {}
         missing: list[str] = []
 
         def replace(match: re.Match[str]) -> str:
@@ -396,11 +387,7 @@ class PromptStudioService:
         marker = store.migrate_from_legacy(
             expected_source_hash=str(data.get("expected_source_hash") or ""),
         )
-        return {
-            key: value
-            for key, value in marker.items()
-            if key != "backup"
-        }
+        return {key: value for key, value in marker.items() if key != "backup"}
 
     @staticmethod
     def _migration_rollback(
@@ -408,11 +395,7 @@ class PromptStudioService:
         data: Mapping[str, Any],
     ) -> dict[str, Any]:
         result = store.rollback_migration(str(data.get("migration_id") or ""))
-        return {
-            key: value
-            for key, value in result.items()
-            if key != "new_store_snapshot"
-        }
+        return {key: value for key, value in result.items() if key != "new_store_snapshot"}
 
     @staticmethod
     def _migration_import(
@@ -425,9 +408,7 @@ class PromptStudioService:
         marker = store.migrate_records(
             records,
             edge_states=(
-                data.get("edge_states")
-                if isinstance(data.get("edge_states"), Mapping)
-                else None
+                data.get("edge_states") if isinstance(data.get("edge_states"), Mapping) else None
             ),
             expected_source_hash=str(data.get("expected_source_hash") or ""),
         )
@@ -446,4 +427,8 @@ def _body(data: Mapping[str, Any]) -> str:
 
 
 def _strings(value: Any) -> list[str]:
-    return [str(item).strip() for item in value if str(item).strip()] if isinstance(value, list) else []
+    return (
+        [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, list)
+        else []
+    )

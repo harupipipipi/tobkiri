@@ -8,6 +8,7 @@ from typing import Any
 
 from .canonical import canonical_json, strict_loads
 from .saved_tools import validate_tool_selection
+from .saved_context import saved_prompt_reference
 
 SAVED_CONVERSATION_CONTRACT = "conversation.saved-turn.v1"
 SAVED_CONVERSATION_OPERATION = "saved_complete"
@@ -18,32 +19,53 @@ def is_saved_text_content(value: Any) -> bool:
     """Recognize final text or exact text blocks without granting authority."""
     return bool(value) and (
         isinstance(value, str)
-        or isinstance(value, list) and all(
-            isinstance(part, dict) and set(part) == {"type", "text"}
-            and part["type"] == "text" and isinstance(part["text"], str)
+        or isinstance(value, list)
+        and all(
+            isinstance(part, dict)
+            and set(part) == {"type", "text"}
+            and part["type"] == "text"
+            and isinstance(part["text"], str)
             for part in value
         )
     )
 
 
 def validate_saved_conversation_context(conversation: Mapping[str, Any]) -> None:
-    """Reject unresolved owned context; this pure check grants no authority."""
+    """Validate prompt references and reject other unresolved owned context.
+
+    A prompt reference still needs an authenticated owner read before claiming
+    a new turn. Syntax validation is not evidence that the prompt is available.
+    """
+    saved_prompt_reference(conversation)
     metadata = conversation.get("metadata") or {}
     tags = conversation.get("tags") or []
     if not isinstance(metadata, Mapping) or not isinstance(tags, list):
         raise ValueError("saved bridge owned context is invalid")
     if (
-        conversation.get("system_prompt_id") or conversation.get("agent_id")
+        conversation.get("agent_id")
         or conversation.get("conversation_kind") not in (None, "", "chat")
         or conversation.get("group_id")
-        or any(metadata.get(key) for key in (
-            "group_id", "groupId", "workspace_id", "workspaceId",
-            "workspace_root", "workspaceRoot", "rootPath",
-            "rumi_data_path", "rumiDataPath", "rumi_dp_path", "shared_read_only",
-        ))
+        or any(
+            metadata.get(key)
+            for key in (
+                "group_id",
+                "groupId",
+                "workspace_id",
+                "workspaceId",
+                "workspace_root",
+                "workspaceRoot",
+                "rootPath",
+                "rumi_data_path",
+                "rumiDataPath",
+                "rumi_dp_path",
+                "shared_read_only",
+            )
+        )
         or metadata.get("mode") not in (None, "", "chat")
-        or metadata.get("profile_id") in (
-            "defaultspack.operations_company", "defaultspack.mimo_coding_company",
+        or metadata.get("profile_id")
+        in (
+            "defaultspack.operations_company",
+            "defaultspack.mimo_coding_company",
         )
         or any(tag in tags for tag in ("operations-company", "mimo-coding-company"))
     ):
@@ -65,7 +87,10 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         raise ValueError("saved turn initial fields are invalid")
     request = initial["request"]
     if not isinstance(request, dict) or set(request) - {"tool_selection"} != {
-        "turn_id", "conversation_id", "conversation_revision", "content",
+        "turn_id",
+        "conversation_id",
+        "conversation_revision",
+        "content",
     }:
         raise ValueError("saved turn request fields are invalid")
     if "tool_selection" in request:

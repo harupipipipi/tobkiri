@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:dd69493c813fb993744da8a13ee141a023212e683de257e36b53278e93ec78fc"
+      "digest": "sha256:cd7bab21aa25dd629eb06cde569f84a663a2026a5f39a945a25151e263dd3a25"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:aefc19d5a1977d9ffe0464f4d8a7b4c3140b9cce5df4981849fb5949b0cf3eef"
+      "digest": "sha256:e483cc5004dc69a2fffbc7fd76fae2ba06c378f6c39a15a672f30b59d4ac9c7b"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -959,12 +959,12 @@
     {
       "path": "packs/rumi_prompt_studio_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:d85570733107622bcd1860b4a79bcddee48cdb0873b02db2fd26ede85adaf98d"
+      "digest": "sha256:6947d332298315a6b2a57027a65f13cd68e33f9518755417084ada6e7ed97948"
     },
     {
       "path": "packs/rumi_prompt_studio_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:6e7c629ee93c6e4317f82161f9411511ac1cc397f08728b4a9dfd2817ecf067a"
+      "digest": "sha256:188a5216877e1959f0b969389a7bcca76fbcaf79d9dc0d830ae3f46e96aacdb0"
     },
     {
       "path": "packs/rumi_provider_adapters_pack.executables.v4.json",
@@ -1329,12 +1329,12 @@
     {
       "path": "packs/rumi_turn_runtime_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:a0db95d836199860c56b895847ff42ad37b577b49a9810ee804241d94c7246c0"
+      "digest": "sha256:76fba61948309203f3ffd09abd1632cbc731d297e21c649a1f857a6c8ec4e01b"
     },
     {
       "path": "packs/rumi_turn_runtime_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:af7606f0d4799a1ad9a4ac6d4ea3bb8afb833a6d1ce1202c809ed551fab9fd0c"
+      "digest": "sha256:911a819be804495b395046a23fc132a3f972a781ab5fc5be99c8971dfa54659e"
     },
     {
       "path": "packs/rumi_voice_mobile_pack.executables.v4.json",
@@ -1454,7 +1454,7 @@
     {
       "path": "defaults.profile.v4.json",
       "kind": "profile",
-      "digest": "sha256:9a80d4ca026b1819752bbfba2ab186ce31bfe9983e375a2c29811422606bfa70"
+      "digest": "sha256:b2939484b8675f2af5fb040213e1289ae1ad80a1c1dc3ed266e10403e9648588"
     }
   ]
 }

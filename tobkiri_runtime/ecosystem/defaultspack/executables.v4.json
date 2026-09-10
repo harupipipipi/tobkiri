@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:0d1092ed2b56d4ffeafe47b4c2c63887bbc6ba0fb7d60544ffe873d36e36ccc9",
+  "catalog_digest": "sha256:1e90f317951fda5f2557b12e3ec323704c7ffa4177772c65e0f1abd0ad6ca386",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:4aefbbd4247a31f06a8db716c627ab3de6b393132c510018e5a70c562eed65e9",
+  "source_identity": "sha256:d7cc4dd4f138da29d903a27836636666ef369fc188cb0c5164f60b2884c9fc80",
   "variants": [
     {
       "architecture": "any",
@@ -180,7 +180,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
+      "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
       "implementation_path": "runtime/saved_conversation.py",
       "materialization_mode": "on_demand",
       "operations": [

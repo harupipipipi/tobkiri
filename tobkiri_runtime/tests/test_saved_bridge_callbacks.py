@@ -13,6 +13,8 @@ from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationSto
 from tobkiri_host.continuation_chain import ChainIdentity
 from tobkiri_host.continuation_envelope import seal_continuation_intent
 from tobkiri_protocol.canonical import canonical_json, strict_loads
+from tobkiri_protocol.saved_context import PROMPT_TARGET
+from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 
 
 def _setup(tmp_path: Path):
@@ -21,7 +23,7 @@ def _setup(tmp_path: Path):
         {"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0
     )
     outer = SimpleNamespace(
-        context=SimpleNamespace(request_id="host-request"),
+        context=SimpleNamespace(request_id="host-request", profile_id="defaults"),
         payload={
             "request": {
                 "turn_id": "turn-1",
@@ -35,7 +37,7 @@ def _setup(tmp_path: Path):
 
     def require_targets(request, targets):
         assert request is outer
-        assert targets == REQUIRED_TARGETS
+        assert targets in (REQUIRED_TARGETS, (PROMPT_TARGET,))
 
     def dispatch(request, target, payload):
         assert request is outer
@@ -50,6 +52,13 @@ def _setup(tmp_path: Path):
             )
         elif target == READINESS:
             value = {"ready": True, "model_profile_id": "model-profile-1"}
+        elif target == PROMPT_TARGET:
+            value = {
+                "profile_id": "defaults",
+                "prompt": PromptStudioStore("defaults", user_data_root=tmp_path).get(
+                    payload["prompt_id"]
+                ),
+            }
         else:
             assert target == saved.TARGETS[2]
             value = {"status": "ok", "output": "Hi"}
@@ -101,26 +110,31 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
     ]
 
 
-@pytest.mark.parametrize("patch", [
-    {"conversation_kind": "coding"},
-    {"group_id": "group-1"},
-    {"metadata": {"workspace_id": "workspace-1"}},
-    {"metadata": {"groupId": "group-1"}},
-    {"metadata": {"workspaceId": "workspace-1"}},
-    {"metadata": {"workspaceRoot": "/workspace"}},
-    {"metadata": {"rootPath": "/workspace"}},
-    {"metadata": {"rumiDataPath": "/data"}},
-    {"metadata": {"rumi_dp_path": "/data"}},
-    {"metadata": {"workspace_root": "/workspace"}},
-    {"metadata": {"rumi_data_path": "/data"}},
-    {"metadata": {"mode": "coding"}},
-    {"metadata": {"shared_read_only": True}},
-    {"metadata": {"profile_id": "defaultspack.operations_company"}},
-    {"tags": ["mimo-coding-company"]},
-])
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"conversation_kind": "coding"},
+        {"group_id": "group-1"},
+        {"metadata": {"workspace_id": "workspace-1"}},
+        {"metadata": {"groupId": "group-1"}},
+        {"metadata": {"workspaceId": "workspace-1"}},
+        {"metadata": {"workspaceRoot": "/workspace"}},
+        {"metadata": {"rootPath": "/workspace"}},
+        {"metadata": {"rumiDataPath": "/data"}},
+        {"metadata": {"rumi_dp_path": "/data"}},
+        {"metadata": {"workspace_root": "/workspace"}},
+        {"metadata": {"rumi_data_path": "/data"}},
+        {"metadata": {"mode": "coding"}},
+        {"metadata": {"shared_read_only": True}},
+        {"metadata": {"profile_id": "defaultspack.operations_company"}},
+        {"tags": ["mimo-coding-company"]},
+    ],
+)
 @pytest.mark.parametrize("stage", ["preflight", "append"])
 def test_owned_special_context_is_rejected_before_user_append(
-    tmp_path: Path, patch: dict, stage: str,
+    tmp_path: Path,
+    patch: dict,
+    stage: str,
 ) -> None:
     store, outer, calls, callbacks = _setup(tmp_path)
     store.update("conversation-1", patch, expected_conversation_revision=1)
@@ -132,9 +146,13 @@ def test_owned_special_context_is_rejected_before_user_append(
         else:
             # A guest omitting the context check still cannot obtain a write.
             intent = saved.start(outer.payload["request"])
-            intent = saved.resume(intent["state"], {
-                "status": "ok", "value": {"conversation": store.get("conversation-1")},
-            })
+            intent = saved.resume(
+                intent["state"],
+                {
+                    "status": "ok",
+                    "value": {"conversation": store.get("conversation-1")},
+                },
+            )
             callbacks(outer, _frame(intent))
     assert store.path.read_bytes() == before
     assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
@@ -142,14 +160,20 @@ def test_owned_special_context_is_rejected_before_user_append(
 
 @pytest.mark.parametrize("logs", [{}, False, 0, "", None, []])
 def test_preflight_checks_owned_history_tool_logs_before_readiness(
-    tmp_path: Path, logs: object,
+    tmp_path: Path,
+    logs: object,
 ) -> None:
     """Only missing logs normalize to an empty transcript on the saved path."""
     store, outer, calls, callbacks = _setup(tmp_path)
     store.append_message(
         "conversation-1",
-        {"id": "prior-assistant", "role": "assistant", "content": "Earlier reply",
-         "status": "complete", "tool_logs": logs},
+        {
+            "id": "prior-assistant",
+            "role": "assistant",
+            "content": "Earlier reply",
+            "status": "complete",
+            "tool_logs": logs,
+        },
         expected_conversation_revision=1,
     )
     outer.payload["request"]["conversation_revision"] = 2
@@ -166,10 +190,15 @@ def test_preflight_checks_owned_history_tool_logs_before_readiness(
 
 def test_display_only_metadata_does_not_block_saved_preflight(tmp_path: Path) -> None:
     store, outer, calls, callbacks = _setup(tmp_path)
-    store.update("conversation-1", {
-        "title": "My chat", "tags": ["research"],
-        "metadata": {"icon": "chat", "mode": "chat", "shared_read_only": False},
-    }, expected_conversation_revision=1)
+    store.update(
+        "conversation-1",
+        {
+            "title": "My chat",
+            "tags": ["research"],
+            "metadata": {"icon": "chat", "mode": "chat", "shared_read_only": False},
+        },
+        expected_conversation_revision=1,
+    )
     outer.payload["request"]["conversation_revision"] = 2
     before = store.path.read_bytes()
     callbacks.preflight(outer)
@@ -183,37 +212,56 @@ def test_saved_text_blocks_use_plain_readiness_without_changing_history(
     """The readiness contract gets text while the owner retains exact blocks."""
     store, outer, calls, callbacks = _setup(tmp_path)
     blocks = [{"type": "text", "text": "First "}, {"type": "text", "text": "reply"}]
-    store.append_message("conversation-1", {
-        "id": "prior-assistant", "role": "assistant", "content": blocks,
-    }, expected_conversation_revision=1)
+    store.append_message(
+        "conversation-1",
+        {
+            "id": "prior-assistant",
+            "role": "assistant",
+            "content": blocks,
+        },
+        expected_conversation_revision=1,
+    )
     outer.payload["request"]["conversation_revision"] = 2
     before = store.path.read_bytes()
     callbacks.preflight(outer)
     assert store.path.read_bytes() == before
-    assert calls[-1] == (READINESS, {
-        "model_profile_id": "model-profile-1",
-        "messages": [
-            {"role": "assistant", "content": "First reply"},
-            {"role": "user", "content": "Hello"},
-        ],
-    })
+    assert calls[-1] == (
+        READINESS,
+        {
+            "model_profile_id": "model-profile-1",
+            "messages": [
+                {"role": "assistant", "content": "First reply"},
+                {"role": "user", "content": "Hello"},
+            ],
+        },
+    )
 
 
-@pytest.mark.parametrize("content", [
-    [{"type": "image", "url": "https://example.invalid/private.png"}],
-    [{"type": "text", "text": "visible"}, {"type": "tool_result", "content": "hidden"}],
-    [{"type": "text", "text": "visible", "attachment_id": "unresolved"}],
-    [{"type": "text", "text": {"url": "https://example.invalid"}}],
-    ["untyped text"],
-])
+@pytest.mark.parametrize(
+    "content",
+    [
+        [{"type": "image", "url": "https://example.invalid/private.png"}],
+        [{"type": "text", "text": "visible"}, {"type": "tool_result", "content": "hidden"}],
+        [{"type": "text", "text": "visible", "attachment_id": "unresolved"}],
+        [{"type": "text", "text": {"url": "https://example.invalid"}}],
+        ["untyped text"],
+    ],
+)
 def test_saved_text_blocks_do_not_admit_unresolved_content(
-    tmp_path: Path, content: list,
+    tmp_path: Path,
+    content: list,
 ) -> None:
     """Reject mixed/unknown blocks before a readiness probe or user write."""
     store, outer, calls, callbacks = _setup(tmp_path)
-    store.append_message("conversation-1", {
-        "id": "prior-assistant", "role": "assistant", "content": content,
-    }, expected_conversation_revision=1)
+    store.append_message(
+        "conversation-1",
+        {
+            "id": "prior-assistant",
+            "role": "assistant",
+            "content": content,
+        },
+        expected_conversation_revision=1,
+    )
     outer.payload["request"]["conversation_revision"] = 2
     before = store.path.read_bytes()
     with pytest.raises(AuthorityDenied, match="additional content resolution"):
@@ -258,7 +306,7 @@ def test_preflight_failure_cannot_persist_user_input(tmp_path: Path, change: str
     with pytest.raises(AuthorityDenied):
         callbacks.preflight(outer)
     assert store.path.read_bytes() == before
-    assert all(target in (saved.TARGETS[0], READINESS) for target, _ in calls)
+    assert all(target in (saved.TARGETS[0], READINESS, PROMPT_TARGET) for target, _ in calls)
 
 
 @pytest.mark.parametrize(
@@ -357,8 +405,10 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     # This isolated negative fixture controls its own saved edges. Ordinary
     # Defaults now has coordinator edges, verified separately below.
     profile["requested_edges"] = [
-        item for item in profile["requested_edges"]
-        if item["caller_function_id"] not in {
+        item
+        for item in profile["requested_edges"]
+        if item["caller_function_id"]
+        not in {
             saved_function,
             "rumi_tool_broker_pack.tool-broker.invoke",
             "rumi_tool_local_executor_pack.tool-executor.local",
@@ -503,12 +553,15 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
 
 @pytest.mark.parametrize("lost_reply", [None, "guest", "owner"])
 def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_reply: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lost_reply: str | None,
 ) -> None:
     """Normal Defaults/Broker/owners; VM, readiness and AI are explicit adapters."""
     from core_runtime.authority.v4 import AuthorityStore, FunctionPrincipal
     from core_runtime.bootstrap.profile_capture import (
-        capture_default_profile, prepare_default_profile_confirmation,
+        capture_default_profile,
+        prepare_default_profile_confirmation,
         profile_capture_scope,
     )
     from core_runtime.bootstrap.production_v4 import capture_production_dispatch
@@ -525,8 +578,11 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
     active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    binding = next(item for item in active.resolved.plan["bindings"]
-                   if item["contract_id"] == "conversation.saved-turn.v1")
+    binding = next(
+        item
+        for item in active.resolved.plan["bindings"]
+        if item["contract_id"] == "conversation.saved-turn.v1"
+    )
     principal = FunctionPrincipal.from_dict(binding["function_principal"])
     backend = _CapturedBackend(_digest("normal-saved-coordinator"))
     backend.target_executable_digest = principal.function_implementation_digest
@@ -539,9 +595,13 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         preflight(envelope)
         intent = saved.start(envelope.payload["request"])
         for _ in range(4):
-            intent = saved.resume(intent["state"], callback(
-                envelope, _frame(intent, envelope.context.request_id),
-            ))
+            intent = saved.resume(
+                intent["state"],
+                callback(
+                    envelope,
+                    _frame(intent, envelope.context.request_id),
+                ),
+            )
         if lost_reply == "guest":
             raise RuntimeError("guest reply lost after final owner commit")
         return ProviderOutcome(intent)
@@ -558,7 +618,8 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
             return {"status": "ok", "output": "Hi"}
         result = original(self, contract_id, operation_id, payload, **kwargs)
         if (
-            lost_reply == "owner" and (contract_id, operation_id) == saved.TARGETS[3]
+            lost_reply == "owner"
+            and (contract_id, operation_id) == saved.TARGETS[3]
             and payload.get("operation") == "append_saved"
             and payload["message"]["role"] == "assistant"
         ):
@@ -567,7 +628,8 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     session = capture_production_dispatch(
-        active, bundle_root=_bundle_root(),
+        active,
+        bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
         authority_store=AuthorityStore(user_data / "authority/v4.sqlite3"),
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
@@ -576,25 +638,33 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         target_backend_digests={principal.principal_id: backend.status.backend_digest},
     )
     store = ConversationStore("defaults", user_data_root=user_data)
-    store.create({"id": "conversation-1", "model_reference": "model-profile-1"},
-                 expected_revision=0)
-    initial = {"_session_id": "session.panel.saved-normal", "request": {
-        "turn_id": "turn-1", "conversation_id": "conversation-1",
-        "conversation_revision": 1, "content": "Hello",
-    }}
+    store.create(
+        {"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0
+    )
+    initial = {
+        "_session_id": "session.panel.saved-normal",
+        "request": {
+            "turn_id": "turn-1",
+            "conversation_id": "conversation-1",
+            "conversation_revision": 1,
+            "content": "Hello",
+        },
+    }
     try:
         # Match the production HTTP boundary: each request has its own capture
         # scope, propagated by Broker to nested owner calls. Never share one
         # between the initial submission and its duplicate or extend deadlines.
         with profile_capture_scope():
-            result = session.invoke("tobkiri.action.turn.saved.v1",
-                                    "rumi_turn_runtime_pack.turn-saved", initial)
-        assert result["status"] == (
-            "reconciliation_required" if lost_reply else "completed"
-        ), result
+            result = session.invoke(
+                "tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved", initial
+            )
+        assert result["status"] == ("reconciliation_required" if lost_reply else "completed"), (
+            result
+        )
         with profile_capture_scope():
-            repeated = session.invoke("tobkiri.action.turn.saved.v1",
-                                      "rumi_turn_runtime_pack.turn-saved", initial)
+            repeated = session.invoke(
+                "tobkiri.action.turn.saved.v1", "rumi_turn_runtime_pack.turn-saved", initial
+            )
         if lost_reply:
             assert repeated["status"] == "completed", repeated
             assert repeated["turn"]["result_reference"]["conversation_revision"] == 3
@@ -602,7 +672,8 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
             assert repeated == {"status": "existing", "turn": result["turn"]}
         assert len(guest_requests) == len(ai_calls) == 1
         assert [item["content"] for item in store.get("conversation-1")["messages"]] == [
-            "Hello", "Hi",
+            "Hello",
+            "Hi",
         ]
     finally:
         session.close()

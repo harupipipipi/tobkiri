@@ -13,15 +13,21 @@ import pytest
 
 from core_runtime.global_contract_dispatch import GlobalContractClient
 from ecosystem.defaultspack.runtime import saved_conversation as application
+from ecosystem.rumi_prompt_studio_pack.runtime.service import PromptStudioService
+from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
-    RECEIPT_CONTRACT, RECEIPT_OPERATION, SAVED_CONTRACTS, execute_saved_turn,
+    RECEIPT_CONTRACT,
+    RECEIPT_OPERATION,
+    SAVED_CONTRACTS,
+    execute_saved_turn,
 )
 from tests.test_saved_conversation_steps import _owner, _setup
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT as CONTRACT,
     SAVED_CONVERSATION_OPERATION as OPERATION,
 )
+from tobkiri_protocol.saved_context import PROMPT_TARGET
 
 
 class _Session:
@@ -30,6 +36,7 @@ class _Session:
 
     def __init__(self, root: Path) -> None:
         self.conversations, request = _setup(root)
+        self.prompts = PromptStudioStore("defaults", user_data_root=root)
         self.initial = {"request": request}
         self.calls = 0
         self.ai_calls = 0
@@ -39,15 +46,21 @@ class _Session:
         return ()
 
     def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+        if (contract_id, operation) == PROMPT_TARGET:
+            assert payload.get("operation") == "get"
+            return PromptStudioService._get(self.prompts, payload)
         if (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION):
             if payload.get("operation") == "get":
                 assert payload == {
-                    "profile_id": "defaults", "operation": "get",
+                    "profile_id": "defaults",
+                    "operation": "get",
                     "conversation_id": self.initial["request"]["conversation_id"],
                 }
                 return {"conversation": self.conversations.get(payload["conversation_id"])}
             assert payload == {
-                "profile_id": "defaults", "operation": "saved_receipt", "turn_id": "turn-1",
+                "profile_id": "defaults",
+                "operation": "saved_receipt",
+                "turn_id": "turn-1",
             }
             return {"receipt": self.conversations.saved_receipt(payload["turn_id"])}
         assert (contract_id, operation) == (CONTRACT, OPERATION)
@@ -59,7 +72,8 @@ class _Session:
                 self.ai_calls += 1
             outcome = (
                 {"status": "ok", "value": {"status": "ok", "output": "Hi"}}
-                if hop == 2 else _owner(self.conversations, intent, saved_input=self.initial)
+                if hop == 2
+                else _owner(self.conversations, intent, saved_input=self.initial)
             )
             intent = application.resume(intent["state"], outcome)
         return self.transform(intent)
@@ -67,7 +81,8 @@ class _Session:
 
 def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None, **options) -> dict:
     client = GlobalContractClient(
-        session=session, allowed_contract_ids=SAVED_CONTRACTS,
+        session=session,
+        allowed_contract_ids=SAVED_CONTRACTS,
         consumer_pack_id="rumi_turn_runtime_pack",
     )
     return execute_saved_turn(store, session.initial, client=client, guard=guard, **options)
@@ -77,10 +92,56 @@ def test_unresolved_context_rejects_before_claim_or_execution(tmp_path: Path) ->
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     conversation_id = session.initial["request"]["conversation_id"]
-    session.conversations.update(conversation_id, {"metadata": {"workspaceId": "work"}},
-                                 expected_conversation_revision=1)
+    session.conversations.update(
+        conversation_id, {"metadata": {"workspaceId": "work"}}, expected_conversation_revision=1
+    )
     before = session.conversations.path.read_bytes()
     with pytest.raises(ValueError, match="context resolution"):
+        _run(store, session)
+    assert not store.path.exists()
+    assert session.calls == session.ai_calls == 0
+    assert session.conversations.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("case", ["missing", "disabled", "foreign_profile"])
+def test_unavailable_prompt_rejects_before_claim_or_execution(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    session.conversations.update(
+        "conversation-1",
+        {"system_prompt_id": "system"},
+        expected_conversation_revision=1,
+    )
+    session.initial["request"]["conversation_revision"] = 2
+    if case != "missing":
+        record = session.prompts.save(
+            "system",
+            "Answer briefly.",
+            expected_body_hash="sha256:e3b0c44298fc1c149afbf4c8996fb924"
+            "27ae41e4649b934ca495991b7852b855",
+            enabled=case != "disabled",
+        )["prompt"]
+        if case == "foreign_profile":
+            original = session.invoke
+
+            def foreign(
+                contract_id: str,
+                operation: str,
+                payload: dict,
+                **kwargs: Any,
+            ) -> dict:
+                value = original(contract_id, operation, payload, **kwargs)
+                if (contract_id, operation) == PROMPT_TARGET:
+                    return {**value, "profile_id": "other"}
+                return value
+
+            session.invoke = foreign  # type: ignore[method-assign]
+        assert record["prompt_id"] == "system"
+    before = session.conversations.path.read_bytes()
+    with pytest.raises((KeyError, ValueError), match="prompt not found|unavailable"):
         _run(store, session)
     assert not store.path.exists()
     assert session.calls == session.ai_calls == 0
@@ -91,9 +152,13 @@ def test_unresolved_context_rejects_before_claim_or_execution(tmp_path: Path) ->
 def test_owned_prerequisites_reject_before_claim(tmp_path: Path, case: str) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
-    patch = {"title": "changed"} if case == "stale_revision" else {
-        "model_reference": None if case == "missing_model" else "   ",
-    }
+    patch = (
+        {"title": "changed"}
+        if case == "stale_revision"
+        else {
+            "model_reference": None if case == "missing_model" else "   ",
+        }
+    )
     session.conversations.update("conversation-1", patch, expected_conversation_revision=1)
     if case != "stale_revision":
         session.initial["request"]["conversation_revision"] = 2
@@ -110,8 +175,9 @@ def test_completed_turn_repeats_after_owned_context_changes(tmp_path: Path) -> N
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     assert _run(store, session)["status"] == "completed"
     conversation_id = session.initial["request"]["conversation_id"]
-    session.conversations.update(conversation_id, {"metadata": {"workspaceId": "work"}},
-                                 expected_conversation_revision=3)
+    session.conversations.update(
+        conversation_id, {"metadata": {"workspaceId": "work"}}, expected_conversation_revision=3
+    )
     assert _run(store, session)["status"] == "existing"
     assert session.calls == session.ai_calls == 1
 
@@ -201,13 +267,23 @@ def test_lost_result_never_replays_committed_messages(tmp_path: Path) -> None:
     assert session.calls == 1
 
 
-@pytest.mark.parametrize("field,value", [
-    ("status", "error"), ("turn_id", "other"), ("conversation_id", "other"),
-    ("conversation_revision", True), ("conversation_revision", 1),
-    ("user_message_id", "other"), ("message", {}), ("extra", "unrecognized"),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("status", "error"),
+        ("turn_id", "other"),
+        ("conversation_id", "other"),
+        ("conversation_revision", True),
+        ("conversation_revision", 1),
+        ("user_message_id", "other"),
+        ("message", {}),
+        ("extra", "unrecognized"),
+    ],
+)
 def test_invalid_acknowledgement_never_marks_completed(
-    tmp_path: Path, field: str, value: Any,
+    tmp_path: Path,
+    field: str,
+    value: Any,
 ) -> None:
     session = _Session(tmp_path)
     session.transform = lambda result: {**result, field: value}
@@ -223,7 +299,8 @@ def test_invalid_acknowledgement_never_marks_completed(
 
 @pytest.mark.parametrize("guard_call", [1, 2, 3, 4])
 def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
-    tmp_path: Path, guard_call: int,
+    tmp_path: Path,
+    guard_call: int,
 ) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
@@ -246,7 +323,9 @@ def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
     assert session.calls == (1 if guard_call == 4 else 0)
 
 
-def test_duplicate_request_can_reconcile_commit_without_reexecuting_live_turn(tmp_path: Path) -> None:
+def test_duplicate_request_can_reconcile_commit_without_reexecuting_live_turn(
+    tmp_path: Path,
+) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     entered, release = Event(), Event()
@@ -306,7 +385,8 @@ def test_mismatched_client_is_rejected_before_claim(tmp_path: Path, change: str)
 
 
 def test_assistant_commit_before_owner_reply_is_recovered_after_reopen(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
@@ -332,7 +412,8 @@ def test_assistant_commit_before_owner_reply_is_recovered_after_reopen(
 
 @pytest.mark.parametrize("change", ["edit", "delete_message", "replace", "delete_conversation"])
 def test_conversation_changes_cannot_rewrite_or_resurrect_saved_completion(
-    tmp_path: Path, change: str,
+    tmp_path: Path,
+    change: str,
 ) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
@@ -343,12 +424,16 @@ def test_conversation_changes_cannot_rewrite_or_resurrect_saved_completion(
         session.conversations.delete("conversation-1", expected_conversation_revision=3)
     elif change == "replace":
         session.conversations.replace_messages(
-            "conversation-1", [], expected_conversation_revision=3,
+            "conversation-1",
+            [],
+            expected_conversation_revision=3,
         )
     else:
         session.conversations.mutate_message(
-            "conversation-1", before["assistant_message_id"],
-            expected_conversation_revision=3, delete=change == "delete_message",
+            "conversation-1",
+            before["assistant_message_id"],
+            expected_conversation_revision=3,
+            delete=change == "delete_message",
             patch={"content": "edited after completion", "metadata": {"turn_id": "forged"}},
         )
     changed_bytes = session.conversations.path.read_bytes()
@@ -380,7 +465,8 @@ def _pause_after_owner_commit(root: Path, message_count: int, pipe: Connection) 
 
 @pytest.mark.parametrize("message_count", [1, 2])
 def test_process_death_after_owner_commit_reconciles_without_reexecution(
-    tmp_path: Path, message_count: int,
+    tmp_path: Path,
+    message_count: int,
 ) -> None:
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from ecosystem.rumi_turn_runtime_pack.runtime.saved import reconcile_saved_turn
@@ -388,7 +474,8 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
     context = multiprocessing.get_context("spawn")
     parent, child = context.Pipe()
     process = context.Process(
-        target=_pause_after_owner_commit, args=(tmp_path, message_count, child),
+        target=_pause_after_owner_commit,
+        args=(tmp_path, message_count, child),
     )
     process.start()
     child.close()
@@ -422,12 +509,15 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
         def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
             assert (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION)
             assert payload == {
-                "profile_id": "defaults", "operation": "saved_receipt", "turn_id": "turn-1",
+                "profile_id": "defaults",
+                "operation": "saved_receipt",
+                "turn_id": "turn-1",
             }
             return {"receipt": conversations.saved_receipt("turn-1")}
 
     client = GlobalContractClient(
-        session=Reader(), allowed_contract_ids=frozenset({RECEIPT_CONTRACT}),
+        session=Reader(),
+        allowed_contract_ids=frozenset({RECEIPT_CONTRACT}),
         consumer_pack_id="rumi_turn_runtime_pack",
     )
     for _ in range(2):
@@ -435,9 +525,12 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
         if message_count == 2:
             assert result["turn"]["status"] == "completed"
             assert result["turn"]["revision"] == before["revision"] + 1
-            assert result["turn"]["result_reference"] == conversations.saved_receipt(
-                "turn-1",
-            )["result_reference"]
+            assert (
+                result["turn"]["result_reference"]
+                == conversations.saved_receipt(
+                    "turn-1",
+                )["result_reference"]
+            )
         else:
             assert result == {"status": "existing", "turn": before}
         assert conversations.path.read_bytes() == owner_bytes
@@ -445,13 +538,21 @@ def test_process_death_after_owner_commit_reconciles_without_reexecution(
     assert [message["role"] for message in messages] == ["user", "assistant"][:message_count]
 
 
-@pytest.mark.parametrize("field,value", [
-    ("input_digest", "sha256:" + "0" * 64), ("turn_id", "other"),
-    ("initial_revision", True), ("user_revision", True),
-    ("result_reference", {"conversation_id": "other"}),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("input_digest", "sha256:" + "0" * 64),
+        ("turn_id", "other"),
+        ("initial_revision", True),
+        ("user_revision", True),
+        ("result_reference", {"conversation_id": "other"}),
+    ],
+)
 def test_substituted_receipt_cannot_complete_a_waiting_turn(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: Any,
 ) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)

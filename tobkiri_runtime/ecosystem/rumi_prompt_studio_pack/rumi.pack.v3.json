@@ -267,9 +267,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:db65fb49dd1629256e2bcfeef1f11869d2b262e830639db29fc36c4850f0d4d6",
+            "artifact_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:d93df22af6a82fccf3ead78755e92cfc34438117217aa58c70898c1fa51853e3"
+            "source_identity": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89"
           },
           "declarative_only": false,
           "executable_code": true,
@@ -299,7 +299,7 @@
         "pack_identity": "rumi:ecosystem/rumi_prompt_studio_pack",
         "provenance": {
           "build_identity": "rumi_prompt_studio_pack:1.0.0",
-          "content_hash": "sha256:17c9bff8d68b9f0173038be3c43219019141973078bc277f8c5409bcb591e9aa",
+          "content_hash": "sha256:8f9837908d117a77340850a403931c354fa0b6e55a9fae37d03962d4844af6bf",
           "signature": null,
           "trust_class": "local"
         },
@@ -346,7 +346,7 @@
       "owner": "rumi_prompt_studio_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:d93df22af6a82fccf3ead78755e92cfc34438117217aa58c70898c1fa51853e3"
+      "source_identity": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89"
     }
   },
   "migration": {
@@ -404,7 +404,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_prompt_studio_pack:1.0.0",
-    "content_hash": "sha256:17c9bff8d68b9f0173038be3c43219019141973078bc277f8c5409bcb591e9aa",
+    "content_hash": "sha256:8f9837908d117a77340850a403931c354fa0b6e55a9fae37d03962d4844af6bf",
     "signature": null,
     "trust_class": "local"
   },

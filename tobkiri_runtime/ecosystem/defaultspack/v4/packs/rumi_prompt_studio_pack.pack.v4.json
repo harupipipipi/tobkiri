@@ -6,7 +6,7 @@
       "path": "catalog/prompt_studio_prompt_library.yaml"
     },
     {
-      "digest": "sha256:d85570733107622bcd1860b4a79bcddee48cdb0873b02db2fd26ede85adaf98d",
+      "digest": "sha256:6947d332298315a6b2a57027a65f13cd68e33f9518755417084ada6e7ed97948",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -31,12 +31,12 @@
       "path": "runtime/resource_host.py"
     },
     {
-      "digest": "sha256:d68139419887b4f96aa98bd2c99ccd70b57407b438c4c8e3498bbf5d10805a06",
+      "digest": "sha256:af96560aebb6abb1bbc422281ddbe9e9db47c1b42313b346612c488cb15fe751",
       "kind": "executable",
       "path": "runtime/service.py"
     },
     {
-      "digest": "sha256:9181326eea111b2129088f2c8167b2a4177f75c916ffb960f8e4be3e3f385e08",
+      "digest": "sha256:654ae9cee658f80e35b8725db4175151d276b19073e2a7ab0f50a7cb2abfba1a",
       "kind": "executable",
       "path": "runtime/store.py"
     },
@@ -146,8 +146,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:bea7e42ff1e36c1860ec5680f9b9ed41d5a96ffe7a00185bc181c4cca0842b09",
-    "artifact_set_digest": "sha256:63a1c3523106738e7e6ccf8b64798b41df3d98d2625666f325668718ad18fce8",
+    "source_identity": "sha256:1eceeddcdf5347c6ea1165cccb51feba06725fc88cb7b10594d2681760cbf970",
+    "artifact_set_digest": "sha256:fa449896b45945f4049ec283911f373d41bfd8260ea5d32f78b0d6adf8a36ce8",
     "contract_catalog_digest": "sha256:fa63f7cbda00175ab45269bb3a99bdd2d1f0fa3d515d9d8becc7e57f0d0f1a33"
   },
   "migration": {
@@ -207,7 +207,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:db65fb49dd1629256e2bcfeef1f11869d2b262e830639db29fc36c4850f0d4d6",
+    "artifact_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615",
     "display_name": "Rumi Prompt Studio",
     "id": "rumi_prompt_studio_pack",
     "kind": "host_extension",
@@ -218,15 +218,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_prompt_studio_pack/pack.v4.json",
-    "source_digest": "sha256:bea7e42ff1e36c1860ec5680f9b9ed41d5a96ffe7a00185bc181c4cca0842b09",
+    "source_digest": "sha256:1eceeddcdf5347c6ea1165cccb51feba06725fc88cb7b10594d2681760cbf970",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:3526da9d16a32cfe4f23268ecb873ee06aefa4f0939478fad1ee50ea6507b9ad",
+    "content_root_digest": "sha256:2be06fa7cb79e587f0f5356b021ca82649654814475518250f3e5ffc9e3b93ba",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:9772d7905a96584069f8b75cb733c5809de72a487bdbcaae7d3f5d3a8dc9f203",
+    "input_inventory_digest": "sha256:0d1ed471f695973decb509e8729473554156dfd619acfe13fcb2daa6b323666a",
     "normative": true,
     "evidence": [
       {
@@ -237,7 +237,7 @@
       {
         "path": "ecosystem/rumi_prompt_studio_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:bea7e42ff1e36c1860ec5680f9b9ed41d5a96ffe7a00185bc181c4cca0842b09"
+        "digest": "sha256:1eceeddcdf5347c6ea1165cccb51feba06725fc88cb7b10594d2681760cbf970"
       }
     ]
   },

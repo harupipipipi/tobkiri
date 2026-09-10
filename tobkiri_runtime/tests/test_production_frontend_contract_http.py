@@ -255,25 +255,34 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
         assert isinstance(request, RequestEnvelope)
         assert request.target_domain.value == self._target_domain_id
         assert (request.contract_id, request.operation_id) == (
-            self._CONTRACT_ID, self._OPERATION_ID,
+            self._CONTRACT_ID,
+            self._OPERATION_ID,
         )
         self._saved_preflight(request)
         payload = {"request": dict(request.payload["request"])}
         request_id, domain = request.context.request_id, request.target_domain.value
-        binding = canonical_digest({"request_id": request_id, "domain": domain,
-                                    "principal": request.target_principal.value})
+        binding = canonical_digest(
+            {
+                "request_id": request_id,
+                "domain": domain,
+                "principal": request.target_principal.value,
+            }
+        )
         transport = {
-            "request_id": request_id, "target_domain": domain,
+            "request_id": request_id,
+            "target_domain": domain,
             "guest_artifact_identity": request.target_principal.value,
             "request_digest": canonical_digest(payload),
-            "deadline_monotonic": str(request.deadline_monotonic), "payload": payload,
+            "deadline_monotonic": str(request.deadline_monotonic),
+            "payload": payload,
         }
         host = SavedHostExchange(
             ChainIdentity(domain, request_id, binding, request.deadline_monotonic),
             request_digest=transport["request_digest"],
             artifact_identity=transport["guest_artifact_identity"],
             deadline_text=transport["deadline_monotonic"],
-            chains=ContinuationChains(max_hops=20), request=payload["request"],
+            chains=ContinuationChains(max_hops=20),
+            request=payload["request"],
         )
         guest = SavedGuestTurns()
 
@@ -479,22 +488,27 @@ def command_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Keep production Broker checks while supplying the sealed presentation ABI."""
     yield from _captured_production_server(
-        tmp_path, monkeypatch,
+        tmp_path,
+        monkeypatch,
         packvm_backends=BackendRegistry((_PresentationPackVmBackend(),)),
     )
 
 
 @pytest.mark.parametrize(
-    "completion", ["normal", "auto", "calculator", "reply_lost", "stop_after_commit"],
+    "completion",
+    ["normal", "auto", "calculator", "system_prompt", "reply_lost", "stop_after_commit"],
 )
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, completion: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    completion: str,
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
     from core_runtime.bootstrap.saved_bridge import DEFINITION, READINESS
     from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
+    from tobkiri_protocol.saved_context import PROMPT_TARGET
 
     original = V4DispatchSession.invoke
     ai_calls = []
@@ -502,9 +516,15 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     lose_owner_reply = completion in {"reply_lost", "stop_after_commit"}
     selected_tools = []
     tool_results = []
+    prompt_reads = []
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
+            if completion == "system_prompt":
+                assert payload["messages"][0] == {
+                    "role": "system",
+                    "content": "Answer in Japanese.",
+                }
             if completion == "calculator":
                 assert payload["tool_calling"] is True
             else:
@@ -515,20 +535,30 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             if completion == "calculator":
                 assert [item["function"]["name"] for item in payload["tools"]] == ["calculator"]
                 if len(ai_calls) == 1:
-                    return {"status": "ok", "output": "", "tool_intents": [{
-                        "operation": "calculator", "intent_id": "calc-1",
-                        "arguments": {"expression": "6*7"},
-                    }]}
+                    return {
+                        "status": "ok",
+                        "output": "",
+                        "tool_intents": [
+                            {
+                                "operation": "calculator",
+                                "intent_id": "calc-1",
+                                "arguments": {"expression": "6*7"},
+                            }
+                        ],
+                    }
                 assert payload["messages"][-1]["role"] == "tool"
                 assert "Calculated: 6*7 = 42" in payload["messages"][-1]["content"]
             return {"status": "ok", "output": "Hi"}
         result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (contract_id, operation_id) == PROMPT_TARGET:
+            prompt_reads.append(result)
         if (contract_id, operation_id) == DEFINITION and payload.get("operation") == "select":
             selected_tools.append(result)
         if contract_id == "tobkiri.service.tool.invoke.v1":
             tool_results.append(result)
         if (
-            lose_owner_reply and (contract_id, operation_id) == TARGETS[3]
+            lose_owner_reply
+            and (contract_id, operation_id) == TARGETS[3]
             and payload.get("operation") == "append_saved"
             and payload["message"]["role"] == "assistant"
         ):
@@ -536,7 +566,9 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 # The owner has committed, but its reply has not reached the
                 # coordinator. Stop must not erase that durable outcome.
                 stop_status, stopped, _ = _request(
-                    server, "POST", _contract("POST", "/api/chat/turn/stop"),
+                    server,
+                    "POST",
+                    _contract("POST", "/api/chat/turn/stop"),
                     body={"turn_id": "turn-1"},
                     headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
                 )
@@ -546,32 +578,58 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     servers = _captured_production_server(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((
-            _SavedToolPackVmBackend() if completion in {"auto", "calculator"} else _SavedPackVmBackend(),
-        )),
+        tmp_path,
+        monkeypatch,
+        packvm_backends=BackendRegistry(
+            (
+                _SavedToolPackVmBackend()
+                if completion in {"auto", "calculator"}
+                else _SavedPackVmBackend(),
+            )
+        ),
     )
     server, _session, _authority = next(servers)
     try:
         store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
-        store.create({"id": "conversation-1", "model_reference": "model-profile-1"},
-                     expected_revision=0)
+        conversation = {"id": "conversation-1", "model_reference": "model-profile-1"}
+        if completion == "system_prompt":
+            import hashlib
+            from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
+
+            PromptStudioStore("defaults", user_data_root=tmp_path / "user-data").save(
+                "system",
+                "Answer in Japanese.",
+                expected_body_hash="sha256:" + hashlib.sha256(b"").hexdigest(),
+            )
+            conversation["system_prompt_id"] = "system"
+        store.create(conversation, expected_revision=0)
         before = store.path.read_bytes()
         route = _contract("POST", "/api/chat/turn")
-        body = {"request": {"turn_id": "turn-1", "conversation_id": "conversation-1",
-                            "conversation_revision": 1, "content": "Hello"}}
+        body = {
+            "request": {
+                "turn_id": "turn-1",
+                "conversation_id": "conversation-1",
+                "conversation_revision": 1,
+                "content": "Hello",
+            }
+        }
         if completion in {"auto", "calculator"}:
             body["request"]["tool_selection"] = {
-                "mode": "auto", "include": [],
+                "mode": "auto",
+                "include": [],
                 "exclude": ["calculator"] if completion == "auto" else [],
-                "scope": "turn", "must_use": False,
+                "scope": "turn",
+                "must_use": False,
             }
         status, payload, _ = _request(server, "POST", route, body=body)
         assert status in {401, 403}, payload
         cookie, csrf, origin = _authenticate(server)
         headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
         for invalid in (
-            {**body, "approved": True}, {**body, "profile_id": "other"},
-            {**body, "state": {}}, {"request": {**body["request"], "outcome": {}}},
+            {**body, "approved": True},
+            {**body, "profile_id": "other"},
+            {**body, "state": {}},
+            {"request": {**body["request"], "outcome": {}}},
             {"request": {**body["request"], "content": "あ" * 22000}},
             {"request": {**body["request"], "conversation_revision": True}},
         ):
@@ -585,16 +643,25 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         for invalid in (
             {"turn_id": "turn-1", "approved": True},
             {"turn_id": "turn-1", "profile_id": "other"},
-            {"turn_id": "turn-1", "result_reference": {}}, body,
+            {"turn_id": "turn-1", "result_reference": {}},
+            body,
         ):
             headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
             rejected_status, rejected, _ = _request(
-                server, "POST", reconcile_route, body=invalid, headers=headers,
+                server,
+                "POST",
+                reconcile_route,
+                body=invalid,
+                headers=headers,
             )
             assert rejected_status == 400, rejected
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         missing_status, _, _ = _request(
-            server, "POST", reconcile_route, body={"turn_id": "turn-1"}, headers=headers,
+            server,
+            "POST",
+            reconcile_route,
+            body={"turn_id": "turn-1"},
+            headers=headers,
         )
         assert missing_status != 200
         assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
@@ -606,7 +673,9 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             stop_status, stopped = stop_receipts[0]
             assert stop_status == 200, stopped
             assert stopped["data"] == {
-                "status": "cancellation_requested", "turn_id": "turn-1", "stopped": False,
+                "status": "cancellation_requested",
+                "turn_id": "turn-1",
+                "stopped": False,
             }
         else:
             assert status == 200, payload
@@ -615,8 +684,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             ), payload
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, repeated, _ = _request(
-            server, "POST", reconcile_route if lose_owner_reply else route,
-            body={"turn_id": "turn-1"} if lose_owner_reply else body, headers=headers,
+            server,
+            "POST",
+            reconcile_route if lose_owner_reply else route,
+            body={"turn_id": "turn-1"} if lose_owner_reply else body,
+            headers=headers,
         )
         assert status == 200, repeated
         if lose_owner_reply:
@@ -627,6 +699,13 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         reference = completed_turn["result_reference"]
         assert reference["conversation_revision"] == 3
         assert len(ai_calls) == (2 if completion == "calculator" else 1)
+        if completion == "system_prompt":
+            assert len(prompt_reads) >= 4
+            assert ai_calls[0]["messages"] == [
+                {"role": "system", "content": "Answer in Japanese."},
+                {"role": "user", "content": "Hello"},
+            ]
+            assert "system_prompt_digest" not in ai_calls[0]
         if completion == "calculator":
             assert len(tool_results) == 1
             assert tool_results[0]["tool_id"] == "calculator"
@@ -637,17 +716,22 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             assert "tools" not in ai_calls[0]
         if completion == "auto":
             assert selected_tools == [{"tools": [], "definitions": {}}] * 3
-        assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]
+        assert [message["content"] for message in store.get("conversation-1")["messages"]] == [
+            "Hello",
+            "Hi",
+        ]
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, snapshot, _ = _request(
-            server, "GET",
+            server,
+            "GET",
             _contract("GET", "/api/chat/conversation") + "?conversation_id=conversation-1",
             headers=headers,
         )
         assert status == 200, snapshot
         assert snapshot["data"]["conversation_revision"] == 3
         assert [message["id"] for message in snapshot["data"]["messages"]] == [
-            reference["user_message_id"], reference["assistant_message_id"],
+            reference["user_message_id"],
+            reference["assistant_message_id"],
         ]
         assert all(
             message["conversation_id"] == "conversation-1"
@@ -659,13 +743,17 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         for query in ("turn_id=turn-1&profile_id=other", "turn_id=turn-1&operation=begin_saved"):
             headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
             status, rejected, _ = _request(
-                server, "GET", _contract("GET", "/api/chat/turn") + "?" + query,
+                server,
+                "GET",
+                _contract("GET", "/api/chat/turn") + "?" + query,
                 headers=headers,
             )
             assert status == 400, rejected
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, observed, _ = _request(
-            server, "GET", _contract("GET", "/api/chat/turn") + "?turn_id=turn-1",
+            server,
+            "GET",
+            _contract("GET", "/api/chat/turn") + "?turn_id=turn-1",
             headers=headers,
         )
         assert status == 200, observed
@@ -674,8 +762,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         conversation_before = store.path.read_bytes()
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, late_stop, _ = _request(
-            server, "POST", _contract("POST", "/api/chat/turn/stop"),
-            body={"turn_id": "turn-1"}, headers=headers,
+            server,
+            "POST",
+            _contract("POST", "/api/chat/turn/stop"),
+            body={"turn_id": "turn-1"},
+            headers=headers,
         )
         assert status != 200, late_stop
         assert store.path.read_bytes() == conversation_before
@@ -686,7 +777,8 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
 
 
 def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Exercise owned context rejection through real HTTP, Broker and stores."""
     from core_runtime.bootstrap.saved_bridge import READINESS
@@ -710,7 +802,9 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     servers = _captured_production_server(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        tmp_path,
+        monkeypatch,
+        packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
     )
     server, _session, _authority = next(servers)
     try:
@@ -727,18 +821,33 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
         )
         for index, context in enumerate(contexts):
             conversation_id = f"context-{index}"
-            store.create({
-                "id": conversation_id, "model_reference": "model-profile-1", **context,
-            }, expected_revision=index)
+            store.create(
+                {
+                    "id": conversation_id,
+                    "model_reference": "model-profile-1",
+                    **context,
+                },
+                expected_revision=index,
+            )
             before = store.path.read_bytes()
             status, payload, _ = _request(
-                server, "POST", _contract("POST", "/api/chat/turn"),
-                body={"request": {
-                    "turn_id": f"turn-{index}", "conversation_id": conversation_id,
-                    "conversation_revision": 2 if index == 5 else 1, "content": "Hello",
-                }},
-                headers={"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
-                         "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                server,
+                "POST",
+                _contract("POST", "/api/chat/turn"),
+                body={
+                    "request": {
+                        "turn_id": f"turn-{index}",
+                        "conversation_id": conversation_id,
+                        "conversation_revision": 2 if index == 5 else 1,
+                        "content": "Hello",
+                    }
+                },
+                headers={
+                    "Cookie": cookie,
+                    "Origin": origin,
+                    "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
             )
             assert conversation_id in reads  # Not a missing route/auth rejection.
             if index < len(contexts) - 1:
@@ -750,7 +859,8 @@ def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
                 assert status == 200, payload
                 assert len(ai_calls) == 1
                 assert [item["content"] for item in store.get(conversation_id)["messages"]] == [
-                    "Hello", "Hi",
+                    "Hello",
+                    "Hi",
                 ]
     finally:
         servers.close()
@@ -781,44 +891,65 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     servers = _captured_production_server(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        tmp_path,
+        monkeypatch,
+        packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
     )
     server, _session, _authority = next(servers)
     try:
         store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
-        store.create({"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0)
+        store.create(
+            {"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0
+        )
         cookie, csrf, origin = _authenticate(server)
         foreign_cookie, foreign_csrf, _ = _authenticate(server)
 
         def post(path, body, *, foreign=False):
-            return _request(server, "POST", _contract("POST", path), body=body, headers={
-                "Cookie": foreign_cookie if foreign else cookie, "Origin": origin,
-                "X-Rumi-CSRF": foreign_csrf if foreign else csrf,
-                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
-            })
+            return _request(
+                server,
+                "POST",
+                _contract("POST", path),
+                body=body,
+                headers={
+                    "Cookie": foreign_cookie if foreign else cookie,
+                    "Origin": origin,
+                    "X-Rumi-CSRF": foreign_csrf if foreign else csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
 
         before = store.path.read_bytes()
         status, absent, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
         assert status != 200, absent
         assert store.path.read_bytes() == before
         assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
-        body = {"request": {
-            "turn_id": "turn-stop-1", "conversation_id": "conversation-1",
-            "conversation_revision": 1, "content": "Hello",
-        }}
+        body = {
+            "request": {
+                "turn_id": "turn-stop-1",
+                "conversation_id": "conversation-1",
+                "conversation_revision": 1,
+                "content": "Hello",
+            }
+        }
         with ThreadPoolExecutor(max_workers=1) as pool:
             sent = pool.submit(post, "/api/chat/turn", body)
             try:
                 assert entered.wait(8), "saved execution did not reach the AI adapter"
-                status, denied, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"}, foreign=True)
+                status, denied, _ = post(
+                    "/api/chat/turn/stop", {"turn_id": "turn-stop-1"}, foreign=True
+                )
                 assert status != 200, denied
                 assert not signals[0].is_set()
-                status, invalid, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1", "approved": True})
+                status, invalid, _ = post(
+                    "/api/chat/turn/stop", {"turn_id": "turn-stop-1", "approved": True}
+                )
                 assert status == 400, invalid
                 status, receipt, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
                 assert status == 200, receipt
                 assert receipt["data"] == {
-                    "status": "cancellation_requested", "turn_id": "turn-stop-1", "stopped": False,
+                    "status": "cancellation_requested",
+                    "turn_id": "turn-stop-1",
+                    "stopped": False,
                 }
                 assert observed.wait(2)
                 sent.result(timeout=5)
@@ -838,7 +969,9 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
             assert pending["data"]["turn"]["status"] in {"running", "waiting"}
             assert pending["data"]["turn"].get("result_reference") is None
         assert store.path.read_bytes() == after_stop
-        assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello"]
+        assert [message["content"] for message in store.get("conversation-1")["messages"]] == [
+            "Hello"
+        ]
         assert len(signals) == 1
         previous_capture = server._dispatch_session
         status, restarted, _ = post("/api/pack-control/restart", {})
@@ -863,7 +996,8 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
 
 
 def test_preferences_write_uses_captured_owner_and_preserves_private_state(
-    settings_vertical_server, tmp_path: Path,
+    settings_vertical_server,
+    tmp_path: Path,
 ) -> None:
     """Authenticated display patches cross the real Broker, not a local writer."""
     server, _session, _authority = settings_vertical_server
@@ -906,7 +1040,9 @@ def test_preferences_write_uses_captured_owner_and_preserves_private_state(
 
 
 def test_settings_reads_saved_values_and_models_through_real_broker(
-    settings_vertical_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    settings_vertical_server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Settings use captured state and a nested model contract, without writes."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
@@ -914,19 +1050,28 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     root = tmp_path / "user-data"
     registry = ModelRegistry("defaults", user_data_root=root)
     registry.save(
-        {"model_profile_id": "settings-model", "display_name": "Settings model",
-         "model_id": "test-model", "credential_handle": "opaque:test-secret"},
+        {
+            "model_profile_id": "settings-model",
+            "display_name": "Settings model",
+            "model_id": "test-model",
+            "credential_handle": "opaque:test-secret",
+        },
         expected_revision=0,
     )
     path = root / "defaultspack" / "shared" / "frontend_settings.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({
-        "general": {"composer_placeholder": "Saved placeholder"},
-        "_settings_revision": 7,
-        "models": {"google_api_key": "hidden-test-secret"},
-        "apis": {"api_keys": [{"value": "hidden-test-secret"}]},
-        "_mutation_receipts": {"hidden-test-secret": {}},
-    }), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "general": {"composer_placeholder": "Saved placeholder"},
+                "_settings_revision": 7,
+                "models": {"google_api_key": "hidden-test-secret"},
+                "apis": {"api_keys": [{"value": "hidden-test-secret"}]},
+                "_mutation_receipts": {"hidden-test-secret": {}},
+            }
+        ),
+        encoding="utf-8",
+    )
     before = path.read_bytes()
     server, _session, _authority = settings_vertical_server
     observed: list[RequestEnvelope] = []
@@ -941,7 +1086,9 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     for suffix in ("", "?full=true"):
         observed.clear()
         status, payload, _ = _request(
-            server, "GET", _contract("GET", f"/api/ui/settings{suffix}"),
+            server,
+            "GET",
+            _contract("GET", f"/api/ui/settings{suffix}"),
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         assert status == 200, payload
@@ -961,15 +1108,21 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         data = payload["data"]
         assert data["values"]["general"]["composer_placeholder"] == "Saved placeholder"
         assert data["document_revision"] == 7
-        fields = {field["id"]: field for section in data["sections"]
-                  if section["id"] == "models" for field in section["fields"]}
+        fields = {
+            field["id"]: field
+            for section in data["sections"]
+            if section["id"] == "models"
+            for field in section["fields"]
+        }
         assert fields["preferred_model"]["options"] == [
             {"value": "settings-model", "label": "Settings model"}
         ]
         assert "hidden-test-secret" not in json.dumps(payload)
         assert "opaque:test-secret" not in json.dumps(payload)
     status, payload, _ = _request(
-        server, "GET", _contract("GET", "/api/ui/full-catalog"),
+        server,
+        "GET",
+        _contract("GET", "/api/ui/full-catalog"),
         headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
     )
     assert status == 200, payload
@@ -977,55 +1130,81 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
     assert catalog["app"]["name"] == "Tobkiri"
     assert catalog["settings"]["document_revision"] == 7
     assert {region["id"] for region in catalog["shell"]["layout"]["regions"]} == {
-        "title_bar", "history", "chat_header", "chat_messages", "composer",
-        "activity_preview", "right_sidebar", "settings_modal",
+        "title_bar",
+        "history",
+        "chat_header",
+        "chat_messages",
+        "composer",
+        "activity_preview",
+        "right_sidebar",
+        "settings_modal",
     }
     assert catalog["settings"]["values"]["general"]["composer_placeholder"] == "Saved placeholder"
     assert catalog["sidebar"]["items"]
     assert catalog["chat_rendering"]["renderers"]
     assert "hidden-test-secret" not in json.dumps(catalog)
     status, host_payload, _ = _request(
-        server, "GET", _contract("GET", "/api/ui/catalog"),
+        server,
+        "GET",
+        _contract("GET", "/api/ui/catalog"),
         headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
     )
     assert status == 200, host_payload
     assert host_payload["data"]["dynamic_host"]["profile_id"] == "defaults"
     status, command_payload, _ = _request(
-        server, "GET", _contract("GET", "/api/command-protocol/v1/catalog"),
+        server,
+        "GET",
+        _contract("GET", "/api/command-protocol/v1/catalog"),
         headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
     )
     assert status == 200, command_payload
     command_catalog = command_payload["data"]
     assert command_catalog["kind"] == "ResolvedCommandCatalog"
     assert command_catalog["rollout"]["legacy_execution_enabled"] is False
-    declarations = json.loads((
-        Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
-        / "commands" / "default_commands.json"
-    ).read_text(encoding="utf-8"))
+    declarations = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "ecosystem"
+            / "defaultspack"
+            / "commands"
+            / "default_commands.json"
+        ).read_text(encoding="utf-8")
+    )
     assert {item["identity"]["id"] for item in command_catalog["commands"]} == {
         item["id"] for item in declarations
     }
-    available = {item["identity"]["id"] for item in command_catalog["commands"]
-                 if item["availability"]["status"] == "available"}
+    available = {
+        item["identity"]["id"]
+        for item in command_catalog["commands"]
+        if item["availability"]["status"] == "available"
+    }
     assert available == {"terminal", "commit", "push", "patch", "restore"}
-    assert all(item["authorization"]["approval_required"]
-               for item in command_catalog["commands"]
-               if item["identity"]["id"] in available)
+    assert all(
+        item["authorization"]["approval_required"]
+        for item in command_catalog["commands"]
+        if item["identity"]["id"] in available
+    )
     for query in ("profile_id=other", "approved=true", "operation=invoke"):
         status, payload, _ = _request(
-            server, "GET", _contract("GET", f"/api/command-protocol/v1/catalog?{query}"),
+            server,
+            "GET",
+            _contract("GET", f"/api/command-protocol/v1/catalog?{query}"),
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         assert status == 400, payload
     for query in ("profile_id=other", "full=true", "operation=write"):
         status, payload, _ = _request(
-            server, "GET", _contract("GET", f"/api/ui/full-catalog?{query}"),
+            server,
+            "GET",
+            _contract("GET", f"/api/ui/full-catalog?{query}"),
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         assert status == 400, payload
     for query in ("profile_id=other", "operation=write", "approved=true", "full=false"):
         status, payload, _ = _request(
-            server, "GET", _contract("GET", f"/api/ui/settings?{query}"),
+            server,
+            "GET",
+            _contract("GET", f"/api/ui/settings?{query}"),
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         assert status == 400, payload
@@ -1034,7 +1213,8 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
 
 
 def test_history_list_reads_real_captured_store_without_mutation(
-    production_server, tmp_path: Path,
+    production_server,
+    tmp_path: Path,
 ) -> None:
     """The full UI reads its own stored history through the real Broker."""
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
@@ -1045,17 +1225,24 @@ def test_history_list_reads_real_captured_store_without_mutation(
     server, _session, _authority = production_server
     cookie, _csrf, _origin = _authenticate(server)
     status, payload, _headers = _request(
-        server, "GET", _contract("GET", "/api/chat/conversations"),
+        server,
+        "GET",
+        _contract("GET", "/api/chat/conversations"),
         headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
     )
     assert status == 200, payload
     assert payload["data"] == {
-        "conversations": [{**item, "model": item["model_reference"]} for item in store.snapshot()["conversations"]], "total": 1,
+        "conversations": [
+            {**item, "model": item["model_reference"]} for item in store.snapshot()["conversations"]
+        ],
+        "total": 1,
         "store_revision": 1,
     }
     for query in ("profile_id=other", "operation=delete", "approved=true"):
         status, payload, _headers = _request(
-            server, "GET", _contract("GET", f"/api/chat/conversations?{query}"),
+            server,
+            "GET",
+            _contract("GET", f"/api/chat/conversations?{query}"),
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         assert status == 400, payload
@@ -1063,7 +1250,8 @@ def test_history_list_reads_real_captured_store_without_mutation(
 
 
 def test_conversation_create_uses_real_broker_and_rejects_replay(
-    production_server, tmp_path: Path,
+    production_server,
+    tmp_path: Path,
 ) -> None:
     """Only the captured, authenticated create writes once at its snapshot."""
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
@@ -1076,7 +1264,9 @@ def test_conversation_create_uses_real_broker_and_rejects_replay(
     body = {"id": str(uuid.uuid4()), "expected_revision": 0, "model": "owned-model"}
     for injected in ({"profile_id": "other"}, {"approved": True}, {"operation": "delete"}):
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
-        status, payload, _ = _request(server, "POST", path, body={**body, **injected}, headers=headers)
+        status, payload, _ = _request(
+            server, "POST", path, body={**body, **injected}, headers=headers
+        )
         assert status == 400, payload
     status, payload, _ = _request(server, "POST", path, body=body)
     assert status in {401, 403}, payload
@@ -1096,7 +1286,9 @@ def test_conversation_create_uses_real_broker_and_rejects_replay(
     identifier = body["id"]
     headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
     status, payload, _ = _request(
-        server, "GET", _contract("GET", f"/api/chat/conversation?conversation_id={identifier}"),
+        server,
+        "GET",
+        _contract("GET", f"/api/chat/conversation?conversation_id={identifier}"),
         headers=headers,
     )
     assert status == 200, payload
@@ -1106,13 +1298,24 @@ def test_conversation_create_uses_real_broker_and_rejects_replay(
     def mutate(method: str, revision: int, **extra: object) -> tuple[int, dict]:
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, payload, _ = _request(
-            server, method, _contract(method, "/api/chat/conversation"),
-            body={"conversation_id": identifier, "expected_conversation_revision": revision, **extra},
+            server,
+            method,
+            _contract(method, "/api/chat/conversation"),
+            body={
+                "conversation_id": identifier,
+                "expected_conversation_revision": revision,
+                **extra,
+            },
             headers=headers,
         )
         return status, payload
 
-    for updates in ({"id": "replace"}, {"messages": []}, {"conversation_revision": 9}, {"is_starred": "true"}):
+    for updates in (
+        {"id": "replace"},
+        {"messages": []},
+        {"conversation_revision": 9},
+        {"is_starred": "true"},
+    ):
         status, payload = mutate("PUT", 1, updates=updates)
         assert status == 400, payload
         assert store.path.read_bytes() == before
@@ -1137,7 +1340,8 @@ def test_conversation_create_uses_real_broker_and_rejects_replay(
 
 
 def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
-    production_server, tmp_path: Path,
+    production_server,
+    tmp_path: Path,
 ) -> None:
     """Read persisted model identities through authenticated production HTTP."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
@@ -1155,21 +1359,27 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
     server, _session, _authority = production_server
     cookie, _csrf, _origin = _authenticate(server)
     status, payload, _headers = _request(
-        server, "GET", _contract("GET", "/api/ai/profiles"),
+        server,
+        "GET",
+        _contract("GET", "/api/ai/profiles"),
         headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
     )
     assert status == 200, payload
     assert payload["data"] == {
-        "profiles": [{
-            "profile_id": "ui-model",
-            "display_name": "UI model",
-            "model_id": "test-model",
-        }],
+        "profiles": [
+            {
+                "profile_id": "ui-model",
+                "display_name": "UI model",
+                "model_id": "test-model",
+            }
+        ],
         "count": 1,
         "registry_revision": 1,
     }
     status, payload, _headers = _request(
-        server, "GET", _contract("GET", "/api/ai/profiles?profile_id=other"),
+        server,
+        "GET",
+        _contract("GET", "/api/ai/profiles?profile_id=other"),
         headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
     )
     assert status == 400, payload
@@ -1177,7 +1387,8 @@ def test_model_profile_list_uses_real_registry_and_rejects_client_profile(
 
 
 def test_model_profile_save_http_rejects_authority_and_stale_revision(
-    production_server, tmp_path: Path,
+    production_server,
+    tmp_path: Path,
 ) -> None:
     """Save a selectable model through the signed Defaults edge and real owner."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
@@ -1186,26 +1397,50 @@ def test_model_profile_save_http_rejects_authority_and_stale_revision(
     cookie, csrf, origin = _authenticate(server)
     registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
     payload = {
-        "model_profile_id": "daily", "model_id": "provider-model",
-        "provider_instance_id": "provider.fixture", "display_name": "Daily",
+        "model_profile_id": "daily",
+        "model_id": "provider-model",
+        "provider_instance_id": "provider.fixture",
+        "display_name": "Daily",
         "expected_revision": 0,
     }
 
     def post(body):
-        return _request(server, "POST", _contract("POST", "/api/ai/profiles"), body=body, headers={
-            "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
-            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
-        })
+        return _request(
+            server,
+            "POST",
+            _contract("POST", "/api/ai/profiles"),
+            body=body,
+            headers={
+                "Cookie": cookie,
+                "Origin": origin,
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
 
-    for extra in ({"profile_id": "other"}, {"approved": True}, {"credential_handle": "credential:forged"}, {"expected_revision": True}):
+    for extra in (
+        {"profile_id": "other"},
+        {"approved": True},
+        {"credential_handle": "credential:forged"},
+        {"expected_revision": True},
+    ):
         status, result, _ = post({**payload, **extra})
         assert status == 400, result
         assert not registry.path.exists()
     status, result, _ = post(payload)
     assert status == 200, result
     assert result["data"] == {
-        "registry_revision": 1, "count": 1,
-        "profiles": [{"profile_id": "daily", "model_id": "provider-model", "display_name": "Daily", "provider_id": "provider.fixture", "route_configured": True}],
+        "registry_revision": 1,
+        "count": 1,
+        "profiles": [
+            {
+                "profile_id": "daily",
+                "model_id": "provider-model",
+                "display_name": "Daily",
+                "provider_id": "provider.fixture",
+                "route_configured": True,
+            }
+        ],
     }
     stored = registry.resolve("daily")["profile"]
     assert stored["requirements"] == {}
@@ -1241,10 +1476,7 @@ def test_command_protocol_paths_are_inert_in_captured_production_http(
     journal = server._operation_journal
     assert journal is not None
     settings_path = (
-        Path(os.environ["RUMI_USER_DATA"])
-        / "defaultspack"
-        / "shared"
-        / "frontend_settings.json"
+        Path(os.environ["RUMI_USER_DATA"]) / "defaultspack" / "shared" / "frontend_settings.json"
     )
     event_store_path = settings_path.with_name("command_invocation_events.sqlite3")
     offline_queue_path = settings_path.with_name("command_offline_queue.sqlite3")
@@ -1317,7 +1549,9 @@ def test_command_protocol_paths_are_inert_in_captured_production_http(
 
 
 def test_provider_configuration_http_requires_approval_and_saves_once(
-    production_server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    production_server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """HTTP/Broker/approval/credential and registry owners; no network or real key."""
     from core_runtime.authority.ui_operator import sign_ui_operator
@@ -1330,7 +1564,10 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
 
     def post(path: str, body: Mapping[str, object]) -> tuple[int, dict[str, object]]:
         status, result, _ = _request(
-            server, "POST", _contract("POST", path), body=body,
+            server,
+            "POST",
+            _contract("POST", path),
+            body=body,
             headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
         return status, result
@@ -1349,12 +1586,14 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
             "rumi_provider_registry_pack.provider-configure",
         }:
             invocation = self._invocation_context(envelope)
-            provider_owners.append((
-                envelope.operation_id,
-                invocation.presentation_owner_principal_id,
-                invocation.presentation_owner_session_id,
-                envelope.context.caller_principal.value,
-            ))
+            provider_owners.append(
+                (
+                    envelope.operation_id,
+                    invocation.presentation_owner_principal_id,
+                    invocation.presentation_owner_session_id,
+                    envelope.context.caller_principal.value,
+                )
+            )
         return original_host_invoke(self, envelope)
 
     monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", observe_owner)
@@ -1375,11 +1614,14 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
 
     monkeypatch.setattr(V4DispatchSession, "invoke", observed_invoke)
     request = {
-        "phase": "prepare", "effect_kind": "provider_configure",
+        "phase": "prepare",
+        "effect_kind": "provider_configure",
         "correlation_id": str(uuid.uuid4()),
         "request": {
-            "connection_name": "fixture", "protocol": "openai-compatible",
-            "endpoint": "https://provider.example/v1", "key_value": secret,
+            "connection_name": "fixture",
+            "protocol": "openai-compatible",
+            "endpoint": "https://provider.example/v1",
+            "key_value": secret,
         },
     }
     path = "/api/ai/provider-key"
@@ -1396,7 +1638,8 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert not registry.path.exists()
     assert not (root / "credentials/material-store/credentials.store.json").exists()
     lookup = {
-        "phase": "lookup", "effect_kind": "provider_configure",
+        "phase": "lookup",
+        "effect_kind": "provider_configure",
         "correlation_id": request["correlation_id"],
     }
     for _ in range(2):
@@ -1412,10 +1655,15 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert status == 400, invalid
     other_cookie, other_csrf, other_origin = _authenticate(server)
     status, foreign, _ = _request(
-        server, "POST", _contract("POST", path), body=lookup,
+        server,
+        "POST",
+        _contract("POST", path),
+        body=lookup,
         headers={
-            "Cookie": other_cookie, "Origin": other_origin,
-            "X-Rumi-CSRF": other_csrf, "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            "Cookie": other_cookie,
+            "Origin": other_origin,
+            "X-Rumi-CSRF": other_csrf,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
         },
     )
     assert status != 200, foreign
@@ -1427,14 +1675,20 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     status, approval = post("/api/interactive-approval/v1/get", {"request_id": approval_id})
     assert status == 200, approval
     data = approval["data"]
-    status, approved = post("/api/interactive-approval/v1/approve", {
-        "request_id": approval_id, "confirmation_text": "EXECUTE",
-        "ui_operator": sign_ui_operator(
-            approval_id, nonce="provider-configuration-approval", decision="approve",
-            request_snapshot_digest=data["request_snapshot_digest"],
-            typed_confirmation_digest=data["typed_confirmation_digest"],
-        ),
-    })
+    status, approved = post(
+        "/api/interactive-approval/v1/approve",
+        {
+            "request_id": approval_id,
+            "confirmation_text": "EXECUTE",
+            "ui_operator": sign_ui_operator(
+                approval_id,
+                nonce="provider-configuration-approval",
+                decision="approve",
+                request_snapshot_digest=data["request_snapshot_digest"],
+                typed_confirmation_digest=data["typed_confirmation_digest"],
+            ),
+        },
+    )
     assert status == 200, approved
     for _ in range(2):
         status, result = post(path, {"phase": "resume", "effect_id": effect["effect_id"]})
@@ -1457,7 +1711,8 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
 
 @pytest.mark.parametrize("text_blocks", [False, True])
 def test_saved_settings_reach_host_credential_transport(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     text_blocks: bool,
 ) -> None:
     """Two real saved turns; only guest execution and HTTPS are doubles."""
@@ -1469,7 +1724,8 @@ def test_saved_settings_reach_host_credential_transport(
 
     requests = []
     reply = (
-        [{"type": "text", "text": "Host transport reply"}] if text_blocks
+        [{"type": "text", "text": "Host transport reply"}]
+        if text_blocks
         else "Host transport reply"
     )
 
@@ -1483,21 +1739,27 @@ def test_saved_settings_reach_host_credential_transport(
         assert body["model"] == "organization/raw-model"
         expected = [{"role": "user", "content": "Hello"}]
         if requests:
-            expected.extend([
-                {"role": "assistant", "content": reply},
-                {"role": "user", "content": "Continue"},
-            ])
+            expected.extend(
+                [
+                    {"role": "assistant", "content": reply},
+                    {"role": "user", "content": "Continue"},
+                ]
+            )
         assert body["messages"] == expected
         requests.append(body)
-        return io.BytesIO(json.dumps({
-            "choices": [{"message": {"content": reply},
-                         "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
-        }).encode())
+        return io.BytesIO(
+            json.dumps(
+                {
+                    "choices": [{"message": {"content": reply}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                }
+            ).encode()
+        )
 
     monkeypatch.setattr(credential_transport, "_open_pinned_request", open_provider)
     servers = _captured_production_server(
-        tmp_path, monkeypatch,
+        tmp_path,
+        monkeypatch,
         packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
         credential_store_factory=host_credential_store_factory,
     )
@@ -1505,7 +1767,9 @@ def test_saved_settings_reach_host_credential_transport(
     server, _session, _authority = fixture
     try:
         test_provider_configuration_http_requires_approval_and_saves_once(
-            fixture, tmp_path, monkeypatch,
+            fixture,
+            tmp_path,
+            monkeypatch,
         )
         failures = []
         original_invoke = V4DispatchSession.invoke
@@ -1526,40 +1790,71 @@ def test_saved_settings_reach_host_credential_transport(
         cookie, csrf, origin = _authenticate(server)
 
         def post(path, body):
-            return _request(server, "POST", _contract("POST", path), body=body,
-                            headers={"Cookie": cookie, "Origin": origin,
-                                     "X-Rumi-CSRF": csrf,
-                                     "X-Tobkiri-Request-ID": str(uuid.uuid4())})
+            return _request(
+                server,
+                "POST",
+                _contract("POST", path),
+                body=body,
+                headers={
+                    "Cookie": cookie,
+                    "Origin": origin,
+                    "X-Rumi-CSRF": csrf,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
 
-        status, result, _ = post("/api/ai/profiles", {
-            "model_profile_id": "daily", "model_id": "organization/raw-model",
-            "provider_instance_id": "provider.fixture", "display_name": "Daily",
-            "expected_revision": 0,
-        })
+        status, result, _ = post(
+            "/api/ai/profiles",
+            {
+                "model_profile_id": "daily",
+                "model_id": "organization/raw-model",
+                "provider_instance_id": "provider.fixture",
+                "display_name": "Daily",
+                "expected_revision": 0,
+            },
+        )
         assert status == 200, result
         store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
         store.create({"id": "chat", "model_reference": "daily"}, expected_revision=0)
-        status, result, _ = post("/api/chat/turn", {"request": {
-            "turn_id": "turn", "conversation_id": "chat",
-            "conversation_revision": 1, "content": "Hello",
-        }})
+        status, result, _ = post(
+            "/api/chat/turn",
+            {
+                "request": {
+                    "turn_id": "turn",
+                    "conversation_id": "chat",
+                    "conversation_revision": 1,
+                    "content": "Hello",
+                }
+            },
+        )
         assert status == 200, result
         assert result["data"]["status"] == "completed", (result, failures)
         assert len(requests) == 1
         assert [item["content"] for item in store.get("chat")["messages"]] == [
-            "Hello", reply,
+            "Hello",
+            reply,
         ]
-        status, result, _ = post("/api/chat/turn", {"request": {
-            "turn_id": "turn-2", "conversation_id": "chat",
-            "conversation_revision": 3, "content": "Continue",
-        }})
+        status, result, _ = post(
+            "/api/chat/turn",
+            {
+                "request": {
+                    "turn_id": "turn-2",
+                    "conversation_id": "chat",
+                    "conversation_revision": 3,
+                    "content": "Continue",
+                }
+            },
+        )
         assert status == 200, result
         assert result["data"]["status"] == "completed", (result, failures)
         assert len(requests) == 2
         persisted = store.get("chat")
         assert persisted["conversation_revision"] == 5
         assert [item["content"] for item in persisted["messages"]] == [
-            "Hello", reply, "Continue", reply,
+            "Hello",
+            reply,
+            "Continue",
+            reply,
         ]
     finally:
         servers.close()
@@ -1926,9 +2221,7 @@ def test_named_profile_registry_crud_http_preserves_active_pointer_and_history(
         },
     )
     created_profile = next(
-        profile
-        for profile in created["profiles"]
-        if profile["profile_id"] == "profile-a"
+        profile for profile in created["profiles"] if profile["profile_id"] == "profile-a"
     )
     assert created_profile["profile_revision"]
     assert created_profile["parent_revision"] is None
@@ -1945,9 +2238,7 @@ def test_named_profile_registry_crud_http_preserves_active_pointer_and_history(
         },
     )
     updated_profile = next(
-        profile
-        for profile in updated["profiles"]
-        if profile["profile_id"] == "profile-a"
+        profile for profile in updated["profiles"] if profile["profile_id"] == "profile-a"
     )
     assert updated_profile["profile_revision"] != created_profile["profile_revision"]
     assert updated_profile["parent_revision"] == created_profile["profile_revision"]
@@ -1965,9 +2256,7 @@ def test_named_profile_registry_crud_http_preserves_active_pointer_and_history(
         },
     )
     duplicated_profile = next(
-        profile
-        for profile in duplicated["profiles"]
-        if profile["profile_id"] == "profile-b"
+        profile for profile in duplicated["profiles"] if profile["profile_id"] == "profile-b"
     )
     assert duplicated_profile["profile_revision"]
     assert duplicated_profile["parent_revision"] is None
@@ -2120,9 +2409,7 @@ def test_home_and_pack_workflow_use_only_real_broker_contracts(
     # optional catalog row is not sufficient: declarative content Packs are
     # intentionally installable but have no runtime Function to enable.
     target_pack = "tobkiri_workflow_pack"
-    target_row = next(
-        item for item in catalog["data"]["packs"] if item["pack_id"] == target_pack
-    )
+    target_row = next(item for item in catalog["data"]["packs"] if item["pack_id"] == target_pack)
     assert target_row["required"] is False
     assert post("/api/pack-control/install", {"pack_id": target_pack})[0] == 200
     never_approved_request = str(uuid.uuid4())
@@ -2269,7 +2556,9 @@ def test_home_and_pack_workflow_use_only_real_broker_contracts(
     read_deadline = time.monotonic() + EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS
     while True:
         status, selection, _ = _request(
-            server, "GET", _contract("GET", "/api/runtime-surface/profile"),
+            server,
+            "GET",
+            _contract("GET", "/api/runtime-surface/profile"),
             headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
             timeout_seconds=max(0.1, read_deadline - time.monotonic()),
         )
@@ -2460,9 +2749,7 @@ def test_revoke_denials_respond_before_logging_and_release_for_retry(
             nonlocal access_log_count, denial_log_count, initial_access_log_count
             message = record.getMessage()
             if message.startswith("Contract dispatch denied"):
-                assert message.endswith(
-                    "tobkiri.host.pack-control.v4/approval.revoke: UNAPPROVED"
-                )
+                assert message.endswith("tobkiri.host.pack-control.v4/approval.revoke: UNAPPROVED")
                 with log_count_lock:
                     denial_log_count += 1
                     if denial_log_count == len(request_ids):
@@ -2493,14 +2780,8 @@ def test_revoke_denials_respond_before_logging_and_release_for_retry(
     request_ids = [str(uuid.uuid4()) for _index in range(8)]
     initial = [revoke(request_id) for request_id in request_ids]
     assert all(status == 403 for status, _payload in initial)
-    assert all(
-        payload["data"]["code"] == "UNAPPROVED"
-        for _status, payload in initial
-    )
-    assert all(
-        payload["data"]["retryable"] is False
-        for _status, payload in initial
-    )
+    assert all(payload["data"]["code"] == "UNAPPROVED" for _status, payload in initial)
+    assert all(payload["data"]["retryable"] is False for _status, payload in initial)
     assert initial_denials_logged.wait(timeout=FRONTEND_MUTATION_TIMEOUT_SECONDS)
     assert denial_log_count == len(request_ids)
     # ``_request`` returns after it receives the complete response body; the
@@ -2537,9 +2818,7 @@ def test_revoke_denials_respond_before_logging_and_release_for_retry(
         release_log.set()
         executor.shutdown(wait=True, cancel_futures=True)
         if server.server is not None:
-            assert server.server.wait_for_request_drain(
-                FRONTEND_MUTATION_TIMEOUT_SECONDS
-            )
+            assert server.server.wait_for_request_drain(FRONTEND_MUTATION_TIMEOUT_SECONDS)
         api_logger.removeHandler(delayed_log)
         api_logger.setLevel(original_log_level)
         delayed_log.close()
@@ -2665,9 +2944,7 @@ def test_authoritative_profile_catalog_selection_completes_real_http_ceremony(
         "selected_profile_id": "defaults",
         "execution_profile_id": "defaults",
     }
-    selected = next(
-        item for item in catalog["profiles"] if item["profile_id"] == "alpha"
-    )
+    selected = next(item for item in catalog["profiles"] if item["profile_id"] == "alpha")
     assert selected["active"] is False
     assert selected["lifecycle_state"] == "available"
     status, profile_response, _ = _request(
@@ -3561,9 +3838,7 @@ def test_contract_server_rejects_empty_and_wrong_backend_registry_before_bind(
         empty.start()
     assert empty.server is None
 
-    original_statuses = [
-        (backend, backend.status) for backend in selected_backends.registered
-    ]
+    original_statuses = [(backend, backend.status) for backend in selected_backends.registered]
     try:
         for backend, original_status in original_statuses:
             backend.status = type(original_status)(

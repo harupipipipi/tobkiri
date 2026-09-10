@@ -2497,7 +2497,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/ecosystem.json",
-          "sha256": "156caa6dac00d56696884561f93543dce7ec02bbcc1952b52e8bc93347d93d2d"
+          "sha256": "0eb2696a681c481aed4af0eae598b79da72359cfcef4216f352ac6256bf3a784"
         }
       ]
     },
@@ -3385,7 +3385,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-          "sha256": "fbba87a5fe89fa54aa8e578272ff0bd06d01e9ee674ec313cac73e60aa6b01e9"
+          "sha256": "b63e02a021088f13622ce6e66c5f94b0761fdf4d35d4cfcb7be25112c94c1b0a"
         }
       ]
     },

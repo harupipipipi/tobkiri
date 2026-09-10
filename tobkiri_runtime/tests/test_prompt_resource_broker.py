@@ -16,7 +16,8 @@ from tobkiri_host.errors import ProviderExecutionError
 def test_prompt_read_needs_the_exact_captured_edge(tmp_path: Path, monkeypatch, selected):
     store = PromptStudioStore("defaults", user_data_root=tmp_path / "user-data")
     store.save(
-        "system", "Use the selected prompt.",
+        "system",
+        "Use the selected prompt.",
         expected_body_hash="sha256:" + hashlib.sha256(b"").hexdigest(),
     )
     before = store.path.read_bytes()
@@ -29,12 +30,17 @@ def test_prompt_read_needs_the_exact_captured_edge(tmp_path: Path, monkeypatch, 
         "requested_scope_template": {
             "capability": "operation.invoke",
             "dimensions": {"contract": [host.CONTRACT_ID], "operation": [host.OPERATION_ID]},
-            "quotas": {}, "exact_request_digest": None, "opaque": False,
+            "quotas": {},
+            "exact_request_digest": None,
+            "opaque": False,
         },
     }
     with captured_host_profile(
-        tmp_path, monkeypatch, packs=(host.PACK_ID,),
-        edges=(edge,) if selected else (), backends=(),
+        tmp_path,
+        monkeypatch,
+        packs=(),
+        edges=(edge,) if selected else (),
+        backends=(),
     ) as (session, _authority):
         payload = {"operation": "get", "prompt_id": "system", "_session_id": "prompt-read"}
         if not selected:

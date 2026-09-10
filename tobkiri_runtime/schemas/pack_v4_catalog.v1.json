@@ -228,7 +228,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de"
+              "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077"
             }
           ],
           "owner": "defaultspack",
@@ -621,6 +621,12 @@
           "contract_id": "tobkiri.service.ai.stream.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.prompt.studio.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -635,7 +641,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
+          "digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -12302,12 +12308,12 @@
           "path": "runtime/process.py"
         },
         {
-          "digest": "sha256:d68139419887b4f96aa98bd2c99ccd70b57407b438c4c8e3498bbf5d10805a06",
+          "digest": "sha256:af96560aebb6abb1bbc422281ddbe9e9db47c1b42313b346612c488cb15fe751",
           "kind": "executable",
           "path": "runtime/service.py"
         },
         {
-          "digest": "sha256:9181326eea111b2129088f2c8167b2a4177f75c916ffb960f8e4be3e3f385e08",
+          "digest": "sha256:654ae9cee658f80e35b8725db4175151d276b19073e2a7ab0f50a7cb2abfba1a",
           "kind": "executable",
           "path": "runtime/store.py"
         },
@@ -17169,6 +17175,12 @@
           "contract_id": "conversation.saved-turn.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.prompt.studio.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -17188,7 +17200,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:235eca079cd325fc09130086096329211518033271346fad4a90c660dce2880f",
+          "digest": "sha256:35b9f6fd7cb003111bf40f840955b2255effa38a23af61676d8784193a72a105",
           "kind": "executable",
           "path": "runtime/saved.py"
         }

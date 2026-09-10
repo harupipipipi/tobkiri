@@ -19,10 +19,18 @@ from tobkiri_protocol.saved_conversation import (
 )
 
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS, saved_tool_messages, saved_tool_logs
+from tobkiri_protocol.saved_context import (
+    PROMPT_TARGET,
+    resolved_saved_prompt,
+    saved_prompt_digest,
+    saved_prompt_reference,
+)
 
 from ..authority.v4 import AuthorityDenied
 
 Target = tuple[str, str]
+
+
 def project_saved_ai_result(value: Mapping[str, Any]) -> dict[str, Any]:
     """Cross the strict guest ABI with reply data, not floating-point telemetry."""
     return {
@@ -37,9 +45,12 @@ READINESS: Target = (
     "rumi_ai_gateway_pack.ai-gateway.preflight",
 )
 REQUIRED_TARGETS = (*dict.fromkeys(TARGETS), READINESS)
-DEFINITION: Target = ("tobkiri.resource.tool.definition.v1", "rumi_tool_registry_pack.tool-definition-resource")
+DEFINITION: Target = (
+    "tobkiri.resource.tool.definition.v1",
+    "rumi_tool_registry_pack.tool-definition-resource",
+)
 TOOL_TARGETS = (DEFINITION, TOOL)
-ALLOWED_TARGETS = (*REQUIRED_TARGETS, *TOOL_TARGETS)
+ALLOWED_TARGETS = (*REQUIRED_TARGETS, *TOOL_TARGETS, PROMPT_TARGET)
 Dispatch = Callable[[object, Target, Mapping[str, Any]], Mapping[str, Any]]
 RequireTargets = Callable[[object, tuple[Target, ...]], None]
 
@@ -60,10 +71,23 @@ def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
 
 
 def _messages(
-    conversation: Mapping[str, Any], *, flatten_text_blocks: bool = False,
+    conversation: Mapping[str, Any],
+    *,
+    flatten_text_blocks: bool = False,
+    system_prompt: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Independently constrain the selected owner history to resolved text."""
     _require_resolved_context(conversation)
+    prompt_id = saved_prompt_reference(conversation)
+    if (system_prompt is None) != (prompt_id is None) or (
+        system_prompt is not None and system_prompt["prompt_id"] != prompt_id
+    ):
+        raise AuthorityDenied("saved bridge system prompt is unresolved")
+    prefix = (
+        [{"role": "system", "content": system_prompt["body"]}]
+        if system_prompt is not None and system_prompt["body"]
+        else []
+    )
     messages = conversation.get("messages")
     if not isinstance(messages, list) or len(messages) > 200:
         raise AuthorityDenied("saved bridge owner history is invalid")
@@ -79,7 +103,7 @@ def _messages(
     if not messages:
         if current is not None:
             raise AuthorityDenied("saved bridge empty history has a current node")
-        return []
+        return prefix
     if not isinstance(current, str) or current not in by_id:
         raise AuthorityDenied("saved bridge current message is unavailable")
     if all(message.get("parent_id") is None for message in messages):
@@ -95,14 +119,17 @@ def _messages(
             selected.append(by_id[node])
             node = by_id[node].get("parent_id")
         selected.reverse()
-    result: list[dict[str, Any]] = []
+    result: list[dict[str, Any]] = list(prefix)
     for message in selected:
         content = message.get("content")
         text_only = isinstance(content, str) or (
-            isinstance(content, list) and bool(content)
+            isinstance(content, list)
+            and bool(content)
             and all(
-                isinstance(part, Mapping) and set(part) == {"type", "text"}
-                and part["type"] == "text" and isinstance(part["text"], str)
+                isinstance(part, Mapping)
+                and set(part) == {"type", "text"}
+                and part["type"] == "text"
+                and isinstance(part["text"], str)
                 for part in content
             )
         )
@@ -117,14 +144,16 @@ def _messages(
         metadata = message.get("metadata") or {}
         trace = saved_tool_messages(metadata.get("saved_tool_messages", []))
         logs = message.get("tool_logs")
-        if ((trace and message["role"] != "assistant")
-                or canonical_json([] if logs is None else logs)
-                != canonical_json(saved_tool_logs(trace))):
+        if (trace and message["role"] != "assistant") or canonical_json(
+            [] if logs is None else logs
+        ) != canonical_json(saved_tool_logs(trace)):
             raise AuthorityDenied("saved bridge owned tool transcript is invalid")
         if flatten_text_blocks:
             # Readiness accepts text-only messages. Preserve every tool argument
             # and result as text there; generation receives the exact structures.
-            result.extend({"role": "assistant", "content": canonical_json(item).decode()} for item in trace)
+            result.extend(
+                {"role": "assistant", "content": canonical_json(item).decode()} for item in trace
+            )
         else:
             result.extend(trace)
         # Retain the owner's exact text blocks for guest equality checks and
@@ -165,30 +194,77 @@ class SavedBridgeCallbacks:
         if request.get("tool_selection", {}).get("mode", "none") == "none":
             return {"tools": [], "definitions": {}}
         self._require_targets(outer, TOOL_TARGETS)
-        outcome = self._dispatch(outer, DEFINITION, {
-            "operation": "select", "selection": request["tool_selection"],
-        })
+        outcome = self._dispatch(
+            outer,
+            DEFINITION,
+            {
+                "operation": "select",
+                "selection": request["tool_selection"],
+            },
+        )
         value = outcome.get("value")
-        if (outcome.get("status") != "ok" or not isinstance(value, Mapping)
-                or set(value) != {"tools", "definitions"}
-                or not isinstance(value["tools"], list) or not isinstance(value["definitions"], dict)
-                or len(value["tools"]) != len(value["definitions"])
-                or len(canonical_json(dict(value))) > 512 * 1024):
+        if (
+            outcome.get("status") != "ok"
+            or not isinstance(value, Mapping)
+            or set(value) != {"tools", "definitions"}
+            or not isinstance(value["tools"], list)
+            or not isinstance(value["definitions"], dict)
+            or len(value["tools"]) != len(value["definitions"])
+            or len(canonical_json(dict(value))) > 512 * 1024
+        ):
             raise AuthorityDenied("saved bridge tool selection is unavailable")
         names = []
         for tool in value["tools"]:
             function = tool.get("function") if isinstance(tool, dict) else None
-            if (not isinstance(function, dict) or tool.get("type") != "function"
-                    or not isinstance(function.get("name"), str)
-                    or not isinstance(function.get("parameters"), dict)):
+            if (
+                not isinstance(function, dict)
+                or tool.get("type") != "function"
+                or not isinstance(function.get("name"), str)
+                or not isinstance(function.get("parameters"), dict)
+            ):
                 raise AuthorityDenied("saved bridge selected tool schema is invalid")
             name = function["name"]
             digest = value["definitions"].get(name)
-            if (name in names or not isinstance(digest, str)
-                    or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+            if (
+                name in names
+                or not isinstance(digest, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            ):
                 raise AuthorityDenied("saved bridge selected tool identity is invalid")
             names.append(name)
         return value
+
+    def _system_prompt(
+        self,
+        outer: object,
+        conversation: Mapping[str, Any],
+    ) -> dict[str, str] | None:
+        """Read the explicit prompt through the current captured owner edge."""
+        try:
+            prompt_id = saved_prompt_reference(conversation)
+            if prompt_id is None:
+                return None
+            self._require_targets(outer, (PROMPT_TARGET,))
+            outcome = self._dispatch(
+                outer,
+                PROMPT_TARGET,
+                {
+                    "operation": "get",
+                    "prompt_id": prompt_id,
+                },
+            )
+            value = outcome.get("value")
+            profile_id = getattr(getattr(outer, "context", None), "profile_id", None)
+            if (
+                outcome.get("status") != "ok"
+                or not isinstance(value, Mapping)
+                or not isinstance(profile_id, str)
+                or not profile_id
+            ):
+                raise ValueError("saved conversation prompt is unavailable")
+            return resolved_saved_prompt(value, prompt_id=prompt_id, profile_id=profile_id)
+        except ValueError as error:
+            raise AuthorityDenied(str(error)) from error
 
     def preflight(self, outer: object) -> None:
         """Check every captured target and owned context before any user append."""
@@ -196,6 +272,7 @@ class SavedBridgeCallbacks:
         self._require_targets(outer, REQUIRED_TARGETS)
         tools = self._tools(outer, request)
         conversation = self._conversation(outer, request)
+        prompt = self._system_prompt(outer, conversation)
         revision = conversation.get("conversation_revision")
         if type(revision) is not int or revision != request["conversation_revision"]:
             raise AuthorityDenied("saved bridge conversation revision changed")
@@ -205,7 +282,7 @@ class SavedBridgeCallbacks:
         payload: dict[str, Any] = {
             "model_profile_id": model,
             "messages": [
-                *_messages(conversation, flatten_text_blocks=True),
+                *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
                 {"role": "user", "content": request["content"]},
             ],
         }
@@ -223,14 +300,17 @@ class SavedBridgeCallbacks:
         ):
             raise AuthorityDenied("saved bridge AI route is unavailable")
 
-    def __call__(self, outer: object, frame: Mapping[str, Any] | SavedToolFrame) -> Mapping[str, Any]:
+    def __call__(
+        self, outer: object, frame: Mapping[str, Any] | SavedToolFrame
+    ) -> Mapping[str, Any]:
         """Dispatch authenticated continuation scope through captured targets."""
         request = _request(outer)
         enabled = request.get("tool_selection", {}).get("mode", "none") != "none"
         trace: list[dict[str, Any]] = []
         if enabled:
-            if (not isinstance(frame, SavedToolFrame)
-                    or frame.initial_digest != canonical_digest({"request": request})):
+            if not isinstance(frame, SavedToolFrame) or frame.initial_digest != canonical_digest(
+                {"request": request}
+            ):
                 raise AuthorityDenied("saved bridge requires Host-checked tool scope")
             stage = frame.stage
             # Tool-stage scope may contain assistant calls awaiting their results.
@@ -248,14 +328,25 @@ class SavedBridgeCallbacks:
         hop = frame.get("hop")
         if (
             frame.get("kind") != "tobkiri.packvm.continuation.request.v2"
-            or type(frame.get("version")) is not int or frame["version"] != 2
-            or frame.get("request_id") != getattr(getattr(outer, "context", None), "request_id", None)
-            or type(hop) is not int or not 0 <= hop < (MAX_SAVED_TOOL_HOPS if enabled else len(TARGETS))
+            or type(frame.get("version")) is not int
+            or frame["version"] != 2
+            or frame.get("request_id")
+            != getattr(getattr(outer, "context", None), "request_id", None)
+            or type(hop) is not int
+            or not 0 <= hop < (MAX_SAVED_TOOL_HOPS if enabled else len(TARGETS))
         ):
             raise AuthorityDenied("saved bridge frame identity is invalid")
-        target = {"read": TARGETS[0], "user": TARGETS[1], "ai": TARGETS[2],
-                  "assistant": TARGETS[3], "tool": TOOL}.get(stage)
-        if target is None or frame.get("target") != {"contract_id": target[0], "operation_id": target[1]}:
+        target = {
+            "read": TARGETS[0],
+            "user": TARGETS[1],
+            "ai": TARGETS[2],
+            "assistant": TARGETS[3],
+            "tool": TOOL,
+        }.get(stage)
+        if target is None or frame.get("target") != {
+            "contract_id": target[0],
+            "operation_id": target[1],
+        }:
             raise AuthorityDenied("saved bridge stage target is invalid")
         self._require_targets(outer, REQUIRED_TARGETS)
         payload = frame.get("payload")
@@ -264,48 +355,90 @@ class SavedBridgeCallbacks:
         if stage == "read":
             if dict(payload) != {"operation": "get", "conversation_id": request["conversation_id"]}:
                 raise AuthorityDenied("saved bridge conversation read is out of scope")
+            conversation = self._conversation(outer, request)
+            value: dict[str, Any] = {"conversation": conversation}
+            prompt = self._system_prompt(outer, conversation)
+            if prompt is not None:
+                value["system_prompt"] = prompt
+            return {"status": "ok", "value": value}
         elif stage in {"user", "assistant"}:
-            self._check_append(request, payload, 1 if stage == "user" else 3, trace if stage == "assistant" else [])
+            self._check_append(
+                request, payload, 1 if stage == "user" else 3, trace if stage == "assistant" else []
+            )
             if stage == "user":
                 self._tools(outer, request)
                 conversation = self._conversation(outer, request)
                 _require_resolved_context(conversation)
+                prompt = self._system_prompt(outer, conversation)
+                if payload.get("system_prompt_digest") != saved_prompt_digest(prompt):
+                    raise AuthorityDenied("saved bridge system prompt changed before append")
                 if (
                     payload["expected_conversation_revision"] != request["conversation_revision"]
                     or conversation.get("conversation_revision") != request["conversation_revision"]
                     or payload["message"]["parent_id"] != conversation.get("current_node_id")
                 ):
                     raise AuthorityDenied("saved bridge selected branch changed")
+                payload = {
+                    key: value for key, value in payload.items() if key != "system_prompt_digest"
+                }
         elif stage == "ai":
             conversation = self._conversation(outer, request)
+            prompt = self._system_prompt(outer, conversation)
+            expected_fields = {"messages", "model_reference", "requirements"}
+            if prompt is not None:
+                expected_fields.add("system_prompt_digest")
             if (
-                set(payload) != {"messages", "model_reference", "requirements"}
+                set(payload) != expected_fields
+                or payload.get("system_prompt_digest") != saved_prompt_digest(prompt)
                 or payload["model_reference"] != conversation.get("model_reference")
-                or canonical_json(payload["messages"]) != canonical_json([*_messages(conversation), *trace])
+                or canonical_json(payload["messages"])
+                != canonical_json([*_messages(conversation, system_prompt=prompt), *trace])
                 or payload["requirements"] != {"request_surface": "conversation.saved"}
             ):
                 raise AuthorityDenied("saved bridge AI input differs from the owner")
             selected = self._tools(outer, request)
-            arguments = dict(payload)
+            arguments = {
+                key: value for key, value in payload.items() if key != "system_prompt_digest"
+            }
             if selected["tools"]:
-                arguments.update({
-                    "tools": selected["tools"],
-                    "requirements": {**payload["requirements"], "tool_calling": True},
-                    "parameters": {"tool_choice": "required" if request["tool_selection"].get("must_use") and not trace else "auto"},
-                })
+                arguments.update(
+                    {
+                        "tools": selected["tools"],
+                        "requirements": {**payload["requirements"], "tool_calling": True},
+                        "parameters": {
+                            "tool_choice": "required"
+                            if request["tool_selection"].get("must_use") and not trace
+                            else "auto"
+                        },
+                    }
+                )
             outcome = self._dispatch(outer, target, arguments)
-            if enabled and outcome.get("status") == "ok" and isinstance(outcome.get("value"), Mapping):
-                return {**outcome, "value": {**outcome["value"], "tool_definitions": selected["definitions"]}}
+            if (
+                enabled
+                and outcome.get("status") == "ok"
+                and isinstance(outcome.get("value"), Mapping)
+            ):
+                return {
+                    **outcome,
+                    "value": {**outcome["value"], "tool_definitions": selected["definitions"]},
+                }
             return outcome
         else:
-            if not enabled or set(payload) != {"tool_id", "tool_call_id", "arguments", "expected_definition_hash"}:
+            if not enabled or set(payload) != {
+                "tool_id",
+                "tool_call_id",
+                "arguments",
+                "expected_definition_hash",
+            }:
                 raise AuthorityDenied("saved bridge tool invocation is out of scope")
             self._require_targets(outer, TOOL_TARGETS)
         return self._dispatch(outer, target, payload)
 
     @staticmethod
     def _check_append(
-        request: Mapping[str, Any], payload: Mapping[str, Any], hop: int,
+        request: Mapping[str, Any],
+        payload: Mapping[str, Any],
+        hop: int,
         trace: list[dict[str, Any]] | None = None,
     ) -> None:
         message = payload.get("message")
@@ -313,6 +446,21 @@ class SavedBridgeCallbacks:
         trace = trace or []
         metadata = {"turn_id": request["turn_id"]}
         fields = {"id", "role", "content", "parent_id", "metadata", "status"}
+        append_fields = {
+            "operation",
+            "conversation_id",
+            "expected_conversation_revision",
+            "message",
+        }
+        if "system_prompt_digest" in payload:
+            digest = payload["system_prompt_digest"]
+            if (
+                hop != 1
+                or not isinstance(digest, str)
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
+            ):
+                raise AuthorityDenied("saved bridge system prompt binding is invalid")
+            append_fields.add("system_prompt_digest")
         if trace:
             metadata["saved_tool_messages"] = trace
             fields.add("tool_logs")
@@ -322,8 +470,7 @@ class SavedBridgeCallbacks:
             return "message:" + canonical_digest(identity).removeprefix("sha256:")
 
         if (
-            set(payload)
-            != {"operation", "conversation_id", "expected_conversation_revision", "message"}
+            set(payload) != append_fields
             or payload["operation"] != "append"
             or payload["conversation_id"] != request["conversation_id"]
             or not isinstance(message, Mapping)
@@ -331,7 +478,8 @@ class SavedBridgeCallbacks:
             or message["id"] != message_id(role)
             or message["role"] != role
             or canonical_json(message["metadata"]) != canonical_json(metadata)
-            or canonical_json(message.get("tool_logs", [])) != canonical_json(saved_tool_logs(trace))
+            or canonical_json(message.get("tool_logs", []))
+            != canonical_json(saved_tool_logs(trace))
             or message["status"] != "complete"
             or (hop == 1 and message["content"] != request["content"])
             or (hop == 3 and message["parent_id"] != message_id("user"))
@@ -341,12 +489,23 @@ class SavedBridgeCallbacks:
 
 def project_saved_tool_result(value: Mapping[str, Any]) -> dict[str, Any]:
     """Carry normalized tool content as text without loosening the guest JSON ABI."""
-    if (value.get("status") not in {"success", "error"}
-            or type(value.get("is_error")) is not bool
-            or value["is_error"] != (value["status"] == "error")):
+    if (
+        value.get("status") not in {"success", "error"}
+        or type(value.get("is_error")) is not bool
+        or value["is_error"] != (value["status"] == "error")
+    ):
         raise ValueError("saved tool result is not normalized")
-    content = json.dumps({key: value.get(key) for key in ("status", "result", "error")},
-                         ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    content = json.dumps(
+        {key: value.get(key) for key in ("status", "result", "error")},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
     if len(content.encode()) > 16 * 1024:
         raise ValueError("saved tool result exceeds its bound")
-    return {"tool_id": value.get("tool_id"), "tool_call_id": value.get("tool_call_id"), "content": content}
+    return {
+        "tool_id": value.get("tool_id"),
+        "tool_call_id": value.get("tool_call_id"),
+        "content": content,
+    }

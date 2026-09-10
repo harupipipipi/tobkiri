@@ -1,5 +1,5 @@
 {
-  "artifact_set_digest": "sha256:db65fb49dd1629256e2bcfeef1f11869d2b262e830639db29fc36c4850f0d4d6",
+  "artifact_set_digest": "sha256:2faa895d19886c0dda42ca76a383f7369566a2b5edbc86a30f2d684a6ed3f615",
   "artifacts": [
     {
       "digest": "sha256:75420fa0dc4632836135df7fe98686b5579beb822bcea5c3e447b6aa6a48627e",
@@ -7,12 +7,12 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:df150a652a830e95720053f66c0cdb793bbefe495f9b11479eed51fb5bcfb972",
+      "digest": "sha256:f0e1aef2b677494a83f856ca8563673f95cb6c9c82d656c5c0ced85dff982ce2",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:6d01a5a3dd1e780b90da9ed8e0557c54210aa8ee75b62ec2aaa8034f143e0dcf",
+      "digest": "sha256:781d2aaf8e62bbf7fd080e6c6dc35ce24141a2f6343204e2989e32fd053f7eab",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:bea7e42ff1e36c1860ec5680f9b9ed41d5a96ffe7a00185bc181c4cca0842b09",
+      "digest": "sha256:1eceeddcdf5347c6ea1165cccb51feba06725fc88cb7b10594d2681760cbf970",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -42,12 +42,12 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:d68139419887b4f96aa98bd2c99ccd70b57407b438c4c8e3498bbf5d10805a06",
+      "digest": "sha256:af96560aebb6abb1bbc422281ddbe9e9db47c1b42313b346612c488cb15fe751",
       "path": "runtime/service.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:9181326eea111b2129088f2c8167b2a4177f75c916ffb960f8e4be3e3f385e08",
+      "digest": "sha256:654ae9cee658f80e35b8725db4175151d276b19073e2a7ab0f50a7cb2abfba1a",
       "path": "runtime/store.py",
       "role": "runtime"
     },
@@ -70,8 +70,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:a88e472df8bea71f073d3941513c9de2dd68d26f9f81cda3c17fa5962022053e"
+    "signed_digest": "sha256:5812571cf158789984a305d803ec9ba6723c4b2aabaeb1a907cf58eea6a49102"
   },
   "pack_id": "rumi_prompt_studio_pack",
-  "source_identity": "sha256:d93df22af6a82fccf3ead78755e92cfc34438117217aa58c70898c1fa51853e3"
+  "source_identity": "sha256:e34fe3ce74298d3fd7e48784d9823f5d9916da7aa3b8f564d0fbbaccdf1f8c89"
 }

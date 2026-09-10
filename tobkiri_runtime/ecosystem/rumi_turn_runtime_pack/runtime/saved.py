@@ -22,15 +22,23 @@ from tobkiri_protocol.saved_conversation import (
     validate_saved_conversation_input,
 )
 from tobkiri_protocol.saved_tools import saved_tool_logs, saved_tool_messages
+from tobkiri_protocol.saved_context import (
+    PROMPT_TARGET,
+    resolved_saved_prompt,
+    saved_prompt_reference,
+)
 
 RECEIPT_CONTRACT = "tobkiri.resource.conversation.v1"
 RECEIPT_OPERATION = "rumi_conversation_store_pack.conversation-resource"
-SAVED_CONTRACTS = frozenset({SAVED_CONVERSATION_CONTRACT, RECEIPT_CONTRACT})
+SAVED_CONTRACTS = frozenset({SAVED_CONVERSATION_CONTRACT, RECEIPT_CONTRACT, PROMPT_TARGET[0]})
 
 
 def reconcile_saved_turn(
-    store: DurableTurnRuntime, turn_id: str, *,
-    client: GlobalContractClient, guard: Callable[[], None],
+    store: DurableTurnRuntime,
+    turn_id: str,
+    *,
+    client: GlobalContractClient,
+    guard: Callable[[], None],
 ) -> dict[str, Any]:
     """Reconcile existing state using an owner-reader-only captured client.
 
@@ -81,10 +89,15 @@ def execute_saved_turn(
     if store.get(initial["request"]["turn_id"]) is None:
         # Existing turns must remain reconcilable after the conversation changes.
         # Only new execution reads context before claiming any durable work.
-        response = client.invoke(RECEIPT_CONTRACT, RECEIPT_OPERATION, {
-            "profile_id": store.profile_id, "operation": "get",
-            "conversation_id": initial["request"]["conversation_id"],
-        })
+        response = client.invoke(
+            RECEIPT_CONTRACT,
+            RECEIPT_OPERATION,
+            {
+                "profile_id": store.profile_id,
+                "operation": "get",
+                "conversation_id": initial["request"]["conversation_id"],
+            },
+        )
         guard()
         conversation = response.get("conversation")
         if (
@@ -93,6 +106,11 @@ def execute_saved_turn(
         ):
             raise ValueError("saved conversation owner response is invalid")
         validate_saved_conversation_context(conversation)
+        prompt_id = saved_prompt_reference(conversation)
+        if prompt_id is not None:
+            prompt = client.invoke(*PROMPT_TARGET, {"operation": "get", "prompt_id": prompt_id})
+            guard()
+            resolved_saved_prompt(prompt, prompt_id=prompt_id, profile_id=store.profile_id)
         revision = conversation.get("conversation_revision")
         if type(revision) is not int or revision != initial["request"]["conversation_revision"]:
             raise ValueError("saved conversation revision changed before execution")
@@ -117,24 +135,36 @@ def execute_saved_turn(
     except Exception:
         # Dispatch may have committed effects before raising or losing its
         # reply. Never retry it or expose provider/parser exception contents.
-        return _settle(store, record, "waiting", {
-            "phase": "reconciliation_required",
-            "reason": "saved_execution_outcome_unconfirmed",
-        })
+        return _settle(
+            store,
+            record,
+            "waiting",
+            {
+                "phase": "reconciliation_required",
+                "reason": "saved_execution_outcome_unconfirmed",
+            },
+        )
     return _settle(store, record, "completed", {"result_reference": reference})
 
 
 def _reconcile(
-    store: DurableTurnRuntime, record: Mapping[str, Any],
-    client: GlobalContractClient, guard: Callable[[], None],
+    store: DurableTurnRuntime,
+    record: Mapping[str, Any],
+    client: GlobalContractClient,
+    guard: Callable[[], None],
 ) -> dict[str, Any] | None:
     if record["status"] not in {"running", "waiting"}:
         return None
     guard()
-    response = client.invoke(RECEIPT_CONTRACT, RECEIPT_OPERATION, {
-        "profile_id": store.profile_id, "operation": "saved_receipt",
-        "turn_id": record["id"],
-    })
+    response = client.invoke(
+        RECEIPT_CONTRACT,
+        RECEIPT_OPERATION,
+        {
+            "profile_id": store.profile_id,
+            "operation": "saved_receipt",
+            "turn_id": record["id"],
+        },
+    )
     guard()
     encoded = canonical_json(response)
     if len(encoded) > 8192:
@@ -145,30 +175,55 @@ def _reconcile(
     receipt = decoded["receipt"]
     if receipt is None or isinstance(receipt, dict) and "result_reference" not in receipt:
         return None
-    if not isinstance(receipt, dict) or set(receipt) != {
-        "turn_id", "conversation_id", "input_digest", "initial_revision",
-        "user_message_id", "assistant_message_id", "user_revision", "result_reference",
-    } or any(receipt[key] != value for key, value in {
-        "turn_id": record["id"], "conversation_id": record["conversation_id"],
-        "input_digest": record["input_digest"],
-        "initial_revision": record["conversation_revision"],
-    }.items()):
+    if (
+        not isinstance(receipt, dict)
+        or set(receipt)
+        != {
+            "turn_id",
+            "conversation_id",
+            "input_digest",
+            "initial_revision",
+            "user_message_id",
+            "assistant_message_id",
+            "user_revision",
+            "result_reference",
+        }
+        or any(
+            receipt[key] != value
+            for key, value in {
+                "turn_id": record["id"],
+                "conversation_id": record["conversation_id"],
+                "input_digest": record["input_digest"],
+                "initial_revision": record["conversation_revision"],
+            }.items()
+        )
+    ):
         raise ValueError("saved receipt input identity is invalid")
     reference = receipt["result_reference"]
     user_id, assistant_id = (
-        "message:" + canonical_digest([
-            record["conversation_id"], record["id"], role,
-        ]).removeprefix("sha256:")
+        "message:"
+        + canonical_digest(
+            [
+                record["conversation_id"],
+                record["id"],
+                role,
+            ]
+        ).removeprefix("sha256:")
         for role in ("user", "assistant")
     )
     if (
         not isinstance(reference, dict)
-        or set(reference) != {
-            "conversation_id", "conversation_revision", "user_message_id",
-            "assistant_message_id", "outcome_digest",
+        or set(reference)
+        != {
+            "conversation_id",
+            "conversation_revision",
+            "user_message_id",
+            "assistant_message_id",
+            "outcome_digest",
         }
         or reference["conversation_id"] != record["conversation_id"]
-        or reference["user_message_id"] != user_id or receipt["user_message_id"] != user_id
+        or reference["user_message_id"] != user_id
+        or receipt["user_message_id"] != user_id
         or reference["assistant_message_id"] != assistant_id
         or receipt["assistant_message_id"] != assistant_id
         or type(receipt["initial_revision"]) is not int
@@ -185,8 +240,10 @@ def _reconcile(
     try:
         guard()
         result = store.reconcile_saved(
-            record["id"], expected_revision=record["revision"],
-            input_digest=record["input_digest"], result_reference=reference,
+            record["id"],
+            expected_revision=record["revision"],
+            input_digest=record["input_digest"],
+            result_reference=reference,
         )
     except TurnConflict:
         return {"status": "reconciliation_required", "turn": store.get(record["id"])}
@@ -201,8 +258,11 @@ def _settle(
 ) -> dict[str, Any]:
     try:
         record = store.mutate(
-            "transition", claimed["id"], expected_revision=claimed["revision"],
-            status=status, details=details,
+            "transition",
+            claimed["id"],
+            expected_revision=claimed["revision"],
+            status=status,
+            details=details,
         )
     except TurnConflict:
         # Guidance/cancellation can change the revision while dispatch runs.
@@ -211,7 +271,8 @@ def _settle(
         if current is None:
             raise ValueError("saved execution lost its durable record")
         if (
-            status == "completed" and current["status"] == "completed"
+            status == "completed"
+            and current["status"] == "completed"
             and current.get("result_reference") == details.get("result_reference")
         ):
             return {"status": "completed", "turn": current}
@@ -228,14 +289,23 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         raise ValueError("saved result exceeds byte limit")
     result = strict_loads(encoded)
     user_id, assistant_id = (
-        "message:" + canonical_digest([
-            request["conversation_id"], request["turn_id"], role,
-        ]).removeprefix("sha256:")
+        "message:"
+        + canonical_digest(
+            [
+                request["conversation_id"],
+                request["turn_id"],
+                role,
+            ]
+        ).removeprefix("sha256:")
         for role in ("user", "assistant")
     )
     if not isinstance(result, dict) or set(result) != {
-        "status", "turn_id", "conversation_id", "conversation_revision",
-        "user_message_id", "message",
+        "status",
+        "turn_id",
+        "conversation_id",
+        "conversation_revision",
+        "user_message_id",
+        "message",
     }:
         raise ValueError("saved result is not a complete acknowledgement")
     message = result["message"]
@@ -269,8 +339,7 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
     if (
         metadata != expected_metadata
         or (selection.get("must_use") and not trace)
-        or canonical_json([] if logs is None else logs)
-        != canonical_json(saved_tool_logs(trace))
+        or canonical_json([] if logs is None else logs) != canonical_json(saved_tool_logs(trace))
     ):
         raise ValueError("saved acknowledgement tool transcript is invalid")
     # Conversation content remains in its owner. Retain identity and a digest

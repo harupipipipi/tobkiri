@@ -55,13 +55,7 @@ class PromptStudioStore:
         self.profile_id = validate_profile_id(profile_id)
         root = Path(user_data_root or USER_DATA_DIR)
         self.user_data_root = root
-        self.root = (
-            root
-            / "packs"
-            / "rumi_prompt_studio_pack"
-            / "profiles"
-            / self.profile_id
-        )
+        self.root = root / "packs" / "rumi_prompt_studio_pack" / "profiles" / self.profile_id
         self.path = self.root / "prompt_studio.store.json"
         self.owner_marker = self.root / "authoritative-owner.json"
         self.backup_root = self.root / "migration_backups"
@@ -71,9 +65,7 @@ class PromptStudioStore:
 
     def legacy_profile_root(self) -> Path:
         """Return the only legacy profile root accepted for migration."""
-        return ProfileWorkspaceManager(
-            self.user_data_root
-        ).paths_for_profile(self.profile_id).root
+        return ProfileWorkspaceManager(self.user_data_root).paths_for_profile(self.profile_id).root
 
     def snapshot(self) -> dict[str, Any]:
         """Return the current store without exposing version bodies by default."""
@@ -263,10 +255,7 @@ class PromptStudioStore:
                     "store_revision": state["revision"],
                 }
             next_body = str(
-                source.get("previous_body")
-                if use_previous
-                else source.get("next_body")
-                or ""
+                source.get("previous_body") if use_previous else source.get("next_body") or ""
             )
             audit = _version_record(
                 prompt_id,
@@ -306,14 +295,16 @@ class PromptStudioStore:
         if root != expected:
             raise PermissionError("legacy profile root is outside the bound profile")
         prompts_root = root / "prompts"
-        sources = sorted(
-            path for path in prompts_root.glob("*")
-            if path.is_file() and path.suffix in {".md", ".txt"}
-        ) if prompts_root.is_dir() else []
-        inventory = [
-            (path.name, _body_hash(path.read_text(encoding="utf-8")))
-            for path in sources
-        ]
+        sources = (
+            sorted(
+                path
+                for path in prompts_root.glob("*")
+                if path.is_file() and path.suffix in {".md", ".txt"}
+            )
+            if prompts_root.is_dir()
+            else []
+        )
+        inventory = [(path.name, _body_hash(path.read_text(encoding="utf-8"))) for path in sources]
         return MigrationInspection(
             profile_id=self.profile_id,
             source_files=tuple(str(path) for path in sources),
@@ -400,19 +391,15 @@ class PromptStudioStore:
         """Import adapter-supplied legacy records without reading a sibling pack."""
         normalized = _migration_records(records)
         normalized_edge_states = {
-            _edge_id(key): bool(value)
-            for key, value in (edge_states or {}).items()
+            _edge_id(key): bool(value) for key, value in (edge_states or {}).items()
         }
-        source_payload = {
+        source_payload: dict[str, Any] = {
             "records": normalized,
             "edge_states": {
-                key: normalized_edge_states[key]
-                for key in sorted(normalized_edge_states)
+                key: normalized_edge_states[key] for key in sorted(normalized_edge_states)
             },
         }
-        source_hash = _body_hash(
-            json.dumps(source_payload, ensure_ascii=False, sort_keys=True)
-        )
+        source_hash = _body_hash(json.dumps(source_payload, ensure_ascii=False, sort_keys=True))
         if source_hash != expected_source_hash:
             raise PromptWriteConflict("legacy records changed after migration inspect")
         with NamedLock(self.lock_root, self._lock_name):
@@ -448,9 +435,7 @@ class PromptStudioStore:
             state["revision"] = 1
             state["updated_at"] = _now()
             self._write(state)
-            if set(self._read()["prompts"]) != {
-                item["prompt_id"] for item in normalized
-            }:
+            if set(self._read()["prompts"]) != {item["prompt_id"] for item in normalized}:
                 self.path.unlink(missing_ok=True)
                 raise RuntimeError("Prompt Studio migration verification failed")
             marker = {
@@ -493,7 +478,8 @@ class PromptStudioStore:
             self._directory = SecureDirectory(self.root, create=False)
         try:
             encoded = self._directory.read_bytes_bounded(
-                self.path.name, max_bytes=_STORE_LIMIT,
+                self.path.name,
+                max_bytes=_STORE_LIMIT,
             )
         except FileNotFoundError:
             return self._empty()
@@ -544,11 +530,9 @@ class PromptStudioStore:
 
     @staticmethod
     def _public_prompt(record: Mapping[str, Any]) -> dict[str, Any]:
-        return {
-            key: value
-            for key, value in record.items()
-            if key != "versions"
-        } | {"version_count": len(record.get("versions") or [])}
+        return {key: value for key, value in record.items() if key != "versions"} | {
+            "version_count": len(record.get("versions") or [])
+        }
 
 
 def _version_record(
@@ -595,9 +579,7 @@ def _migration_records(
 
 def _public_version(record: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        key: value
-        for key, value in record.items()
-        if key not in {"previous_body", "next_body"}
+        key: value for key, value in record.items() if key not in {"previous_body", "next_body"}
     }
 
 
@@ -617,8 +599,10 @@ def _version_id(value: Any) -> str:
 
 def _edge_id(value: Any) -> str:
     edge_id = str(value or "").strip()
-    if not edge_id or len(edge_id) > 256 or any(
-        character in edge_id for character in ("\x00", "\r", "\n")
+    if (
+        not edge_id
+        or len(edge_id) > 256
+        or any(character in edge_id for character in ("\x00", "\r", "\n"))
     ):
         raise ValueError("invalid edge_id")
     return edge_id
@@ -641,11 +625,11 @@ def _now() -> str:
 
 
 def _string_list(value: Any) -> list[str]:
-    return [
-        str(item).strip()
-        for item in (value or [])
-        if str(item).strip()
-    ] if isinstance(value, list) else []
+    return (
+        [str(item).strip() for item in (value or []) if str(item).strip()]
+        if isinstance(value, list)
+        else []
+    )
 
 
 def _safe_metadata(value: Mapping[str, Any] | None) -> dict[str, Any]:
