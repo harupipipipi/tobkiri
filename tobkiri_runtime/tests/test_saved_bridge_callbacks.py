@@ -153,6 +153,28 @@ def test_display_only_metadata_does_not_block_saved_preflight(tmp_path: Path) ->
     assert calls[-1][0] == READINESS
 
 
+def test_saved_text_blocks_use_plain_readiness_without_changing_history(
+    tmp_path: Path,
+) -> None:
+    """The readiness contract gets text while the owner retains exact blocks."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    blocks = [{"type": "text", "text": "First "}, {"type": "text", "text": "reply"}]
+    store.append_message("conversation-1", {
+        "id": "prior-assistant", "role": "assistant", "content": blocks,
+    }, expected_conversation_revision=1)
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    callbacks.preflight(outer)
+    assert store.path.read_bytes() == before
+    assert calls[-1] == (READINESS, {
+        "model_profile_id": "model-profile-1",
+        "messages": [
+            {"role": "assistant", "content": "First reply"},
+            {"role": "user", "content": "Hello"},
+        ],
+    })
+
+
 @pytest.mark.parametrize("content", [
     [{"type": "image", "url": "https://example.invalid/private.png"}],
     [{"type": "text", "text": "visible"}, {"type": "tool_result", "content": "hidden"}],

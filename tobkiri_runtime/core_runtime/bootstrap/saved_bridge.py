@@ -52,7 +52,9 @@ def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
         raise AuthorityDenied(str(error)) from error
 
 
-def _messages(conversation: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _messages(
+    conversation: Mapping[str, Any], *, flatten_text_blocks: bool = False,
+) -> list[dict[str, Any]]:
     """Independently constrain the selected owner history to resolved text."""
     _require_resolved_context(conversation)
     messages = conversation.get("messages")
@@ -107,7 +109,9 @@ def _messages(conversation: Mapping[str, Any]) -> list[dict[str, Any]]:
         ):
             raise AuthorityDenied("saved bridge additional content resolution is required")
         # Retain the owner's exact text blocks for guest equality checks and
-        # provider compilation. Attachments and tool content need their owners.
+        # generation. Only the text-only readiness API receives joined text.
+        if flatten_text_blocks and isinstance(content, list):
+            content = "".join(part["text"] for part in content)
         result.append({"role": message["role"], "content": content})
     return result
 
@@ -151,7 +155,10 @@ class SavedBridgeCallbacks:
             raise AuthorityDenied("saved bridge owned model is unavailable")
         payload = {
             "model_profile_id": model,
-            "messages": [*_messages(conversation), {"role": "user", "content": request["content"]}],
+            "messages": [
+                *_messages(conversation, flatten_text_blocks=True),
+                {"role": "user", "content": request["content"]},
+            ],
         }
         if len(canonical_json(payload)) > 60 * 1024:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
