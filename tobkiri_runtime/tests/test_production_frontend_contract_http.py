@@ -1363,10 +1363,12 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert provider_owners[1][1] != provider_owners[1][3]
 
 
+@pytest.mark.parametrize("text_blocks", [False, True])
 def test_saved_settings_reach_host_credential_transport(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    text_blocks: bool,
 ) -> None:
-    """Real settings/approval/owners/Gateway/Broker; guest and HTTPS are doubles."""
+    """Two real saved turns; only guest execution and HTTPS are doubles."""
     import io
     from core_runtime import credential_transport
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
@@ -1374,6 +1376,10 @@ def test_saved_settings_reach_host_credential_transport(
     from tobkiri_host.runtime import V4DispatchSession
 
     requests = []
+    reply = (
+        [{"type": "text", "text": "Host transport reply"}] if text_blocks
+        else "Host transport reply"
+    )
 
     def open_provider(request, *, timeout):
         assert timeout > 0
@@ -1383,10 +1389,16 @@ def test_saved_settings_reach_host_credential_transport(
         )
         body = json.loads(request.data)
         assert body["model"] == "organization/raw-model"
-        assert body["messages"] == [{"role": "user", "content": "Hello"}]
+        expected = [{"role": "user", "content": "Hello"}]
+        if requests:
+            expected.extend([
+                {"role": "assistant", "content": reply},
+                {"role": "user", "content": "Continue"},
+            ])
+        assert body["messages"] == expected
         requests.append(body)
         return io.BytesIO(json.dumps({
-            "choices": [{"message": {"content": "Host transport reply"},
+            "choices": [{"message": {"content": reply},
                          "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1},
         }).encode())
@@ -1443,7 +1455,19 @@ def test_saved_settings_reach_host_credential_transport(
         assert result["data"]["status"] == "completed", (result, failures)
         assert len(requests) == 1
         assert [item["content"] for item in store.get("chat")["messages"]] == [
-            "Hello", "Host transport reply",
+            "Hello", reply,
+        ]
+        status, result, _ = post("/api/chat/turn", {"request": {
+            "turn_id": "turn-2", "conversation_id": "chat",
+            "conversation_revision": 3, "content": "Continue",
+        }})
+        assert status == 200, result
+        assert result["data"]["status"] == "completed", (result, failures)
+        assert len(requests) == 2
+        persisted = store.get("chat")
+        assert persisted["conversation_revision"] == 5
+        assert [item["content"] for item in persisted["messages"]] == [
+            "Hello", reply, "Continue", reply,
         ]
     finally:
         servers.close()
