@@ -218,7 +218,7 @@ def test_parent_cancellation_while_queued_never_enters_provider() -> None:
     assert fixture.backend.cancelled == []
     assert "authority_effect_recheck" not in fixture.events
     assert "audit_dispatched" not in fixture.events
-    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.audit.failures == []
 
 
 def test_parent_cancellation_during_worker_guard_retains_resources(
@@ -259,10 +259,11 @@ def test_parent_cancellation_during_worker_guard_retains_resources(
             assert not fixture.admission.released
             assert fixture.backend.invocations == 0
             assert fixture.backend.cancelled == []
-            assert fixture.audit.failures == [("provider_failed", False)]
+            assert fixture.audit.failures == []
             release_guard.set()
             assert resources_released.wait(2)
         assert fixture.backend.invocations == 0
+        assert fixture.audit.failures == [("provider_failed", False)]
         assert fixture.events.count("reservation_released") == 1
     finally:
         release_guard.set()
