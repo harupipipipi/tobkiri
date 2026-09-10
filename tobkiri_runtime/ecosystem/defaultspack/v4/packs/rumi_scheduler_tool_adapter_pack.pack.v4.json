@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:acaff42a6613ba94f83ee32ce8ab155b747bfb8d92af29429e091ae0f03e4335",
+      "digest": "sha256:360c21cb78ac43b6e04c65b7ef92e5c3b2ef138ce28f8f128452c951f9190c23",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -9,6 +9,11 @@
       "digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
       "kind": "executable",
       "path": "runtime/adapter.py"
+    },
+    {
+      "digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "kind": "executable",
+      "path": "runtime/definitions_component.wasm"
     }
   ],
   "contracts": [
@@ -32,7 +37,7 @@
       "contract_revision_digest": "sha256:d753fb22387c558033f78166130ea196ba979072a220af7a2ab25da279531e7e",
       "id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
       "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
-      "isolation": "dedicated_process",
+      "isolation": "pack_vm",
       "operations": [
         "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
       ],
@@ -41,8 +46,8 @@
     {
       "contract_revision_digest": "sha256:a32b5e69496d1488bb466105b0836d9f2e30adf57b0ef821de625d392220e395",
       "id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-      "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
-      "isolation": "dedicated_process",
+      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "isolation": "wasm_component",
       "operations": [
         "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
       ],
@@ -50,8 +55,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:b62928d53703ee74ba1b23c017756f786429678950b9e2712701af25a104d3f3",
-    "artifact_set_digest": "sha256:c73855e331f628a0b2b672609a13126ea2a2ff7f954df5e9e09d1e9b6190e539",
+    "source_identity": "sha256:b907b8eff2e2ed5ca1197b1e6b6b383378a27e181f914b53677bd57ee6029196",
+    "artifact_set_digest": "sha256:13e6515b4d002bf862690a7523379f520bfc08cdf83b70e82ddc5ec23df48a12",
     "contract_catalog_digest": "sha256:f8bf028ba9e5d0c619d679626abaaebfdf14162cb3e9d712ff36013f38d5d203"
   },
   "migration": {
@@ -84,7 +89,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:7348e503b2d0523dfa72fc2c39c49ae9ab00a6e9d7044172963d7c7e34353bbf",
+    "artifact_digest": "sha256:e5a5525229884e3600a8c67194ebb602aeffe94bb83f14b1b8ff71c31af1f79d",
     "display_name": "Rumi Scheduler Tool Adapter",
     "id": "rumi_scheduler_tool_adapter_pack",
     "kind": "normal_sandbox",
@@ -95,15 +100,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_scheduler_tool_adapter_pack/pack.v4.json",
-    "source_digest": "sha256:b62928d53703ee74ba1b23c017756f786429678950b9e2712701af25a104d3f3",
+    "source_digest": "sha256:b907b8eff2e2ed5ca1197b1e6b6b383378a27e181f914b53677bd57ee6029196",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:6534f2f119e86e36dbdb3b50bdae06eb46cb18d9582a937cf8d7975605787fa4",
+    "content_root_digest": "sha256:f14bbf245a7b68138cda03a27e38e8ce32c0b993ca975e686884b9466dd772da",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:1b3f3f48e0cc45dc12fc523604c300ef826a2e72f4f190b283bb408043ed8a6e",
+    "input_inventory_digest": "sha256:570710f7860e7fceef893e3b5d257485311e8a454919fa9f8c757f3b7e254073",
     "normative": true,
     "evidence": [
       {
@@ -114,7 +119,7 @@
       {
         "path": "ecosystem/rumi_scheduler_tool_adapter_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:b62928d53703ee74ba1b23c017756f786429678950b9e2712701af25a104d3f3"
+        "digest": "sha256:b907b8eff2e2ed5ca1197b1e6b6b383378a27e181f914b53677bd57ee6029196"
       }
     ]
   },

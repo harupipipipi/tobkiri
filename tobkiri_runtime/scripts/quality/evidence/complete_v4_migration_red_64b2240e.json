@@ -16,8 +16,8 @@
     },
     "legacy_manifest_declared_packs": 142,
     "migration_status": {
-      "generated-draft": 102,
-      "semantically-reviewed": 40
+      "generated-draft": 103,
+      "semantically-reviewed": 39
     },
     "production_pack_directories": 142,
     "v4_artifact_files": 568,
@@ -63,8 +63,8 @@
           "rumi_browser_form_operator_pack"
         ],
         "status_counts": {
-          "generated-draft": 102,
-          "semantically-reviewed": 40
+          "generated-draft": 103,
+          "semantically-reviewed": 39
         },
         "symbol": "migration_release_proof_missing",
         "unverified_count": 142
@@ -150,8 +150,8 @@
             "rumi_browser_form_operator_pack"
           ],
           "status_counts": {
-            "generated-draft": 102,
-            "semantically-reviewed": 40
+            "generated-draft": 103,
+            "semantically-reviewed": 39
           },
           "symbol": "migration_release_proof_missing",
           "unverified_count": 142
@@ -912,8 +912,8 @@
       ]
     },
     "migration_status_counts": {
-      "generated-draft": 102,
-      "semantically-reviewed": 40
+      "generated-draft": 103,
+      "semantically-reviewed": 39
     },
     "migration_status_records": [
       {
@@ -1765,7 +1765,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_scheduler_tool_adapter_pack",
@@ -2207,8 +2207,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "e757de932ee7c698a90bcb0f31181072f3de47ea",
-    "semantic_digest": "sha256:31fb68eabf9185a3e9906eb37e6fb3dc6c3ffa47a4591b7c31f1811b7a976d2b",
+    "observed_head_sha": "87ad264b5ae4a04a4a74bd1aa017d9f4f2d6c5d3",
+    "semantic_digest": "sha256:2ca8a1e46a96bf7ba771904217791db3ac5fbc007ff540b234813e357b3659e8",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

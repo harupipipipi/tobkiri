@@ -8941,11 +8941,15 @@
       }
     },
     "rumi_scheduler_tool_adapter_pack": {
-      "migration_receipt_digest": "sha256:eaa2e1d6328cafdb27cd209b952d7436adb20795a317cf690014da50924f1e39",
       "semantic_comparison": {
-        "equivalent": true,
+        "equivalent": false,
+        "errors": [
+          "legacy_artifact_record_missing:rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler"
+        ],
         "method": "legacy-to-v4-semantic-comparator.v1",
-        "missing_categories": [],
+        "missing_categories": [
+          "legacy_artifact_record_missing"
+        ],
         "operation_inventory": {
           "legacy_count": 2,
           "v4_count": 2
@@ -9008,76 +9012,21 @@
             },
             "v4_contract_id": "tobkiri.service.tool.local.operation.v1",
             "v4_operation_id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
-          },
-          {
-            "authority_mapping": {
-              "legacy": {
-                "artifact_role": "runtime",
-                "cardinality": "many",
-                "contract_id": "rumi.resource.tool.definition.contribution.v1",
-                "failure": "isolate",
-                "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_tool_registry_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
-                "provider_instance_id": "tool-definitions.scheduler",
-                "required_capabilities": [
-                  "tool.definition.contribute"
-                ],
-                "security": "internal"
-              },
-              "status": "verified",
-              "v4": {
-                "cardinality": "many",
-                "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
-                "failure": "isolate",
-                "function_role": "brokered",
-                "instance_key": "scheduler",
-                "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_tool_registry_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
-                "provider_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-                "required_capabilities": [
-                  "tool.definition.contribute"
-                ],
-                "security": "internal"
-              }
-            },
-            "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-            "legacy_operation_id": "scheduler-tool-definitions",
-            "legacy_operation_kind": "legacy-v3-entrypoint",
-            "parameter_mapping": {
-              "legacy_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-              "method": "canonical-json-schema-equality",
-              "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-              "rules": [
-                "input:identity",
-                "output:identity"
-              ],
-              "status": "verified",
-              "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
-            },
-            "v4_contract_id": "tobkiri.resource.tool.definition.contribution.v1",
-            "v4_operation_id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
           }
         ],
-        "status": "verified"
+        "reason": "Pack-specific legacy and v4 semantic records do not compare exactly",
+        "status": "unverified"
       },
       "source": {
-        "digest": "sha256:1ceca4122ccaa4d58864654e34e11b7e4c96cc06b09ec3e73f63c6d1a7b8777a",
+        "digest": "sha256:6dc0cf754a9de9fd2b28ffd70f69cf1eda12ae8124e105d01440511fd2d25921",
         "executable_source_registry": {
-          "digest": "sha256:4f24fd77179d883d188cddb3556eb7f1ba854d4694ec078b7a26a883b3dd0c44",
+          "digest": "sha256:c3050b9c5d62f8788973a6ec1ad4ff799bedf6820ea05d7bff5edd9a171a4490",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 2
         },
         "files": [
           {
-            "digest": "sha256:50313d9b6961d3a93723db1e568447c09c6c5602ec3f44010ba47d9009afd229",
+            "digest": "sha256:1edec022ab57c04c1f18b6b24c4e3383f8aab1ae652d608c41b9c85e9232d16f",
             "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/rumi.pack.v3.json"
           },
           {
@@ -9089,22 +9038,22 @@
         "pack_id": "rumi_scheduler_tool_adapter_pack",
         "status": "available"
       },
-      "status": "semantically-reviewed",
+      "status": "generated-draft",
       "target": {
         "artifact_verification": {
-          "artifact_count": 4,
-          "artifact_index_digest": "sha256:ba04597249b27430b8b216acae5eae7f469683ee2b95e4b238595e19ccfb3ae4",
-          "artifact_set_digest": "sha256:7348e503b2d0523dfa72fc2c39c49ae9ab00a6e9d7044172963d7c7e34353bbf",
-          "executable_catalog_digest": "sha256:e734249bb16e621ceff7e1126ee85e77694f888ab93b6d7bb4954d648e7ad39f",
+          "artifact_count": 5,
+          "artifact_index_digest": "sha256:802328a34e4bb7d0dc9835fb5e44a59d005ebeee21f4fbd4378ffdc2df30189d",
+          "artifact_set_digest": "sha256:e5a5525229884e3600a8c67194ebb602aeffe94bb83f14b1b8ff71c31af1f79d",
+          "executable_catalog_digest": "sha256:0434ceb7b626ac8113ef96057232fe0e44854e15a78ca12abfd965a5dcac9ec5",
           "pack_id": "rumi_scheduler_tool_adapter_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:ba04597249b27430b8b216acae5eae7f469683ee2b95e4b238595e19ccfb3ae4",
-            "contracts.v4.json": "sha256:d5f360bdf35c3cf2da6544e416dd8deeb8ca99efe5f0f9fbb91faa8d26da84f8",
-            "executables.v4.json": "sha256:f2159859bb5a947097ea7b9c791802a4cf68a2ac25754a2cad7a8ed516dc1c7c",
-            "pack.v4.json": "sha256:b62928d53703ee74ba1b23c017756f786429678950b9e2712701af25a104d3f3"
+            "artifact-index.v4.json": "sha256:802328a34e4bb7d0dc9835fb5e44a59d005ebeee21f4fbd4378ffdc2df30189d",
+            "contracts.v4.json": "sha256:d689ff2208b3d3d5e00364d2051b5885df0eb5c321dfbe29ea9d5ce6eb2c9a45",
+            "executables.v4.json": "sha256:945e4eb21311a6192e611ba16a1fa0c1151514030b84146ba16fc6ee99bd76a0",
+            "pack.v4.json": "sha256:b907b8eff2e2ed5ca1197b1e6b6b383378a27e181f914b53677bd57ee6029196"
           }
         },
-        "digest": "sha256:7348e503b2d0523dfa72fc2c39c49ae9ab00a6e9d7044172963d7c7e34353bbf",
+        "digest": "sha256:e5a5525229884e3600a8c67194ebb602aeffe94bb83f14b1b8ff71c31af1f79d",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "rumi_scheduler_tool_adapter_pack",
         "status": "artifact-integrity-verified"
@@ -11762,10 +11711,10 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:7504e7afd02b5fb0da1b52ff9a1a000e60305483726704415ffd2cd92b4371de",
+    "content_digest": "sha256:5e41736fff6d55b2a5e9708377af57043131a64e31903b335cd0cb4a30e18a39",
     "feasibility_audit": {
       "semantically_reviewed": {
-        "count": 40,
+        "count": 39,
         "pack_ids": [
           "rumi_agent_runtime_service_pack",
           "rumi_agent_state_store_pack",
@@ -11801,7 +11750,6 @@
           "rumi_repository_context_pack",
           "rumi_schedule_store_pack",
           "rumi_scheduler_runtime_pack",
-          "rumi_scheduler_tool_adapter_pack",
           "rumi_shell_policy_pack",
           "rumi_slack_connector_pack",
           "rumi_subagent_placement_pack",
@@ -11834,9 +11782,10 @@
           ]
         },
         "legacy_artifact_record_missing": {
-          "count": 3,
+          "count": 4,
           "pack_ids": [
             "rumi_conversation_store_pack",
+            "rumi_scheduler_tool_adapter_pack",
             "rumi_tool_registry_pack",
             "rumi_turn_runtime_pack"
           ]
@@ -12006,7 +11955,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:8a8d5f247e6bb51eb7b1f1be05f672a9499600be85600eb8502bc14e71a37d22",
+    "input_digest": "sha256:360b5a45374b3b59ecc3f035fb8eca2b37ab87146c4476bebd29620cbc3a455e",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaults/artifact-index.v4.json",
@@ -12874,6 +12823,7 @@
       "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/adapter.py",
+      "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/definitions_component.wasm",
       "tobkiri_runtime/ecosystem/rumi_security_review_pack/artifact-index.v4.json",
       "tobkiri_runtime/ecosystem/rumi_security_review_pack/contracts.v4.json",
       "tobkiri_runtime/ecosystem/rumi_security_review_pack/executables.v4.json",
@@ -17410,7 +17360,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_surface_pack/ui/style.css"
       },
       {
-        "digest": "sha256:ba04597249b27430b8b216acae5eae7f469683ee2b95e4b238595e19ccfb3ae4",
+        "digest": "sha256:802328a34e4bb7d0dc9835fb5e44a59d005ebeee21f4fbd4378ffdc2df30189d",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/artifact-index.v4.json"
       },
@@ -17420,22 +17370,22 @@
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:d5f360bdf35c3cf2da6544e416dd8deeb8ca99efe5f0f9fbb91faa8d26da84f8",
+        "digest": "sha256:d689ff2208b3d3d5e00364d2051b5885df0eb5c321dfbe29ea9d5ce6eb2c9a45",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:f2159859bb5a947097ea7b9c791802a4cf68a2ac25754a2cad7a8ed516dc1c7c",
+        "digest": "sha256:945e4eb21311a6192e611ba16a1fa0c1151514030b84146ba16fc6ee99bd76a0",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:b62928d53703ee74ba1b23c017756f786429678950b9e2712701af25a104d3f3",
+        "digest": "sha256:b907b8eff2e2ed5ca1197b1e6b6b383378a27e181f914b53677bd57ee6029196",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:50313d9b6961d3a93723db1e568447c09c6c5602ec3f44010ba47d9009afd229",
+        "digest": "sha256:1edec022ab57c04c1f18b6b24c4e3383f8aab1ae652d608c41b9c85e9232d16f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/rumi.pack.v3.json"
       },
@@ -17443,6 +17393,11 @@
         "digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/adapter.py"
+      },
+      {
+        "digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/definitions_component.wasm"
       },
       {
         "digest": "sha256:eb6799991c11f0c445d79219561db618997c1849ea2160f05b60ccbff6544c6e",
@@ -18580,7 +18535,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:1484dc24dd68d5556788e952789fad0522d45e94357e5d9f9d6a6a471cf322a2",
+        "digest": "sha256:27d720b179de21e7a26eacb61f1df63f5f73ea5ee963c14b5f29f7b651112835",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -18590,7 +18545,7 @@
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
       {
-        "digest": "sha256:63e8038e36cc9250eb3e492ad467d763eb90c336b27c25ef94ba6478e6f67b12",
+        "digest": "sha256:c1715013d6bdbfa0a844ceac3c35ffcb76f6c0e66e727686c2b3db57d72092cf",
         "kind": "legacy-executable-source-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -18637,11 +18592,11 @@
     ],
     "kind": "repository-generated-evidence",
     "migration_status_counts": {
-      "generated-draft": 102,
+      "generated-draft": 103,
       "release-verified": 0,
-      "semantically-reviewed": 40
+      "semantically-reviewed": 39
     },
-    "observed_head_sha": "a3bc338a7f3c0b77749f4e4d9c7d313c0a8c9fdd",
+    "observed_head_sha": "87ad264b5ae4a04a4a74bd1aa017d9f4f2d6c5d3",
     "pack_count": 142,
     "profile_collection_proof": {
       "identity_proof": {
@@ -18707,7 +18662,7 @@
         }
       }
     },
-    "semantic_unproved_pack_count": 102,
+    "semantic_unproved_pack_count": 103,
     "unproved_pack_count": 142
   }
 }

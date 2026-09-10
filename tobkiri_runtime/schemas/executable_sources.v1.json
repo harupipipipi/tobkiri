@@ -10555,8 +10555,8 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-      "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
-      "implementation_path": "runtime/adapter.py",
+      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "implementation_path": "runtime/definitions_component.wasm",
       "input_schema": {
         "type": "object"
       },
@@ -10569,8 +10569,8 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
-          "implementation_path": "runtime/adapter.py",
+          "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+          "implementation_path": "runtime/definitions_component.wasm",
           "input_schema": {
             "type": "object"
           },
@@ -10596,6 +10596,12 @@
           "module": "ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter",
           "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/rumi.pack.v3.json",
           "symbol": "create_definition_contribution"
+        },
+        {
+          "kind": "explicit-implementation-adapter",
+          "legacy_implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+          "legacy_implementation_path": "runtime/adapter.py",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler.python"
@@ -14575,13 +14581,14 @@
   "source": {
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
-    "input_count": 201,
-    "input_digest": "sha256:c41ece0e2cbd88a8fdef88abf6cb5db943f392e1f6aad36e8ca0197e1801fe0b",
+    "input_count": 202,
+    "input_digest": "sha256:c058903c904e07eb9d2d5af3be4571bf9754784d4e94ef924eca4da9db763a46",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/message_host.py",
       "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/runtime/resource_host.py",
+      "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/definitions_component.wasm",
       "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py",
@@ -14800,6 +14807,11 @@
         "digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/runtime/resource_host.py"
+      },
+      {
+        "digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+        "kind": "explicit-implementation-adapter",
+        "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/runtime/definitions_component.wasm"
       },
       {
         "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
@@ -15307,7 +15319,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:63e8038e36cc9250eb3e492ad467d763eb90c336b27c25ef94ba6478e6f67b12",
+        "digest": "sha256:c1715013d6bdbfa0a844ceac3c35ffcb76f6c0e66e727686c2b3db57d72092cf",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

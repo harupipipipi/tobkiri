@@ -98,23 +98,31 @@ def _effect_class(operation: dict[str, Any]) -> str:
 
 def _execution_metadata(manifest: dict[str, Any], function: dict[str, Any]) -> dict[str, str]:
     isolation = function["isolation"]
-    if manifest["pack"]["kind"] == "host_extension":
+    if isolation == "wasm_component":
+        execution_kind = "wasm"
+        backend = "tobkiri.wasmtime-pulley-v1"
+        domain = "wasm.component.default.v1"
+        runtime_abi = "component-v1"
+    elif manifest["pack"]["kind"] == "host_extension":
         execution_kind = "host_extension"
         backend = "tobkiri.python-host-v4"
         domain = "host.extension.default.v1"
+        runtime_abi = "python3.13"
     elif isolation == "remote":
         execution_kind = "remote"
         backend = "tobkiri.remote-pack-v4"
         domain = "remote.default.v1"
+        runtime_abi = "python3.13"
     else:
         execution_kind = "pack_vm"
         backend = "tobkiri.python-pack-v4"
         domain = "sandbox.default.v1"
+        runtime_abi = "python3.13"
     return {
         "execution_kind": execution_kind,
         "platform": "any",
         "architecture": "any",
-        "runtime_abi": "python3.13",
+        "runtime_abi": runtime_abi,
         "backend": backend,
         "materialization_mode": "on_demand",
         "execution_domain_profile": domain,
@@ -161,6 +169,10 @@ def _render_document(
         digest = _file_digest(implementation)
         if digest != function["implementation_digest"]:
             raise ValueError(f"canonical implementation digest is stale: {pack_id}")
+        if function["isolation"] == "wasm_component":
+            from tobkiri_host.wasm_component import PureComponent
+
+            PureComponent(implementation.read_bytes(), digest)
         contract = _one(
             [
                 item
@@ -203,7 +215,11 @@ def _render_document(
             )
         variants.append(
             {
-                "variant_id": f"{function['id']}.python",
+                "variant_id": (
+                    f"{function['id']}.wasm"
+                    if function["isolation"] == "wasm_component"
+                    else f"{function['id']}.python"
+                ),
                 "function_id": function["id"],
                 "implementation_path": implementation_path,
                 "implementation_digest": digest,

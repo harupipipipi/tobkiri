@@ -67,13 +67,19 @@ ARTIFACT_INDEX_ROLES: frozenset[str] = frozenset(
 RUNTIME_ARTIFACT_KINDS: frozenset[str] = frozenset(
     {"executable", "schema", "asset", "variant", "sidecar"}
 )
-EXPLICIT_FUNCTION_FIELDS: frozenset[str] = frozenset(
+EXPLICIT_FUNCTION_REQUIRED_FIELDS: frozenset[str] = frozenset(
     {
         "function_id",
         "contract_id",
         "operation_ids",
         "implementation_digest",
     }
+)
+EXPLICIT_FUNCTION_FIELDS: frozenset[str] = (
+    EXPLICIT_FUNCTION_REQUIRED_FIELDS | {"isolation"}
+)
+FUNCTION_ISOLATIONS: frozenset[str] = frozenset(
+    {"wasm_component", "pack_vm", "dedicated_process", "remote"}
 )
 
 
@@ -811,7 +817,11 @@ def _explicit_function_sources(record: Mapping[str, Any]) -> list[Mapping[str, A
     seen_functions: set[str] = set()
     assigned_operations: dict[str, set[str]] = {contract_id: set() for contract_id in contracts}
     for function in raw_functions:
-        if not isinstance(function, Mapping) or set(function) != EXPLICIT_FUNCTION_FIELDS:
+        if (
+            not isinstance(function, Mapping)
+            or not EXPLICIT_FUNCTION_REQUIRED_FIELDS.issubset(function)
+            or not set(function).issubset(EXPLICIT_FUNCTION_FIELDS)
+        ):
             raise PackV4MigrationError("explicit Function fields are invalid")
         function_id = function.get("function_id")
         contract_id = function.get("contract_id")
@@ -827,6 +837,10 @@ def _explicit_function_sources(record: Mapping[str, Any]) -> list[Mapping[str, A
             or any(not _is_identifier(operation_id) for operation_id in operation_ids)
             or len(operation_ids) != len(set(operation_ids))
             or not _is_digest(implementation_digest)
+            or (
+                "isolation" in function
+                and function.get("isolation") not in FUNCTION_ISOLATIONS
+            )
         ):
             raise PackV4MigrationError("explicit Function identity is invalid")
         seen_functions.add(str(function_id))
@@ -936,7 +950,12 @@ def _manifest_document(
         contract = contract_by_id[contract_id]
         operations = list(function_source["operation_ids"])
         implementation = function_source.get("implementation_digest") or artifact_set_digest
-        isolation = source["isolation"]
+        isolation = function_source.get("isolation") or {
+            "in_process": "dedicated_process",
+            "process": "dedicated_process",
+            "sandbox": "pack_vm",
+            "remote": "remote",
+        }[source["isolation"]]
         role = (
             "host_capability_provider"
             if record["execution_boundary"] == "host_brokered"
@@ -949,12 +968,7 @@ def _manifest_document(
                 "contract_revision_digest": contract["revision_digest"],
                 "operations": operations,
                 "role": role,
-                "isolation": {
-                    "in_process": "dedicated_process",
-                    "process": "dedicated_process",
-                    "sandbox": "pack_vm",
-                    "remote": "remote",
-                }[isolation],
+                "isolation": isolation,
             }
         )
         provider_catalog.append(
@@ -1198,7 +1212,15 @@ def verify_rendered_artifacts(files: Mapping[str, str]) -> None:
     functions = manifest["functions"]
     variants = executable["variants"]
     expected_variants = {
-        (str(function["id"]), f"{function['id']}.python") for function in functions
+        (
+            str(function["id"]),
+            (
+                f"{function['id']}.wasm"
+                if function.get("isolation") == "wasm_component"
+                else f"{function['id']}.python"
+            ),
+        )
+        for function in functions
     }
     actual_variants = {
         (str(variant.get("function_id")), str(variant.get("variant_id")))

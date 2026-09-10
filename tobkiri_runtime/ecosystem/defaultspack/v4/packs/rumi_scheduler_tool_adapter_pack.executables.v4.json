@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_scheduler_tool_adapter_pack",
-  "source_identity": "sha256:b62928d53703ee74ba1b23c017756f786429678950b9e2712701af25a104d3f3",
+  "source_identity": "sha256:b907b8eff2e2ed5ca1197b1e6b6b383378a27e181f914b53677bd57ee6029196",
   "variants": [
     {
       "variant_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler.python",
@@ -38,17 +38,17 @@
       ]
     },
     {
-      "variant_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler.python",
+      "variant_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler.wasm",
       "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-      "implementation_path": "runtime/adapter.py",
-      "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
-      "execution_kind": "pack_vm",
+      "implementation_path": "runtime/definitions_component.wasm",
+      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "execution_kind": "wasm",
       "platform": "any",
       "architecture": "any",
-      "runtime_abi": "python3.13",
-      "backend": "tobkiri.python-pack-v4",
+      "runtime_abi": "component-v1",
+      "backend": "tobkiri.wasmtime-pulley-v1",
       "materialization_mode": "on_demand",
-      "execution_domain_profile": "sandbox.default.v1",
+      "execution_domain_profile": "wasm.component.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
@@ -72,6 +72,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:e734249bb16e621ceff7e1126ee85e77694f888ab93b6d7bb4954d648e7ad39f",
-  "catalog_digest": "sha256:9958b05766dec43bdd06500e138397c5a0f4a87bbe1ba9af63f271727c681c36"
+  "materialization_catalog_digest": "sha256:0434ceb7b626ac8113ef96057232fe0e44854e15a78ca12abfd965a5dcac9ec5",
+  "catalog_digest": "sha256:806a3342947f51a514947de337f112c7aa849a44131e315f159ae5d1881aa6ea"
 }

@@ -13817,7 +13817,7 @@
             {
               "entrypoint_id": "scheduler-tool-definitions",
               "id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
-              "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae"
+              "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951"
             }
           ],
           "owner": "rumi_scheduler_tool_adapter_pack",
@@ -13904,6 +13904,11 @@
           "digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
           "kind": "executable",
           "path": "runtime/adapter.py"
+        },
+        {
+          "digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+          "kind": "executable",
+          "path": "runtime/definitions_component.wasm"
         }
       ],
       "secrets": [],
@@ -13926,7 +13931,27 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
+      "workspace_boundary": "pack_local",
+      "functions": [
+        {
+          "function_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "operation_ids": [
+            "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
+          ],
+          "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+          "isolation": "pack_vm"
+        },
+        {
+          "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+          "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
+          "operation_ids": [
+            "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
+          ],
+          "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+          "isolation": "wasm_component"
+        }
+      ]
     },
     {
       "approval_policy": "none",

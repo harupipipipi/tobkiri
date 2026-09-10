@@ -1114,7 +1114,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57698,
-      "sha256": "db99d5ceba92fe665eda0ef282b58bca6b0f3c0edae345cfb281aaea75cf207b",
+      "sha256": "3290787d468af66f54b3914fefb7aa0719aa08a5ecddac2bfb10ccb380be746a",
       "executable": false
     },
     {
@@ -1135,7 +1135,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 41481,
-      "sha256": "dd4daf38d9807bc41ddcf47354541c5a980a47af8926a724c335ba776b214595",
+      "sha256": "dedc60a2b3319f2f61eb3506a79d887eeed3a625a6976e63ff2044217d76a3da",
       "executable": false
     },
     {
@@ -1149,7 +1149,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "e30fe0ae327bd1920263f9c9fcd0e50751ab0f880b83cbc963325ed38f0aec36",
+      "sha256": "ce82a462b3cf9c8638a465070eb5fe8d3286f002aca41ee807e63d470fa73408",
       "executable": false
     },
     {
@@ -2646,15 +2646,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_tool_adapter_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 3068,
-      "sha256": "acaff42a6613ba94f83ee32ce8ab155b747bfb8d92af29429e091ae0f03e4335",
+      "size": 3092,
+      "sha256": "360c21cb78ac43b6e04c65b7ef92e5c3b2ef138ce28f8f128452c951f9190c23",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_scheduler_tool_adapter_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 7220,
-      "sha256": "f3321203499ea43d38644ea9615b1a31d18ed2ee4d3306895fe53b92a547e38e",
+      "size": 7390,
+      "sha256": "5493e42837e1c053cecd0e9ae6ed382e5f76a344a5f61963a14ab44138ad59cb",
       "executable": false
     },
     {
@@ -3213,8 +3213,8 @@
     {
       "path": "scripts/generate_executable_catalogs_v4.py",
       "type": "regular-file",
-      "size": 9137,
-      "sha256": "d613ee9e3c3ae0d33b31194b0e2314dbec06f9a2517c69adda2990331792d7f9",
+      "size": 9781,
+      "sha256": "b26c1b1869fa72e04de5259b9116f47419c2565c701d297af4aff1158944bc30",
       "executable": false
     },
     {
@@ -3246,6 +3246,13 @@
       "executable": false
     },
     {
+      "path": "scripts/generate_scheduler_definitions_component.py",
+      "type": "regular-file",
+      "size": 2472,
+      "sha256": "3de0f6e17313535bb97d5569d1a3edc1f0153a7a9f789a9df5fe85e457001ffa",
+      "executable": false
+    },
+    {
       "path": "scripts/generator_source_manifest.py",
       "type": "regular-file",
       "size": 33267,
@@ -3262,8 +3269,8 @@
     {
       "path": "scripts/migrate_pack_artifacts_v4.py",
       "type": "regular-file",
-      "size": 65075,
-      "sha256": "b9f795181f4dbe8d42301131a66c6b96e7ae580862e28184e264d6f11beb4391",
+      "size": 65746,
+      "sha256": "4ea8ff8fb6468a8a07662434cb04b601a18f08f8fe0cf22dd39eafd8f47a07ac",
       "executable": false
     },
     {
@@ -3318,15 +3325,15 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 84585,
-      "sha256": "e2f54e3117cb85daa5d309b536035d7ccdf508095d37849f9f725704d9e7a9fc",
+      "size": 84579,
+      "sha256": "c2da9cf50f7fe8ac17f0120ea96cbfe2ed92b9980c20d1fe5b190c227166a974",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
-      "size": 904670,
-      "sha256": "206401fd782098bb63566dce7f4a295dde286e26eae65a6a9d31dadb65abbc55",
+      "size": 902655,
+      "sha256": "843be85f3122d34b5bd58cfb38d77c87a605618afa9bb80ddcc7d99cd39c281d",
       "executable": false
     },
     {

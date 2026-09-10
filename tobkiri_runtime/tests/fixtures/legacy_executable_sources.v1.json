@@ -161,6 +161,22 @@
       },
       "implementation_path": "runtime/resource_host.py",
       "implementation_digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c"
+    },
+    {
+      "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+      "legacy": {
+        "pack_id": "rumi_scheduler_tool_adapter_pack",
+        "owner": "rumi_scheduler_tool_adapter_pack",
+        "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/adapter.py",
+        "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+        "operation_ids": [
+          "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
+        ]
+      },
+      "implementation_path": "runtime/definitions_component.wasm",
+      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951"
     }
   ],
   "operation_id_overrides": [

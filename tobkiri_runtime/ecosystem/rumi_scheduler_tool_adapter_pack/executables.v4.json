@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:e734249bb16e621ceff7e1126ee85e77694f888ab93b6d7bb4954d648e7ad39f",
+  "catalog_digest": "sha256:0434ceb7b626ac8113ef96057232fe0e44854e15a78ca12abfd965a5dcac9ec5",
   "pack_id": "rumi_scheduler_tool_adapter_pack",
-  "source_identity": "sha256:16e8360d35abe720fbe6e8e34eb46888d8644947d8fece90a18ae382cc6adb08",
+  "source_identity": "sha256:8dedf4533d1dc5b1163a066df1bba8eac56b0a3f57020ae4e6d95aeaf19b7459",
   "variants": [
     {
       "architecture": "any",
@@ -40,12 +40,12 @@
     },
     {
       "architecture": "any",
-      "backend": "tobkiri.python-pack-v4",
-      "execution_domain_profile": "sandbox.default.v1",
-      "execution_kind": "pack_vm",
+      "backend": "tobkiri.wasmtime-pulley-v1",
+      "execution_domain_profile": "wasm.component.default.v1",
+      "execution_kind": "wasm",
       "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-      "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
-      "implementation_path": "runtime/adapter.py",
+      "implementation_digest": "sha256:1b524ca7b92ec37db9b9e95ae37ab2b4a017b62cb27cef62db9c1bff004f7951",
+      "implementation_path": "runtime/definitions_component.wasm",
       "materialization_mode": "on_demand",
       "operations": [
         {
@@ -69,8 +69,8 @@
         }
       ],
       "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler.python"
+      "runtime_abi": "component-v1",
+      "variant_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler.wasm"
     }
   ]
 }
