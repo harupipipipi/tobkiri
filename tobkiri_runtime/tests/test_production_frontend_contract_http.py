@@ -484,7 +484,9 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
-@pytest.mark.parametrize("completion", ["normal", "auto", "reply_lost", "stop_after_commit"])
+@pytest.mark.parametrize(
+    "completion", ["normal", "auto", "calculator", "reply_lost", "stop_after_commit"],
+)
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, completion: str,
 ) -> None:
@@ -499,17 +501,32 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     stop_receipts = []
     lose_owner_reply = completion in {"reply_lost", "stop_after_commit"}
     selected_tools = []
+    tool_results = []
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
-            assert "tool_calling" not in payload
+            if completion == "calculator":
+                assert payload["tool_calling"] is True
+            else:
+                assert "tool_calling" not in payload
             return {"ready": True, "model_profile_id": "model-profile-1"}
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
+            if completion == "calculator":
+                assert [item["function"]["name"] for item in payload["tools"]] == ["calculator"]
+                if len(ai_calls) == 1:
+                    return {"status": "ok", "output": "", "tool_intents": [{
+                        "operation": "calculator", "intent_id": "calc-1",
+                        "arguments": {"expression": "6*7"},
+                    }]}
+                assert payload["messages"][-1]["role"] == "tool"
+                assert "Calculated: 6*7 = 42" in payload["messages"][-1]["content"]
             return {"status": "ok", "output": "Hi"}
         result = original(self, contract_id, operation_id, payload, **kwargs)
         if (contract_id, operation_id) == DEFINITION and payload.get("operation") == "select":
             selected_tools.append(result)
+        if contract_id == "tobkiri.service.tool.invoke.v1":
+            tool_results.append(result)
         if (
             lose_owner_reply and (contract_id, operation_id) == TARGETS[3]
             and payload.get("operation") == "append_saved"
@@ -530,7 +547,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     servers = _captured_production_server(
         tmp_path, monkeypatch, packvm_backends=BackendRegistry((
-            _SavedToolPackVmBackend() if completion == "auto" else _SavedPackVmBackend(),
+            _SavedToolPackVmBackend() if completion in {"auto", "calculator"} else _SavedPackVmBackend(),
         )),
     )
     server, _session, _authority = next(servers)
@@ -542,9 +559,10 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         route = _contract("POST", "/api/chat/turn")
         body = {"request": {"turn_id": "turn-1", "conversation_id": "conversation-1",
                             "conversation_revision": 1, "content": "Hello"}}
-        if completion == "auto":
+        if completion in {"auto", "calculator"}:
             body["request"]["tool_selection"] = {
-                "mode": "auto", "include": [], "exclude": [],
+                "mode": "auto", "include": [],
+                "exclude": ["calculator"] if completion == "auto" else [],
                 "scope": "turn", "must_use": False,
             }
         status, payload, _ = _request(server, "POST", route, body=body)
@@ -608,8 +626,15 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         completed_turn = repeated["data"]["turn"]
         reference = completed_turn["result_reference"]
         assert reference["conversation_revision"] == 3
-        assert len(ai_calls) == 1
-        assert "tools" not in ai_calls[0]
+        assert len(ai_calls) == (2 if completion == "calculator" else 1)
+        if completion == "calculator":
+            assert len(tool_results) == 1
+            assert tool_results[0]["tool_id"] == "calculator"
+            assert tool_results[0]["result"] == "Calculated: 6*7 = 42"
+            assert tool_results[0]["is_error"] is False
+            assert all(set(item["definitions"]) == {"calculator"} for item in selected_tools)
+        else:
+            assert "tools" not in ai_calls[0]
         if completion == "auto":
             assert selected_tools == [{"tools": [], "definitions": {}}] * 3
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]

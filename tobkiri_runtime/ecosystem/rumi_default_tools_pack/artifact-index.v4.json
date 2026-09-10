@@ -1,13 +1,18 @@
 {
-  "artifact_set_digest": "sha256:ca1d988da9fee90a55bfa8b45a2e306b7d655c5908dfb4e81a29b051e53073df",
+  "artifact_set_digest": "sha256:8464213a42a8d672ae4fa77cd0d1c4cabd7ba016c5dfc1eea34d55b4c6b11d37",
   "artifacts": [
     {
-      "digest": "sha256:6688188c9adf456a30286ffb507d38d6e3929f5b3d95d911d24303b501a2e50f",
+      "digest": "sha256:afac62f1b2cd12d94df4e25783d0f293af459a1ac79a4fe56597630723810288",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:54719bae4434150e11c1d3d7dad2b33c4379574136f455cd15ab084ba91b74ef",
+      "digest": "sha256:b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
+      "path": "domain/tool/calculator.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6fc3d766884bd612071358bdfd04db12c320d1909b47577c13e74ed1424f0e7f",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -17,9 +22,14 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b",
+      "digest": "sha256:af471ae28a894bff7293ff8dbfb837054a426f2571969ec1a277f8fd1a89961c",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "path": "runtime/calculator.py",
+      "role": "runtime"
     },
     {
       "digest": "sha256:dd424445362407e7286d05148300c1ae4d9203633a0c29e644f216f2254503bc",
@@ -37,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:2aa0b4e17f3d8fda655baccba1c884b8f59b4de1d0b78b8505a7392e1831c5f0",
+      "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
       "path": "tools/calculator/manifest.json",
       "role": "runtime"
     },
@@ -175,8 +185,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:e64b95abb92d7957f927d098a53cac48b525098fb45afc5e2cae8dbd5eb53e77"
+    "signed_digest": "sha256:bd3b6704ffebcded2c2270e403cb527acbaeebb7d78def2401eb05d3bf688ea8"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:b230aa942bb33bf17b8e567ed5dc5b20a2ac6aee0d2979f691e40b815d6e24a4"
+  "source_identity": "sha256:75be382945e075fff61125e9343ea762d3a0dc8069c5e28e83b54076e26c2608"
 }

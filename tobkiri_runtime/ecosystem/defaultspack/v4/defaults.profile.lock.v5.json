@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:bbaa6a7b413fb3748642cbd7ba979410bf24f0d9aa31fe319e63f559721257cf",
-  "profile_definition_digest": "sha256:9c1c2041689300830fc7eb5b095cc81a009be17c0480fe54a2027ae3b8f68415",
-  "catalog_revision": "sha256:80db744c4423482fe17d5390657e0e8d86c5575f77b54e17c3035b6e917ee834",
-  "bundle_digest": "sha256:3f6c5b09a39699f187319b126614972c26f058a9f40203364e8b4415100308a9",
+  "profile_revision": "sha256:9920d2fc07b450e18a9cc5904f01e4184c71686e02cf259749be438485245745",
+  "profile_definition_digest": "sha256:85c36ba30730136be846a11775c5dcb7a2057d01f1867c224b90e4bfc7fa0778",
+  "catalog_revision": "sha256:1dde7f1a66ef7ecfc7ce5af94500c609b1305a89e9806805b74b55665a04c5d2",
+  "bundle_digest": "sha256:803e351120a9c0d5d9d5be40bcca07ccf2b411bb2aff76b521ffaeda1a016314",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -43,12 +43,12 @@
     {
       "role": "pack",
       "identity": "rumi_default_tools_pack",
-      "artifact_digest": "sha256:ca1d988da9fee90a55bfa8b45a2e306b7d655c5908dfb4e81a29b051e53073df"
+      "artifact_digest": "sha256:8464213a42a8d672ae4fa77cd0d1c4cabd7ba016c5dfc1eea34d55b4c6b11d37"
     },
     {
       "role": "pack",
       "identity": "rumi_tool_registry_pack",
-      "artifact_digest": "sha256:465f8e4b43abc8e5bd61036b7a990265836595ec864f29dd5d2175698c08dbfc"
+      "artifact_digest": "sha256:2e2c1b94df2f6180a979b8453ce48dd86a9f3cdce5a8232f8593fcfa3d316138"
     },
     {
       "role": "pack",
@@ -184,11 +184,6 @@
       "role": "pack",
       "identity": "rumi_tool_local_executor_pack",
       "artifact_digest": "sha256:6b215235ee684abfa5befd56759ef5685be77e33dfba8cb0277307405048016a"
-    },
-    {
-      "role": "pack",
-      "identity": "rumi_default_tool_projection_pack",
-      "artifact_digest": "sha256:252a311d29d29713e48d3bb18f792462e371eee7c940284ce33f3b9ff5fdc1d5"
     },
     {
       "role": "pack",
@@ -433,6 +428,18 @@
       "artifact_digest": "sha256:a39ef19b536ecc0129e0c2ee9221900cd6987dd6a1e115baa4f1c41f073e6eb8",
       "executable_catalog_digest": "sha256:49239e81b638650863df1086f69cfbabdd2ea27761f0d5e0df55ea46fd017d07",
       "variant_id": "rumi_credential_broker_pack.credential-broker.manage.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_default_tools_pack",
+      "artifact_digest": "sha256:8464213a42a8d672ae4fa77cd0d1c4cabd7ba016c5dfc1eea34d55b4c6b11d37",
+      "executable_catalog_digest": "sha256:490d5361ccd47f107865a45e89a05c5b12ecdd225e1e5cc7e8f65de19f147086",
+      "variant_id": "rumi_default_tools_pack.calculator.python",
       "platform": "any",
       "architecture": "any",
       "runtime_abi": "python3.13",
@@ -742,8 +749,8 @@
     },
     {
       "pack_id": "rumi_tool_registry_pack",
-      "artifact_digest": "sha256:465f8e4b43abc8e5bd61036b7a990265836595ec864f29dd5d2175698c08dbfc",
-      "executable_catalog_digest": "sha256:7ea60f338a5ac9614a1d2ac5ffc9817a2b8e851e1a097b2a448903efbc5b47bc",
+      "artifact_digest": "sha256:2e2c1b94df2f6180a979b8453ce48dd86a9f3cdce5a8232f8593fcfa3d316138",
+      "executable_catalog_digest": "sha256:b1b9f3047380495c8fbb9472e5a4a573cff0e6fee385d099dd1f38b653c6c0bf",
       "variant_id": "rumi_tool_registry_pack.tool-registry.definition.python",
       "platform": "any",
       "architecture": "any",
@@ -897,9 +904,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:e338ae83da9a95f40ced3035dfce4824787494604473f730a5a15f19b4248a05",
-  "constraints_digest": "sha256:12268e8a029d55cde1e51b9f0bdd0904f9bc4c6bc2b229ffd83740b1f04fed44",
-  "closure_digest": "sha256:09d11990b191ffe4c647efe1fa38eb369d50cdd72c0311ec7613e3367a52c5f8",
-  "provenance_digest": "sha256:ecc7e96f6cd0962fdb8accfbf454e39ee88b632cea541423e81a975696299fa1",
-  "lock_digest": "sha256:c81d48fc490b3a1136c883150484c2de04dba7aaff235d68d85172869bbbd988"
+  "requested_edges_digest": "sha256:7c592e4ebefcb231c85826daa30c7aac196f6c4e66905dfcf9d45c647e26c6e3",
+  "constraints_digest": "sha256:2f1894a8a5a9176d0a641d1e8d945b4a34d539e614b41e09850dd4d551ec23ad",
+  "closure_digest": "sha256:b6092dfcba8359a8fd123c218ab32e51f6c1e4dd45a22e1fc03848ae5373b858",
+  "provenance_digest": "sha256:ccb8fc8e20bce265c16e547c39adbe8e2ad918eb2625916b8ae274f937c11875",
+  "lock_digest": "sha256:4ecfb048ca6e9b35478c7ee8732a68d7450261fedf962347186f637263fcb059"
 }

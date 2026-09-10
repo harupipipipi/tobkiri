@@ -8,7 +8,7 @@
       "command_protocol_activation": 0,
       "declaration_disk_runtime": 0,
       "double_authority": 0,
-      "executable_source_registry": 0,
+      "executable_source_registry": 1,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
       "migration_evidence": 1,
@@ -32,7 +32,27 @@
     "command_protocol_activation": [],
     "declaration_disk_runtime": [],
     "double_authority": [],
-    "executable_source_registry": [],
+    "executable_source_registry": [
+      {
+        "actual_function_count": 189,
+        "actual_operation_count": 251,
+        "duplicate_count": 0,
+        "expected_function_count": 190,
+        "expected_operation_count": 252,
+        "invalid_count": 0,
+        "line": 1,
+        "mismatched_count": 0,
+        "missing_count": 1,
+        "missing_sample": [
+          "rumi_default_tools_pack.calculator:rumi_default_tools_pack.calculator-evaluate"
+        ],
+        "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
+        "rule": "executable_source_registry_incomplete",
+        "symbol": "executable_source_registry_incomplete",
+        "unexpected_count": 0,
+        "unexpected_sample": []
+      }
+    ],
     "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
@@ -110,8 +130,28 @@
       "status": "GREEN"
     },
     "executable_source_registry": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "actual_function_count": 189,
+          "actual_operation_count": 251,
+          "duplicate_count": 0,
+          "expected_function_count": 190,
+          "expected_operation_count": 252,
+          "invalid_count": 0,
+          "line": 1,
+          "mismatched_count": 0,
+          "missing_count": 1,
+          "missing_sample": [
+            "rumi_default_tools_pack.calculator:rumi_default_tools_pack.calculator-evaluate"
+          ],
+          "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "rule": "executable_source_registry_incomplete",
+          "symbol": "executable_source_registry_incomplete",
+          "unexpected_count": 0,
+          "unexpected_sample": []
+        }
+      ],
+      "status": "RED"
     },
     "launcher_safety": {
       "findings": [],
@@ -2207,8 +2247,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "6226a9ede27db77f974a2367d71e88a14313c8de",
-    "semantic_digest": "sha256:31fb68eabf9185a3e9906eb37e6fb3dc6c3ffa47a4591b7c31f1811b7a976d2b",
+    "observed_head_sha": "b1e313e4060350410e7b7eabee55f766db3607d6",
+    "semantic_digest": "sha256:d56f1907d674b79e1a3f0902b75647734c2d3b9bf6096dd27c6be69dcb94fce3",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

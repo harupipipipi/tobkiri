@@ -42,6 +42,8 @@ def test_owner_lists_resolves_and_keeps_packaged_schemas_isolated(
     assert calculator["input_schema"]["required"] == ["expression"]
     assert calculator["widget"]["group_icon"] == "calculator"
     assert calculator["execution"]["contract_id"] == "tobkiri.service.tool.local.operation.v1"
+    assert calculator["execution"]["provider_instance_id"] == "rumi_default_tools_pack.calculator"
+    assert calculator["execution"]["operation"] == "rumi_default_tools_pack.calculator-evaluate"
     calculator["input_schema"]["properties"].clear()
     assert (
         "expression"
@@ -69,6 +71,28 @@ def test_stored_and_selected_contributions_remain_visible(captured_data, registr
     assert result["aliases"]["component.alias"] == "component.read"
     assert result["revision"] == 1
     assert client.calls[0][1] == "component.list"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"contract_id": "foreign.contract.v1"}, {"provider_instance_id": ""},
+        {"operation": "invalid operation"}, {"approved": True},
+        {"provider_instance_id": None},
+    ],
+)
+def test_local_descriptor_rejects_malformed_or_authority_fields(captured_data, change):
+    source = captured_data[0]
+    files = []
+    for item in source.files:
+        value = json.loads(item.content)
+        if value["id"] == "calculator":
+            value["config"]["execution"].update(change)
+            content = json.dumps(value).encode()
+            item = replace(item, content=content, digest="sha256:" + hashlib.sha256(content).hexdigest())
+        files.append(item)
+    with pytest.raises(ValueError, match="local operation declaration"):
+        definitions_from_pack_data((replace(source, files=tuple(files)),))
 
 
 @pytest.mark.parametrize("source", ["stored", "provider", "alias"])

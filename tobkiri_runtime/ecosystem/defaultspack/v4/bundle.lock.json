@@ -499,12 +499,12 @@
     {
       "path": "packs/rumi_default_tools_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:e9a5ca9708ada4c3c88c567ee1e9a2d6b3bd08a6b16faee8ca429547a8938b23"
+      "digest": "sha256:68a801e32154c6ab2a3c0e24c85a02dfe5bff8738c9aac66be75214dba7a6611"
     },
     {
       "path": "packs/rumi_default_tools_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:cda7ca9ede7b118910b7840510e077416c9a6498821bbb2cc0d59f059115c008"
+      "digest": "sha256:6ee925d0305c8a3459b78eb231879a3e1d31fffc19561f8c61ead11e317b8696"
     },
     {
       "path": "packs/rumi_desktop_host_service_pack.executables.v4.json",
@@ -1279,12 +1279,12 @@
     {
       "path": "packs/rumi_tool_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:517d3d0fbe16e94052e4b198644a92de3d80783476e5c5a307cb8d55cb185dfd"
+      "digest": "sha256:b1b346f68962b0cac9495dcb2077d0b431c1a39f5eafa8de3b4bbb113ca00a8e"
     },
     {
       "path": "packs/rumi_tool_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:85c0a04f08c04fba14e923ee8b1d00578fe1dcea8833df881c085d5cdafea922"
+      "digest": "sha256:abd98b433d2b59a416a2728c93bee0658e719103732024b63fcdf21a23e84c5e"
     },
     {
       "path": "packs/rumi_tool_remote_executor_pack.executables.v4.json",
@@ -1454,7 +1454,7 @@
     {
       "path": "defaults.profile.v4.json",
       "kind": "profile",
-      "digest": "sha256:22a55542da8e6398b00ac04f68dbb1a27ed77885de517a5a747133d065f8b13b"
+      "digest": "sha256:9a80d4ca026b1819752bbfba2ab186ce31bfe9983e375a2c29811422606bfa70"
     }
   ]
 }

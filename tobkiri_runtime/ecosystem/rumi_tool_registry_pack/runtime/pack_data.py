@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from core_runtime.host_provider_backend_v4 import CapturedHostPackDataV4
@@ -118,12 +119,7 @@ def definitions_from_pack_data(
                         ),
                         "description": raw.get("description") or config.get("summary", ""),
                         "input_schema": schema["parameters"],
-                        "execution": {
-                            "kind": "local",
-                            "contract_id": "tobkiri.service.tool.local.operation.v1",
-                            "provider_instance_id": _LOCAL_PROVIDER,
-                            "operation": _LOCAL_OPERATION,
-                        },
+                        "execution": _execution(config),
                         "authority": authority,
                         "risk": config.get("risk", "unknown"),
                         "policy_tags": config.get("tags", []),
@@ -134,3 +130,28 @@ def definitions_from_pack_data(
                 )
             )
     return tuple(definitions)
+
+
+def _execution(config: dict[str, Any]) -> dict[str, str]:
+    """Retain exact declared local routes; legacy descriptors stay unavailable."""
+    value = config.get("execution", {})
+    if not isinstance(value, dict):
+        raise ValueError("tool execution declaration is invalid")
+    if value.get("type") != "global_contract":
+        return {
+            "kind": "local",
+            "contract_id": "tobkiri.service.tool.local.operation.v1",
+            "provider_instance_id": _LOCAL_PROVIDER,
+            "operation": _LOCAL_OPERATION,
+        }
+    if (
+        set(value) != {"type", "contract_id", "provider_instance_id", "operation"}
+        or value["contract_id"] != "tobkiri.service.tool.local.operation.v1"
+        or any(
+            not isinstance(value[key], str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value[key]) is None
+            for key in ("provider_instance_id", "operation")
+        )
+    ):
+        raise ValueError("tool local operation declaration is invalid")
+    return {"kind": "local", **{key: value[key] for key in value if key != "type"}}

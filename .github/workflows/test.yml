@@ -303,6 +303,7 @@ jobs:
             tests/test_saved_host_exchange.py \
             tests/test_saved_tool_turn.py \
             tests/test_tool_selection_host.py \
+            tests/test_owned_calculator.py \
             tests/test_frontend_entries.py \
             tests/test_saved_backend_binding.py \
             tests/test_saved_bridge_callbacks.py \

@@ -13,7 +13,7 @@ from tobkiri_host.errors import ProviderExecutionError
 
 
 @pytest.mark.parametrize("selected", [True, False])
-def test_production_registry_uses_selected_data_without_executable_bindings(
+def test_production_registry_uses_only_selected_pack_data(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     selected: bool,
@@ -23,7 +23,7 @@ def test_production_registry_uses_selected_data_without_executable_bindings(
     with captured_host_profile(
         tmp_path,
         monkeypatch,
-        packs=(), edges=(),
+        packs=() if selected else ("rumi_default_tool_projection_pack",), edges=(),
         exclude_packs=() if selected else ("rumi_default_tools_pack",),
         backends=(),
     ) as (session, _store):
@@ -107,8 +107,8 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
     ) as (session, _store):
         session.assert_operation_ready(broker.CONTRACT, broker.OPERATION)
         request = {
-            "tool_id": "calculator", "tool_call_id": "call-1",
-            "arguments": {"expression": "1+2"}, "_session_id": "tool-composition",
+            "tool_id": "web_search", "tool_call_id": "call-1",
+            "arguments": {"query": "example"}, "_session_id": "tool-composition",
         }
         with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
             session.invoke(broker.CONTRACT, broker.OPERATION, request)

@@ -82,7 +82,6 @@ def test_profile_resolver_delegates_dependency_order_to_effective_set() -> None:
         "rumi_tool_validation_pack",
         "rumi_tool_result_pack",
         "rumi_tool_local_executor_pack",
-        "rumi_default_tool_projection_pack",
         "rumi_browser_host_service_pack",
         "rumi_clipboard_host_service_pack",
         "rumi_desktop_host_service_pack",

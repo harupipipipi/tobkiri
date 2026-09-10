@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:e9a5ca9708ada4c3c88c567ee1e9a2d6b3bd08a6b16faee8ca429547a8938b23",
+      "digest": "sha256:b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
+      "kind": "executable",
+      "path": "domain/tool/calculator.py"
+    },
+    {
+      "digest": "sha256:68a801e32154c6ab2a3c0e24c85a02dfe5bff8738c9aac66be75214dba7a6611",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -9,6 +14,11 @@
       "digest": "sha256:ef8ae5ffa668b40553758d1324b929f56f3a16977af87d17669fad25867ec1ab",
       "kind": "sidecar",
       "path": "host_contract_contributions.v1.json"
+    },
+    {
+      "digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "kind": "executable",
+      "path": "runtime/calculator.py"
     },
     {
       "digest": "sha256:dd424445362407e7286d05148300c1ae4d9203633a0c29e644f216f2254503bc",
@@ -26,7 +36,7 @@
       "path": "tools/browser_use/manifest.json"
     },
     {
-      "digest": "sha256:2aa0b4e17f3d8fda655baccba1c884b8f59b4de1d0b78b8505a7392e1831c5f0",
+      "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
       "kind": "sidecar",
       "path": "tools/calculator/manifest.json"
     },
@@ -161,12 +171,31 @@
       "path": "tools/web_search/manifest.json"
     }
   ],
-  "contracts": [],
-  "functions": [],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operations": [
+        "rumi_default_tools_pack.calculator-evaluate"
+      ],
+      "revision_digest": "sha256:df8675d478395ad57d70438196be7bd2321fffe492d56a954cfed7da42dfca4b"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:df8675d478395ad57d70438196be7bd2321fffe492d56a954cfed7da42dfca4b",
+      "id": "rumi_default_tools_pack.calculator",
+      "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_default_tools_pack.calculator-evaluate"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
   "integrity": {
-    "source_identity": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b",
-    "artifact_set_digest": "sha256:ca578ec1279299f41efbd2c4ddc9b4c9e1362dde1b70acce2bab31d46384d625",
-    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    "source_identity": "sha256:af471ae28a894bff7293ff8dbfb837054a426f2571969ec1a277f8fd1a89961c",
+    "artifact_set_digest": "sha256:1ad50bbbbdea003296a3da1ea89da8ed96cbbdcca7c293e84c5dfe589ba84bf6",
+    "contract_catalog_digest": "sha256:a90d8b42088738afad0022df41be547ee4b099b8fe3cf937625f4da21d7fdb92"
   },
   "migration": {
     "compatibility": "read_only",
@@ -177,12 +206,21 @@
     "removal_wave": 10,
     "sunset_at": "2099-01-01"
   },
-  "operation_catalog": [],
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+      "owner": "rumi_default_tools_pack",
+      "contract_reference": "tobkiri.service.tool.local.operation.v1",
+      "provider_id": "rumi_default_tools_pack.calculator",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
   "pack": {
-    "artifact_digest": "sha256:ca1d988da9fee90a55bfa8b45a2e306b7d655c5908dfb4e81a29b051e53073df",
+    "artifact_digest": "sha256:8464213a42a8d672ae4fa77cd0d1c4cabd7ba016c5dfc1eea34d55b4c6b11d37",
     "display_name": "rumi_default_tools_pack",
     "id": "rumi_default_tools_pack",
-    "kind": "application",
+    "kind": "host_extension",
     "version": "1.0.0"
   },
   "pack_api_version": "io.tobkiri.pack.v4",
@@ -190,15 +228,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_default_tools_pack/pack.v4.json",
-    "source_digest": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b",
+    "source_digest": "sha256:af471ae28a894bff7293ff8dbfb837054a426f2571969ec1a277f8fd1a89961c",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:1817d68e558a2309a067459d5905ffebbc3f073be3e21e059d25c2b5cc360273",
+    "content_root_digest": "sha256:bba4caaed1f0d4c6c53593c1e36651bd6576c09188f35faa47e50be247b5ca29",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:9e80060d38334959eb05847950b03aaeb8bb03762b90c9a8e470c0a87ef6482d",
+    "input_inventory_digest": "sha256:c30914d5e874c14e2a17f6d93901fbac875c850de8ee91dfeb26a4bf27ff9480",
     "normative": true,
     "evidence": [
       {
@@ -209,16 +247,27 @@
       {
         "path": "ecosystem/rumi_default_tools_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b"
+        "digest": "sha256:af471ae28a894bff7293ff8dbfb837054a426f2571969ec1a277f8fd1a89961c"
       }
     ]
   },
-  "provider_catalog": [],
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_default_tools_pack.calculator",
+      "owner": "rumi_default_tools_pack",
+      "contract_reference": "tobkiri.service.tool.local.operation.v1",
+      "operations": [
+        "rumi_default_tools_pack.calculator-evaluate"
+      ]
+    }
+  ],
   "requirements": {
     "approval_policy": "none",
-    "capabilities": [],
+    "capabilities": [
+      "tool.local.operation"
+    ],
     "contract_dependencies": [],
-    "execution_boundary": "declarative_only",
+    "execution_boundary": "host_brokered",
     "network": {
       "allowed_domains": [],
       "allowed_ports": []
