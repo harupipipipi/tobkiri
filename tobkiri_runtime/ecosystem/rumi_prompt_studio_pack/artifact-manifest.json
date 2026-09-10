@@ -14,7 +14,7 @@
     },
     {
       "path": "runtime/store.py",
-      "sha256": "sha256:85cff287cc0d35d5ba711a57f7aee7aeac75749828f5aadd90e1f1112cbc3204"
+      "sha256": "sha256:9181326eea111b2129088f2c8167b2a4177f75c916ffb960f8e4be3e3f385e08"
     },
     {
       "path": "ui/index.html",

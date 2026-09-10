@@ -278,6 +278,8 @@ jobs:
             tests/test_mcp_connection_owner.py \
             tests/test_mcp_host_provider.py \
             tests/test_tool_registry_host.py \
+            tests/test_prompt_resource_host.py \
+            tests/test_prompt_resource_broker.py \
             tests/test_tool_registry_pack_data.py \
             tests/test_defaultspack_tool_v3_registry.py \
             tests/test_tool_registry_host_broker.py \

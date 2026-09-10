@@ -19,10 +19,12 @@ from core_runtime.profile_workspace import (
     validate_profile_id,
 )
 from core_runtime.runtime_locks import NamedLock
+from tobkiri_protocol.secure_persistence import SecureDirectory
 
 STORE_VERSION = "rumi.prompt-studio.store.v1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
 _ABSENT_HASH = "sha256:" + hashlib.sha256(b"").hexdigest()
+_STORE_LIMIT = 16 * 1024 * 1024
 
 
 class PromptWriteConflict(RuntimeError):
@@ -65,6 +67,7 @@ class PromptStudioStore:
         self.backup_root = self.root / "migration_backups"
         self.lock_root = self.root / "locks"
         self._lock_name = f"prompt-studio:{self.profile_id}"
+        self._directory: SecureDirectory | None = None
 
     def legacy_profile_root(self) -> Path:
         """Return the only legacy profile root accepted for migration."""
@@ -482,15 +485,29 @@ class PromptStudioStore:
             }
 
     def _read(self) -> dict[str, Any]:
-        if not self.path.is_file():
+        if self._directory is None:
+            try:
+                self.root.lstat()
+            except FileNotFoundError:
+                return self._empty()
+            self._directory = SecureDirectory(self.root, create=False)
+        try:
+            encoded = self._directory.read_bytes_bounded(
+                self.path.name, max_bytes=_STORE_LIMIT,
+            )
+        except FileNotFoundError:
             return self._empty()
-        payload = _read_json(self.path)
+        payload = json.loads(encoded)
+        if not isinstance(payload, dict):
+            raise ValueError("Prompt Studio store must be an object")
         if payload.get("version") != STORE_VERSION:
             raise ValueError("unsupported Prompt Studio store version")
         if payload.get("profile_id") != self.profile_id:
             raise ValueError("Prompt Studio store profile mismatch")
         if not isinstance(payload.get("prompts"), dict):
             raise ValueError("Prompt Studio prompts must be an object")
+        if type(payload.get("revision")) is not int or payload["revision"] < 0:
+            raise ValueError("Prompt Studio store revision is invalid")
         if "edge_states" not in payload:
             payload["edge_states"] = {}
         if not isinstance(payload.get("edge_states"), dict):

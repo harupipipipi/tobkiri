@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_prompt_studio_pack",
-  "source_identity": "sha256:67f9ecac845fa1ebc4540c410bc0a6fd671fa1b99726342507a45efc5638b022",
+  "source_identity": "sha256:bea7e42ff1e36c1860ec5680f9b9ed41d5a96ffe7a00185bc181c4cca0842b09",
   "variants": [
     {
       "variant_id": "rumi_prompt_studio_pack.prompt-studio.author.python",
@@ -74,8 +74,8 @@
     {
       "variant_id": "rumi_prompt_studio_pack.prompt-studio.resource.python",
       "function_id": "rumi_prompt_studio_pack.prompt-studio.resource",
-      "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "implementation_path": "runtime/resource_host.py",
+      "implementation_digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -87,7 +87,7 @@
         {
           "contract_id": "tobkiri.resource.prompt.studio.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:3833768ada44eb152a859a21914cf394ed9a0edb0106f3f7a2a3c78daf7b6178",
+          "revision_digest": "sha256:8e4a5e863a872e5d26bd84d7d4e128c6f465755841fda7a205b281d2c793a478",
           "operation_id": "rumi_prompt_studio_pack.prompt-studio-resource",
           "input_schema": {
             "type": "object"
@@ -174,6 +174,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:528172c19e63487c02a3b40ed5f65defc57b70577f93cfb2c2e12acb104a459e",
-  "catalog_digest": "sha256:1f6335138dd7ceb3c84af7b19c363e5dd16eae4cca54baac8f4cff813b403cd1"
+  "materialization_catalog_digest": "sha256:c1c8dcc1e94a720c7dc3d9fb5106d5416cd1475bd0f06be9cc644f6e104a53af",
+  "catalog_digest": "sha256:13487181e691365c33631519a1b39a3f212c34c61d12de79cfdb3023e81fe977"
 }

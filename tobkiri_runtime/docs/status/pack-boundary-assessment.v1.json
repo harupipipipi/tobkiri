@@ -2497,7 +2497,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/ecosystem.json",
-          "sha256": "f7d81435ee05b0bfe3f6ac12d32ae0e85a6f410128b6aba8b9bc845eb17e754e"
+          "sha256": "156caa6dac00d56696884561f93543dce7ec02bbcc1952b52e8bc93347d93d2d"
         }
       ]
     },

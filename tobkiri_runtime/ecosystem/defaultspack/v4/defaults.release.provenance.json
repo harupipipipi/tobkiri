@@ -782,11 +782,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_prompt_studio_pack.executables.v4.json",
-      "digest": "sha256:ff580bbfa7e8acd04bdc22080e93879473d2704e4d43863982975e268b661801"
+      "digest": "sha256:d85570733107622bcd1860b4a79bcddee48cdb0873b02db2fd26ede85adaf98d"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_prompt_studio_pack.pack.v4.json",
-      "digest": "sha256:5eab1a4da2c0cc3e98bc763f1b9a4c2e0ee0d4d80905edb528b2dfbc90c105d4"
+      "digest": "sha256:6e7c629ee93c6e4317f82161f9411511ac1cc397f08728b4a9dfd2817ecf067a"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_provider_adapters_pack.executables.v4.json",
@@ -1337,7 +1337,7 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:73f12cc6adc55511492086b5d3ca0bd4e7228f141960829f5d01c794c126c901",
+    "bundle_digest": "sha256:a5db55a62b060fb6d26680fed444798fbfa886855d08fb07483356aebd39e511",
     "catalog_revision": "sha256:5fbc77a0db3c2e34c643b6c26b55569ed1c1919d35574b3109403ebe2b69dd36",
     "closure_digest": "sha256:b5447391a6c7e7e6a345e65e43f744237bd1d62ff6e83491ae9256a19a386cdf"
   },
@@ -1348,8 +1348,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:7b5affcecede6e7df05be4996ea3e8cd7a550d9e2756c4926e0aee358b87a749"
+      "digest": "sha256:300729729d119c75163bfc70019fb62a7e629a8f8eebcf602b03e54c27fd8285"
     }
   ],
-  "release_digest": "sha256:680e27b6039fb77845beb189877b5eaa77a12308b0e0c1c7ac9627c647502204"
+  "release_digest": "sha256:a1a6a02b17001eae5a7df0ba79cbd15f2cc98828922ca10c2b17b120f49b169e"
 }

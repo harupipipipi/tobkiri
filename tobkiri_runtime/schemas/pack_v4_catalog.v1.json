@@ -12234,7 +12234,7 @@
           "cardinality": "one",
           "contract_id": "tobkiri.resource.prompt.studio.v1",
           "failure": "fail_closed",
-          "isolation": "process",
+          "isolation": "in_process",
           "lifecycle": {
             "data_owner": "rumi_prompt_studio_pack",
             "deprecated": false,
@@ -12246,7 +12246,7 @@
             {
               "entrypoint_id": "prompt-studio-resource",
               "id": "rumi_prompt_studio_pack.prompt-studio-resource",
-              "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"
+              "implementation_digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c"
             }
           ],
           "owner": "rumi_prompt_studio_pack",
@@ -12307,7 +12307,7 @@
           "path": "runtime/service.py"
         },
         {
-          "digest": "sha256:85cff287cc0d35d5ba711a57f7aee7aeac75749828f5aadd90e1f1112cbc3204",
+          "digest": "sha256:9181326eea111b2129088f2c8167b2a4177f75c916ffb960f8e4be3e3f385e08",
           "kind": "executable",
           "path": "runtime/store.py"
         },
@@ -12325,6 +12325,11 @@
           "digest": "sha256:0374bea6fead5abfd4f82f14203761fa63cd3a3616fa9dea3799c48160c623dd",
           "kind": "executable",
           "path": "ui/style.css"
+        },
+        {
+          "kind": "executable",
+          "path": "runtime/resource_host.py",
+          "digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c"
         }
       ],
       "secrets": [],
