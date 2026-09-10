@@ -35,7 +35,7 @@ from tobkiri_protocol.canonical import canonical_digest
 def _binding_and_bytes():
     binary = component(output='{"delivered":true}')
     executable_digest = "sha256:" + hashlib.sha256(binary).hexdigest()
-    original = fixture_artifact()
+    original = fixture_artifact(timeout_ms=15_000)
     function = replace(
         original.functions[0],
         implementation_digest=executable_digest,
