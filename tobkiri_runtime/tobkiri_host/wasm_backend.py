@@ -331,10 +331,24 @@ def production_wasm_backend() -> WasmComponentBackend:
     if worker_entry.is_symlink():
         raise BackendUnavailableError("the Wasm worker entry point is linked")
     worker_entry = worker_entry.resolve(strict=True)
-    runtime_files["tobkiri_host.wasm_component"] = (
-        "sha256:" + hashlib.sha256(worker_entry.read_bytes()).hexdigest()
-    )
     runtime_root = worker_entry.parents[1]
+    worker_runtime_paths = (
+        worker_entry,
+        worker_entry.parent / "errors.py",
+        runtime_root / "tobkiri_protocol/__init__.py",
+        runtime_root / "tobkiri_protocol/canonical.py",
+        runtime_root / "tobkiri_protocol/errors.py",
+        runtime_root / "tobkiri_protocol/ids.py",
+    )
+    for candidate in worker_runtime_paths:
+        if candidate.is_symlink():
+            raise BackendUnavailableError("the Wasm worker runtime contains a symlink")
+        path = candidate.resolve(strict=True)
+        if not path.is_file() or not path.is_relative_to(runtime_root):
+            raise BackendUnavailableError("the Wasm worker runtime file is invalid")
+        runtime_files[str(path.relative_to(runtime_root))] = (
+            "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+        )
     distribution_root = Path(str(distribution.locate_file(""))).resolve(strict=True)
     worker_package = worker_entry.parent
     worker_bootstrap = (
