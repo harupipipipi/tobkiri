@@ -101,6 +101,127 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
     ]
 
 
+@pytest.mark.parametrize("patch", [
+    {"conversation_kind": "coding"},
+    {"group_id": "group-1"},
+    {"metadata": {"workspace_id": "workspace-1"}},
+    {"metadata": {"groupId": "group-1"}},
+    {"metadata": {"workspaceId": "workspace-1"}},
+    {"metadata": {"workspaceRoot": "/workspace"}},
+    {"metadata": {"rootPath": "/workspace"}},
+    {"metadata": {"rumiDataPath": "/data"}},
+    {"metadata": {"rumi_dp_path": "/data"}},
+    {"metadata": {"workspace_root": "/workspace"}},
+    {"metadata": {"rumi_data_path": "/data"}},
+    {"metadata": {"mode": "coding"}},
+    {"metadata": {"shared_read_only": True}},
+    {"metadata": {"profile_id": "defaultspack.operations_company"}},
+    {"tags": ["mimo-coding-company"]},
+])
+@pytest.mark.parametrize("stage", ["preflight", "append"])
+def test_owned_special_context_is_rejected_before_user_append(
+    tmp_path: Path, patch: dict, stage: str,
+) -> None:
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.update("conversation-1", patch, expected_conversation_revision=1)
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="context resolution"):
+        if stage == "preflight":
+            callbacks.preflight(outer)
+        else:
+            # A guest omitting the context check still cannot obtain a write.
+            intent = saved.start(outer.payload["request"])
+            intent = saved.resume(intent["state"], {
+                "status": "ok", "value": {"conversation": store.get("conversation-1")},
+            })
+            callbacks(outer, _frame(intent))
+    assert store.path.read_bytes() == before
+    assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
+
+
+@pytest.mark.parametrize("logs", [{}, False, 0, "", None, []])
+def test_preflight_checks_owned_history_tool_logs_before_readiness(
+    tmp_path: Path, logs: object,
+) -> None:
+    """Only missing logs normalize to an empty transcript on the saved path."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.append_message(
+        "conversation-1",
+        {"id": "prior-assistant", "role": "assistant", "content": "Earlier reply",
+         "status": "complete", "tool_logs": logs},
+        expected_conversation_revision=1,
+    )
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    if logs is None or isinstance(logs, list):
+        callbacks.preflight(outer)
+        assert [target for target, _ in calls] == [saved.TARGETS[0], READINESS]
+    else:
+        with pytest.raises(AuthorityDenied, match="owned tool transcript"):
+            callbacks.preflight(outer)
+        assert [target for target, _ in calls] == [saved.TARGETS[0]]
+    assert store.path.read_bytes() == before
+
+
+def test_display_only_metadata_does_not_block_saved_preflight(tmp_path: Path) -> None:
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.update("conversation-1", {
+        "title": "My chat", "tags": ["research"],
+        "metadata": {"icon": "chat", "mode": "chat", "shared_read_only": False},
+    }, expected_conversation_revision=1)
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    callbacks.preflight(outer)
+    assert store.path.read_bytes() == before
+    assert calls[-1][0] == READINESS
+
+
+def test_saved_text_blocks_use_plain_readiness_without_changing_history(
+    tmp_path: Path,
+) -> None:
+    """The readiness contract gets text while the owner retains exact blocks."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    blocks = [{"type": "text", "text": "First "}, {"type": "text", "text": "reply"}]
+    store.append_message("conversation-1", {
+        "id": "prior-assistant", "role": "assistant", "content": blocks,
+    }, expected_conversation_revision=1)
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    callbacks.preflight(outer)
+    assert store.path.read_bytes() == before
+    assert calls[-1] == (READINESS, {
+        "model_profile_id": "model-profile-1",
+        "messages": [
+            {"role": "assistant", "content": "First reply"},
+            {"role": "user", "content": "Hello"},
+        ],
+    })
+
+
+@pytest.mark.parametrize("content", [
+    [{"type": "image", "url": "https://example.invalid/private.png"}],
+    [{"type": "text", "text": "visible"}, {"type": "tool_result", "content": "hidden"}],
+    [{"type": "text", "text": "visible", "attachment_id": "unresolved"}],
+    [{"type": "text", "text": {"url": "https://example.invalid"}}],
+    ["untyped text"],
+])
+def test_saved_text_blocks_do_not_admit_unresolved_content(
+    tmp_path: Path, content: list,
+) -> None:
+    """Reject mixed/unknown blocks before a readiness probe or user write."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.append_message("conversation-1", {
+        "id": "prior-assistant", "role": "assistant", "content": content,
+    }, expected_conversation_revision=1)
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="additional content resolution"):
+        callbacks.preflight(outer)
+    assert store.path.read_bytes() == before
+    assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
+
+
 def test_missing_target_rejects_before_first_owner_read(tmp_path: Path) -> None:
     _, outer, calls, callbacks = _setup(tmp_path)
 
@@ -237,7 +358,11 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
     # Defaults now has coordinator edges, verified separately below.
     profile["requested_edges"] = [
         item for item in profile["requested_edges"]
-        if item["caller_function_id"] != saved_function
+        if item["caller_function_id"] not in {
+            saved_function,
+            "rumi_tool_broker_pack.tool-broker.invoke",
+            "rumi_tool_local_executor_pack.tool-executor.local",
+        }
         and not (missing_readiness and item["caller_function_id"] == READINESS[1])
     ]
 

@@ -9,6 +9,7 @@ mod debug_approval;
 mod defaultspack_authority;
 mod defaultspack_manager;
 mod desktop_system_info;
+mod frontend_entry;
 mod health_check;
 mod host_audit;
 mod host_broker;

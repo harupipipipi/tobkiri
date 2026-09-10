@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:1cc7bef84fec1be4caec840095b3dcccb5cde75a9970755190b6c76ccc9b2d45",
+      "digest": "sha256:79758360f2cad26cec7d41fad51e8b3bae6b73831c7528d3dc08771f6c7def39",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+      "digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
       "kind": "executable",
       "path": "runtime/validator.py"
     }
@@ -24,7 +24,7 @@
     {
       "contract_revision_digest": "sha256:66d9f4c2832315ec15d0eec37ed1cb7e77b212ba21bbaf883d6eacbbd838435a",
       "id": "rumi_tool_validation_pack.tool-validation.arguments",
-      "implementation_digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+      "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_tool_validation_pack.tool-arguments-validate"
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:ec680478d367e6768a6ccaf367b6c74e25b48eee4fd6e016cee7c9df35449524",
-    "contract_catalog_digest": "sha256:ba84c2657a6db0932a2fa368583d3a992bb375fd2ae41a0571f45d91a64cc3d4",
-    "source_identity": "sha256:b7b5c9c3444c88af9d39541a32d8b463ccbd79448e334ef4838771037a454e60"
+    "artifact_set_digest": "sha256:1412c9f3e7012bcdda7b9530030da4087829f84bbafa86faeabe57779c300533",
+    "contract_catalog_digest": "sha256:e38ce4c31e063681ea344d4fa9f50996296fc5624558b8c07956691aa4b6c01c",
+    "source_identity": "sha256:cd95ebaed6a032c68d2e789742501b1df561abdb6438e7b46aa9856842a0105b"
   },
   "migration": {
     "compatibility": "read_only",
@@ -61,7 +61,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ec680478d367e6768a6ccaf367b6c74e25b48eee4fd6e016cee7c9df35449524",
+    "artifact_digest": "sha256:1412c9f3e7012bcdda7b9530030da4087829f84bbafa86faeabe57779c300533",
     "display_name": "Rumi Tool Validation",
     "id": "rumi_tool_validation_pack",
     "kind": "host_extension",
@@ -71,7 +71,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:b7b5c9c3444c88af9d39541a32d8b463ccbd79448e334ef4838771037a454e60",
+        "digest": "sha256:cd95ebaed6a032c68d2e789742501b1df561abdb6438e7b46aa9856842a0105b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -82,7 +82,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:b7b5c9c3444c88af9d39541a32d8b463ccbd79448e334ef4838771037a454e60",
+    "source_digest": "sha256:cd95ebaed6a032c68d2e789742501b1df561abdb6438e7b46aa9856842a0105b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_validation_pack"
   },

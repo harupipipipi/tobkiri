@@ -895,6 +895,7 @@ export function consentPackVM(
     ceremony_nonce: string;
     confirmation: string;
     approve_image_download: boolean;
+    previous_attestation_digest?: string;
   },
 ): Promise<ApiPackVMConsent> {
   return packVMLifecyclePost<unknown>('consent', payload).then(normalizePackVMConsent);

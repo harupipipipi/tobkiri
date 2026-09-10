@@ -115,3 +115,66 @@ class PureComponent:
         if not isinstance(output, dict):
             raise ProviderExecutionError("Wasm output is not a JSON object")
         return output
+
+
+def worker_main() -> int:
+    """Execute one framed request in an isolated, non-production worker.
+
+    The supervisor must launch a verified interpreter with isolation enabled,
+    empty environment, closed unrelated descriptors and a wall deadline. This
+    entry point does not establish artifact authority or a physical memory
+    boundary; it must not be registered as a production backend on its own.
+    """
+    import base64
+    import os
+    import resource
+    import sys
+
+    # Refuse ordinary Python startup: -I prevents cwd/PYTHONPATH/user-site loads.
+    # A supervisor supplies verified import roots, never a request-supplied path.
+    if not sys.flags.isolated:
+        return 2
+    os.environ.clear()
+    try:
+        # These limits apply before importing the engine or compiling the guest.
+        # RLIMIT_RSS/AS are deliberately not claimed as a macOS memory sandbox.
+        for kind, ceiling in (
+            (resource.RLIMIT_CORE, 0),
+            (resource.RLIMIT_CPU, 10),
+            (resource.RLIMIT_NOFILE, 64),
+            (resource.RLIMIT_FSIZE, 2 * 1024 * 1024),
+        ):
+            _, hard = resource.getrlimit(kind)
+            limit = ceiling if hard == resource.RLIM_INFINITY else min(ceiling, hard)
+            resource.setrlimit(kind, (limit, limit))
+        request = strict_loads(
+            sys.stdin.buffer.read(45 * 1024 * 1024 + 1),
+            max_bytes=45 * 1024 * 1024,
+        )
+        if not isinstance(request, dict) or set(request) != {
+            "artifact", "digest", "operation_id", "payload"
+        }:
+            raise ValueError("invalid worker request")
+        if not isinstance(request["artifact"], str):
+            raise ValueError("invalid artifact encoding")
+        if not isinstance(request["payload"], dict):
+            raise ValueError("invalid payload")
+        binary = base64.b64decode(request["artifact"], validate=True)
+        engine = PureComponent(binary, request["digest"])
+        result = engine.invoke(request["operation_id"], request["payload"])
+        response = {"status": "ok", "data": result}
+        exit_code = 0
+    except (
+        ValueError, TypeError, RecursionError, OSError, ImportError,
+        InvalidArtifactError, ProviderExecutionError,
+    ):
+        response = {"status": "error", "code": "wasm_worker_failed"}
+        exit_code = 1
+    # No guest exception, payload, engine traceback or secret enters diagnostics.
+    sys.stdout.buffer.write(canonical_json(response))
+    sys.stdout.buffer.flush()
+    return exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(worker_main())

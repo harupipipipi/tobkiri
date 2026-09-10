@@ -15,6 +15,18 @@ from tobkiri_protocol.errors import SchemaValidationError
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_mcp_gateway_calls_compile_as_external_effects() -> None:
+    """Arbitrary remote tool calls must retain ambiguous-outcome handling."""
+    compiled = compile_pack_root(ROOT / "ecosystem" / "rumi_mcp_gateway_pack")
+    operations = [
+        operation
+        for function in compiled.artifact.functions
+        for operation in function.operations
+    ]
+    assert len(operations) == 1
+    assert operations[0].effect_class.value == "external_effect"
+
+
 @pytest.mark.parametrize(
     ("pack_id", "function_id", "operation_id"),
     (
@@ -69,7 +81,10 @@ def test_ai_conversation_chain_outlives_provider_transport_deadline(
 def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     pack_roots = sorted(path.parent for path in (ROOT / "ecosystem").glob("*/pack.v4.json"))
     compiled = [compile_pack_root(path) for path in pack_roots]
-    assert len(compiled) == 141
+    declared = json.loads(
+        (ROOT / "schemas/pack_v4_catalog.v1.json").read_text(encoding="utf-8")
+    )["pack_ids"]
+    assert {item.artifact.pack_id for item in compiled} == set(declared)
     assert {item.artifact.pack_id for item in compiled} == {path.name for path in pack_roots}
 
     command = next(

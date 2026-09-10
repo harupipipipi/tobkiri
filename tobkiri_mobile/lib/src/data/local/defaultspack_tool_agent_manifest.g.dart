@@ -2107,6 +2107,215 @@ const defaultspackToolAgentManifestCatalog =
     },
   ),
   DefaultspackToolAgentManifestEntry(
+    id: "memo_create_note",
+    description: "Create a durable local memo note in Memory2.",
+    tags: <String>["memo", "memory", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "folder_id": <String, dynamic>{
+          "type": "string",
+          "description": "Memo folder id or slug. Defaults to personalization."
+        },
+        "metadata": <String, dynamic>{
+          "type": "object",
+          "description": "Optional non-sensitive memo metadata."
+        },
+        "title": <String, dynamic>{
+          "type": "string",
+          "description": "Short memo title."
+        },
+        "content": <String, dynamic>{
+          "type": "string",
+          "description": "Memo note body."
+        },
+        "source": <String, dynamic>{
+          "type": "string",
+          "description": "Optional source label."
+        }
+      },
+      "required": <dynamic>["content"]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
+    id: "memo_folder_upsert",
+    description: "Create or update a Memory2 memo folder.",
+    tags: <String>["folder", "memo", "memory", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "folder_id": <String, dynamic>{"type": "string"},
+        "slug": <String, dynamic>{"type": "string"},
+        "name": <String, dynamic>{"type": "string"},
+        "description": <String, dynamic>{"type": "string"},
+        "metadata": <String, dynamic>{"type": "object"}
+      },
+      "required": <dynamic>["name"]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
+    id: "memo_get",
+    description: "Load a Memory2 memo note by id.",
+    tags: <String>["memo", "memory", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "note_id": <String, dynamic>{
+          "type": "string",
+          "description": "Memo note id."
+        }
+      },
+      "required": <dynamic>["note_id"]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
+    id: "memo_list",
+    description: "List Memory2 memo notes.",
+    tags: <String>["memo", "memory", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "folder_id": <String, dynamic>{
+          "type": "string",
+          "description": "Memo folder id or slug. Defaults to personalization."
+        },
+        "metadata": <String, dynamic>{
+          "type": "object",
+          "description": "Optional non-sensitive memo metadata."
+        },
+        "limit": <String, dynamic>{
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": <dynamic>[]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
+    id: "memo_list_notes",
+    description: "List Memory2 memo notes.",
+    tags: <String>["memo", "memory", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "folder_id": <String, dynamic>{
+          "type": "string",
+          "description": "Memo folder id or slug. Defaults to personalization."
+        },
+        "metadata": <String, dynamic>{
+          "type": "object",
+          "description": "Optional non-sensitive memo metadata."
+        },
+        "limit": <String, dynamic>{
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": <dynamic>[]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
+    id: "memo_note_upsert",
+    description: "Create or update a Memory2 memo note.",
+    tags: <String>["memo", "memory", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "folder_id": <String, dynamic>{
+          "type": "string",
+          "description": "Memo folder id or slug. Defaults to personalization."
+        },
+        "metadata": <String, dynamic>{
+          "type": "object",
+          "description": "Optional non-sensitive memo metadata."
+        },
+        "note_id": <String, dynamic>{
+          "type": "string",
+          "description": "Existing note id to update."
+        },
+        "title": <String, dynamic>{
+          "type": "string",
+          "description": "Short memo title."
+        },
+        "content": <String, dynamic>{
+          "type": "string",
+          "description": "Memo note body."
+        },
+        "source": <String, dynamic>{
+          "type": "string",
+          "description": "Optional source label."
+        }
+      },
+      "required": <dynamic>["content"]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
+    id: "memo_search",
+    description: "Search Memory2 memo notes.",
+    tags: <String>["memo", "memory", "search", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "folder_id": <String, dynamic>{
+          "type": "string",
+          "description": "Memo folder id or slug. Defaults to personalization."
+        },
+        "metadata": <String, dynamic>{
+          "type": "object",
+          "description": "Optional non-sensitive memo metadata."
+        },
+        "query": <String, dynamic>{
+          "type": "string",
+          "description": "Search query."
+        },
+        "limit": <String, dynamic>{
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": <dynamic>["query"]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
+    id: "memo_search_notes",
+    description: "Search Memory2 memo notes.",
+    tags: <String>["memo", "memory", "search", "tool_registry"],
+    aliases: <String>[],
+    inputSchema: <String, dynamic>{
+      "type": "object",
+      "properties": <String, dynamic>{
+        "folder_id": <String, dynamic>{
+          "type": "string",
+          "description": "Memo folder id or slug. Defaults to personalization."
+        },
+        "metadata": <String, dynamic>{
+          "type": "object",
+          "description": "Optional non-sensitive memo metadata."
+        },
+        "query": <String, dynamic>{
+          "type": "string",
+          "description": "Search query."
+        },
+        "limit": <String, dynamic>{
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": <dynamic>["query"]
+    },
+  ),
+  DefaultspackToolAgentManifestEntry(
     id: "node_exec",
     description:
         "Request approved Node.js code/script execution in the managed sandbox runtime; fail closed when no provider is ready.",

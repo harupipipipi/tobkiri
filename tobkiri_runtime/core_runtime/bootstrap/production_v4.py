@@ -10,9 +10,10 @@ import stat
 import threading
 import time
 from dataclasses import dataclass
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Iterator, Mapping, Protocol
 from tobkiri_host.admission import (
     AdmissionEstimate,
     DurableResourceLedger,
@@ -30,6 +31,7 @@ from tobkiri_host.contracts import (
     StructuralAdapter,
 )
 from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
+from tobkiri_host.operation_cancellation import OwnedCancellationBinding, OwnedCancellationHandles
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.models import (
     ArtifactVariant,
@@ -97,10 +99,12 @@ from ..credential_transport import (
 )
 from ..global_contract_dispatch import GlobalContractClient
 from ..host_provider_backend_v4 import (
+    CapturedHostPackDataV4,
     ExactHostProviderBackendV4,
     HostProviderCaptureContextV4,
     HostProviderInvocationContextV4,
 )
+from ..host_provider_data_v4 import HostProviderDataCaptureV4
 from ..host_provider_hooks_v4 import load_host_provider_factory
 from ..interactive_effect_coordinator import (
     CapturedInteractiveEffectRoute,
@@ -1901,8 +1905,11 @@ def capture_production_dispatch(
         parent_cancellation = getattr(outer_request, "cancellation_requested", None)
         if type(parent_cancellation) is not threading.Event:
             raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
-        with caller_session_bindings_lock:
-            caller_session_bindings[bridge_session_id] = outer_edge.target.principal_id
+        bridge_authority_session_id = bind_nested_session(
+            bridge_session_id,
+            outer_edge.target.principal_id,
+            presentation_owner_for(outer_request),
+        )
         try:
             provider_result = dispatch.invoke(
                 bridge_edge.resolved_binding.operation.contract_id,
@@ -1926,8 +1933,7 @@ def capture_production_dispatch(
             record_bridge_failure(error)
             result = _provider_unavailable_bridge_result()
         finally:
-            with caller_session_bindings_lock:
-                caller_session_bindings.pop(bridge_session_id, None)
+            release_nested_session(bridge_session_id, bridge_authority_session_id)
         return result
 
     def capability_bridge(
@@ -2028,7 +2034,7 @@ def capture_production_dispatch(
         return response
 
     from .saved_bridge import (
-        REQUIRED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result,
+        ALLOWED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result, project_saved_tool_result,
     )
 
     def saved_target(outer_request: object, target: tuple[str, str]) -> _CapturedPlanEdge:
@@ -2036,7 +2042,7 @@ def capture_production_dispatch(
         if (
             outer_edge.resolved_binding.operation.contract_id != SAVED_CONVERSATION_CONTRACT
             or outer_edge.resolved_binding.operation.operation_id != SAVED_CONVERSATION_OPERATION
-            or target not in REQUIRED_TARGETS
+            or target not in ALLOWED_TARGETS
         ):
             raise AuthorityDenied("saved bridge outer operation is not selected")
         candidates = tuple(
@@ -2079,7 +2085,8 @@ def capture_production_dispatch(
             outer_request, resolve_bridge_outer(outer_request), edge, arguments,
             result_projector=(
                 project_saved_ai_result
-                if target[0] == "tobkiri.service.ai.generate.v1" else None
+                if target[0] == "tobkiri.service.ai.generate.v1"
+                else project_saved_tool_result if target[0] == "tobkiri.service.tool.invoke.v1" else None
             ),
         )
 
@@ -2133,6 +2140,9 @@ def capture_production_dispatch(
                 provider_bindings.append(resolved_binding)
     host_contributions_by_backend: dict[str, list[Any]] = {}
     close_callbacks: list[Callable[[], None]] = []
+    cancellation_handles = OwnedCancellationHandles()
+    cancellation_roles: dict[str, tuple[str, str, str]] = {}
+    close_callbacks.append(cancellation_handles.close)
     credential_store_binding = (
         credential_store_factory(user_data_root=authority_user_data)
         if credential_store_factory is not None
@@ -2151,6 +2161,7 @@ def capture_production_dispatch(
     }
     caller_session_bindings: dict[str, str] = {}
     presentation_owner_bindings: dict[str, tuple[str, str]] = {}
+    presentation_owner_refcounts: dict[str, int] = {}
     nested_session_refcounts: dict[str, int] = {}
     caller_session_bindings_lock = threading.RLock()
 
@@ -2170,6 +2181,36 @@ def capture_production_dispatch(
             return inherited
         return context.caller_principal.value, context.caller_session_id
 
+    def retain_presentation_owner(session_id: str, owner: tuple[str, str]) -> None:
+        """Share one Host-derived owner across concurrent nested and resumed calls."""
+        with caller_session_bindings_lock:
+            if presentation_owner_bindings.get(session_id) not in {None, owner}:
+                raise AuthorityDenied("nested Host Provider owner binding changed")
+            presentation_owner_bindings[session_id] = owner
+            presentation_owner_refcounts[session_id] = (
+                presentation_owner_refcounts.get(session_id, 0) + 1
+            )
+
+    def release_presentation_owner(session_id: str) -> None:
+        with caller_session_bindings_lock:
+            remaining = presentation_owner_refcounts[session_id] - 1
+            if remaining:
+                presentation_owner_refcounts[session_id] = remaining
+            else:
+                presentation_owner_refcounts.pop(session_id)
+                presentation_owner_bindings.pop(session_id)
+
+    @contextmanager
+    def pending_effect_owner_scope(
+        context: RequestContext, principal_id: str, session_id: str,
+    ) -> Iterator[None]:
+        """Restore only the owner persisted by the Host pending-effect controller."""
+        retain_presentation_owner(context.caller_session_id, (principal_id, session_id))
+        try:
+            yield
+        finally:
+            release_presentation_owner(context.caller_session_id)
+
     def bind_nested_session(
         session_id: str,
         caller_principal_id: str,
@@ -2180,13 +2221,10 @@ def capture_production_dispatch(
         resolved_session_id = authority_session_id(session_id, caller_principal_id)
         with caller_session_bindings_lock:
             existing_caller = caller_session_bindings.get(session_id)
-            existing_owner = presentation_owner_bindings.get(resolved_session_id)
             if existing_caller not in {None, caller_principal_id}:
                 raise AuthorityDenied("nested Host Provider caller binding changed")
-            if existing_owner not in {None, presentation_owner}:
-                raise AuthorityDenied("nested Host Provider owner binding changed")
+            retain_presentation_owner(resolved_session_id, presentation_owner)
             caller_session_bindings[session_id] = caller_principal_id
-            presentation_owner_bindings[resolved_session_id] = presentation_owner
             nested_session_refcounts[session_id] = (
                 nested_session_refcounts.get(session_id, 0) + 1
             )
@@ -2196,13 +2234,13 @@ def capture_production_dispatch(
         """Release one stable nested-session user without racing a peer call."""
 
         with caller_session_bindings_lock:
+            release_presentation_owner(resolved_session_id)
             remaining = nested_session_refcounts.get(session_id, 0) - 1
             if remaining > 0:
                 nested_session_refcounts[session_id] = remaining
                 return
             nested_session_refcounts.pop(session_id, None)
             caller_session_bindings.pop(session_id, None)
-            presentation_owner_bindings.pop(resolved_session_id, None)
 
     class _InvocationSession:
         """Bind nested dispatch to the authenticated provider invocation."""
@@ -2285,6 +2323,19 @@ def capture_production_dispatch(
         def presentation_owner_session_id(self) -> str:
             return self._presentation_owner_session_id
 
+        @property
+        def cancellation(self) -> OwnedCancellationBinding:
+            declaration = cancellation_roles.get(self._envelope.target_principal.value)
+            if declaration is None:
+                raise AuthorityDenied("Host Provider cancellation role is unavailable")
+            pack_id, group, role = declaration
+            return cancellation_handles.bind(
+                group=(pack_id, group), role=role, envelope=self._envelope,
+                owner_principal=self.presentation_owner_principal_id,
+                owner_session=self.presentation_owner_session_id,
+                guard=self.assert_current,
+            )
+
         def contract_client(
             self,
             *,
@@ -2357,6 +2408,7 @@ def capture_production_dispatch(
         *,
         workspace_mutation_port: HostWorkspaceMutationPort | None,
         interactive_effect_port: LateBoundInteractiveEffectPort | None = None,
+        declared_pack_data: tuple[CapturedHostPackDataV4, ...] = (),
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -2373,6 +2425,7 @@ def capture_production_dispatch(
             interactive_approval_port=authority_control,
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
+            declared_pack_data=declared_pack_data,
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -2388,6 +2441,19 @@ def capture_production_dispatch(
         if factory.function_id != function_id:
             raise AuthorityDenied("Host Provider hook Function identity changed")
         loaded_host_factories.append((function_id, captured_bindings, factory, backend_id))
+        cancellation_group = getattr(factory, "cancellation_group", None)
+        if cancellation_group is not None:
+            role = getattr(factory, "cancellation_role", None)
+            if (
+                not isinstance(cancellation_group, str)
+                or not 0 < len(cancellation_group) <= 128
+                or role not in {"execute", "stop"}
+            ):
+                raise AuthorityDenied("Host Provider cancellation declaration is invalid")
+            for binding in captured_bindings:
+                cancellation_roles[binding.principal_ref.value] = (
+                    binding.artifact.pack_id, cancellation_group, role,
+                )
 
     interactive_effect_coordinator = _interactive_effect_coordinator_factory(
         tuple(loaded_host_factories)
@@ -2422,11 +2488,15 @@ def capture_production_dispatch(
         else None
     )
 
-    for _function_id, captured_bindings, factory, backend_id in loaded_host_factories:
+    from core_runtime.host_provider_hooks_v4 import group_host_provider_captures
+
+    host_provider_data = HostProviderDataCaptureV4(lock, ecosystem_root)
+    for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
         captured_provider = factory.capture(
             host_provider_capture_context(
                 captured_bindings,
                 workspace_mutation_port=workspace_mutation_port,
+                declared_pack_data=host_provider_data.capture_for(factory),
                 interactive_effect_port=(
                     interactive_effect_port
                     if interactive_effect_coordinator is not None
@@ -2711,6 +2781,7 @@ def capture_production_dispatch(
                 "captured Pack filesystem identity changed",
                 code="digest_mismatch",
             )
+        host_provider_data.assert_current()
         for pack_id, approval_revision in captured_dynamic_approvals.items():
             try:
                 current_approval = capture_valid_pack_approval(pack_id)
@@ -2747,7 +2818,13 @@ def capture_production_dispatch(
                 plan_digest=presentation_context.plan_digest,
             )
             with caller_session_bindings_lock:
-                caller_session_bindings[session_id] = route.coordinator_principal.value
+                owner = presentation_owner_bindings.get(
+                    presentation_context.caller_session_id,
+                    (presentation_context.caller_principal.value, presentation_context.caller_session_id),
+                )
+            resolved_session_id = bind_nested_session(
+                session_id, route.coordinator_principal.value, owner,
+            )
             try:
                 context = context_for(
                     route.spec.execute_contract_id,
@@ -2755,8 +2832,7 @@ def capture_production_dispatch(
                     session_id,
                 )
             finally:
-                with caller_session_bindings_lock:
-                    caller_session_bindings.pop(session_id, None)
+                release_nested_session(session_id, resolved_session_id)
             expected_domain = dynamic_domain_ids.get(
                 (
                     route.spec.execute_contract_id,
@@ -2777,6 +2853,7 @@ def capture_production_dispatch(
             approvals=authority_control,
             coordinator_principal=coordinator_principal,
             coordinator_publisher_lineage=coordinator_binding.artifact.publisher_lineage,
+            presentation_owner_scope=pending_effect_owner_scope,
         )
         _recover_interactive_effect_controller(interactive_effect_controller)
         interactive_effect_port.bind(
@@ -2828,7 +2905,8 @@ def capture_production_dispatch(
             ),
         ),
         stop_callbacks=(
-            (control_session.cancel_pending_reads,) if control_session is not None else ()
+            cancellation_handles.close,
+            *((control_session.cancel_pending_reads,) if control_session is not None else ()),
         ),
     )
     dispatch_holder.append(dispatch)

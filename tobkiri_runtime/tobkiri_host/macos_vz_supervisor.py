@@ -65,6 +65,8 @@ from tobkiri_protocol.saved_conversation import validate_saved_conversation_inpu
 
 from .continuation_chain import ChainIdentity, ContinuationChains
 from .saved_host_exchange import SavedHostExchange
+from .saved_turn_plan import SavedToolFrame
+from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
 from .artifact_materialization import MaterializedPackArtifact
 from .effects import ProviderOutcome
@@ -428,6 +430,7 @@ class MacOSVZDomainAllocator(Protocol):
 
 
 CapabilityBridge = Callable[[object, Mapping[str, Any]], Mapping[str, Any]]
+SavedCapabilityBridge = Callable[[object, Mapping[str, Any] | SavedToolFrame], Mapping[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -522,8 +525,8 @@ class MacOSVZSupervisorDriver:
         self._guest_nonce_ledger: dict[tuple[str, str], tuple[str, str]] = {}
         self._max_nonce_ledger_entries = max_nonce_ledger_entries
         self._capability_bridge: CapabilityBridge | None = None
-        self._saved_bridge: tuple[CapabilityBridge, Callable[[object], None]] | None = None
-        self._saved_chains = ContinuationChains()
+        self._saved_bridge: tuple[SavedCapabilityBridge, Callable[[object], None]] | None = None
+        self._saved_chains = ContinuationChains(max_hops=MAX_SAVED_TOOL_HOPS)
         self._compromised_reason: str | None = None
         self._lock = threading.RLock()
 
@@ -567,7 +570,7 @@ class MacOSVZSupervisorDriver:
             self._capability_bridge = callback
 
     def bind_saved_capability_bridge(
-        self, callback: CapabilityBridge, preflight: Callable[[object], None],
+        self, callback: SavedCapabilityBridge, preflight: Callable[[object], None],
     ) -> None:
         """Bind captured v2 Broker dispatch/readiness before materializing domains.
 
@@ -965,9 +968,10 @@ class MacOSVZSupervisorDriver:
                           min(deadline, time.monotonic() + 60)),
             request_digest=request_digest, artifact_identity=session.attestation.guest_artifact_identity,
             deadline_text=_deadline_value(deadline) or "", chains=self._saved_chains,
+            request=getattr(request, "payload", {}).get("request"),
         )
         try:
-            for _ in range(4):
+            for _ in range(exchange.maximum_hops):
                 self._require_saved_budget(request, active)
                 frame = exchange.accept(wrapper)
                 with self._lock:
@@ -978,7 +982,7 @@ class MacOSVZSupervisorDriver:
                     bridge = self._saved_bridge
                 if bridge is None:
                     raise BackendUnavailableError("macOS VZ saved Host bridge is unavailable")
-                outcome = bridge[0](request, strict_loads(frame.frame))
+                outcome = bridge[0](request, exchange.callback_frame(frame))
                 self._require_saved_budget(request, active)
                 result = exchange.result(outcome)
                 host_nonce = self._new_host_nonce()
@@ -1005,7 +1009,7 @@ class MacOSVZSupervisorDriver:
                 final = _validated_invoke_outcome(data)
                 exchange.finish(final)
                 return ProviderOutcome(final)
-            raise BackendUnavailableError("macOS VZ saved bridge exceeds four actions")
+            raise BackendUnavailableError("macOS VZ saved bridge exceeds its action bound")
         except Exception as exc:
             exchange.cancel()
             raise BackendUnavailableError("macOS VZ saved bridge rejected exchange") from exc

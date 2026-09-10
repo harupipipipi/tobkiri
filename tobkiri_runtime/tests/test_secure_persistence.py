@@ -281,3 +281,100 @@ def test_windows_nested_directory_handle_blocks_replacement_race(
     assert replacement_blocked
     assert (nested / "active.json").read_bytes() == b"inside"
     assert not (victim / "active.json").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory mode contract")
+def test_read_only_capture_does_not_change_existing_directory_metadata(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir(mode=0o750)
+    (root / "entry").write_bytes(b"original")
+    before = root.stat()
+    store = SecureDirectory(root, create=False)
+    assert store.read_bytes("entry") == b"original"
+    after = root.stat()
+    assert (after.st_mode, after.st_mtime_ns, after.st_ctime_ns) == (
+        before.st_mode,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    )
+
+
+def test_exclusive_lock_never_reopens_or_truncates_existing_entry(
+    tmp_path: Path,
+) -> None:
+    store = SecureDirectory(tmp_path / "root")
+    descriptor = store.open_lock("legacy.lock", exclusive=True)
+    os.write(descriptor, b"held by legacy writer")
+    os.close(descriptor)
+    with pytest.raises(FileExistsError):
+        store.open_lock("legacy.lock", exclusive=True)
+    assert store.read_bytes("legacy.lock") == b"held by legacy writer"
+
+
+def test_cancel_before_publication_preserves_state_and_cleans_temporary(
+    tmp_path: Path,
+) -> None:
+    store = SecureDirectory(tmp_path / "root")
+    store.write_bytes_atomic("state.json", b"original")
+
+    def cancelled() -> None:
+        raise InterruptedError("request cancelled")
+
+    with pytest.raises(InterruptedError, match="cancelled"):
+        store.write_bytes_atomic("state.json", b"replacement", before_publish=cancelled)
+    assert store.read_bytes("state.json") == b"original"
+    assert sorted(path.name for path in store.root.iterdir()) == ["state.json"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX no-follow creation race")
+@pytest.mark.parametrize("operation", ["capture", "write", "lock"])
+@pytest.mark.parametrize("replacement", ["directory", "symlink"])
+def test_creation_race_reopens_and_validates_the_winning_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    operation: str, replacement: str,
+) -> None:
+    victim = tmp_path / "victim"
+    victim.mkdir(mode=0o750)
+    victim_before = victim.stat().st_mode
+    root = tmp_path / "root"
+    store = None if operation == "capture" else SecureDirectory(root)
+    component = "root" if operation == "capture" else "nested"
+    mkdir = os.mkdir
+    raced = False
+
+    def race(path, mode=0o777, *, dir_fd=None):
+        nonlocal raced
+        if not raced and Path(path).name == component:
+            raced = True
+            if replacement == "directory":
+                mkdir(path, mode=mode, dir_fd=dir_fd)
+            else:
+                os.symlink(str(victim), path, dir_fd=dir_fd)
+            raise FileExistsError("concurrent creator")
+        return mkdir(path, mode=mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(persistence.os, "mkdir", race)
+
+    def operate():
+        if operation == "capture":
+            SecureDirectory(root)
+        elif operation == "write":
+            assert store is not None
+            store.write_bytes_atomic("nested/entry", b"saved")
+        else:
+            assert store is not None
+            descriptor = store.open_lock("nested/entry", exclusive=True)
+            os.close(descriptor)
+
+    if replacement == "symlink":
+        with pytest.raises(SecurePersistenceError):
+            operate()
+        assert victim.stat().st_mode == victim_before
+        assert list(victim.iterdir()) == []
+    else:
+        operate()
+        if operation == "write":
+            assert (root / "nested/entry").read_bytes() == b"saved"
+    assert raced

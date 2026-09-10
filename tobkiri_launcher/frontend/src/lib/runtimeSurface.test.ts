@@ -228,8 +228,8 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     GENERATED_FRONTEND_CONTRACT_MAP.artifact_digest,
     PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
   );
-  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 43);
-  for (const path of ['/api/ai/provider-key', '/api/ai/profiles']) {
+  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 45);
+  for (const path of ['/api/ai/provider-key', '/api/ai/profiles', '/api/chat/turn/stop']) {
     assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
       (route) => route.method === 'POST' && route.path === path,
     ));
@@ -237,6 +237,18 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
   assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
     (route) => route.method === 'PUT' && route.path === '/api/ui/settings',
   ));
+  const catalog = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
+    (route) => route.method === 'GET' && route.path === '/api/tools/catalog',
+  );
+  assert.equal(catalog?.presentation, 'tool_catalog');
+  assert.deepEqual(catalog?.targets, [{
+    contribution_id: 'defaults.tools.catalog',
+    contract_id: 'tobkiri.resource.tool.definition.v1',
+    operation_id: 'rumi_tool_registry_pack.tool-definition-resource',
+    provider_id: 'rumi_tool_registry_pack.tool-registry.definition',
+    function_id: 'rumi_tool_registry_pack.tool-registry.definition',
+    allowed_payload_keys: [],
+  }]);
   assert.doesNotThrow(() => validateGeneratedFrontendContractMap(GENERATED_FRONTEND_CONTRACT_MAP));
 
   const tampered = structuredClone(GENERATED_FRONTEND_CONTRACT_MAP);

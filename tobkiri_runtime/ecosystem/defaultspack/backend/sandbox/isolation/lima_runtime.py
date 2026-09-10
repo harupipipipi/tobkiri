@@ -146,6 +146,7 @@ class PackVMProvisioningPlan:
     ceremony_nonce: str
     plan_digest: str
     confirmation: str
+    registration_update: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

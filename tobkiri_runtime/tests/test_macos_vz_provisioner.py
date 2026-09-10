@@ -620,7 +620,7 @@ def test_lifecycle_cleanup_retains_unverified_or_live_resources(
     assert provisioner.state_path.exists()
 
 
-@pytest.mark.parametrize("operation", ["stop", "cleanup"])
+@pytest.mark.parametrize("operation", ["stop", "cleanup", "allocate"])
 def test_lifecycle_rechecks_state_after_acquiring_mutation_lock(
     attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
     operation: str,
@@ -648,9 +648,50 @@ def test_lifecycle_rechecks_state_after_acquiring_mutation_lock(
         else macos_vz_provisioner.PACKVM_CLEANUP_PREFIX
     )
     with pytest.raises(ValueError, match="lifecycle state changed"):
-        getattr(provisioner, operation)(f"{prefix} {macos_vz_provisioner.VZ_INSTANCE}")
+        if operation == "allocate":
+            artifact = _materialized_artifact()
+            provisioner.allocate(
+                domain_id="domain.rotated",
+                reservation_id="reservation-rotated",
+                lease_id="lease-rotated",
+                channel_key=b"k" * 32,
+                artifact_digest=artifact.artifact_digest,
+                executable_digest=artifact.implementation_digest,
+                materialization_digest=artifact.materialization_digest,
+                artifact=artifact,
+            )
+        else:
+            getattr(provisioner, operation)(f"{prefix} {macos_vz_provisioner.VZ_INSTANCE}")
     assert root.exists()
     assert provisioner._load_state()["stopped"] is False
+    assert not (provisioner.state_path.parent / "domains").exists()
+
+
+@pytest.mark.parametrize("changed", [None, "config_digest", "plan_digest", "session_digest"])
+def test_provision_recovery_uses_the_attested_cloud_template(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    changed: str | None,
+) -> None:
+    """Reconcile the real state format without accepting a different receipt."""
+    provisioner, manifest, _root = attested_provisioner
+    state = provisioner._load_state()
+    state.update({
+        "session_digest": _digest(b"session"),
+        "plan_digest": _digest(b"plan"),
+        "ceremony_nonce_digest": _digest(b"nonce"),
+        "protocol_ready": True,
+    })
+    provisioner._write_attested_state(state)
+    proof = {key: state.get(key) for key in macos_vz_provisioner._recovery_fields()}
+    proof["config_digest"] = manifest.config_digest
+    before = provisioner.state_path.read_bytes()
+    if changed:
+        proof[changed] = _digest(b"different")
+        with pytest.raises(ValueError, match="recovery proof changed"):
+            provisioner.recover_provision_operation(proof)
+    else:
+        assert provisioner.recover_provision_operation(proof).ready is True
+    assert provisioner.state_path.read_bytes() == before
 
 
 def test_operation_gate_adopts_only_an_exact_stale_owner_claim(

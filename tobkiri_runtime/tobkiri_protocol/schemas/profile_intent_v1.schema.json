@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": ["intent_api_version", "profile_id", "state", "mode", "catalog_revision", "base", "shell", "packs", "requested_edges", "authority_references", "profile_authority_snapshot_digest"],
   "properties": {
+    "frontend_entry_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", "maxLength": 128},
     "intent_api_version": {"const": "io.tobkiri.profile-intent.v1"},
     "profile_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
     "state": {"const": "needs_resolution"},

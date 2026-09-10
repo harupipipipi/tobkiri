@@ -63,7 +63,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "artifact_hash": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
       "contract_id": "rumi.resource.tool.migration.source.v1",
       "id": "default-tool-migration-source",
       "loader": "python",
@@ -71,7 +71,7 @@
       "symbol": "create_source_operation"
     },
     {
-      "artifact_hash": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "artifact_hash": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
       "contract_id": "rumi.service.tool.local.operation.v1",
       "id": "default-tool-local-operation",
       "loader": "python",
@@ -105,9 +105,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:a1aad87241c11903383dd09232a682bcc6d58fb573ebfb5c4aff70331cd43b57",
+            "artifact_digest": "sha256:252a311d29d29713e48d3bb18f792462e371eee7c940284ce33f3b9ff5fdc1d5",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:39748e508c7b15b53ec189953fddaf4389c9ff8ad9fbf87c14ef3f202e90812f"
+            "source_identity": "sha256:f81ec1645cccf0b4aa1ec1de5e9ceab964a11805a145ff3d3c0ddc26d22234e9"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -130,7 +130,7 @@
         "pack_identity": "rumi:ecosystem/rumi_default_tool_projection_pack",
         "provenance": {
           "build_identity": "rumi_default_tool_projection_pack:1.0.0",
-          "content_hash": "sha256:dba1e0d5467cea33ccb37fe0245fcdf19ca4930e014c1046992d9cd2e57180e4",
+          "content_hash": "sha256:de21620bb07e4abea1f767684182bbe318d4dad26a7b3ce0e6f0c1c7efcfa65d",
           "signature": null,
           "trust_class": "local"
         },
@@ -160,7 +160,7 @@
       "owner": "rumi_default_tool_projection_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:39748e508c7b15b53ec189953fddaf4389c9ff8ad9fbf87c14ef3f202e90812f"
+      "source_identity": "sha256:f81ec1645cccf0b4aa1ec1de5e9ceab964a11805a145ff3d3c0ddc26d22234e9"
     }
   },
   "migration": {
@@ -206,7 +206,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_default_tool_projection_pack:1.0.0",
-    "content_hash": "sha256:dba1e0d5467cea33ccb37fe0245fcdf19ca4930e014c1046992d9cd2e57180e4",
+    "content_hash": "sha256:de21620bb07e4abea1f767684182bbe318d4dad26a7b3ce0e6f0c1c7efcfa65d",
     "signature": null,
     "trust_class": "local"
   },

@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:75240e3f7c878c076cc588eb858aa2fe1b6a629b69ee6b07d02ff732f6de7f15",
+  "source_identity": "sha256:948c0e77c4fcfe9c442e003e0843d24eadba4bc985a7dc407baf486afae91f56",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.preflight.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
       "implementation_path": "runtime/preflight.py",
-      "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -53,7 +53,7 @@
         {
           "contract_id": "tobkiri.resource.ai.readiness.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:b55d97c2964f2ea62761d49a9e996b48e37bea088ae662feacb0d861b4f89f1e",
+          "revision_digest": "sha256:ff956d72ff72a242f94b251f4ed29a02dbf60447e8a20c121a8775c71cb27b9b",
           "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
           "input_schema": {
             "additionalProperties": false,
@@ -87,6 +87,9 @@
                 "maxLength": 256,
                 "minLength": 1,
                 "type": "string"
+              },
+              "tool_calling": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -202,6 +205,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:f3c88402d27d04e94494840011852353998276234f47e8bb5b616bd56e60fb20",
-  "catalog_digest": "sha256:2d82aecb2191ac501df7685ef30632e3437813d4c77d5122c24adfc3070ca4a7"
+  "materialization_catalog_digest": "sha256:b21cffd93ac3bf716fe79332b09704830de6ab41b6720c15b49acf136e131b7f",
+  "catalog_digest": "sha256:b966d1966abcaaaecf0b1ded9737ed49cd015d72d4537b0e748d6aa491ee5803"
 }

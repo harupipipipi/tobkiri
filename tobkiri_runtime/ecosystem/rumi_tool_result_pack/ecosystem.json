@@ -13,9 +13,9 @@
     "authoritative_owner": true,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:2508caf9e6b43831e6870ec1c4599ba05b3d439293d8867ea90fc034d447190a",
+      "artifact_digest": "sha256:8df408019f4c2885c8532900d5f60f55d1754bf2a17047e0b34b3e0e73f672d8",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:fe75fdcff49286a2af7fbd0cc5f0b65ca8d86d9fc92ec3fc8a74696a20ade31f"
+      "source_identity": "sha256:4fa137305cef328e27d914e8d3d1ed25c440d39c5e992d1ff156c29ed4ddc4e6"
     },
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -23,7 +23,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:fe75fdcff49286a2af7fbd0cc5f0b65ca8d86d9fc92ec3fc8a74696a20ade31f"
+      "source_content_hash": "sha256:4fa137305cef328e27d914e8d3d1ed25c440d39c5e992d1ff156c29ed4ddc4e6"
     },
     "integrity": {
       "artifact_manifest": "artifact-manifest.json"
@@ -43,7 +43,7 @@
   "pack_identity": "rumi:ecosystem/rumi_tool_result_pack",
   "provenance": {
     "build_identity": "rumi_tool_result_pack:1.0.0",
-    "content_hash": "sha256:1721b2382f411ca698d69093ec321a22f480a0edad5c1992702ab76a0ac6757f",
+    "content_hash": "sha256:f77d5dc6f1eb09189967bb007fb2844efd4bbd08583c77e3fe01273e6710cb09",
     "signature": null,
     "trust_class": "local"
   },

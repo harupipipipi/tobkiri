@@ -67,6 +67,7 @@ pub(crate) struct DefaultspackDesktopMetadata {
     shell_artifact_id: String,
     shell_artifact_digest: String,
     shell_entrypoint_digest: String,
+    frontend_entry: crate::frontend_entry::VerifiedFrontendEntry,
     host_contract_contributions: crate::host_contract_contributions::HostContractContributionValues,
 }
 
@@ -368,11 +369,15 @@ pub(crate) fn launch_defaultspack_desktop_window_impl(
 pub(crate) fn prepare_defaultspack_shell_runtime_url(
     app: &AppHandle,
     config: &AppConfig,
-    launch_route: &str,
+    frontend_entry: &crate::frontend_entry::VerifiedFrontendEntry,
 ) -> AnyResult<PreparedShellRuntime> {
+    let launch_route = &frontend_entry.entry.route;
     crate::health_check::validate_application_route(launch_route)?;
     with_defaultspack_launch_coordination(|| {
         let (metadata, bootstrap_secret) = ensure_defaultspack_desktop_ready(app, config)?;
+        if metadata.frontend_entry != *frontend_entry {
+            bail!("active Application frontend entry changed during launch");
+        }
         let code = crate::request_panel_bootstrap_code_with_retry(metadata.port, &bootstrap_secret)
             .context("failed to issue a Defaultspack shell bootstrap code")?;
         Ok(PreparedShellRuntime {
@@ -934,6 +939,7 @@ fn read_defaultspack_desktop_metadata(
         shell_artifact_id: authority.launch.artifact_id,
         shell_artifact_digest,
         shell_entrypoint_digest: authority.launch.entrypoint_digest,
+        frontend_entry: authority.launch.frontend_entry,
         host_contract_contributions,
         function_id: authority.launch.function_id,
         provider_id: authority.launch.provider_id,
@@ -1445,6 +1451,7 @@ mod tests {
             shell_artifact_id: "fixture.shell.macos-arm64".into(),
             shell_artifact_digest: format!("sha256:{}", "b".repeat(64)),
             shell_entrypoint_digest: format!("sha256:{}", "c".repeat(64)),
+            frontend_entry: crate::frontend_entry::test_binding(),
             host_contract_contributions:
                 crate::host_contract_contributions::HostContractContributionValues {
                     system_pack_descriptors: "[]".into(),
@@ -1510,6 +1517,7 @@ mod tests {
             shell_artifact_id: "fixture.shell.macos-arm64".into(),
             shell_artifact_digest: format!("sha256:{}", "b".repeat(64)),
             shell_entrypoint_digest: format!("sha256:{}", "c".repeat(64)),
+            frontend_entry: crate::frontend_entry::test_binding(),
             host_contract_contributions:
                 crate::host_contract_contributions::HostContractContributionValues {
                     system_pack_descriptors: "[]".into(),
@@ -1734,6 +1742,7 @@ mod tests {
             shell_artifact_id: "fixture.shell.macos-arm64".into(),
             shell_artifact_digest: format!("sha256:{}", "4".repeat(64)),
             shell_entrypoint_digest: format!("sha256:{}", "5".repeat(64)),
+            frontend_entry: crate::frontend_entry::test_binding(),
             host_contract_contributions:
                 crate::host_contract_contributions::HostContractContributionValues {
                     system_pack_descriptors: "[]".into(),

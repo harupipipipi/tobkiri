@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Mapping
 
+from core_runtime.host_provider_function_v4 import SingleOperationHostFactoryV4
+
 _SECRET_KEYS = {
     "api_key",
     "authorization",
@@ -101,3 +103,25 @@ def _redact(value: Any) -> Any:
         return [_redact(item) for item in value]
     return value
 
+
+def _host_bind(context: Any) -> Callable[..., Mapping[str, Any]]:
+    del context
+    normalize = create_normalize_operation(None)
+
+    def invoke(payload: Mapping[str, Any], invocation: Any) -> Mapping[str, Any]:
+        if set(payload) != {
+            "tool_id", "tool_call_id", "executor_provider_instance_id",
+            "executor_content_hash", "value",
+        }:
+            raise ValueError("tool result payload is invalid")
+        return normalize("normalize", payload)
+
+    return invoke
+
+
+HOST_PROVIDER_FACTORY = SingleOperationHostFactoryV4(
+    function_id="rumi_tool_result_pack.tool-result.normalize",
+    contract_id="tobkiri.service.tool.result.normalize.v1",
+    operation_id="rumi_tool_result_pack.tool-result-normalize",
+    bind=_host_bind,
+)

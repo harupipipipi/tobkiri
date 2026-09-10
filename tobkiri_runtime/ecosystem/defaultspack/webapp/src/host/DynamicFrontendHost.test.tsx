@@ -67,46 +67,55 @@ const capabilities: FrontendCapabilityInvoker = {
   readDataSource: async () => ({ ok: true }),
 };
 
-test("Defaults /chat selects the full ChatApp only for the verified active contribution", () => {
+test("the selected full Chat implementation is independent of Profile name", () => {
   resetFrontendHostQuarantineForTests();
   const item = contribution({
-    contribution_id: "defaults.conversation.complete",
+    contribution_id: "defaultspack.frontend.chat",
+    mode: "application_builtin",
+    implementation: "defaultspack.chat",
     owner_pack_id: "defaultspack",
-    build_identity: "defaultspack.conversation",
-    resolved_profile_id: "defaults",
+    build_identity: "runtime.tauri.application.default",
     route: "/chat",
-    action_contract: "conversation.turn.v1",
-    view: { type: "conversation_v4" },
   });
   const render = (value: FrontendCatalog, plan = "plan-1") => renderToStaticMarkup(
-    <DynamicFrontendHost
-      catalog={value}
-      route="/chat"
-      activePlanHash={plan}
-      capabilities={capabilities}
-    />,
+    <DynamicFrontendHost catalog={value} route="/chat" activePlanHash={plan} capabilities={capabilities} />,
   );
-  const current = catalog([item], { profile_id: "defaults" });
-  assert.match(render(current), /data-defaults-chat-app/);
-  assert.doesNotMatch(render(current), /Message Tobkiri/);
-  assert.doesNotMatch(render(current, "plan-stale"), /data-defaults-chat-app/);
-  for (const overrides of [
-    { resolved_profile_id: "other" },
-    { resolved_profile_revision: "stale" },
-    { resolved_activation_id: "activation:stale" },
-    { resolved_plan_hash: "plan-stale" },
-    { owner_pack_id: "other" },
-    { build_identity: "other" },
-  ]) {
-    assert.doesNotMatch(render(catalog([{ ...item, ...overrides }], {
-      profile_id: "defaults",
-    })), /data-defaults-chat-app/);
+  for (const profileId of ["defaults", "research", "renamed-profile"]) {
+    const selected = { ...item, resolved_profile_id: profileId };
+    const current = catalog([selected], { profile_id: profileId });
+    assert.match(render(current), /data-application-implementation="defaultspack.chat"/);
+    assert.doesNotMatch(render(current), /Message Tobkiri/);
+    assert.doesNotMatch(render(current, "plan-stale"), /data-application-implementation/);
+    for (const overrides of [
+      { resolved_profile_id: "other" },
+      { resolved_profile_revision: "stale" },
+      { resolved_activation_id: "activation:stale" },
+      { resolved_plan_hash: "plan-stale" },
+      { owner_pack_id: "other" },
+      { build_identity: "" },
+      { owner_pack_hash: "invalid" },
+      { descriptor_hash: "invalid" },
+      { implementation: "unselected.javascript" },
+    ]) {
+      assert.doesNotMatch(render(catalog([{ ...selected, ...overrides }], {
+        profile_id: profileId,
+      })), /data-application-implementation/);
+    }
+    assert.doesNotMatch(render({ ...current, quarantined_pack_ids: ["defaultspack"] }), /data-application-implementation/);
+    quarantineFrontendContribution(selected);
+    assert.doesNotMatch(render(current), /data-application-implementation/);
+    resetFrontendHostQuarantineForTests();
   }
-  assert.doesNotMatch(render({ ...current, quarantined_pack_ids: ["defaultspack"] }), /data-defaults-chat-app/);
-  assert.doesNotMatch(render(catalog([{ ...item, resolved_profile_id: "fixture" }])), /data-defaults-chat-app/);
-  quarantineFrontendContribution(item);
-  assert.doesNotMatch(render(current), /data-defaults-chat-app/);
-  resetFrontendHostQuarantineForTests();
+});
+
+test("ambiguous routes fail closed and subpath entries require a path boundary", () => {
+  const share = contribution({ route: "/share", route_match: "subpath" });
+  assert.equal(contributionsForRoute(catalog([share]), "/share/record-1", "plan-1").length, 1);
+  for (const route of ["/shared/record", "/share/../chat", "/share/%2e%2e/chat", "/share?chat=1", "/share//record", "/share/record/"]) {
+    assert.deepEqual(contributionsForRoute(catalog([share]), route, "plan-1"), []);
+  }
+  assert.deepEqual(contributionsForRoute(catalog([share, { ...share, contribution_id: "other.share" }]), "/share", "plan-1"), []);
+  assert.deepEqual(contributionsForRoute(catalog([contribution({ route: "/", route_match: "subpath" })]), "/unknown", "plan-1"), []);
 });
 
 test("route visibility follows the active resolved plan", () => {

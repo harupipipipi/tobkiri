@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:2d53440d2d6f6fabb3adabebf73b5a78f511026c24afe5beb514aa8424f5e61d",
+  "catalog_digest": "sha256:0048f62059ed6d4068e4b4ee739219d573a4ea3ca17c61e8d75ddc80143038b4",
   "pack_id": "rumi_tool_validation_pack",
-  "source_identity": "sha256:b7b5c9c3444c88af9d39541a32d8b463ccbd79448e334ef4838771037a454e60",
+  "source_identity": "sha256:cd95ebaed6a032c68d2e789742501b1df561abdb6438e7b46aa9856842a0105b",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_tool_validation_pack.tool-validation.arguments",
-      "implementation_digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+      "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
       "implementation_path": "runtime/validator.py",
       "materialization_mode": "on_demand",
       "operations": [

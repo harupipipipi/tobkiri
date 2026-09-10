@@ -6,6 +6,9 @@ evidence; execution remains outside this package and must enforce the
 fail-closed decisions recorded here.
 """
 
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
 from .canonical import (
     MAX_CANONICAL_JSON_BYTES,
     canonical_bytes,
@@ -20,16 +23,6 @@ from .errors import (
     ProtocolError,
     SchemaValidationError,
 )
-from .composition import (
-    CompositionError,
-    RuntimeProfileBinding,
-    VerifiedCatalog,
-    catalog_payload,
-    compose_runtime_profile,
-    definition_revision,
-    load_verified_catalog,
-    verify_profile_lock,
-)
 from .ids import (
     validate_artifact_digest,
     validate_canonical_id,
@@ -37,12 +30,51 @@ from .ids import (
     validate_opaque_reference,
     validate_semver,
 )
-from .migration import (
-    load_and_migrate_legacy_profile,
-    migrate_legacy_profile,
-    migrate_legacy_profile_or_raise,
-)
-from .validation import validate_document
+if TYPE_CHECKING:
+    from .composition import (
+        CompositionError,
+        RuntimeProfileBinding,
+        VerifiedCatalog,
+        catalog_payload,
+        compose_runtime_profile,
+        definition_revision,
+        load_verified_catalog,
+        verify_profile_lock,
+    )
+    from .migration import (
+        load_and_migrate_legacy_profile,
+        migrate_legacy_profile,
+        migrate_legacy_profile_or_raise,
+    )
+    from .validation import validate_document
+
+
+# Pure data helpers must remain importable without schema/crypto dependencies.
+# Requesting these public APIs still imports their full enforcing implementation.
+_LAZY_MODULES = {
+    "CompositionError": ".composition",
+    "RuntimeProfileBinding": ".composition",
+    "VerifiedCatalog": ".composition",
+    "catalog_payload": ".composition",
+    "compose_runtime_profile": ".composition",
+    "definition_revision": ".composition",
+    "load_verified_catalog": ".composition",
+    "verify_profile_lock": ".composition",
+    "load_and_migrate_legacy_profile": ".migration",
+    "migrate_legacy_profile": ".migration",
+    "migrate_legacy_profile_or_raise": ".migration",
+    "validate_document": ".validation",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Load public protocol APIs only when explicitly requested."""
+    module = _LAZY_MODULES.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module, __name__), name)
+    globals()[name] = value
+    return value
 
 __all__ = [
     "CanonicalizationError",

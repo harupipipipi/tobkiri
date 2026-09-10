@@ -199,8 +199,8 @@ class DurableTurnRuntime:
             if row is None:
                 raise KeyError("turn is unknown")
             if reject_saved_transition and action == "transition":
-                record = self._record(row)
-                if record.get("input_digest") and record["request_id"].startswith("saved-turn."):
+                existing = self._record(row)
+                if existing.get("input_digest") and existing["request_id"].startswith("saved-turn."):
                     # The captured management adapter fixes this flag, never
                     # caller payload. Check under the write lock, so creation
                     # or pruning cannot race a separate preflight read.

@@ -34,7 +34,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "artifact_hash": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
       "contract_id": "rumi.service.mcp.tool.call.v1",
       "id": "mcp-tool-call",
       "loader": "python",
@@ -93,9 +93,9 @@
           "author": "Rumi AI Team",
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
+            "artifact_digest": "sha256:c40504befcc685174c4085d5458887d20ece0bdac74a4b216c662b99b3a479e8",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda"
+            "source_identity": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d"
           },
           "dependency_notes": {
             "defaultspack": "Finite connection-runtime compatibility source until Wave 10; approval and invocation are globally brokered."
@@ -131,7 +131,7 @@
         "pack_identity": "rumi:ecosystem/rumi_mcp_gateway_pack",
         "provenance": {
           "build_identity": "rumi_mcp_gateway_pack:1.1.0",
-          "content_hash": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+          "content_hash": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
           "signature": null,
           "trust_class": "local"
         },
@@ -174,7 +174,7 @@
       "owner": "rumi_mcp_gateway_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda"
+      "source_identity": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d"
     }
   },
   "migration": {
@@ -210,7 +210,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_mcp_gateway_pack:1.1.0",
-    "content_hash": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+    "content_hash": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
     "signature": null,
     "trust_class": "local"
   },

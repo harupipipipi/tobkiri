@@ -147,6 +147,7 @@
     "rumi_workspace_pack",
     "search_home_pack",
     "tobkiri_host_pack_control",
+    "tobkiri_mcp_connection_pack",
     "tobkiri_ui_settings_pack",
     "tobkiri_workflow_pack"
   ],
@@ -227,7 +228,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae"
+              "implementation_digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de"
             }
           ],
           "owner": "defaultspack",
@@ -270,6 +271,136 @@
                       "type": "string",
                       "minLength": 1,
                       "pattern": "\\S"
+                    },
+                    "tool_selection": {
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "mode": {
+                                "const": "none"
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "include": {
+                                "maxItems": 0
+                              },
+                              "must_use": {
+                                "const": false
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "properties": {
+                        "exclude": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "include": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "auto",
+                            "manual",
+                            "none"
+                          ]
+                        },
+                        "must_use": {
+                          "type": "boolean"
+                        },
+                        "scope": {
+                          "enum": [
+                            "turn",
+                            "conversation"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "type": "object"
                     }
                   }
                 }
@@ -504,7 +635,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+          "digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -519,6 +650,720 @@
           "index_role": "host_contract_update_metadata",
           "kind": "sidecar",
           "path": "update_metadata.v1.json"
+        },
+        {
+          "path": "tools/artifact_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_delete/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ecb43e92268971bd540a46bcc2f1f5180e53dced7490fcbd2ee3d1712c51ac70",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_list/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:dd62382bc82f95d2edc5235f1dc152a1ccf1e9994d3621999085437755a6d3a9",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_patch/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:250122f96b6805d51863fde10f2cffafc40d98faecffdf72d9e9dffa513bdf59",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_read/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2ae379bf7ae987b793b79222192252b48956c2ff08c85056177db2baf50a110e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_file_write/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b57fb2e3882a07574c1663aa869b6145d5e54eaaf933da03cfe844b64d61ad96",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:abb476014c85b37553d0a15189f93aea579831f545c44c7b6c6ca5656c484f1c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/artifact_zip/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:60059ecb5fc3cd66f73cbc36716e1e9c16d06ebdf6b02a1273ecb2a1af03eaaf",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/audio_transcribe/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9ef3e19e8c30dcd038a942d7095c82f63769611e9b956cb0251cbea7c2040ec7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/audio_transcribe_local/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f5ae159e58c886bfd4b71a75f4e897c52550bd55f13bf8cc0174ea4f518e7696",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_download_collect/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a78ece887cef2bf945972333b5641bb07a3991645261f6e808c72404ee05f6e2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_extract_table/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:353ca7439ccaa42f704a0b3218f4ef0a55f9762f859c8714600f763a8bb63718",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_save_page/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c9eac8b6f4dd81830ece8447a8d917fa58cd7137241f513987e7180da97817cc",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/browser_upload_file/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c0e3194557c0bc093965411104f11c8d365e734882de6308142da6e569489204",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/calendar_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:159b665b36e5da95d8cf73ca6b8423c6e10dad3b9f1631ceeb0232bb29d2c6e5",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/chart_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d293cd2511b356b9986f2d1ea181a40f3dbdef4f2c38251d6c263f67cbe49f4c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_access_grant/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:14bf8ef957d7df523dbb7f4d4870eafd997eb7f345177632b96f13e651c83c9b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_access_request/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:349e1ce836ed330ecc79342cec9095f88cdfc81b0e3611168401521528686907",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_control_acquire/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a6c302474745b2bb37265bd218732ee57cd322ba5dcf2f13447d00fb10043471",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_control_release/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a74e45fe373a1f4ac0be2fafc88e105d8dc9f9cd979a7feb730f5de960af2301",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_control_renew/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:464597aeaa1cbf471b808a5810d18faf6582c6e538faf7f0c1dd557189a0791a",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:8b4f135c150ebe7c46de8205b757e0c76bc4f17e804a62e2c540476368b9a076",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_frame/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ee78e05f215a858f09b00468b0908f3115133ac5489e74d04dffee5de1e70bfd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_input/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:fe52b8b9fe6335bdaa6b5f29a5162a34a735ee09f4bce2ce2344335190823b34",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_list/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d09e9967fb36a862595961c8a8f3cabd7b6e9f1e49cb90a1961cd1c986c3c793",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/desktop_rules_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:5354be425fa1f56b6b7d406742b18c6d201f8e359c82fc3f2fe1b07b21e9c6f8",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/discord_send/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d6bbf71c4d4e974a1c8eb2eb0030ac5fb4455ceec24079432b24dadccdf68cfd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:0857ef9e1b892728dfee04fde01b1f7a4eeb8740bc4c80e98a73cf656d258d0c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:7536ea42d3152a08727a2048b2782e47db7d225839be0135ad0c81d069f6177a",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_to_pdf/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:8cf8adea65b8ec688e05c084a6b7161abf1b1d40a42cd15a8f98a888b0eee7ee",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/doc_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:0adf29db977b9d1894948f16b8d2eaf2f54184fd121d79baad75878e9c45e1a3",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/drive_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:0dd24b72b6dace7c9f299e7a0a028f11f6f488a4f2c82ea55c60425849a952c7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/drive_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:e15a533667298d0103f78b3eaa4e3fe87cd536a649f25670b4e820cb887c52b1",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/external_send/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b744ba6aa6c689548044af0199de519302b506044013b9d4b9f6e5248f0ca24e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_issue_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:13fb0e4fdcb024abeca4ab4dcc222e148d6f6ee97a67598dd9c3d3983df5ddac",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_issue_list/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:4d091127dc4686ecdde0c63101b100a962e7a37e09aed3ffac65078d944945a2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_issue_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b77f49f70b8019e4ef7a31317c141ac71b4a255894da1cfaaf8cbe3bf0b04c7f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_pr_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:acbd598c9c354964daf67c256d4ee62431ad53db382efec15763bc1476222c50",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/github_search/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:4b20e11f0558dad62d6c1bb3984cdfabaa15907dcc57c28ac523d1acbb258cea",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/gmail_draft/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:82710d702fdb2b694abc2dc1f635bc27209373e964ba6b15710950a8c7875651",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/gmail_search/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ebafadb37b0bed32190570902599bbd1bbff1fd67606e61a3b51b25a7312053c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/html_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:145862a82bce5bc8b2a4e5fbe0e1f10a33ced10fa2dff4eb7133c585072c0e36",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/human_operator_canvas_open/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d5b42f3e77afe2a7a7e20bb8666be49609649e84105c7680f0ec02a881e4dbbd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_convert/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a9270c5b2694f81a8c40c31fd522b9973e1dce0ac4adae4417eb5cadde415fe0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_generate_local_or_provider/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9aa6e032a376d92e40edc5c0af01a245378ea4794ecd1238feca97b2f15f68a7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_render/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9c5a0f04b316ab236e4c2eca9152da87a2c1cafbb12a5499978293fc5730d33c",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/image_resize/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:3c9b0cea637cab5732013d252a72e3bebb5427331c40f57c0bb5692292b1f1df",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/jira_issue_sync/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:62d7ea6f57aa8e0a15c5120663f9584b31895c858966cc88a1478a93408d5418",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_artifacts/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b90b5e7e8bdedf2a1d84abff8c86920944ee3fc6f78b739b26c0e3ae89e84407",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_cancel/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:7df7de369ff7ef2db2ed6ba5518905d37dc17c50ddbce8d3529077ed147c56c0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6ddf1347b47f1361e4d66f600d3ae6c7d8b9cd61cca505f4ae821c5bc239d567",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_history/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f47d9989f25edad7c4c5fc7a70a5ddf0a7d049f96ef518d17f29a049d91951c9",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_resume/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6f42339b4005a6216da7cf1a9a386e0bd18691132ce4d60f261e400d5f3a4392",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/job_status/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:691fc0a17fb09bb7cf8d7a32a31ba9ebb77df22fcc59b47f885a004eb7a0bbd0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/line_push/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2cc7c0bafbbd23255641f661923f0c507502665e6500b5840c787b89702c545e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/linear_issue_sync/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:783bab82ea2c76d14c7051a953446b55239d118644f66f9b53096bde26f253f2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/node_exec/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/ocr_extract/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ad8ada4efd788d9465f4039ee261b2bf84b7c08374bcd42bb7f5f5d18deda4d0",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/package_install_plan/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6abb602f93637c762713de1b71ecaebe31eeb67c459da759acfa5cbb81f26b66",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2ef870cd4a062c3a9e612ec13da14509e24e6ae85af2608e748b08b3cd8ee570",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_extract/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:cdefeb2b4b0e11e9f8f6deca2d9813e9517f47b8cd8c7c3f64ac9a4789874aac",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_extract_tables/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:af6f3c37b24b7033fa963b416f6a107a04b623abc6ffbe7c3243a1003a81cc13",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/pdf_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:bf79b85a5ab4d6b4352831e8b39318f47f5688a34e96d956780e8b9bc3f7e038",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/project_scaffold/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9b3b341e31e0d8f88071e2d8d535e5b984d2dec73e20f9bb82f79e98046f9901",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/python_exec/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:9edde2db4dcd713aa5314c58679f7b4e03f063dce89e16ad7ff799e0df31525e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/research_report_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2cb232170261ee13388995e07bdc0e8ef7bf7944d9e3393215d44e905842d6f4",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_exec/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:5e7cb9e8c3ab28465ce748dff3e99fb80401380cd930754bcb1962019f5c84a3",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_files_apply_patch/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:803d0a46957ff80bc7e1862389dfa9b87c6679c9fc98cd6cb542aecbe2470f2f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_files_read/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b1fd3bfe874eb3c6f0b575034c2732f4ce0b6822cdde2bc7797ee7a8550d0cdb",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sandbox_port_expose/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c623d0744e89e3edf4be3dfae055d91a773cd59140be08ed82d8fd37b13ef048",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_analyze/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:dd1fff081a7c7f096d2abace3432ef2378aab6e9eec62c914b6bddc8077266df",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b85f022e055ef542bea962ef5b10e01f34a362d34ef314eb87939225b61ae2ee",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:e9bc8384c891ab6fa775228e19c7f7bd07858e8b2c7be71c6f29deaea87569ba",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_read/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:85806ee62be6f990813d35f5867c9331ca6db7df82b569106a296abe5e83dd7b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/sheet_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:133bfae7c54e89e8237c86d1701c47ae6f8404433f758076c2c1d590ea1eed75",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slack_send/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:cd09b7f0fd1b3a193ce296bc8ecb2e4b195a24d4af2ae25b0d2a3f5f6f148d31",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_create/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:107fff4bf6bcd7e9a05341bb5fec773f165989cc34b226379e10589ca7e61890",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ef1e8c78609602d74c77608b145d3a6f9225a8a6c66223b3ab6027b0481d4bc4",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_from_markdown/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a66f67c981f747faa71343e8845e1aa56fb9a21b3e694d6998c36283ce7f7f2e",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/slides_update/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:08760fe6152b00b002b1d0c28f0ff17818e1eff3a0d1f4a10a565fb1b003b1bd",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/source_extract/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:c1a3d951a7d132bfde3a4ad7f69e9dc06b4f14a2869a9164a317e2d2e1ff9cbe",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/source_rank/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:2132368e36e351cf994f6d921567ca820657ae0e32a071a05e851a33c3e710fc",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/static_site_export/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:d889c07fd06c6052ea3a1e04127f7bada7836decb232c5953d2c0b34946d1144",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_names/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:6bfd31cfd1b5d56ea107a538fcfc642b6910d4eec4bb5bac81af230614830f90",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_search/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:b29acd14a290b37933d34e39f80c43ac16dfaf771fba00a789b90a0b4a4dec20",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_task_board/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:79427ba0cc2f5ea776a6f97445b2387033d6f9d4ffb6b606afdc22ebda6fac89",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_task_board_agent_session/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:25361ace0070f54669e6332814f1b5f63bc15de5f2c6c08399c360934c9ce14d",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_build_recursive/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:56ac4bb2053997f8bb49c6f8f9d950640c05af6782bf1a2369f388def74f3a22",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_commit_plan/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:48e3d22ad8f83b7b4a70a24bebba906fe479b8b429002084d99ecb7cd59848d7",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_compile_plan/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:86eca5b318611a5f0bf80bd49192810592b57eb6701d6af1f1e32785a9bd511a",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_compose_page/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:499ac42f6285f3e8faca687d80ad2ee0fd0bad3039fa4505fd56f89b2ee2eaa5",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_generate_candidates/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:dd4551c053303aae48aef5ccb0c6152689b233174f91947e2853f9ecd0e3d0f8",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_generate_foundation/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f2d199aa9e0005ca135f845f76676c639dda59b6f53053a85c22a2089277fa5b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_inspect_compression/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:585f7daba94cf8d1ce6ed72f8689d6b2ec3d12be2d66536d9cb1d9febf913d90",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_render_matrix/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:05e3600dbcd9158bac780a4696e5ef434c309b5341f751855e2aca00b1810a47",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_select_candidates/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:955fd354b396563fed1b1abe5859cf426831a3065ad612bd7b60528514826053",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tool_ui_verify_recursive_build/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:958fe0be1b44a61f4e70dad420977f83bf9812a44f979a6273cc982fd0184ff2",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tts_generate/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:439ce53127ca10a95fa64e126faeefc751be5f38c224719f620335011dc5983b",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/tts_generate_local/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:f03103076d6a699ced0ba1905567b02503aad16293e540e6833ba5dab843a979",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_build/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:5a096e9b0e4f24d30cbe7544d862886d118023026c2e4187f3b14cf4f2314589",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_export_static/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:a08cc56ca71bc212ebccd21f25a9640bd12576fe877aac3a3925dbacc5c98145",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_lint/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:82b1b73c85d2f2ff925ee17ed885ead1971e910a6a05b847f0582d523ca0329f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/webapp_preview/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:be36c3d8118b4f5afd90d143ffbb6a22c8082a03a13d87ef4c466d6f15d9ee63",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/wide_research/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:7a66d93b0fe1bf7bb4c79a0f78c64d8e21aac48b5214e04561d18b195c9a7f0f",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_cancel/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:536a760efd88f0e6d64d5453d1ae08ed4c2eedf0d3711e7446b15a289d5be957",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_define/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:53d04be10116abf8beef3da8d2a782f57acb8b0c7d496f481c85ac803a9d9e09",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_retry/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:ed9d29a4fdff2e3b78e371dcf7a91254edd7be53fc866a2601b455ad5d47b340",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_run/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:e45139d87ec0cf1c994f093a0c8870f506108f74b915abd7a33cab53cc199781",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/workflow_status/manifest.json",
+          "kind": "sidecar",
+          "digest": "sha256:29c29d561afc578369c44158904e9dda619b7414cf86cfeefb4b785f71159fa5",
+          "index_role": "sidecar"
+        },
+        {
+          "path": "tools/memo_create_note/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:36d13ec0256b0f0b0ab27d97a62d1b2c411997d898f9b9e0e9332efb6817f041"
+        },
+        {
+          "path": "tools/memo_folder_upsert/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:402816166aaa8c52a8899fcfd17bf1bb7c0e105043f7393c6d2ef09f736701b3"
+        },
+        {
+          "path": "tools/memo_get/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:8071ce95d1837d43128a968281e5911cc6a31bdef8e9131065f5e324e10f55af"
+        },
+        {
+          "path": "tools/memo_list/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:4e38687a7517672993da4eae1fdafc5083fa01ed91f164e8ca1cf1bc2e28510d"
+        },
+        {
+          "path": "tools/memo_list_notes/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:7c38ac2cb1bbe6b68824f0424ebc3d95b4f38299fad9532b356010e036d498c0"
+        },
+        {
+          "path": "tools/memo_note_upsert/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:8c51209d55afff34e5c76525097c87b5a5b03914aa002908f77d90bc42f86b4b"
+        },
+        {
+          "path": "tools/memo_search/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:bfee590d26ba44427df028d9b0f0eadd347bfdbf3d56dfc9b1b1129306b85eda"
+        },
+        {
+          "path": "tools/memo_search_notes/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:b2d3df80d4fda31b02464014e4a90c606a22f88ef2ecaea0818e5283fcc05e30"
+        },
+        {
+          "path": "extensions/tools/settings_inspect/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:7df1bd0c10f60f04d732411797dc28083e5e699f13e3c34601624d64fa49b638"
+        },
+        {
+          "path": "extensions/tools/settings_update/manifest.json",
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "digest": "sha256:8bfa44dac8697c39742fe51a20bec22ff6acf6e80f9b1cc049d2efbbac079591"
         }
       ],
       "secrets": [],
@@ -1095,7 +1940,7 @@
             {
               "entrypoint_id": "ai-gateway-preflight",
               "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-              "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9"
+              "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -1141,6 +1986,9 @@
                       }
                     }
                   }
+                },
+                "tool_calling": {
+                  "type": "boolean"
                 }
               }
             },
@@ -1356,7 +2204,7 @@
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+          "digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
           "kind": "executable",
           "path": "runtime/preflight.py"
         }
@@ -5417,13 +6265,13 @@
         {
           "digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
           "kind": "executable",
-        "path": "runtime/message_host.py"
-      },
-      {
-        "digest": "sha256:b3128006115b96b9e4ab8aa7aced0ad260d9dda978db7f66de4266b3724735d2",
-        "kind": "executable",
-        "path": "runtime/saved_receipt.py"
-      }
+          "path": "runtime/message_host.py"
+        },
+        {
+          "digest": "sha256:bc21ef07c019161d7160e1b407495312aec79e530e83da522df952b792fe8a41",
+          "kind": "executable",
+          "path": "runtime/saved_receipt.py"
+        }
       ],
       "secrets": [],
       "source_evidence": [
@@ -5819,7 +6667,7 @@
             {
               "entrypoint_id": "default-tool-migration-source",
               "id": "rumi_default_tool_projection_pack.default-tool-migration-source",
-              "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9"
+              "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -5854,7 +6702,7 @@
             {
               "entrypoint_id": "default-tool-local-operation",
               "id": "rumi_default_tool_projection_pack.default-tool-local-operation",
-              "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9"
+              "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -5880,7 +6728,7 @@
       "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+          "digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
           "kind": "executable",
           "path": "runtime/projection.py"
         }
@@ -5910,7 +6758,9 @@
     {
       "approval_policy": "none",
       "authority": "v4-authoritative",
-      "capabilities": [],
+      "capabilities": [
+        "tool.local.operation"
+      ],
       "dependencies": {
         "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
         "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0",
@@ -5918,8 +6768,8 @@
       },
       "description": "",
       "display_name": "rumi_default_tools_pack",
-      "execution_boundary": "declarative_only",
-      "kind": "application",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
       "legacy_ids": [
         "rumi:ecosystem/rumi_default_tools_pack",
         "rumi_default_tools_pack"
@@ -5934,7 +6784,44 @@
         "allowed_ports": []
       },
       "pack_id": "rumi_default_tools_pack",
-      "provided_contracts": [],
+      "provided_contracts": [
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_default_tools_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "calculator-evaluate",
+              "id": "rumi_default_tools_pack.calculator-evaluate",
+              "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa"
+            }
+          ],
+          "owner": "rumi_default_tool_projection_pack",
+          "provider_id": "rumi_default_tools_pack.calculator",
+          "required_capabilities": [
+            "tool.local.operation"
+          ],
+          "routing_keys": [
+            "calculator"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        }
+      ],
       "required_contracts": [],
       "runtime_artifacts": [
         {
@@ -5942,6 +6829,166 @@
           "index_role": "host_contract_contribution",
           "kind": "sidecar",
           "path": "host_contract_contributions.v1.json"
+        },
+        {
+          "digest": "sha256:dd424445362407e7286d05148300c1ae4d9203633a0c29e644f216f2254503bc",
+          "kind": "sidecar",
+          "path": "tools/browser_companion/manifest.json"
+        },
+        {
+          "digest": "sha256:4d8964f1b89e3de6ceb2cb4386259347ccaab142de8aa4671e54e9f87a9b6868",
+          "kind": "sidecar",
+          "path": "tools/browser_computer/manifest.json"
+        },
+        {
+          "digest": "sha256:a70a50780d27d0e2bcce6e405ad2bbe4ab730ee24702ad62e50cba6e9d5ea7ac",
+          "kind": "sidecar",
+          "path": "tools/browser_use/manifest.json"
+        },
+        {
+          "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
+          "kind": "sidecar",
+          "path": "tools/calculator/manifest.json"
+        },
+        {
+          "digest": "sha256:2850a5ee71e85f4cb91171e64183e12f3e91f70654592b73ecc2f8b0e1136430",
+          "kind": "sidecar",
+          "path": "tools/coding_file_create/manifest.json"
+        },
+        {
+          "digest": "sha256:83f9d3f52cce0b5b5b507b95878dd09856fcc4b867f8bfcdc0d8c809a49d8f99",
+          "kind": "sidecar",
+          "path": "tools/coding_file_delete/manifest.json"
+        },
+        {
+          "digest": "sha256:57406c10011a141a3b0212f9a7038b86e82b27e9d23dc152e43c1599d527a9e2",
+          "kind": "sidecar",
+          "path": "tools/coding_file_list/manifest.json"
+        },
+        {
+          "digest": "sha256:a58544e5c9630ef431493b80ea356bc7fa26a4b67b2288dd77e37d51268bf229",
+          "kind": "sidecar",
+          "path": "tools/coding_file_patch/manifest.json"
+        },
+        {
+          "digest": "sha256:1f69dd59fb22279059789d968c03657acff3945ed56ad85ee3cf59211d1cba42",
+          "kind": "sidecar",
+          "path": "tools/coding_file_read/manifest.json"
+        },
+        {
+          "digest": "sha256:a15ef52451186ec549fca1d8d5dd89ffee43e8582b33cf758716a43d7a2eb0b4",
+          "kind": "sidecar",
+          "path": "tools/coding_file_restore/manifest.json"
+        },
+        {
+          "digest": "sha256:5bf3c5ec67d410279e108b7fe414c1087cf227b64b5607824c9aa3fcbd88385e",
+          "kind": "sidecar",
+          "path": "tools/coding_file_search/manifest.json"
+        },
+        {
+          "digest": "sha256:cda92740f8be1d4154b78e7bc086cbb4525ad5091400cf4db18dacc11b11954a",
+          "kind": "sidecar",
+          "path": "tools/coding_file_write/manifest.json"
+        },
+        {
+          "digest": "sha256:deca8db7f154050f0a209b89eb1b441f68c5b027d0197fea8f30eb736b6c3a0a",
+          "kind": "sidecar",
+          "path": "tools/coding_git_commit/manifest.json"
+        },
+        {
+          "digest": "sha256:238d0f1db3056d93d791b58c37cfd0bd9f2a49d9a4d499bff52e98ae71b272c1",
+          "kind": "sidecar",
+          "path": "tools/coding_git_diff/manifest.json"
+        },
+        {
+          "digest": "sha256:0c6d3ec594a9606d77b2de4332dfba15dae5ada8a5a7dc878dcc039ed8f28ec7",
+          "kind": "sidecar",
+          "path": "tools/coding_git_push/manifest.json"
+        },
+        {
+          "digest": "sha256:1569ef8cd7c6ec477b5945694958fd8ea929477d3790e8f1a279fbd9fdfbae67",
+          "kind": "sidecar",
+          "path": "tools/coding_git_status/manifest.json"
+        },
+        {
+          "digest": "sha256:4cf11d53575c446273842ca8b06b7ca0a4f1e65f87c66a7234280c8f7041b156",
+          "kind": "sidecar",
+          "path": "tools/coding_terminal_exec/manifest.json"
+        },
+        {
+          "digest": "sha256:5090b5750ca310341c351b68fb33c541e2c901fa420ebf9a30a1912249e614d9",
+          "kind": "sidecar",
+          "path": "tools/computer_use/manifest.json"
+        },
+        {
+          "digest": "sha256:b6c40154cfbd2fd5c74410778e13a21adaee2bc8aae818a3546c517ad1d5696e",
+          "kind": "sidecar",
+          "path": "tools/file_reader/manifest.json"
+        },
+        {
+          "digest": "sha256:691519a7af308c99c20885970bfc104a65d5d7d63f60c27fba8a10a795461c2f",
+          "kind": "sidecar",
+          "path": "tools/reddit_search/manifest.json"
+        },
+        {
+          "digest": "sha256:d3ce97cd1aec505cc262c425b4fa9b8ad4b0b0cf6d4a79317c899efe39e58d96",
+          "kind": "sidecar",
+          "path": "tools/rumi_api/manifest.json"
+        },
+        {
+          "digest": "sha256:228e5667dd383c0986c23f7b3d725fbafd047ebb69d8677197d6a0a63b629947",
+          "kind": "sidecar",
+          "path": "tools/sandbox_artifact_export/manifest.json"
+        },
+        {
+          "digest": "sha256:838c36ba740c012c8950d9f1793a7d5b98f64bbc27afd35c4310280b522ddac0",
+          "kind": "sidecar",
+          "path": "tools/sandbox_diff_preview/manifest.json"
+        },
+        {
+          "digest": "sha256:166bcc7eaf083a03141c9f29840de195b6b92ae1a6b4025c19804434ef680e11",
+          "kind": "sidecar",
+          "path": "tools/sandbox_file_patch/manifest.json"
+        },
+        {
+          "digest": "sha256:9cae4b237205fb64bf9bb042907170bdb2bfc1041d5c40a974fbf10797bde8ca",
+          "kind": "sidecar",
+          "path": "tools/sandbox_file_read/manifest.json"
+        },
+        {
+          "digest": "sha256:de1a9203a9eeb2e3e27e9a9745941b5684528d7d05c00b627621860211681891",
+          "kind": "sidecar",
+          "path": "tools/sandbox_file_write/manifest.json"
+        },
+        {
+          "digest": "sha256:21cd914c42066061f9109fda55d0c51f4c850d934398ae2d36e1957102328c41",
+          "kind": "sidecar",
+          "path": "tools/sandbox_terminal_exec/manifest.json"
+        },
+        {
+          "digest": "sha256:6ca93d8bbf377de2263c0e198d70085d33474f933311fe30d3af979249366d13",
+          "kind": "sidecar",
+          "path": "tools/subagent/manifest.json"
+        },
+        {
+          "digest": "sha256:67985990f948ebc105adf3a0231c143e2eef832930b2be5f4c9776f26cdefd09",
+          "kind": "sidecar",
+          "path": "tools/todo/manifest.json"
+        },
+        {
+          "digest": "sha256:f37b93bf630a0d5250ecb9ebbb94ec6ab25f97ed758440b31d57d734b91a443b",
+          "kind": "sidecar",
+          "path": "tools/web_search/manifest.json"
+        },
+        {
+          "digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+          "kind": "executable",
+          "path": "runtime/calculator.py"
+        },
+        {
+          "digest": "sha256:b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
+          "kind": "executable",
+          "path": "domain/tool/calculator.py"
         }
       ],
       "secrets": [],
@@ -7578,7 +8625,7 @@
         {
           "contract_id": "tobkiri.service.host.authorize.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "operation_ids": [
             "rumi_host_authority_bridge_pack.host-authority"
           ]
@@ -7586,7 +8633,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "operation_ids": [
             "interactive_approval.get",
             "interactive_approval.list",
@@ -7597,7 +8644,7 @@
         {
           "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "operation_ids": [
             "interactive_effect.manage"
           ]
@@ -7637,7 +8684,7 @@
               ],
               "entrypoint_id": "host-authority",
               "id": "rumi_host_authority_bridge_pack.host-authority",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -7694,7 +8741,7 @@
               ],
               "entrypoint_id": "get",
               "id": "interactive_approval.get",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91"
             },
             {
               "effect_ceiling": [
@@ -7703,7 +8750,7 @@
               ],
               "entrypoint_id": "list",
               "id": "interactive_approval.list",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91"
             },
             {
               "effect_ceiling": [
@@ -7712,7 +8759,7 @@
               ],
               "entrypoint_id": "approve",
               "id": "interactive_approval.approve",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91"
             },
             {
               "effect_ceiling": [
@@ -7721,7 +8768,7 @@
               ],
               "entrypoint_id": "deny",
               "id": "interactive_approval.deny",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -7774,7 +8821,7 @@
               ],
               "entrypoint_id": "manage",
               "id": "interactive_effect.manage",
-              "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef"
+              "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -7793,6 +8840,11 @@
                   "maxLength": 255,
                   "type": "string"
                 },
+                "correlation_id": {
+                  "type": "string",
+                  "maxLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                },
                 "effect_kind": {
                   "enum": [
                     "provider_configure",
@@ -7800,7 +8852,8 @@
                     "git_commit",
                     "git_restore",
                     "git_apply_patch",
-                    "git_push"
+                    "git_push",
+                    "mcp_connect"
                   ]
                 },
                 "phase": {
@@ -7808,7 +8861,8 @@
                     "prepare",
                     "resume",
                     "status",
-                    "cancel"
+                    "cancel",
+                    "lookup"
                   ]
                 },
                 "request": {
@@ -7840,6 +8894,12 @@
         },
         {
           "cardinality": "one",
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
           "contract_id": "tobkiri.service.shell.execute.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
@@ -7847,7 +8907,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "kind": "executable",
           "path": "runtime/bridge.py"
         }
@@ -9151,8 +10211,8 @@
         "mcp.tool.call"
       ],
       "dependencies": {},
-      "description": "Namespace-isolated approved MCP tool-call adapter and declarative gateway catalog.",
-      "display_name": "Rumi MCP Gateway",
+      "description": "Sandboxed finite adapter for a captured Host-owned MCP connection.",
+      "display_name": "Tobkiri MCP Gateway",
       "execution_boundary": "sandbox",
       "kind": "normal_sandbox",
       "legacy_ids": [
@@ -9177,7 +10237,7 @@
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
-            "data_owner": "defaultspack-mcp-compat",
+            "data_owner": "none",
             "deprecated": false,
             "introduced": "1.1.0"
           },
@@ -9185,7 +10245,7 @@
             {
               "entrypoint_id": "mcp-tool-call",
               "id": "rumi_mcp_gateway_pack.mcp-tool-call",
-              "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162"
+              "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1"
             }
           ],
           "owner": "rumi_mcp_gateway_pack",
@@ -9208,10 +10268,17 @@
           "version": "1.0.0"
         }
       ],
-      "required_contracts": [],
+      "required_contracts": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "cardinality": "one",
+          "optional": false,
+          "version_range": "^1.0.0"
+        }
+      ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+          "digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
           "kind": "executable",
           "path": "runtime/gateway.py"
         }
@@ -10189,17 +11256,17 @@
             {
               "entrypoint_id": "bundled-model-catalog",
               "id": "rumi_model_catalog_pack.bundled-model-catalog",
-          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
+              "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
             },
             {
               "entrypoint_id": "bundled-model-catalog.generate",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
-          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
+              "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
             },
             {
               "entrypoint_id": "bundled-model-catalog.stream",
               "id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
-          "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
+              "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
             }
           ],
           "owner": "rumi_model_catalog_pack",
@@ -10227,7 +11294,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
+          "digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
           "kind": "executable",
           "path": "runtime/catalog.py"
         }
@@ -11638,17 +12705,17 @@
             {
               "entrypoint_id": "provider-registry-health",
               "id": "rumi_provider_registry_pack.provider-registry-health",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.generate",
               "id": "rumi_provider_registry_pack.provider-registry-health.generate",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             },
             {
               "entrypoint_id": "provider-registry-health.stream",
               "id": "rumi_provider_registry_pack.provider-registry-health.stream",
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+              "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -11728,7 +12795,7 @@
           "path": "runtime/__init__.py"
         },
         {
-      "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
+          "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "kind": "executable",
           "path": "runtime/health_process.py"
         },
@@ -14262,7 +15329,7 @@
         "tool.invoke"
       ],
       "dependencies": {},
-      "description": "Pack-agnostic resolve, validate, guard, authorize, select, execute, normalize, and audit pipeline.",
+      "description": "Resolve owned tool definitions, validate arguments, invoke exact captured executors through Host authority, and normalize results.",
       "display_name": "Rumi Tool Broker",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
@@ -14296,7 +15363,7 @@
             {
               "entrypoint_id": "tool-invoke",
               "id": "rumi_tool_broker_pack.tool-invoke",
-              "implementation_digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b"
+              "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b"
             }
           ],
           "owner": "rumi_tool_broker_pack",
@@ -14319,12 +15386,6 @@
       "required_contracts": [
         {
           "cardinality": "one",
-          "contract_id": "tobkiri.event.tool.invocation.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
           "contract_id": "tobkiri.resource.tool.definition.v1",
           "optional": false,
           "version_range": "^1.0.0"
@@ -14336,33 +15397,9 @@
           "version_range": "^1.0.0"
         },
         {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.authorize.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
           "cardinality": "many",
           "contract_id": "tobkiri.service.tool.execute.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.executor.select.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.guard.evaluate.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.policy.evaluate.v1",
-          "optional": false,
+          "optional": true,
           "version_range": "^1.0.0"
         },
         {
@@ -14374,7 +15411,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b",
+          "digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
           "kind": "executable",
           "path": "runtime/broker.py"
         }
@@ -14685,7 +15722,7 @@
       ],
       "dependencies": {},
       "description": "Generic selected local-service adapter executor.",
-      "display_name": "Rumi Tool Local Executor",
+      "display_name": "Tobkiri Tool Local Executor",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -14718,7 +15755,7 @@
             {
               "entrypoint_id": "tool-local-execute",
               "id": "rumi_tool_local_executor_pack.tool-local-execute",
-              "implementation_digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71"
+              "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1"
             }
           ],
           "owner": "rumi_tool_capability_executor_pack",
@@ -14747,11 +15784,17 @@
           "contract_id": "tobkiri.service.tool.local.operation.v1",
           "optional": false,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71",
+          "digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
           "kind": "executable",
           "path": "runtime/executor.py"
         }
@@ -14785,8 +15828,8 @@
         "tool.execute"
       ],
       "dependencies": {},
-      "description": "Namespace-bound selected MCP gateway executor.",
-      "display_name": "Rumi Tool MCP Executor",
+      "description": "Captured Host executor forwarding one owned MCP tool call through the selected sandbox Gateway.",
+      "display_name": "Tobkiri Tool MCP Executor",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -14819,7 +15862,7 @@
             {
               "entrypoint_id": "tool-mcp-execute",
               "id": "rumi_tool_mcp_executor_pack.tool-mcp-execute",
-              "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc"
+              "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20"
             }
           ],
           "owner": "rumi_tool_capability_executor_pack",
@@ -14852,7 +15895,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+          "digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
           "kind": "executable",
           "path": "runtime/executor.py"
         }
@@ -14981,7 +16024,7 @@
       ],
       "dependencies": {},
       "description": "Authoritative provider-neutral tool definitions and aliases.",
-      "display_name": "Rumi Tool Registry",
+      "display_name": "Tobkiri Tool Registry",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -15016,7 +16059,11 @@
             {
               "entrypoint_id": "tool-definition-manage",
               "id": "rumi_tool_registry_pack.tool-definition-manage",
-              "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824"
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:tool.definition.manage"
+              ]
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -15051,7 +16098,11 @@
             {
               "entrypoint_id": "tool-definition-migrate",
               "id": "rumi_tool_registry_pack.tool-definition-migrate",
-              "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824"
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:tool.definition.migrate"
+              ]
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -15084,7 +16135,11 @@
             {
               "entrypoint_id": "tool-definition-resource",
               "id": "rumi_tool_registry_pack.tool-definition-resource",
-              "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824"
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:tool.definition.read"
+              ]
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -15110,6 +16165,24 @@
           "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
           "optional": true,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.execute.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.mcp.tool.call.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -15119,9 +16192,24 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
+          "digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
           "kind": "executable",
           "path": "runtime/registry.py"
+        },
+        {
+          "kind": "executable",
+          "path": "runtime/host.py",
+          "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+        },
+        {
+          "kind": "executable",
+          "path": "runtime/pack_data.py",
+          "digest": "sha256:3a3e843263f6f30bbd554424a2afdc58024271a136e25cee57901f0371b81ae6"
+        },
+        {
+          "digest": "sha256:d2903c083ee91411637658c93b388a50dd6fb2d53a149c9560044c85dc89708e",
+          "kind": "executable",
+          "path": "runtime/selection.py"
         }
       ],
       "secrets": [],
@@ -15144,7 +16232,33 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "host_brokered"
+      "workspace_boundary": "host_brokered",
+      "functions": [
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.manage",
+          "contract_id": "tobkiri.action.tool.definition.manage.v1",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-manage"
+          ],
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+        },
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
+          "contract_id": "tobkiri.action.tool.definition.migrate.v1",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-migrate"
+          ],
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+        },
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ],
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+        }
+      ]
     },
     {
       "approval_policy": "none",
@@ -15288,7 +16402,7 @@
             {
               "entrypoint_id": "tool-result-normalize",
               "id": "rumi_tool_result_pack.tool-result-normalize",
-              "implementation_digest": "sha256:03f6e939e91980acd639db595709ec032bc901b84394dedd31e28c1275c40cf0"
+              "implementation_digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0"
             }
           ],
           "owner": "rumi_tool_result_pack",
@@ -15311,7 +16425,7 @@
       "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:03f6e939e91980acd639db595709ec032bc901b84394dedd31e28c1275c40cf0",
+          "digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0",
           "kind": "executable",
           "path": "runtime/normalizer.py"
         }
@@ -15473,7 +16587,7 @@
             {
               "entrypoint_id": "tool-arguments-validate",
               "id": "rumi_tool_validation_pack.tool-arguments-validate",
-              "implementation_digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9"
+              "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f"
             }
           ],
           "owner": "rumi_tool_validation_pack",
@@ -15496,7 +16610,7 @@
       "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+          "digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
           "kind": "executable",
           "path": "runtime/validator.py"
         }
@@ -15530,7 +16644,8 @@
         "turn.execute",
         "turn.manage",
         "turn.read",
-        "turn.reconcile"
+        "turn.reconcile",
+        "turn.stop"
       ],
       "dependencies": {
         "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
@@ -15572,7 +16687,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15605,7 +16720,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15638,7 +16753,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15657,73 +16772,154 @@
           "security": "sensitive",
           "version": "1.0.0"
         },
-      {
-        "cardinality": "one",
-        "contract_id": "tobkiri.action.turn.reconcile.v1",
-        "failure": "fail_closed",
-        "isolation": "in_process",
-        "lifecycle": {
-          "data_owner": "rumi_turn_runtime_pack",
-          "deprecated": false,
-          "introduced": "1.0.0"
-        },
-        "operations": [
-          {
-            "entrypoint_id": "turn-reconcile",
-            "id": "rumi_turn_runtime_pack.turn-reconcile",
-            "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
-          }
-        ],
-        "owner": "rumi_turn_runtime_pack",
-        "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-        "required_capabilities": [
-          "turn.reconcile"
-        ],
-        "schemas": {
-          "input": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "turn_id"
-            ],
-            "properties": {
-              "turn_id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 256,
-                "pattern": "^[A-Za-z0-9]",
-                "not": {
-                  "pattern": "[^A-Za-z0-9._:-]"
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-stop",
+              "id": "rumi_turn_runtime_pack.turn-stop",
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "required_capabilities": [
+            "turn.stop"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
                 }
               }
-            }
-          },
-          "output": {
-            "type": "object"
-          },
-          "error": {
-            "type": "object",
-            "required": [
-              "code",
-              "message"
-            ],
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "status",
+                "turn_id",
+                "stopped"
+              ],
+              "properties": {
+                "status": {
+                  "const": "cancellation_requested"
+                },
+                "turn_id": {
+                  "type": "string"
+                },
+                "stopped": {
+                  "const": false
+                }
               }
             },
-            "additionalProperties": false
-          }
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         },
-        "security": "restricted",
-        "version": "1.0.0"
-      },
-      {
-        "cardinality": "one",
-        "contract_id": "tobkiri.action.turn.saved.v1",
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-reconcile",
+              "id": "rumi_turn_runtime_pack.turn-reconcile",
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "required_capabilities": [
+            "turn.reconcile"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.saved.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
@@ -15735,7 +16931,7 @@
             {
               "entrypoint_id": "turn-saved",
               "id": "rumi_turn_runtime_pack.turn-saved",
-              "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e"
+              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -15780,6 +16976,136 @@
                       "type": "string",
                       "minLength": 1,
                       "pattern": "\\S"
+                    },
+                    "tool_selection": {
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "mode": {
+                                "const": "none"
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "include": {
+                                "maxItems": 0
+                              },
+                              "must_use": {
+                                "const": false
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "properties": {
+                        "exclude": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "include": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "auto",
+                            "manual",
+                            "none"
+                          ]
+                        },
+                        "must_use": {
+                          "type": "boolean"
+                        },
+                        "scope": {
+                          "enum": [
+                            "turn",
+                            "conversation"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "type": "object"
                     }
                   }
                 }
@@ -15842,22 +17168,22 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+          "digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
           "kind": "executable",
           "path": "runtime/host.py"
         },
         {
-          "digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+          "digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
           "kind": "executable",
           "path": "runtime/turns.py"
         },
         {
-          "digest": "sha256:d48dbdc68d5d9c05ff5865c9db5127536f6291c6be8ee7d91101cc57cfe6f15a",
+          "digest": "sha256:b573b8b5e468024ca9e85f1254fe4560457ea8b99c096a65043098d8f97b67b8",
           "kind": "executable",
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:697a63efeeb60748b5da75afce9607f8f3825c7ef976d7e1017fe93c33edd185",
+          "digest": "sha256:235eca079cd325fc09130086096329211518033271346fad4a90c660dce2880f",
           "kind": "executable",
           "path": "runtime/saved.py"
         }
@@ -16840,6 +18166,373 @@
         "historical_classification": "modern-only",
         "mode": "canonical-v4",
         "owner": "tobkiri_host_pack_control",
+        "source_format": "pack.v4.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "host_brokered"
+    },
+    {
+      "approval_policy": "capability_gated",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "mcp.connection.prepare",
+        "mcp.connection.connect",
+        "mcp.tool.call",
+        "mcp.connection.disconnect",
+        "mcp.connection.read"
+      ],
+      "dependencies": {},
+      "description": "Host-owned, approval-gated MCP process connections scoped to a captured Profile, workspace and originating session.",
+      "display_name": "Tobkiri MCP Connections",
+      "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "function_id": "mcp.connection.prepare.service",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "operation_ids": [
+            "mcp.connection.prepare"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "function_id": "mcp.connection.connect.service",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "operation_ids": [
+            "mcp.connection.connect"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "function_id": "mcp.connection.call.service",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "operation_ids": [
+            "mcp.connection.call"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "function_id": "mcp.connection.disconnect.service",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "operation_ids": [
+            "mcp.connection.disconnect"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "function_id": "mcp.connection.list.service",
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "operation_ids": [
+            "mcp.connection.list"
+          ]
+        }
+      ],
+      "kind": "host_extension",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "compatibility": "none",
+        "removal_wave": 13,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0",
+            "data_owner": "captured-host-mcp-connections"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "mcp.connection.prepare",
+              "id": "mcp.connection.prepare",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+              "effect_ceiling": [
+                "capability:mcp.connection.prepare",
+                "host:brokered-execution"
+              ]
+            },
+            {
+              "entrypoint_id": "mcp.connection.connect",
+              "id": "mcp.connection.connect",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+              "effect_ceiling": [
+                "capability:mcp.connection.connect",
+                "host:brokered-execution"
+              ]
+            },
+            {
+              "effect_ceiling": [
+                "capability:mcp.tool.call",
+                "host:brokered-execution"
+              ],
+              "entrypoint_id": "mcp.connection.call",
+              "id": "mcp.connection.call",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
+            },
+            {
+              "effect_ceiling": [
+                "capability:mcp.connection.disconnect",
+                "host:brokered-execution"
+              ],
+              "entrypoint_id": "mcp.connection.disconnect",
+              "id": "mcp.connection.disconnect",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
+            },
+            {
+              "effect_ceiling": [
+                "capability:mcp.connection.read",
+                "host:brokered-execution"
+              ],
+              "entrypoint_id": "mcp.connection.list",
+              "id": "mcp.connection.list",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
+            }
+          ],
+          "owner": "tobkiri_mcp_connection_pack",
+          "provider_id": "mcp.connection.prepare.service",
+          "required_capabilities": [
+            "mcp.connection.prepare",
+            "mcp.connection.connect",
+            "mcp.tool.call",
+            "mcp.connection.disconnect",
+            "mcp.connection.read"
+          ],
+          "schemas": {
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_tools": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "command": {
+                              "items": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "cwd": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            },
+                            "env": {
+                              "additionalProperties": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxProperties": 128,
+                              "type": "object"
+                            },
+                            "transport": {
+                              "const": "stdio"
+                            }
+                          },
+                          "required": [
+                            "transport",
+                            "command",
+                            "env",
+                            "cwd"
+                          ],
+                          "type": "object"
+                        },
+                        "server_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "server_id",
+                        "config",
+                        "allowed_tools"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "type": "object"
+                    },
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "tool": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id",
+                    "tool",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "maxProperties": 0,
+                  "type": "object"
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "kind": "executable",
+          "path": "runtime/host.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [],
+      "source_provenance": {
+        "historical_classification": "modern-only",
+        "mode": "canonical-v4",
+        "owner": "tobkiri_mcp_connection_pack",
         "source_format": "pack.v4.json"
       },
       "version": "1.0.0",

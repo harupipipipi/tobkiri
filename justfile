@@ -52,6 +52,7 @@ pack-architecture:
     # Compare the working-tree candidate with the committed, reviewed baseline.
     reference="$(mktemp)"; trap 'rm -f "$reference"' EXIT; git show HEAD:scripts/quality/pack_architecture_baseline.json > "$reference"; python scripts/quality/scan_pack_architecture.py --reference-baseline "$reference"
     python scripts/quality/check_core_no_favoritism.py
+    python tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
 
 # Validate v4 schemas, provenance, migration guards, scanners, and inventory.
 pack-architecture-v4:
@@ -72,6 +73,29 @@ pack-v4-minimal-profile:
 # Check the checked-in Launcher presentation projection against canonical manifests.
 presentation-catalog:
     python scripts/quality/generate_presentation_catalog.py --check
+
+# Check generated artifacts together without rewriting them; this is not full CI.
+generated-check python="python":
+    {{python}} -B -c 'import runpy; from pathlib import Path; runpy.run_path(".github/scripts/prepare_tauri_resources.py")["canonical_host_files"](Path("tobkiri_runtime"))'
+    node tobkiri_launcher/frontend/scripts/generate-frontend-contract-map.mjs --check
+    node tobkiri_launcher/frontend/scripts/generate-defaults-setup-contract.mjs --check
+    {{python}} -B tobkiri_runtime/scripts/migrate_pack_artifacts_v4.py --check
+    {{python}} -B tobkiri_runtime/scripts/migrate_manifest_authority.py --check
+    {{python}} -B tobkiri_runtime/scripts/generate_executable_source_registry_v1.py --check
+    {{python}} -B tobkiri_runtime/scripts/generate_executable_catalogs_v4.py --check
+    {{python}} -B -m pytest tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_executable_source_registry_covers_every_executable_operation -q
+    {{python}} -B tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py --check
+    {{python}} -B tobkiri_runtime/scripts/quality/scan_command_protocol.py --inventory tobkiri_runtime/generated/pack_sdk/command_inventory.json --check-inventory
+    {{python}} -B tobkiri_runtime/scripts/tobkiri_pack.py generate tobkiri_runtime/generated/pack_sdk --check
+    {{python}} -B tobkiri_runtime/scripts/tobkiri_pack.py project-legacy tobkiri_runtime/examples/pack_v3/minimal_service.json tobkiri_runtime/examples/pack_v3/minimal_service.ecosystem.json --check
+    {{python}} -B tobkiri_runtime/scripts/quality/scan_defaultspack_integrity.py --strict
+    {{python}} -B scripts/quality/generate_presentation_catalog.py --check
+    {{python}} -B scripts/quality/validate_pack_architecture.py
+    {{python}} -B scripts/quality/scan_pack_boundaries.py
+    {{python}} -B tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
+    {{python}} -B tobkiri_runtime/scripts/quality/run_independent_migration_proof.py --check
+    {{python}} -B tobkiri_runtime/scripts/quality/scan_complete_v4_migration.py --check --freshness-only
+    {{python}} -B tobkiri_runtime/scripts/generator_source_manifest.py --check
 
 # Migrate one legacy profile to a review-only v4 document.
 migrate-legacy-profile source output:

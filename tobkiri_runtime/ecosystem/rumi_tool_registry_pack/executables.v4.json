@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:4652f469e5bc71151df5e5d29ce0cdebcced2509d55614debff12583a27f6628",
+  "catalog_digest": "sha256:ad45e3d1141ea80c6486bbf929b9cc180953d1a8953aed986309494747ce50a9",
   "pack_id": "rumi_tool_registry_pack",
-  "source_identity": "sha256:67163f0e228ac98fa1f243ff1b6a43318dd2615abe825566cbfd75dba6a1542c",
+  "source_identity": "sha256:e1ec6422bb728b33057bd174fdc320d1e1e6489a0026184675aaad6d369dc08d",
   "variants": [
     {
       "architecture": "any",
@@ -10,8 +10,8 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_tool_registry_pack.tool-registry.definition",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-      "implementation_path": "runtime/registry.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
         {
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:e3272ff086e855b23cdee25b0819732f8598c6b7e419877ed4b17f77c9af9e39",
+          "revision_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -44,8 +44,8 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_tool_registry_pack.tool-registry.manage",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-      "implementation_path": "runtime/registry.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
         {
@@ -63,7 +63,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:b721639fed8ece6b0c816ec2f3c4937ae1f308a158f75bbfcd57cd992aa190fb",
+          "revision_digest": "sha256:6714fad639623466036b29ea003c861fb81c720faef16ac8ffd8c88c56936987",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -78,8 +78,8 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-      "implementation_path": "runtime/registry.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
         {
@@ -97,7 +97,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:c82dc5f6eb5885033dec4b81ec0db2044a755f340845e2af6ff5a7ce6df51ebb",
+          "revision_digest": "sha256:7dad97a1654054ad5ea9f4cf797637b05a9b868c66d8c61c2b9bd1ac7ef15983",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

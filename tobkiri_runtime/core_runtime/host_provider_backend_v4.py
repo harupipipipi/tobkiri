@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
+from tobkiri_host.artifact_materialization import MaterializedArtifactFile
 from tobkiri_host.backends import BackendStatus, REQUIRED_PRODUCTION_GATES
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.contracts import ResolvedOperationBinding
@@ -21,6 +22,7 @@ from tobkiri_host.ports import (
     InteractiveEffectPort,
     WorkspaceMutationPort,
 )
+from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -38,6 +40,10 @@ class HostProviderInvocationContextV4(Protocol):
     @property
     def presentation_owner_session_id(self) -> str:
         """Return the Host-preserved session which originated this call chain."""
+
+    @property
+    def cancellation(self) -> OwnedCancellationBinding:
+        """Return only this verified factory's owner-scoped cancellation role."""
 
     def contract_client(
         self,
@@ -78,6 +84,24 @@ class HostProviderContributionV4:
 
 
 @dataclass(frozen=True)
+class HostProviderDataRequestV4:
+    """Static data prefix requested by a verified factory, if its Pack is selected."""
+
+    pack_id: str
+    path_prefix: str
+
+
+@dataclass(frozen=True)
+class CapturedHostPackDataV4:
+    """Digest-bound bytes, without a Pack path or an execution capability."""
+
+    pack_id: str
+    artifact_digest: str
+    path_prefix: str
+    files: tuple[MaterializedArtifactFile, ...]
+
+
+@dataclass(frozen=True)
 class HostProviderCaptureContextV4:
     """Host-owned immutable inputs supplied to a built-in Provider hook."""
 
@@ -98,6 +122,7 @@ class HostProviderCaptureContextV4:
     # has built the single Broker for the active Profile.
     interactive_effect_port: InteractiveEffectPort | None = None
     workspace_mutation_port: WorkspaceMutationPort | None = None
+    declared_pack_data: tuple[CapturedHostPackDataV4, ...] = ()
 
 
 @dataclass(frozen=True)

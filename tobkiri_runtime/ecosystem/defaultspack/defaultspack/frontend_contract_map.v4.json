@@ -1,7 +1,168 @@
 {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
+  "frontend": {
+    "default_entry_id": "chat",
+    "entries": [
+      {
+        "entry_id": "chat",
+        "route": "/chat",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.chat",
+        "implementation": "defaultspack.chat",
+        "label": "Chat"
+      },
+      {
+        "entry_id": "coding",
+        "route": "/coding",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.coding",
+        "implementation": "defaultspack.chat",
+        "label": "Coding"
+      },
+      {
+        "entry_id": "calendar",
+        "route": "/calendar",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.calendar",
+        "implementation": "defaultspack.chat",
+        "label": "Calendar"
+      },
+      {
+        "entry_id": "home",
+        "route": "/",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.home",
+        "implementation": "defaultspack.chat",
+        "label": "Tobkiri"
+      },
+      {
+        "entry_id": "defaultspack",
+        "route": "/defaultspack",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.defaultspack",
+        "implementation": "defaultspack.chat",
+        "label": "Tobkiri"
+      },
+      {
+        "entry_id": "pack-defaultspack",
+        "route": "/pack/defaultspack",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.pack-defaultspack",
+        "implementation": "defaultspack.chat",
+        "label": "Tobkiri"
+      },
+      {
+        "entry_id": "approval",
+        "route": "/approval",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.approval",
+        "implementation": "defaultspack.application",
+        "label": "Approval"
+      },
+      {
+        "entry_id": "ui-precision",
+        "route": "/ui-precision",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.ui-precision",
+        "implementation": "defaultspack.application",
+        "label": "UI precision"
+      },
+      {
+        "entry_id": "share",
+        "route": "/share",
+        "match": "subpath",
+        "contribution_id": "defaultspack.frontend.share",
+        "implementation": "defaultspack.application",
+        "label": "Shared conversation"
+      },
+      {
+        "entry_id": "ambient",
+        "route": "/ambient",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.ambient",
+        "implementation": "defaultspack.application",
+        "label": "Ambient"
+      },
+      {
+        "entry_id": "ambient-debug",
+        "route": "/ambient-debug",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.ambient-debug",
+        "implementation": "defaultspack.application",
+        "label": "Ambient diagnostics"
+      },
+      {
+        "entry_id": "finger-recording",
+        "route": "/finger-recording",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.finger-recording",
+        "implementation": "defaultspack.application",
+        "label": "Finger recording"
+      },
+      {
+        "entry_id": "console",
+        "route": "/console",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.console",
+        "implementation": "defaultspack.application",
+        "label": "Console"
+      },
+      {
+        "entry_id": "host-permissions",
+        "route": "/host-permissions",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.host-permissions",
+        "implementation": "defaultspack.application",
+        "label": "Host permissions"
+      },
+      {
+        "entry_id": "adaptive",
+        "route": "/adaptive",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.adaptive",
+        "implementation": "defaultspack.application",
+        "label": "Adaptive runtime"
+      },
+      {
+        "entry_id": "operating-profile",
+        "route": "/operating-profile",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.operating-profile",
+        "implementation": "defaultspack.application",
+        "label": "Operating profile"
+      }
+    ]
+  },
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/tools/catalog",
+      "presentation": "tool_catalog",
+      "targets": [
+        {
+          "contribution_id": "defaults.tools.catalog",
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+          "provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/turn/stop",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.stop",
+        "contract_id": "tobkiri.action.turn.stop.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-stop",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "allowed_payload_keys": ["turn_id"]
+      }]
+    },
     {
       "method": "POST",
       "path": "/api/ai/provider-key",
@@ -12,7 +173,7 @@
         "operation_id": "interactive_effect.manage",
         "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
         "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-        "allowed_payload_keys": ["phase", "effect_kind", "request", "effect_id"]
+        "allowed_payload_keys": ["phase", "effect_kind", "request", "effect_id", "correlation_id"]
       }]
     },
     {

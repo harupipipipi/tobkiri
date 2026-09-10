@@ -12,10 +12,12 @@ import json
 import secrets
 import threading
 import time
+import uuid
 from dataclasses import dataclass, replace
+from contextlib import nullcontext
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, ContextManager, Mapping
 
 from core_runtime.authority.v4 import AuthorityScope, authority_digest
 from core_runtime.authority.v4_models import canonical_json
@@ -26,6 +28,7 @@ from .ports import (
     InteractiveApprovalGrantAttestation,
     InteractiveApprovalPort,
     InteractiveEffectOwnerQuery,
+    InteractiveEffectLookupQuery,
     InteractiveEffectPort,
     InteractiveEffectPrepareCommand,
     InteractiveEffectStatus,
@@ -35,6 +38,17 @@ from .ports import (
 
 class PendingEffectError(RuntimeError):
     """Fail-closed public error for unavailable PendingEffect state."""
+
+
+def _validate_correlation_id(value: str) -> None:
+    try:
+        if not isinstance(value, str) or len(value) != 36:
+            raise ValueError
+        parsed = uuid.UUID(value)
+        if parsed.version != 4 or str(parsed) != value:
+            raise ValueError
+    except (ValueError, AttributeError) as exc:
+        raise PendingEffectError("pending effect is unavailable") from exc
 
 
 class PendingEffectState(str, Enum):
@@ -93,8 +107,11 @@ class _PendingEffect:
     created_at: float
     updated_at: float
     outcome_digest: str | None = None
+    correlation_id: str | None = None
 
     def __post_init__(self) -> None:
+        if self.correlation_id is not None:
+            _validate_correlation_id(self.correlation_id)
         if (
             not isinstance(self.effect_id, str)
             or not self.effect_id
@@ -158,6 +175,7 @@ class _PendingEffect:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "outcome_digest": self.outcome_digest,
+            "correlation_id": self.correlation_id,
         }
 
     @classmethod
@@ -195,6 +213,7 @@ class _PendingEffect:
                     if value.get("outcome_digest") is not None
                     else None
                 ),
+                correlation_id=value.get("correlation_id"),
             )
         except (KeyError, TypeError, ValueError, PendingEffectError) as exc:
             raise PendingEffectError("pending effect is unavailable") from exc
@@ -210,6 +229,9 @@ class PendingEffectController:
         approvals: InteractiveApprovalPort,
         coordinator_principal: OpaqueAuthorityRef,
         coordinator_publisher_lineage: str,
+        presentation_owner_scope: Callable[
+            [RequestContext, str, str], ContextManager[None]
+        ] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._persistence = persistence
@@ -218,6 +240,7 @@ class PendingEffectController:
         if not coordinator_publisher_lineage:
             raise PendingEffectError("pending effect is unavailable")
         self._coordinator_publisher_lineage = coordinator_publisher_lineage
+        self._presentation_owner_scope = presentation_owner_scope
         self._clock = clock
 
     def prepare(
@@ -232,6 +255,7 @@ class PendingEffectController:
         presentation_metadata: Mapping[str, str],
         expires_at: float,
         typed_confirmation_phrase: str | None = None,
+        correlation_id: str | None = None,
     ) -> PendingEffectStatus:
         """Persist and open one Host-bound interactive approval request.
 
@@ -277,6 +301,7 @@ class PendingEffectController:
             expires_at=expires_at,
             created_at=now,
             updated_at=now,
+            correlation_id=correlation_id,
         )
         try:
             revision = self._persistence.create_host_pending_effect(
@@ -313,6 +338,55 @@ class PendingEffectController:
             record,
             PendingEffectState.APPROVAL_PENDING,
         )
+
+    def find_for_presentation(
+        self,
+        *,
+        correlation_id: str,
+        presentation_owner_principal_id: str,
+        presentation_owner_session_id: str,
+        context: RequestContext,
+        contract_id: str,
+        operation_id: str,
+        target_principal: OpaqueAuthorityRef,
+    ) -> PendingEffectStatus:
+        """Read one owned receipt after prepare reply loss, without any replay.
+
+        Correlation is not authority. Match the authenticated presentation owner
+        and captured Profile generation; return no payload, approval decision,
+        or new execution. Missing and ambiguous results both remain unresolved.
+        """
+
+        _validate_correlation_id(correlation_id)
+        fields = (
+            "profile_id", "profile_revision", "activation_id", "activation_digest",
+            "plan_digest", "security_epoch", "profile_authority_digest",
+        )
+        matches: list[PendingEffectStatus] = []
+        try:
+            for revision, payload in self._persistence.list_host_pending_effects():
+                record = _PendingEffect.from_dict(payload)
+                if (
+                    record.correlation_id == correlation_id
+                    and record.presentation_owner_principal_id
+                    == presentation_owner_principal_id
+                    and record.presentation_owner_session_id
+                    == presentation_owner_session_id
+                    and record.context.caller_principal == self._coordinator_principal
+                    and record.prepared.contract_id == contract_id
+                    and record.prepared.operation_id == operation_id
+                    and _target_principal(record.prepared) == target_principal
+                    and all(
+                        getattr(record.context, field) == getattr(context, field)
+                        for field in fields
+                    )
+                ):
+                    matches.append(_status(record, int(revision)))
+            if len(matches) != 1:
+                raise PendingEffectError("pending effect is unavailable")
+            return matches[0]
+        except Exception as exc:
+            raise PendingEffectError("pending effect is unavailable") from exc
 
     def status(self, effect_id: str) -> PendingEffectStatus:
         """Return a redacted durable status without payload or authority material."""
@@ -470,15 +544,27 @@ class PendingEffectController:
             self.mark_dispatched(effect_id)
 
         try:
-            outcome = broker.invoke_prepared(
-                record.prepared,
-                record.context,
-                _thaw_json(record.effect_scope),
-                execute_not_after_wall=record.expires_at,
-                wall_clock=wall_clock,
-                monotonic_clock=monotonic_clock,
-                before_dispatch=mark_dispatched,
+            # Restore identity only from the encrypted, claimed Host record.
+            # This scope supplies no Grant and never changes Broker authority.
+            owner_scope = (
+                self._presentation_owner_scope(
+                    record.context,
+                    record.presentation_owner_principal_id,
+                    record.presentation_owner_session_id,
+                )
+                if self._presentation_owner_scope is not None
+                else nullcontext()
             )
+            with owner_scope:
+                outcome = broker.invoke_prepared(
+                    record.prepared,
+                    record.context,
+                    _thaw_json(record.effect_scope),
+                    execute_not_after_wall=record.expires_at,
+                    wall_clock=wall_clock,
+                    monotonic_clock=monotonic_clock,
+                    before_dispatch=mark_dispatched,
+                )
         except Exception as exc:
             try:
                 current_revision, current = self._load(effect_id)
@@ -735,6 +821,14 @@ class LateBoundInteractiveEffectPort:
         """Forward a prepare request only after the Broker binding exists."""
 
         return self._bound().prepare_interactive_effect(command)
+
+    def find_interactive_effect(
+        self,
+        query: InteractiveEffectLookupQuery,
+    ) -> InteractiveEffectStatus:
+        """Forward receipt lookup through the single captured Host port."""
+
+        return self._bound().find_interactive_effect(query)
 
     def get_interactive_effect(
         self,

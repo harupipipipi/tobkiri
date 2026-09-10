@@ -303,12 +303,18 @@ export function PackVMLifecyclePanel() {
         ceremony_nonce: plan.ceremony_nonce,
         confirmation: plan.confirmation,
         approve_image_download: consentChecked,
+        ...(plan.registration_update ? {
+          previous_attestation_digest: plan.registration_update.previous_attestation_digest,
+        } : {}),
       });
       if (
         nextConsent.plan_digest !== plan.plan_digest
         || nextConsent.image_digest !== plan.image_digest
         || nextConsent.image_size_bytes !== plan.image_size_bytes
+        || nextConsent.image_source !== plan.image_source
         || nextConsent.image_download_approved !== consentChecked
+        || (nextConsent.previous_attestation_digest ?? null)
+          !== (plan.registration_update?.previous_attestation_digest ?? null)
       ) {
         throw new Error('PackVM returned consent for a different pinned plan.');
       }
@@ -405,7 +411,7 @@ export function PackVMLifecyclePanel() {
       !operation
       || operation.state === 'failed'
       || operation.state === 'cancelled'
-      || (operation.operation_kind === 'cleanup' && operation.state === 'succeeded')
+      || operation.state === 'succeeded'
     ),
   );
   const canPrepare = !doctor?.ready && !hasActiveOperation && !pendingAction;
@@ -518,14 +524,30 @@ export function PackVMLifecyclePanel() {
             <div className="rounded-lg border border-border p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-text-main">Pinned plan</p>
+                  <p className="text-sm font-medium text-text-main">
+                    {plan.registration_update ? 'Update the existing PackVM registration' : 'Pinned plan'}
+                  </p>
                   <p className="mt-1 text-xs text-text-muted">
                     Review these Host-provided facts before consenting. The Launcher never displays the Host executable path.
                   </p>
                 </div>
                 <Badge variant="outline">{plan.architecture}</Badge>
               </div>
+              {plan.registration_update ? (
+                <p className="mt-4 text-sm text-text-main">
+                  Register the bundled helper and guest runner for future PackVM executions.
+                  The existing image, VM disks, firmware, domain files, and user data will be preserved.
+                  Existing VMs will not be restarted or reconnected by this update.
+                </p>
+              ) : null}
               <dl className="mt-4 grid gap-3 text-xs text-text-muted sm:grid-cols-2">
+                {plan.registration_update ? <>
+                  {digestRow('Previous registration', plan.registration_update.previous_attestation_digest)}
+                  {digestRow('Previous configuration', plan.registration_update.previous_config_digest)}
+                  {digestRow('Previous guest runner', plan.registration_update.previous_guest_runner_digest)}
+                  {digestRow('Previous host build', plan.registration_update.previous_host_build_digest)}
+                  {digestRow('New asset manifest', plan.registration_update.asset_manifest_digest)}
+                </> : null}
                 {digestRow('Image source', plan.image_source)}
                 {digestRow('Image size', formatPackVMBytes(plan.image_size_bytes))}
                 {digestRow('Image digest', plan.image_digest)}
@@ -561,7 +583,9 @@ export function PackVMLifecyclePanel() {
                       disabled={Boolean(pendingAction)}
                     />
                     <span>
-                      I reviewed this exact plan and authorize the pinned image action shown above.
+                      {plan.registration_update
+                        ? 'I reviewed the previous registration and new digests, and authorize this registration update while preserving existing VM files.'
+                        : 'I reviewed this exact plan and authorize the pinned image action shown above.'}
                     </span>
                   </label>
                   <Button
@@ -588,7 +612,7 @@ export function PackVMLifecyclePanel() {
                 disabled={!canProvision}
                 loading={pendingAction === 'provision'}
               >
-                Provision PackVM
+                {plan?.registration_update ? 'Update registration' : 'Provision PackVM'}
               </Button>
             </div>
           ) : null}

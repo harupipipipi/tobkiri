@@ -19,6 +19,10 @@ from pathlib import Path
 from typing import Any
 from time import monotonic as _trace_monotonic
 
+from tobkiri_protocol.secure_persistence import SecureDirectory
+
+from .legacy_approval_lock import legacy_approval_lock
+
 from ..computer.trace import (
     computer_action_trace,
     emit_computer_trace,
@@ -8320,20 +8324,22 @@ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         return self._consume_legacy_approval(token, action, expected_payload)
 
     def _issue_legacy_approval(self, action: str, payload: dict[str, Any]) -> str:
-        approvals = self._read_approvals()
-        token = secrets.token_urlsafe(24)
-        approvals[token] = {
-            "action": action,
-            "payload": payload,
-            "expires_at": time.time() + 300,
-        }
-        self._write_approvals(approvals)
+        with legacy_approval_lock(self._approval_path):
+            approvals = self._read_approvals()
+            token = secrets.token_urlsafe(24)
+            approvals[token] = {
+                "action": action,
+                "payload": payload,
+                "expires_at": time.time() + 300,
+            }
+            self._write_approvals(approvals)
         return token
 
     def _consume_legacy_approval(self, token: str, action: str, expected_payload: dict[str, Any]) -> bool:
-        approvals = self._read_approvals()
-        record = approvals.pop(token, None)
-        self._write_approvals(approvals)
+        with legacy_approval_lock(self._approval_path):
+            approvals = self._read_approvals()
+            record = approvals.pop(token, None)
+            self._write_approvals(approvals)
         if not isinstance(record, dict):
             return False
         if record.get("action") != action:
@@ -8373,8 +8379,11 @@ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         }
 
     def _write_approvals(self, value: dict[str, Any]) -> None:
-        self._approval_path.parent.mkdir(parents=True, exist_ok=True)
-        self._approval_path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+        directory = SecureDirectory(self._approval_path.parent)
+        directory.write_bytes_atomic(
+            self._approval_path.name,
+            json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8"),
+        )
 
     def _safe_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in payload.items() if key not in {"approved", "approval_token"}}

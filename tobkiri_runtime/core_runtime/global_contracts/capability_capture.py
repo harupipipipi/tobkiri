@@ -50,6 +50,8 @@ class DynamicCapabilityTargetFactory(Protocol):
 class CapabilityBindingSnapshot(HTTPCapabilitySnapshot):
     """Host-verified targets and catalog hash for an HTTP capability route."""
 
+    application_artifact_digest: str = ""
+
     def to_mapping(
         self,
         *,
@@ -66,6 +68,7 @@ class CapabilityBindingSnapshot(HTTPCapabilitySnapshot):
             "activation_id": activation_id,
             "plan_digest": plan_digest,
             "catalog_hash": self.catalog_hash,
+            "application_artifact_digest": self.application_artifact_digest,
             "targets": [
                 {
                     **_target_digest_payload(target),
@@ -108,12 +111,14 @@ def capture_capability_binding_snapshot(
         )
     captured_targets = tuple(targets)
     return CapabilityBindingSnapshot(
+        application_artifact_digest=binding.artifact_digest,
         catalog_hash=canonical_digest(
             {
                 "profile_id": session.profile_id,
                 "profile_revision": session.profile_revision,
                 "activation_id": session.activation_id,
                 "plan_digest": session.plan_digest,
+                "application_artifact_digest": binding.artifact_digest,
                 "contributions": [_target_digest_payload(target) for target in captured_targets],
             }
         ),
@@ -126,6 +131,28 @@ def _capture_static_target(
     *,
     session: CapabilityDispatchSession,
 ) -> HTTPContractTarget | None:
+    captured = capture_target_identity(target, session=session)
+    if captured is None:
+        return None
+    try:
+        session.assert_operation_ready(target.contract_id, target.operation_id)
+    except Exception:
+        return None
+    return captured
+
+
+def capture_target_identity(
+    target: HTTPContractTarget,
+    *,
+    session: CapabilityDispatchSession,
+) -> HTTPContractTarget | None:
+    """Verify presentation identity only; this does not admit an invocation.
+
+    A settings or unavailable screen may describe a captured target before its
+    execution backend is ready. Executable capability snapshots must additionally
+    check readiness through ``_capture_static_target``.
+    """
+
     providers = tuple(
         item
         for item in session.provider_metadata(target.contract_id)
@@ -143,10 +170,6 @@ def _capture_static_target(
     if not artifact_digest or (
         target.artifact_digest and target.artifact_digest != artifact_digest
     ):
-        return None
-    try:
-        session.assert_operation_ready(target.contract_id, target.operation_id)
-    except Exception:
         return None
     return HTTPContractTarget(
         contribution_id=target.contribution_id,
@@ -175,4 +198,5 @@ __all__ = [
     "CapabilityBindingSnapshot",
     "DynamicCapabilityTargetFactory",
     "capture_capability_binding_snapshot",
+    "capture_target_identity",
 ]

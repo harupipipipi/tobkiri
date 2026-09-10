@@ -6,6 +6,7 @@ import {
   PENDING_USER_ONLY_GRACE_MS,
   savedTurnSnapshotState,
   savedTurnSnapshotNotice,
+  updateSavedTurnNotice,
   isAssistantMessageStillRunning,
   shouldClearPendingAfterConversationRefresh,
   shouldForgetPendingAfterPollError,
@@ -34,6 +35,26 @@ function pending(startedAt: number): PendingChatRequest {
     toolNames: [],
   };
 }
+
+test("late saved stop notices stay with their original pending turn", () => {
+  const first = { ...pending(1000), savedTurn: true, operationId: "turn-1" };
+  const second = { ...first, conversationId: "c2", operationId: "turn-2" };
+  const current = { c1: first, c2: second };
+  const updated = updateSavedTurnNotice(current, "c1", "turn-1", "stop requested");
+  assert.equal(updated.c1.status, "stop requested");
+  assert.equal(updated.c2, second);
+  assert.equal(updated.c1.operationId, "turn-1");
+  assert.equal(first.status, "Processing...");
+  const stale: Record<string, PendingChatRequest>[] = [
+    { c2: second },
+    { c1: { ...first, operationId: "new-turn" } },
+    { c1: { ...first, savedTurn: false } },
+    { c1: { ...first, conversationId: "c2" } },
+  ];
+  for (const records of stale) {
+    assert.equal(updateSavedTurnNotice(records, "c1", "turn-1", "late reply"), records);
+  }
+});
 
 test("assistant streaming metadata keeps pending active", () => {
   assert.equal(isAssistantMessageStillRunning(message({

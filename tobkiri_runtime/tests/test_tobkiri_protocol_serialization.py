@@ -7,13 +7,14 @@ import pytest
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.errors import CanonicalizationError, SchemaValidationError
-from tobkiri_protocol.migration import (
+from tobkiri_protocol import (
     load_and_migrate_legacy_profile,
     migrate_legacy_profile,
+    validate_document,
 )
 from tobkiri_protocol.scanners import scan_v4_scope
 from tobkiri_protocol.serialization import load_json_document
-from tobkiri_protocol.validation import load_schema, validate_document
+from tobkiri_protocol.validation import load_schema
 
 
 ROOT = Path(__file__).resolve().parents[1]

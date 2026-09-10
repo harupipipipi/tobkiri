@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
@@ -140,6 +140,8 @@ class V4DispatchSession:
     owned_authority_store: AuthorityStore | None = None
     close_callbacks: tuple[Callable[[], None], ...] = ()
     stop_callbacks: tuple[Callable[[], None], ...] = ()
+    _close_lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
+    _completed_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
 
     def cancel_pending_reads(self) -> None:
         """Fence server-owned reads at a reusable stop/restart boundary."""
@@ -148,13 +150,28 @@ class V4DispatchSession:
             callback()
 
     def close(self) -> None:
-        """Close the Broker, then its owned Authority database, idempotently."""
+        """Fence dispatch and retry failed cleanup without skipping other owners."""
 
-        self.broker.close()
-        for callback in self.close_callbacks:
-            callback()
-        if self.owned_authority_store is not None:
-            self.owned_authority_store.close()
+        with self._close_lock:
+            self.broker.close()
+            failed = False
+            for index, callback in enumerate(self.close_callbacks):
+                if index in self._completed_closes:
+                    continue
+                try:
+                    callback()
+                except Exception:
+                    failed = True
+                else:
+                    self._completed_closes.add(index)
+            if failed:
+                # Keep Authority available for cleanup retries. A callback's
+                # exception is not permission to abandon another live owner.
+                raise RuntimeError("captured Provider cleanup is incomplete")
+            authority_index = len(self.close_callbacks)
+            if self.owned_authority_store is not None and authority_index not in self._completed_closes:
+                self.owned_authority_store.close()
+                self._completed_closes.add(authority_index)
 
     def __enter__(self) -> "V4DispatchSession":
         """Return this captured session for explicit scoped ownership."""

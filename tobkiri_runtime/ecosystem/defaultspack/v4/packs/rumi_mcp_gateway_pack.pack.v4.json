@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:d80b61ec7c320e52d3fd97632967f9372d141f1bab8c8001c9037c51caa23365",
+      "digest": "sha256:0232aec50db368100001ab44715aaee4b76e560996ac7fc5c44a8ba1935fe255",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
       "kind": "executable",
       "path": "runtime/gateway.py"
     }
@@ -17,14 +17,14 @@
       "operations": [
         "rumi_mcp_gateway_pack.mcp-tool-call"
       ],
-      "revision_digest": "sha256:8ef6ff26343e457a1b65180c49f61f975a0a3c026198ccef77448058a73810f8"
+      "revision_digest": "sha256:d1117f854fadb21187afcade4c13675587b2b129f71237c2a689bf6a791e333e"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:8ef6ff26343e457a1b65180c49f61f975a0a3c026198ccef77448058a73810f8",
+      "contract_revision_digest": "sha256:d1117f854fadb21187afcade4c13675587b2b129f71237c2a689bf6a791e333e",
       "id": "rumi_mcp_gateway_pack.mcp-gateway.call",
-      "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_mcp_gateway_pack.mcp-tool-call"
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:1bc42b77853b67745218ddc1724799c3625a637206949f559d5b573fb888ba34",
-    "artifact_set_digest": "sha256:a540cb98d27ba104495efd1d51bc0cc5fbf4650ba023773a85c0c499329247c7",
-    "contract_catalog_digest": "sha256:3c40cb80c5b2b0c80613b2b5e89b5efcc44127965807b344863cfcf69c3cada1"
+    "source_identity": "sha256:8cc254e62219b7e4648b5cf29a9017ad5a68671061c50fe802ffa0ee3bda81a4",
+    "artifact_set_digest": "sha256:054d972863cc3fe45d7a84114901c764d4a22e4dc17b180bcf88e2cfb6ee6caf",
+    "contract_catalog_digest": "sha256:b4a58ec95489b70713ec25627665263046115b085a466c8c1b26f3b4e19dab5c"
   },
   "migration": {
     "compatibility": "read_only",
@@ -58,8 +58,8 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
-    "display_name": "Rumi MCP Gateway",
+    "artifact_digest": "sha256:c40504befcc685174c4085d5458887d20ece0bdac74a4b216c662b99b3a479e8",
+    "display_name": "Tobkiri MCP Gateway",
     "id": "rumi_mcp_gateway_pack",
     "kind": "normal_sandbox",
     "version": "1.1.0"
@@ -69,15 +69,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_mcp_gateway_pack/pack.v4.json",
-    "source_digest": "sha256:1bc42b77853b67745218ddc1724799c3625a637206949f559d5b573fb888ba34",
+    "source_digest": "sha256:8cc254e62219b7e4648b5cf29a9017ad5a68671061c50fe802ffa0ee3bda81a4",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:2194a543d12ee0c546b3dcf23a23fac0153b0dd6c25fed978286997103d7866f",
+    "content_root_digest": "sha256:620ec2f24e62179832876933ceea86c56dc1439e11bcc6df1d73566bbf7786a8",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:b6b4050939a4aa46fa3217a74cab9f5a430b7458776cb549f2cbca2fff0e2cd5",
+    "input_inventory_digest": "sha256:cc00bf54acb1f9a92973df7cd3701fc167783f7f90ce9c1969c14ddcdd22fadd",
     "normative": true,
     "evidence": [
       {
@@ -88,7 +88,7 @@
       {
         "path": "ecosystem/rumi_mcp_gateway_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:1bc42b77853b67745218ddc1724799c3625a637206949f559d5b573fb888ba34"
+        "digest": "sha256:8cc254e62219b7e4648b5cf29a9017ad5a68671061c50fe802ffa0ee3bda81a4"
       }
     ]
   },
@@ -108,7 +108,14 @@
       "mcp.invoke",
       "mcp.tool.call"
     ],
-    "contract_dependencies": [],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.mcp.connection.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
     "execution_boundary": "sandbox",
     "network": {
       "allowed_domains": [],

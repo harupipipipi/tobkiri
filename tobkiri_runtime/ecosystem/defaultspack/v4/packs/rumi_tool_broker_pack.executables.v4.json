@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_tool_broker_pack",
-  "source_identity": "sha256:e8e7d8c8f82037023bd4af550443d610f846ae507b915791db62956b7cfe5b91",
+  "source_identity": "sha256:b928afcdb949e6b5a7b0625cc4f2adfce98b24d9c83991cf66c0fd004282ae19",
   "variants": [
     {
       "variant_id": "rumi_tool_broker_pack.tool-broker.invoke.python",
       "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
       "implementation_path": "runtime/broker.py",
-      "implementation_digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b",
+      "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:b61d88d782e29df111ff5170598b18cfa9dc406f3ed44db3493945707abc7bd0",
-  "catalog_digest": "sha256:1f4c20a3193eb62d18ab96cdd7e01f832e08f3d08f2618e7c6a0611a1f5e9797"
+  "materialization_catalog_digest": "sha256:a907d4acd42a82fb90cce5deb9425378127c50f6ff3b1a2cb49ae99824655356",
+  "catalog_digest": "sha256:fc55e21cea0228254a24ed1d0ee0e6d2b5c2c434566c7bcc01f3678d5cd04660"
 }

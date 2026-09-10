@@ -226,6 +226,11 @@ def main() -> int:
     """Write evidence and enforce strict or explicit Phase 0 exit semantics."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="check evidence without writing the output file",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
@@ -262,11 +267,14 @@ def main() -> int:
     args = parser.parse_args()
     output = args.output if args.output.is_absolute() else ROOT / args.output
     evidence = build_evidence()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    if not args.check:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif args.check_against is None:
+        args.check_against = output
     drift: list[str] = []
     if args.check_against is not None:
         tracked_path = (

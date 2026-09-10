@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:44d64b5217f5c2dd3865e2a2a00fc33865110bedcb07cc7e0c7cc6397e1fa898",
+      "digest": "sha256:cfc0c7560db5b611059af69387e9ac8c5860bc46e790e6447d8efb0170f883f6",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -16,7 +16,7 @@
       "path": "runtime/gateway.py"
     },
     {
-      "digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
       "kind": "executable",
       "path": "runtime/preflight.py"
     }
@@ -27,7 +27,7 @@
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway.preflight"
       ],
-      "revision_digest": "sha256:b55d97c2964f2ea62761d49a9e996b48e37bea088ae662feacb0d861b4f89f1e"
+      "revision_digest": "sha256:ff956d72ff72a242f94b251f4ed29a02dbf60447e8a20c121a8775c71cb27b9b"
     },
     {
       "contract_id": "tobkiri.resource.ai.routing.diagnostics.v1",
@@ -63,9 +63,9 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:b55d97c2964f2ea62761d49a9e996b48e37bea088ae662feacb0d861b4f89f1e",
+      "contract_revision_digest": "sha256:ff956d72ff72a242f94b251f4ed29a02dbf60447e8a20c121a8775c71cb27b9b",
       "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-      "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_gateway_pack.ai-gateway.preflight"
@@ -94,9 +94,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:399b21766ef9e83ab919c61481488fd97ce71f2323401cfbe552a6156ea45520",
-    "contract_catalog_digest": "sha256:c024b97b76a63ccc4a14b916d604093262821f3ecc6983f48e81bd9cf83443fa",
-    "source_identity": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25"
+    "artifact_set_digest": "sha256:e00ea0a293d4a4f75cf0ae2838a42f1bb7a77b5f673a0451566a8824c891edc3",
+    "contract_catalog_digest": "sha256:6713ad53badf91816d757c7ef1311d077b758e1738524789eeaba90396cbf611",
+    "source_identity": "sha256:443b3811750880ec0fbc7b2567d82d407af4411204a7472cd3378a8a07427246"
   },
   "migration": {
     "compatibility": "read_only",
@@ -157,7 +157,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:399b21766ef9e83ab919c61481488fd97ce71f2323401cfbe552a6156ea45520",
+    "artifact_digest": "sha256:e00ea0a293d4a4f75cf0ae2838a42f1bb7a77b5f673a0451566a8824c891edc3",
     "display_name": "Rumi AI Gateway",
     "id": "rumi_ai_gateway_pack",
     "kind": "host_extension",
@@ -167,7 +167,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25",
+        "digest": "sha256:443b3811750880ec0fbc7b2567d82d407af4411204a7472cd3378a8a07427246",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -178,7 +178,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25",
+    "source_digest": "sha256:443b3811750880ec0fbc7b2567d82d407af4411204a7472cd3378a8a07427246",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
   },

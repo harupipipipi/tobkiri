@@ -634,7 +634,7 @@
         "sunset_at": "2099-01-01"
       },
       "fingerprint": "sha256:065d28fdbfa29590d0ae2e21a907afb8c6047938f2918aaeb6efae4d30bbe5b6",
-      "line": 28,
+      "line": 207,
       "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
       "rule_id": "pack-boundary.indefinite-sunset"
     },
@@ -941,7 +941,7 @@
         "value": "io.tobkiri.profile.v5"
       },
       "fingerprint": "sha256:b359002488024336dc49fef5e0ac7a0f5fa4ef7f29252a132c15f18f00029a68",
-      "line": 129,
+      "line": 159,
       "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
       "rule_id": "pack-boundary.v4-file-uses-v5-api"
     }

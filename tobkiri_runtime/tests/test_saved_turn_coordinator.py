@@ -40,6 +40,12 @@ class _Session:
 
     def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
         if (contract_id, operation) == (RECEIPT_CONTRACT, RECEIPT_OPERATION):
+            if payload.get("operation") == "get":
+                assert payload == {
+                    "profile_id": "defaults", "operation": "get",
+                    "conversation_id": self.initial["request"]["conversation_id"],
+                }
+                return {"conversation": self.conversations.get(payload["conversation_id"])}
             assert payload == {
                 "profile_id": "defaults", "operation": "saved_receipt", "turn_id": "turn-1",
             }
@@ -59,12 +65,100 @@ class _Session:
         return self.transform(intent)
 
 
-def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None) -> dict:
+def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None, **options) -> dict:
     client = GlobalContractClient(
         session=session, allowed_contract_ids=SAVED_CONTRACTS,
         consumer_pack_id="rumi_turn_runtime_pack",
     )
-    return execute_saved_turn(store, session.initial, client=client, guard=guard)
+    return execute_saved_turn(store, session.initial, client=client, guard=guard, **options)
+
+
+def test_unresolved_context_rejects_before_claim_or_execution(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    conversation_id = session.initial["request"]["conversation_id"]
+    session.conversations.update(conversation_id, {"metadata": {"workspaceId": "work"}},
+                                 expected_conversation_revision=1)
+    before = session.conversations.path.read_bytes()
+    with pytest.raises(ValueError, match="context resolution"):
+        _run(store, session)
+    assert not store.path.exists()
+    assert session.calls == session.ai_calls == 0
+    assert session.conversations.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("case", ["stale_revision", "missing_model", "blank_model"])
+def test_owned_prerequisites_reject_before_claim(tmp_path: Path, case: str) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    patch = {"title": "changed"} if case == "stale_revision" else {
+        "model_reference": None if case == "missing_model" else "   ",
+    }
+    session.conversations.update("conversation-1", patch, expected_conversation_revision=1)
+    if case != "stale_revision":
+        session.initial["request"]["conversation_revision"] = 2
+    before = session.conversations.path.read_bytes()
+    with pytest.raises(ValueError, match="revision changed|model reference is required"):
+        _run(store, session)
+    assert not store.path.exists()
+    assert session.calls == session.ai_calls == 0
+    assert session.conversations.path.read_bytes() == before
+
+
+def test_completed_turn_repeats_after_owned_context_changes(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    assert _run(store, session)["status"] == "completed"
+    conversation_id = session.initial["request"]["conversation_id"]
+    session.conversations.update(conversation_id, {"metadata": {"workspaceId": "work"}},
+                                 expected_conversation_revision=3)
+    assert _run(store, session)["status"] == "existing"
+    assert session.calls == session.ai_calls == 1
+
+
+def test_only_claim_winner_tracks_execution_and_releases_handle(tmp_path: Path) -> None:
+    """An idempotent repeat never replaces the original cancellation handle."""
+    from contextlib import contextmanager
+
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    events = []
+
+    @contextmanager
+    def track(turn_id):
+        events.append(("enter", turn_id))
+        try:
+            yield
+        finally:
+            events.append(("exit", turn_id))
+
+    def observe(outcome):
+        assert events == [("enter", "turn-1")]
+        return outcome
+
+    session.transform = observe
+    assert _run(store, session, track_execution=track)["status"] == "completed"
+    assert _run(store, session, track_execution=track)["status"] == "existing"
+    assert events == [("enter", "turn-1"), ("exit", "turn-1")]
+    assert session.calls == 1
+
+
+def test_unavailable_execution_handle_never_dispatches(tmp_path: Path) -> None:
+    """A failed Host handle registration leaves an uncertain claim, never a retry."""
+    from contextlib import contextmanager
+
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+
+    @contextmanager
+    def unavailable(turn_id):
+        raise PermissionError("stale capture")
+        yield  # pragma: no cover
+
+    result = _run(store, session, track_execution=unavailable)
+    assert result["status"] == "reconciliation_required"
+    assert result["turn"]["status"] == "waiting"
+    assert session.calls == 0
 
 
 def test_saved_execution_completes_once_and_keeps_transcript_in_conversation_owner(
@@ -127,7 +221,7 @@ def test_invalid_acknowledgement_never_marks_completed(
     assert session.calls == 1
 
 
-@pytest.mark.parametrize("guard_call", [1, 2, 3])
+@pytest.mark.parametrize("guard_call", [1, 2, 3, 4])
 def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
     tmp_path: Path, guard_call: int,
 ) -> None:
@@ -141,7 +235,7 @@ def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
         if calls == guard_call:
             raise TimeoutError("original invocation is no longer active")
 
-    if guard_call == 1:
+    if guard_call <= 2:
         with pytest.raises(TimeoutError):
             _run(store, session, guard)
         assert not store.path.exists()
@@ -149,7 +243,7 @@ def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
         result = _run(store, session, guard)
         assert result["status"] == "reconciliation_required"
         assert result["turn"]["status"] == "waiting"
-    assert session.calls == (1 if guard_call == 3 else 0)
+    assert session.calls == (1 if guard_call == 4 else 0)
 
 
 def test_duplicate_request_can_reconcile_commit_without_reexecuting_live_turn(tmp_path: Path) -> None:

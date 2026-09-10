@@ -15,6 +15,11 @@ from .continuation_envelope import (
     ValidatedContinuation, validate_continuation_request, validate_continuation_result,
 )
 from .saved_guest_dispatch import PROTOCOL, TARGETS
+from .saved_turn_plan import SavedToolFrame, SavedTurnPlan
+from tobkiri_protocol.saved_conversation import (
+    is_saved_text_content, validate_saved_conversation_input,
+)
+from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
 
 class SavedHostExchange:
@@ -23,6 +28,7 @@ class SavedHostExchange:
     def __init__(
         self, identity: ChainIdentity, *, request_digest: str, artifact_identity: str,
         deadline_text: str, chains: ContinuationChains,
+        request: Mapping[str, Any] | None = None,
     ) -> None:
         self.identity = identity
         self._request_digest = request_digest
@@ -37,13 +43,33 @@ class SavedHostExchange:
         self._user_revision: int | None = None
         self._ai_output_digest: str | None = None
         self._completion_digest: str | None = None
+        self._tool_plan: SavedTurnPlan | None = None
+        if request is not None:
+            initial = validate_saved_conversation_input({"request": dict(request)})
+            plan = SavedTurnPlan(initial["request"])
+            self._tool_plan = plan if plan.enabled else None
+
+    @property
+    def maximum_hops(self) -> int:
+        """Return the Host-owned finite bound for this initial request."""
+        return MAX_SAVED_TOOL_HOPS if self._tool_plan else len(TARGETS)
+
+    def callback_frame(self, frame: ValidatedContinuation) -> Mapping[str, Any] | SavedToolFrame:
+        """Pass checked tool scope locally, never in a guest-controlled JSON field."""
+        value = strict_loads(frame.frame)
+        if self._tool_plan is None:
+            return value
+        return SavedToolFrame(
+            value, self._tool_plan.initial_digest,
+            canonical_json(self._tool_plan.messages), self._tool_plan.stage,
+        )
 
     def accept(self, wrapper: Mapping[str, Any]) -> ValidatedContinuation:
         """Validate and retain before dispatching even the first owner read."""
         expected = self._binding("host-request")
         expected["deadline_monotonic"] = self._deadline_text
         if (
-            self._failed or self._pending is not None or self._hop >= len(TARGETS)
+            self._failed or self._pending is not None or self._hop >= self.maximum_hops
             or set(wrapper) != set(expected) | {"bridge_request", "bridge_request_digest"}
             or any(wrapper[key] != value for key, value in expected.items())
             or type(wrapper.get("version")) is not int
@@ -51,11 +77,16 @@ class SavedHostExchange:
             raise ValueError("saved Host guest wrapper binding is invalid")
         frame = validate_continuation_request(
             canonical_json(wrapper["bridge_request"]), identity=self.identity,
-            hop=self._hop, previous_digest=self._previous, target=TARGETS[self._hop],
+            hop=self._hop, previous_digest=self._previous,
+            target=self._tool_plan.target if self._tool_plan else TARGETS[self._hop],
+            max_hops=self.maximum_hops,
         )
         if frame.digest != wrapper["bridge_request_digest"]:
             raise ValueError("saved Host guest frame digest is invalid")
-        if self._hop == 3:
+        if self._tool_plan is not None:
+            self._tool_plan.check(strict_loads(frame.payload))
+        stage = self._tool_plan.stage if self._tool_plan else ("read", "user", "ai", "assistant")[self._hop]
+        if stage == "assistant":
             payload = strict_loads(frame.payload)
             message = payload.get("message")
             if (
@@ -85,17 +116,19 @@ class SavedHostExchange:
             "request_digest": frame.digest, "outcome": dict(outcome),
         }
         checked = validate_continuation_result(canonical_json(value), request=frame)
-        # Retain only fingerprints/revision from Host results, not guest state
-        # or another transcript. Compute before exposing results to the guest.
+        # Bind completion and the bounded tool transcript to Host results before
+        # exposing those results to the guest.
         owned = strict_loads(checked.frame)["outcome"].get("value", {})
-        if self._hop == 2:
+        stage = self._tool_plan.stage if self._tool_plan else ("read", "user", "ai", "assistant")[self._hop]
+        if stage == "ai":
+            self._ai_output_digest = None
             output = owned.get("output")
             if (
                 owned.get("status") == "ok" and not owned.get("tool_intents")
-                and isinstance(output, (str, list)) and output
+                and is_saved_text_content(output)
             ):
                 self._ai_output_digest = canonical_digest(output)
-        elif self._hop in (1, 3):
+        elif stage in ("user", "assistant"):
             payload = strict_loads(frame.payload)
             message = owned.get("message")
             revision = owned.get("conversation_revision")
@@ -108,7 +141,7 @@ class SavedHostExchange:
                 and type(payload.get("expected_conversation_revision")) is int
                 and revision > payload["expected_conversation_revision"]
             ):
-                if self._hop == 1:
+                if stage == "user":
                     self._user_revision = revision
                 else:
                     self._completion_digest = canonical_digest({
@@ -117,7 +150,13 @@ class SavedHostExchange:
                         "conversation_revision": revision,
                         "user_message_id": message["parent_id"], "message": message,
                     })
-        self._failed = outcome.get("status") == "error"
+        if self._tool_plan is not None:
+            self._tool_plan.receive(strict_loads(checked.frame)["outcome"])
+            if stage == "user" and self._user_revision is None:
+                self._tool_plan.failed = True
+        self._failed = outcome.get("status") == "error" or bool(
+            self._tool_plan and self._tool_plan.failed
+        )
         self._permit = self._chains.take(self.identity, nonce=frame.nonce, result=checked.frame)
         self._previous = checked.digest
         self._pending = None
@@ -130,9 +169,12 @@ class SavedHostExchange:
         if self._permit is None or self._pending is not None:
             raise ValueError("saved Host terminal result is not expected")
         if outcome.get("status") not in {"ok", "error"} or (
-            outcome.get("status") == "ok" and (self._failed or self._hop != len(TARGETS))
+            outcome.get("status") == "ok" and (self._failed or (
+                self._tool_plan.stage != "complete" if self._tool_plan
+                else self._hop != len(TARGETS)
+            ))
         ):
-            raise ValueError("saved Host success requires all four actions")
+            raise ValueError("saved Host success requires every acknowledged action")
         if outcome.get("status") == "ok" and (
             self._completion_digest is None
             or canonical_digest(dict(outcome)) != self._completion_digest

@@ -263,6 +263,16 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
   } else {
     normalizedImageSource = safeHttpsUrl(payload, 'image_source');
   }
+  const update = payload.registration_update == null ? null : record(payload.registration_update);
+  if (update && (
+    imageDownloadRequired || imageSource === 'unavailable'
+    || Object.keys(update).sort().join(',') !== [
+      'asset_manifest_digest', 'previous_attestation_digest', 'previous_config_digest',
+      'previous_guest_runner_digest', 'previous_host_build_digest',
+    ].join(',')
+  )) {
+    throw new PackVMLifecycleProtocolError('Tobkiri returned an invalid PackVM registration update.');
+  }
   return {
     backend_id: stringField(payload, 'backend_id', {identifier: true}),
     instance: stringField(payload, 'instance', {identifier: true}),
@@ -279,6 +289,13 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
     ceremony_nonce: stringField(payload, 'ceremony_nonce'),
     plan_digest: stringField(payload, 'plan_digest', {digest: true}),
     confirmation: stringField(payload, 'confirmation'),
+    registration_update: update ? {
+      previous_attestation_digest: stringField(update, 'previous_attestation_digest', {digest: true}),
+      previous_config_digest: stringField(update, 'previous_config_digest', {digest: true}),
+      previous_guest_runner_digest: stringField(update, 'previous_guest_runner_digest', {digest: true}),
+      previous_host_build_digest: stringField(update, 'previous_host_build_digest', {digest: true}),
+      asset_manifest_digest: stringField(update, 'asset_manifest_digest', {digest: true}),
+    } : null,
   };
 }
 
@@ -291,6 +308,7 @@ export function normalizePackVMConsent(value: unknown): ApiPackVMConsent {
     image_digest: stringField(payload, 'image_digest', {digest: true}),
     image_size_bytes: positiveIntegerField(payload, 'image_size_bytes'),
     image_download_approved: booleanField(payload, 'image_download_approved'),
+    previous_attestation_digest: optionalDigest(payload, 'previous_attestation_digest'),
   };
 }
 

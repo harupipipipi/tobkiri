@@ -20,6 +20,8 @@ const ROOTS: &[&str] = &[
     "ecosystem/defaultspack/v4",
     "ecosystem/defaultspack/runtime",
     "ecosystem/defaultspack/defaultspack",
+    "ecosystem/defaultspack/tools",
+    "ecosystem/defaultspack/extensions/tools",
 ];
 // Keep exact-file grants aligned with generator_source_manifest.py::SOURCE_FILES.
 // Do not grant whole metadata directories when adding a UI dependency.

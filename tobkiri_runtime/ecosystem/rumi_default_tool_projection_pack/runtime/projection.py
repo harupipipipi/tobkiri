@@ -8,9 +8,6 @@ from typing import Any, Callable, Mapping
 
 from ecosystem.defaultspack.domain.tool.executor import ToolExecutor
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
-from ecosystem.defaultspack.domain.tool_policy.internal_context import (
-    mark_tool_server_approval_context,
-)
 
 LOCAL_OPERATION = "rumi.service.tool.local.operation.v1"
 LOCAL_PROVIDER = "tool-adapter.defaultspack-compat"
@@ -90,14 +87,8 @@ def create_local_operation(
             "tool_call_id": str(payload.get("tool_call_id") or ""),
             "owner_pack": "rumi_default_tool_projection_pack",
         }
-        if _approved_receipt(
-            payload.get("authorization"),
-            tool_id=tool_id,
-            caller_id=caller_id,
-            profile_id=profile_id,
-            arguments=arguments,
-        ):
-            mark_tool_server_approval_context(legacy_context)
+        # Payload receipts are not Host capabilities. The legacy executor must
+        # enforce its own policy until this adapter has a captured Host route.
         result = ToolExecutor().execute(tool_id, dict(arguments), legacy_context)
         if not isinstance(result, Mapping):
             raise RuntimeError("legacy tool executor returned an invalid result")
@@ -155,36 +146,4 @@ def _widget(tool: Mapping[str, Any], metadata: Mapping[str, Any]) -> dict[str, A
         if isinstance(value, Mapping):
             return json.loads(json.dumps(value, ensure_ascii=False))
     return {}
-
-
-def _approved_receipt(
-    value: Any,
-    *,
-    tool_id: str,
-    caller_id: str,
-    profile_id: str,
-    arguments: Mapping[str, Any],
-) -> bool:
-    if not isinstance(value, Mapping):
-        return False
-    scope = value.get("scope")
-    if not isinstance(scope, Mapping):
-        return False
-    args_hash = hashlib.sha256(
-        json.dumps(
-            arguments,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
-    return bool(
-        value.get("authorized") is True
-        and value.get("consumed") is True
-        and scope.get("tool_id") == tool_id
-        and scope.get("caller_id") == caller_id
-        and scope.get("profile_id") == profile_id
-        and scope.get("args_hash") == args_hash
-        and scope.get("replay_policy") == "one_shot"
-    )
 

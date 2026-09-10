@@ -101,7 +101,32 @@ jobs:
               )
           PY
 
+      - name: Run Profile and Host recovery regressions
+        id: recovery_pytest
+        working-directory: tobkiri_runtime
+        run: |
+          python ../scripts/quality/compact_test_runner.py \
+            --log-dir "$RUNNER_TEMP" \
+            --log-file "recovery-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log" \
+            -- pytest -v \
+              tests/test_tobkiri_host_resources_admission.py \
+              tests/test_tobkiri_host_execution_integration.py \
+              tests/test_production_v4_host_extension_admission.py \
+              tests/test_profile_source_reconfirmation.py \
+              tests/test_setup_handlers.py \
+              tests/test_profile_architecture_review_c.py
+
+      - name: Upload recovery pytest log
+        if: failure() && steps.recovery_pytest.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-pytest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-pytest-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Run active contract cluster pytest
+        if: ${{ !cancelled() && (success() || steps.recovery_pytest.outcome == 'failure') }}
         id: contract_pytest
         working-directory: tobkiri_runtime
         run: |
@@ -147,6 +172,10 @@ jobs:
 
       - name: Test compact runner cross-platform
         run: python -m pytest scripts/quality/test_compact_test_runner.py -q
+
+      - name: Test cross-process approval consumption
+        working-directory: tobkiri_runtime
+        run: python -m pytest tests/test_legacy_computer_approval_concurrency.py -q
 
       - name: Run Task D smoke tests
         working-directory: tobkiri_runtime
@@ -240,6 +269,31 @@ jobs:
             tests/test_authority_security_hardening.py \
             tests/test_bounded_process_runner.py \
             tests/test_bounded_child_io.py \
+            tests/test_wasm_worker.py \
+            tests/test_computer_approval_audit_bridge.py::test_pid_event_function_consumes_signed_owner_token_once \
+            tests/test_mcp_stdio_shutdown.py \
+            tests/test_mcp_sse_origin.py \
+            tests/test_mcp_sse_bounds.py \
+            tests/test_mcp_sse_cancellation.py \
+            tests/test_mcp_connection_owner.py \
+            tests/test_mcp_host_provider.py \
+            tests/test_tool_registry_host.py \
+            tests/test_tool_registry_pack_data.py \
+            tests/test_defaultspack_tool_v3_registry.py \
+            tests/test_tool_registry_host_broker.py \
+            tests/test_tool_broker_host.py \
+            tests/test_tool_local_executor_host.py \
+            tests/test_tool_catalog_presentation.py \
+            tests/test_tool_catalog_http.py \
+            tests/test_secure_persistence.py \
+            tests/test_artifact_materialization.py \
+            tests/test_declared_pack_data.py \
+            tests/test_runtime_locks.py \
+            tests/test_mcp_host_broker.py \
+            tests/test_mcp_gateway_bridge.py \
+            tests/test_host_provider_capture_groups.py \
+            tests/test_host_provider_data_v4.py \
+            tests/test_defaultspack_mcp_approval_gate.py \
             tests/test_continuation_chain.py \
             tests/test_continuation_envelope.py \
             tests/test_continuation_session.py \
@@ -247,6 +301,10 @@ jobs:
             tests/test_packvm_guest_bridge_runner.py \
             tests/test_saved_guest_dispatch.py \
             tests/test_saved_host_exchange.py \
+            tests/test_saved_tool_turn.py \
+            tests/test_tool_selection_host.py \
+            tests/test_owned_calculator.py \
+            tests/test_frontend_entries.py \
             tests/test_saved_backend_binding.py \
             tests/test_saved_bridge_callbacks.py \
             tests/test_saved_turn_coordinator.py \
@@ -371,6 +429,7 @@ jobs:
           python scripts/quality/scan_pack_architecture.py \
             --reference-baseline "${reference}"
           python scripts/quality/check_core_no_favoritism.py
+          python tobkiri_runtime/scripts/quality/check_pack_boundary_assessment.py
 
       - name: Enforce shrink-only Pack boundary lint baseline
         env:
@@ -417,6 +476,12 @@ jobs:
 
       - name: Verify generated Tobkiri Launcher presentation catalog
         run: python scripts/quality/generate_presentation_catalog.py --check
+
+      - name: Verify canonical Host source inventory
+        run: >-
+          python -B -c
+          'import runpy; from pathlib import Path;
+          runpy.run_path(".github/scripts/prepare_tauri_resources.py")["canonical_host_files"](Path("tobkiri_runtime"))'
 
       - name: Enforce Pack v4 migration evidence freshness (Phase 0)
         run: >-

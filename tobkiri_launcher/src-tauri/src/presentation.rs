@@ -578,6 +578,7 @@ struct VerifiedPresentationTarget {
     artifact: PresentationArtifact,
     artifact_path: PathBuf,
     entrypoint_digest: String,
+    frontend_entry: crate::frontend_entry::VerifiedFrontendEntry,
 }
 
 impl VerifiedPresentationTarget {
@@ -590,6 +591,7 @@ impl VerifiedPresentationTarget {
             && self.artifact.sha256 == other.artifact.sha256
             && self.artifact_path == other.artifact_path
             && self.entrypoint_digest == other.entrypoint_digest
+            && self.frontend_entry == other.frontend_entry
     }
 }
 
@@ -648,6 +650,7 @@ fn resolve_verified_presentation_target(
         artifact,
         artifact_path,
         entrypoint_digest: authority.launch.entrypoint_digest.clone(),
+        frontend_entry: authority.launch.frontend_entry.clone(),
     })
 }
 
@@ -664,8 +667,11 @@ fn launch_verified_target_once(
     // exact verified Shell artifact has passed pre-admission. The authenticated
     // URL never crosses argv or the environment; only an owner-only one-shot
     // handoff path is passed to the presentation process.
-    let prepared_runtime =
-        crate::dock_registration::prepare_defaultspack_shell_runtime_url(app, config, "/chat")?;
+    let prepared_runtime = crate::dock_registration::prepare_defaultspack_shell_runtime_url(
+        app,
+        config,
+        &target.frontend_entry,
+    )?;
     if Instant::now() >= deadline {
         bail!("verified Shell launch deadline elapsed during runtime preparation");
     }
@@ -3429,9 +3435,17 @@ mod tests {
                 status_detail: "test fixture".into(),
             },
             artifact_path: PathBuf::from("/Applications/Tobkiri Shell.app"),
+            frontend_entry: crate::frontend_entry::test_binding(),
             entrypoint_digest: format!("sha256:{}", "5".repeat(64)),
         };
         let response = successful_shell_launch_response(&target);
+        assert!(target.same_security_binding(&target));
+        let mut changed = target.clone();
+        changed.frontend_entry.entry.route = "/different".into();
+        assert!(!target.same_security_binding(&changed));
+        changed = target.clone();
+        changed.frontend_entry.map_digest = format!("sha256:{}", "6".repeat(64));
+        assert!(!target.same_security_binding(&changed));
 
         assert_eq!(
             serde_json::to_value(response).unwrap(),

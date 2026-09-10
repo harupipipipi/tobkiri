@@ -18,13 +18,12 @@ const CONVERSATION_V4_CONTRACT = "conversation.turn.v1";
 const CONVERSATION_V4_CONTRIBUTION = "defaults.conversation.complete";
 const CONVERSATION_V4_BUILD_IDENTITY = "defaultspack.conversation";
 
-/** Return whether a verified contribution selects the host-owned v4 chat. */
+/** Recognize the explicit lightweight Conversation contribution. */
 export function isConversationV4Contribution(
   item: VerifiedFrontendContribution,
 ): boolean {
   return item.kind === "route"
     && item.mode === "declarative"
-    && item.route === "/chat"
     && item.contribution_id === CONVERSATION_V4_CONTRIBUTION
     && item.owner_pack_id === "defaultspack"
     && item.build_identity === CONVERSATION_V4_BUILD_IDENTITY

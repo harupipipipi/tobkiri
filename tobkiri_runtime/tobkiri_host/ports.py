@@ -251,6 +251,19 @@ class InteractiveEffectPrepareCommand:
     effect_kind: str
     payload: Mapping[str, Any]
     prepared_result: Mapping[str, Any]
+    correlation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class InteractiveEffectLookupQuery:
+    """Find a prepare receipt within one authenticated owner and effect kind."""
+
+    context: RequestContext
+    coordinator_principal: OpaqueAuthorityRef
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    effect_kind: str
+    correlation_id: str
 
 
 @dataclass(frozen=True)
@@ -289,6 +302,12 @@ class InteractiveEffectPort(Protocol):
         command: InteractiveEffectPrepareCommand,
     ) -> InteractiveEffectStatus:
         """Prepare a selected future effect and open one interactive approval."""
+
+    def find_interactive_effect(
+        self,
+        query: InteractiveEffectLookupQuery,
+    ) -> InteractiveEffectStatus:
+        """Read an owned prepare receipt without replaying a lost request."""
 
     def get_interactive_effect(
         self,

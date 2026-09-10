@@ -18,7 +18,7 @@ from core_runtime.pack_api_server import (
     DispatchSession,
     WorkspaceBindingResolver,
 )
-from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.canonical import canonical_digest, strict_loads
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 from .model_profile_presentation import (
@@ -32,6 +32,7 @@ from .conversation_list_presentation import (
     CONVERSATION_LIST_TARGET,
     present_conversation_list,
 )
+from .tool_catalog_presentation import TOOL_CATALOG_TARGET, present_tool_catalog
 from .conversation_create_presentation import (
     CONVERSATION_CREATE_TARGET,
     normalize_conversation_create,
@@ -149,11 +150,20 @@ class DefaultspackHTTPPresentation:
             phase = payload.get("phase")
             if phase == "prepare":
                 if (
-                    set(payload) != {"phase", "effect_kind", "request"}
+                    set(payload) not in (
+                        {"phase", "effect_kind", "request"},
+                        {"phase", "effect_kind", "request", "correlation_id"},
+                    )
                     or payload.get("effect_kind") != "provider_configure"
                     or not isinstance(payload.get("request"), Mapping)
                 ):
                     raise ValueError("provider configuration request is invalid")
+            elif phase == "lookup":
+                if (
+                    set(payload) != {"phase", "effect_kind", "correlation_id"}
+                    or payload.get("effect_kind") != "provider_configure"
+                ):
+                    raise ValueError("provider configuration lookup is invalid")
             elif phase not in {"status", "resume", "cancel"} or set(payload) != {
                 "phase", "effect_id",
             }:
@@ -260,7 +270,7 @@ class DefaultspackHTTPPresentation:
             target.operation_id,
             target.provider_id,
             target.function_id,
-        ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET}:
+        ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET, TOOL_CATALOG_TARGET}:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))
             if not profile_id or payload:
@@ -344,6 +354,8 @@ class DefaultspackHTTPPresentation:
             return present_model_profile_saved(result)
         if binding.presentation == "conversation_list":
             return present_conversation_list(result)
+        if binding.presentation == "tool_catalog":
+            return present_tool_catalog(result, session=session)
         if binding.presentation == "conversation_created":
             return present_conversation_created(result)
         if binding.presentation == "conversation_record":
@@ -360,6 +372,12 @@ class DefaultspackHTTPPresentation:
                 catalog_hash=canonical_digest({"contributions": []}), targets=()
             )
         )
+        # Display declarations come from the selected Application's verified
+        # map. They never add an operation to the invocation snapshot.
+        entries = []
+        if session is not None and binding.frontend_entries:
+            session.assert_current()
+            entries = strict_loads(binding.frontend_entries)["entries"]
         return {
             **dict(result),
             "dynamic_host": {
@@ -369,7 +387,10 @@ class DefaultspackHTTPPresentation:
                 "activation_id": str(getattr(session, "activation_id", "")),
                 "plan_hash": str(getattr(session, "plan_digest", "")),
                 "contributions": [
-                    _contribution(target, index, session)
+                    _frontend_entry(entry, index, binding, session)
+                    for index, entry in enumerate(entries)
+                ] + [
+                    _action_contribution(target, index, session)
                     for index, target in enumerate(snapshot.targets)
                 ],
                 "diagnostics": _diagnostics(result, session),
@@ -389,53 +410,77 @@ def _is_conversation(target: HTTPContractTarget) -> bool:
     ) == _CONVERSATION_TARGET
 
 
-def _contribution(
-    target: HTTPContractTarget,
+def _frontend_entry(
+    entry: Mapping[str, object],
     priority: int,
+    binding: HTTPContractBinding,
     session: DispatchSession | None,
 ) -> dict[str, object]:
-    conversation = _is_conversation(target)
     profile_id = str(getattr(session, "profile_id", ""))
     profile_revision = str(getattr(session, "profile_revision", ""))
     activation_id = str(getattr(session, "activation_id", ""))
     plan_digest = str(getattr(session, "plan_digest", ""))
-    contribution: dict[str, object] = {
-        "contribution_id": target.contribution_id,
-        "kind": "route" if conversation else "action",
-        "mode": "declarative" if conversation else "same_origin_builtin",
-        "label": "Tobkiri Conversation" if conversation else target.operation_id,
+    return {
+        "contribution_id": entry["contribution_id"],
+        "kind": "route",
+        "mode": "application_builtin",
+        "label": entry["label"],
         "priority": priority,
-        "owner_pack_id": target.owner_pack_id,
-        "owner_pack_hash": target.artifact_digest or plan_digest,
-        "build_identity": target.function_id,
+        "owner_pack_id": binding.route_namespace,
+        "owner_pack_hash": binding.artifact_digest,
+        "build_identity": binding.application_id,
         "resolved_profile_id": profile_id,
         "resolved_profile_revision": profile_revision,
         "resolved_activation_id": activation_id,
         "resolved_plan_hash": plan_digest,
         "descriptor_hash": canonical_digest(
             {
-                "contribution_id": target.contribution_id,
-                "operation_id": target.operation_id,
+                "entry": dict(entry),
+                "application_id": binding.application_id,
+                "artifact_digest": binding.artifact_digest,
             }
         ),
-        "route": "/chat" if conversation else "/packs",
-        "action_contract": target.contract_id,
-        "operation_id": target.operation_id,
-        "provider_id": target.provider_id,
-        "function_id": target.function_id,
+        "route": entry["route"],
+        "route_match": entry["match"],
+        "implementation": entry["implementation"],
         "localization": {},
         "accessibility": {
-            "name": "Tobkiri Conversation" if conversation else target.operation_id,
+            "name": entry["label"],
             "keyboard": True,
         },
     }
-    if conversation:
-        contribution["view"] = {
-            "type": "conversation_v4",
-            "title": "Tobkiri Conversation",
-            "body": "Start a conversation with your active Tobkiri Profile.",
-        }
-    return contribution
+
+
+def _action_contribution(
+    target: HTTPContractTarget,
+    priority: int,
+    session: DispatchSession | None,
+) -> dict[str, object]:
+    """Project an admitted capability without inventing a screen for it."""
+    identity = {
+        "contribution_id": target.contribution_id,
+        "operation_id": target.operation_id,
+        "provider_id": target.provider_id,
+        "function_id": target.function_id,
+        "action_contract": target.contract_id,
+        "owner_pack_id": target.owner_pack_id,
+        "owner_pack_hash": target.artifact_digest,
+    }
+    return {
+        **identity,
+        "kind": "action",
+        "mode": "declarative",
+        "label": target.operation_id,
+        "priority": priority,
+        "build_identity": target.function_id,
+        "resolved_profile_id": str(getattr(session, "profile_id", "")),
+        "resolved_profile_revision": str(getattr(session, "profile_revision", "")),
+        "resolved_activation_id": str(getattr(session, "activation_id", "")),
+        "resolved_plan_hash": str(getattr(session, "plan_digest", "")),
+        "descriptor_hash": canonical_digest(identity),
+        "localization": {},
+        "accessibility": {"name": target.operation_id, "keyboard": True},
+    }
 
 
 def _diagnostics(

@@ -9,7 +9,8 @@ import pytest
 
 from ecosystem.defaultspack.blocks.tool import mcp_connect as mcp_connect_block
 from ecosystem.defaultspack.blocks.tool import mcp_list as mcp_list_block
-from ecosystem.defaultspack.domain.tool.mcp_client import McpClient
+from ecosystem.defaultspack.domain.tool.mcp_client import McpClient, McpConnections
+from core_runtime.mcp import transport as mcp_module
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
 from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 from domain.tool_policy.internal_context import mark_tool_server_approval_context
@@ -182,6 +183,70 @@ def test_mcp_client_supports_stdio_command_and_args(tmp_path):
     assert tools_added == 1
     assert [tool["name"] for tool in client.get_server_tools("demo")] == ["ping"]
     assert client.invoke("demo", "ping", {"message": "hello"})["result"] == "pong:hello"
+
+
+def test_owned_connections_do_not_share_names_or_disconnect_each_other(tmp_path):
+    """Two real stdio connections may use the same name without sharing state."""
+    server_path = tmp_path / "owned_mcp_server.py"
+    _write_demo_mcp_server(server_path)
+    first, second = McpConnections(), McpConnections()
+    legacy = McpClient()
+    config = {"transport": "stdio", "command": sys.executable,
+              "args": [str(server_path)]}
+    try:
+        first.connect("same", config)
+        assert second.list_servers() == []
+        assert second.invoke("same", "ping", {})["is_error"] is True
+        second.connect("same", config)
+        assert first.invoke("same", "ping", {"message": "first"})["result"] == "pong:first"
+        assert second.invoke("same", "ping", {"message": "second"})["result"] == "pong:second"
+        first_process = first._servers["same"]._transport._proc
+        first.close()
+        assert first_process.poll() is not None
+        assert second.invoke("same", "ping", {"message": "retained"})["result"] == "pong:retained"
+        assert legacy.list_servers() == []
+        assert McpClient() is legacy
+    finally:
+        first.close()
+        second.close()
+
+
+@pytest.mark.parametrize("failure_stage", ["_initialize", "_list_tools"])
+def test_failed_handshake_stops_started_stdio_process(
+    monkeypatch, tmp_path, failure_stage
+):
+    """A failed handshake must not leave its already started child running."""
+    server_path = tmp_path / "failed_handshake_server.py"
+    _write_demo_mcp_server(server_path)
+    client = McpConnections()
+    processes = []
+
+    def fail_handshake(connection, **kwargs):
+        processes.append(connection._transport._proc)
+        connection.server_capabilities = {"tools": {}}
+        raise RuntimeError("injected handshake failure")
+
+    monkeypatch.setattr(mcp_module._ServerConnection, failure_stage, fail_handshake)
+    try:
+        with pytest.raises(RuntimeError, match="injected handshake failure"):
+            client.connect("failed", {
+                "transport": "stdio", "command": sys.executable,
+                "args": [str(server_path)],
+            })
+        assert len(processes) == 1
+        assert processes[0].poll() is not None
+        assert client.list_servers() == [
+            {"name": "failed", "status": "error", "tools": []}
+        ]
+        assert client._servers["failed"]._transport is None
+        assert client._servers["failed"].server_capabilities == {}
+        assert client.invoke("failed", "ping", {})["is_error"] is True
+    finally:
+        client.disconnect("failed")
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
 
 
 def test_mcp_connect_accepts_server_id_and_saved_config(monkeypatch, tmp_path):

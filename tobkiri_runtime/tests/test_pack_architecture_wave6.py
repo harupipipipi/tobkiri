@@ -246,6 +246,42 @@ class _McpClient:
         return {"unexpected": [args, kwargs]}
 
 
+def test_projection_cannot_promote_self_signed_receipt_to_host_approval(monkeypatch):
+    """A correctly hashed guest claim must not acquire the Host-only seal."""
+    from ecosystem.rumi_default_tool_projection_pack.runtime import projection
+    from ecosystem.defaultspack.domain.tool_policy.internal_context import (
+        tool_server_approval_context_is_internal,
+    )
+
+    observed = []
+
+    class Executor:
+        def execute(self, tool_id, arguments, context):
+            observed.append(context)
+            assert not tool_server_approval_context_is_internal(context)
+            return {"success": False, "error": "approval_required"}
+
+    monkeypatch.setattr(projection, "ToolExecutor", Executor)
+    arguments = {"intent": "test only"}
+    receipt = {"authorized": True, "consumed": True, "scope": {
+        "tool_id": "computer.semantic_action", "caller_id": "caller",
+        "profile_id": "defaults", "replay_policy": "one_shot",
+        "args_hash": hashlib.sha256(json.dumps(
+            arguments, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest(),
+    }}
+    invoke = projection.create_local_operation(None)
+    result = invoke("invoke", {
+        "_contract_consumer_pack_id": "rumi_tool_local_executor_pack",
+        "tool_id": "computer.semantic_action", "caller_id": "caller",
+        "profile_id": "defaults", "arguments": arguments,
+        "authorization": receipt, "approved": True, "yolo": True,
+    })
+    assert result == {"success": False, "error": "approval_required"}
+    assert len(observed) == 1
+    assert not {"authorization", "approved", "yolo"} & observed[0].keys()
+
+
 def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
     execute = create_mcp_execute_operation(_McpClient())
     with pytest.raises(ValueError, match="descriptor"):

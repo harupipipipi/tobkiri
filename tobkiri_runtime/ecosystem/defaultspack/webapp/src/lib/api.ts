@@ -37,11 +37,41 @@ export type ChatMessage = {
   model?: string | null;
 };
 
+export type SavedToolSelection = {
+  mode: "auto" | "manual" | "none";
+  include?: Array<string | ToolTarget>;
+  exclude?: Array<string | ToolTarget>;
+  scope?: ToolSelectionScope;
+  must_use?: boolean;
+};
+
+export function validSavedToolSelection(value: unknown): value is SavedToolSelection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const selection = value as Record<string, unknown>;
+  if (Object.keys(selection).some((key) => !["mode", "include", "exclude", "scope", "must_use"].includes(key))
+    || !["auto", "manual", "none"].includes(String(selection.mode))
+    || (selection.scope !== undefined && !["turn", "conversation"].includes(String(selection.scope)))
+    || (selection.must_use !== undefined && typeof selection.must_use !== "boolean")) return false;
+  for (const key of ["include", "exclude"]) {
+    const items = selection[key] ?? [];
+    if (!Array.isArray(items) || items.length > 256) return false;
+    for (const item of items) {
+      if (typeof item === "string") {
+        if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(item)) return false;
+      } else if (!item || typeof item !== "object" || Array.isArray(item)
+        || Object.keys(item).length !== 2 || !["tool", "service"].includes(item.kind)
+        || typeof item.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(item.id)) return false;
+    }
+  }
+  return selection.mode !== "none" || (!selection.must_use && !(selection.include as unknown[] | undefined)?.length);
+}
+
 export type SavedTurnRequest = {
   turn_id: string;
   conversation_id: string;
   conversation_revision: number;
   content: string;
+  tool_selection?: SavedToolSelection;
 };
 
 export type SavedTurnResult = {
@@ -3549,13 +3579,28 @@ export const api = {
     return result.turn;
   },
 
+  async stopSavedTurn(turnId: string): Promise<void> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for stopping.");
+    }
+    const result = await request<{ status: string; turn_id: string; stopped: boolean }>(
+      defaultspackContractRoute("api/chat/turn/stop"), {
+        method: "POST", body: JSON.stringify({ turn_id: turnId }),
+      },
+    );
+    if (result?.status !== "cancellation_requested" || result.turn_id !== turnId || result.stopped !== false) {
+      throw new Error("Saved turn cancellation receipt does not match the pending operation.");
+    }
+  },
+
   async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
     const input = { ...value };
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];
-    if (Object.keys(input).length !== fields.length || fields.some((key) => !(key in input))
+    if (Object.keys(input).some((key) => ![...fields, "tool_selection"].includes(key)) || fields.some((key) => !(key in input))
       || typeof input.turn_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.turn_id)
       || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
       || !Number.isSafeInteger(input.conversation_revision) || input.conversation_revision < 1
+      || (input.tool_selection !== undefined && !validSavedToolSelection(input.tool_selection))
       || typeof input.content !== "string" || !input.content.trim()
       || new TextEncoder().encode(JSON.stringify(input)).length > 60 * 1024) {
       throw new Error("Saved conversation request is invalid or requires unsupported context.");
@@ -4185,7 +4230,8 @@ export const api = {
       connection_name: connection, protocol, endpoint, key_value: value,
     }, {
       storage: window.sessionStorage,
-      prepare: (configuration) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration }),
+      prepare: (configuration, correlation_id) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration, correlation_id }),
+      lookup: (correlation_id) => post({ phase: "lookup", effect_kind: "provider_configure", correlation_id }),
       status: (effect_id) => post({ phase: "status", effect_id }),
       resume: (effect_id) => post({ phase: "resume", effect_id }),
       cancel: (effect_id) => post({ phase: "cancel", effect_id }),

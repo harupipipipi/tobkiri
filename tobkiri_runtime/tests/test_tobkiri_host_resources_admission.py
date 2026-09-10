@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -296,6 +297,85 @@ def test_durable_ledger_rejects_corrupt_state(tmp_path: Path) -> None:
             state_path=state_path,
             identity={"profile_id": "p1", "activation_id": "a"},
         )
+
+
+def test_durable_reservation_requires_release_after_deadline_and_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Neither wall time nor an activation change proves a worker has exited."""
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 1, 1),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 1, 1)},
+        "state_path": tmp_path / "reservations.json",
+        "lease_ttl_seconds": 1,
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    monkeypatch.setattr("tobkiri_host.admission.time.time", lambda: 1000)
+    first = DurableResourceLedger(identity=identity, **options)
+    reservation = first.reserve("p1", ResourceAmount(100))
+    original = options["state_path"].read_bytes()
+
+    monkeypatch.setattr("tobkiri_host.admission.time.time", lambda: 2000)
+    with pytest.raises(ResourceExhaustedError):
+        first.reserve("p1", ResourceAmount(100))
+    reopened = DurableResourceLedger(identity=identity, **options)
+    assert reopened.runtime_used == reservation.amount
+    with pytest.raises(ResourceExhaustedError):
+        reopened.reserve("p1", ResourceAmount(100))
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={**identity, "activation_id": "b"}, **options,
+        )
+    assert options["state_path"].read_bytes() == original
+
+    # This is the existing trusted supervisor release, not a timed lease reap.
+    reopened.release(reservation.reservation_id)
+    successor = DurableResourceLedger(
+        identity={**identity, "activation_id": "b"}, **options,
+    )
+    assert successor.reserve("p1", ResourceAmount(100)).amount == reservation.amount
+
+
+@pytest.mark.parametrize("ttl", [True, None, "1", 0, -1, float("nan"), float("inf")])
+def test_durable_ledger_rejects_invalid_ttl_before_creating_state(
+    tmp_path: Path, ttl: object,
+) -> None:
+    """Invalid journal metadata must not create a silently droppable charge."""
+    path = tmp_path / "reservations.json"
+    with pytest.raises(ValueError, match="TTL"):
+        DurableResourceLedger(
+            runtime_limit=ResourceAmount(100),
+            host_free_guard=ResourceAmount(0, 0, 0, 0),
+            profile_limits={"p1": ResourceAmount(100)},
+            state_path=path, identity={"profile_id": "p1"},
+            lease_ttl_seconds=ttl,
+        )
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("reservation_id", ""), ("profile_id", ""),
+    ("expires_at", None), ("expires_at", True), ("expires_at", float("nan")),
+])
+def test_durable_ledger_never_skips_a_malformed_reservation(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    """Corrupt metadata cannot erase an otherwise outstanding resource charge."""
+    path = tmp_path / "reservations.json"
+    options = {
+        "runtime_limit": ResourceAmount(100),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100)},
+        "state_path": path, "identity": {"profile_id": "p1"},
+    }
+    ledger = DurableResourceLedger(**options)
+    ledger.reserve("p1", ResourceAmount(100))
+    saved = json.loads(path.read_text())
+    saved["reservations"][0][field] = value
+    path.write_text(json.dumps(saved))
+    with pytest.raises(AdmissionError, match="ledger is invalid"):
+        DurableResourceLedger(**options)
 
 
 def test_ledger_rejects_before_crossing_host_guard() -> None:

@@ -228,6 +228,12 @@ class _MediaBackend:
         self.target_domain_resolver: Any = None
         self.calls: list[tuple[str, str]] = []
 
+    def bind_saved_capability_bridge(self, bridge: Any, preflight: Any) -> None:
+        """Capture the production interface without emulating saved execution."""
+
+        self.saved_bridge = bridge
+        self.saved_preflight = preflight
+
     def bind_artifact_resolver(self, resolver: Any) -> None:
         """Accept the activation-bound artifact resolver used by Production."""
 
@@ -305,6 +311,12 @@ class _PackRouteValidationBackend:
 
     def supports(self, binding: Any) -> bool:
         return binding.artifact.pack_id == self._pack_id
+
+    def bind_saved_capability_bridge(self, bridge: Any, preflight: Any) -> None:
+        """Accept capture wiring; this backend rejects every invocation below."""
+
+        self.saved_bridge = bridge
+        self.saved_preflight = preflight
 
     def bind_artifact_resolver(self, resolver: Any) -> None:
         del resolver

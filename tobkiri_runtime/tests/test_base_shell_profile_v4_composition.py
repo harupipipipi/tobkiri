@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from tobkiri_protocol.canonical import canonical_digest
-from tobkiri_protocol.composition import (
+from tobkiri_protocol import (
     CompositionError,
     catalog_payload,
     compose_runtime_profile,

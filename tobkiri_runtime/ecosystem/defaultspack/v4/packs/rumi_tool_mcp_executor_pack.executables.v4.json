@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_tool_mcp_executor_pack",
-  "source_identity": "sha256:a36b2a208bde192e99cb8e601aa23086747200d549e96b5524209bdac167d285",
+  "source_identity": "sha256:e2d2ee8a6aaf286c7124f1c2fd8f4761971b005f3a37a6582016b56b1bc7f2cd",
   "variants": [
     {
       "variant_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp.python",
       "function_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
       "implementation_path": "runtime/executor.py",
-      "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+      "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:a9e04ea15c982150a1bd0aae79ca445edd43beb125c890dbc6e7cc215df6f708",
-  "catalog_digest": "sha256:af1efbb431c975be77fd6277ca2f421494f5ba9cf0826dc94715d3a4c905a4a1"
+  "materialization_catalog_digest": "sha256:0cd90f2bdeec763c3074c8d6c9928c76b9b0c77328ea6ff4d999102f85770068",
+  "catalog_digest": "sha256:04aee9c8864a5b7ef011538fe8a2723c89f49298a6f6e6eff604d3dc8b933279"
 }

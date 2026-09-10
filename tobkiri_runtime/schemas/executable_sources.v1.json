@@ -327,7 +327,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+      "implementation_digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
       "implementation_path": "runtime/saved_conversation.py",
       "input_schema": {
         "$defs": {
@@ -403,7 +403,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+          "implementation_digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
           "implementation_path": "runtime/saved_conversation.py",
           "input_schema": {
             "$defs": {
@@ -480,6 +480,2161 @@
         }
       ],
       "variant_id": "defaultspack.conversation.saved.python"
+    },
+    "mcp.connection.call.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.call.service",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.call",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.call",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.call",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.call",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.call.service.python"
+    },
+    "mcp.connection.connect.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.connect.service",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.connect",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.connect",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.connect",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.connect",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.connect.service.python"
+    },
+    "mcp.connection.disconnect.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.disconnect.service",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.disconnect",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.disconnect",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.disconnect",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.disconnect",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.disconnect.service.python"
+    },
+    "mcp.connection.list.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.list.service",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.list",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.list",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.list",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.list",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.list.service.python"
+    },
+    "mcp.connection.prepare.service": {
+      "contract_id": "tobkiri.service.mcp.connection.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "mcp.connection.prepare.service",
+      "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_tools": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "config": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "items": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "cwd": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "env": {
+                    "additionalProperties": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "maxProperties": 128,
+                    "type": "object"
+                  },
+                  "transport": {
+                    "const": "stdio"
+                  }
+                },
+                "required": [
+                  "transport",
+                  "command",
+                  "env",
+                  "cwd"
+                ],
+                "type": "object"
+              },
+              "server_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "server_id",
+              "config",
+              "allowed_tools"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "plan": {
+                "type": "object"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "request",
+              "plan"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              },
+              "tool": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id",
+              "tool",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "connection_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "connection_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "maxProperties": 0,
+            "type": "object"
+          }
+        ]
+      },
+      "operation_id": "mcp.connection.prepare",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "mcp.connection.prepare",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_tools": {
+                    "items": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "config": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "items": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxItems": 256,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "cwd": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "env": {
+                        "additionalProperties": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "maxProperties": 128,
+                        "type": "object"
+                      },
+                      "transport": {
+                        "const": "stdio"
+                      }
+                    },
+                    "required": [
+                      "transport",
+                      "command",
+                      "env",
+                      "cwd"
+                    ],
+                    "type": "object"
+                  },
+                  "server_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "server_id",
+                  "config",
+                  "allowed_tools"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "plan": {
+                    "type": "object"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "allowed_tools": {
+                        "items": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "config": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "command": {
+                            "items": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxItems": 256,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "cwd": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "env": {
+                            "additionalProperties": {
+                              "maxLength": 16384,
+                              "type": "string"
+                            },
+                            "maxProperties": 128,
+                            "type": "object"
+                          },
+                          "transport": {
+                            "const": "stdio"
+                          }
+                        },
+                        "required": [
+                          "transport",
+                          "command",
+                          "env",
+                          "cwd"
+                        ],
+                        "type": "object"
+                      },
+                      "server_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "server_id",
+                      "config",
+                      "allowed_tools"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "request",
+                  "plan"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "arguments": {
+                    "type": "object"
+                  },
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  },
+                  "tool": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id",
+                  "tool",
+                  "arguments"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "connection_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "connection_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "maxProperties": 0,
+                "type": "object"
+              }
+            ]
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "mcp.connection.prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_mcp_connection_pack",
+      "pack_id": "tobkiri_mcp_connection_pack",
+      "source": [
+        {
+          "entrypoint_id": "mcp.connection.prepare",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_mcp_connection_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "mcp.connection.prepare.service.python"
     },
     "rumi_agent_runtime_service_pack.agent-runtime.control": {
       "contract_id": "tobkiri.action.agent.run.v1",
@@ -807,7 +2962,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-      "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
       "implementation_path": "runtime/preflight.py",
       "input_schema": {
         "additionalProperties": false,
@@ -858,7 +3013,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+          "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
           "implementation_path": "runtime/preflight.py",
           "input_schema": {
             "additionalProperties": false,
@@ -3923,7 +6078,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_default_tool_projection_pack.default-tools.migration-source",
-      "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
       "implementation_path": "runtime/projection.py",
       "input_schema": {
         "type": "object"
@@ -3937,7 +6092,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+          "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
           "implementation_path": "runtime/projection.py",
           "input_schema": {
             "type": "object"
@@ -3976,7 +6131,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat",
-      "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+      "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
       "implementation_path": "runtime/projection.py",
       "input_schema": {
         "type": "object"
@@ -3990,7 +6145,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:e42979a24229b736aa5cc59f124bc2b0878f599d35134899de6c2670f0b9e9e9",
+          "implementation_digest": "sha256:096c81bee83274703d22b6fbcfdd747b35d0fa7afe2c8745d19f814745d62e6d",
           "implementation_path": "runtime/projection.py",
           "input_schema": {
             "type": "object"
@@ -4020,6 +6175,57 @@
         }
       ],
       "variant_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat.python"
+    },
+    "rumi_default_tools_pack.calculator": {
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_default_tools_pack.calculator",
+      "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "implementation_path": "runtime/calculator.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_default_tools_pack.calculator-evaluate",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+          "implementation_path": "runtime/calculator.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_default_tools_pack",
+      "pack_id": "rumi_default_tools_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_default_tools_pack.calculator-evaluate",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_default_tools_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_default_tools_pack.calculator.python"
     },
     "rumi_desktop_host_service_pack.desktop-host.control": {
       "contract_id": "tobkiri.action.desktop.host.v1",
@@ -4943,7 +7149,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-      "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+      "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -4957,7 +7163,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -4996,7 +7202,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-      "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+      "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -5009,7 +7215,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5029,7 +7235,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5049,7 +7255,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5069,7 +7275,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5124,7 +7330,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+      "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -5138,7 +7344,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:040b023ada0db0d7ddbb39e17e625f24831bb141a7001a6bc93b80c5bd3823ef",
+          "implementation_digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -5864,7 +8070,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_mcp_gateway_pack.mcp-gateway.call",
-      "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
       "implementation_path": "runtime/gateway.py",
       "input_schema": {
         "type": "object"
@@ -5878,7 +8084,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+          "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
           "implementation_path": "runtime/gateway.py",
           "input_schema": {
             "type": "object"
@@ -9295,7 +11501,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
-      "implementation_digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b",
+      "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
       "implementation_path": "runtime/broker.py",
       "input_schema": {
         "type": "object"
@@ -9309,7 +11515,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b",
+          "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
           "implementation_path": "runtime/broker.py",
           "input_schema": {
             "type": "object"
@@ -9507,7 +11713,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
-      "implementation_digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71",
+      "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
       "implementation_path": "runtime/executor.py",
       "input_schema": {
         "type": "object"
@@ -9521,7 +11727,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71",
+          "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
           "implementation_path": "runtime/executor.py",
           "input_schema": {
             "type": "object"
@@ -9560,7 +11766,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
-      "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+      "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
       "implementation_path": "runtime/executor.py",
       "input_schema": {
         "type": "object"
@@ -9574,7 +11780,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:e1df1c036012f6c8f0639b6b2851eee41787b56f4b07c4ec0d2244951fb48cbc",
+          "implementation_digest": "sha256:1ba281d8b5a5813dbb7578e0156beeb086f96718b8e670e9da8f9c7096cbdd20",
           "implementation_path": "runtime/executor.py",
           "input_schema": {
             "type": "object"
@@ -9666,8 +11872,8 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_registry_pack.tool-registry.definition",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-      "implementation_path": "runtime/registry.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
       },
@@ -9680,8 +11886,8 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-          "implementation_path": "runtime/registry.py",
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+          "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
           },
@@ -9707,6 +11913,12 @@
           "module": "ecosystem.rumi_tool_registry_pack.runtime.registry",
           "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json",
           "symbol": "create_resource_operation"
+        },
+        {
+          "kind": "explicit-implementation-adapter",
+          "legacy_implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+          "legacy_implementation_path": "runtime/registry.py",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_tool_registry_pack.tool-registry.definition.python"
@@ -9719,8 +11931,8 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_registry_pack.tool-registry.manage",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-      "implementation_path": "runtime/registry.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
       },
@@ -9733,8 +11945,8 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-          "implementation_path": "runtime/registry.py",
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+          "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
           },
@@ -9760,6 +11972,12 @@
           "module": "ecosystem.rumi_tool_registry_pack.runtime.registry",
           "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json",
           "symbol": "create_manage_operation"
+        },
+        {
+          "kind": "explicit-implementation-adapter",
+          "legacy_implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+          "legacy_implementation_path": "runtime/registry.py",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_tool_registry_pack.tool-registry.manage.python"
@@ -9772,8 +11990,8 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
-      "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-      "implementation_path": "runtime/registry.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
       },
@@ -9786,8 +12004,8 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:f9a30474f3e66a67858fa88bbce1d81e044bf542908cc0949c1c08708f906824",
-          "implementation_path": "runtime/registry.py",
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+          "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
           },
@@ -9813,6 +12031,12 @@
           "module": "ecosystem.rumi_tool_registry_pack.runtime.registry",
           "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json",
           "symbol": "create_migrate_operation"
+        },
+        {
+          "kind": "explicit-implementation-adapter",
+          "legacy_implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+          "legacy_implementation_path": "runtime/registry.py",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
       ],
       "variant_id": "rumi_tool_registry_pack.tool-registry.migrate.python"
@@ -9878,7 +12102,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_result_pack.tool-result.normalize",
-      "implementation_digest": "sha256:03f6e939e91980acd639db595709ec032bc901b84394dedd31e28c1275c40cf0",
+      "implementation_digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0",
       "implementation_path": "runtime/normalizer.py",
       "input_schema": {
         "type": "object"
@@ -9892,7 +12116,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:03f6e939e91980acd639db595709ec032bc901b84394dedd31e28c1275c40cf0",
+          "implementation_digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0",
           "implementation_path": "runtime/normalizer.py",
           "input_schema": {
             "type": "object"
@@ -9984,7 +12208,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_validation_pack.tool-validation.arguments",
-      "implementation_digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+      "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
       "implementation_path": "runtime/validator.py",
       "input_schema": {
         "type": "object"
@@ -9998,7 +12222,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+          "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
           "implementation_path": "runtime/validator.py",
           "input_schema": {
             "type": "object"
@@ -10037,7 +12261,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -10051,7 +12275,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+          "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -10081,7 +12305,7 @@
         },
         {
           "kind": "explicit-implementation-adapter",
-          "legacy_implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+          "legacy_implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
           "legacy_implementation_path": "runtime/turns.py",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
@@ -10096,7 +12320,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -10110,7 +12334,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+          "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -10140,7 +12364,7 @@
         },
         {
           "kind": "explicit-implementation-adapter",
-          "legacy_implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+          "legacy_implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
           "legacy_implementation_path": "runtime/turns.py",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
@@ -10168,7 +12392,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -10210,7 +12434,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+          "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -10262,7 +12486,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -10276,7 +12500,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+          "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -10306,7 +12530,7 @@
         },
         {
           "kind": "explicit-implementation-adapter",
-          "legacy_implementation_digest": "sha256:cdae847b615824863fdca69fd1b232668da4e17e7060e174443a9bf1a53349f6",
+          "legacy_implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
           "legacy_implementation_path": "runtime/turns.py",
           "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
         }
@@ -10334,7 +12558,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
-      "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "$defs": {
@@ -10410,7 +12634,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+          "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "$defs": {
@@ -10487,6 +12711,147 @@
         }
       ],
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.saved.python"
+    },
+    "rumi_turn_runtime_pack.turn-runtime.stop": {
+      "contract_id": "tobkiri.action.turn.stop.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "turn_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            },
+            "pattern": "^[A-Za-z0-9]",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "rumi_turn_runtime_pack.turn-stop",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_turn_runtime_pack.turn-stop",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "turn_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "not": {
+                  "pattern": "[^A-Za-z0-9._:-]"
+                },
+                "pattern": "^[A-Za-z0-9]",
+                "type": "string"
+              }
+            },
+            "required": [
+              "turn_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_turn_runtime_pack.turn-stop",
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "const": "cancellation_requested"
+              },
+              "stopped": {
+                "const": false
+              },
+              "turn_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "turn_id",
+              "stopped"
+            ],
+            "type": "object"
+          },
+          "pack_source_id": "rumi_turn_runtime_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "cancellation_requested"
+          },
+          "stopped": {
+            "const": false
+          },
+          "turn_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "turn_id",
+          "stopped"
+        ],
+        "type": "object"
+      },
+      "owner": "rumi_turn_runtime_pack",
+      "pack_id": "rumi_turn_runtime_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_turn_runtime_pack.turn-stop",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_turn_runtime_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.stop.python"
     },
     "rumi_workspace_mount_pack.workspace-mount.manage": {
       "contract_id": "tobkiri.action.workspace.mount.v1",
@@ -12204,12 +14569,15 @@
   "source": {
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
-    "input_count": 197,
-    "input_digest": "sha256:194313eafeb1e5a004a3c11e3d04c6548f815ca4347212a2dad4a416897c2a31",
+    "input_count": 200,
+    "input_digest": "sha256:b7ec8a9294b72e256cc31e7afc37df2970808c6fdbc1ab5626d30a6a402d9b86",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/message_host.py",
+      "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py",
+      "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py",
+      "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py",
@@ -12422,17 +14790,32 @@
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/message_host.py"
       },
       {
-        "digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+        "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+        "kind": "explicit-implementation-adapter",
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py"
+      },
+      {
+        "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+        "kind": "explicit-implementation-adapter",
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py"
+      },
+      {
+        "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+        "kind": "explicit-implementation-adapter",
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py"
+      },
+      {
+        "digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+        "digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:7c7d2388ceea4e5ddf8664b1a70cc418f53190c27fa0de8acdc750f4e713531e",
+        "digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
@@ -12587,7 +14970,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_data_analysis_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:dba1e0d5467cea33ccb37fe0245fcdf19ca4930e014c1046992d9cd2e57180e4",
+        "digest": "sha256:de21620bb07e4abea1f767684182bbe318d4dad26a7b3ce0e6f0c1c7efcfa65d",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/artifact-manifest.json"
       },
@@ -12642,7 +15025,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:5e22099b13eafd5826fe0360bc3f0c3fb072474a37b872428ed7b198efcb2fd6",
+        "digest": "sha256:6fec15f0c3dcb910622a093c3740c34fbd50f94e00426910d9f4e6ceb3385f22",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-manifest.json"
       },
@@ -12692,7 +15075,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_line_connector_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:27d3ad435cc7368f161393aacc7d6d34eb054bd011721f7a96ebe1fcd2828f75",
+        "digest": "sha256:5bb93c36859b2746213e2e7e6698bc151475a65d9c202c6dac06c9e99ed2f501",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/artifact-manifest.json"
       },
@@ -12842,7 +15225,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_authoring_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:4fc9a408302b2124b977078ebbe70abb13bf81857ce154cce6bc252c9d9f8126",
+        "digest": "sha256:14d8b9f7e44bf5e0c541174282b4e1ba4c3cf748963c53ca7ab591b8bb02fcda",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/artifact-manifest.json"
       },
@@ -12862,12 +15245,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:73f7f02b71aa4b19c5ac19a35b159184b46ec2b5284f3c0c8e42f85195d77af1",
+        "digest": "sha256:96c12b8f7e44a44231aa68c77077f40d40236fca8d1fbd11ddb16e1864ae13f9",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:5c3ade7f2f98e1a652e38ca8738a5683f979687173a5bae12b94f9238e13d0cf",
+        "digest": "sha256:e3e049fc846f0780ff364d2bf6d1cd15fe2d0c4db805ce807a71473dd6594ddc",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/artifact-manifest.json"
       },
@@ -12877,7 +15260,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_policy_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:caff1d99b89277f67e83d0e3cfb8cf3c568f2c262cf32e9cae4bd1e3e9bc4fc1",
+        "digest": "sha256:51aa69e3496c6c2b19b1279c6dfc1d43c46d60a6ea1c320276a968dc845fb4ee",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-manifest.json"
       },
@@ -12887,7 +15270,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_remote_executor_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:1721b2382f411ca698d69093ec321a22f480a0edad5c1992702ab76a0ac6757f",
+        "digest": "sha256:f77d5dc6f1eb09189967bb007fb2844efd4bbd08583c77e3fe01273e6710cb09",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/artifact-manifest.json"
       },
@@ -12897,12 +15280,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_sandbox_executor_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:97370c6481222422c52f790f0d402c638a28a952cd6a9f440f357264c848768d",
+        "digest": "sha256:7552c60c94227335e8760d0f0de29e223e91f4a7d8ef22d6d25d9330649ee965",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:cec23c140fb19804050b520d736f4762957128703ff1db762ef7bc90ae1fce61",
+        "digest": "sha256:ee2279ae2a1052d8e6284ba47e4cb744fbce00579e70b0a77870022bbc576f6f",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/artifact-manifest.json"
       },
@@ -12912,7 +15295,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:17d751da0208ba1131d9d8b0f3be73a5df902898454e4dac176043f389bcbf57",
+        "digest": "sha256:8ba5f82f71819e8e23130edc440ecc3e24677663f05866cb78ed3134c17e171a",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -12927,7 +15310,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:9f793de6a579fadd35d557fc4df7cfd89b89257481c243803705b3205f7195d5",
+        "digest": "sha256:ebcf8d7d91afc528c594d20ba24e7c58a48fbf6443d9410b170383a9f4229fbd",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json"
       },
@@ -13047,7 +15430,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:97027451963895bbc4c94c653dd98f515416dbf8880c96b513f560fdc8bb25bd",
+        "digest": "sha256:060fcbe3d00ce9eebffaf6ed2b8bf39a401fbcafb6abcd518ad956c711daaf00",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/rumi.pack.v3.json"
       },
@@ -13067,7 +15450,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_data_analysis_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:3c0337a2959a9b482379ab5a4e9523f6ecf7f6e42157a50fed00e868d94ecd96",
+        "digest": "sha256:8c5a87c44e1ef2d146bca754d61a42bed910881a273bb001a68ef7d506704540",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json"
       },
@@ -13122,7 +15505,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:cd9b1207a1ebae3482471e04166f0df346102f5b880823f4931fd0d190bfba04",
+        "digest": "sha256:03408ff08d7e520ddc7135024dbc38dc3b218ed313ba83f3d2aa66d523540dab",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/rumi.pack.v3.json"
       },
@@ -13172,7 +15555,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_line_connector_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:886eb556c7414f28a85b3a7dda1cbb4365e0e40a4723112d1ba7611a03688f3c",
+        "digest": "sha256:582ff500c026cb59696f2347e898c62b970e255da4b14d95eb6a2b7462c1dbb9",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/rumi.pack.v3.json"
       },
@@ -13322,7 +15705,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_authoring_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:58f9790c928d8c227ecf8945d1113a6a9686ca38231728db7920711b21ac8d83",
+        "digest": "sha256:32fe98e1cd444fd65acefc55d84607d07c3398074ba697f4d09c7590f7b8fb20",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/rumi.pack.v3.json"
       },
@@ -13342,12 +15725,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d61a70af9e46a4b4a557901c8e9c11bafcafe883ed4b2cdd4bfe44a57e9c8dd8",
+        "digest": "sha256:17791ae18b46531ed106153643576b70a4ebe3693faede010ae04a8e0f258f51",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:2db2baed54d54fd3860964b8623a28d7c350887328d5bae1d7b273774d2da01f",
+        "digest": "sha256:8d44b18571237edff6a57d15cf004544a5817a06ec0323ee5cdcc6696309efe0",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/rumi.pack.v3.json"
       },
@@ -13357,7 +15740,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_policy_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d8d978773266c0bbc0055eba4dee5208a70af2cc1160da13d8cf5264591c7e98",
+        "digest": "sha256:230bc3aebfe7bc0afe5b98607cb9fca8fd8aab6a7329b6ccc532d98c721e6410",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json"
       },
@@ -13367,7 +15750,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_remote_executor_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d291739918f92bd254f95e682a502678fc21180edc98f6409af5dba502e15206",
+        "digest": "sha256:ca88d30338007cdebd906d1dd77d19601c45efbc0e3f2cf1198fa9ffba5d662b",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/rumi.pack.v3.json"
       },
@@ -13377,12 +15760,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_sandbox_executor_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:2108dec3a87430074edfcaa56ae5b5f5e5665701986d3a8018d01a4c6cb8ac2f",
+        "digest": "sha256:1078687fd0f816c59f5bceff75da803878fd3c0ac830d363d26d8d8abb5cd13f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:142afdf3cf943d06f7a7bba890aa2953d0b8c696cc28de648e910833e5554274",
+        "digest": "sha256:df83cb49288daced28a31bdf37ec181efce9ec84b2e9f6ca25eefa551ad3107b",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },

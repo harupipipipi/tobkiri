@@ -16,8 +16,9 @@ from core_runtime.global_contracts.http_contract_dispatch import (
     contract_binding_map,
 )
 
-from tobkiri_protocol.canonical import strict_loads
+from tobkiri_protocol.canonical import canonical_json, strict_loads
 from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.frontend_entries import validate_frontend_entries
 from tobkiri_protocol.ids import validate_artifact_digest, validate_canonical_id
 
 CONTRACT_ROUTE_PREFIX = "/api/contracts/"
@@ -31,6 +32,7 @@ _MAP_CONTEXT_FIELDS = frozenset(
 _MAP_ARTIFACT_FIELDS = frozenset({"artifact_path", "artifact_digest"})
 _MAP_ALLOWED_FIELDS = (
     _MAP_BASE_FIELDS | _MAP_IDENTITY_FIELDS | _MAP_CONTEXT_FIELDS | _MAP_ARTIFACT_FIELDS
+    | {"frontend"}
 )
 _CONTRACT_CONTEXT_FIELDS = (
     "profile_id",
@@ -336,6 +338,13 @@ def load_frontend_contract_bindings(
         raise _invalid_map("Frontend Contract Map fields are invalid")
     if document.get("schema") != "io.tobkiri.frontend-contract-map.v4":
         raise _invalid_map("Frontend Contract Map schema is invalid")
+    try:
+        frontend_entries = (
+            canonical_json(validate_frontend_entries(document["frontend"]))
+            if "frontend" in document else b""
+        )
+    except ProtocolError as error:
+        raise _invalid_map("Frontend entry declarations are invalid") from error
     namespace, owner = _application_map_identity(
         document,
         application_id=selected_application_id,
@@ -429,6 +438,7 @@ def load_frontend_contract_bindings(
                 route_namespace=namespace,
                 artifact_path=artifact_path.as_posix(),
                 artifact_digest=str(artifact["digest"]),
+                frontend_entries=frontend_entries,
                 **context,
             )
         )

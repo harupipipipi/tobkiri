@@ -124,6 +124,20 @@ class ClipboardTransportV4:
                     record.expires_at is not None and record.expires_at <= now
                 ):
                     raise PermissionError("clipboard authority record expired")
+            trust = self._store.get_host_extension_trust(lease.host_extension_id)
+            if (
+                trust is None
+                or trust.trust_id != lease.host_extension_id
+                or trust.revoked
+                or trust.security_epoch != lease.security_epoch
+                or trust.package_kind != "host_extension"
+                or trust.parent_artifact_digest != lease.target.parent_artifact_digest
+                or trust.publisher_lineage != lease.target_publisher_lineage
+                or lease.target.principal_id not in trust.provider_principal_ids
+                or trust.valid_from > now
+                or (trust.expires_at is not None and trust.expires_at <= now)
+            ):
+                raise PermissionError("clipboard Host Extension trust is unavailable")
             for domain_id, boot_epoch, principal in (
                 (lease.caller_domain_id, lease.caller_boot_epoch, lease.caller),
                 (lease.target_domain_id, lease.target_boot_epoch, lease.target),

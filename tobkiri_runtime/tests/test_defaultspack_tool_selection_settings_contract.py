@@ -528,7 +528,13 @@ def test_profile_write_and_high_risk_flags_do_not_escalate_read_tools():
 def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_memo(monkeypatch):
     from domain.tool import executor as executor_mod
 
+    owner = object()
+    received_owners = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            received_owners.append(settings_owner)
+
         def resolve(self, tool, *, context=None):
             return {
                 "tool_id": "memo_note_upsert",
@@ -539,7 +545,7 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
                 "sources": [{"source": "tool:memo_note_upsert", "value": "block"}],
             }
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
     monkeypatch.setattr(executor_mod, "_context_has_tool_server_approval", lambda context: True)
     monkeypatch.setattr(executor_mod, "is_safe_first_party_memo_tool", lambda tool: True)
 
@@ -549,8 +555,10 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
         {"note": "x"},
         {},
         {"full_access": True},
+        settings_owner=owner,
     )
 
+    assert received_owners == [owner]
     assert response["is_error"] is True
     assert response["rejected_by_tool_permission_policy"] is True
     assert response["tool_permission_policy_decision"]["status"] == "denied"
@@ -559,7 +567,13 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
 def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypatch):
     from domain.tool import executor as executor_mod
 
+    owner = object()
+    received_owners = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            received_owners.append(settings_owner)
+
         def resolve(self, tool, *, context=None):
             return {
                 "tool_id": "coding_file_write",
@@ -570,7 +584,7 @@ def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypat
                 "sources": [{"source": "tool:coding_file_write", "value": "confirm"}],
             }
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
     monkeypatch.setattr(executor_mod, "_context_has_tool_server_approval", lambda context: True)
 
     _, response = executor_mod._preflight_frontend_tool_permission(
@@ -579,8 +593,10 @@ def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypat
         {"path": "app.py", "content": "x"},
         {},
         {},
+        settings_owner=owner,
     )
 
+    assert received_owners == [owner]
     assert response is None
 
 
@@ -590,11 +606,17 @@ def test_frontend_settings_resolver_failure_fails_closed_for_write_tools(monkeyp
 
     approval.reset_approval_state_for_tests()
 
+    resolved_tools = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            pass
+
         def resolve(self, tool, *, context=None):
+            resolved_tools.append(tool["tool_id"])
             raise RuntimeError("settings unavailable")
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
 
     _, write_response = executor_mod._preflight_frontend_tool_permission(
         "coding_file_write",
@@ -611,6 +633,7 @@ def test_frontend_settings_resolver_failure_fails_closed_for_write_tools(monkeyp
         {},
     )
 
+    assert resolved_tools == ["coding_file_write", "coding_file_read"]
     assert write_response["widget"]["type"] == "approval_request"
     assert write_response["widget"]["approval_required"] is True
     assert read_response is None

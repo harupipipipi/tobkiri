@@ -38,6 +38,7 @@ from tobkiri_host.ports import (
     InteractiveApprovalPort,
     InteractiveApprovalStatus,
     InteractiveEffectOwnerQuery,
+    InteractiveEffectLookupQuery,
     InteractiveEffectPort,
     InteractiveEffectPrepareCommand,
     InteractiveEffectStatus,
@@ -700,8 +701,23 @@ class InteractiveEffectCoordinatorBridgeV4:
         _reject_v4_client_authority(payload)
         phase = payload.get("phase")
         if phase == "prepare":
-            _require_exact_payload_keys(payload, {"phase", "effect_kind", "request"})
+            keys = {"phase", "effect_kind", "request"}
+            if "correlation_id" in payload:
+                keys.add("correlation_id")
+            _require_exact_payload_keys(payload, keys)
             return self._prepare(envelope, payload, invocation)
+        if phase == "lookup":
+            _require_exact_payload_keys(payload, {"phase", "effect_kind", "correlation_id"})
+            return _redacted_effect_status(self._effect_port.find_interactive_effect(
+                InteractiveEffectLookupQuery(
+                    context=envelope.context,
+                    coordinator_principal=envelope.target_principal,
+                    presentation_owner_principal_id=invocation.presentation_owner_principal_id,
+                    presentation_owner_session_id=invocation.presentation_owner_session_id,
+                    effect_kind=_payload_id(payload, "effect_kind"),
+                    correlation_id=_payload_id(payload, "correlation_id"),
+                )
+            ))
         if phase in {"resume", "status", "cancel"}:
             _require_exact_payload_keys(payload, {"phase", "effect_id"})
             return self._manage(envelope, str(phase), payload, invocation)
@@ -747,6 +763,10 @@ class InteractiveEffectCoordinatorBridgeV4:
                         effect_kind=effect_kind,
                         payload=dict(request),
                         prepared_result=dict(prepared_result),
+                        correlation_id=(
+                            _payload_id(payload, "correlation_id")
+                            if "correlation_id" in payload else None
+                        ),
                     )
                 )
             )

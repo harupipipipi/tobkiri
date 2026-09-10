@@ -6,6 +6,7 @@ import math
 import os
 import selectors
 import subprocess
+import threading
 import time
 
 
@@ -17,6 +18,7 @@ def communicate_bounded(
     stderr_limit: int,
     timeout: float,
     deadline: float | None = None,
+    cancelled: threading.Event | None = None,
 ) -> bytes:
     """Drain both pipes within one deadline without buffering unbounded output.
 
@@ -55,10 +57,13 @@ def communicate_bounded(
                 selector.register(stream, selectors.EVENT_WRITE if name == "stdin"
                                   else selectors.EVENT_READ, name)
             while selector.get_map():
+                if cancelled is not None and cancelled.is_set():
+                    raise InterruptedError("child pipe exchange cancelled")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("child pipe exchange timed out")
-                for key, _ in selector.select(remaining):
+                interval = remaining if cancelled is None else min(0.05, remaining)
+                for key, _ in selector.select(interval):
                     if key.data == "stdin":
                         try:
                             sent += os.write(key.fd, payload[sent:sent + 65536])
@@ -86,13 +91,18 @@ def communicate_bounded(
                         output.extend(chunk)
                     else:
                         stderr_bytes += len(chunk)
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("child pipe exchange timed out")
-        try:
-            process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            raise TimeoutError("child pipe exchange timed out") from None
+        while True:
+            if cancelled is not None and cancelled.is_set():
+                raise InterruptedError("child pipe exchange cancelled")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("child pipe exchange timed out")
+            try:
+                process.wait(timeout=remaining if cancelled is None else min(0.05, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                if cancelled is None:
+                    raise TimeoutError("child pipe exchange timed out") from None
         if time.monotonic() >= deadline:
             raise TimeoutError("child pipe exchange timed out")
         return bytes(output)

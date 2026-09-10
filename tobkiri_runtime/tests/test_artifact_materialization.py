@@ -173,9 +173,9 @@ def test_capture_rejects_pack_root_swap(
     original_reader = materialization_module._read_regular_file
     swapped = False
 
-    def swap_after_first_read(descriptor: int, relative: str):
+    def swap_after_first_read(descriptor: int, relative: str, **kwargs):
         nonlocal swapped
-        result = original_reader(descriptor, relative)
+        result = original_reader(descriptor, relative, **kwargs)
         if not swapped:
             swapped = True
             root.rename(tmp_path / "original")
@@ -405,8 +405,11 @@ def test_direct_vz_seed_materializes_before_the_first_real_invoke(
     )
 
     assert result["payload"] == {
-        "operation": "seed-pack.inspect",
-        "message": "seeded before boot",
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation": "seed-pack.inspect",
+            "message": "seeded before boot",
+        },
     }
 
 
@@ -711,6 +714,9 @@ def test_guest_supervisor_materializes_and_invokes_the_exact_python_abi(
     )
     assert result["ok"] is True
     assert result["payload"] == {
-        "operation": "example-pack.inspect",
-        "message": "inside guest",
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation": "example-pack.inspect",
+            "message": "inside guest",
+        },
     }

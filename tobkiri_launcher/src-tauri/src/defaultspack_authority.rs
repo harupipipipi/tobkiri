@@ -205,6 +205,7 @@ pub(crate) struct ApplicationLaunch {
     pub function_id: String,
     pub provider_id: String,
     pub contract_namespace: String,
+    pub frontend_entry: crate::frontend_entry::VerifiedFrontendEntry,
 }
 
 /// Compatibility alias for the pre-generic Launcher composition root.
@@ -428,6 +429,7 @@ impl SignedApplicationResolver {
             selected.launch_contribution.as_ref(),
             &selected.application_pack_id,
             selected.application_artifact_digest.as_deref(),
+            selected.profile.get("frontend_entry_id"),
         )?;
         if let Some(previous) = previous_launch.as_ref() {
             validate_application_selector(previous, selected_variant, &application_pack)?;
@@ -1448,6 +1450,7 @@ fn validate_application_pack(
     launch_contribution: Option<&RuntimeLaunchContribution>,
     expected_application_id: &str,
     expected_artifact_digest: Option<&str>,
+    requested_frontend_entry: Option<&Value>,
 ) -> Result<ApplicationLaunch> {
     let selected_platform = format!(
         "{}-{}",
@@ -1643,6 +1646,11 @@ fn validate_application_pack(
         contract_map_path,
         contract_map_digest,
     )?;
+    let frontend_entry = crate::frontend_entry::resolve(
+        &contract_map,
+        contract_map_digest,
+        requested_frontend_entry,
+    )?;
 
     Ok(ApplicationLaunch {
         entrypoint: canonical,
@@ -1657,6 +1665,7 @@ fn validate_application_pack(
             .expect("application provider identity was checked")
             .to_owned(),
         contract_namespace: contract_map_pack_id.to_owned(),
+        frontend_entry,
     })
 }
 
@@ -2856,6 +2865,8 @@ mod tests {
                 "ecosystem/defaultspack/v4",
                 "ecosystem/defaultspack/runtime",
                 "ecosystem/defaultspack/defaultspack",
+                "ecosystem/defaultspack/tools",
+                "ecosystem/defaultspack/extensions/tools",
             ])),
             "source manifest roots drifted"
         );
@@ -3307,6 +3318,8 @@ mod tests {
             "ecosystem/defaultspack/v4",
             "ecosystem/defaultspack/runtime",
             "ecosystem/defaultspack/defaultspack",
+            "ecosystem/defaultspack/tools",
+            "ecosystem/defaultspack/extensions/tools",
         ];
         for root in roots {
             collect_source_files(&runtime_root, &runtime_root.join(root), &mut actual);
@@ -3723,16 +3736,25 @@ mod tests {
         let source_pack = source_checkout.join("tobkiri_runtime/ecosystem/defaultspack");
         let destination_pack = app_dir.join("ecosystem/defaultspack");
         copy_tree(&source_pack.join("v4"), &destination_pack.join("v4"));
+        let manifest: Value =
+            serde_json::from_slice(&fs::read(source_pack.join("pack.v4.json")).unwrap()).unwrap();
+        for artifact in manifest["artifacts"].as_array().unwrap() {
+            let relative = artifact["path"].as_str().unwrap();
+            let source = source_pack.join(relative);
+            assert_eq!(
+                format!("sha256:{}", source_file_digest(&source)),
+                artifact["digest"].as_str().unwrap(),
+                "fixture artifact must match the canonical Pack manifest: {relative}"
+            );
+            let destination = destination_pack.join(relative);
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::copy(source, destination).unwrap();
+        }
         for relative in [
             "pack.v4.json",
             "contracts.v4.json",
             "artifact-index.v4.json",
-            "executables.v4.json",
-            "host_contract_contributions.v1.json",
             "update_metadata.v1.json",
-            "runtime/application_presentation.py",
-            "runtime/conversation.py",
-            "runtime/saved_conversation.py",
             "defaultspack/desktop_app.py",
             "defaultspack/frontend_contract_map.v4.json",
         ] {

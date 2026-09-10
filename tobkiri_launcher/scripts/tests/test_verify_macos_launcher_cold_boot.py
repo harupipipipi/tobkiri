@@ -7,7 +7,10 @@ import json
 import plistlib
 import signal
 import sys
+import threading
+import time
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Mapping, Optional
 
@@ -37,6 +40,70 @@ def _load_script(module_name: str, script: Path):
 VERIFY = _load_script("verify_macos_launcher_cold_boot", SCRIPT)
 CI_ARTIFACT = _load_script("macos_ci_artifact", CI_ARTIFACT_SCRIPT)
 _TEST_EXECUTABLE_NAME = VERIFY.CI_EXECUTABLE_NAME
+
+
+@pytest.mark.parametrize(
+    "header_delay, byte_delay, budget, succeeds",
+    [(1.0, 0.0, 2.0, True), (1.0, 0.0, 0.1, False), (0.0, 0.06, 0.2, False)],
+)
+def test_http_cold_response_obeys_original_budget(
+    header_delay: float, byte_delay: float, budget: float, succeeds: bool,
+) -> None:
+    """Slow valid health can finish; a short budget or trickling body cannot."""
+    body = b'{"success":true}'
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            try:
+                time.sleep(header_delay)
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                for value in body:
+                    self.wfile.write(bytes([value]))
+                    self.wfile.flush()
+                    time.sleep(byte_delay)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def log_message(self, *_args: object) -> None:
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            started = time.monotonic()
+            response = VERIFY._http_request(
+                server.server_port, "GET", "/health", {}, b"", budget,
+            )
+            elapsed = time.monotonic() - started
+        finally:
+            server.shutdown()
+            worker.join(timeout=2)
+    if succeeds:
+        assert response is not None and response.body == body
+    else:
+        assert response is None
+        assert elapsed < budget + 0.5
+
+
+def test_http_probe_budget_shrinks_and_late_success_is_rejected() -> None:
+    """Each stage uses the remaining boot budget, including panel exchange."""
+    clock = _Clock()
+    budgets: list[float] = []
+
+    def request(_port, _method, _path, _headers, _body, budget):
+        budgets.append(budget)
+        clock.value += 29.0
+        return VERIFY.HttpResponse(200, {}, b'{"success":true}')
+
+    probes = _probes(clock, request, lambda _pid: None, [])
+    args = (probes, 31.0, 18765, "GET", "/health", {}, b"")
+    assert VERIFY._request_before_deadline(*args) is not None
+    assert VERIFY._request_before_deadline(*args) is None
+    assert VERIFY._request_before_deadline(*args) is None
+    assert budgets == [30.0, 2.0]
 
 
 @dataclass
@@ -161,7 +228,7 @@ def _authenticated_kernel_health_response(headers: object) -> object:
 def _probes(
     clock: _Clock,
     request: Callable[
-        [int, str, str, Mapping[str, str], bytes], Optional[VERIFY.HttpResponse]
+        [int, str, str, Mapping[str, str], bytes, float], Optional[VERIFY.HttpResponse]
     ],
     parent_pid: Callable[[int], Optional[int]],
     signals: list[tuple[int, signal.Signals]],
@@ -196,6 +263,7 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
         path: str,
         headers: object,
         body: bytes,
+        _timeout: float,
     ) -> Optional[object]:
         calls.append((port, method, path))
         if port == 18770 and method == "GET" and path == VERIFY.BROKER_HEALTH_PATH:
@@ -356,6 +424,7 @@ def test_cold_boot_rejects_healthy_kernel_not_owned_by_launched_app(
         path: str,
         headers: object,
         _body: bytes,
+        _timeout: float,
     ) -> Optional[object]:
         if port == 18770 and method == "GET" and path == VERIFY.BROKER_HEALTH_PATH:
             _write_embedded_broker_connection(config.app_data_dir, port)
@@ -389,6 +458,27 @@ def test_cold_boot_rejects_healthy_kernel_not_owned_by_launched_app(
 
 
 @pytest.mark.parametrize(
+    ("status", "body", "expected"),
+    [
+        (503, b"secret-response", "http_not_ok"),
+        (200, b"not-json-secret", "invalid_envelope"),
+        (200, b'{"success":true,"data":null}', "invalid_payload"),
+        (200, b'{"success":true,"data":{"panel_ready":false}}', "panel_not_ready"),
+        (200, b'{"success":true,"data":{}}', "challenge_missing"),
+        (200, b'{"success":true,"data":{"desktop_challenge_response":"private-proof"}}',
+         "challenge_mismatch"),
+    ],
+)
+def test_kernel_health_failure_reports_only_fixed_codes(
+    status: int, body: bytes, expected: str,
+) -> None:
+    response = VERIFY.HttpResponse(status, {}, body)
+    assert VERIFY._kernel_health_failure(response, "private-key", "nonce") == expected
+    assert VERIFY._kernel_is_healthy(response, "private-key", "nonce") is False
+    assert VERIFY._kernel_health_failure(None, "private-key", "nonce") == "unreachable"
+
+
+@pytest.mark.parametrize(
     "stage",
     ["bootstrap_contract", "authenticated_kernel_health", "panel_authentication"],
 )
@@ -400,7 +490,7 @@ def test_cold_boot_timeout_identifies_stage_without_response_payload(
     signals: list[tuple[int, signal.Signals]] = []
 
     def request(
-        port: int, method: str, path: str, headers: object, _body: bytes,
+        port: int, method: str, path: str, headers: object, _body: bytes, _timeout: float,
     ) -> Optional[object]:
         if path == VERIFY.BROKER_HEALTH_PATH:
             _write_embedded_broker_connection(config.app_data_dir, port)

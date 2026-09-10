@@ -33,6 +33,13 @@ def _copy_v4_pack(tmp_path: Path) -> Path:
         shutil.copy2(DEFAULTSPACK_ROOT / filename, pack_root / filename)
     shutil.copytree(DEFAULTSPACK_ROOT / "runtime", pack_root / "runtime")
     shutil.copytree(DEFAULTSPACK_ROOT / "v4", pack_root / "v4")
+    manifest = json.loads((DEFAULTSPACK_ROOT / "pack.v4.json").read_text())
+    for artifact in manifest["artifacts"]:
+        relative = artifact["path"]
+        if relative.startswith(("tools/", "extensions/tools/")):
+            target = pack_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(DEFAULTSPACK_ROOT / relative, target)
     return pack_root
 
 
@@ -72,6 +79,26 @@ def test_defaultspack_integrity_scan_strict_passes():
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "passed" in result.stdout
+
+
+def test_tool_descriptors_are_verified_as_data_sidecars(tmp_path: Path) -> None:
+    """A complete copied Pack passes; an executable role forgery is rejected."""
+    pack_root = _copy_v4_pack(tmp_path)
+    assert _v4_errors(pack_root) == []
+    index_path = pack_root / "artifact-index.v4.json"
+    index = json.loads(index_path.read_text())
+    descriptors = [
+        item for item in index["artifacts"] if item["path"].startswith(("tools/", "extensions/tools/"))
+    ]
+    assert len(descriptors) == 119
+    assert all(item["role"] == "sidecar" for item in descriptors)
+    descriptors[0]["role"] = "runtime"
+    index_path.write_text(json.dumps(index, indent=2) + "\n")
+
+    assert (
+        f"artifact index role mismatch: {descriptors[0]['path']}"
+        in _v4_errors(pack_root)
+    )
 
 
 def test_saved_turn_code_and_registered_variant_share_the_sealed_identity() -> None:

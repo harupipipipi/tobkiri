@@ -137,22 +137,42 @@ def _capability_snapshot(active_runtime, operations) -> dict[str, object]:
     profile_revision = str(active_runtime.resolved.plan["profile_revision"])
     activation_id = str(active_runtime.activation["activation_id"])
     plan_digest = str(active_runtime.resolved.plan["plan_digest"])
+    application_digest = "sha256:" + "b" * 64
     return {
         "profile_id": profile_id,
         "profile_revision": profile_revision,
         "activation_id": activation_id,
         "plan_digest": plan_digest,
+        "application_artifact_digest": application_digest,
         "catalog_hash": canonical_digest(
             {
                 "profile_id": profile_id,
                 "profile_revision": profile_revision,
                 "activation_id": activation_id,
                 "plan_digest": plan_digest,
+                "application_artifact_digest": application_digest,
                 "contributions": digest_targets,
             }
         ),
         "targets": targets,
     }
+
+
+def test_capability_invocation_hash_binds_the_application_map() -> None:
+    active = SimpleNamespace(
+        resolved=SimpleNamespace(profile={"profile_id": "test"},
+                                 plan={"profile_revision": "revision", "plan_digest": "plan"}),
+        activation={"activation_id": "activation"},
+    )
+    operation = {"owner_pack_id": "example", "contract_id": "example.read.v1",
+                 "operation_id": "read", "target_provider_id": "example.reader",
+                 "function_id": "example.reader", "artifact_digest": "sha256:" + "a" * 64}
+    snapshot = _capability_snapshot(active, [operation])
+    resolve = runtime_surface._capability_invocation_target
+    assert resolve(snapshot, active=active, operation=operation) == snapshot["targets"][0]
+    for changed in (None, "sha256:" + "c" * 64):
+        assert resolve({**snapshot, "application_artifact_digest": changed},
+                       active=active, operation=operation) is None
 
 
 @pytest.mark.parametrize("surface", ["profile", "operations"])

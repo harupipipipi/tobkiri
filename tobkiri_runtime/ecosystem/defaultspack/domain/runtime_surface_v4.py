@@ -32,6 +32,7 @@ from ecosystem.defaultspack.domain.runtime_v4 import (
     ResolvedDefaultProfile,
 )
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.ids import DIGEST_PATTERN
 from tobkiri_protocol.validation import validate_document
 
 RUNTIME_SURFACE_API_VERSION = "io.tobkiri.launcher.runtime-surface.v4"
@@ -2488,6 +2489,12 @@ def _capability_invocation_target(
 
     if value is None:
         return None
+    application_digest = value.get("application_artifact_digest")
+    if (
+        not isinstance(application_digest, str)
+        or DIGEST_PATTERN.fullmatch(application_digest) is None
+    ):
+        return None
     profile_id = str(active.resolved.profile["profile_id"])
     profile_revision = str(active.resolved.plan["profile_revision"])
     activation_id = str(active.activation["activation_id"])
@@ -2523,6 +2530,7 @@ def _capability_invocation_target(
             "profile_revision": profile_revision,
             "activation_id": activation_id,
             "plan_digest": plan_digest,
+            "application_artifact_digest": application_digest,
             "contributions": digest_targets,
         }
     )

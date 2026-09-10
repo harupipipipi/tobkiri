@@ -243,6 +243,59 @@ class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
         return ProviderOutcome(intent)
 
 
+class _SavedToolPackVmBackend(_SavedPackVmBackend):
+    """Use the real saved ledgers; replace only the sandbox process transport."""
+
+    def invoke(self, request: object) -> ProviderOutcome:
+        from ecosystem.defaultspack.runtime import saved_conversation
+        from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
+        from tobkiri_host.saved_guest_dispatch import SavedGuestTurns, INVOKE_RESULT
+        from tobkiri_host.saved_host_exchange import SavedHostExchange
+
+        assert isinstance(request, RequestEnvelope)
+        assert request.target_domain.value == self._target_domain_id
+        assert (request.contract_id, request.operation_id) == (
+            self._CONTRACT_ID, self._OPERATION_ID,
+        )
+        self._saved_preflight(request)
+        payload = {"request": dict(request.payload["request"])}
+        request_id, domain = request.context.request_id, request.target_domain.value
+        binding = canonical_digest({"request_id": request_id, "domain": domain,
+                                    "principal": request.target_principal.value})
+        transport = {
+            "request_id": request_id, "target_domain": domain,
+            "guest_artifact_identity": request.target_principal.value,
+            "request_digest": canonical_digest(payload),
+            "deadline_monotonic": str(request.deadline_monotonic), "payload": payload,
+        }
+        host = SavedHostExchange(
+            ChainIdentity(domain, request_id, binding, request.deadline_monotonic),
+            request_digest=transport["request_digest"],
+            artifact_identity=transport["guest_artifact_identity"],
+            deadline_text=transport["deadline_monotonic"],
+            chains=ContinuationChains(max_hops=20), request=payload["request"],
+        )
+        guest = SavedGuestTurns()
+
+        def execute(_transport, arguments, _deadline, guard):
+            guard()
+            outcome = saved_conversation.tobkiri_packvm_invoke("saved_complete", arguments)
+            if outcome.get("kind") == "tobkiri.packvm.continuation.intent.v2":
+                return outcome
+            return {"kind": INVOKE_RESULT, "outcome": outcome}
+
+        pending = guest.begin(transport, binding, execute)
+        for _ in range(host.maximum_hops):
+            if pending.get("state") != "pending":
+                break
+            frame = host.accept(pending["host_bridge_request"])
+            result = self._saved_callback(request, host.callback_frame(frame))
+            pending = guest.resume(domain, request_id, host.result(result), execute)
+        assert pending.get("state") != "pending"
+        host.finish(pending["outcome"])
+        return ProviderOutcome(pending["outcome"])
+
+
 def _contract(method: str, target: str) -> str:
     return "/api/contracts/defaultspack/" + quote(f"{method.upper()} {target}", safe="")
 
@@ -431,37 +484,71 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
-@pytest.mark.parametrize("lose_owner_reply", [False, True])
+@pytest.mark.parametrize(
+    "completion", ["normal", "auto", "calculator", "reply_lost", "stop_after_commit"],
+)
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lose_owner_reply: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, completion: str,
 ) -> None:
     """Real HTTP/Broker/owners; guest execution, AI and readiness are adapters."""
-    from core_runtime.bootstrap.saved_bridge import READINESS
+    from core_runtime.bootstrap.saved_bridge import DEFINITION, READINESS
     from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
 
     original = V4DispatchSession.invoke
     ai_calls = []
+    stop_receipts = []
+    lose_owner_reply = completion in {"reply_lost", "stop_after_commit"}
+    selected_tools = []
+    tool_results = []
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
         if (contract_id, operation_id) == READINESS:
+            if completion == "calculator":
+                assert payload["tool_calling"] is True
+            else:
+                assert "tool_calling" not in payload
             return {"ready": True, "model_profile_id": "model-profile-1"}
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
+            if completion == "calculator":
+                assert [item["function"]["name"] for item in payload["tools"]] == ["calculator"]
+                if len(ai_calls) == 1:
+                    return {"status": "ok", "output": "", "tool_intents": [{
+                        "operation": "calculator", "intent_id": "calc-1",
+                        "arguments": {"expression": "6*7"},
+                    }]}
+                assert payload["messages"][-1]["role"] == "tool"
+                assert "Calculated: 6*7 = 42" in payload["messages"][-1]["content"]
             return {"status": "ok", "output": "Hi"}
         result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (contract_id, operation_id) == DEFINITION and payload.get("operation") == "select":
+            selected_tools.append(result)
+        if contract_id == "tobkiri.service.tool.invoke.v1":
+            tool_results.append(result)
         if (
             lose_owner_reply and (contract_id, operation_id) == TARGETS[3]
             and payload.get("operation") == "append_saved"
             and payload["message"]["role"] == "assistant"
         ):
+            if completion == "stop_after_commit":
+                # The owner has committed, but its reply has not reached the
+                # coordinator. Stop must not erase that durable outcome.
+                stop_status, stopped, _ = _request(
+                    server, "POST", _contract("POST", "/api/chat/turn/stop"),
+                    body={"turn_id": "turn-1"},
+                    headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+                )
+                stop_receipts.append((stop_status, stopped))
             raise RuntimeError("owner reply lost after commit")
         return result
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
     servers = _captured_production_server(
-        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((
+            _SavedToolPackVmBackend() if completion in {"auto", "calculator"} else _SavedPackVmBackend(),
+        )),
     )
     server, _session, _authority = next(servers)
     try:
@@ -472,6 +559,12 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         route = _contract("POST", "/api/chat/turn")
         body = {"request": {"turn_id": "turn-1", "conversation_id": "conversation-1",
                             "conversation_revision": 1, "content": "Hello"}}
+        if completion in {"auto", "calculator"}:
+            body["request"]["tool_selection"] = {
+                "mode": "auto", "include": [],
+                "exclude": ["calculator"] if completion == "auto" else [],
+                "scope": "turn", "must_use": False,
+            }
         status, payload, _ = _request(server, "POST", route, body=body)
         assert status in {401, 403}, payload
         cookie, csrf, origin = _authenticate(server)
@@ -508,10 +601,18 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert store.path.read_bytes() == before and not ai_calls
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, payload, _ = _request(server, "POST", route, body=body, headers=headers)
-        assert status == 200, payload
-        assert payload["data"]["status"] == (
-            "reconciliation_required" if lose_owner_reply else "completed"
-        ), payload
+        if completion == "stop_after_commit":
+            assert len(stop_receipts) == 1
+            stop_status, stopped = stop_receipts[0]
+            assert stop_status == 200, stopped
+            assert stopped["data"] == {
+                "status": "cancellation_requested", "turn_id": "turn-1", "stopped": False,
+            }
+        else:
+            assert status == 200, payload
+            assert payload["data"]["status"] == (
+                "reconciliation_required" if lose_owner_reply else "completed"
+            ), payload
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, repeated, _ = _request(
             server, "POST", reconcile_route if lose_owner_reply else route,
@@ -525,7 +626,17 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         completed_turn = repeated["data"]["turn"]
         reference = completed_turn["result_reference"]
         assert reference["conversation_revision"] == 3
-        assert len(ai_calls) == 1
+        assert len(ai_calls) == (2 if completion == "calculator" else 1)
+        if completion == "calculator":
+            assert len(tool_results) == 1
+            assert tool_results[0]["tool_id"] == "calculator"
+            assert tool_results[0]["result"] == "Calculated: 6*7 = 42"
+            assert tool_results[0]["is_error"] is False
+            assert all(set(item["definitions"]) == {"calculator"} for item in selected_tools)
+        else:
+            assert "tools" not in ai_calls[0]
+        if completion == "auto":
+            assert selected_tools == [{"tools": [], "definitions": {}}] * 3
         assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello", "Hi"]
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, snapshot, _ = _request(
@@ -560,7 +671,193 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert status == 200, observed
         assert observed["data"] == completed_turn
         assert ledger.read_bytes() == ledger_before
-        assert len(ai_calls) == 1
+        conversation_before = store.path.read_bytes()
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, late_stop, _ = _request(
+            server, "POST", _contract("POST", "/api/chat/turn/stop"),
+            body={"turn_id": "turn-1"}, headers=headers,
+        )
+        assert status != 200, late_stop
+        assert store.path.read_bytes() == conversation_before
+        assert ledger.read_bytes() == ledger_before
+        assert len(ai_calls) == (2 if completion == "calculator" else 1)
+    finally:
+        servers.close()
+
+
+def test_saved_http_rejects_owned_context_before_writes_but_allows_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise owned context rejection through real HTTP, Broker and stores."""
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.runtime import V4DispatchSession
+
+    original = V4DispatchSession.invoke
+    reads, ai_calls = [], []
+
+    def invoke(self, contract_id, operation_id, payload, **kwargs):
+        if (contract_id, operation_id) == READINESS:
+            return {"ready": True, "model_profile_id": "model-profile-1"}
+        if (contract_id, operation_id) == TARGETS[2]:
+            ai_calls.append(payload)
+            return {"status": "ok", "output": "Hi"}
+        result = original(self, contract_id, operation_id, payload, **kwargs)
+        if (contract_id, operation_id) == TARGETS[0] and payload.get("operation") == "get":
+            reads.append(payload["conversation_id"])
+        return result
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    servers = _captured_production_server(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    )
+    server, _session, _authority = next(servers)
+    try:
+        store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+        cookie, csrf, origin = _authenticate(server)
+        contexts = (
+            {"metadata": {"workspaceId": "workspace-1"}},
+            {"metadata": {"shared_read_only": True}},
+            {"conversation_kind": "operations_company"},
+            {"model_reference": None},
+            {"model_reference": "   "},
+            {"title": "stale revision"},
+            {"metadata": {"icon": "chat"}},
+        )
+        for index, context in enumerate(contexts):
+            conversation_id = f"context-{index}"
+            store.create({
+                "id": conversation_id, "model_reference": "model-profile-1", **context,
+            }, expected_revision=index)
+            before = store.path.read_bytes()
+            status, payload, _ = _request(
+                server, "POST", _contract("POST", "/api/chat/turn"),
+                body={"request": {
+                    "turn_id": f"turn-{index}", "conversation_id": conversation_id,
+                    "conversation_revision": 2 if index == 5 else 1, "content": "Hello",
+                }},
+                headers={"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                         "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+            )
+            assert conversation_id in reads  # Not a missing route/auth rejection.
+            if index < len(contexts) - 1:
+                assert status != 200, payload
+                assert store.path.read_bytes() == before
+                assert not ai_calls
+                assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
+            else:
+                assert status == 200, payload
+                assert len(ai_calls) == 1
+                assert [item["content"] for item in store.get(conversation_id)["messages"]] == [
+                    "Hello", "Hi",
+                ]
+    finally:
+        servers.close()
+
+
+def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) -> None:
+    """Real HTTP/Host/Broker cancellation; the AI and guest remain explicit adapters."""
+    from core_runtime.bootstrap.saved_bridge import READINESS
+    from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
+    from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
+    from tobkiri_host.runtime import V4DispatchSession
+
+    entered, observed = threading.Event(), threading.Event()
+    signals = []
+    original = V4DispatchSession.invoke
+
+    def invoke(self, contract_id, operation_id, payload, **kwargs):
+        if (contract_id, operation_id) == READINESS:
+            return {"ready": True, "model_profile_id": "model-profile-1"}
+        if (contract_id, operation_id) == TARGETS[2]:
+            signal = kwargs["parent_cancellation"]
+            signals.append(signal)
+            entered.set()
+            if signal.wait(8):
+                observed.set()
+            raise RuntimeError("test AI stopped without a result")
+        return original(self, contract_id, operation_id, payload, **kwargs)
+
+    monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
+    servers = _captured_production_server(
+        tmp_path, monkeypatch, packvm_backends=BackendRegistry((_SavedPackVmBackend(),)),
+    )
+    server, _session, _authority = next(servers)
+    try:
+        store = ConversationStore("defaults", user_data_root=tmp_path / "user-data")
+        store.create({"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0)
+        cookie, csrf, origin = _authenticate(server)
+        foreign_cookie, foreign_csrf, _ = _authenticate(server)
+
+        def post(path, body, *, foreign=False):
+            return _request(server, "POST", _contract("POST", path), body=body, headers={
+                "Cookie": foreign_cookie if foreign else cookie, "Origin": origin,
+                "X-Rumi-CSRF": foreign_csrf if foreign else csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            })
+
+        before = store.path.read_bytes()
+        status, absent, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
+        assert status != 200, absent
+        assert store.path.read_bytes() == before
+        assert not list((tmp_path / "user-data").rglob("turns.sqlite3"))
+        body = {"request": {
+            "turn_id": "turn-stop-1", "conversation_id": "conversation-1",
+            "conversation_revision": 1, "content": "Hello",
+        }}
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            sent = pool.submit(post, "/api/chat/turn", body)
+            try:
+                assert entered.wait(8), "saved execution did not reach the AI adapter"
+                status, denied, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"}, foreign=True)
+                assert status != 200, denied
+                assert not signals[0].is_set()
+                status, invalid, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1", "approved": True})
+                assert status == 400, invalid
+                status, receipt, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
+                assert status == 200, receipt
+                assert receipt["data"] == {
+                    "status": "cancellation_requested", "turn_id": "turn-stop-1", "stopped": False,
+                }
+                assert observed.wait(2)
+                sent.result(timeout=5)
+                assert len(signals) == 1
+            finally:
+                for signal in signals:
+                    signal.set()
+        # No assistant result was produced. Reconciliation and duplicate send
+        # cannot invent one, replay the Provider, or append the user twice.
+        after_stop = store.path.read_bytes()
+        for path, payload in (
+            ("/api/chat/turn/reconcile", {"turn_id": "turn-stop-1"}),
+            ("/api/chat/turn", body),
+        ):
+            status, pending, _ = post(path, payload)
+            assert status == 200, pending
+            assert pending["data"]["turn"]["status"] in {"running", "waiting"}
+            assert pending["data"]["turn"].get("result_reference") is None
+        assert store.path.read_bytes() == after_stop
+        assert [message["content"] for message in store.get("conversation-1")["messages"]] == ["Hello"]
+        assert len(signals) == 1
+        previous_capture = server._dispatch_session
+        status, restarted, _ = post("/api/pack-control/restart", {})
+        assert status == 200, restarted
+        assert server._dispatch_session is not previous_capture
+        cookie, csrf, origin = _authenticate(server)
+        status, lost_handle, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
+        assert status != 200, lost_handle
+        # A fresh capture is not permission to claim the durable turn again.
+        for path, payload in (
+            ("/api/chat/turn/reconcile", {"turn_id": "turn-stop-1"}),
+            ("/api/chat/turn", body),
+        ):
+            status, recovered, _ = post(path, payload)
+            assert status == 200, recovered
+            assert recovered["data"]["turn"]["status"] in {"running", "waiting"}
+            assert recovered["data"]["turn"].get("result_reference") is None
+        assert store.path.read_bytes() == after_stop
+        assert len(signals) == 1
     finally:
         servers.close()
 
@@ -1041,6 +1338,26 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     root = tmp_path / "user-data"
     registry = ProviderRegistry("defaults", user_data_root=root)
     secret = "fixture-secret-provider-configuration"
+    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
+
+    provider_owners = []
+    original_host_invoke = ExactHostProviderBackendV4.invoke
+
+    def observe_owner(self, envelope):
+        if envelope.operation_id in {
+            "rumi_provider_registry_pack.provider-configure-prepare",
+            "rumi_provider_registry_pack.provider-configure",
+        }:
+            invocation = self._invocation_context(envelope)
+            provider_owners.append((
+                envelope.operation_id,
+                invocation.presentation_owner_principal_id,
+                invocation.presentation_owner_session_id,
+                envelope.context.caller_principal.value,
+            ))
+        return original_host_invoke(self, envelope)
+
+    monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", observe_owner)
     failures = []
     original_invoke = V4DispatchSession.invoke
 
@@ -1059,6 +1376,7 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     monkeypatch.setattr(V4DispatchSession, "invoke", observed_invoke)
     request = {
         "phase": "prepare", "effect_kind": "provider_configure",
+        "correlation_id": str(uuid.uuid4()),
         "request": {
             "connection_name": "fixture", "protocol": "openai-compatible",
             "endpoint": "https://provider.example/v1", "key_value": secret,
@@ -1077,6 +1395,31 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in json.dumps(prepared)
     assert not registry.path.exists()
     assert not (root / "credentials/material-store/credentials.store.json").exists()
+    lookup = {
+        "phase": "lookup", "effect_kind": "provider_configure",
+        "correlation_id": request["correlation_id"],
+    }
+    for _ in range(2):
+        status, receipt = post(path, lookup)
+        assert status == 200, receipt
+        assert receipt["data"] == effect
+        assert secret not in json.dumps(receipt)
+    assert not registry.path.exists()
+    assert not (root / "credentials/material-store/credentials.store.json").exists()
+    status, missing = post(path, {**lookup, "correlation_id": str(uuid.uuid4())})
+    assert status != 200, missing
+    status, invalid = post(path, {**lookup, "request": request["request"]})
+    assert status == 400, invalid
+    other_cookie, other_csrf, other_origin = _authenticate(server)
+    status, foreign, _ = _request(
+        server, "POST", _contract("POST", path), body=lookup,
+        headers={
+            "Cookie": other_cookie, "Origin": other_origin,
+            "X-Rumi-CSRF": other_csrf, "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        },
+    )
+    assert status != 200, foreign
+    assert effect["effect_id"] not in json.dumps(foreign)
     status, denied = post(path, {"phase": "resume", "effect_id": effect["effect_id"]})
     assert status != 200 or denied["data"]["state"] != "succeeded"
     assert not registry.path.exists()
@@ -1106,12 +1449,18 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in stored.read_text()
     assert len(json.loads(stored.read_text())["credentials"]) == 1
     assert secret not in json.dumps(authority.audit_events(), default=str)
+    assert len(provider_owners) == 2
+    assert provider_owners[0][1:3] == provider_owners[1][1:3]
+    # The originating UI owner survives the approved coordinator resume.
+    assert provider_owners[1][1] != provider_owners[1][3]
 
 
+@pytest.mark.parametrize("text_blocks", [False, True])
 def test_saved_settings_reach_host_credential_transport(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    text_blocks: bool,
 ) -> None:
-    """Real settings/approval/owners/Gateway/Broker; guest and HTTPS are doubles."""
+    """Two real saved turns; only guest execution and HTTPS are doubles."""
     import io
     from core_runtime import credential_transport
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
@@ -1119,6 +1468,10 @@ def test_saved_settings_reach_host_credential_transport(
     from tobkiri_host.runtime import V4DispatchSession
 
     requests = []
+    reply = (
+        [{"type": "text", "text": "Host transport reply"}] if text_blocks
+        else "Host transport reply"
+    )
 
     def open_provider(request, *, timeout):
         assert timeout > 0
@@ -1128,10 +1481,16 @@ def test_saved_settings_reach_host_credential_transport(
         )
         body = json.loads(request.data)
         assert body["model"] == "organization/raw-model"
-        assert body["messages"] == [{"role": "user", "content": "Hello"}]
+        expected = [{"role": "user", "content": "Hello"}]
+        if requests:
+            expected.extend([
+                {"role": "assistant", "content": reply},
+                {"role": "user", "content": "Continue"},
+            ])
+        assert body["messages"] == expected
         requests.append(body)
         return io.BytesIO(json.dumps({
-            "choices": [{"message": {"content": "Host transport reply"},
+            "choices": [{"message": {"content": reply},
                          "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1},
         }).encode())
@@ -1188,7 +1547,19 @@ def test_saved_settings_reach_host_credential_transport(
         assert result["data"]["status"] == "completed", (result, failures)
         assert len(requests) == 1
         assert [item["content"] for item in store.get("chat")["messages"]] == [
-            "Hello", "Host transport reply",
+            "Hello", reply,
+        ]
+        status, result, _ = post("/api/chat/turn", {"request": {
+            "turn_id": "turn-2", "conversation_id": "chat",
+            "conversation_revision": 3, "content": "Continue",
+        }})
+        assert status == 200, result
+        assert result["data"]["status"] == "completed", (result, failures)
+        assert len(requests) == 2
+        persisted = store.get("chat")
+        assert persisted["conversation_revision"] == 5
+        assert [item["content"] for item in persisted["messages"]] == [
+            "Hello", reply, "Continue", reply,
         ]
     finally:
         servers.close()

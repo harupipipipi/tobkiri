@@ -12,7 +12,7 @@ const MAP_PATH = resolve(
 const OUTPUT_PATH = resolve(FRONTEND_ROOT, "src/lib/generatedFrontendContractMap.ts");
 const MAP_ARTIFACT_PATH = "defaultspack/frontend_contract_map.v4.json";
 const PINNED_ARTIFACT_DIGEST =
-  "sha256:cbd1d6807464cc83a563caffe173cd92db2793f9601241a81bc350b0dd87bc49";
+  "sha256:cc2fb99cc81a372319ed26837f20299264391a7ca4471edc637c3d5e8e5258fd";
 
 const RUNTIME_TARGET_SPECS = [
   {
@@ -140,7 +140,7 @@ function exactKeys(value, keys) {
 }
 
 function validateSourceMap(map, rawDigest) {
-  if (!exactKeys(map, ["schema", "pack_id", "routes"])) {
+  if (!exactKeys(map, ["schema", "pack_id", "frontend", "routes"])) {
     fail("canonical map envelope is not exact");
   }
   if (map.schema !== "io.tobkiri.frontend-contract-map.v4" || map.pack_id !== "defaultspack") {

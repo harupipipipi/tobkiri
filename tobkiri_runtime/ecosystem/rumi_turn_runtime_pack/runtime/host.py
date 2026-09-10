@@ -22,6 +22,7 @@ _CONTRACTS = {
     "events": ("tobkiri.event.turn.v1", "turn-events"),
     "saved": ("tobkiri.action.turn.saved.v1", "turn-saved"),
     "reconcile": ("tobkiri.action.turn.reconcile.v1", "turn-reconcile"),
+    "stop": ("tobkiri.action.turn.stop.v1", "turn-stop"),
 }
 _MUTATIONS = {
     "transition": ({"status"}, {"details"}),
@@ -41,6 +42,8 @@ class TurnHostFactoryV4:
         self.kind = kind
         self.function_id = f"{_PACK}.turn-runtime.{kind}"
         self.operation_id = f"{_PACK}.{operation}"
+        self.cancellation_group = "saved-turn" if kind in {"saved", "stop"} else None
+        self.cancellation_role = {"saved": "execute", "stop": "stop"}.get(kind)
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Capture immutable routing identity without creating durable files."""
@@ -71,6 +74,16 @@ class TurnHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
+            if self.kind == "stop":
+                values = {key: value for key, value in payload.items() if key != "_session_id"}
+                if operation_id != self.operation_id or set(values) != {"turn_id"}:
+                    raise PermissionError("stop requires only an existing turn ID")
+                turn_id = _identifier(values["turn_id"])
+                invocation.cancellation.request(turn_id)
+                return {
+                    "status": "cancellation_requested", "turn_id": turn_id,
+                    "stopped": False,
+                }
             if self.kind == "reconcile":
                 values = {key: value for key, value in payload.items() if key != "_session_id"}
                 if operation_id != self.operation_id or set(values) != {"turn_id"}:
@@ -96,6 +109,7 @@ class TurnHostFactoryV4:
                     {key: value for key, value in payload.items() if key != "_session_id"},
                     client=client,
                     guard=invocation.assert_current,
+                    track_execution=invocation.cancellation.track,
                 )
             if operation_id != self.operation_id or payload.get("profile_id") != store.profile_id:
                 raise PermissionError("turn request does not match capture")

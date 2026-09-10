@@ -479,3 +479,43 @@ def test_windows_launcher_propagates_each_pytest_exit_code() -> None:
     )
     assert f"{first_pytest}\n          {guard}" in step
     assert f"{second_pytest}\n          {guard}" in step
+
+
+@pytest.mark.parametrize("workflow_name", ["desktop-installers.yml", "release.yml"])
+@pytest.mark.parametrize(
+    "identity", ["Identifier=com.apple.git", "TeamIdentifier=59GAB85EFG"],
+)
+@pytest.mark.parametrize(
+    "report_status, expected", [("valid", 0), ("wrong", 1), ("failed", 7)],
+)
+def test_git_code_authority_check_drains_output_and_preserves_failure(
+    tmp_path: Path, workflow_name: str, identity: str,
+    report_status: str, expected: int,
+) -> None:
+    """Do not SIGPIPE a valid codesign report or swallow producer failure."""
+    source = (_SCRIPT.parents[1] / "workflows" / workflow_name).read_text()
+    check = next(
+        line.strip() for line in source.splitlines()
+        if line.strip().startswith("/usr/bin/codesign -d ") and identity in line
+    ).split("|", 1)[1]
+    producer = tmp_path / "code-authority-report.py"
+    producer.write_text(
+        "import os, sys\n"
+        "identity = sys.argv[2]\n"
+        "if sys.argv[1] == 'wrong':\n"
+        "    identity = identity.replace('.', 'x') if '.' in identity else identity + 'x'\n"
+        "os.write(1, (identity + '\\n').encode())\n"
+        "for _ in range(8):\n"
+        "    os.write(1, b'x' * 65536 + b'\\n')\n"
+        "sys.exit(7 if sys.argv[1] == 'failed' else 0)\n"
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash", "-o", "pipefail", "-c",
+            '"$1" -B "$2" "$3" "$4" | ' + check,
+            "code-authority-check", sys.executable, str(producer),
+            report_status, identity,
+        ],
+        capture_output=True, timeout=10, check=False,
+    )
+    assert result.returncode == expected, result.stderr.decode(errors="replace")

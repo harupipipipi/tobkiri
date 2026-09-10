@@ -14,6 +14,33 @@ performs no Host state access, provider discovery or command execution.
 
 ## Captured consumers
 
+The Application's digest-pinned `frontend_contract_map.v4.json` also declares
+its web entries in `frontend`: an explicit `default_entry_id` and a finite
+`entries` array. Each entry names its route, exact/subpath match, contribution,
+implementation and display label. `Profile.frontend_entry_id` can select another
+declared entry. Missing defaults, unknown selections, duplicate identities and
+overlapping routes fail closed; catalog order never selects the initial screen.
+
+Launcher resolves that declaration only after verifying the selected Profile,
+Application and map artifact. Its launch/revalidation binding includes the whole
+selected entry and map digest, distinct from the native executable entrypoint.
+Runtime preparation must retain the same entry before issuing the existing
+one-time bootstrap code. The Profile revision and Application artifact/definition
+digests already bind the selection and declaration into the active Plan. An
+entry is presentation metadata, not a new grant or an activation authority.
+
+The HTTP binding retains canonical declaration bytes. The capability catalog
+hash includes the map artifact digest, while its invoke targets remain limited
+to captured operations. Display declarations cannot add a target. The full
+Defaultspack Chat UI and auxiliary views are explicit Application implementations,
+selected independently of Profile names. The Application-owned builtin registry
+loads only its shipped implementations; ordinary Pack modules retain their
+existing isolation rules. Missing, stale, ambiguous or quarantined routes show
+an unavailable screen and never load a compatibility App implicitly.
+
+These source invariants require regression and native acceptance evidence;
+they do not establish successful Provider conversations or a product DMG.
+
 - `rumi_command_protocol_pack.catalog.read` requests the sealed command
   presentation. It retains its own execution-availability and approval policy:
   only its known high-risk adapter references can become available when the

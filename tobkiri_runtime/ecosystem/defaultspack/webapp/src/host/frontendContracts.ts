@@ -8,6 +8,7 @@ export type FrontendContributionKind =
   | "command";
 
 export type FrontendContributionMode =
+  | "application_builtin"
   | "declarative"
   | "isolated"
   | "same_origin_builtin";
@@ -28,6 +29,8 @@ export type VerifiedFrontendContribution = {
   resolved_plan_hash: string;
   descriptor_hash: string;
   route?: string | null;
+  route_match?: "exact" | "subpath";
+  implementation?: string;
   region?: string | null;
   renderer?: string | null;
   action_contract?: string | null;

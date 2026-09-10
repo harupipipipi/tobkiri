@@ -3,7 +3,60 @@
 from copy import deepcopy
 from typing import Any, Mapping
 
+from tobkiri_protocol.canonical import canonical_digest
+
 from ..profile_definition_store_v4 import ProfileDefinitionStoreConflict
+
+
+def interrupted_source_update_predecessor(
+    registry: Mapping[str, Any],
+    registered: Mapping[str, Any],
+    verified_definition_digest: str,
+    source: Mapping[str, Any],
+    *,
+    successor_required: bool,
+) -> dict[str, Any]:
+    """Recover a review base, never authority, from one exact pending successor.
+
+    A definition can commit before activation does. Recognize only its direct
+    immutable predecessor and the same packaged proposal; unrelated edits are
+    conflicts. The caller must still require normal confirmation and active
+    predecessor CAS before granting the proposed operations.
+    """
+    current_digest = canonical_digest(registered)
+    for entry in registry["profiles"]:
+        if (
+            entry["profile_id"] != registered["profile_id"]
+            or entry["tombstone"]
+            or entry["current_revision"] != current_digest
+        ):
+            continue
+        revisions = {row["profile_revision"]: row for row in entry["revisions"]}
+        current = revisions.get(current_digest)
+        previous = revisions.get(verified_definition_digest)
+        if (
+            current is None or previous is None
+            or current["parent_revision"] != verified_definition_digest
+            or canonical_digest(previous["profile"]) != verified_definition_digest
+        ):
+            break
+        for additions in (False, True):
+            candidate = deepcopy(previous["profile"])
+            if successor_required:
+                candidate["shell"] = deepcopy(source["shell"])
+            try:
+                if successor_required or additions:
+                    candidate = profile_scope_successor(candidate, source)
+                if additions:
+                    candidate = profile_source_additions(candidate, source)
+            except ProfileDefinitionStoreConflict:
+                continue
+            if canonical_digest(candidate) == current_digest:
+                return deepcopy(previous["profile"])
+        break
+    raise ProfileDefinitionStoreConflict(
+        "bootstrap review does not match a verified interrupted source update"
+    )
 
 
 def profile_scope_successor(

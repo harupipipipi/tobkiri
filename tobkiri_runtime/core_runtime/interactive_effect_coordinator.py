@@ -26,6 +26,7 @@ from tobkiri_host.interactive_effects import (
 from tobkiri_host.models import InvocationFrame, OpaqueAuthorityRef, RequestContext
 from tobkiri_host.ports import (
     InteractiveEffectOwnerQuery,
+    InteractiveEffectLookupQuery,
     InteractiveEffectPort,
     InteractiveEffectPrepareCommand,
     InteractiveEffectStatus,
@@ -53,6 +54,13 @@ class InteractiveEffectSpec:
 
 
 INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
+    "mcp_connect": InteractiveEffectSpec(
+        kind="mcp_connect",
+        prepare_contract_id="tobkiri.service.mcp.connection.v1",
+        prepare_operation_id="mcp.connection.prepare",
+        execute_contract_id="tobkiri.service.mcp.connection.v1",
+        execute_operation_id="mcp.connection.connect",
+    ),
     "provider_configure": InteractiveEffectSpec(
         kind="provider_configure",
         prepare_contract_id="tobkiri.action.ai.provider.registry.manage.v1",
@@ -245,10 +253,37 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 presentation_metadata=_presentation_metadata(route.spec, prepared),
                 expires_at=self._clock() + self._EXPIRY_SECONDS,
                 typed_confirmation_phrase="EXECUTE",
+                correlation_id=command.correlation_id,
             )
             return _port_status(pending)
         except InteractiveEffectUnavailable:
             raise
+        except Exception as exc:
+            raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
+
+    def find_interactive_effect(
+        self,
+        query: InteractiveEffectLookupQuery,
+    ) -> InteractiveEffectStatus:
+        """Resolve only an owned receipt for the captured finite execute route."""
+
+        try:
+            self._assert_current_capture()
+            self._validate_outer_context(query.context, query.coordinator_principal)
+            self._validate_presentation_owner(
+                query.presentation_owner_principal_id,
+                query.presentation_owner_session_id,
+            )
+            route = self._route(query.effect_kind)
+            return _port_status(self._controller.find_for_presentation(
+                correlation_id=query.correlation_id,
+                presentation_owner_principal_id=query.presentation_owner_principal_id,
+                presentation_owner_session_id=query.presentation_owner_session_id,
+                context=query.context,
+                contract_id=route.spec.execute_contract_id,
+                operation_id=route.spec.execute_operation_id,
+                target_principal=route.execute_target_principal,
+            ))
         except Exception as exc:
             raise InteractiveEffectUnavailable("interactive effect is unavailable") from exc
 
@@ -379,6 +414,14 @@ def _execute_payload(
 ) -> dict[str, Any]:
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
+    if spec.kind == "mcp_connect":
+        mcp_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
+        if (
+            mcp_plan.get("version") != "tobkiri.mcp.connection-plan.v1"
+            or mcp_plan.get("request_digest") != canonical_digest(dict(request))
+        ):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        return {"request": dict(request), "plan": mcp_plan}
     if spec.kind == "provider_configure":
         configuration_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
         if (
@@ -551,6 +594,29 @@ def _presentation_metadata(
         prepared.normalized_payload,
         HostInteractiveEffectService._MAX_REQUEST_BYTES,
     )
+    if spec.kind == "mcp_connect":
+        plan, request = payload.get("plan"), payload.get("request")
+        if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        _execute_payload(spec, request, plan)
+        executable, workspace = plan.get("executable"), plan.get("workspace")
+        tools = request.get("allowed_tools")
+        if (
+            not isinstance(executable, Mapping) or not isinstance(workspace, Mapping)
+            or not isinstance(tools, list) or not 0 < len(tools) <= 64
+        ):
+            raise InteractiveEffectUnavailable("interactive effect is unavailable")
+        return _presentation(
+            action="Connect MCP server",
+            summary="Start the prepared local MCP server for this session.",
+            detail=(
+                f"Server: {_display_text(_required_text(request.get('server_id')))}\n"
+                f"Executable: {_display_text(_required_text(executable.get('path')))}\n"
+                f"Workspace: {_display_text(_required_text(workspace.get('id')))}\n"
+                "Tools: " + ", ".join(_display_text(_required_text(tool)) for tool in tools)
+                + f"\nArguments and environment: {_REDACTED}"
+            ),
+        )
     if spec.kind == "provider_configure":
         plan = payload.get("plan")
         request = payload.get("request")

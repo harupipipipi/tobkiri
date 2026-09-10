@@ -115,7 +115,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnSnapshotState, savedTurnSnapshotNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnSnapshotState, savedTurnSnapshotNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -4226,7 +4226,19 @@ export function ChatApp() {
   const handleStopGenerating = () => {
     const conversationId = activeConversationId;
     if (conversationId && pendingRequests[conversationId]?.savedTurn) {
-      setError("保存付き送信の停止確認は未対応です。停止済みとは扱わず、結果の照合を続けます。");
+      const turnId = pendingRequests[conversationId].operationId;
+      if (!turnId) {
+        setError("送信の操作IDを確認できないため、停止要求は送信していません。");
+        return;
+      }
+      const notice = (status: string) => updatePendingRequests((current) =>
+        updateSavedTurnNotice(current, conversationId, turnId, status));
+      notice("停止を要求しています。停止済みとは扱わず、結果の照合を続けます。");
+      void api.stopSavedTurn(turnId).then(() => {
+        notice("停止要求を受け付けました。実行・保存結果の照合を続けます。");
+      }).catch(() => {
+        notice("停止要求の結果を確認できません。自動再送せず、実行・保存結果の照合を続けます。");
+      });
       return;
     }
     if (conversationId) {
@@ -6587,15 +6599,15 @@ export function ChatApp() {
     let savedSubmissionStarted = false;
 
     try {
-      if (submittedAttachments.length || submittedToolIds.length || submittedSkillIds.length
-        || submittedMentions.length || submittedDroppedWidgets.length || isCodingWorkspaceSubmit
+      if (submittedAttachments.length || submittedSkillIds.length
+        || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
         || groupIdForSubmit || rumiDataPathForSubmit || deepthinkEnabled
         || (activeProfile?.supports_thinking && selectedThinkingLevel)
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
-        || toolSelectionRequest.mode !== "none"
+        || toolSelectionRequest.mode === "review"
         || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
-        throw new Error("保存付き送信は現在テキストのみです。添付・ツール・特殊contextは未対応のため、保存前に停止しました。ツールをオフにして送信してください。");
+        throw new Error("添付・スキル・特殊contextは保存付き送信に未対応のため、保存前に停止しました。");
       }
       let conversation = activeConversation;
       if (!conversation) {
@@ -6622,9 +6634,18 @@ export function ChatApp() {
         setActiveConversation(conversation);
       }
       submittedConversationId = conversation.id;
+      const savedToolSelection = {
+        mode: toolSelectionRequest.mode === "manual" ? "manual" as const
+          : toolSelectionRequest.mode === "none" ? "none" as const : "auto" as const,
+        include: toolSelectionRequest.include ?? [],
+        exclude: toolSelectionRequest.exclude ?? [],
+        scope: toolSelectionRequest.scope ?? "turn" as const,
+        must_use: toolSelectionRequest.must_use ?? false,
+      };
       const requestStartedAt = Date.now();
       const requestFingerprint = JSON.stringify({
         text: userText,
+        tool_selection: savedToolSelection,
         attachments: submittedAttachments.map(({ name, size, type, source, sourcePath }) => (
           { name, size, type, source, sourcePath }
         )),
@@ -6659,6 +6680,7 @@ export function ChatApp() {
         conversation_id: conversation.id,
         conversation_revision: conversation.conversation_revision!,
         content: userText,
+        tool_selection: savedToolSelection,
       });
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
         throw new Error("送信結果の照合が必要です。自動再送はしません。");
@@ -7606,8 +7628,8 @@ export default function App() {
   if (pathname === "/adaptive" || pathname === "/operating-profile") {
     return <AdaptiveRuntimePage />;
   }
-  if (pathname === "/defaultspack" || pathname === "/pack/defaultspack" || pathname === "/chat" || pathname === "/calendar") {
+  if (pathname === "/defaultspack" || pathname === "/pack/defaultspack" || pathname === "/chat" || pathname === "/calendar" || pathname === "/coding") {
     return <ChatApp />;
   }
-  return <ChatApp />;
+  return <main role="alert">This screen is not available in Tobkiri.</main>;
 }

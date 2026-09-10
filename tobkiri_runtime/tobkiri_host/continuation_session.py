@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import Any, Callable
 
 from tobkiri_protocol.canonical import strict_loads
+from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
 from .continuation_chain import ChainIdentity, ContinuationChains, ResumePermit
 from .continuation_envelope import (
@@ -29,6 +30,7 @@ class ContinuationSession:
         targets: tuple[tuple[str, str], ...],
         *,
         chains: ContinuationChains,
+        target_selector: Callable[[], tuple[str, str]] | None = None,
     ) -> None:
         """Capture an immutable bounded target plan, never an application plan."""
         if (
@@ -42,6 +44,10 @@ class ContinuationSession:
             )
         ):
             raise ValueError("continuation target plan is invalid")
+        if target_selector is not None and not callable(target_selector):
+            raise ValueError("continuation target selector is invalid")
+        self._selector = target_selector
+        self._limit = MAX_SAVED_TOOL_HOPS if target_selector else len(targets)
         self._identity = identity
         self._targets = targets
         self._chains = chains
@@ -61,7 +67,7 @@ class ContinuationSession:
             self._started = True
             frame = seal_continuation_intent(
                 intent, identity=self._identity, hop=0, previous_digest=None,
-                target=self._targets[0], nonce=nonce,
+                target=self._target(0), nonce=nonce, max_hops=self._limit,
             )
             self._chains.start(self._identity, frame=frame.frame, nonce=frame.nonce)
             self._pending = frame
@@ -106,11 +112,12 @@ class ContinuationSession:
                 raise ValueError("continuation has not entered its resume step")
             try:
                 hop = permit.hop + 1
-                if hop >= len(self._targets):
+                if hop >= self._limit:
                     raise ValueError("continuation target plan is exhausted")
                 frame = seal_continuation_intent(
                     intent, identity=self._identity, hop=hop,
-                    previous_digest=self._previous, target=self._targets[hop], nonce=nonce,
+                    previous_digest=self._previous, target=self._target(hop), nonce=nonce,
+                    max_hops=self._limit,
                 )
                 self._chains.advance(permit, frame=frame.frame, nonce=frame.nonce)
             except Exception:
@@ -152,6 +159,12 @@ class ContinuationSession:
                 # An unregistered or expired identity already has no usable
                 # ledger entry. Never renew it merely to record cancellation.
                 pass
+
+    def _target(self, hop: int) -> tuple[str, str]:
+        target = self._selector() if self._selector else self._targets[hop]
+        if target not in self._targets:
+            raise ValueError("continuation target is outside the captured plan")
+        return target
 
     def _require_permit(self, permit: ResumePermit) -> None:
         if self._terminal or self._permit is not permit:

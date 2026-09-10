@@ -81,6 +81,23 @@ def _release_bytes(bundle: Path) -> dict[str, bytes]:
     return {name: path.read_bytes() for name, path in paths.items() if name != "intent"}
 
 
+def test_saved_stop_caller_survives_profile_generation() -> None:
+    """The public stop route needs an author-intent edge, not a generated edit."""
+    rendered = _render(BUNDLE)
+    profile = json.loads(rendered[_paths(BUNDLE)["compatibility"]])
+    edges = [
+        edge for edge in profile["requested_edges"]
+        if edge["operation_id"] == "rumi_turn_runtime_pack.turn-stop"
+    ]
+    assert len(edges) == 1
+    assert edges[0]["caller_function_id"] == "shell.tauri.default"
+    assert edges[0]["target_provider_id"] == "rumi_turn_runtime_pack.turn-runtime.stop"
+    assert edges[0]["requested_scope_template"]["dimensions"] == {
+        "contract": ["tobkiri.action.turn.stop.v1"],
+        "operation": ["rumi_turn_runtime_pack.turn-stop"],
+    }
+
+
 def test_checked_in_profile_artifacts_are_deterministic_and_schema_valid() -> None:
     rendered = _render(BUNDLE)
     assert all(path.read_bytes() == raw for path, raw in rendered.items())

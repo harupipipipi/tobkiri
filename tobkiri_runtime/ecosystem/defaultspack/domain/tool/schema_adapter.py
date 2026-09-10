@@ -7,6 +7,7 @@ from urllib.parse import unquote
 
 from domain.capability.tool_scope import normalize_tool_scope
 from domain.tool.security import requires_approval_for_security
+from .normalizers import tool_name_from_definition as tool_name_from_definition
 from .normalizers import list_or_empty as list_or_empty
 from .normalizers import mapping_or_empty as mapping_or_empty
 
@@ -36,17 +37,6 @@ _SUPPORTED_SCHEMA_KEYS = {
 
 class ToolSchemaError(ValueError):
     """Raised when a tool parameter schema cannot be safely adapted."""
-
-
-def tool_name_from_definition(tool: Any) -> str:
-    if isinstance(tool, str):
-        return tool
-    if not isinstance(tool, dict):
-        return ""
-    function_def = tool.get("function")
-    if isinstance(function_def, dict) and function_def.get("name"):
-        return str(function_def.get("name"))
-    return str(tool.get("tool_id") or tool.get("name") or "")
 
 
 def adapt_tool_definition(tool: Any) -> Any:

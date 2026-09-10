@@ -18,9 +18,10 @@ def test_computer_observe_uses_host_contract_adapter():
     assert "DriverRegistry()" not in source
 
 
-def test_computer_semantic_action_uses_approval_router():
+def test_computer_semantic_action_uses_host_contract_adapter():
     source = (Path(_funcs_dir) / "computer_semantic_action" / "main.py").read_text(encoding="utf-8")
-    assert "run_computer_action" in source
+    assert "run_host_contract_action" in source
+    assert "defaultspack.domain" not in source
     assert "svc.semantic_action" not in source
     assert "DriverRegistry()" not in source
 

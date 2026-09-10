@@ -203,6 +203,12 @@ def transport_fixture():
     store.is_revoked.return_value = False
     store.get_grant.return_value = NS(issued_at=0, expires_at=None)
     store.get_provider_authority.return_value = record
+    store.get_host_extension_trust.return_value = NS(
+        trust_id="extension", revoked=False, security_epoch=1,
+        package_kind="host_extension", parent_artifact_digest="provider-artifact",
+        publisher_lineage="provider-publisher", provider_principal_ids=("provider",),
+        valid_from=0, expires_at=None,
+    )
     store.get_domain.side_effect = lambda identity: NS(
         state=NS(value="active"), security_epoch=1,
         boot_epoch="caller-boot" if identity == "caller-domain" else "target-boot",
@@ -375,3 +381,44 @@ def test_transport_cancelled_before_effect(transport_fixture):
     with pytest.raises(PermissionError):
         transport.invoke(envelope)
     transport._native.execute.assert_not_called()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("trust_id", "other-extension"), ("revoked", True),
+    ("security_epoch", 2), ("package_kind", "normal_pack"),
+    ("parent_artifact_digest", "replacement-artifact"),
+    ("publisher_lineage", "other-publisher"),
+    ("provider_principal_ids", ("another-provider",)),
+    ("valid_from", float("inf")), ("expires_at", 0),
+])
+def test_transport_stale_extension_trust_denies_before_effect(
+    transport_fixture, field, value,
+):
+    transport, envelope, lease, store = transport_fixture
+    setattr(store.get_host_extension_trust.return_value, field, value)
+    with pytest.raises(PermissionError, match="Host Extension trust"):
+        transport.invoke(envelope)
+    transport._native.execute.assert_not_called()
+
+
+def test_transport_missing_extension_trust_denies_before_effect(transport_fixture):
+    transport, envelope, lease, store = transport_fixture
+    store.get_host_extension_trust.return_value = None
+    with pytest.raises(PermissionError, match="Host Extension trust"):
+        transport.invoke(envelope)
+    transport._native.execute.assert_not_called()
+
+
+def test_transport_extension_expiry_after_entry_rechecks_at_native_boundary(transport_fixture):
+    transport, envelope, lease, store = transport_fixture
+    effect = Mock()
+
+    def native_entry(access, payload, *, deadline, check_authority):
+        store.get_host_extension_trust.return_value.expires_at = time.time() - 1
+        check_authority()
+        effect()
+
+    transport._native.execute.side_effect = native_entry
+    with pytest.raises(PermissionError, match="Host Extension trust"):
+        transport.invoke(envelope)
+    effect.assert_not_called()

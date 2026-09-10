@@ -18,6 +18,11 @@ owned by follow-up A; this work uses the parent's Authority records and ports.
   Compared 479 changed files against `50dbe99f`; merged with recorded history.
   Shared cancellation and retention of execution resources until actual worker
   completion are preserved alongside the worker-time lease recheck.
+- Latest follow-up update: parent `05b6c18afad310dd27bd9071895e55efd31315c0`.
+  Compared 393 changed files against `351aa93f`; retained the parent additions
+  for owned cancellation, presentation-owner lifetime and admission estimates.
+  The production bootstrap conflict was limited to imports; generated locks
+  and source inventories were regenerated from the merged source.
 - Follow-up: https://github.com/harupipipipi/tobkiri/pull/1464 . While #1322 is
   unmerged, its head branch is the explicit base. After parent merge, retarget
   to `soon` and verify the diff contains only this follow-up. Never `master`.
@@ -91,10 +96,12 @@ Authority/native unit tests, real pipe I/O with a disposable test child, real
 Authority/Broker tests, and native/packaged tests. A real pipe fixture is **not**
 a real clipboard or real isolated Pack invocation.
 
-This execution environment reports no `/proc/<pid>/stat` and process identity
-`unknown`; the existing Authority process-ownership guard therefore fails
-closed. Tests requiring that proof must run on a suitable runner. Do not patch
-the guard, skip failing tests, or label fake-store tests as real integration.
+Earlier scratch sessions reported unavailable `/proc/<pid>/stat` and process
+identity `unknown`, so their Authority tests failed closed. The later session
+ran the real Authority/Broker tests successfully, including queued revocation
+and expiry; the 11 broker boundary regressions passed at `3d5958661`. This is
+process-local integration evidence, not native clipboard or PackVM evidence.
+No process-ownership guard was patched or bypassed.
 
 Native acceptance must use a fresh dedicated macOS test account/session with no
 user secrets or existing clipboard contents. Use a temporary workspace and an
@@ -126,3 +133,19 @@ Diagnostic CLI examples remain `tobkiri approvals list`, `tobkiri approvals show
 <snapshot_digest>` under the existing explicitly delegated debug session.
 Debug qualification is not production user consent. There is no new command
 which sets `approved=true` to exercise the native adapter.
+
+## A+B integration checkpoint
+
+In a separate detached worktree, B `3d59586613be0a2a44279cade3d9b453845e93e4`
+and A #1463 `2c7b7d4895d2b9345c4013cb4d7daac29dd617fc` were combined at
+`c19d282db759d07b9295dc4e90c211e378699fb2`. The focused suite passed **134 tests**:
+clipboard 49, projections 5, broker boundaries 11, A batch 24, Authority bridge
+22, debug CLI 23. This required mechanical resolution of model-catalog digest
+conflicts and refresh of A's stale bridge artifact hashes and generated catalogs.
+No Authority semantics were changed during integration. This result predates
+B's later trust-expiry recheck and parent `05b6c18af` merge.
+
+These tests cover batch atomicity, exact profile/session binding, one-shot replay,
+queued lease revocation/expiry/cancellation and ambiguous started effects. They do
+not prove durable/continuous consent GUI-to-OS behavior, native clipboard,
+ordinary PackVM or packaged application execution. A remains an incomplete Draft.

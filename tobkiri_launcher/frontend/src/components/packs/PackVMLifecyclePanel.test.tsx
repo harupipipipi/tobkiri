@@ -249,6 +249,46 @@ test('PackVM GUI completes prepare, consent, provision, doctor, and hides host p
   assert.match(String(bodies[2].operation_id), /^[0-9a-f-]{36}$/i);
 });
 
+for (const validAck of [true, false]) {
+  test(`PackVM registration consent verifies the old registration acknowledgment: ${validAck}`, {concurrency: false}, async () => {
+    configureStore();
+    const registration = {
+      previous_attestation_digest: digest('1'),
+      previous_config_digest: digest('2'),
+      previous_guest_runner_digest: digest('3'),
+      previous_host_build_digest: digest('4'),
+      asset_manifest_digest: digest('5'),
+    };
+    const {routes, bodies} = installFetch(async (route) => {
+      if (route === '/api/v4/packvm/prepare') {
+        return jsonResponse({...plan, image_download_required: false, registration_update: registration});
+      }
+      if (route === '/api/v4/packvm/consent') {
+        return jsonResponse({...consent, previous_attestation_digest: validAck ? digest('1') : null});
+      }
+      throw new Error(`unexpected route ${route}`);
+    });
+    assert.ok(surface);
+    await renderPanel(surface.root);
+    await act(async () => buttonWithText(surface.container, 'Prepare plan').click());
+    assert.match(surface.container.textContent ?? '', /existing image, VM disks, firmware, domain files, and user data will be preserved/);
+    assert.match(surface.container.textContent ?? '', /Previous registration/);
+    assert.equal(routes.length, 1);
+    const checkbox = surface.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    assert.ok(checkbox);
+    await act(async () => checkbox.click());
+    await act(async () => buttonWithText(surface.container, 'Record explicit consent').click());
+    assert.equal(bodies[1].previous_attestation_digest, digest('1'));
+    assert.equal(routes.length, 2);
+    if (validAck) {
+      assert.equal(buttonWithText(surface.container, 'Update registration').disabled, false);
+    } else {
+      assert.match(surface.container.textContent ?? '', /different pinned plan/);
+      assert.doesNotMatch(surface.container.textContent ?? '', /Plan consent recorded/);
+    }
+  });
+}
+
 test('PackVM GUI displays an unavailable plan reason and keeps provisioning disabled', {concurrency: false}, async () => {
   configureStore();
   const unavailableReason = 'A Developer ID signed PackVM helper is required.';

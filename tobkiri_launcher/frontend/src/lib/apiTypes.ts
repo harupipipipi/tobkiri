@@ -124,6 +124,14 @@ export interface FrontendCapabilityInvocation {
   payload: Record<string, unknown>;
 }
 
+export interface ApiPackVMRegistrationUpdate {
+  previous_attestation_digest: string;
+  previous_config_digest: string;
+  previous_guest_runner_digest: string;
+  previous_host_build_digest: string;
+  asset_manifest_digest: string;
+}
+
 export interface ApiPackVMProvisioningPlan {
   backend_id: string;
   instance: string;
@@ -140,6 +148,7 @@ export interface ApiPackVMProvisioningPlan {
   ceremony_nonce: string;
   plan_digest: string;
   confirmation: string;
+  registration_update?: ApiPackVMRegistrationUpdate | null;
 }
 
 export interface ApiPackVMConsent {
@@ -149,6 +158,7 @@ export interface ApiPackVMConsent {
   image_digest: string;
   image_size_bytes: number;
   image_download_approved: boolean;
+  previous_attestation_digest?: string | null;
 }
 
 export type ApiPackVMOperationState =
