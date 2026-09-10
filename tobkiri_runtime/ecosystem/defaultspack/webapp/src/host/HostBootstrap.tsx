@@ -3,12 +3,11 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 
 import { TobkiriLoadingScreen } from "../components/TobkiriLoadingScreen";
 import { defaultspackApiFetch, defaultspackContractRoute } from "../lib/api";
-import { ConversationV4Unavailable } from "./ConversationV4View";
+import { ErrorNotice } from "../components/ErrorNotice";
 import {
   DynamicFrontendHost,
   contributionsForRoute,
@@ -95,10 +94,8 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 export function HostBootstrap({
   route,
-  fallback,
 }: {
   route: string;
-  fallback: ReactNode;
 }) {
   const [catalog, setCatalog] = useState<FrontendCatalog | null>(null);
   const [failed, setFailed] = useState(false);
@@ -150,9 +147,8 @@ export function HostBootstrap({
   if (failed) {
     return (
       <HostBootstrapFallback
-        fallback={fallback}
         onRetry={retry}
-        reason="The active Pack v4 conversation could not be loaded."
+        reason="The selected Application could not be loaded."
         route={route}
       />
     );
@@ -166,9 +162,8 @@ export function HostBootstrap({
   if (!hasRoute) {
     return (
       <HostBootstrapFallback
-        fallback={fallback}
         onRetry={retry}
-        reason="The conversation is not ready. Check the active profile and PackVM status in Tobkiri Launcher, then retry."
+        reason="This screen is not available in the active Profile. Check the selected Application in Tobkiri Launcher, then retry."
         route={route}
       />
     );
@@ -183,20 +178,22 @@ export function HostBootstrap({
   );
 }
 
-/** Keep legacy compatibility outside the Pack v4 conversation entry point. */
+/** A missing, stale or quarantined route never selects another Application. */
 export function HostBootstrapFallback({
   route,
   reason,
   onRetry,
-  fallback,
 }: {
   route: string;
   reason: string;
   onRetry: () => void;
-  fallback: ReactNode;
 }) {
-  if (route === "/chat" || route === "/chat/") {
-    return <ConversationV4Unavailable reason={reason} onRetry={onRetry} />;
-  }
-  return <>{fallback}</>;
+  return (
+    <main data-frontend-unavailable={route} className="min-h-screen bg-[#09090b] p-8 text-zinc-100">
+      <h1>This screen is unavailable</h1>
+      <ErrorNotice copyLabel="Copy screen availability error" copyText={reason}
+        errorIcon="frontend-availability" message={reason} />
+      <button type="button" onClick={onRetry}>Retry</button>
+    </main>
+  );
 }

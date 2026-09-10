@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:f3c88402d27d04e94494840011852353998276234f47e8bb5b616bd56e60fb20",
+  "catalog_digest": "sha256:b21cffd93ac3bf716fe79332b09704830de6ab41b6720c15b49acf136e131b7f",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:71c0498173a4f514ec1f1221f00c90d4fb2a104f11ce93431f3ce337e94f2c25",
+  "source_identity": "sha256:443b3811750880ec0fbc7b2567d82d407af4411204a7472cd3378a8a07427246",
   "variants": [
     {
       "architecture": "any",
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-      "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+      "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
       "implementation_path": "runtime/preflight.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -88,6 +88,9 @@
                 "maxLength": 256,
                 "minLength": 1,
                 "type": "string"
+              },
+              "tool_calling": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -125,7 +128,7 @@
             ],
             "type": "object"
           },
-          "revision_digest": "sha256:b55d97c2964f2ea62761d49a9e996b48e37bea088ae662feacb0d861b4f89f1e",
+          "revision_digest": "sha256:ff956d72ff72a242f94b251f4ed29a02dbf60447e8a20c121a8775c71cb27b9b",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

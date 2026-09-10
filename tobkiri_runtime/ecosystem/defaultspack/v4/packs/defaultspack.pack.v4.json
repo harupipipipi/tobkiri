@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:e918db2d2c91410bf94a3ae8f46aa6968557db57a828e6d391f76219a76b145e",
+      "digest": "sha256:dd69493c813fb993744da8a13ee141a023212e683de257e36b53278e93ec78fc",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -31,7 +31,7 @@
       "path": "runtime/conversation.py"
     },
     {
-      "digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+      "digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
       "kind": "executable",
       "path": "runtime/saved_conversation.py"
     },
@@ -632,7 +632,7 @@
       "operations": [
         "saved_complete"
       ],
-      "revision_digest": "sha256:c1e1e6a7d047591694d1fca6d8ac110d8d1df28a368aa4ac2ccbdec0a46248ff"
+      "revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd"
     },
     {
       "contract_id": "tobkiri.resource.application.presentation.v1",
@@ -671,9 +671,9 @@
       "role": "brokered"
     },
     {
-      "contract_revision_digest": "sha256:c1e1e6a7d047591694d1fca6d8ac110d8d1df28a368aa4ac2ccbdec0a46248ff",
+      "contract_revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
       "id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+      "implementation_digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
       "isolation": "pack_vm",
       "operations": [
         "saved_complete"
@@ -682,9 +682,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:e3b6851917f7d4a2577557c28ebdcbd031c7c788ffd5e532ac768dcedd1c6fb9",
-    "artifact_set_digest": "sha256:353b189bb746f8a67f24c3b3aa83504748b4ffc8a9944986e2384e94869a8c12",
-    "contract_catalog_digest": "sha256:4fa2389199fc174e4ecf7c23543ffa3e3e0df7776a90153027edc6acd83b0088"
+    "source_identity": "sha256:527c482925782d0495dfd7c59206f7cf4b3b09eaf5a3402924d32325afab0bd6",
+    "artifact_set_digest": "sha256:3a99d39fef77dcc1e9ea101b502627abda89014e18cf95d70092cff74cdfbf74",
+    "contract_catalog_digest": "sha256:0923aade83be110758b0f50edd6595f544c9ac8da779d5e6d20574c161389ccc"
   },
   "migration": {
     "compatibility": "none",
@@ -719,7 +719,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:420a07d09e8d8299b65236651def311472eefb1ec755d9ce57961a23d7824efc",
+    "artifact_digest": "sha256:5a2d9ecaad6719b0a28717420a51a720b212775beb2a2fc5c97f35b2e8d88be0",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -730,15 +730,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/pack.v4.json",
-    "source_digest": "sha256:e3b6851917f7d4a2577557c28ebdcbd031c7c788ffd5e532ac768dcedd1c6fb9",
+    "source_digest": "sha256:527c482925782d0495dfd7c59206f7cf4b3b09eaf5a3402924d32325afab0bd6",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:080918e80ed0d158303f4d66b5545f760a0c42b35e90b0800067ad34c273ba6b",
+    "content_root_digest": "sha256:01e1db6e4ad5bc0a0fce39aa95995d65d4e21627721148a7fca27abe820cca4e",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:3e28c65bb97f29fba3a78e495b8edfda44bd39a1ba10d9b34dd3dd9cf9bcee32",
+    "input_inventory_digest": "sha256:1b73a65b395355a19556fb4b277cbcff44110662965c8c1eba927b87e364ff44",
     "normative": true,
     "evidence": [
       {
@@ -749,7 +749,7 @@
       {
         "path": "ecosystem/defaultspack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:e3b6851917f7d4a2577557c28ebdcbd031c7c788ffd5e532ac768dcedd1c6fb9"
+        "digest": "sha256:527c482925782d0495dfd7c59206f7cf4b3b09eaf5a3402924d32325afab0bd6"
       }
     ]
   },

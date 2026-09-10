@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:01afd6d04dbe81024051941dafca882059eef0115b191b1cba7108966bc8afa4",
+  "source_identity": "sha256:4adc8c0af7f2fdb70519b59852f9d1d3b76fe6f37a00dcc5cfef5b072568f9fb",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -183,7 +183,7 @@
         {
           "contract_id": "tobkiri.action.turn.saved.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:f0592dcf3a526a13ea7c03a55ed62339938cc57c38b1f0ace993d275e3613bd6",
+          "revision_digest": "sha256:8a5ba2543950c85126e9f6c79d5740076597473805ec53d6a453c9f5752d589f",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "input_schema": {
             "$defs": {
@@ -217,6 +217,136 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "tool_selection": {
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "mode": {
+                              "const": "none"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "include": {
+                              "maxItems": 0
+                            },
+                            "must_use": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "properties": {
+                      "exclude": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "include": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "mode": {
+                        "enum": [
+                          "auto",
+                          "manual",
+                          "none"
+                        ]
+                      },
+                      "must_use": {
+                        "type": "boolean"
+                      },
+                      "scope": {
+                        "enum": [
+                          "turn",
+                          "conversation"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "type": "object"
                   },
                   "turn_id": {
                     "$ref": "#/$defs/identifier"
@@ -343,6 +473,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:2178f7b9cdc39833348ab4c7d0039c38a244ecce794e8bf39cf0405c54eb1108",
-  "catalog_digest": "sha256:2825ee00839f81d5260f6a2a113a0093f03bb0948cee0614679781cc869ead19"
+  "materialization_catalog_digest": "sha256:059fb30e7ba1d3e9f73d809e189bd9d8240ba075431e2a0712f8d7af8fe5022f",
+  "catalog_digest": "sha256:8ba00c2d720ce32ea180ad02cebf021c575820b7edc48aa0c6b70e54da86eba2"
 }

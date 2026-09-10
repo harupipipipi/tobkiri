@@ -120,6 +120,18 @@ def test_owner_resolved_arguments_reach_exact_executor_and_redacted_result(tool_
     assert result["executor"]["content_hash"] == "selected-impl"
 
 
+def test_selected_definition_hash_is_rechecked_before_validation_or_execution(tool_host):
+    invoke, client, _, _ = tool_host
+    payload = {"tool_id": "alias", "tool_call_id": "call-1", "arguments": {"value": 3},
+               "expected_definition_hash": client.definition["definition_hash"]}
+    invoke(payload)
+    client.calls.clear()
+    client.definition = _definition({**client.definition, "description": "Changed after selection"})
+    with pytest.raises(PermissionError):
+        invoke(payload)
+    assert [item[0] for item in client.calls] == [broker.DEFINITION]
+
+
 @pytest.mark.parametrize("field", [
     "approved", "approval_token", "approval_request_id", "caller_id", "profile_id",
     "deadline", "cancelled", "definition", "provider_instance_id", "_contract_consumer_pack_id",

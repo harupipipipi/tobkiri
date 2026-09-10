@@ -86,9 +86,9 @@ test("ConversationV4View preserves a projected provider failure", () => {
   assert.equal(conversationV4ResultError({ content: [] }), null);
 });
 
-test("ConversationV4View is selected only by the exact defaultspack chat contribution", () => {
+test("ConversationV4View is selected only by the explicit lightweight Defaultspack contribution", () => {
   assert.equal(isConversationV4Contribution(contribution), true);
-  assert.equal(isConversationV4Contribution({ ...contribution, route: "/packs" }), false);
+  assert.equal(isConversationV4Contribution({ ...contribution, route: "/workbench" }), true);
   assert.equal(isConversationV4Contribution({ ...contribution, contribution_id: "other" }), false);
   assert.equal(isConversationV4Contribution({ ...contribution, owner_pack_id: "other" }), false);
   assert.equal(isConversationV4Contribution({ ...contribution, build_identity: "other" }), false);

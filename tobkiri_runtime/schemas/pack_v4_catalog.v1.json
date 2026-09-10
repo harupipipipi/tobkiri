@@ -228,7 +228,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae"
+              "implementation_digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de"
             }
           ],
           "owner": "defaultspack",
@@ -271,6 +271,136 @@
                       "type": "string",
                       "minLength": 1,
                       "pattern": "\\S"
+                    },
+                    "tool_selection": {
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "mode": {
+                                "const": "none"
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "include": {
+                                "maxItems": 0
+                              },
+                              "must_use": {
+                                "const": false
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "properties": {
+                        "exclude": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "include": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "auto",
+                            "manual",
+                            "none"
+                          ]
+                        },
+                        "must_use": {
+                          "type": "boolean"
+                        },
+                        "scope": {
+                          "enum": [
+                            "turn",
+                            "conversation"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "type": "object"
                     }
                   }
                 }
@@ -505,7 +635,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+          "digest": "sha256:a60d716ff493a96929115fdbf6e3cc7da1bb39eda1d8682a0d9de752f15dc2de",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -1810,7 +1940,7 @@
             {
               "entrypoint_id": "ai-gateway-preflight",
               "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-              "implementation_digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9"
+              "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -1856,6 +1986,9 @@
                       }
                     }
                   }
+                },
+                "tool_calling": {
+                  "type": "boolean"
                 }
               }
             },
@@ -2071,7 +2204,7 @@
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:14d7622f8d8ec07a0d5a3727dcd9a923804b010bda8c3ec1b10efb37d3e4eae9",
+          "digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
           "kind": "executable",
           "path": "runtime/preflight.py"
         }
@@ -6135,7 +6268,7 @@
           "path": "runtime/message_host.py"
         },
         {
-          "digest": "sha256:b3128006115b96b9e4ab8aa7aced0ad260d9dda978db7f66de4266b3724735d2",
+          "digest": "sha256:4f3d08d007dc00067179ddbe63db967cc75b76e3539084804bd0bc203ee361a2",
           "kind": "executable",
           "path": "runtime/saved_receipt.py"
         }
@@ -15181,7 +15314,7 @@
             {
               "entrypoint_id": "tool-invoke",
               "id": "rumi_tool_broker_pack.tool-invoke",
-              "implementation_digest": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e"
+              "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b"
             }
           ],
           "owner": "rumi_tool_broker_pack",
@@ -15229,7 +15362,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e",
+          "digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
           "kind": "executable",
           "path": "runtime/broker.py"
         }
@@ -15877,7 +16010,7 @@
             {
               "entrypoint_id": "tool-definition-manage",
               "id": "rumi_tool_registry_pack.tool-definition-manage",
-              "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a",
+              "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.manage"
@@ -15916,7 +16049,7 @@
             {
               "entrypoint_id": "tool-definition-migrate",
               "id": "rumi_tool_registry_pack.tool-definition-migrate",
-              "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a",
+              "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.migrate"
@@ -15953,7 +16086,7 @@
             {
               "entrypoint_id": "tool-definition-resource",
               "id": "rumi_tool_registry_pack.tool-definition-resource",
-              "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a",
+              "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.read"
@@ -15983,6 +16116,24 @@
           "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
           "optional": true,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.execute.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.mcp.tool.call.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -15999,12 +16150,17 @@
         {
           "kind": "executable",
           "path": "runtime/host.py",
-          "digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a"
+          "digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
         },
         {
           "kind": "executable",
           "path": "runtime/pack_data.py",
           "digest": "sha256:2dad840d3d785d1d48d6671ba6fa404a2ea3e81dc57ea40099c707da6cc1ecb3"
+        },
+        {
+          "digest": "sha256:d2903c083ee91411637658c93b388a50dd6fb2d53a149c9560044c85dc89708e",
+          "kind": "executable",
+          "path": "runtime/selection.py"
         }
       ],
       "secrets": [],
@@ -16035,7 +16191,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-manage"
           ],
-          "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a"
+          "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
         },
         {
           "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
@@ -16043,7 +16199,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-migrate"
           ],
-          "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a"
+          "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
         },
         {
           "function_id": "rumi_tool_registry_pack.tool-registry.definition",
@@ -16051,7 +16207,7 @@
           "operation_ids": [
             "rumi_tool_registry_pack.tool-definition-resource"
           ],
-          "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a"
+          "implementation_digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7"
         }
       ]
     },
@@ -16771,6 +16927,136 @@
                       "type": "string",
                       "minLength": 1,
                       "pattern": "\\S"
+                    },
+                    "tool_selection": {
+                      "additionalProperties": false,
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "mode": {
+                                "const": "none"
+                              }
+                            }
+                          },
+                          "then": {
+                            "properties": {
+                              "include": {
+                                "maxItems": 0
+                              },
+                              "must_use": {
+                                "const": false
+                              }
+                            }
+                          }
+                        }
+                      ],
+                      "properties": {
+                        "exclude": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "include": {
+                          "items": {
+                            "oneOf": [
+                              {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "id": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    },
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "maxItems": 256,
+                          "type": "array"
+                        },
+                        "mode": {
+                          "enum": [
+                            "auto",
+                            "manual",
+                            "none"
+                          ]
+                        },
+                        "must_use": {
+                          "type": "boolean"
+                        },
+                        "scope": {
+                          "enum": [
+                            "turn",
+                            "conversation"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "type": "object"
                     }
                   }
                 }

@@ -75,6 +75,9 @@ class HTTPContractBinding:
     profile_revision: str = ""
     activation_id: str = ""
     plan_digest: str = ""
+    # Immutable, validated display declarations from this exact map artifact.
+    # They do not add targets to the operation capability snapshot.
+    frontend_entries: bytes = b""
 
 
 @dataclass(frozen=True)

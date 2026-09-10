@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": ["profile_api_version", "profile_id", "state", "mode", "catalog_revision", "base", "shell", "packs", "requested_edges", "authority_references", "profile_authority_snapshot_digest", "provenance"],
   "properties": {
+    "frontend_entry_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", "maxLength": 128},
     "profile_api_version": {"const": "io.tobkiri.profile.v5"},
     "profile_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
     "state": {"enum": ["needs_resolution", "resolved", "retired"]},

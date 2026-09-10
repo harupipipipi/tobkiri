@@ -357,7 +357,9 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
         return _intent({**state, "hop": hop + 1})
     except (KeyError, TypeError, ValueError, UnicodeError):
         return _failure(
-            {**state, "stage": "ai"} if stage == "user" and acknowledged else state,
+            # A next intent that failed serialization was never dispatched.
+            # Report persistence from the acknowledged stage, not that intent.
+            {**state, "stage": "ai" if stage == "user" and acknowledged else stage},
             "OWNER_RESPONSE_INVALID",
         )
 

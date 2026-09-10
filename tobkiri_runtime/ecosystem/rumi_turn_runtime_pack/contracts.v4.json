@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+            "digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+        "source_digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -86,7 +86,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+            "digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -97,7 +97,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+        "source_digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -148,7 +148,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+            "digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -159,7 +159,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+        "source_digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -210,7 +210,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+            "digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -221,7 +221,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+        "source_digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -323,7 +323,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+            "digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -334,7 +334,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+        "source_digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -409,7 +409,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:2dc3ce114ed4353940d2e7fbdcf11bcf537a812bd7be430ce59790109da15d08",
+          "input_schema_digest": "sha256:30ac6689817b53b043c61e9b8f2ee1e1fd303de6174503929b62ac10ada58c9c",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -419,7 +419,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+            "digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -430,7 +430,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf",
+        "source_digest": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -449,9 +449,9 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:f0592dcf3a526a13ea7c03a55ed62339938cc57c38b1f0ace993d275e3613bd6",
+      "revision_digest": "sha256:8a5ba2543950c85126e9f6c79d5740076597473805ec53d6a453c9f5752d589f",
       "schema_catalog": {
-        "sha256:2dc3ce114ed4353940d2e7fbdcf11bcf537a812bd7be430ce59790109da15d08": {
+        "sha256:30ac6689817b53b043c61e9b8f2ee1e1fd303de6174503929b62ac10ada58c9c": {
           "$defs": {
             "identifier": {
               "maxLength": 256,
@@ -483,6 +483,136 @@
                   "maximum": 9007199254740991,
                   "minimum": 1,
                   "type": "integer"
+                },
+                "tool_selection": {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "mode": {
+                            "const": "none"
+                          }
+                        }
+                      },
+                      "then": {
+                        "properties": {
+                          "include": {
+                            "maxItems": 0
+                          },
+                          "must_use": {
+                            "const": false
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "exclude": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:/-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "tool",
+                                  "service"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 256,
+                      "type": "array"
+                    },
+                    "include": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:/-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "tool",
+                                  "service"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 256,
+                      "type": "array"
+                    },
+                    "mode": {
+                      "enum": [
+                        "auto",
+                        "manual",
+                        "none"
+                      ]
+                    },
+                    "must_use": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "enum": [
+                        "turn",
+                        "conversation"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "type": "object"
                 },
                 "turn_id": {
                   "$ref": "#/$defs/identifier"
@@ -528,5 +658,5 @@
     }
   ],
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:9e750bb02b038cde3b5065f7553a5c2632147da8a48732da88d99f0c92f52ecf"
+  "source_identity": "sha256:e51e824c15f87b32413b836aeb136c6106106b827895703cd1f492a1a2e6ce8b"
 }

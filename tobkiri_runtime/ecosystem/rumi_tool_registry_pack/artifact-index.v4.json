@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:d1addb5cc876e3fb289416ecb98ae037be397e95435209f568242edb9ab42dc1",
+  "artifact_set_digest": "sha256:aad01b07f26c1286702ba77d6fa05a4d8ef6a4459f5db9c17a7e2621943236f9",
   "artifacts": [
     {
-      "digest": "sha256:d2efab99bd48ca156987473733a9a079279a5500c6432a42d89da52b1931306a",
+      "digest": "sha256:1530b8ff624ddf6af93b94e942537e21b3841aa3b15b8ecd0ba3a2c57d44e4f9",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:3996cce65eb52e72b202df584ba7f1daa0bdcfd32483c8911ef012e44bb498ca",
+      "digest": "sha256:1bba0f47c197c94b93b16dc511be2adbf7d755a1b7282aa1262ee91c46eb18a6",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:00f424bae00a4d0fc92c679321eea18f233bc402c4900e03cc896542578aa278",
+      "digest": "sha256:70ea34952e3636f9e8fa3ef50a1d813c29e1984a88bdbed27a825df18dc39a0e",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,7 +22,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a",
+      "digest": "sha256:8fc5e3353b7f3227fb15630e96af50b2f13806419a5204ee64522507e22766c7",
       "path": "runtime/host.py",
       "role": "runtime"
     },
@@ -35,13 +35,18 @@
       "digest": "sha256:66b656c118d6f69cf6a626b33da2ad0616cdb5e11d6c53393ef59108000edc88",
       "path": "runtime/registry.py",
       "role": "runtime"
+    },
+    {
+      "digest": "sha256:d2903c083ee91411637658c93b388a50dd6fb2d53a149c9560044c85dc89708e",
+      "path": "runtime/selection.py",
+      "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:4085328d6f519fea38bd0a355a6b167e3ccdd901b29da3d3c4140652b11db7f0"
+    "signed_digest": "sha256:2c8babdd77f1b99500bf74b2372f08584548ef7d451292350e1df00290e08113"
   },
   "pack_id": "rumi_tool_registry_pack",
-  "source_identity": "sha256:2a8d3d9f2e2ad53cba4effc4e4d30955cf8c0a3508ea8af4761a3c83d58ec8b3"
+  "source_identity": "sha256:9d707c93dbd6ed5e03fa1c7d59b1728ce09354a352b8d480c54fbe8677d2c2e2"
 }

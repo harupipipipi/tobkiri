@@ -205,6 +205,7 @@ pub(crate) struct ApplicationLaunch {
     pub function_id: String,
     pub provider_id: String,
     pub contract_namespace: String,
+    pub frontend_entry: crate::frontend_entry::VerifiedFrontendEntry,
 }
 
 /// Compatibility alias for the pre-generic Launcher composition root.
@@ -428,6 +429,7 @@ impl SignedApplicationResolver {
             selected.launch_contribution.as_ref(),
             &selected.application_pack_id,
             selected.application_artifact_digest.as_deref(),
+            selected.profile.get("frontend_entry_id"),
         )?;
         if let Some(previous) = previous_launch.as_ref() {
             validate_application_selector(previous, selected_variant, &application_pack)?;
@@ -1448,6 +1450,7 @@ fn validate_application_pack(
     launch_contribution: Option<&RuntimeLaunchContribution>,
     expected_application_id: &str,
     expected_artifact_digest: Option<&str>,
+    requested_frontend_entry: Option<&Value>,
 ) -> Result<ApplicationLaunch> {
     let selected_platform = format!(
         "{}-{}",
@@ -1643,6 +1646,11 @@ fn validate_application_pack(
         contract_map_path,
         contract_map_digest,
     )?;
+    let frontend_entry = crate::frontend_entry::resolve(
+        &contract_map,
+        contract_map_digest,
+        requested_frontend_entry,
+    )?;
 
     Ok(ApplicationLaunch {
         entrypoint: canonical,
@@ -1657,6 +1665,7 @@ fn validate_application_pack(
             .expect("application provider identity was checked")
             .to_owned(),
         contract_namespace: contract_map_pack_id.to_owned(),
+        frontend_entry,
     })
 }
 

@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_conversation_store_pack",
-  "source_identity": "sha256:6174cfe96f9e272cf33d0a414bf70a7523e8d4eb3643349cfe36569f457b33b5",
+  "source_identity": "sha256:b5c77bc799a0676d9728567491f20ee862f26e44927462b5f42e5fdf9ef872d0",
   "variants": [
     {
       "variant_id": "rumi_conversation_store_pack.conversation-store.manage.python",
@@ -174,6 +174,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:27a2aa031c0a33baf902805b43638d42684e6424e9882113ccf975df2a5b14e9",
-  "catalog_digest": "sha256:395618c2212093181cfb5dbbe72112bd78e2b1fe03b602493ab98cd130e4e43b"
+  "materialization_catalog_digest": "sha256:2e2ae6c8312c8233bac41bf3cce0336819652c5f656e3d3a024ce2b010c6e854",
+  "catalog_digest": "sha256:b35f2ec15ba5ee488e5f41c58d808958e249809645f1faa704ac973afb8a362c"
 }

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
-from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_CALLS, saved_tool_logs
+from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_CALLS, saved_tool_logs, saved_tool_messages
 
 READ = ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource")
 APPEND = ("tobkiri.action.message.manage.v1", "rumi_conversation_store_pack.message-manage")
@@ -110,7 +110,8 @@ class SavedTurnPlan:
             name, identifier, arguments = intent.get("operation"), intent.get("intent_id"), intent.get("arguments")
             digest = definitions.get(name) if isinstance(name, str) else None
             if (
-                not isinstance(identifier, str) or not identifier or identifier in self.seen
+                not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}", identifier) or identifier in self.seen
+                or not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", name)
                 or not isinstance(arguments, dict) or not isinstance(digest, str)
                 or re.fullmatch(r"[0-9a-f]{64}", digest) is None
             ):
@@ -128,4 +129,8 @@ class SavedTurnPlan:
         self.messages.append({"role": "assistant", "content": value.get("output") or "", "tool_calls": calls})
         # Copy/bound before sending any of the proposed tool effects.
         self.messages = strict_loads(canonical_json(self.messages), max_bytes=40 * 1024, max_depth=12)
+        saved_tool_messages([*self.messages, *[
+            {"role": "tool", "tool_call_id": item["tool_call_id"], "content": ""}
+            for item in self.pending
+        ]])
         self.stage = "tool"

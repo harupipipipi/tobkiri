@@ -114,8 +114,8 @@ class SavedHostExchange:
             "request_digest": frame.digest, "outcome": dict(outcome),
         }
         checked = validate_continuation_result(canonical_json(value), request=frame)
-        # Retain only fingerprints/revision from Host results, not guest state
-        # or another transcript. Compute before exposing results to the guest.
+        # Bind completion and the bounded tool transcript to Host results before
+        # exposing those results to the guest.
         owned = strict_loads(checked.frame)["outcome"].get("value", {})
         stage = self._tool_plan.stage if self._tool_plan else ("read", "user", "ai", "assistant")[self._hop]
         if stage == "ai":
@@ -149,7 +149,7 @@ class SavedHostExchange:
                         "user_message_id": message["parent_id"], "message": message,
                     })
         if self._tool_plan is not None:
-            self._tool_plan.receive(outcome)
+            self._tool_plan.receive(strict_loads(checked.frame)["outcome"])
             if stage == "user" and self._user_revision is None:
                 self._tool_plan.failed = True
         self._failed = outcome.get("status") == "error" or bool(

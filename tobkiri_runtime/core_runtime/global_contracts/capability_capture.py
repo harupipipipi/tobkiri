@@ -114,6 +114,7 @@ def capture_capability_binding_snapshot(
                 "profile_revision": session.profile_revision,
                 "activation_id": session.activation_id,
                 "plan_digest": session.plan_digest,
+                "application_artifact_digest": binding.artifact_digest,
                 "contributions": [_target_digest_payload(target) for target in captured_targets],
             }
         ),

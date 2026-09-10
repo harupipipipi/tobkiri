@@ -23,15 +23,11 @@ import {
   isConversationV4Contribution,
 } from "./ConversationV4View";
 import { ErrorNotice } from "../components/ErrorNotice";
-import { TobkiriLoadingScreen } from "../components/TobkiriLoadingScreen";
+import { ApplicationBuiltinView } from "./ApplicationBuiltinView";
 
 export { frontendActionErrorMessage } from "./ConversationV4View";
 
 const quarantined = new Set<string>();
-
-const DefaultsChatApp = lazy(() => import("../App").then(({ ChatApp }) => ({
-  default: ChatApp,
-})));
 
 export const ISOLATED_FRONTEND_SANDBOX = "allow-scripts";
 // Sandboxed documents have an opaque origin, so a specific target origin
@@ -77,9 +73,14 @@ export function contributionsForRoute(
   activePlanHash: string,
 ): VerifiedFrontendContribution[] {
   if (catalog.plan_hash !== activePlanHash) return [];
-  return catalog.contributions.filter((item) => (
+  const matches = catalog.contributions.filter((item) => (
     item.kind === "route"
-    && item.route === route
+    && (item.route === route || (
+      item.route_match === "subpath"
+      && item.route
+      && route.startsWith(`${item.route.replace(/\/$/, "")}/`)
+      && /^\/[A-Za-z0-9_/-]+$/.test(route)
+    ))
     && item.resolved_profile_id === catalog.profile_id
     && item.resolved_profile_revision === catalog.profile_revision
     && item.resolved_activation_id === catalog.activation_id
@@ -87,6 +88,7 @@ export function contributionsForRoute(
     && !catalog.quarantined_pack_ids.includes(item.owner_pack_id)
     && !quarantined.has(quarantineKey(item))
   ));
+  return matches.length === 1 ? matches : [];
 }
 
 export function bindFrontendCapabilityClient(
@@ -167,18 +169,10 @@ function ContributionView({
     () => bindFrontendCapabilityClient(catalog, item, capabilities),
     [capabilities, catalog, item],
   );
+  if (item.mode === "application_builtin") {
+    return <ApplicationBuiltinView item={item} />;
+  }
   if (isConversationV4Contribution(item)) {
-    // Select the full Defaults surface only after the active contribution has
-    // passed the same Profile, activation, plan and quarantine checks above.
-    if (catalog.profile_id === "defaults") {
-      return (
-        <div data-defaults-chat-app>
-          <Suspense fallback={<TobkiriLoadingScreen />}>
-            <DefaultsChatApp />
-          </Suspense>
-        </div>
-      );
-    }
     return (
       <ConversationV4View
         item={item}

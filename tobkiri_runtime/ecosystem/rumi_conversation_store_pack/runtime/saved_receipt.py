@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.canonical import canonical_digest, canonical_json
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_tools import saved_tool_messages, saved_tool_logs
 
 
 def append_receipt(
@@ -37,12 +38,20 @@ def append_receipt(
         "assistant_message_id": assistant_id,
     }
     role = message.get("role")
+    metadata = {"turn_id": request["turn_id"]}
+    trace = saved_tool_messages((message.get("metadata") or {}).get("saved_tool_messages", []))
+    if trace:
+        if role != "assistant" or request.get("tool_selection", {}).get("mode", "none") == "none":
+            raise ValueError("saved append tool transcript is out of scope")
+        metadata["saved_tool_messages"] = trace
+    if canonical_json(message.get("tool_logs") or []) != canonical_json(saved_tool_logs(trace)):
+        raise ValueError("saved append tool logs differ from transcript")
     if (
         conversation_id != request["conversation_id"]
         or role not in {"user", "assistant"}
         or message.get("id") != (user_id if role == "user" else assistant_id)
         or message.get("status") != "complete"
-        or message.get("metadata") != {"turn_id": request["turn_id"]}
+        or canonical_json(message.get("metadata")) != canonical_json(metadata)
     ):
         raise ValueError("saved append identity is invalid")
     if role == "user":

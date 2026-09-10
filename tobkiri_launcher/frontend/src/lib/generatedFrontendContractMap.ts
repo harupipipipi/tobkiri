@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:9d91055e579911b0121b823ae6c9bac2138e2a7fbf45c1852a5cfe4d9cc37e53
+// Raw source digest: sha256:cc2fb99cc81a372319ed26837f20299264391a7ca4471edc637c3d5e8e5258fd
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:9d91055e579911b0121b823ae6c9bac2138e2a7fbf45c1852a5cfe4d9cc37e53" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:cc2fb99cc81a372319ed26837f20299264391a7ca4471edc637c3d5e8e5258fd" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:9d91055e579911b0121b823ae6c9bac2138e2a7fbf45c1852a5cfe4d9cc37e53",
+  "artifact_digest": "sha256:cc2fb99cc81a372319ed26837f20299264391a7ca4471edc637c3d5e8e5258fd",
   "routes": [
     {
       "method": "GET",

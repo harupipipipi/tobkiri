@@ -134,6 +134,31 @@
       "artifact_digest": null,
       "pack_id": "rumi_command_protocol_pack",
       "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_broker_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_validation_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_result_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_local_executor_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_default_tool_projection_pack",
+      "role": "provider"
     }
   ],
   "profile_api_version": "io.tobkiri.profile.v5",
@@ -143,7 +168,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:ed6a49b767e3de1933a7678f4d5f3ed97a157b174bc291945f663d6274d4a7b2",
+    "source_digest": "sha256:8cabcf092e0650fabaa206f553f4753e398f6d9341e783fdd8e2a5db35bcbdcd",
     "repository_commit": "working-tree",
     "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
     "generator": "tobkiri-profile-artifacts",
@@ -415,7 +440,7 @@
       "operation_id": "rumi_turn_runtime_pack.turn-saved",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:f0592dcf3a526a13ea7c03a55ed62339938cc57c38b1f0ace993d275e3613bd6",
+        "semantics_digest": "sha256:8a5ba2543950c85126e9f6c79d5740076597473805ec53d6a453c9f5752d589f",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.saved.v1"
@@ -478,7 +503,7 @@
       "operation_id": "saved_complete",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:c1e1e6a7d047591694d1fca6d8ac110d8d1df28a368aa4ac2ccbdec0a46248ff",
+        "semantics_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
         "dimensions": {
           "contract": [
             "conversation.saved-turn.v1"
@@ -562,7 +587,7 @@
       "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:b55d97c2964f2ea62761d49a9e996b48e37bea088ae662feacb0d861b4f89f1e",
+        "semantics_digest": "sha256:ff956d72ff72a242f94b251f4ed29a02dbf60447e8a20c121a8775c71cb27b9b",
         "dimensions": {
           "contract": [
             "tobkiri.resource.ai.readiness.v1"
@@ -2677,6 +2702,153 @@
         "exact_request_digest": null,
         "opaque": false
       }
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "target_provider_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "contract_id": "tobkiri.service.tool.invoke.v1",
+      "operation_id": "rumi_tool_broker_pack.tool-invoke",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:158048cd75aff7396e9d7eb4a80f777f679c3217398cfa26f2fbc3f3d9375a89",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.invoke.v1"
+          ],
+          "operation": [
+            "rumi_tool_broker_pack.tool-invoke"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_validation_pack.tool-validation.arguments",
+      "contract_id": "tobkiri.service.tool.arguments.validate.v1",
+      "operation_id": "rumi_tool_validation_pack.tool-arguments-validate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:66d9f4c2832315ec15d0eec37ed1cb7e77b212ba21bbaf883d6eacbbd838435a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.arguments.validate.v1"
+          ],
+          "operation": [
+            "rumi_tool_validation_pack.tool-arguments-validate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_result_pack.tool-result.normalize",
+      "contract_id": "tobkiri.service.tool.result.normalize.v1",
+      "operation_id": "rumi_tool_result_pack.tool-result-normalize",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecb2a872eefc9feba498285de1177833149a46e6c9d1a59320f21dc4303eece4",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.result.normalize.v1"
+          ],
+          "operation": [
+            "rumi_tool_result_pack.tool-result-normalize"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operation_id": "rumi_tool_local_executor_pack.tool-local-execute",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ed2eba5075751888f2889bcc404c72e63263c629a0d2a1aff043fade09b0c0eb",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.execute.v1"
+          ],
+          "operation": [
+            "rumi_tool_local_executor_pack.tool-local-execute"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
     }
   ],
   "shell": {
@@ -2690,5 +2862,6 @@
     "executable_artifact_digest": null
   },
   "state": "needs_resolution",
+  "frontend_entry_id": "chat",
   "content_projections": []
 }

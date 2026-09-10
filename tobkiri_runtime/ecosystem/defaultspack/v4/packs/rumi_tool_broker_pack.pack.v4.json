@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:02130904980fca2a54b8836ffa00ad4381abc8c830d4664bc74d7c9dcf53b417",
+      "digest": "sha256:892975ec48665ce92ce2413e53112a14841dfd7198fbb8f92c95765deb8bc953",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e",
+      "digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
       "kind": "executable",
       "path": "runtime/broker.py"
     }
@@ -24,7 +24,7 @@
     {
       "contract_revision_digest": "sha256:158048cd75aff7396e9d7eb4a80f777f679c3217398cfa26f2fbc3f3d9375a89",
       "id": "rumi_tool_broker_pack.tool-broker.invoke",
-      "implementation_digest": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e",
+      "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_tool_broker_pack.tool-invoke"
@@ -33,8 +33,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:f2d60bc1e4b7c2b722c15fa284939ead49bfac10cc32211e9e5fda6ba6279975",
-    "artifact_set_digest": "sha256:307d0e583612bcf9821fd31039a9d11a4e20ac8cbb87e7bede86cb9c4e0f0b98",
+    "source_identity": "sha256:b928afcdb949e6b5a7b0625cc4f2adfce98b24d9c83991cf66c0fd004282ae19",
+    "artifact_set_digest": "sha256:4c2e952c31158bd9eb9dff6da4c52034e8bc66f09c94b46e4c7ffdb99985d297",
     "contract_catalog_digest": "sha256:6ae4e5129910735a48754ecf90363b7e15ba327b62bd8343e77e2bff9204f212"
   },
   "migration": {
@@ -58,7 +58,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:7f98e63ee619acadf25ffae6a32dbdd70b52d12d3e3a087c608f7a6552b5c277",
+    "artifact_digest": "sha256:4deadadded20a201ca62a26b6aaf6c6b1b6f2ba9289f0fbabf547152039894d3",
     "display_name": "Rumi Tool Broker",
     "id": "rumi_tool_broker_pack",
     "kind": "host_extension",
@@ -69,15 +69,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_tool_broker_pack/pack.v4.json",
-    "source_digest": "sha256:f2d60bc1e4b7c2b722c15fa284939ead49bfac10cc32211e9e5fda6ba6279975",
+    "source_digest": "sha256:b928afcdb949e6b5a7b0625cc4f2adfce98b24d9c83991cf66c0fd004282ae19",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:0527834faff499abf96b5973f06d1dd55a8d5caea5e6d597240e5d17fac47c83",
+    "content_root_digest": "sha256:f49cf04037fa1013358b0bca4eb13305cb26cc6256627c64a9b98fbbd0b2e8a6",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:b1ba7468173e8c7b515bafa3369ec86df410d4e5c8c26fe505464090420760d9",
+    "input_inventory_digest": "sha256:62aae1519c98aeef6d4ab06a8f92ad1257e22484dab495e8637249dd8b19db5f",
     "normative": true,
     "evidence": [
       {
@@ -88,7 +88,7 @@
       {
         "path": "ecosystem/rumi_tool_broker_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:f2d60bc1e4b7c2b722c15fa284939ead49bfac10cc32211e9e5fda6ba6279975"
+        "digest": "sha256:b928afcdb949e6b5a7b0625cc4f2adfce98b24d9c83991cf66c0fd004282ae19"
       }
     ]
   },

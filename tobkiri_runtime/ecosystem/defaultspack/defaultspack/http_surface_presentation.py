@@ -7,7 +7,6 @@ import uuid
 from pathlib import PurePosixPath
 from typing import Mapping
 
-from core_runtime.global_contracts.capability_capture import capture_target_identity
 from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPCapabilitySnapshot,
     HTTPContractBinding,
@@ -19,7 +18,7 @@ from core_runtime.pack_api_server import (
     DispatchSession,
     WorkspaceBindingResolver,
 )
-from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.canonical import canonical_digest, strict_loads
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 from .model_profile_presentation import (
@@ -373,17 +372,12 @@ class DefaultspackHTTPPresentation:
                 catalog_hash=canonical_digest({"contributions": []}), targets=()
             )
         )
-        display_targets = list(snapshot.targets)
-        if session is not None and capability_binding is not None:
-            # Keep the full UI/settings reachable before PackVM provisioning.
-            # This identity-only route is NOT added to the invoke snapshot.
-            for target in capability_binding.targets:
-                if _is_conversation(target) and not any(
-                    _is_conversation(item) for item in display_targets
-                ):
-                    captured = capture_target_identity(target, session=session)
-                    if captured is not None:
-                        display_targets.append(captured)
+        # Display declarations come from the selected Application's verified
+        # map. They never add an operation to the invocation snapshot.
+        entries = []
+        if session is not None and binding.frontend_entries:
+            session.assert_current()
+            entries = strict_loads(binding.frontend_entries)["entries"]
         return {
             **dict(result),
             "dynamic_host": {
@@ -393,8 +387,11 @@ class DefaultspackHTTPPresentation:
                 "activation_id": str(getattr(session, "activation_id", "")),
                 "plan_hash": str(getattr(session, "plan_digest", "")),
                 "contributions": [
-                    _contribution(target, index, session)
-                    for index, target in enumerate(display_targets)
+                    _frontend_entry(entry, index, binding, session)
+                    for index, entry in enumerate(entries)
+                ] + [
+                    _action_contribution(target, index, session)
+                    for index, target in enumerate(snapshot.targets)
                 ],
                 "diagnostics": _diagnostics(result, session),
                 "quarantined_pack_ids": [],
@@ -413,53 +410,77 @@ def _is_conversation(target: HTTPContractTarget) -> bool:
     ) == _CONVERSATION_TARGET
 
 
-def _contribution(
-    target: HTTPContractTarget,
+def _frontend_entry(
+    entry: Mapping[str, object],
     priority: int,
+    binding: HTTPContractBinding,
     session: DispatchSession | None,
 ) -> dict[str, object]:
-    conversation = _is_conversation(target)
     profile_id = str(getattr(session, "profile_id", ""))
     profile_revision = str(getattr(session, "profile_revision", ""))
     activation_id = str(getattr(session, "activation_id", ""))
     plan_digest = str(getattr(session, "plan_digest", ""))
-    contribution: dict[str, object] = {
-        "contribution_id": target.contribution_id,
-        "kind": "route" if conversation else "action",
-        "mode": "declarative" if conversation else "same_origin_builtin",
-        "label": "Tobkiri Conversation" if conversation else target.operation_id,
+    return {
+        "contribution_id": entry["contribution_id"],
+        "kind": "route",
+        "mode": "application_builtin",
+        "label": entry["label"],
         "priority": priority,
-        "owner_pack_id": target.owner_pack_id,
-        "owner_pack_hash": target.artifact_digest or plan_digest,
-        "build_identity": target.function_id,
+        "owner_pack_id": binding.route_namespace,
+        "owner_pack_hash": binding.artifact_digest,
+        "build_identity": binding.application_id,
         "resolved_profile_id": profile_id,
         "resolved_profile_revision": profile_revision,
         "resolved_activation_id": activation_id,
         "resolved_plan_hash": plan_digest,
         "descriptor_hash": canonical_digest(
             {
-                "contribution_id": target.contribution_id,
-                "operation_id": target.operation_id,
+                "entry": dict(entry),
+                "application_id": binding.application_id,
+                "artifact_digest": binding.artifact_digest,
             }
         ),
-        "route": "/chat" if conversation else "/packs",
-        "action_contract": target.contract_id,
-        "operation_id": target.operation_id,
-        "provider_id": target.provider_id,
-        "function_id": target.function_id,
+        "route": entry["route"],
+        "route_match": entry["match"],
+        "implementation": entry["implementation"],
         "localization": {},
         "accessibility": {
-            "name": "Tobkiri Conversation" if conversation else target.operation_id,
+            "name": entry["label"],
             "keyboard": True,
         },
     }
-    if conversation:
-        contribution["view"] = {
-            "type": "conversation_v4",
-            "title": "Tobkiri Conversation",
-            "body": "Start a conversation with your active Tobkiri Profile.",
-        }
-    return contribution
+
+
+def _action_contribution(
+    target: HTTPContractTarget,
+    priority: int,
+    session: DispatchSession | None,
+) -> dict[str, object]:
+    """Project an admitted capability without inventing a screen for it."""
+    identity = {
+        "contribution_id": target.contribution_id,
+        "operation_id": target.operation_id,
+        "provider_id": target.provider_id,
+        "function_id": target.function_id,
+        "action_contract": target.contract_id,
+        "owner_pack_id": target.owner_pack_id,
+        "owner_pack_hash": target.artifact_digest,
+    }
+    return {
+        **identity,
+        "kind": "action",
+        "mode": "declarative",
+        "label": target.operation_id,
+        "priority": priority,
+        "build_identity": target.function_id,
+        "resolved_profile_id": str(getattr(session, "profile_id", "")),
+        "resolved_profile_revision": str(getattr(session, "profile_revision", "")),
+        "resolved_activation_id": str(getattr(session, "activation_id", "")),
+        "resolved_plan_hash": str(getattr(session, "plan_digest", "")),
+        "descriptor_hash": canonical_digest(identity),
+        "localization": {},
+        "accessibility": {"name": target.operation_id, "keyboard": True},
+    }
 
 
 def _diagnostics(

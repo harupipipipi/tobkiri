@@ -17,8 +17,11 @@ class Contributions:
     def __init__(self):
         self.items = []
         self.calls = []
+        self.routes = {}
 
     def providers(self, contract):
+        if contract in host.ROUTE_CONTRACTS:
+            return tuple(self.routes.get(contract, ()))
         assert contract == host.CONTRIBUTION
         return tuple(item[0] for item in self.items)
 
@@ -72,7 +75,9 @@ def registry_host(tmp_path):
 
         def contract_client(**kwargs):
             assert kwargs == {
-                "allowed_contract_ids": frozenset({host.CONTRIBUTION})
+                "allowed_contract_ids": frozenset({host.CONTRIBUTION}) | (
+                    host.ROUTE_CONTRACTS if payload.get("operation") == "select" else frozenset()
+                )
                 if kind == "definition"
                 else frozenset(),
                 "consumer_pack_id": host.PACK_ID,
