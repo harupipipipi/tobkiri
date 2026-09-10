@@ -28,7 +28,7 @@ from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
 from tobkiri_host.errors import BackendUnavailableError
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.ports import OpaqueInvocationLease
-from tobkiri_host.wasm_backend import WasmComponentBackend
+from tobkiri_host.wasm_backend import WasmComponentBackend, production_wasm_backend
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -67,6 +67,7 @@ def _backend():
     backend = WasmComponentBackend(
         command,
         worker_command_digest=canonical_digest(list(command)),
+        worker_runtime_digest=canonical_digest({"fixture": "wasmtime-runtime"}),
         memory_reservation_bytes=256 * 1024 * 1024,
     )
     binding, materialized = _binding_and_bytes()
@@ -178,4 +179,17 @@ def test_worker_command_digest_must_match_trusted_argv() -> None:
         WasmComponentBackend(
             worker_command(),
             worker_command_digest="sha256:" + "0" * 64,
+            worker_runtime_digest=canonical_digest({"fixture": "wasmtime-runtime"}),
         )
+
+
+def test_production_factory_captures_pinned_runtime_files() -> None:
+    backend = production_wasm_backend()
+    assert backend.status.ready_for_production
+    assert backend.status.backend_id == "tobkiri.wasmtime-pulley-v1"
+    assert backend._worker_command[1:] == (
+        "-I",
+        "-B",
+        "-m",
+        "tobkiri_host.wasm_component",
+    )

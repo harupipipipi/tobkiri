@@ -1530,6 +1530,18 @@ def capture_production_dispatch(
         if authenticated_backend is not None:
             registered_backends += (authenticated_backend,)
             owned_packvm_backends = (authenticated_backend,)
+        if any(
+            binding.variant.execution_kind is ExecutionKind.WASM
+            for binding in catalog_bindings
+        ):
+            try:
+                from tobkiri_host.wasm_backend import production_wasm_backend
+
+                registered_backends += (production_wasm_backend(),)
+            except Exception:
+                # A missing or unverified engine leaves the pinned binding
+                # unavailable and receives no domain or Authority records.
+                pass
     target_backend_digests = dict(target_backend_digests or {})
     authority_control = runtime.composition.authority_adapter(authority_store)
     control_targets: dict[tuple[str, str], tuple[str, str, str]] = {}

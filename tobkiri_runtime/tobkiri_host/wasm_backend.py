@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+import hashlib
+import importlib.metadata
+import importlib.util
 import math
+from pathlib import Path
 import threading
 import time
 from typing import Callable
@@ -46,10 +50,12 @@ class WasmComponentBackend:
         worker_command: tuple[str, ...],
         *,
         worker_command_digest: str,
+        worker_runtime_digest: str,
         memory_reservation_bytes: int = 512 * 1024 * 1024,
         backend_id: str = WASMTIME_PULLEY_BACKEND,
     ) -> None:
         require_digest(worker_command_digest, "Wasm worker command")
+        require_digest(worker_runtime_digest, "Wasm worker runtime")
         if worker_command_digest != canonical_digest(list(worker_command)):
             raise ValueError("Wasm worker command digest mismatch")
         if (
@@ -80,6 +86,7 @@ class WasmComponentBackend:
                 {
                     "backend": backend_id,
                     "worker_command_digest": worker_command_digest,
+                    "worker_runtime_digest": worker_runtime_digest,
                     "memory_reservation_bytes": memory_reservation_bytes,
                     "abi": "component-v1",
                     "engine": "wasmtime-pulley",
@@ -276,4 +283,52 @@ class WasmComponentBackend:
             raise BackendUnavailableError("Wasm worker termination is unconfirmed") from failures[0]
 
 
-__all__ = ["WASMTIME_PULLEY_BACKEND", "WasmComponentBackend"]
+def production_wasm_backend() -> WasmComponentBackend:
+    """Capture the installed, sealed interpreter and Wasmtime worker identity."""
+
+    import sys
+
+    if importlib.metadata.version("wasmtime") != "48.0.0":
+        raise BackendUnavailableError("the pinned Wasmtime engine is unavailable")
+    interpreter = Path(sys.executable).resolve(strict=True)
+    if not interpreter.is_file():
+        raise BackendUnavailableError("the sealed Python interpreter is unavailable")
+    origins: dict[str, Path] = {"python": interpreter}
+    for module_name in (
+        "wasmtime",
+        "wasmtime._ffi",
+        "wasmtime.component",
+        "tobkiri_host.wasm_component",
+    ):
+        spec = importlib.util.find_spec(module_name)
+        if spec is None or spec.origin is None:
+            raise BackendUnavailableError("the pinned Wasm runtime is incomplete")
+        origin = Path(spec.origin).resolve(strict=True)
+        if not origin.is_file():
+            raise BackendUnavailableError("the pinned Wasm runtime file is invalid")
+        origins[module_name] = origin
+    runtime_digest = canonical_digest(
+        {
+            name: "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+            for name, path in sorted(origins.items())
+        }
+    )
+    command = (
+        str(interpreter),
+        "-I",
+        "-B",
+        "-m",
+        "tobkiri_host.wasm_component",
+    )
+    return WasmComponentBackend(
+        command,
+        worker_command_digest=canonical_digest(list(command)),
+        worker_runtime_digest=runtime_digest,
+    )
+
+
+__all__ = [
+    "WASMTIME_PULLEY_BACKEND",
+    "WasmComponentBackend",
+    "production_wasm_backend",
+]
