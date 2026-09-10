@@ -1209,12 +1209,12 @@
     {
       "path": "packs/rumi_tool_broker_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:fbb63f480ad71fceb25841a4ee6d36e095467274a460541617d23647c0f04fdb"
+      "digest": "sha256:02130904980fca2a54b8836ffa00ad4381abc8c830d4664bc74d7c9dcf53b417"
     },
     {
       "path": "packs/rumi_tool_broker_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:3b1de3ca618ba3a066065329f34990641176f066a588807898b893e1e6244bac"
+      "digest": "sha256:9b7071b6c7d91c278170028134d70aee9194f65c52d074b743c17cef8ac60cfa"
     },
     {
       "path": "packs/rumi_tool_capability_executor_pack.executables.v4.json",
@@ -1279,12 +1279,12 @@
     {
       "path": "packs/rumi_tool_registry_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:fbe1ba30a3b3dcac52f4ec75c9659e6c4efa46b57d2b68faad9c30c31b539ddc"
+      "digest": "sha256:d4e2dfe25040e6bc9029d6e1489c1904c18923a16a151e517ee5fd761d99e02c"
     },
     {
       "path": "packs/rumi_tool_registry_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:1be5b206f92d2c4a2e538f46d25c1eeaa7b66677af7074c8b4aa8d30d2efa957"
+      "digest": "sha256:edef7b52c38868a8fb0ab955804088102b82c3bfd2506409bda82c9654bec544"
     },
     {
       "path": "packs/rumi_tool_remote_executor_pack.executables.v4.json",
@@ -1299,12 +1299,12 @@
     {
       "path": "packs/rumi_tool_result_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:e98013285c5b355f8f8e58dfbbb4edc7a1b683612fea487d2a2fdbcd91e02172"
+      "digest": "sha256:393695876f75f4f29b59c894d91620498a5634d850d4531a4243e0667197e63d"
     },
     {
       "path": "packs/rumi_tool_result_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:773d093d162de5fdb63a801e76fe62bd49458bcb7721d030ec78497babac531c"
+      "digest": "sha256:6ba8e9f278200935fe3e5a118d35b773e2ad9774ceecc73092c37cd43fb19a23"
     },
     {
       "path": "packs/rumi_tool_sandbox_executor_pack.executables.v4.json",
@@ -1319,12 +1319,12 @@
     {
       "path": "packs/rumi_tool_validation_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:06f33956bc009784ee4314d6b62ba83e84ed65f543e9d5f778a82f31df81f710"
+      "digest": "sha256:9ecb90d8c876494a2f221554c3d242aa6bc28f2e591fc701719a29aee0467d1b"
     },
     {
       "path": "packs/rumi_tool_validation_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:989781e2410b5bb82b5cff6f73b1b4b28996aebf06e96cc49a7ef5f61f78db3d"
+      "digest": "sha256:9e88016a8cbf1c3ac289858553e9676fbcbd054ac2c2df5301c50639a0458f57"
     },
     {
       "path": "packs/rumi_turn_runtime_pack.executables.v4.json",

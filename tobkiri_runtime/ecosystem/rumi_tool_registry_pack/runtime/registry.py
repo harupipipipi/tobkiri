@@ -545,6 +545,8 @@ def _definition(value: Mapping[str, Any]) -> dict[str, Any]:
         "widget": _json_object(value.get("widget") or {}),
         "source_adapter_id": str(value.get("source_adapter_id") or ""),
     }
+    if "connection_id" in execution:
+        normalized["execution"]["connection_id"] = _identifier(execution["connection_id"])
     normalized["definition_hash"] = hashlib.sha256(
         json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()

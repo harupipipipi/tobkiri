@@ -1,269 +1,169 @@
-"""Compose the global tool invocation pipeline without concrete tool branches."""
+"""Resolve owned tool definitions and dispatch through captured Host authority."""
 
 from __future__ import annotations
 
-import hashlib
-import json
-import time
-import uuid
-from typing import Any, Callable, Mapping
+import re
+import threading
+from typing import Any, Mapping
 
-from core_runtime.global_contract_dispatch import (
-    GlobalContractClient,
-    GlobalContractInvocationError,
+from core_runtime.host_provider_backend_v4 import (
+    HostProviderCaptureContextV4,
+    HostProviderInvocationContextV4,
 )
-from core_runtime.resolved_profile_scope import active_resolved_profile
+from core_runtime.host_provider_function_v4 import (
+    HostFunction,
+    SingleOperationHostFactoryV4,
+)
 
-DEFINITION = "rumi.resource.tool.definition.v1"
-VALIDATE = "rumi.service.tool.arguments.validate.v1"
-GUARD = "rumi.service.tool.guard.evaluate.v1"
-POLICY = "rumi.service.tool.policy.evaluate.v1"
-AUTHORIZE = "rumi.service.tool.authorize.v1"
-SELECTOR = "rumi.service.tool.executor.select.v1"
-EXECUTE = "rumi.service.tool.execute.v1"
-NORMALIZE = "rumi.service.tool.result.normalize.v1"
-AUDIT = "rumi.event.tool.invocation.v1"
-
-
-def create_invoke_operation(
-    client: GlobalContractClient,
-) -> Callable[[str, Mapping[str, Any]], dict[str, Any]]:
-    """Create the resolve-to-audit provider-neutral invocation pipeline."""
-
-    def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if name not in {"invoke", "execute"}:
-            raise ValueError(f"unknown tool broker operation: {name}")
-        return _invoke(client, payload)
-
-    return operation
+PACK_ID = "rumi_tool_broker_pack"
+CONTRACT = "tobkiri.service.tool.invoke.v1"
+OPERATION = f"{PACK_ID}.tool-invoke"
+DEFINITION = "tobkiri.resource.tool.definition.v1"
+VALIDATE = "tobkiri.service.tool.arguments.validate.v1"
+EXECUTE = "tobkiri.service.tool.execute.v1"
+NORMALIZE = "tobkiri.service.tool.result.normalize.v1"
+_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
+# These are protocol adapters, not tool-name branches. Their nested effects
+# still require separate signed edges and Authority checks in the same Broker.
+_EXECUTORS = {
+    "local": ("rumi_tool_local_executor_pack", "tool-executor.local", "tool-local-execute"),
+    "mcp": ("rumi_tool_mcp_executor_pack", "tool-executor.mcp", "tool-mcp-execute"),
+}
 
 
-def _invoke(
-    client: GlobalContractClient,
-    payload: Mapping[str, Any],
+def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
+    # An outer synchronous Broker invocation must not fill every worker with
+    # calls waiting on their own nested execution. Reject contention, don't queue.
+    single_flight = threading.BoundedSemaphore(1)
+
+    def invoke(
+        payload: Mapping[str, Any], invocation: HostProviderInvocationContextV4,
+    ) -> Mapping[str, Any]:
+        if (
+            set(payload) != {"tool_id", "tool_call_id", "arguments"}
+            or any(
+                not isinstance(payload[key], str)
+                or not _IDENTIFIER.fullmatch(payload[key])
+                for key in ("tool_id", "tool_call_id")
+            )
+            or not isinstance(payload["arguments"], dict)
+        ):
+            raise ValueError("tool invocation payload is invalid")
+        if not single_flight.acquire(blocking=False):
+            raise PermissionError("tool broker is busy")
+        try:
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({DEFINITION, VALIDATE, EXECUTE, NORMALIZE}),
+                consumer_pack_id=PACK_ID,
+                include_credentials=False,
+            )
+            resolved = client.invoke(
+                DEFINITION, "rumi_tool_registry_pack.tool-definition-resource",
+                {"operation": "resolve", "tool_id": payload["tool_id"]},
+            )
+            if (
+                not isinstance(resolved, Mapping)
+                or resolved.get("found") is not True
+                or not isinstance(resolved.get("definition"), Mapping)
+                or not isinstance(resolved.get("resolved_tool_id"), str)
+            ):
+                raise ValueError("tool is not registered")
+            definition = resolved["definition"]
+            validation = client.invoke(
+                VALIDATE, "rumi_tool_validation_pack.tool-arguments-validate",
+                {"schema": definition.get("input_schema"), "arguments": payload["arguments"]},
+            )
+            if (
+                not isinstance(validation, Mapping)
+                or validation.get("valid") is not True
+                or validation.get("coerced") is not False
+                or validation.get("arguments") != payload["arguments"]
+            ):
+                raise ValueError("tool arguments are invalid")
+            execution = definition.get("execution")
+            if not isinstance(execution, Mapping) or execution.get("kind") not in _EXECUTORS:
+                raise PermissionError("tool execution kind is unavailable")
+            pack, function, operation = _EXECUTORS[execution["kind"]]
+            operation_id = f"{pack}.{operation}"
+            candidates = [
+                item for item in client.providers(EXECUTE)
+                if item.get("function_id") == f"{pack}.{function}"
+                and item.get("operation_id") == operation_id
+                and item.get("backend_id")
+                and not item.get("backend_unavailable_reason")
+            ]
+            if len(candidates) != 1:
+                raise PermissionError("selected tool executor is unavailable")
+            selected = candidates[0]
+            request = {
+                "tool_call_id": payload["tool_call_id"],
+                "tool_id": resolved["resolved_tool_id"],
+                "arguments": validation["arguments"],
+                "definition": dict(definition),
+            }
+            if execution["kind"] == "mcp":
+                request = _mcp_request(context, execution, validation["arguments"])
+            # No grant, approval flag, identity or legacy token is forwarded.
+            # Denials and pending effects propagate; they are never retried here.
+            invocation.assert_current()
+            raw = client.invoke(
+                EXECUTE, operation_id, request,
+                provider_instance_id=selected["provider_instance_id"],
+            )
+            return client.invoke(
+                NORMALIZE, "rumi_tool_result_pack.tool-result-normalize",
+                {
+                    "tool_call_id": payload["tool_call_id"],
+                    "tool_id": resolved["resolved_tool_id"],
+                    "executor_provider_instance_id": selected["provider_instance_id"],
+                    "executor_content_hash": selected["implementation_digest"],
+                    "value": raw,
+                },
+            )
+        finally:
+            single_flight.release()
+
+    return invoke
+
+
+def _mcp_request(
+    context: HostProviderCaptureContextV4,
+    execution: Mapping[str, Any],
+    arguments: Mapping[str, Any],
 ) -> dict[str, Any]:
-    plan = active_resolved_profile()
-    if plan is None:
-        raise GlobalContractInvocationError(
-            "profile_unavailable", "profile is inactive"
+    contract = "tobkiri.service.mcp.tool.call.v1"
+    bindings = [
+        item for item in context.catalog_bindings
+        if item.operation.contract_id == contract
+        and item.operation.operation_id == "rumi_mcp_gateway_pack.mcp-tool-call"
+    ]
+    if len(bindings) != 1:
+        raise PermissionError("selected MCP gateway is unavailable")
+    binding = bindings[0]
+    provider = binding.function.function_id.removeprefix(f"{binding.artifact.pack_id}.")
+    namespace = execution.get("namespace")
+    if (
+        execution.get("contract_id") != contract
+        or execution.get("provider_instance_id") != provider
+        or not isinstance(namespace, str)
+        or not re.fullmatch(r"mcp\.[a-z0-9][a-z0-9._-]{0,127}", namespace)
+        or any(
+            not isinstance(execution.get(key), str)
+            or not _IDENTIFIER.fullmatch(execution[key])
+            for key in ("connection_id", "operation")
         )
-    tool_id = str(payload.get("tool_id") or payload.get("tool_name") or "").strip()
-    caller_id = str(payload.get("caller_id") or "").strip()
-    tool_call_id = str(payload.get("tool_call_id") or uuid.uuid4())
-    arguments = payload.get("arguments")
-    if not tool_id or not caller_id or not isinstance(arguments, Mapping):
-        raise GlobalContractInvocationError(
-            "invalid_request", "tool request is incomplete"
-        )
-    base = {
-        "tool_call_id": tool_call_id,
-        "tool_id": tool_id,
-        "caller_id": caller_id,
-        "profile_id": plan.profile_id,
-        "args_hash": _hash(arguments),
-    }
-    resolved = client.invoke(
-        DEFINITION,
-        "resolve",
-        {"profile_id": plan.profile_id, "tool_id": tool_id},
-    )
-    if not isinstance(resolved, Mapping) or not isinstance(
-        resolved.get("definition"), Mapping
     ):
-        _audit(client, "rejected", base, reason="tool_unknown")
-        raise GlobalContractInvocationError("tool_unknown", "tool is not registered")
-    definition = dict(resolved["definition"])
-    tool_id = str(resolved.get("resolved_tool_id") or tool_id)
-    base.update(
-        {
-            "tool_id": tool_id,
-            "definition_hash": str(definition.get("definition_hash") or ""),
-        }
-    )
-    _audit(client, "resolved", base)
-    validation = client.invoke(
-        VALIDATE,
-        "validate",
-        {"schema": definition.get("input_schema") or {}, "arguments": arguments},
-    )
-    if not isinstance(validation, Mapping) or not validation.get("valid"):
-        _audit(client, "rejected", base, reason="arguments_invalid")
-        return _error(client, base, "arguments_invalid", "tool arguments are invalid")
-    normalized_arguments = validation.get("arguments")
-    authority = str(definition.get("authority") or "")
-    base["authority"] = authority
-    permissions = set(plan.effective_permissions)
-    now = time.time()
-    deadline = _number(payload.get("deadline"))
-    deadline = deadline if deadline is not None else now + 60.0
-    guard = client.invoke(
-        GUARD,
-        "evaluate",
-        {
-            "definition_enabled": bool(definition.get("enabled", True)),
-            "caller_id": caller_id,
-            "profile_id": plan.profile_id,
-            "profile_permission": authority in permissions,
-            "cancelled": bool(payload.get("cancelled", False)),
-            "decision_time": now,
-            "deadline": deadline,
-        },
-    )
-    if not isinstance(guard, Mapping) or not guard.get("allowed"):
-        reason = str((guard or {}).get("reason") or "guard_rejected")
-        _audit(client, "rejected", base, reason=reason)
-        return _error(client, base, "guard_rejected", reason)
-    _audit(client, "guarded", base)
-    policy = client.invoke(
-        POLICY,
-        "evaluate",
-        {
-            "authority": authority,
-            "granted_authorities": sorted(permissions),
-            "denied_authorities": [],
-        },
-    )
-    if not isinstance(policy, Mapping) or not policy.get("allowed"):
-        reason = str((policy or {}).get("reason") or "policy_rejected")
-        _audit(client, "rejected", base, reason=reason)
-        return _error(client, base, "policy_rejected", reason)
-    _audit(client, "policy_decided", base, decision="allow")
-    authorization = client.invoke(
-        AUTHORIZE,
-        "authorize",
-        {
-            **base,
-            "arguments": normalized_arguments,
-            "approval_required": bool(policy.get("approval_required")),
-            "risk": policy.get("risk"),
-            "approval_token": payload.get("approval_token"),
-            "approval_request_id": payload.get("approval_request_id"),
-        },
-    )
-    if not isinstance(authorization, Mapping) or not authorization.get("authorized"):
-        _audit(client, "approval_required", base, reason="approval_required")
-        return {
-            **_error_envelope(base, "approval_required", "approval is required"),
-            "approval": dict(authorization or {}),
-        }
-    _audit(client, "authorized", base)
-    execution = definition.get("execution")
-    execution = execution if isinstance(execution, Mapping) else {}
-    providers = [dict(item) for item in client.providers(EXECUTE)]
-    selection = client.invoke(
-        SELECTOR,
-        "select",
-        {
-            "execution_kind": execution.get("kind"),
-            "execution_contract_id": execution.get("contract_id"),
-            "providers": providers,
-        },
-    )
-    selected = selection.get("selected") if isinstance(selection, Mapping) else None
-    if not isinstance(selected, Mapping):
-        _audit(client, "rejected", base, reason="missing_executor")
-        return _error(client, base, "missing_executor", "tool executor is unavailable")
-    provider_instance_id = str(selected.get("provider_instance_id") or "")
-    content_hash = str(selected.get("content_hash") or "")
-    executor_fields = {
-        "executor_provider_instance_id": provider_instance_id,
-        "executor_content_hash": content_hash,
-    }
-    _audit(client, "executor_selected", {**base, **executor_fields})
-    _audit(client, "started", {**base, **executor_fields})
-    started = time.monotonic()
-    try:
-        raw = client.invoke(
-            EXECUTE,
-            "execute",
-            {
-                **base,
-                "arguments": normalized_arguments,
-                "definition": definition,
-                "deadline": deadline,
-                "authorization": dict(authorization),
-            },
-            provider_instance_id=provider_instance_id,
-        )
-        result = client.invoke(
-            NORMALIZE,
-            "normalize",
-            {**base, **executor_fields, "value": raw},
-        )
-    except Exception as exc:
-        result = client.invoke(
-            NORMALIZE,
-            "normalize",
-            {
-                **base,
-                **executor_fields,
-                "executor_error": type(exc).__name__,
-                "error_code": "executor_failed",
-            },
-        )
-    duration_ms = int((time.monotonic() - started) * 1000)
-    failed = bool(isinstance(result, Mapping) and result.get("is_error"))
-    _audit(
-        client,
-        "failed" if failed else "completed",
-        {**base, **executor_fields},
-        duration_ms=duration_ms,
-        error_code="executor_failed" if failed else None,
-    )
-    return dict(result) if isinstance(result, Mapping) else _error_envelope(
-        base, "invalid_result", "result normalizer returned an invalid value"
-    )
-
-
-def _error(
-    client: GlobalContractClient,
-    base: Mapping[str, Any],
-    code: str,
-    message: str,
-) -> dict[str, Any]:
-    value = client.invoke(
-        NORMALIZE,
-        "normalize",
-        {**base, "executor_error": message, "error_code": code},
-    )
-    return dict(value) if isinstance(value, Mapping) else _error_envelope(
-        base, code, message
-    )
-
-
-def _error_envelope(
-    base: Mapping[str, Any], code: str, message: str
-) -> dict[str, Any]:
+        raise ValueError("MCP tool execution descriptor is invalid")
     return {
-        "tool_call_id": base.get("tool_call_id"),
-        "tool_id": base.get("tool_id"),
-        "status": "error",
-        "is_error": True,
-        "result": None,
-        "error": {"code": code, "message": message},
-        "widget": None,
+        "connection_id": execution["connection_id"],
+        "tool": execution["operation"],
+        "arguments": dict(arguments),
     }
 
 
-def _audit(
-    client: GlobalContractClient,
-    event: str,
-    base: Mapping[str, Any],
-    **fields: Any,
-) -> None:
-    client.invoke(AUDIT, "emit", {"event": event, **dict(base), **fields})
-
-
-def _hash(value: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    )
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-def _number(value: Any) -> float | None:
-    try:
-        return float(value) if value is not None else None
-    except (TypeError, ValueError):
-        return None
-
+HOST_PROVIDER_FACTORY = SingleOperationHostFactoryV4(
+    function_id=f"{PACK_ID}.tool-broker.invoke",
+    contract_id=CONTRACT,
+    operation_id=OPERATION,
+    bind=_bind,
+)

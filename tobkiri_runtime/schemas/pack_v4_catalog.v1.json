@@ -15147,7 +15147,7 @@
         "tool.invoke"
       ],
       "dependencies": {},
-      "description": "Pack-agnostic resolve, validate, guard, authorize, select, execute, normalize, and audit pipeline.",
+      "description": "Resolve owned tool definitions, validate arguments, invoke exact captured executors through Host authority, and normalize results.",
       "display_name": "Rumi Tool Broker",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
@@ -15181,7 +15181,7 @@
             {
               "entrypoint_id": "tool-invoke",
               "id": "rumi_tool_broker_pack.tool-invoke",
-              "implementation_digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b"
+              "implementation_digest": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e"
             }
           ],
           "owner": "rumi_tool_broker_pack",
@@ -15204,12 +15204,6 @@
       "required_contracts": [
         {
           "cardinality": "one",
-          "contract_id": "tobkiri.event.tool.invocation.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
           "contract_id": "tobkiri.resource.tool.definition.v1",
           "optional": false,
           "version_range": "^1.0.0"
@@ -15221,33 +15215,9 @@
           "version_range": "^1.0.0"
         },
         {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.authorize.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
           "cardinality": "many",
           "contract_id": "tobkiri.service.tool.execute.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.executor.select.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.guard.evaluate.v1",
-          "optional": false,
-          "version_range": "^1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.tool.policy.evaluate.v1",
-          "optional": false,
+          "optional": true,
           "version_range": "^1.0.0"
         },
         {
@@ -15259,7 +15229,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b",
+          "digest": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e",
           "kind": "executable",
           "path": "runtime/broker.py"
         }
@@ -16016,7 +15986,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:0db04d22aa52f1f3416bcabddbe227ec3d10bf2811160a5b83aa0830b57ef722",
+          "digest": "sha256:66b656c118d6f69cf6a626b33da2ad0616cdb5e11d6c53393ef59108000edc88",
           "kind": "executable",
           "path": "runtime/registry.py"
         },
@@ -16221,7 +16191,7 @@
             {
               "entrypoint_id": "tool-result-normalize",
               "id": "rumi_tool_result_pack.tool-result-normalize",
-              "implementation_digest": "sha256:03f6e939e91980acd639db595709ec032bc901b84394dedd31e28c1275c40cf0"
+              "implementation_digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0"
             }
           ],
           "owner": "rumi_tool_result_pack",
@@ -16244,7 +16214,7 @@
       "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:03f6e939e91980acd639db595709ec032bc901b84394dedd31e28c1275c40cf0",
+          "digest": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0",
           "kind": "executable",
           "path": "runtime/normalizer.py"
         }
@@ -16406,7 +16376,7 @@
             {
               "entrypoint_id": "tool-arguments-validate",
               "id": "rumi_tool_validation_pack.tool-arguments-validate",
-              "implementation_digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9"
+              "implementation_digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f"
             }
           ],
           "owner": "rumi_tool_validation_pack",
@@ -16429,7 +16399,7 @@
       "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:67d41e1fa1d887e5bd250e4285c400fb6eef0518e856c01c0398fda41d2c54b9",
+          "digest": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f",
           "kind": "executable",
           "path": "runtime/validator.py"
         }

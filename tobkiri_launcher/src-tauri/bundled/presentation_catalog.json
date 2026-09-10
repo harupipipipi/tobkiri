@@ -634,7 +634,7 @@
     "rumi_provider_registry_pack": "sha256:287e1006243efb4f846e35c8c6a170dba3ec8c8544953cae0a7a15eda920f8ce",
     "rumi_shell_execute_pack": "sha256:9f39a3784c66637e49afd270c7e38bdbc94d2a4c5a7ff39167c26b8396063ba2",
     "rumi_shell_policy_pack": "sha256:1b98e72f1a1126f072ecc5cbaa05718ccb6e1126c0f18ee74e71af52094147b8",
-    "rumi_tool_registry_pack": "sha256:1be5b206f92d2c4a2e538f46d25c1eeaa7b66677af7074c8b4aa8d30d2efa957",
+    "rumi_tool_registry_pack": "sha256:edef7b52c38868a8fb0ab955804088102b82c3bfd2506409bda82c9654bec544",
     "rumi_turn_runtime_pack": "sha256:ca643b8e9ac479199f5908ee4fddbdcff778eea49f2d619a0a95d582c26dcf17",
     "rumi_workspace_mount_pack": "sha256:4eaf7b5d0ff9cfb022c5d9270fca6a5f702e571756e5bcb204d2ad883fa0e727",
     "runtime.tauri.application.default": "sha256:7b52e9fc01f1eb632756a51f39e6a650332f15602262c7d779e069f8b316904d",

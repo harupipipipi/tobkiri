@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "runtime/broker.py",
-      "sha256": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b"
+      "sha256": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:b61d88d782e29df111ff5170598b18cfa9dc406f3ed44db3493945707abc7bd0",
+  "catalog_digest": "sha256:0ee85c54326fc1232d766b5e2afe6ceca7018ad674d918bd85e7e9ee47d739b6",
   "pack_id": "rumi_tool_broker_pack",
-  "source_identity": "sha256:05738489604a92a85991b5c758f35f34ca74bb8ced10ead934b50bb74a137a1f",
+  "source_identity": "sha256:4a1d0551df0fc11245007ae4309106bd00455bf1aca48c986dfe3e63c043323f",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
-      "implementation_digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b",
+      "implementation_digest": "sha256:1655a797a369bea1fe15d713520ad7083e0731c73a257b57909af2b99a18a95e",
       "implementation_path": "runtime/broker.py",
       "materialization_mode": "on_demand",
       "operations": [

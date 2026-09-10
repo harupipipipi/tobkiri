@@ -106,7 +106,7 @@
         "contract_id": "tobkiri.resource.tool.definition.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/registry.py",
-        "implementation_digest": "sha256:0db04d22aa52f1f3416bcabddbe227ec3d10bf2811160a5b83aa0830b57ef722",
+        "implementation_digest": "sha256:66b656c118d6f69cf6a626b33da2ad0616cdb5e11d6c53393ef59108000edc88",
         "operation_ids": [
           "rumi_tool_registry_pack.tool-definition-resource"
         ]
@@ -122,7 +122,7 @@
         "contract_id": "tobkiri.action.tool.definition.manage.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/registry.py",
-        "implementation_digest": "sha256:0db04d22aa52f1f3416bcabddbe227ec3d10bf2811160a5b83aa0830b57ef722",
+        "implementation_digest": "sha256:66b656c118d6f69cf6a626b33da2ad0616cdb5e11d6c53393ef59108000edc88",
         "operation_ids": [
           "rumi_tool_registry_pack.tool-definition-manage"
         ]
@@ -138,7 +138,7 @@
         "contract_id": "tobkiri.action.tool.definition.migrate.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/registry.py",
-        "implementation_digest": "sha256:0db04d22aa52f1f3416bcabddbe227ec3d10bf2811160a5b83aa0830b57ef722",
+        "implementation_digest": "sha256:66b656c118d6f69cf6a626b33da2ad0616cdb5e11d6c53393ef59108000edc88",
         "operation_ids": [
           "rumi_tool_registry_pack.tool-definition-migrate"
         ]
