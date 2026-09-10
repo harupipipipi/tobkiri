@@ -2705,11 +2705,11 @@ def test_operations_heartbeat_requires_captured_operation(tmp_path, monkeypatch)
     )
 
 
-def test_rumi_api_tool_has_zero_legacy_routes_and_requires_dispatch_approval():
+def test_rumi_api_tool_has_zero_legacy_routes_and_retires_hidden_dispatch():
     from ecosystem.rumi_default_tools_pack.domain.tool.rumi_api import run
 
     listed = run({"action": "list_routes"}, {})
-    pending = run(
+    retired = run(
         {
             "action": "dispatch",
             "contract_id": "company.operations.v1",
@@ -2723,9 +2723,7 @@ def test_rumi_api_tool_has_zero_legacy_routes_and_requires_dispatch_approval():
     assert listed["data"] == {
         "routes": [],
         "count": 0,
-        "dispatch": "captured_v4_qualified_operations_only",
+        "dispatch": "disabled",
     }
-    assert pending["status"] == "ok"
-    assert pending["data"]["approval_required"] is True
-    assert pending["data"]["contract_id"] == "company.operations.v1"
-    assert pending["data"]["operation_id"] == "company.bootstrap"
+    assert retired["status"] == "error"
+    assert retired["error"]["code"] == "INVALID_ACTION"

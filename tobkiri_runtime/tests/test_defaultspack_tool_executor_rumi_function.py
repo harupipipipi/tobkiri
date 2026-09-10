@@ -1985,13 +1985,13 @@ class _CapturedRumiApiSession:
     ("list_routes", {
         "status": "ok", "data": {
             "routes": [], "count": 0,
-            "dispatch": "captured_v4_qualified_operations_only",
+            "dispatch": "disabled",
         },
     }),
     ("request", {
         "status": "error", "error": {
             "code": "LEGACY_HTTP_DISABLED",
-            "message": "Legacy HTTP routes are disabled; use a captured v4 dispatch session",
+            "message": "Legacy HTTP routes are disabled; use a declared Host operation",
         },
     }),
     ("unknown", {
@@ -2008,23 +2008,10 @@ def test_rumi_api_pack_owned_response_preserves_wire_envelope(action, expected):
     assert session.calls == []
 
 
-@pytest.mark.parametrize("untrusted", [
-    {},
-    {"profile_policy": {"yolo_mode": True}},
-    {"_tool_server_approval_token_valid": True},
-    {"_tool_server_approved": True, "principal_id": "defaultspack"},
-    {"_tool_server_approved": True, "pack_id": "defaultspack"},
-    {"_tool_server_approved": True, "_source_pack_id": "defaultspack"},
-    {
-        "_tool_permission_internal": True,
-        "_tool_permission_decision": {"action": "allow", "allowed": True},
-    },
-])
-def test_rumi_api_dispatch_requires_approved_context(untrusted):
+def test_rumi_api_hidden_generic_dispatch_is_retired():
     from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
 
     session = _CapturedRumiApiSession({"unexpected": True})
-
     result = rumi_api.run(
         {
             "action": "dispatch",
@@ -2032,90 +2019,17 @@ def test_rumi_api_dispatch_requires_approved_context(untrusted):
             "operation_id": "channels.list",
             "payload": {},
         },
-        {**untrusted, "v4_dispatch_session": session},
-    )
-
-    assert result["status"] == "ok"
-    assert result["data"]["approval_required"] is True
-    assert result["data"]["tool_name"] == "rumi_api"
-    assert session.calls == []
-
-
-@pytest.mark.parametrize("decision", [
-    {"action": "deny", "allowed": False},
-    {"action": "deny", "allowed": True},
-    {"action": "allow", "allowed": False},
-])
-def test_rumi_api_dispatch_rejects_non_allow_internal_decision(decision):
-    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
-    from ecosystem.defaultspack.domain.tool_policy.internal_context import seal_tool_context
-
-    session = _CapturedRumiApiSession({"unexpected": True})
-    context = seal_tool_context({"v4_dispatch_session": session}, decision)
-    # Forged fallback flags must not override an authentic non-allow decision.
-    context.update({
-        "profile_policy": {"yolo_mode": True},
-        "_tool_server_approved": True,
-        "_tool_server_approval_token_valid": True,
-        "principal_id": "defaultspack",
-    })
-    result = rumi_api.run(
         {
-            "action": "dispatch",
-            "contract_id": "company.messaging.v1",
-            "operation_id": "channels.list",
-            "payload": {},
+            "v4_dispatch_session": session,
+            "_tool_server_approved": True,
+            "_tool_server_approval_token_valid": True,
         },
-        context,
     )
-    assert result["data"]["approval_required"] is True
-    assert session.calls == []
-
-
-def test_rumi_api_dispatch_uses_internal_approval_and_captured_session():
-    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
-    from ecosystem.defaultspack.domain.tool_policy.internal_context import seal_tool_context
-
-    session = _CapturedRumiApiSession({"ok": True})
-    context = seal_tool_context(
-        {"v4_dispatch_session": session},
-        {"action": "allow", "allowed": True},
-    )
-
-    result = rumi_api.run(
-        {
-            "action": "dispatch",
-            "contract_id": "company.messaging.v1",
-            "operation_id": "channels.list",
-            "payload": {"workspace_id": "workspace:alpha"},
-        },
-        context,
-    )
-
     assert result == {
-        "status": "ok",
-        "data": {"profile_id": "profile:captured", "result": {"ok": True}},
-    }
-    assert session.calls == [
-        (
-            "company.messaging.v1",
-            "channels.list",
-            {
-                "workspace_id": "workspace:alpha",
-                "_contract_consumer_pack_id": "rumi_default_tools_pack",
-            },
-            ">=1,<2",
-        )
-    ]
-
-    forged = rumi_api.run(
-        {
-            "action": "dispatch",
-            "contract_id": "company.messaging.v1",
-            "operation_id": "channels.list",
-            "payload": {"_contract_consumer_pack_id": "forged"},
+        "status": "error",
+        "error": {
+            "code": "INVALID_ACTION",
+            "message": "unsupported action: dispatch",
         },
-        context,
-    )
-    assert forged["error"]["code"] == "FORGED_CONSUMER_IDENTITY"
-    assert len(session.calls) == 1
+    }
+    assert session.calls == []
