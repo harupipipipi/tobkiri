@@ -20,6 +20,7 @@ from tobkiri_protocol.saved_conversation import (
     validate_saved_conversation_context,
     validate_saved_conversation_input,
 )
+from tobkiri_protocol.saved_tools import saved_tool_logs, saved_tool_messages
 
 RECEIPT_CONTRACT = "tobkiri.resource.conversation.v1"
 RECEIPT_OPERATION = "rumi_conversation_store_pack.conversation-resource"
@@ -244,17 +245,34 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         or result["conversation_id"] != request["conversation_id"]
         or result["user_message_id"] != user_id
         or type(revision) is not int
-        or revision <= request["conversation_revision"]
+        or revision != request["conversation_revision"] + 2
         or not isinstance(message, dict)
         or message.get("id") != assistant_id
         or message.get("parent_id") != user_id
         or message.get("role") != "assistant"
         or message.get("status") != "complete"
-        or message.get("metadata") != {"turn_id": request["turn_id"]}
         or not isinstance(message.get("content"), (str, list))
         or not message["content"]
     ):
         raise ValueError("saved acknowledgement identity is invalid")
+    metadata = message.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("saved acknowledgement metadata is invalid")
+    trace = saved_tool_messages(metadata.get("saved_tool_messages", []))
+    expected_metadata = {"turn_id": request["turn_id"]}
+    selection = request.get("tool_selection", {})
+    if trace:
+        if selection.get("mode", "none") == "none":
+            raise ValueError("saved acknowledgement contains unselected tools")
+        expected_metadata["saved_tool_messages"] = trace
+    logs = message.get("tool_logs")
+    if (
+        metadata != expected_metadata
+        or (selection.get("must_use") and not trace)
+        or canonical_json([] if logs is None else logs)
+        != canonical_json(saved_tool_logs(trace))
+    ):
+        raise ValueError("saved acknowledgement tool transcript is invalid")
     # Conversation content remains in its owner. Retain identity and a digest
     # of the acknowledged outcome, not another copy of the private transcript.
     return {

@@ -16192,7 +16192,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:66b656c118d6f69cf6a626b33da2ad0616cdb5e11d6c53393ef59108000edc88",
+          "digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
           "kind": "executable",
           "path": "runtime/registry.py"
         },
@@ -17183,7 +17183,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:af0ac8cb128eb05b61e2796f0ba3ff3f81a5f2c71a402b7f2413bdde39b81631",
+          "digest": "sha256:5879d9fd1f995997f74c0b9f0c5c69f4cc441028d34d792b742d380ff91b7460",
           "kind": "executable",
           "path": "runtime/saved.py"
         }

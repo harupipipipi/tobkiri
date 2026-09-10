@@ -523,7 +523,7 @@ def _definition(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("tool authority operation is required")
     aliases = value.get("aliases")
     aliases = aliases if isinstance(aliases, list) else []
-    normalized = {
+    normalized: dict[str, Any] = {
         "tool_id": tool_id,
         "display_name": str(value.get("display_name") or tool_id)[:200],
         "description": str(value.get("description") or "")[:4000],

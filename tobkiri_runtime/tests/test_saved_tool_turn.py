@@ -137,6 +137,30 @@ def test_real_ledgers_save_tool_rounds_and_restore_provider_history(tmp_path, ro
     assert len(first.store.get("conversation-1")["messages"]) == 4
 
 
+@pytest.mark.parametrize("change", [None, "metadata", "logs", "unselected", "revision"])
+def test_turn_completion_accepts_only_the_bound_saved_tool_transcript(tmp_path, change):
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import _completed_reference
+
+    turn = ToolTurn(tmp_path)
+    outcome = turn.complete()
+    request = deepcopy(turn.request)
+    if change == "metadata":
+        outcome["message"]["metadata"]["approved"] = True
+    elif change == "logs":
+        outcome["message"]["tool_logs"][0]["result"] = "forged"
+    elif change == "unselected":
+        request["tool_selection"] = {"mode": "none"}
+    elif change == "revision":
+        outcome["conversation_revision"] += 1
+    if change is not None:
+        with pytest.raises(ValueError):
+            _completed_reference(request, outcome)
+    else:
+        assert _completed_reference(request, outcome) == turn.store.saved_receipt(
+            request["turn_id"]
+        )["result_reference"]
+
+
 @pytest.mark.parametrize("change", ["arguments", "tool_id", "tool_call_id", "expected_definition_hash", "target"])
 def test_authenticated_guest_cannot_rewrite_ai_tool_intent(tmp_path, change):
     turn = ToolTurn(tmp_path)

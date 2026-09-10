@@ -25,6 +25,7 @@ def test_production_registry_uses_only_selected_pack_data(
         monkeypatch,
         packs=() if selected else ("rumi_default_tool_projection_pack",), edges=(),
         exclude_packs=() if selected else ("rumi_default_tools_pack",),
+        exclude_callers=() if selected else ("rumi_tool_local_executor_pack.tool-executor.local",),
         backends=(),
     ) as (session, _store):
         result = session.invoke(
@@ -107,8 +108,8 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
     ) as (session, _store):
         session.assert_operation_ready(broker.CONTRACT, broker.OPERATION)
         request = {
-            "tool_id": "web_search", "tool_call_id": "call-1",
-            "arguments": {"query": "example"}, "_session_id": "tool-composition",
+            "tool_id": "file_reader", "tool_call_id": "call-1",
+            "arguments": {"path": "readme.txt"}, "_session_id": "tool-composition",
         }
         with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
             session.invoke(broker.CONTRACT, broker.OPERATION, request)
