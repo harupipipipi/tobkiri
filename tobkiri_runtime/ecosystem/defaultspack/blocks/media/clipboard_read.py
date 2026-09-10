@@ -1,10 +1,10 @@
 """defaults.media.clipboard_read — クリップボード読取ブロック"""
 from blocks._common import ok, error
-from domain.media.processor import read_clipboard
+from domain.media.contract_adapter import CLIPBOARD_READ, invoke_media_contract
 
 
 def run(input_data, context):
-    """クリップボードの内容を読み取る（スタブ）。
+    """Hostの正式契約でクリップボードの内容を読み取る。
 
     input_data:
         (なし)
@@ -13,9 +13,14 @@ def run(input_data, context):
         dict: {"status": "ok", "data": {"content", "format"}}
     """
     try:
-        content = read_clipboard()
+        result = invoke_media_contract(
+            CLIPBOARD_READ, "read", {},
+            source_function_id="defaults.media.clipboard_read",
+        )
+        if result.get("success") is not True:
+            return result
         return ok({
-            "content": content,
+            "content": result["text"],
             "format": "text/plain",
         })
     except Exception as exc:

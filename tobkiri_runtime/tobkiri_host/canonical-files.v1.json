@@ -11,6 +11,7 @@
     "bounded_child_io.py",
     "broker.py",
     "canonical-files.v1.json",
+    "clipboard_native.py",
     "composition.py",
     "continuation_chain.py",
     "continuation_envelope.py",

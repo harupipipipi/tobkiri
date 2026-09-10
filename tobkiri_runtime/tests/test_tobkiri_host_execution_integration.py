@@ -689,8 +689,9 @@ def test_provider_exception_is_sanitized_and_request_authority_is_fenced() -> No
     assert fixture.audit.failures == [("provider_failed", False)]
 
 
-def test_provider_rejection_always_releases_submitted_future() -> None:
-    """Broker cleanup cancels its Future even when result retrieval raises."""
+@pytest.mark.parametrize("provider_entered", [False, True])
+def test_provider_rejection_always_releases_submitted_future(provider_entered) -> None:
+    """Cleanup fences executor rejection and actual provider failure separately."""
 
     class CancelTrackedFuture(Future[object]):
         def __init__(self) -> None:
@@ -711,13 +712,25 @@ def test_provider_rejection_always_releases_submitted_future() -> None:
             *_args: object,
             **_kwargs: object,
         ) -> CancelTrackedFuture:
-            self.future.set_exception(RuntimeError("provider-private-detail"))
+            if provider_entered:
+                try:
+                    _callable(*_args, **_kwargs)
+                except Exception as exc:
+                    self.future.set_exception(exc)
+            else:
+                self.future.set_exception(RuntimeError("executor-private-detail"))
             return self.future
 
         def shutdown(self, **_kwargs: object) -> None:
             return None
 
-    fixture = make_broker(effect=EffectClass.WRITE)
+    class FailingBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            raise RuntimeError("provider-private-detail")
+
+    backend = FailingBackend([])
+    fixture = make_broker(effect=EffectClass.WRITE, backend=backend)
     fixture.broker._executor.shutdown(wait=True, cancel_futures=True)
     executor = FailedExecutor()
     fixture.broker._executor = executor  # type: ignore[assignment]
@@ -729,7 +742,9 @@ def test_provider_rejection_always_releases_submitted_future() -> None:
 
     assert executor.future.cancel_calls == 1
     assert fixture.admission.released
-    assert fixture.audit.failures == [("provider_failed", False)]
+    assert backend.invocations == int(provider_entered)
+    assert fixture.authority.fenced == ["request-1"]
+    assert fixture.audit.failures == ([("provider_failed", False)] if provider_entered else [])
 
 
 @pytest.mark.parametrize("failure_at", (None, "materialize", "authorize", "release"))

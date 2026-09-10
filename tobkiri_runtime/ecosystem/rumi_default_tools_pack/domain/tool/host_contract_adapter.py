@@ -12,8 +12,8 @@ BROWSER_OBSERVE: Final[str] = "rumi.resource.browser.host.v1"
 BROWSER_CONTROL: Final[str] = "rumi.action.browser.host.v1"
 DESKTOP_OBSERVE: Final[str] = "rumi.resource.desktop.host.v1"
 DESKTOP_CONTROL: Final[str] = "rumi.action.desktop.host.v1"
-CLIPBOARD_READ: Final[str] = "rumi.resource.clipboard.v1"
-CLIPBOARD_WRITE: Final[str] = "rumi.action.clipboard.v1"
+CLIPBOARD_READ: Final[str] = "tobkiri.resource.clipboard.v1"
+CLIPBOARD_WRITE: Final[str] = "tobkiri.action.clipboard.v1"
 
 _ACTION_MAP: Final[dict[str, tuple[str, str]]] = {
     "browser.session": (BROWSER_OBSERVE, "browser.session.get"),
@@ -72,11 +72,11 @@ _ACTION_MAP: Final[dict[str, tuple[str, str]]] = {
         DESKTOP_CONTROL,
         "desktop.accessibility.action",
     ),
-    "computer.clipboard.read": (CLIPBOARD_READ, "read"),
-    "computer.clipboard.get": (CLIPBOARD_READ, "read"),
-    "computer.clipboard.write": (CLIPBOARD_WRITE, "write"),
-    "computer.clipboard.set": (CLIPBOARD_WRITE, "write"),
-    "computer.clipboard.clear": (CLIPBOARD_WRITE, "write"),
+    "computer.clipboard.read": (CLIPBOARD_READ, "rumi_clipboard_host_service_pack.clipboard-read"),
+    "computer.clipboard.get": (CLIPBOARD_READ, "rumi_clipboard_host_service_pack.clipboard-read"),
+    "computer.clipboard.write": (CLIPBOARD_WRITE, "rumi_clipboard_host_service_pack.clipboard-write"),
+    "computer.clipboard.set": (CLIPBOARD_WRITE, "rumi_clipboard_host_service_pack.clipboard-write"),
+    "computer.clipboard.clear": (CLIPBOARD_WRITE, "rumi_clipboard_host_service_pack.clipboard-write"),
 }
 _FORBIDDEN_ARGUMENTS: Final[frozenset[str]] = frozenset(
     {

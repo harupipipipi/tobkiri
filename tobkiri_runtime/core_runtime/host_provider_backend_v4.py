@@ -54,6 +54,9 @@ class HostProviderInvocationContextV4(Protocol):
     ) -> Any:
         """Build a client restricted to declared contracts and this envelope."""
 
+    def clipboard(self) -> ProviderOutcome:
+        """Execute this envelope's exact clipboard contract through the Host."""
+
     def assert_current(self) -> None:
         """Reject cancelled, expired or stale captured invocations."""
 
@@ -71,7 +74,7 @@ class HostProviderContributionV4:
     domain_id: str
     invoke: Callable[
         [str, Mapping[str, Any], HostProviderInvocationContextV4],
-        Mapping[str, Any],
+        Mapping[str, Any] | ProviderOutcome,
     ]
 
     @property
@@ -232,15 +235,12 @@ class ExactHostProviderBackendV4:
             or request.target_domain.value != contribution.domain_id
         ):
             raise AuthorizationError("Host Provider envelope binding is invalid")
-        return ProviderOutcome(
-            dict(
-                contribution.invoke(
-                    request.operation_id,
-                    request.payload,
-                    self._invocation_context(request),
-                )
-            )
+        outcome = contribution.invoke(
+            request.operation_id,
+            request.payload,
+            self._invocation_context(request),
         )
+        return outcome if isinstance(outcome, ProviderOutcome) else ProviderOutcome(dict(outcome))
 
     def cancel(self, request_id: str) -> None:
         """Accept cancellation; individual providers observe durable fences."""

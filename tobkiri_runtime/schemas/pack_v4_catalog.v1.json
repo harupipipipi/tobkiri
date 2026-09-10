@@ -3612,7 +3612,7 @@
             {
               "entrypoint_id": "clipboard-write",
               "id": "rumi_clipboard_host_service_pack.clipboard-write",
-              "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510"
+              "implementation_digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d"
             }
           ],
           "owner": "rumi_clipboard_host_service_pack",
@@ -3655,7 +3655,7 @@
             {
               "entrypoint_id": "clipboard-read",
               "id": "rumi_clipboard_host_service_pack.clipboard-read",
-              "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510"
+              "implementation_digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d"
             }
           ],
           "owner": "rumi_clipboard_host_service_pack",
@@ -3686,12 +3686,12 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:24b44aee8e740aa379a36e662794e24be47631229131d083e0fbad1cbe14e5e0",
+          "digest": "sha256:444f5415acce534f5b8a2f9eef0340eeef9c58d5394ee712275ca5ef89333042",
           "kind": "executable",
           "path": "runtime/runner.py"
         },
         {
-          "digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+          "digest": "sha256:6deac49d83afd1cb8e2fa1f7754d7ae14a25717ab5873ce9a1992b2c1208f58d",
           "kind": "executable",
           "path": "runtime/service.py"
         }

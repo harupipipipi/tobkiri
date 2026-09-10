@@ -249,12 +249,12 @@
     {
       "path": "packs/rumi_clipboard_host_service_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:8f2f9980760782d0eef5e6cb94bcaf09ddb71bbb50a250c2580979067c2cdff1"
+      "digest": "sha256:ad0c429bb220bfc8a8fd7dde536a188230499a85506dc1b60d704e08562af1ba"
     },
     {
       "path": "packs/rumi_clipboard_host_service_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:e7f3dde82122d78fc8458e514bf9ee20d2a9cdfbc88857e1f26e9a3f468c8029"
+      "digest": "sha256:e9b578c78438743ec92ef9b8317b9da74d05615c6cbc37830197d2fa10e52fff"
     },
     {
       "path": "packs/rumi_code_ide_pack.executables.v4.json",

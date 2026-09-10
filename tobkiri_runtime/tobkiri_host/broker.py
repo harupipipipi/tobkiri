@@ -704,23 +704,71 @@ class RequestBroker:
         background_requests: list[Future[object]],
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
+        dispatch_lock = threading.Lock()
+        cancelled = False
+        provider_started = False
+        authority_dispatched = False
+        audit_failure_recorded = False
+
+        def record_dispatch_failure(*, ambiguous: bool) -> None:
+            nonlocal audit_failure_recorded
+            # An issued/revoked lease cannot accept a provider outcome. A
+            # guard finishing after caller cancellation owns the late cleanup.
+            with dispatch_lock:
+                if not authority_dispatched or audit_failure_recorded:
+                    return
+                self._record_audit_failure(audit_reservation, ambiguous=ambiguous)
+                audit_failure_recorded = True
+
+        def invoke_at_boundary() -> object:
+            nonlocal provider_started, authority_dispatched
+            # Executor queue time is untrusted elapsed time: a lease checked
+            # before submit can expire or be revoked while the worker is busy.
+            with dispatch_lock:
+                if envelope.cancellation_requested.is_set():
+                    raise RequestCancellationRequestedError(
+                        "request cancellation was requested"
+                    )
+                if cancelled or monotonic_clock() >= deadline:
+                    raise RequestTimedOutError("deadline expired before dispatch")
+            try:
+                self._authority.recheck_effect_boundary(
+                    envelope.context,
+                    envelope.target_principal,
+                    envelope.lease,
+                )
+                with dispatch_lock:
+                    authority_dispatched = True
+                    if envelope.cancellation_requested.is_set() or cancelled:
+                        raise RequestCancellationRequestedError(
+                            "request cancellation was requested"
+                        )
+                    if monotonic_clock() >= deadline:
+                        raise RequestTimedOutError("deadline expired before dispatch")
+                if audit_reservation is not None:
+                    self._audit.mark_dispatched(audit_reservation)
+                if before_dispatch is not None:
+                    before_dispatch()
+                # Cancellation may win while Authority/audit/pending-effect guards
+                # run. Never start a provider after the waiting caller has fenced it.
+                with dispatch_lock:
+                    if envelope.cancellation_requested.is_set():
+                        raise RequestCancellationRequestedError(
+                            "request cancellation was requested"
+                        )
+                    if cancelled or monotonic_clock() >= deadline:
+                        raise RequestTimedOutError("deadline expired before dispatch")
+                    provider_started = True
+            except Exception:
+                record_dispatch_failure(ambiguous=False)
+                raise
+            return backend.invoke(envelope)
+
         try:
-            self._authority.recheck_effect_boundary(
-                envelope.context,
-                envelope.target_principal,
-                envelope.lease,
-            )
-            if audit_reservation is not None:
-                self._audit.mark_dispatched(audit_reservation)
-            if before_dispatch is not None:
-                before_dispatch()
-            if envelope.cancellation_requested.is_set():
-                raise RequestCancellationRequestedError("request cancellation was requested")
             operation_context = contextvars.copy_context()
             future = self._executor.submit(
                 operation_context.run,
-                backend.invoke,
-                envelope,
+                invoke_at_boundary,
             )
             while True:
                 if envelope.cancellation_requested.is_set():
@@ -745,7 +793,7 @@ class RequestBroker:
                 EffectDisposition.ACCEPTED,
                 EffectDisposition.UNKNOWN,
             }:
-                self._record_audit_failure(audit_reservation, ambiguous=True)
+                record_dispatch_failure(ambiguous=True)
                 raise_ambiguous(
                     self._reconciliation,
                     request_id=envelope.context.request_id,
@@ -763,18 +811,29 @@ class RequestBroker:
                 )
             return payload
         except (TimeoutError, RequestCancellationRequestedError) as exc:
+            with dispatch_lock:
+                cancelled = True
+                started = provider_started
+            if future is not None:
+                future.cancel()
             cancellation_error: Exception | None = None
             envelope.cancellation_requested.set()
             try:
-                if future is not None:
+                if started:
                     backend.cancel(envelope.context.request_id)
             except Exception as cancel_exc:
                 cancellation_error = cancel_exc
             ambiguous = (
-                future is not None
-                and binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
+                started
+                # Privileged operations can mutate global OS state. Stopping
+                # the wait (or requesting cancellation) proves no rollback.
+                # Their provider may still be returning an UNKNOWN outcome.
+                and binding.operation.effect_class in {
+                    EffectClass.EXTERNAL_EFFECT,
+                    EffectClass.PRIVILEGED,
+                }
             )
-            self._record_audit_failure(audit_reservation, ambiguous=ambiguous)
+            record_dispatch_failure(ambiguous=ambiguous)
             if ambiguous:
                 raise_ambiguous(
                     self._reconciliation,
@@ -792,8 +851,11 @@ class RequestBroker:
             raise RequestTimedOutError("local execution exceeded deadline") from exc
         except AmbiguousEffectError:
             raise
+        except RequestTimedOutError:
+            record_dispatch_failure(ambiguous=False)
+            raise
         except Exception as exc:
-            self._record_audit_failure(audit_reservation, ambiguous=False)
+            record_dispatch_failure(ambiguous=False)
             raise ProviderExecutionError("provider execution failed") from exc
         finally:
             # A completed Future retains the provider exception and traceback until

@@ -30,7 +30,7 @@ from tobkiri_host.contracts import (
     ResolvedOperationBinding,
     StructuralAdapter,
 )
-from tobkiri_host.effects import InMemoryReconciliationStore
+from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
 from tobkiri_host.operation_cancellation import OwnedCancellationBinding, OwnedCancellationHandles
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.models import (
@@ -2291,6 +2291,10 @@ def capture_production_dispatch(
             finally:
                 release_nested_session(nested_session_id, nested_authority_session_id)
 
+    from ..clipboard_transport_v4 import ClipboardTransportV4
+
+    clipboard_transport = ClipboardTransportV4(authority_store)
+
     class _HostInvocation(HostProviderInvocationContextV4):
         """Expose only declared nested dispatch and one credential transport."""
 
@@ -2306,6 +2310,10 @@ def capture_production_dispatch(
         @property
         def envelope(self) -> Any:
             return self._envelope
+
+        def clipboard(self) -> ProviderOutcome:
+            self.assert_current()
+            return clipboard_transport.invoke(self._envelope)
 
         @property
         def presentation_owner_principal_id(self) -> str:
