@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import hashlib
+import sys
 from types import SimpleNamespace
 import threading
 import time
@@ -25,15 +27,15 @@ from tobkiri_host.backends import BackendRegistry
 from tobkiri_host.broker import RequestBroker, RequestEnvelope
 from tobkiri_host.contracts import AdapterPlanner
 from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
-from tobkiri_host.errors import BackendUnavailableError
+from tobkiri_host.errors import BackendUnavailableError, ProviderExecutionError
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.ports import OpaqueInvocationLease
 from tobkiri_host.wasm_backend import WasmComponentBackend, production_wasm_backend
 from tobkiri_protocol.canonical import canonical_digest
 
 
-def _binding_and_bytes():
-    binary = component(output='{"delivered":true}')
+def _binding_and_bytes(binary: bytes | None = None):
+    binary = binary or component(output='{"delivered":true}')
     executable_digest = "sha256:" + hashlib.sha256(binary).hexdigest()
     original = fixture_artifact(timeout_ms=15_000)
     function = replace(
@@ -62,15 +64,15 @@ def _binding_and_bytes():
     return binding, materialized
 
 
-def _backend():
-    command = worker_command()
+def _backend(binary: bytes | None = None, command: tuple[str, ...] | None = None):
+    command = command or worker_command()
     backend = WasmComponentBackend(
         command,
         worker_command_digest=canonical_digest(list(command)),
         worker_runtime_digest=canonical_digest({"fixture": "wasmtime-runtime"}),
         memory_reservation_bytes=256 * 1024 * 1024,
     )
-    binding, materialized = _binding_and_bytes()
+    binding, materialized = _binding_and_bytes(binary)
     backend.bind_artifact_resolver(lambda selected: materialized)
     backend.bind_target_domain_resolver(lambda selected: "target-domain")
     return backend, binding
@@ -106,6 +108,106 @@ def test_real_worker_is_bound_to_exact_reservation_and_reaped() -> None:
     outcome = backend.invoke(_envelope(backend, binding, "reservation-1", "request-1"))
     assert outcome == ProviderOutcome({"delivered": True})
     backend.release_materialization("reservation-1")
+    assert backend._reservations == {}
+
+
+def test_concurrent_reservations_execute_in_separate_workers() -> None:
+    backend, binding = _backend()
+    workers = []
+    for index in range(2):
+        backend.materialize(binding, f"reservation-{index}")
+        workers.append(backend._reservations[f"reservation-{index}"].worker)
+    assert workers[0] is not workers[1]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(
+                backend.invoke,
+                _envelope(backend, binding, f"reservation-{index}", f"request-{index}"),
+            )
+            for index in range(2)
+        ]
+        assert [future.result() for future in futures] == [
+            ProviderOutcome({"delivered": True}),
+            ProviderOutcome({"delivered": True}),
+        ]
+    backend.release_materialization("reservation-0")
+    backend.release_materialization("reservation-1")
+    assert backend._reservations == {}
+
+
+def test_authenticated_cancel_reaps_an_executing_worker() -> None:
+    binary = component("(loop $forever br $forever) unreachable")
+    backend, binding = _backend(binary)
+    backend.materialize(binding, "reservation-1")
+    envelope = _envelope(backend, binding, "reservation-1", "request-1")
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(backend.invoke, envelope)
+        deadline = time.monotonic() + 5
+        while "request-1" not in backend._requests and time.monotonic() < deadline:
+            time.sleep(0.001)
+        assert backend._requests == {"request-1": "reservation-1"}
+        envelope.cancellation_requested.set()
+        backend.cancel("request-1")
+        with pytest.raises(ProviderExecutionError, match="cancelled"):
+            future.result(timeout=5)
+    backend.release_materialization("reservation-1")
+    assert backend._reservations == {}
+
+
+def test_abnormal_worker_exit_is_reaped_before_release() -> None:
+    command = (
+        sys.executable,
+        "-I",
+        "-B",
+        "-c",
+        "import sys; sys.stdin.buffer.read(); sys.exit(7)",
+    )
+    backend, binding = _backend(command=command)
+    backend.materialize(binding, "reservation-1")
+    worker = backend._reservations["reservation-1"].worker
+    with pytest.raises(ProviderExecutionError, match="unsuccessfully"):
+        backend.invoke(_envelope(backend, binding, "reservation-1", "request-1"))
+    assert worker._process is None
+    backend.release_materialization("reservation-1")
+    assert backend._reservations == {}
+
+
+def test_tampered_materialized_component_is_rejected_before_attestation() -> None:
+    command = worker_command()
+    backend = WasmComponentBackend(
+        command,
+        worker_command_digest=canonical_digest(list(command)),
+        worker_runtime_digest=canonical_digest({"fixture": "wasmtime-runtime"}),
+        memory_reservation_bytes=256 * 1024 * 1024,
+    )
+    binding, materialized = _binding_and_bytes()
+    implementation = materialized.files[0]
+    implementation.content = implementation.content + b"tampered"
+    backend.bind_artifact_resolver(lambda selected: materialized)
+    backend.bind_target_domain_resolver(lambda selected: "target-domain")
+    with pytest.raises(BackendUnavailableError, match="implementation digest"):
+        backend.materialize(binding, "reservation-1")
+    assert backend._reservations == {}
+
+
+def test_released_reservation_gets_a_fresh_worker_for_the_next_request() -> None:
+    backend, binding = _backend()
+    backend.materialize(binding, "reservation-1")
+    first_worker = backend._reservations["reservation-1"].worker
+    assert backend.invoke(
+        _envelope(backend, binding, "reservation-1", "request-1")
+    ) == ProviderOutcome({"delivered": True})
+    backend.release_materialization("reservation-1")
+
+    backend.materialize(binding, "reservation-2")
+    second_worker = backend._reservations["reservation-2"].worker
+    assert second_worker is not first_worker
+    assert backend.invoke(
+        _envelope(backend, binding, "reservation-2", "request-2")
+    ) == ProviderOutcome({"delivered": True})
+    backend.release_materialization("reservation-2")
     assert backend._reservations == {}
 
 

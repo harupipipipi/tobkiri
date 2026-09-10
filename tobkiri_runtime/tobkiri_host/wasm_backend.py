@@ -174,6 +174,11 @@ class WasmComponentBackend:
         implementation = next(
             item for item in artifact.files if item.path == artifact.implementation_path
         )
+        implementation_digest = (
+            "sha256:" + hashlib.sha256(implementation.content).hexdigest()
+        )
+        if implementation_digest != binding.function.implementation_digest:
+            raise BackendUnavailableError("Wasm implementation digest mismatch")
         worker = ComponentWorker(
             self._worker_command,
             rss_limit=self.memory_reservation_bytes,
