@@ -112,7 +112,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:6a132b73bc41954cb61f5a8e4738c13350247def6903a8b571bf3fcb93c89ca8"
+      "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a"
     },
     {
       "function_id": "rumi_tool_registry_pack.tool-registry.manage",
@@ -128,7 +128,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:6a132b73bc41954cb61f5a8e4738c13350247def6903a8b571bf3fcb93c89ca8"
+      "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a"
     },
     {
       "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
@@ -144,7 +144,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:6a132b73bc41954cb61f5a8e4738c13350247def6903a8b571bf3fcb93c89ca8"
+      "implementation_digest": "sha256:1e2520a730274f4d869ad1e5203fd08839d9f940e8b987fad55790fa99e4e20a"
     }
   ],
   "operation_id_overrides": [

@@ -279,6 +279,7 @@ jobs:
             tests/test_mcp_host_provider.py \
             tests/test_tool_registry_host.py \
             tests/test_tool_registry_pack_data.py \
+            tests/test_defaultspack_tool_v3_registry.py \
             tests/test_tool_registry_host_broker.py \
             tests/test_tool_catalog_presentation.py \
             tests/test_tool_catalog_http.py \

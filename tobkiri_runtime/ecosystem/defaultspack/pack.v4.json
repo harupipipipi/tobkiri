@@ -1,9 +1,19 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:c3267a10ff1c5ea0dd3b1087ea271b65869c7815d7954bde4c0f2fd6187c313c",
+      "digest": "sha256:028fcfb132fc3fc802a742b6de153ac4ee8a96090c9e64c93e9c3e3a5d973593",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:7df1bd0c10f60f04d732411797dc28083e5e699f13e3c34601624d64fa49b638",
+      "kind": "sidecar",
+      "path": "extensions/tools/settings_inspect/manifest.json"
+    },
+    {
+      "digest": "sha256:8bfa44dac8697c39742fe51a20bec22ff6acf6e80f9b1cc049d2efbbac079591",
+      "kind": "sidecar",
+      "path": "extensions/tools/settings_update/manifest.json"
     },
     {
       "digest": "sha256:b51f935fa4438007fd0d19eeb7ff3b44b410751c94a987baac8e6306b07615d0",
@@ -304,6 +314,46 @@
       "digest": "sha256:783bab82ea2c76d14c7051a953446b55239d118644f66f9b53096bde26f253f2",
       "kind": "sidecar",
       "path": "tools/linear_issue_sync/manifest.json"
+    },
+    {
+      "digest": "sha256:36d13ec0256b0f0b0ab27d97a62d1b2c411997d898f9b9e0e9332efb6817f041",
+      "kind": "sidecar",
+      "path": "tools/memo_create_note/manifest.json"
+    },
+    {
+      "digest": "sha256:402816166aaa8c52a8899fcfd17bf1bb7c0e105043f7393c6d2ef09f736701b3",
+      "kind": "sidecar",
+      "path": "tools/memo_folder_upsert/manifest.json"
+    },
+    {
+      "digest": "sha256:8071ce95d1837d43128a968281e5911cc6a31bdef8e9131065f5e324e10f55af",
+      "kind": "sidecar",
+      "path": "tools/memo_get/manifest.json"
+    },
+    {
+      "digest": "sha256:4e38687a7517672993da4eae1fdafc5083fa01ed91f164e8ca1cf1bc2e28510d",
+      "kind": "sidecar",
+      "path": "tools/memo_list/manifest.json"
+    },
+    {
+      "digest": "sha256:7c38ac2cb1bbe6b68824f0424ebc3d95b4f38299fad9532b356010e036d498c0",
+      "kind": "sidecar",
+      "path": "tools/memo_list_notes/manifest.json"
+    },
+    {
+      "digest": "sha256:8c51209d55afff34e5c76525097c87b5a5b03914aa002908f77d90bc42f86b4b",
+      "kind": "sidecar",
+      "path": "tools/memo_note_upsert/manifest.json"
+    },
+    {
+      "digest": "sha256:bfee590d26ba44427df028d9b0f0eadd347bfdbf3d56dfc9b1b1129306b85eda",
+      "kind": "sidecar",
+      "path": "tools/memo_search/manifest.json"
+    },
+    {
+      "digest": "sha256:b2d3df80d4fda31b02464014e4a90c606a22f88ef2ecaea0818e5283fcc05e30",
+      "kind": "sidecar",
+      "path": "tools/memo_search_notes/manifest.json"
     },
     {
       "digest": "sha256:b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
@@ -632,9 +682,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:48c380d7e360aa0e5c3b6ad35d846a5ba86565c6d34a233613a1f01df16ee145",
-    "contract_catalog_digest": "sha256:826d002b50019956771525a425df3d389985bb1f8a6056abad25f1d523456a57",
-    "source_identity": "sha256:d2258c253093e58493d146ff5b8ed895020b57d031d18f07967d7372efb02611"
+    "artifact_set_digest": "sha256:420a07d09e8d8299b65236651def311472eefb1ec755d9ce57961a23d7824efc",
+    "contract_catalog_digest": "sha256:5f255b287f3d9ac622755750573a46b6b64adec6315aedd095c9dbe690cd01d6",
+    "source_identity": "sha256:f58e5c88ea4a7aa7d22ba80ba57bb5d5095b6ef463e32dd946caa06af2323fcb"
   },
   "migration": {
     "compatibility": "none",
@@ -669,7 +719,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:48c380d7e360aa0e5c3b6ad35d846a5ba86565c6d34a233613a1f01df16ee145",
+    "artifact_digest": "sha256:420a07d09e8d8299b65236651def311472eefb1ec755d9ce57961a23d7824efc",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -679,7 +729,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:d2258c253093e58493d146ff5b8ed895020b57d031d18f07967d7372efb02611",
+        "digest": "sha256:f58e5c88ea4a7aa7d22ba80ba57bb5d5095b6ef463e32dd946caa06af2323fcb",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -690,7 +740,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:d2258c253093e58493d146ff5b8ed895020b57d031d18f07967d7372efb02611",
+    "source_digest": "sha256:f58e5c88ea4a7aa7d22ba80ba57bb5d5095b6ef463e32dd946caa06af2323fcb",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },

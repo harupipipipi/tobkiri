@@ -10,7 +10,13 @@ from ecosystem.rumi_tool_registry_pack.runtime.registry import _definition
 
 DEFAULT_TOOLS_PACK = "rumi_default_tools_pack"
 DEFAULTS_PACK = "defaultspack"
-_DATA_PACKS = frozenset({DEFAULT_TOOLS_PACK, DEFAULTS_PACK})
+_DATA_SOURCES = frozenset(
+    {
+        (DEFAULT_TOOLS_PACK, "tools/"),
+        (DEFAULTS_PACK, "tools/"),
+        (DEFAULTS_PACK, "extensions/tools/"),
+    }
+)
 _LOCAL_PROVIDER = "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat"
 _LOCAL_OPERATION = "rumi_default_tool_projection_pack.default-tool-local-operation"
 _AUTHORITIES = frozenset(
@@ -37,31 +43,50 @@ def definitions_from_pack_data(
 ) -> tuple[dict[str, Any], ...]:
     """Normalize selected packaged descriptors; execution remains Broker-owned.
 
-    This intake covers sealed ``tools/*/manifest.json`` data only. Dynamic,
-    component and memo definitions remain separate explicit owner contributions.
+    This intake covers sealed tool and tool-extension manifests, including the
+    owned memo descriptors. Dynamic and component definitions remain separate
+    explicit owner contributions.
     """
-    if len(data) > len(_DATA_PACKS) or len({item.pack_id for item in data}) != len(data):
+    sources = {(item.pack_id, item.path_prefix) for item in data}
+    if len(data) > len(_DATA_SOURCES) or len(sources) != len(data):
         raise ValueError("tool descriptor source is duplicated")
     definitions = []
+    pack_digests: dict[str, str] = {}
     for source in data:
-        if source.pack_id not in _DATA_PACKS or source.path_prefix != "tools/":
+        if (source.pack_id, source.path_prefix) not in _DATA_SOURCES:
             raise ValueError("tool descriptor source is invalid")
+        digest = pack_digests.setdefault(source.pack_id, source.artifact_digest)
+        if digest != source.artifact_digest:
+            raise ValueError("tool descriptor sources disagree on Pack identity")
         if not source.files:
             raise ValueError("selected tool descriptor source is empty")
+        prefix = source.path_prefix.rstrip("/").split("/")
         for item in source.files:
             parts = item.path.split("/")
-            if len(parts) != 3 or parts[0] != "tools" or parts[2] != "manifest.json":
+            if (
+                len(parts) != len(prefix) + 2
+                or parts[:-2] != prefix
+                or parts[-1] != "manifest.json"
+            ):
                 raise ValueError("tool descriptor path is invalid")
+            tool_id = parts[-2]
             raw = json.loads(item.content)
             if not isinstance(raw, dict):
                 raise ValueError("tool descriptor is invalid")
             config = raw.get("config")
-            if not isinstance(config, dict) or raw.get("id") != parts[1]:
+            if not isinstance(config, dict) or raw.get("id") != tool_id:
                 raise ValueError("tool descriptor identity is invalid")
             if source.pack_id == DEFAULT_TOOLS_PACK:
-                if raw.get("category") != "tool" or config.get("name") != parts[1]:
+                if raw.get("category") != "tool" or config.get("name") != tool_id:
                     raise ValueError("tool descriptor identity is invalid")
-            elif raw.get("category") is not None or config.get("tool_id") != parts[1]:
+            elif (
+                raw.get("category") not in (None, "tool")
+                or config.get("tool_id") != tool_id
+                or (
+                    source.path_prefix == "extensions/tools/"
+                    and raw.get("category") != "tool"
+                )
+            ):
                 # Defaults' existing format uses tool_id as identity and name
                 # as display text. Do not rewrite source IDs from those labels.
                 raise ValueError("Defaults tool descriptor identity is invalid")
@@ -87,9 +112,9 @@ def definitions_from_pack_data(
             definitions.append(
                 _definition(
                     {
-                        "tool_id": parts[1],
+                        "tool_id": tool_id,
                         "display_name": (
-                            raw.get("display_name") or config.get("name") or parts[1]
+                            raw.get("display_name") or config.get("name") or tool_id
                         ),
                         "description": raw.get("description") or config.get("summary", ""),
                         "input_schema": schema["parameters"],

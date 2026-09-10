@@ -1,9 +1,19 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:4b1564f16782896e9ca0032096ed36f805e36519cf5a2b849dc10b5a517f779f",
+      "digest": "sha256:e918db2d2c91410bf94a3ae8f46aa6968557db57a828e6d391f76219a76b145e",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:7df1bd0c10f60f04d732411797dc28083e5e699f13e3c34601624d64fa49b638",
+      "kind": "sidecar",
+      "path": "extensions/tools/settings_inspect/manifest.json"
+    },
+    {
+      "digest": "sha256:8bfa44dac8697c39742fe51a20bec22ff6acf6e80f9b1cc049d2efbbac079591",
+      "kind": "sidecar",
+      "path": "extensions/tools/settings_update/manifest.json"
     },
     {
       "digest": "sha256:b51f935fa4438007fd0d19eeb7ff3b44b410751c94a987baac8e6306b07615d0",
@@ -304,6 +314,46 @@
       "digest": "sha256:783bab82ea2c76d14c7051a953446b55239d118644f66f9b53096bde26f253f2",
       "kind": "sidecar",
       "path": "tools/linear_issue_sync/manifest.json"
+    },
+    {
+      "digest": "sha256:36d13ec0256b0f0b0ab27d97a62d1b2c411997d898f9b9e0e9332efb6817f041",
+      "kind": "sidecar",
+      "path": "tools/memo_create_note/manifest.json"
+    },
+    {
+      "digest": "sha256:402816166aaa8c52a8899fcfd17bf1bb7c0e105043f7393c6d2ef09f736701b3",
+      "kind": "sidecar",
+      "path": "tools/memo_folder_upsert/manifest.json"
+    },
+    {
+      "digest": "sha256:8071ce95d1837d43128a968281e5911cc6a31bdef8e9131065f5e324e10f55af",
+      "kind": "sidecar",
+      "path": "tools/memo_get/manifest.json"
+    },
+    {
+      "digest": "sha256:4e38687a7517672993da4eae1fdafc5083fa01ed91f164e8ca1cf1bc2e28510d",
+      "kind": "sidecar",
+      "path": "tools/memo_list/manifest.json"
+    },
+    {
+      "digest": "sha256:7c38ac2cb1bbe6b68824f0424ebc3d95b4f38299fad9532b356010e036d498c0",
+      "kind": "sidecar",
+      "path": "tools/memo_list_notes/manifest.json"
+    },
+    {
+      "digest": "sha256:8c51209d55afff34e5c76525097c87b5a5b03914aa002908f77d90bc42f86b4b",
+      "kind": "sidecar",
+      "path": "tools/memo_note_upsert/manifest.json"
+    },
+    {
+      "digest": "sha256:bfee590d26ba44427df028d9b0f0eadd347bfdbf3d56dfc9b1b1129306b85eda",
+      "kind": "sidecar",
+      "path": "tools/memo_search/manifest.json"
+    },
+    {
+      "digest": "sha256:b2d3df80d4fda31b02464014e4a90c606a22f88ef2ecaea0818e5283fcc05e30",
+      "kind": "sidecar",
+      "path": "tools/memo_search_notes/manifest.json"
     },
     {
       "digest": "sha256:b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
@@ -632,8 +682,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:44730398c631f32714910e9a8856f391f437972e3da0f6418891b88f5eb92583",
-    "artifact_set_digest": "sha256:b4c8920f53edd93c422749fb85d119f5135e4c7d0c01fb3c9c17f82d079e2735",
+    "source_identity": "sha256:e3b6851917f7d4a2577557c28ebdcbd031c7c788ffd5e532ac768dcedd1c6fb9",
+    "artifact_set_digest": "sha256:353b189bb746f8a67f24c3b3aa83504748b4ffc8a9944986e2384e94869a8c12",
     "contract_catalog_digest": "sha256:4fa2389199fc174e4ecf7c23543ffa3e3e0df7776a90153027edc6acd83b0088"
   },
   "migration": {
@@ -669,7 +719,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:48c380d7e360aa0e5c3b6ad35d846a5ba86565c6d34a233613a1f01df16ee145",
+    "artifact_digest": "sha256:420a07d09e8d8299b65236651def311472eefb1ec755d9ce57961a23d7824efc",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -680,15 +730,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/pack.v4.json",
-    "source_digest": "sha256:44730398c631f32714910e9a8856f391f437972e3da0f6418891b88f5eb92583",
+    "source_digest": "sha256:e3b6851917f7d4a2577557c28ebdcbd031c7c788ffd5e532ac768dcedd1c6fb9",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:070f62a9104fb7213587bfe51f7cf424b6bcc7522e4f7f453e1eb657679ac7a5",
+    "content_root_digest": "sha256:080918e80ed0d158303f4d66b5545f760a0c42b35e90b0800067ad34c273ba6b",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:7066640b0f4914d967cc61a90533a4d43473342f7b04b470f4fe5577b0334186",
+    "input_inventory_digest": "sha256:3e28c65bb97f29fba3a78e495b8edfda44bd39a1ba10d9b34dd3dd9cf9bcee32",
     "normative": true,
     "evidence": [
       {
@@ -699,7 +749,7 @@
       {
         "path": "ecosystem/defaultspack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:44730398c631f32714910e9a8856f391f437972e3da0f6418891b88f5eb92583"
+        "digest": "sha256:e3b6851917f7d4a2577557c28ebdcbd031c7c788ffd5e532ac768dcedd1c6fb9"
       }
     ]
   },

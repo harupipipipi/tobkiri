@@ -24,7 +24,7 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     status, body, _ = _request(server, "GET", route, headers=headers)
     assert status == 200, body
     catalog = body["data"]
-    assert catalog["count"] == len(catalog["tools"]) == 139
+    assert catalog["count"] == len(catalog["tools"]) == 149
     assert catalog["registry_revision"] == 0
     by_id = {item["tool_id"]: item for item in catalog["tools"]}
     assert by_id["calculator"]["summary"] == "Basic arithmetic helper."
@@ -34,8 +34,10 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     assert by_id["artifact_file_read"]["tool_id"] == "artifact_file_read"
     assert by_id["coding_file_write"]["action_class"] == "update"
     assert by_id["coding_file_write"]["minimum_permission"] == "confirm"
+    assert by_id["settings_update"]["minimum_permission"] == "confirm"
+    assert by_id["memo_note_upsert"]["tool_id"] == "memo_note_upsert"
     assert all(item["connection_status"] == "unavailable" for item in catalog["tools"])
-    assert sum(item["tool_count"] for item in catalog["services"]) == 139
+    assert sum(item["tool_count"] for item in catalog["services"]) == 149
     assert session.provider_metadata("tobkiri.service.tool.local.operation.v1") == ()
     assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()
     for query in ("profile_id=foreign", "operation=save", "approved=true", "pack_id=foreign"):

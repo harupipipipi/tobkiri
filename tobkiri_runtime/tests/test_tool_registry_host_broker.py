@@ -35,13 +35,13 @@ def test_production_registry_uses_selected_data_without_executable_bindings(
                 "_session_id": "registry-data",
             },
         )
-        assert len(result["definitions"]) == (139 if selected else 109)
+        assert len(result["definitions"]) == (149 if selected else 119)
         assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()
         assert {item["pack_id"] for item in result["pack_data_sources"]} == (
             {"defaultspack", "rumi_default_tools_pack"} if selected else {"defaultspack"}
         )
         identifiers = {item["tool_id"] for item in result["definitions"]}
-        assert "artifact_file_read" in identifiers
+        assert {"artifact_file_read", "memo_note_upsert", "settings_update"} <= identifiers
         assert ("calculator" in identifiers) is selected
         with pytest.raises(ProviderExecutionError):
             session.invoke(

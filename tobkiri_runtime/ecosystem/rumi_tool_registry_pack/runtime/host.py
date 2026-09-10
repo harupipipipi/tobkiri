@@ -66,6 +66,7 @@ class ToolRegistryHostFactoryV4:
         self.declared_pack_data = (
             HostProviderDataRequestV4(DEFAULT_TOOLS_PACK, "tools/"),
             HostProviderDataRequestV4(DEFAULTS_PACK, "tools/"),
+            HostProviderDataRequestV4(DEFAULTS_PACK, "extensions/tools/"),
         )
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
@@ -147,8 +148,11 @@ class ToolRegistryHostFactoryV4:
                 result = {
                     **result,
                     "pack_data_sources": [
-                        {"pack_id": item.pack_id, "artifact_digest": item.artifact_digest}
-                        for item in context.declared_pack_data
+                        {"pack_id": pack_id, "artifact_digest": digest}
+                        for pack_id, digest in dict.fromkeys(
+                            (item.pack_id, item.artifact_digest)
+                            for item in context.declared_pack_data
+                        )
                     ],
                 }
             invocation.assert_current()

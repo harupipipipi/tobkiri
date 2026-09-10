@@ -147,6 +147,7 @@ def test_all_registry_factories_capture_the_same_packaged_namespace():
     for factory in host.HOST_PROVIDER_FACTORY.values():
         assert {(item.pack_id, item.path_prefix) for item in factory.declared_pack_data} == {
             ("defaultspack", "tools/"),
+            ("defaultspack", "extensions/tools/"),
             ("rumi_default_tools_pack", "tools/"),
         }
 
@@ -191,23 +192,35 @@ def test_captured_pack_names_are_rejected_before_any_mutation(
     assert listed["revision"] == 0 and len(listed["definitions"]) == 30
 
 
-def test_defaults_own_descriptors_join_the_selected_catalog(captured_data, registry_host):
-    """Defaults' 109 real files preserve their IDs, display labels and schemas."""
+@pytest.fixture
+def defaults_data() -> tuple[CapturedHostPackDataV4, ...]:
+    """Capture both real Defaults descriptor sources through the sealed reader."""
     from tobkiri_host.artifact_materialization import capture_declared_pack_data
 
     root = Path(__file__).resolve().parents[1] / "ecosystem/defaultspack"
     digest = json.loads((root / "pack.v4.json").read_bytes())["pack"]["artifact_digest"]
-    source = CapturedHostPackDataV4(
-        "defaultspack", digest, "tools/",
-        capture_declared_pack_data(
-            root, pack_id="defaultspack", artifact_digest=digest, path_prefix="tools/",
-        ),
+    return tuple(
+        CapturedHostPackDataV4(
+            "defaultspack", digest, prefix,
+            capture_declared_pack_data(
+                root, pack_id="defaultspack", artifact_digest=digest, path_prefix=prefix,
+            ),
+        )
+        for prefix in ("tools/", "extensions/tools/")
     )
-    assert len(source.files) == 109
+
+
+def test_defaults_own_descriptors_join_the_selected_catalog(
+    captured_data, defaults_data, registry_host,
+):
+    """Defaults' real files preserve their IDs, display labels and schemas."""
+    source, extensions = defaults_data
+    assert len(source.files) == 117
+    assert len(extensions.files) == 2
     invoke, _client = registry_host
-    data = (*captured_data, source)
+    data = (*captured_data, *defaults_data)
     result = invoke("definition", {"operation": "list"}, pack_data=data)
-    assert len(result["definitions"]) == 139
+    assert len(result["definitions"]) == 149
     definition = invoke(
         "definition", {"operation": "resolve", "tool_id": "artifact_file_read"},
         pack_data=data,
@@ -219,6 +232,11 @@ def test_defaults_own_descriptors_join_the_selected_catalog(captured_data, regis
     assert {item["pack_id"] for item in result["pack_data_sources"]} == {
         "defaultspack", "rumi_default_tools_pack",
     }
+    assert len(result["pack_data_sources"]) == 2
+    definitions = {item["tool_id"]: item for item in result["definitions"]}
+    assert definitions["memo_note_upsert"]["input_schema"]["required"] == ["content"]
+    assert definitions["settings_update"]["authority"] == "service.mutate"
+    assert definitions["settings_inspect"]["widget"]["group_id"] == "settings"
     with pytest.raises(ValueError, match="duplicated"):
         definitions_from_pack_data((source, source))
 
@@ -231,3 +249,27 @@ def test_defaults_own_descriptors_join_the_selected_catalog(captured_data, regis
     )
     with pytest.raises(ValueError, match="identity"):
         definitions_from_pack_data((replace(source, files=(changed,)),))
+
+
+@pytest.mark.parametrize("change", ["path", "category", "pack", "digest"])
+def test_extension_sources_cannot_change_the_captured_namespace(defaults_data, change):
+    source, extensions = defaults_data
+    item = extensions.files[0]
+    if change == "path":
+        changed = replace(item, path="tools/settings_inspect/manifest.json")
+        extensions = replace(extensions, files=(changed,))
+    elif change == "category":
+        raw = json.loads(item.content)
+        raw["category"] = "skill"
+        content = json.dumps(raw).encode()
+        changed = replace(
+            item, content=content,
+            digest="sha256:" + hashlib.sha256(content).hexdigest(),
+        )
+        extensions = replace(extensions, files=(changed,))
+    elif change == "pack":
+        extensions = replace(extensions, pack_id="rumi_default_tools_pack")
+    else:
+        extensions = replace(extensions, artifact_digest="sha256:" + "f" * 64)
+    with pytest.raises(ValueError):
+        definitions_from_pack_data((source, extensions))

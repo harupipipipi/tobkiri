@@ -16,8 +16,10 @@ Saving a definition cannot shadow an existing alias. Rollback rejects stale
 revisions and preserves the current state in a backup before removing it.
 Registration of a definition does not authorize its execution.
 
-Each registry factory requests the same sealed `tools/*/manifest.json` descriptors from
-Defaults (109) and Default Tools (30) when their Packs are selected in the Profile. The Host
+Each registry factory requests the same sealed tool descriptors from Defaults
+(117 tools, including eight memo tools, plus two tool extensions) and Default Tools
+(30 tools) when their Packs are selected in the Profile. The finite data prefixes
+are `tools/` and, for Defaults only, `extensions/tools/`. The Host
 captures declared data using the Profile lock's artifact digest and admitted
 Pack root, independently of executable bindings. It supplies immutable bytes;
 request payloads cannot choose files or digests. Selected missing, modified or
@@ -33,8 +35,10 @@ without silently dropping or overwriting their contents.
 Packaged descriptors compose with stored definitions and selected contributions;
 duplicate IDs or aliases are rejected. This intake preserves their schemas,
 display metadata and widgets without importing the legacy Registry or Executor.
-It covers sealed tool manifests only. Dynamic, component and memo sources, their
-migration, and the local execution Provider still require separate integration.
+Memo descriptors share one data source with the legacy reader; their schemas,
+handler identities and approval fields are preserved. Dynamic and component
+sources, live migration, and the local execution Provider still require separate
+integration.
 
 The shipped Defaults Profile selects this owner and Default Tools. Its
 authenticated `/api/tools/catalog` contract route reads the catalog for the

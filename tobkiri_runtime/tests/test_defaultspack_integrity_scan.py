@@ -88,9 +88,9 @@ def test_tool_descriptors_are_verified_as_data_sidecars(tmp_path: Path) -> None:
     index_path = pack_root / "artifact-index.v4.json"
     index = json.loads(index_path.read_text())
     descriptors = [
-        item for item in index["artifacts"] if item["path"].startswith("tools/")
+        item for item in index["artifacts"] if item["path"].startswith(("tools/", "extensions/tools/"))
     ]
-    assert len(descriptors) == 109
+    assert len(descriptors) == 119
     assert all(item["role"] == "sidecar" for item in descriptors)
     descriptors[0]["role"] = "runtime"
     index_path.write_text(json.dumps(index, indent=2) + "\n")

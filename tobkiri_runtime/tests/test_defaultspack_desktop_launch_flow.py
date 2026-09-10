@@ -171,7 +171,8 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
     assert artifact_index["integrity_seal"]["algorithm"] == "sha256-canonical-v1"
     tool_paths = {
         path.relative_to(DEFAULTSPACK_ROOT).as_posix()
-        for path in (DEFAULTSPACK_ROOT / "tools").glob("*/manifest.json")
+        for prefix in ("tools", "extensions/tools")
+        for path in (DEFAULTSPACK_ROOT / prefix).glob("*/manifest.json")
     }
     assert tool_paths
     assert {
