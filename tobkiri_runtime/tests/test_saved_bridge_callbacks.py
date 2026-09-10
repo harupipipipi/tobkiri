@@ -140,6 +140,30 @@ def test_owned_special_context_is_rejected_before_user_append(
     assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
 
 
+@pytest.mark.parametrize("logs", [{}, False, 0, "", None, []])
+def test_preflight_checks_owned_history_tool_logs_before_readiness(
+    tmp_path: Path, logs: object,
+) -> None:
+    """Only missing logs normalize to an empty transcript on the saved path."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.append_message(
+        "conversation-1",
+        {"id": "prior-assistant", "role": "assistant", "content": "Earlier reply",
+         "status": "complete", "tool_logs": logs},
+        expected_conversation_revision=1,
+    )
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    if logs is None or isinstance(logs, list):
+        callbacks.preflight(outer)
+        assert [target for target, _ in calls] == [saved.TARGETS[0], READINESS]
+    else:
+        with pytest.raises(AuthorityDenied, match="owned tool transcript"):
+            callbacks.preflight(outer)
+        assert [target for target, _ in calls] == [saved.TARGETS[0]]
+    assert store.path.read_bytes() == before
+
+
 def test_display_only_metadata_does_not_block_saved_preflight(tmp_path: Path) -> None:
     store, outer, calls, callbacks = _setup(tmp_path)
     store.update("conversation-1", {

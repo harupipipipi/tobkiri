@@ -116,8 +116,10 @@ def _messages(
             raise AuthorityDenied("saved bridge additional content resolution is required")
         metadata = message.get("metadata") or {}
         trace = saved_tool_messages(metadata.get("saved_tool_messages", []))
+        logs = message.get("tool_logs")
         if ((trace and message["role"] != "assistant")
-                or canonical_json(message.get("tool_logs") or []) != canonical_json(saved_tool_logs(trace))):
+                or canonical_json([] if logs is None else logs)
+                != canonical_json(saved_tool_logs(trace))):
             raise AuthorityDenied("saved bridge owned tool transcript is invalid")
         if flatten_text_blocks:
             # Readiness accepts text-only messages. Preserve every tool argument
