@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_scheduler_tool_adapter_pack",
-  "source_identity": "sha256:2c2afc22b766a687e0a5de5d22d5867e4c7e267fbf6ef3ff8b9ad4b431dd0571",
+  "source_identity": "sha256:5ae3a885c46048bb1bb56b8c4bfacbbce11d8197e0c13586be8efaa2189f5ce4",
   "variants": [
     {
       "variant_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler.python",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler.wasm",
       "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
       "implementation_path": "runtime/definitions_component.wasm",
-      "implementation_digest": "sha256:57a98ee279100e279caa36bf5e50de4c6aad24e5238b44771ceab2312ff188a4",
+      "implementation_digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f",
       "execution_kind": "wasm",
       "platform": "any",
       "architecture": "any",
@@ -72,6 +72,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:af184bb6eda988db47fd3088617d20d423d5ac6dd72858e3dfd3434c67fb2b1e",
-  "catalog_digest": "sha256:8049b0b89eed651ce8bb5aca4faf0713ab7a76c72285fe1c320446f6fa33e429"
+  "materialization_catalog_digest": "sha256:277955c8294698fc946f124fa5a27be101fc2596e00383eb868f3398c590cbcc",
+  "catalog_digest": "sha256:866c9863d2a0753a59dc984835c4d47c5bcdae975911cb62fc202e3591d6b0ec"
 }

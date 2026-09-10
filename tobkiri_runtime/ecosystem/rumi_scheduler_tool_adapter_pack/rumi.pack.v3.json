@@ -138,9 +138,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:31481960e112c8da491b216b79fcf51a8c226c0c8ff8625168550d2de16f4b81",
+            "artifact_digest": "sha256:1988901dd42b0c34d3cb4e84a37d99acdc6f4131e92b2839b55d2fe99e6fabb2",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:3bc1bed735228efdfc9622d919d1db1af5a5fff0223a41c82c60d8931d45a689"
+            "source_identity": "sha256:71352402394a22ee41089620b5eb0ef196a0d4bc41c155a8920d0ee52f42ef61"
           },
           "owner_surfaces": [
             "scheduler_tool_definitions"
@@ -195,7 +195,7 @@
       "owner": "rumi_scheduler_tool_adapter_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:3bc1bed735228efdfc9622d919d1db1af5a5fff0223a41c82c60d8931d45a689"
+      "source_identity": "sha256:71352402394a22ee41089620b5eb0ef196a0d4bc41c155a8920d0ee52f42ef61"
     }
   },
   "migration": {

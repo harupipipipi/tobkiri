@@ -42,7 +42,7 @@ def build_component() -> bytes:
         + len(error).to_bytes(4, "little")
     )
     allocation_pointer = (error_pointer + len(error) + 31) // 16 * 16
-    pages = max(1, (allocation_pointer + 65_535) // 65_536)
+    pages = max(32, (allocation_pointer + 65_535) // 65_536)
     operation_checks = "\n".join(
         f"""local.get $matches
           local.get $operation_pointer
@@ -57,11 +57,19 @@ def build_component() -> bytes:
     (component
       (core module $guest
         (memory (export "memory") {pages})
+        (global $heap (mut i32) (i32.const {allocation_pointer}))
         (data (i32.const 0) "{_wat_bytes(descriptors)}")
         (data (i32.const 32) "{_wat_bytes(content)}")
         (data (i32.const {error_pointer}) "{_wat_bytes(error)}")
-        (func (export "realloc") (param i32 i32 i32 i32) (result i32)
-          i32.const {allocation_pointer})
+        (func (export "realloc")
+          (param i32 i32 i32) (param $new_size i32) (result i32)
+          (local $pointer i32)
+          global.get $heap
+          local.tee $pointer
+          local.get $new_size
+          i32.add
+          global.set $heap
+          local.get $pointer)
         (func (export "invoke")
           (param $operation_pointer i32) (param $operation_length i32)
           (param i32 i32) (result i32)
