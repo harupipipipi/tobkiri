@@ -2034,7 +2034,7 @@ def capture_production_dispatch(
         return response
 
     from .saved_bridge import (
-        REQUIRED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result,
+        ALLOWED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result, project_saved_tool_result,
     )
 
     def saved_target(outer_request: object, target: tuple[str, str]) -> _CapturedPlanEdge:
@@ -2042,7 +2042,7 @@ def capture_production_dispatch(
         if (
             outer_edge.resolved_binding.operation.contract_id != SAVED_CONVERSATION_CONTRACT
             or outer_edge.resolved_binding.operation.operation_id != SAVED_CONVERSATION_OPERATION
-            or target not in REQUIRED_TARGETS
+            or target not in ALLOWED_TARGETS
         ):
             raise AuthorityDenied("saved bridge outer operation is not selected")
         candidates = tuple(
@@ -2085,7 +2085,8 @@ def capture_production_dispatch(
             outer_request, resolve_bridge_outer(outer_request), edge, arguments,
             result_projector=(
                 project_saved_ai_result
-                if target[0] == "tobkiri.service.ai.generate.v1" else None
+                if target[0] == "tobkiri.service.ai.generate.v1"
+                else project_saved_tool_result if target[0] == "tobkiri.service.tool.invoke.v1" else None
             ),
         )
 

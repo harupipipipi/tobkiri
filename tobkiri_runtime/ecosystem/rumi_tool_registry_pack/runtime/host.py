@@ -23,6 +23,8 @@ from ecosystem.rumi_tool_registry_pack.runtime.registry import (
     _resolve_composed,
 )
 
+from .selection import ROUTE_CONTRACTS, select_tools
+
 PACK_ID = "rumi_tool_registry_pack"
 CONTRIBUTION = "tobkiri.resource.tool.definition.contribution.v1"
 _BINDINGS = {
@@ -41,6 +43,7 @@ _BINDINGS = {
 }
 _FIELDS = {
     "list": set(),
+    "select": {"selection"},
     "get": {"tool_id"},
     "resolve": {"tool_id"},
     "save": {"definition", "expected_revision"},
@@ -50,7 +53,7 @@ _FIELDS = {
     "rollback": {"migration_id", "expected_revision"},
 }
 _ACTIONS = {
-    "definition": frozenset({"list", "get", "resolve"}),
+    "definition": frozenset({"list", "get", "resolve", "select"}),
     "manage": frozenset({"save", "delete", "alias"}),
     "migrate": frozenset({"migrate", "rollback"}),
 }
@@ -131,7 +134,7 @@ class ToolRegistryHostFactoryV4:
                 raise ValueError("tool registry revision is invalid")
             client = invocation.contract_client(
                 allowed_contract_ids=(
-                    frozenset({CONTRIBUTION})
+                    (frozenset({CONTRIBUTION}) | (ROUTE_CONTRACTS if action == "select" else frozenset()))
                     if action in _ACTIONS["definition"]
                     else frozenset()
                 ),
@@ -196,6 +199,8 @@ def _invoke(
             }
         if action == "list":
             return catalog
+        if action == "select":
+            return select_tools(catalog, payload["selection"], client)
         resolved = _resolve_composed(catalog, _text(payload["tool_id"]))
         return {"found": False} if resolved is None else {"found": True, **resolved}
     if action == "save":

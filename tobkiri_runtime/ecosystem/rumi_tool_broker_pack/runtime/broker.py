@@ -40,13 +40,17 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
         payload: Mapping[str, Any], invocation: HostProviderInvocationContextV4,
     ) -> Mapping[str, Any]:
         if (
-            set(payload) != {"tool_id", "tool_call_id", "arguments"}
+            set(payload) - {"expected_definition_hash"} != {"tool_id", "tool_call_id", "arguments"}
             or any(
                 not isinstance(payload[key], str)
                 or not _IDENTIFIER.fullmatch(payload[key])
                 for key in ("tool_id", "tool_call_id")
             )
             or not isinstance(payload["arguments"], dict)
+            or ("expected_definition_hash" in payload and (
+                not isinstance(payload["expected_definition_hash"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", payload["expected_definition_hash"])
+            ))
         ):
             raise ValueError("tool invocation payload is invalid")
         if not single_flight.acquire(blocking=False):
@@ -69,6 +73,9 @@ def _bind(context: HostProviderCaptureContextV4) -> HostFunction:
             ):
                 raise ValueError("tool is not registered")
             definition = resolved["definition"]
+            if ("expected_definition_hash" in payload
+                    and payload["expected_definition_hash"] != definition.get("definition_hash")):
+                raise PermissionError("selected tool definition changed")
             validation = client.invoke(
                 VALIDATE, "rumi_tool_validation_pack.tool-arguments-validate",
                 {"schema": definition.get("input_schema"), "arguments": payload["arguments"]},

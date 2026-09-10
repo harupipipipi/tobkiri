@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import re
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
+from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
 from .continuation_chain import ChainIdentity
 
@@ -59,6 +60,7 @@ def seal_continuation_intent(
     previous_digest: str | None,
     target: tuple[str, str],
     nonce: str,
+    max_hops: int = 4,
 ) -> ValidatedContinuation:
     """Add root-owned framing to an application intent, without authorizing it.
 
@@ -92,7 +94,7 @@ def seal_continuation_intent(
     }
     return validate_continuation_request(
         canonical_json(frame), identity=identity, hop=hop,
-        previous_digest=previous_digest, target=target,
+        previous_digest=previous_digest, target=target, max_hops=max_hops,
     )
 
 
@@ -144,6 +146,7 @@ def validate_continuation_request(
     hop: int,
     previous_digest: str | None,
     target: tuple[str, str],
+    max_hops: int = 4,
 ) -> ValidatedContinuation:
     """Validate one bounded request against independently captured expectations.
 
@@ -152,7 +155,8 @@ def validate_continuation_request(
     """
     if type(encoded) is not bytes:
         raise ValueError("continuation request must be encoded bytes")
-    if type(hop) is not int or not 0 <= hop < 4:
+    if (type(max_hops) is not int or not 1 <= max_hops <= MAX_SAVED_TOOL_HOPS
+            or type(hop) is not int or not 0 <= hop < max_hops):
         raise ValueError("expected continuation hop is invalid")
     if (hop == 0 and previous_digest is not None) or (
         hop > 0

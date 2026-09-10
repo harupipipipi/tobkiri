@@ -273,8 +273,8 @@
     {
       "path": "ecosystem/defaultspack/runtime/saved_conversation.py",
       "type": "regular-file",
-      "size": 12901,
-      "sha256": "b58ce390948041e5c0a54a5e7ada9a5abaf6d039746bcb01575ee4e688c933ae",
+      "size": 17840,
+      "sha256": "3b715c5ce4e1bd4465fbcd2eb4a6f575fb0268cca5010bf71cff38b604c74b7c",
       "executable": false
     },
     {
@@ -3612,8 +3612,15 @@
     {
       "path": "tobkiri_protocol/saved_conversation.py",
       "type": "regular-file",
-      "size": 3228,
-      "sha256": "f2f089cfd9c842cda5a6966fba7bbd26fa992262ca78afc8e50e2941a9a17414",
+      "size": 3393,
+      "sha256": "bc08e405da514729d2400ab12046a9b222ad116e3f29b76b4b0fea7f5ea55bb7",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/saved_tools.py",
+      "type": "regular-file",
+      "size": 5495,
+      "sha256": "168ea3136a2fa9982085466787f594046cab8889c8f61f4012087a466714f7c2",
       "executable": false
     },
     {
@@ -3880,6 +3887,13 @@
       "type": "regular-file",
       "size": 2380,
       "sha256": "f1cc00f71061591b2ce229b63f4bf6ce864276142112d99b8934393ad794ccb6",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/tool_groups.py",
+      "type": "regular-file",
+      "size": 2562,
+      "sha256": "15f7e82c1d264643417af517bb8928ffb03b0792c780a2e03715760767a04e29",
       "executable": false
     },
     {

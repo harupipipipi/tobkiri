@@ -20,6 +20,10 @@ TARGETS = (
 )
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _REQUEST_FIELDS = {"turn_id", "conversation_id", "conversation_revision", "content"}
+_TOOL_TARGET = ("tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke")
+_MAX_TOOL_CALLS = 8
+_STAGE_TARGETS = {"read": TARGETS[0], "user": TARGETS[1], "ai": TARGETS[2],
+                  "assistant": TARGETS[3], "tool": _TOOL_TARGET}
 _STATE_FIELDS = {
     "hop",
     "request",
@@ -27,7 +31,7 @@ _STATE_FIELDS = {
     "model_reference",
     "revision",
     "parent_id",
-    "assistant",
+    "assistant", "stage", "pending_tools", "tool_messages", "tool_count", "seen_tools",
 }
 
 
@@ -71,13 +75,31 @@ def _revision(value: Any) -> int:
 
 
 def _request(value: Any) -> dict[str, Any]:
-    if type(value) is not dict or set(value) != _REQUEST_FIELDS:
+    if type(value) is not dict or set(value) - {"tool_selection"} != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
     if not isinstance(value["content"], str) or not value["content"].strip():
         raise ValueError("saved conversation requires nonempty user text")
+    selection = value.get("tool_selection", {})
+    if "tool_selection" in value:
+        if (not isinstance(selection, dict) or set(selection) - {"mode", "include", "exclude", "scope", "must_use"}
+                or selection.get("mode") not in {"auto", "manual", "none"}
+                or selection.get("scope", "turn") not in {"turn", "conversation"}
+                or type(selection.get("must_use", False)) is not bool):
+            raise ValueError("saved tool selection is invalid")
+        for key in ("include", "exclude"):
+            values = selection.get(key, [])
+            if not isinstance(values, list) or len(values) > 256:
+                raise ValueError("saved tool selection is invalid")
+            for item in values:
+                if isinstance(item, dict) and set(item) == {"kind", "id"} and item["kind"] in {"tool", "service"}:
+                    item = item["id"]
+                if not isinstance(item, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", item) is None:
+                    raise ValueError("saved tool target is invalid")
+        if selection["mode"] == "none" and (selection.get("include") or selection.get("must_use")):
+            raise ValueError("disabled saved tools cannot be required")
     _json(value)
     return value
 
@@ -87,9 +109,24 @@ def _message_id(request: dict[str, Any], role: str) -> str:
     return "message:" + hashlib.sha256(_json(identity)).hexdigest()
 
 
+def _tool_logs(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    calls = {}
+    logs = []
+    for message in messages:
+        if message["role"] == "assistant":
+            calls.update({item["id"]: item["function"] for item in message["tool_calls"]})
+        else:
+            call = calls[message["tool_call_id"]]
+            logs.append({
+                "tool_name": call["name"], "tool_call_id": message["tool_call_id"],
+                "arguments": json.loads(call["arguments"]), "result": message["content"],
+            })
+    return logs
+
+
 def _message(state: dict[str, Any], role: str) -> dict[str, Any]:
     request = state["request"]
-    return {
+    message = {
         "id": _message_id(request, role),
         "role": role,
         "content": request["content"] if role == "user" else state["assistant"],
@@ -97,53 +134,53 @@ def _message(state: dict[str, Any], role: str) -> dict[str, Any]:
         "metadata": {"turn_id": request["turn_id"]},
         "status": "complete",
     }
+    if role == "assistant" and state["tool_messages"]:
+        message["metadata"]["saved_tool_messages"] = state["tool_messages"]
+        message["tool_logs"] = _tool_logs(state["tool_messages"])
+    return message
 
 
 def _intent(state: dict[str, Any]) -> dict[str, Any]:
-    hop, request = state["hop"], state["request"]
-    if hop == 0:
+    stage, request = state["stage"], state["request"]
+    if stage == "read":
         payload = {"operation": "get", "conversation_id": request["conversation_id"]}
-    elif hop in (1, 3):
+    elif stage in {"user", "assistant"}:
         payload = {
-            "operation": "append",
-            "conversation_id": request["conversation_id"],
+            "operation": "append", "conversation_id": request["conversation_id"],
             "expected_conversation_revision": state["revision"],
-            "message": _message(state, "user" if hop == 1 else "assistant"),
+            "message": _message(state, stage),
         }
+    elif stage == "tool":
+        payload = state["pending_tools"][0]
     else:
         payload = {
-            "messages": [*state["history"], {"role": "user", "content": request["content"]}],
+            "messages": [*state["history"], {"role": "user", "content": request["content"]},
+                         *state["tool_messages"]],
             "model_reference": state["model_reference"],
             "requirements": {"request_surface": "conversation.saved"},
         }
     value = {
-        "kind": "tobkiri.packvm.continuation.intent.v2",
-        "hop": hop,
-        "target": dict(zip(("contract_id", "operation_id"), TARGETS[hop])),
-        "payload": payload,
-        "state": state,
+        "kind": "tobkiri.packvm.continuation.intent.v2", "hop": state["hop"],
+        "target": dict(zip(("contract_id", "operation_id"), _STAGE_TARGETS[stage])),
+        "payload": payload, "state": state,
     }
-    # Leave room for root-owned identity, nonce and predecessor framing.
     _json(value)
     return value
 
 
 def _failure(state: dict[str, Any], code: str) -> dict[str, Any]:
-    hop, request = state["hop"], state["request"]
-    user = ("not_written", "unknown", "saved", "saved")[hop]
-    assistant = "unknown" if hop == 3 else "not_written"
-    reconcile = hop in (1, 3)
+    stage, request = state["stage"], state["request"]
+    user = "not_written" if stage == "read" else "unknown" if stage == "user" else "saved"
+    assistant = "unknown" if stage == "assistant" else "not_written"
+    reconcile = stage in {"user", "assistant", "tool"} or state["tool_count"] > 0
     if code == "TURN_RECONCILIATION_REQUIRED":
         user, assistant, reconcile = "unknown", "unknown", True
     return {
-        "status": "error",
-        "error": {"code": code, "message": "Saved conversation did not complete."},
-        "turn_id": request["turn_id"],
-        "conversation_id": request["conversation_id"],
+        "status": "error", "error": {"code": code, "message": "Saved conversation did not complete."},
+        "turn_id": request["turn_id"], "conversation_id": request["conversation_id"],
         "user_message_id": _message_id(request, "user"),
         "assistant_message_id": _message_id(request, "assistant"),
-        "user_persistence": user,
-        "assistant_persistence": assistant,
+        "user_persistence": user, "assistant_persistence": assistant,
         "reconciliation_required": reconcile,
     }
 
@@ -186,8 +223,12 @@ def _history(conversation: dict[str, Any]) -> tuple[list[dict[str, Any]], str | 
             raise ValueError(
                 "conversation history requires explicit tool or incomplete-turn handling"
             )
-        if item.get("parts") or item.get("tool_logs") or item.get("widget"):
+        trace = (item.get("metadata") or {}).get("saved_tool_messages", [])
+        if not isinstance(trace, list) or (trace and item["role"] != "assistant"):
+            raise ValueError("saved tool history is invalid")
+        if item.get("parts") or item.get("widget") or (item.get("tool_logs") and not trace):
             raise ValueError("conversation history requires additional content resolution")
+        history.extend(trace)
         history.append({"role": item["role"], "content": item["content"]})
     return history, current
 
@@ -203,47 +244,40 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "model_reference": None,
             "revision": request["conversation_revision"],
             "parent_id": None,
-            "assistant": None,
+            "assistant": None, "stage": "read", "pending_tools": [],
+            "tool_messages": [], "tool_count": 0, "seen_tools": [],
         }
     )
 
 
 def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
-    """Advance only after an exact owner result; errors never produce a retry."""
+    """Advance from one acknowledged result, without replaying an uncertain effect."""
     _json(state)
     if type(state) is not dict or set(state) != _STATE_FIELDS:
         raise ValueError("saved continuation fields are invalid")
     state = json.loads(_json(state))
     request = _request(state["request"])
-    hop = state["hop"]
-    if type(hop) is not int or not 0 <= hop < 4:
+    stage, hop = state["stage"], state["hop"]
+    if stage not in _STAGE_TARGETS or type(hop) is not int or not 0 <= hop < 20:
         raise ValueError("saved continuation hop is invalid")
     _revision(state["revision"])
-    if (
-        type(outcome) is not dict
-        or outcome.get("status") != "ok"
-        or set(outcome) != {"status", "value"}
-    ):
+    if type(outcome) is not dict or outcome.get("status") != "ok" or set(outcome) != {"status", "value"}:
         return _failure(state, "HOST_ACTION_FAILED")
-    value = outcome["value"]
     acknowledged = False
     try:
+        value = outcome["value"]
         _json(value, limit=512 * 1024)
         if not isinstance(value, dict):
             raise ValueError("owner response must be an object")
-        if hop == 0:
+        if stage == "read":
             conversation = value["conversation"]
             if conversation["id"] != request["conversation_id"]:
                 raise ValueError("conversation identity mismatch")
-            if any(
-                item["id"] in {_message_id(request, "user"), _message_id(request, "assistant")}
-                for item in conversation["messages"]
-            ):
+            if any(item["id"] in {_message_id(request, "user"), _message_id(request, "assistant")}
+                   for item in conversation["messages"]):
                 return _failure(state, "TURN_RECONCILIATION_REQUIRED")
             if _revision(conversation["conversation_revision"]) != request["conversation_revision"]:
                 return _failure(state, "CONVERSATION_REVISION_CONFLICT")
-            # These references require extra captured owner calls, not silently
-            # discarded prompts/agent configuration or an ambient Host lookup.
             if conversation.get("system_prompt_id") or conversation.get("agent_id"):
                 return _failure(state, "CONTEXT_RESOLUTION_REQUIRED")
             model = conversation.get("model_reference")
@@ -251,46 +285,80 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                 return _failure(state, "MODEL_REFERENCE_REQUIRED")
             state["history"], state["parent_id"] = _history(conversation)
             state["model_reference"] = model
-            # Size preflight only, not proof of provider readiness. The larger
-            # AI intent must fit before the user message is persisted.
-            _intent({**state, "hop": 2})
-        elif hop in (1, 3):
-            expected = _message(state, "user" if hop == 1 else "assistant")
+            _intent({**state, "hop": 2, "stage": "ai"})
+            state["stage"] = "user"
+        elif stage in {"user", "assistant"}:
+            expected = _message(state, stage)
             message = value["message"]
-            if (
-                not isinstance(message, dict)
-                or value.get("action") != "message_appended"
-                or any(message.get(key) != item for key, item in expected.items())
-            ):
+            if (not isinstance(message, dict) or value.get("action") != "message_appended"
+                    or any(message.get(key) != item for key, item in expected.items())):
                 raise ValueError("message owner acknowledgement mismatch")
             revision = _revision(value["conversation_revision"])
             if revision <= state["revision"]:
                 raise ValueError("message owner revision did not advance")
             state["revision"] = revision
             acknowledged = True
-            if hop == 3:
+            if stage == "assistant":
                 return {
-                    "status": "ok",
-                    "turn_id": request["turn_id"],
-                    "conversation_id": request["conversation_id"],
-                    "conversation_revision": revision,
-                    "user_message_id": _message_id(request, "user"),
-                    "message": message,
+                    "status": "ok", "turn_id": request["turn_id"],
+                    "conversation_id": request["conversation_id"], "conversation_revision": revision,
+                    "user_message_id": _message_id(request, "user"), "message": message,
                 }
+            state["stage"] = "ai"
+        elif stage == "tool":
+            tool = state["pending_tools"][0]
+            if (value.get("tool_id") != tool["tool_id"] or value.get("tool_call_id") != tool["tool_call_id"]
+                    or not isinstance(value.get("content"), str)):
+                raise ValueError("tool owner acknowledgement mismatch")
+            state["tool_messages"].append({
+                "role": "tool", "tool_call_id": tool["tool_call_id"], "content": value["content"],
+            })
+            state["pending_tools"].pop(0)
+            state["tool_count"] += 1
+            state["stage"] = "tool" if state["pending_tools"] else "ai"
         else:
-            if value.get("status") != "ok" or value.get("tool_intents"):
+            if value.get("status") != "ok":
                 return _failure(state, "AI_COMPLETION_UNAVAILABLE")
+            intents = value.get("tool_intents", [])
+            if not isinstance(intents, list):
+                raise ValueError("tool intents are invalid")
+            selection = request.get("tool_selection", {})
             output = value.get("output")
-            if not isinstance(output, (str, list)) or not output:
-                raise ValueError("AI output is invalid")
-            state["assistant"] = output
-            state["history"] = []
+            if intents:
+                definitions = value.get("tool_definitions")
+                if (selection.get("mode", "none") == "none" or not isinstance(definitions, dict)
+                        or len(state["seen_tools"]) + len(intents) > _MAX_TOOL_CALLS):
+                    return _failure(state, "AI_COMPLETION_UNAVAILABLE")
+                calls = []
+                for intent in intents:
+                    name, identifier = intent["operation"], _identifier(intent["intent_id"])
+                    arguments = intent["arguments"]
+                    digest = definitions[name]
+                    if (identifier in state["seen_tools"] or not isinstance(arguments, dict)
+                            or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+                        raise ValueError("tool intent binding is invalid")
+                    state["seen_tools"].append(identifier)
+                    state["pending_tools"].append({
+                        "tool_id": name, "tool_call_id": identifier, "arguments": arguments,
+                        "expected_definition_hash": digest,
+                    })
+                    calls.append({"id": identifier, "type": "function", "function": {
+                        "name": name, "arguments": _json(arguments).decode(),
+                    }})
+                state["tool_messages"].append({"role": "assistant", "content": output or "", "tool_calls": calls})
+                state["stage"] = "tool"
+            else:
+                if selection.get("must_use") and not state["tool_count"]:
+                    return _failure(state, "REQUIRED_TOOL_NOT_USED")
+                if not isinstance(output, (str, list)) or not output:
+                    raise ValueError("AI output is invalid")
+                state["assistant"], state["history"] = output, []
+                state["stage"] = "assistant"
         return _intent({**state, "hop": hop + 1})
     except (KeyError, TypeError, ValueError, UnicodeError):
-        # If the next intent cannot be represented, preserve which write has
-        # actually been acknowledged, rather than claiming a clean rollback.
         return _failure(
-            {**state, "hop": 2} if hop == 1 and acknowledged else state, "OWNER_RESPONSE_INVALID"
+            {**state, "stage": "ai"} if stage == "user" and acknowledged else state,
+            "OWNER_RESPONSE_INVALID",
         )
 
 

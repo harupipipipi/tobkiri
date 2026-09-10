@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from .canonical import canonical_json, strict_loads
+from .saved_tools import validate_tool_selection
 
 SAVED_CONVERSATION_CONTRACT = "conversation.saved-turn.v1"
 SAVED_CONVERSATION_OPERATION = "saved_complete"
@@ -51,10 +52,12 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
     if set(initial) != {"request"}:
         raise ValueError("saved turn initial fields are invalid")
     request = initial["request"]
-    if not isinstance(request, dict) or set(request) != {
+    if not isinstance(request, dict) or set(request) - {"tool_selection"} != {
         "turn_id", "conversation_id", "conversation_revision", "content",
     }:
         raise ValueError("saved turn request fields are invalid")
+    if "tool_selection" in request:
+        validate_tool_selection(request["tool_selection"])
     for field in ("turn_id", "conversation_id"):
         if not isinstance(request[field], str) or _ID.fullmatch(request[field]) is None:
             raise ValueError("saved turn identity is invalid")
