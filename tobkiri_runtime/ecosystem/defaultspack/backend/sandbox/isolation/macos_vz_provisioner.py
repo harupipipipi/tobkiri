@@ -47,6 +47,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from core_runtime.hmac_key_manager import generate_or_load_signing_key
+from tobkiri_protocol.secure_persistence import SecureDirectory
 from ecosystem.defaultspack.backend.sandbox.isolation.lima_runtime import (
     PACKVM_BACKEND_ID,
     PACKVM_CLEANUP_PREFIX,
@@ -61,6 +62,9 @@ from ecosystem.defaultspack.backend.sandbox.isolation.packvm_image_cache import 
     PackVMImageCache,
     PackVMImageCancelled,
     PackVMPinnedImage,
+)
+from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_registration import (
+    retain_registration,
 )
 
 if TYPE_CHECKING:
@@ -687,9 +691,29 @@ class MacOSVZProvisioner:
                 config_digest = manifest.config_digest
                 guest_digest = manifest.agent_digest
                 helper_digest = manifest.helper_digest
-            image_download_required = manifest is not None and cache_status != "verified_source"
+            update = None
+            if manifest is not None and (self.state_path.exists() or self.state_path.is_symlink()):
+                try:
+                    state = self._load_state()
+                    self._verify_registration_source(state, manifest)
+                    update = {
+                        "previous_attestation_digest": str(state["attestation_digest"]),
+                        "previous_config_digest": str(state["cloud_template_digest"]),
+                        "previous_guest_runner_digest": str(state["guest_runner_digest"]),
+                        "previous_host_build_digest": str(state["host_build_digest"]),
+                        "asset_manifest_digest": manifest.manifest_digest,
+                    }
+                    cache_status, cache_reason = "verified_source", None
+                except (OSError, ValueError) as exc:
+                    issue = str(exc)
+            image_download_required = (
+                manifest is not None and update is None and cache_status != "verified_source"
+            )
             download_bytes = image_size if image_download_required else 0
-            required_space = self._required_host_space(download_bytes)
+            required_space = (
+                3 * _MAX_STATE_BYTES if update is not None
+                else self._required_host_space(download_bytes)
+            )
             available, storage_reason = self._host_capacity(required_space)
             launcher_reason = issue or storage_reason
             runtime_status = "ready" if launcher_reason is None else "unsafe"
@@ -712,6 +736,7 @@ class MacOSVZProvisioner:
                 "runtime_root_digest": _digest_text(str(self._state_dir)),
                 "runtime_path_status": runtime_status,
                 "ceremony_nonce": nonce,
+                "registration_update": update,
             }
             plan_digest = _canonical_digest(facts)
             self._pending.clear()
@@ -741,6 +766,7 @@ class MacOSVZProvisioner:
                 ceremony_nonce=nonce,
                 plan_digest=plan_digest,
                 confirmation=f"{PACKVM_CONFIRMATION_PREFIX} {VZ_INSTANCE} {plan_digest[7:19]}",
+                registration_update=update,
             )
             self._pending[nonce] = plan
             return plan
@@ -767,6 +793,10 @@ class MacOSVZProvisioner:
                 "PackVM image download requires explicit approval for the displayed source, size, and digest"
             )
         manifest = self._require_manifest()
+        if plan.registration_update is not None:
+            return self._update_registration(request, plan, manifest, cancelled)
+        if request.previous_attestation_digest is not None:
+            raise ValueError("PackVM VZ create plan cannot update a registration")
         self._require_host_capacity(plan.image_download_bytes)
         authority = self._image_authority(
             manifest,
@@ -1379,7 +1409,22 @@ class MacOSVZProvisioner:
     def recover_provision_operation(self, expected_proof: Mapping[str, Any]) -> PackVMDoctor:
         """Reconcile a restart only when the exact state proof still verifies."""
 
+        if expected_proof.get("previous_attestation_digest") is not None:
+            # A crash can occur on either side of the atomic state publication.
+            # Only this exact journal ceremony may release its stale claim;
+            # reconciliation never repeats the registration write.
+            with self.operation_gate(
+                "provision", _recovery_binding(expected_proof), recover_claim=True
+            ):
+                return self._recover_provision_state(expected_proof)
+        return self._recover_provision_state(expected_proof)
+
+    def _recover_provision_state(self, expected_proof: Mapping[str, Any]) -> PackVMDoctor:
         state = self._load_state()
+        if state.get("previous_attestation_digest") != expected_proof.get(
+            "previous_attestation_digest"
+        ):
+            raise ValueError("PackVM VZ registration recovery proof changed")
         for key in _recovery_fields():
             state_key = "cloud_template_digest" if key == "config_digest" else key
             if not _secure_equal(state.get(state_key), expected_proof.get(key)):
@@ -1388,6 +1433,105 @@ class MacOSVZProvisioner:
         if not doctor.ready:
             raise ValueError(doctor.reason or "PackVM VZ is unavailable")
         return doctor
+
+    def _verify_registration_source(
+        self, state: Mapping[str, Any], manifest: MacOSVZAssetManifest
+    ) -> None:
+        """Authenticate old ownership while requiring the same immutable image."""
+        if state.get("stopped") is not False or state.get("protocol_ready") is not True:
+            raise ValueError("PackVM VZ registration is stopped or incomplete")
+        self._verify_registration_roots(state)
+        for key, value in (
+            ("image_digest", manifest.image_digest),
+            ("image_source", manifest.image_source),
+        ):
+            if not _secure_equal(state.get(key), value):
+                raise ValueError("PackVM VZ registration update cannot change its image")
+        root = Path(str(state.get("instance_root") or ""))
+        base = Path(str(state.get("base_image_path") or ""))
+        if not base.is_absolute() or _file_digest(base) != manifest.image_digest:
+            raise ValueError("PackVM VZ immutable base image changed")
+        for key in ("cloud_template_digest", "guest_runner_digest", "host_build_digest"):
+            if not _is_digest(state.get(key)):
+                raise ValueError("PackVM VZ previous registration bindings are invalid")
+        self._verify_instance_files(root, manifest)
+
+    def _verify_registration_roots(self, state: Mapping[str, Any]) -> None:
+        for key, value in self.recovery_identity().items():
+            if key != "vz_provisioner_digest" and state.get(key) != value:
+                raise ValueError(f"PackVM VZ {key} changed")
+        root = Path(str(state.get("instance_root") or ""))
+        if root != self._state_dir / "instances" / VZ_INSTANCE or not _same_private_directory(root, state):
+            raise ValueError("PackVM VZ instance root changed")
+
+    def _update_registration(
+        self,
+        request: PackVMProvisioningRequest,
+        plan: PackVMProvisioningPlan,
+        manifest: MacOSVZAssetManifest,
+        cancelled: Callable[[], bool] | None,
+    ) -> PackVMDoctor:
+        update = plan.registration_update
+        assert update is not None
+        if request.previous_attestation_digest != update["previous_attestation_digest"]:
+            raise ValueError("PackVM VZ registration update requires exact explicit consent")
+        if (
+            plan.image_download_required
+            or manifest.manifest_digest != update["asset_manifest_digest"]
+            or manifest.config_digest != plan.config_digest
+            or manifest.agent_digest != plan.guest_runner_digest
+            or manifest.helper_digest != plan.host_build_digest
+            or manifest.image_digest != plan.image_digest
+            or manifest.image_source != plan.image_source
+        ):
+            raise ValueError("PackVM VZ registration plan assets changed")
+        binding = {
+            "session_digest": request.session_digest or _digest_text("direct-local-lifecycle"),
+            "plan_digest": request.plan_digest,
+            "ceremony_nonce_digest": _digest_text(request.ceremony_nonce),
+        }
+        with self.operation_gate("provision", binding):
+            state = self._load_state()
+            if state["attestation_digest"] != update["previous_attestation_digest"]:
+                raise ValueError("PackVM VZ registration changed after preparation")
+            self._verify_registration_source(state, manifest)
+            _available, reason = self._host_capacity(3 * _MAX_STATE_BYTES)
+            if reason:
+                raise ValueError(reason)
+
+            def before_publish() -> None:
+                if cancelled is not None and cancelled():
+                    raise PackVMImageCancelled(
+                        "packvm_image_cancelled", "PackVM VZ registration update was cancelled"
+                    )
+                self._assert_state_current(state)
+                self._verify_registration_roots(state)
+                if self._require_manifest() != manifest:
+                    raise ValueError("PackVM VZ registration plan assets changed")
+
+            before_publish()
+            raw = _read_private_file(self.state_path, _MAX_STATE_BYTES)
+            if json.loads(raw) != state:
+                raise ValueError("PackVM VZ registration changed before retention")
+            retain_registration(
+                self._state_dir, str(state["attestation_digest"]), raw,
+                before_publish=before_publish,
+            )
+            updated = dict(state)
+            updated.update({
+                **binding,
+                **self.recovery_identity(),
+                "previous_attestation_digest": state["attestation_digest"],
+                "cloud_template_digest": manifest.config_digest,
+                "helper_digest": manifest.helper_digest,
+                "guest_runner_digest": manifest.agent_digest,
+                "bubblewrap_digest": manifest.bubblewrap_digest,
+                "host_build_digest": manifest.helper_digest,
+                "registration_updated_unix": int(time.time()),
+            })
+            updated = self._write_attested_state(updated, before_publish=before_publish)
+            self._audit("registration_updated", str(updated["attestation_digest"]))
+            return self.doctor()
 
     def _provision_verified_image(
         self,
@@ -1834,7 +1978,9 @@ class MacOSVZProvisioner:
         unsigned = {key: value for key, value in state.items() if key != "authentication"}
         return hmac.new(key, _canonical_bytes(unsigned), hashlib.sha256).hexdigest()
 
-    def _write_attested_state(self, state: Mapping[str, Any]) -> dict[str, Any]:
+    def _write_attested_state(
+        self, state: Mapping[str, Any], *, before_publish: Callable[[], None] | None = None
+    ) -> dict[str, Any]:
         """Atomically bind both integrity layers to the same updated state."""
         updated = {
             key: value for key, value in state.items()
@@ -1842,7 +1988,13 @@ class MacOSVZProvisioner:
         }
         updated["attestation_digest"] = _canonical_digest(updated)
         updated["authentication"] = self._sign_state(updated)
-        _atomic_private_json(self.state_path, updated)
+        if before_publish is None:
+            _atomic_private_json(self.state_path, updated)
+        else:
+            SecureDirectory(self._state_dir, create=False).write_bytes_atomic(
+                self.state_path.name, _canonical_bytes(updated) + b"\n",
+                before_publish=before_publish,
+            )
         return updated
 
     def _assert_state_current(self, state: Mapping[str, Any]) -> None:

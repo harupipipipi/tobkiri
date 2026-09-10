@@ -94,6 +94,22 @@ test('PackVM plan normalization drops host paths while preserving pinned facts',
   assert.doesNotMatch(JSON.stringify(plan), /Users|limactl/);
 });
 
+test('PackVM registration updates require exact old and new digest evidence and no download', () => {
+  const registration = {
+    previous_attestation_digest: digest('1'),
+    previous_config_digest: digest('2'),
+    previous_guest_runner_digest: digest('3'),
+    previous_host_build_digest: digest('4'),
+    asset_manifest_digest: digest('5'),
+  };
+  const updatePlan = {...planPayload, image_download_required: false, registration_update: registration};
+  assert.deepEqual(normalizePackVMPlan(updatePlan).registration_update, registration);
+  for (const malformed of [false, {}, {...registration, extra: true}, {...registration, previous_attestation_digest: null}]) {
+    assert.throws(() => normalizePackVMPlan({...updatePlan, registration_update: malformed}));
+  }
+  assert.throws(() => normalizePackVMPlan({...updatePlan, image_download_required: true}));
+});
+
 test('PackVM plan normalization accepts only strict fail-closed unavailable evidence', () => {
   const unavailablePlan = normalizePackVMPlan({
     ...planPayload,
