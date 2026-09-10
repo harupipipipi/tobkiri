@@ -296,6 +296,98 @@ def test_active_shell_policy_pack_is_not_a_read_only_compatibility_projection() 
     assert manifest["migration"]["compatibility"] == "none"
 
 
+def test_default_tool_definitions_are_sealed_data_without_execution_grants() -> None:
+    """Every shipped definition participates in the Pack's artifact identity."""
+    record = next(
+        item for item in _catalog()["packs"]
+        if item["pack_id"] == "rumi_default_tools_pack"
+    )
+    root = migration.ECOSYSTEM / record["pack_id"]
+    definitions = {
+        path.relative_to(root).as_posix(): _file_digest(path)
+        for path in (root / "tools").glob("*/manifest.json")
+    }
+    assert definitions
+    declared = {
+        item["path"]: item for item in record["runtime_artifacts"]
+        if item["path"].startswith("tools/")
+    }
+    assert set(declared) == set(definitions)
+    assert all(
+        declared[path]["digest"] == digest and declared[path]["kind"] == "sidecar"
+        for path, digest in definitions.items()
+    )
+
+    rendered = _render_record(record)
+    manifest = json.loads(rendered["pack.v4.json"])
+    index = json.loads(rendered["artifact-index.v4.json"])
+    for document in (manifest, index):
+        assert {
+            item["path"]: item["digest"] for item in document["artifacts"]
+            if item["path"].startswith("tools/")
+        } == definitions
+    assert manifest["pack"]["kind"] == "application"
+    assert manifest["requirements"]["execution_boundary"] == "declarative_only"
+    assert manifest["requirements"]["capabilities"] == []
+    assert manifest["functions"] == manifest["contracts"] == []
+    assert manifest["operation_catalog"] == manifest["provider_catalog"] == []
+
+
+@pytest.mark.parametrize("check", [False, True])
+@pytest.mark.parametrize("damage", ["changed", "missing", "escape"])
+def test_generation_rejects_damaged_declarative_sources_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    check: bool,
+    damage: str,
+) -> None:
+    """Sidecar bytes must match even when the Pack has no executable Function."""
+    catalog = _catalog()
+    record = next(
+        item for item in catalog["packs"]
+        if item["pack_id"] == "rumi_default_tools_pack"
+    )
+    source_root = migration.ECOSYSTEM / record["pack_id"]
+    pack_root = tmp_path / "ecosystem" / record["pack_id"]
+    for artifact in record["runtime_artifacts"]:
+        destination = pack_root / artifact["path"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((source_root / artifact["path"]).read_bytes())
+    catalog["packs"] = [record]
+    catalog["pack_ids"] = [record["pack_id"]]
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    monkeypatch.setattr(migration, "CATALOG", catalog_path)
+    monkeypatch.setattr(migration, "ECOSYSTEM", pack_root.parent)
+    monkeypatch.setattr(migration, "RETIREMENTS", ())
+    generate(check=False)
+    generate(check=True)
+    generated_before = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in pack_root.glob("*.v4.json")
+    }
+
+    target = pack_root / "tools/calculator/manifest.json"
+    if damage == "changed":
+        target.write_text('{"id": "unexpected"}', encoding="utf-8")
+        reason = "digest is stale"
+    elif damage == "missing":
+        target.unlink()
+        reason = "is unreadable"
+    else:
+        outside = tmp_path / "outside.json"
+        outside.write_bytes(target.read_bytes())
+        target.unlink()
+        target.symlink_to(outside)
+        reason = "escapes Pack root"
+    with pytest.raises(PackV4MigrationError, match=reason):
+        generate(check=check)
+    assert {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in generated_before
+    } == generated_before
+
+
 def test_normal_generation_has_no_v3_or_legacy_authority_reads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

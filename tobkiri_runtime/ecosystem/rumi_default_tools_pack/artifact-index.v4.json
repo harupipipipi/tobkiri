@@ -1,13 +1,13 @@
 {
-  "artifact_set_digest": "sha256:053f86ccbad532466189eec787696daefe943628acaa8082371520138abe997c",
+  "artifact_set_digest": "sha256:ca1d988da9fee90a55bfa8b45a2e306b7d655c5908dfb4e81a29b051e53073df",
   "artifacts": [
     {
-      "digest": "sha256:4fa31fccb1296e4c8d8885680dac0a96f6e8297ad94e867cf2f6db653efac7a0",
+      "digest": "sha256:6688188c9adf456a30286ffb507d38d6e3929f5b3d95d911d24303b501a2e50f",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:5b102e597767ec223d72f395be88ba3bfdecaa29194d0b19538beed491d1ab6f",
+      "digest": "sha256:54719bae4434150e11c1d3d7dad2b33c4379574136f455cd15ab084ba91b74ef",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -17,16 +17,166 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:5a740dc538ce12afe6d82cf66b8d78ff8c855dec23f152094f70191cfda4c6b6",
+      "digest": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:dd424445362407e7286d05148300c1ae4d9203633a0c29e644f216f2254503bc",
+      "path": "tools/browser_companion/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4d8964f1b89e3de6ceb2cb4386259347ccaab142de8aa4671e54e9f87a9b6868",
+      "path": "tools/browser_computer/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a70a50780d27d0e2bcce6e405ad2bbe4ab730ee24702ad62e50cba6e9d5ea7ac",
+      "path": "tools/browser_use/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2aa0b4e17f3d8fda655baccba1c884b8f59b4de1d0b78b8505a7392e1831c5f0",
+      "path": "tools/calculator/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2850a5ee71e85f4cb91171e64183e12f3e91f70654592b73ecc2f8b0e1136430",
+      "path": "tools/coding_file_create/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:83f9d3f52cce0b5b5b507b95878dd09856fcc4b867f8bfcdc0d8c809a49d8f99",
+      "path": "tools/coding_file_delete/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:57406c10011a141a3b0212f9a7038b86e82b27e9d23dc152e43c1599d527a9e2",
+      "path": "tools/coding_file_list/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a58544e5c9630ef431493b80ea356bc7fa26a4b67b2288dd77e37d51268bf229",
+      "path": "tools/coding_file_patch/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1f69dd59fb22279059789d968c03657acff3945ed56ad85ee3cf59211d1cba42",
+      "path": "tools/coding_file_read/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a15ef52451186ec549fca1d8d5dd89ffee43e8582b33cf758716a43d7a2eb0b4",
+      "path": "tools/coding_file_restore/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5bf3c5ec67d410279e108b7fe414c1087cf227b64b5607824c9aa3fcbd88385e",
+      "path": "tools/coding_file_search/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:cda92740f8be1d4154b78e7bc086cbb4525ad5091400cf4db18dacc11b11954a",
+      "path": "tools/coding_file_write/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:deca8db7f154050f0a209b89eb1b441f68c5b027d0197fea8f30eb736b6c3a0a",
+      "path": "tools/coding_git_commit/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:238d0f1db3056d93d791b58c37cfd0bd9f2a49d9a4d499bff52e98ae71b272c1",
+      "path": "tools/coding_git_diff/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:0c6d3ec594a9606d77b2de4332dfba15dae5ada8a5a7dc878dcc039ed8f28ec7",
+      "path": "tools/coding_git_push/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1569ef8cd7c6ec477b5945694958fd8ea929477d3790e8f1a279fbd9fdfbae67",
+      "path": "tools/coding_git_status/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4cf11d53575c446273842ca8b06b7ca0a4f1e65f87c66a7234280c8f7041b156",
+      "path": "tools/coding_terminal_exec/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5090b5750ca310341c351b68fb33c541e2c901fa420ebf9a30a1912249e614d9",
+      "path": "tools/computer_use/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b6c40154cfbd2fd5c74410778e13a21adaee2bc8aae818a3546c517ad1d5696e",
+      "path": "tools/file_reader/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:691519a7af308c99c20885970bfc104a65d5d7d63f60c27fba8a10a795461c2f",
+      "path": "tools/reddit_search/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d3ce97cd1aec505cc262c425b4fa9b8ad4b0b0cf6d4a79317c899efe39e58d96",
+      "path": "tools/rumi_api/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:228e5667dd383c0986c23f7b3d725fbafd047ebb69d8677197d6a0a63b629947",
+      "path": "tools/sandbox_artifact_export/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:838c36ba740c012c8950d9f1793a7d5b98f64bbc27afd35c4310280b522ddac0",
+      "path": "tools/sandbox_diff_preview/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:166bcc7eaf083a03141c9f29840de195b6b92ae1a6b4025c19804434ef680e11",
+      "path": "tools/sandbox_file_patch/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:9cae4b237205fb64bf9bb042907170bdb2bfc1041d5c40a974fbf10797bde8ca",
+      "path": "tools/sandbox_file_read/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:de1a9203a9eeb2e3e27e9a9745941b5684528d7d05c00b627621860211681891",
+      "path": "tools/sandbox_file_write/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:21cd914c42066061f9109fda55d0c51f4c850d934398ae2d36e1957102328c41",
+      "path": "tools/sandbox_terminal_exec/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6ca93d8bbf377de2263c0e198d70085d33474f933311fe30d3af979249366d13",
+      "path": "tools/subagent/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:67985990f948ebc105adf3a0231c143e2eef832930b2be5f4c9776f26cdefd09",
+      "path": "tools/todo/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f37b93bf630a0d5250ecb9ebbb94ec6ab25f97ed758440b31d57d734b91a443b",
+      "path": "tools/web_search/manifest.json",
+      "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:30b05d8fba9728539a4c74bd1dc460d89a6bc81c90e88fdf1d12f293903b6335"
+    "signed_digest": "sha256:e64b95abb92d7957f927d098a53cac48b525098fb45afc5e2cae8dbd5eb53e77"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:f71e1b5c8c4a61e616572f413ca613570dba2d7c25a4922a7329b29b91a67f75"
+  "source_identity": "sha256:b230aa942bb33bf17b8e567ed5dc5b20a2ac6aee0d2979f691e40b815d6e24a4"
 }

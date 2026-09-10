@@ -1454,11 +1454,35 @@ def _verify_global_uniqueness(rendered: Mapping[str, Mapping[str, str]]) -> None
                 raise PackV4MigrationError(f"duplicate operation {operation['operation_id']}")
 
 
+def _verify_runtime_artifact_sources(record: Mapping[str, Any]) -> None:
+    """Check declared source bytes before writing or checking projections."""
+    pack_root = (ECOSYSTEM / str(record["pack_id"])).resolve()
+    for relative, artifact in _validated_runtime_artifacts(record).items():
+        candidate = pack_root / relative
+        try:
+            candidate.resolve(strict=True).relative_to(pack_root)
+            digest = _file_digest(candidate)
+        except OSError as exc:
+            raise PackV4MigrationError(
+                f"canonical runtime artifact is unreadable: {candidate}"
+            ) from exc
+        except ValueError as exc:
+            raise PackV4MigrationError(
+                f"canonical runtime artifact escapes Pack root: {candidate}"
+            ) from exc
+        if digest != artifact["digest"]:
+            raise PackV4MigrationError(
+                f"canonical runtime artifact digest is stale: {candidate}"
+            )
+
+
 def generate(*, check: bool) -> dict[str, int]:
     if not CATALOG.is_file():
         raise PackV4MigrationError("missing canonical Pack v4 source catalog")
     payload = json.loads(CATALOG.read_text(encoding="utf-8"))
     records = _validate_catalog_payload(payload)
+    for record in records:
+        _verify_runtime_artifact_sources(record)
     rendered = {record["pack_id"]: _render_record(record) for record in records}
     _verify_global_uniqueness(rendered)
     for pack_id, files in rendered.items():

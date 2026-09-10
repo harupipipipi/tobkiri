@@ -8710,7 +8710,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:aee50d926158fc1658f9e9c9e89c4ba425c71d971cfbf397a15bee95430bd960",
+        "digest": "sha256:e7114f56e754d51762ebe13c2d23801e5c54de2b86e55e3d44623d91b4b754c3",
         "identity": "rumi_default_tools_pack",
         "kind": "manifest",
         "legacy": true,
@@ -13488,7 +13488,7 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:aee50d926158fc1658f9e9c9e89c4ba425c71d971cfbf397a15bee95430bd960",
+        "evidence_digest": "sha256:e7114f56e754d51762ebe13c2d23801e5c54de2b86e55e3d44623d91b4b754c3",
         "line": 44,
         "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
@@ -17137,7 +17137,7 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:aee50d926158fc1658f9e9c9e89c4ba425c71d971cfbf397a15bee95430bd960",
+        "manifest_digest": "sha256:e7114f56e754d51762ebe13c2d23801e5c54de2b86e55e3d44623d91b4b754c3",
         "pack_id": "rumi_default_tools_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/ecosystem.json",
         "version": "1.0.0"
@@ -18394,8 +18394,8 @@
     ]
   },
   "repository": {
-    "commit": "3d6a4948567c2b5a95af9fdc05c11c1f9e7539d7",
-    "tree_digest": "786d072763b7c0ccee479eeec2ab0c7e03cc122e24a4b7031f1406918e752b74"
+    "commit": "1c41eed957da2672800cf6890d12337afb3a5850",
+    "tree_digest": "11d436aa350d3fe625fca0c665df54120af67cb2afdf9eef78cfa73dac824ea2"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"

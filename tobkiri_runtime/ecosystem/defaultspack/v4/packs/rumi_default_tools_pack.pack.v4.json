@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:a501b8e0ae4d6775ab1e4680a6ba123f84fa451ccd53498e54b80e64fa414f1b",
+      "digest": "sha256:e9a5ca9708ada4c3c88c567ee1e9a2d6b3bd08a6b16faee8ca429547a8938b23",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -9,13 +9,163 @@
       "digest": "sha256:ef8ae5ffa668b40553758d1324b929f56f3a16977af87d17669fad25867ec1ab",
       "kind": "sidecar",
       "path": "host_contract_contributions.v1.json"
+    },
+    {
+      "digest": "sha256:dd424445362407e7286d05148300c1ae4d9203633a0c29e644f216f2254503bc",
+      "kind": "sidecar",
+      "path": "tools/browser_companion/manifest.json"
+    },
+    {
+      "digest": "sha256:4d8964f1b89e3de6ceb2cb4386259347ccaab142de8aa4671e54e9f87a9b6868",
+      "kind": "sidecar",
+      "path": "tools/browser_computer/manifest.json"
+    },
+    {
+      "digest": "sha256:a70a50780d27d0e2bcce6e405ad2bbe4ab730ee24702ad62e50cba6e9d5ea7ac",
+      "kind": "sidecar",
+      "path": "tools/browser_use/manifest.json"
+    },
+    {
+      "digest": "sha256:2aa0b4e17f3d8fda655baccba1c884b8f59b4de1d0b78b8505a7392e1831c5f0",
+      "kind": "sidecar",
+      "path": "tools/calculator/manifest.json"
+    },
+    {
+      "digest": "sha256:2850a5ee71e85f4cb91171e64183e12f3e91f70654592b73ecc2f8b0e1136430",
+      "kind": "sidecar",
+      "path": "tools/coding_file_create/manifest.json"
+    },
+    {
+      "digest": "sha256:83f9d3f52cce0b5b5b507b95878dd09856fcc4b867f8bfcdc0d8c809a49d8f99",
+      "kind": "sidecar",
+      "path": "tools/coding_file_delete/manifest.json"
+    },
+    {
+      "digest": "sha256:57406c10011a141a3b0212f9a7038b86e82b27e9d23dc152e43c1599d527a9e2",
+      "kind": "sidecar",
+      "path": "tools/coding_file_list/manifest.json"
+    },
+    {
+      "digest": "sha256:a58544e5c9630ef431493b80ea356bc7fa26a4b67b2288dd77e37d51268bf229",
+      "kind": "sidecar",
+      "path": "tools/coding_file_patch/manifest.json"
+    },
+    {
+      "digest": "sha256:1f69dd59fb22279059789d968c03657acff3945ed56ad85ee3cf59211d1cba42",
+      "kind": "sidecar",
+      "path": "tools/coding_file_read/manifest.json"
+    },
+    {
+      "digest": "sha256:a15ef52451186ec549fca1d8d5dd89ffee43e8582b33cf758716a43d7a2eb0b4",
+      "kind": "sidecar",
+      "path": "tools/coding_file_restore/manifest.json"
+    },
+    {
+      "digest": "sha256:5bf3c5ec67d410279e108b7fe414c1087cf227b64b5607824c9aa3fcbd88385e",
+      "kind": "sidecar",
+      "path": "tools/coding_file_search/manifest.json"
+    },
+    {
+      "digest": "sha256:cda92740f8be1d4154b78e7bc086cbb4525ad5091400cf4db18dacc11b11954a",
+      "kind": "sidecar",
+      "path": "tools/coding_file_write/manifest.json"
+    },
+    {
+      "digest": "sha256:deca8db7f154050f0a209b89eb1b441f68c5b027d0197fea8f30eb736b6c3a0a",
+      "kind": "sidecar",
+      "path": "tools/coding_git_commit/manifest.json"
+    },
+    {
+      "digest": "sha256:238d0f1db3056d93d791b58c37cfd0bd9f2a49d9a4d499bff52e98ae71b272c1",
+      "kind": "sidecar",
+      "path": "tools/coding_git_diff/manifest.json"
+    },
+    {
+      "digest": "sha256:0c6d3ec594a9606d77b2de4332dfba15dae5ada8a5a7dc878dcc039ed8f28ec7",
+      "kind": "sidecar",
+      "path": "tools/coding_git_push/manifest.json"
+    },
+    {
+      "digest": "sha256:1569ef8cd7c6ec477b5945694958fd8ea929477d3790e8f1a279fbd9fdfbae67",
+      "kind": "sidecar",
+      "path": "tools/coding_git_status/manifest.json"
+    },
+    {
+      "digest": "sha256:4cf11d53575c446273842ca8b06b7ca0a4f1e65f87c66a7234280c8f7041b156",
+      "kind": "sidecar",
+      "path": "tools/coding_terminal_exec/manifest.json"
+    },
+    {
+      "digest": "sha256:5090b5750ca310341c351b68fb33c541e2c901fa420ebf9a30a1912249e614d9",
+      "kind": "sidecar",
+      "path": "tools/computer_use/manifest.json"
+    },
+    {
+      "digest": "sha256:b6c40154cfbd2fd5c74410778e13a21adaee2bc8aae818a3546c517ad1d5696e",
+      "kind": "sidecar",
+      "path": "tools/file_reader/manifest.json"
+    },
+    {
+      "digest": "sha256:691519a7af308c99c20885970bfc104a65d5d7d63f60c27fba8a10a795461c2f",
+      "kind": "sidecar",
+      "path": "tools/reddit_search/manifest.json"
+    },
+    {
+      "digest": "sha256:d3ce97cd1aec505cc262c425b4fa9b8ad4b0b0cf6d4a79317c899efe39e58d96",
+      "kind": "sidecar",
+      "path": "tools/rumi_api/manifest.json"
+    },
+    {
+      "digest": "sha256:228e5667dd383c0986c23f7b3d725fbafd047ebb69d8677197d6a0a63b629947",
+      "kind": "sidecar",
+      "path": "tools/sandbox_artifact_export/manifest.json"
+    },
+    {
+      "digest": "sha256:838c36ba740c012c8950d9f1793a7d5b98f64bbc27afd35c4310280b522ddac0",
+      "kind": "sidecar",
+      "path": "tools/sandbox_diff_preview/manifest.json"
+    },
+    {
+      "digest": "sha256:166bcc7eaf083a03141c9f29840de195b6b92ae1a6b4025c19804434ef680e11",
+      "kind": "sidecar",
+      "path": "tools/sandbox_file_patch/manifest.json"
+    },
+    {
+      "digest": "sha256:9cae4b237205fb64bf9bb042907170bdb2bfc1041d5c40a974fbf10797bde8ca",
+      "kind": "sidecar",
+      "path": "tools/sandbox_file_read/manifest.json"
+    },
+    {
+      "digest": "sha256:de1a9203a9eeb2e3e27e9a9745941b5684528d7d05c00b627621860211681891",
+      "kind": "sidecar",
+      "path": "tools/sandbox_file_write/manifest.json"
+    },
+    {
+      "digest": "sha256:21cd914c42066061f9109fda55d0c51f4c850d934398ae2d36e1957102328c41",
+      "kind": "sidecar",
+      "path": "tools/sandbox_terminal_exec/manifest.json"
+    },
+    {
+      "digest": "sha256:6ca93d8bbf377de2263c0e198d70085d33474f933311fe30d3af979249366d13",
+      "kind": "sidecar",
+      "path": "tools/subagent/manifest.json"
+    },
+    {
+      "digest": "sha256:67985990f948ebc105adf3a0231c143e2eef832930b2be5f4c9776f26cdefd09",
+      "kind": "sidecar",
+      "path": "tools/todo/manifest.json"
+    },
+    {
+      "digest": "sha256:f37b93bf630a0d5250ecb9ebbb94ec6ab25f97ed758440b31d57d734b91a443b",
+      "kind": "sidecar",
+      "path": "tools/web_search/manifest.json"
     }
   ],
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:5a740dc538ce12afe6d82cf66b8d78ff8c855dec23f152094f70191cfda4c6b6",
-    "artifact_set_digest": "sha256:85c50f0c25b2d7875384a75b979048b8fa8c664277cdf2f90593dbd55f733ccc",
+    "source_identity": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b",
+    "artifact_set_digest": "sha256:ca578ec1279299f41efbd2c4ddc9b4c9e1362dde1b70acce2bab31d46384d625",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -29,7 +179,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:053f86ccbad532466189eec787696daefe943628acaa8082371520138abe997c",
+    "artifact_digest": "sha256:ca1d988da9fee90a55bfa8b45a2e306b7d655c5908dfb4e81a29b051e53073df",
     "display_name": "rumi_default_tools_pack",
     "id": "rumi_default_tools_pack",
     "kind": "application",
@@ -40,15 +190,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_default_tools_pack/pack.v4.json",
-    "source_digest": "sha256:5a740dc538ce12afe6d82cf66b8d78ff8c855dec23f152094f70191cfda4c6b6",
+    "source_digest": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:8819f9c7a05cfd3afc2bca857a55547b343a09b83133ca02480ea3176e30bc0f",
+    "content_root_digest": "sha256:1817d68e558a2309a067459d5905ffebbc3f073be3e21e059d25c2b5cc360273",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
-    "input_inventory_digest": "sha256:6f49011a1838dd5583b0f0551a7779bcbd2c638426f6a25dd59a179257ede8cc",
+    "input_inventory_digest": "sha256:9e80060d38334959eb05847950b03aaeb8bb03762b90c9a8e470c0a87ef6482d",
     "normative": true,
     "evidence": [
       {
@@ -59,7 +209,7 @@
       {
         "path": "ecosystem/rumi_default_tools_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:5a740dc538ce12afe6d82cf66b8d78ff8c855dec23f152094f70191cfda4c6b6"
+        "digest": "sha256:1a008d286a2bc70b1864b3987b2a07ac230697057f4b24a05834e12d1689402b"
       }
     ]
   },

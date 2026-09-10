@@ -405,8 +405,11 @@ def test_direct_vz_seed_materializes_before_the_first_real_invoke(
     )
 
     assert result["payload"] == {
-        "operation": "seed-pack.inspect",
-        "message": "seeded before boot",
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation": "seed-pack.inspect",
+            "message": "seeded before boot",
+        },
     }
 
 
@@ -711,6 +714,9 @@ def test_guest_supervisor_materializes_and_invokes_the_exact_python_abi(
     )
     assert result["ok"] is True
     assert result["payload"] == {
-        "operation": "example-pack.inspect",
-        "message": "inside guest",
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation": "example-pack.inspect",
+            "message": "inside guest",
+        },
     }
