@@ -137,7 +137,7 @@ def test_real_ledgers_save_tool_rounds_and_restore_provider_history(tmp_path, ro
     assert len(first.store.get("conversation-1")["messages"]) == 4
 
 
-@pytest.mark.parametrize("change", [None, "metadata", "logs", "unselected", "revision"])
+@pytest.mark.parametrize("change", [None, "metadata", "logs", "unselected", "revision", "content"])
 def test_turn_completion_accepts_only_the_bound_saved_tool_transcript(tmp_path, change):
     from ecosystem.rumi_turn_runtime_pack.runtime.saved import _completed_reference
 
@@ -152,6 +152,8 @@ def test_turn_completion_accepts_only_the_bound_saved_tool_transcript(tmp_path, 
         request["tool_selection"] = {"mode": "none"}
     elif change == "revision":
         outcome["conversation_revision"] += 1
+    elif change == "content":
+        outcome["message"]["content"] = [{"arbitrary": 1}, 2, ["x"]]
     if change is not None:
         with pytest.raises(ValueError):
             _completed_reference(request, outcome)
@@ -159,6 +161,48 @@ def test_turn_completion_accepts_only_the_bound_saved_tool_transcript(tmp_path, 
         assert _completed_reference(request, outcome) == turn.store.saved_receipt(
             request["turn_id"]
         )["result_reference"]
+
+
+@pytest.mark.parametrize("content", [
+    [{"arbitrary": 1}, 2, ["x"]],
+    [{"type": "image", "url": "https://example.invalid/image.png"}],
+    [{"type": "text", "text": "visible", "attachment_id": "unresolved"}],
+    [{"type": "text", "text": {"nested": "value"}}],
+    ["untyped text"],
+])
+def test_invalid_ai_final_content_is_rejected_before_assistant_append(tmp_path, content):
+    turn = ToolTurn(tmp_path, rounds=0)
+    original = turn.callbacks._dispatch
+
+    def dispatch(outer, target, payload):
+        result = original(outer, target, payload)
+        if target == AI:
+            result["value"]["output"] = content
+        return result
+
+    turn.callbacks._dispatch = dispatch
+    with pytest.raises(ValueError, match="assistant differs"):
+        turn.complete()
+    assert [message["role"] for message in turn.store.get("conversation-1")["messages"]] == ["user"]
+    assert "result_reference" not in turn.store.saved_receipt(turn.request["turn_id"])
+
+
+def test_owner_does_not_commit_malformed_saved_assistant_content(tmp_path):
+    turn = ToolTurn(tmp_path, rounds=0)
+    turn.start()
+    turn.step()
+    turn.step()
+    before = turn.store.path.read_bytes()
+    receipt = turn.store.saved_receipt(turn.request["turn_id"])
+    with pytest.raises(ValueError, match="saved assistant append"):
+        turn.store.append_message("conversation-1", {
+            "id": receipt["assistant_message_id"], "parent_id": receipt["user_message_id"],
+            "role": "assistant", "status": "complete",
+            "metadata": {"turn_id": turn.request["turn_id"]},
+            "content": [{"arbitrary": 1}, 2, ["x"]],
+        }, expected_conversation_revision=receipt["user_revision"], saved_input=turn.outer.payload)
+    assert turn.store.path.read_bytes() == before
+    assert turn.store.saved_receipt(turn.request["turn_id"]) == receipt
 
 
 @pytest.mark.parametrize("change", ["arguments", "tool_id", "tool_call_id", "expected_definition_hash", "target"])

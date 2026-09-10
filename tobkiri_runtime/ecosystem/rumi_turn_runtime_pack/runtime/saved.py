@@ -17,6 +17,7 @@ from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT,
     SAVED_CONVERSATION_OPERATION,
+    is_saved_text_content,
     validate_saved_conversation_context,
     validate_saved_conversation_input,
 )
@@ -251,8 +252,7 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         or message.get("parent_id") != user_id
         or message.get("role") != "assistant"
         or message.get("status") != "complete"
-        or not isinstance(message.get("content"), (str, list))
-        or not message["content"]
+        or not is_saved_text_content(message.get("content"))
     ):
         raise ValueError("saved acknowledgement identity is invalid")
     metadata = message.get("metadata")

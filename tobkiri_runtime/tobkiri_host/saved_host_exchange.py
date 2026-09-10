@@ -16,7 +16,9 @@ from .continuation_envelope import (
 )
 from .saved_guest_dispatch import PROTOCOL, TARGETS
 from .saved_turn_plan import SavedToolFrame, SavedTurnPlan
-from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_conversation import (
+    is_saved_text_content, validate_saved_conversation_input,
+)
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
 
@@ -123,7 +125,7 @@ class SavedHostExchange:
             output = owned.get("output")
             if (
                 owned.get("status") == "ok" and not owned.get("tool_intents")
-                and isinstance(output, (str, list)) and output
+                and is_saved_text_content(output)
             ):
                 self._ai_output_digest = canonical_digest(output)
         elif stage in ("user", "assistant"):

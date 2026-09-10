@@ -14,6 +14,18 @@ SAVED_CONVERSATION_OPERATION = "saved_complete"
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 
 
+def is_saved_text_content(value: Any) -> bool:
+    """Recognize final text or exact text blocks without granting authority."""
+    return bool(value) and (
+        isinstance(value, str)
+        or isinstance(value, list) and all(
+            isinstance(part, dict) and set(part) == {"type", "text"}
+            and part["type"] == "text" and isinstance(part["text"], str)
+            for part in value
+        )
+    )
+
+
 def validate_saved_conversation_context(conversation: Mapping[str, Any]) -> None:
     """Reject unresolved owned context; this pure check grants no authority."""
     metadata = conversation.get("metadata") or {}

@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:3d09d177b2ecd7814f60469da329b8ed0652eb41628afe25327d2f796db9555b",
+      "digest": "sha256:96d15c920a58a9b629c4c4e109fc372dfa348c4ddf3f3da97e08df0579647787",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -16,7 +16,7 @@
       "path": "runtime/host.py"
     },
     {
-      "digest": "sha256:5879d9fd1f995997f74c0b9f0c5c69f4cc441028d34d792b742d380ff91b7460",
+      "digest": "sha256:235eca079cd325fc09130086096329211518033271346fad4a90c660dce2880f",
       "kind": "executable",
       "path": "runtime/saved.py"
     },
@@ -133,9 +133,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:a1ff441790e710bef087e7edb1f718d4a1ea912a455d892d918dfd87b94c3d19",
-    "contract_catalog_digest": "sha256:ab02a8ab2ded40b37715bd1cb2e2e425f872420fb8b7e08f9e69a216ce327fb5",
-    "source_identity": "sha256:72f01ea131def670f80a657e674bcdcc3d900fecfdd700149198ac5d5a680549"
+    "artifact_set_digest": "sha256:f17ec205c26a47b6578055f30b3276f892a2210f20577d44faec665c2577f9b2",
+    "contract_catalog_digest": "sha256:1e6f894167f5491d530745656eaa9f5c09831ff0a9c76f784c6348901fbd9ec4",
+    "source_identity": "sha256:c6bb8e074aa57ef0f7d1c44210d9770dcf2bac634bae8947c2a7bbb92eef5e2c"
   },
   "migration": {
     "compatibility": "read_only",
@@ -218,7 +218,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:a1ff441790e710bef087e7edb1f718d4a1ea912a455d892d918dfd87b94c3d19",
+    "artifact_digest": "sha256:f17ec205c26a47b6578055f30b3276f892a2210f20577d44faec665c2577f9b2",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -228,7 +228,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:72f01ea131def670f80a657e674bcdcc3d900fecfdd700149198ac5d5a680549",
+        "digest": "sha256:c6bb8e074aa57ef0f7d1c44210d9770dcf2bac634bae8947c2a7bbb92eef5e2c",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -239,7 +239,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:72f01ea131def670f80a657e674bcdcc3d900fecfdd700149198ac5d5a680549",
+    "source_digest": "sha256:c6bb8e074aa57ef0f7d1c44210d9770dcf2bac634bae8947c2a7bbb92eef5e2c",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
   },

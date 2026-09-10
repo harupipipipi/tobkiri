@@ -6268,7 +6268,7 @@
           "path": "runtime/message_host.py"
         },
         {
-          "digest": "sha256:4f3d08d007dc00067179ddbe63db967cc75b76e3539084804bd0bc203ee361a2",
+          "digest": "sha256:8b43ba3d77678aa7845f35dd33c094b80914abfb274b8e575e08215576ae514f",
           "kind": "executable",
           "path": "runtime/saved_receipt.py"
         }
@@ -17183,7 +17183,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:5879d9fd1f995997f74c0b9f0c5c69f4cc441028d34d792b742d380ff91b7460",
+          "digest": "sha256:235eca079cd325fc09130086096329211518033271346fad4a90c660dce2880f",
           "kind": "executable",
           "path": "runtime/saved.py"
         }

@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
-from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_conversation import (
+    is_saved_text_content, validate_saved_conversation_input,
+)
 from tobkiri_protocol.saved_tools import saved_tool_messages, saved_tool_logs
 
 
@@ -69,8 +71,7 @@ def append_receipt(
         or type(previous["user_revision"]) is not int
         or previous["user_revision"] != expected_revision
         or message.get("parent_id") != user_id
-        or not isinstance(message.get("content"), (str, list))
-        or not message["content"]
+        or not is_saved_text_content(message.get("content"))
     ):
         raise ValueError("saved assistant append has no matching user receipt")
     revision = expected_revision + 1
