@@ -310,7 +310,7 @@ def production_wasm_backend() -> WasmComponentBackend:
     ):
         raise BackendUnavailableError("the pinned Wasmtime native engine is incomplete")
     for relative in sorted(wasmtime_files, key=str):
-        located = Path(distribution.locate_file(relative))
+        located = Path(str(distribution.locate_file(relative)))
         if located.is_symlink():
             raise BackendUnavailableError("the pinned Wasmtime runtime contains a symlink")
         path = located.resolve(strict=True)
