@@ -282,6 +282,7 @@ jobs:
             tests/test_defaultspack_tool_v3_registry.py \
             tests/test_tool_registry_host_broker.py \
             tests/test_tool_broker_host.py \
+            tests/test_tool_local_executor_host.py \
             tests/test_tool_catalog_presentation.py \
             tests/test_tool_catalog_http.py \
             tests/test_secure_persistence.py \

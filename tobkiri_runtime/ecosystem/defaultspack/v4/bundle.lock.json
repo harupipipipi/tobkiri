@@ -1249,12 +1249,12 @@
     {
       "path": "packs/rumi_tool_local_executor_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:86048ee7dbcc8b085f9babb0b61b6d5916d3d64593aadebd468f75d9280517ef"
+      "digest": "sha256:5b83f8db3184b659b91ce51ef7f09ab86d4425d36c9df117cb02de3c9953d64b"
     },
     {
       "path": "packs/rumi_tool_local_executor_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:7f6225b9bedc0e4d186e6ed7b8b8e2bbdd989319bc36dcf10d780b68670e23ec"
+      "digest": "sha256:850b27cd09b361e42ebf0ebe4585b2a97988ef765c508223ad672c99b5bdb406"
     },
     {
       "path": "packs/rumi_tool_mcp_executor_pack.executables.v4.json",

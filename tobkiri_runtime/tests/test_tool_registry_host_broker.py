@@ -61,8 +61,9 @@ def test_production_registry_uses_selected_data_without_executable_bindings(
             )
 
 
+@pytest.mark.parametrize("local_selected", [False, True])
 def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, local_selected: bool,
 ) -> None:
     """Exercise real capture and nested authority without enabling legacy code."""
     from ecosystem.rumi_tool_broker_pack.runtime import broker
@@ -77,6 +78,16 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
         (factory.function_id, "rumi_tool_result_pack.tool-result.normalize",
          broker.NORMALIZE, "rumi_tool_result_pack.tool-result-normalize"),
     )
+    packs = ("rumi_tool_broker_pack", "rumi_tool_validation_pack", "rumi_tool_result_pack")
+    if local_selected:
+        local = "rumi_tool_local_executor_pack.tool-executor.local"
+        packs += ("rumi_tool_local_executor_pack", "rumi_default_tool_projection_pack")
+        routes += (
+            (factory.function_id, local, broker.EXECUTE,
+             "rumi_tool_local_executor_pack.tool-local-execute"),
+            (local, "rumi_tool_registry_pack.tool-registry.definition", broker.DEFINITION,
+             "rumi_tool_registry_pack.tool-definition-resource"),
+        )
     edges = [{
         "caller_function_id": caller, "target_provider_id": target,
         "contract_id": contract, "operation_id": operation,
@@ -89,7 +100,7 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
     } for caller, target, contract, operation in routes]
     with captured_host_profile(
         tmp_path, monkeypatch,
-        packs=("rumi_tool_broker_pack", "rumi_tool_validation_pack", "rumi_tool_result_pack"),
+        packs=packs,
         edges=edges, backends=(),
     ) as (session, _store):
         session.assert_operation_ready(broker.CONTRACT, broker.OPERATION)
@@ -99,8 +110,17 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
         }
         with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
             session.invoke(broker.CONTRACT, broker.OPERATION, request)
-        assert isinstance(failure.value.__cause__, PermissionError)
-        assert str(failure.value.__cause__) == "selected tool executor is unavailable"
+        cause = failure.value.__cause__
+        if local_selected:
+            # The nested executor has its own redacted boundary. Keep its
+            # private cause observable to this Host-side test only.
+            assert isinstance(cause, ProviderExecutionError)
+            cause = cause.__cause__
+        assert isinstance(cause, PermissionError)
+        assert str(cause) == (
+            "selected local tool operation is unavailable" if local_selected
+            else "selected tool executor is unavailable"
+        )
         with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
             session.invoke(broker.CONTRACT, broker.OPERATION, {**request, "arguments": {}})
         assert isinstance(failure.value.__cause__, ValueError)

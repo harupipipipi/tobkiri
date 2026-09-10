@@ -9757,7 +9757,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:9e03c13daa327a0e4cb3ca869aa564139af131028d49e9b39742eb83e4302dcf",
+        "digest": "sha256:416f6ebe511dcc593975512cc38849931aecc73d912a3c744ffdab095a66ab24",
         "identity": "rumi_tool_local_executor_pack",
         "kind": "manifest",
         "legacy": true,
@@ -9765,7 +9765,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:d61a70af9e46a4b4a557901c8e9c11bafcafe883ed4b2cdd4bfe44a57e9c8dd8",
+        "digest": "sha256:17791ae18b46531ed106153643576b70a4ebe3693faede010ae04a8e0f258f51",
         "identity": "rumi.tool_local_executor",
         "kind": "manifest",
         "legacy": true,
@@ -14641,19 +14641,19 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:9e03c13daa327a0e4cb3ca869aa564139af131028d49e9b39742eb83e4302dcf",
+        "evidence_digest": "sha256:416f6ebe511dcc593975512cc38849931aecc73d912a3c744ffdab095a66ab24",
         "line": 13,
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:d61a70af9e46a4b4a557901c8e9c11bafcafe883ed4b2cdd4bfe44a57e9c8dd8",
+        "evidence_digest": "sha256:17791ae18b46531ed106153643576b70a4ebe3693faede010ae04a8e0f258f51",
         "line": 55,
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:d61a70af9e46a4b4a557901c8e9c11bafcafe883ed4b2cdd4bfe44a57e9c8dd8",
+        "evidence_digest": "sha256:17791ae18b46531ed106153643576b70a4ebe3693faede010ae04a8e0f258f51",
         "line": 68,
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -16495,13 +16495,13 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:9e03c13daa327a0e4cb3ca869aa564139af131028d49e9b39742eb83e4302dcf",
+        "evidence_digest": "sha256:416f6ebe511dcc593975512cc38849931aecc73d912a3c744ffdab095a66ab24",
         "line": 26,
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/ecosystem.json",
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:d61a70af9e46a4b4a557901c8e9c11bafcafe883ed4b2cdd4bfe44a57e9c8dd8",
+        "evidence_digest": "sha256:17791ae18b46531ed106153643576b70a4ebe3693faede010ae04a8e0f258f51",
         "line": 145,
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -18060,14 +18060,14 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:9e03c13daa327a0e4cb3ca869aa564139af131028d49e9b39742eb83e4302dcf",
+        "manifest_digest": "sha256:416f6ebe511dcc593975512cc38849931aecc73d912a3c744ffdab095a66ab24",
         "pack_id": "rumi_tool_local_executor_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/ecosystem.json",
         "version": "1.0.0"
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:d61a70af9e46a4b4a557901c8e9c11bafcafe883ed4b2cdd4bfe44a57e9c8dd8",
+        "manifest_digest": "sha256:17791ae18b46531ed106153643576b70a4ebe3693faede010ae04a8e0f258f51",
         "pack_id": "rumi.tool_local_executor",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json",
         "version": "1.0.0"
@@ -18407,8 +18407,8 @@
     ]
   },
   "repository": {
-    "commit": "6cb3e64ef4c7ffee4b6597b51f9999cde437da80",
-    "tree_digest": "b0094abb79f38945bba417ee4d35682a5f1f7b3962376c19218ec9a980ef2fb7"
+    "commit": "5697607d26127b66d5035498698b1df393d2bd46",
+    "tree_digest": "10dbb9dde836458d56fa24aaf7f6b62ba1b8641c843b40dc673ae41e0914f38d"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"

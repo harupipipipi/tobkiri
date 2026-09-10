@@ -15540,7 +15540,7 @@
       ],
       "dependencies": {},
       "description": "Generic selected local-service adapter executor.",
-      "display_name": "Rumi Tool Local Executor",
+      "display_name": "Tobkiri Tool Local Executor",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -15573,7 +15573,7 @@
             {
               "entrypoint_id": "tool-local-execute",
               "id": "rumi_tool_local_executor_pack.tool-local-execute",
-              "implementation_digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71"
+              "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1"
             }
           ],
           "owner": "rumi_tool_capability_executor_pack",
@@ -15602,11 +15602,17 @@
           "contract_id": "tobkiri.service.tool.local.operation.v1",
           "optional": false,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71",
+          "digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
           "kind": "executable",
           "path": "runtime/executor.py"
         }

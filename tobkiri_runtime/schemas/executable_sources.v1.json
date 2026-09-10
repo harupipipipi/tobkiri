@@ -11662,7 +11662,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
-      "implementation_digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71",
+      "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
       "implementation_path": "runtime/executor.py",
       "input_schema": {
         "type": "object"
@@ -11676,7 +11676,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:516e60067a604d5f8021b4b2fa1b32a69b6407edaaba85787b73d98b637a9e71",
+          "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
           "implementation_path": "runtime/executor.py",
           "input_schema": {
             "type": "object"
@@ -14519,7 +14519,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 200,
-    "input_digest": "sha256:875edc3a3cbaff0a6a94a6ccd51d9daed034e5394cec597227feacd3e30e37d1",
+    "input_digest": "sha256:1ec6908d0086b4abe4f23d51e1b4efe11bb10a4546dcf54bae0b4ecd72d452e0",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -15194,7 +15194,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:73f7f02b71aa4b19c5ac19a35b159184b46ec2b5284f3c0c8e42f85195d77af1",
+        "digest": "sha256:96c12b8f7e44a44231aa68c77077f40d40236fca8d1fbd11ddb16e1864ae13f9",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-manifest.json"
       },
@@ -15674,7 +15674,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d61a70af9e46a4b4a557901c8e9c11bafcafe883ed4b2cdd4bfe44a57e9c8dd8",
+        "digest": "sha256:17791ae18b46531ed106153643576b70a4ebe3693faede010ae04a8e0f258f51",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json"
       },
