@@ -3319,14 +3319,14 @@
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
       "size": 86011,
-      "sha256": "32a8cc20dc5ef41c56795d24d752df2c3dc8946326f6cf2249b5e25b21d9fd42",
+      "sha256": "e5ef2c8b8e0e83614abf013810c038e1e40d94aba3c7e6576d3f9cfd61b72660",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 903811,
-      "sha256": "5f01f6f855c880522046d0bf5fbf201a38d06f02e508ef8dba58d1eba79b6ad3",
+      "sha256": "efb8c0ab292e2e5f8dd1b5931d9b3a4b1c0a7c1507ddb4d5120d93b9448ba48a",
       "executable": false
     },
     {
