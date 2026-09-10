@@ -22,6 +22,7 @@ from .errors import ProviderExecutionError
 
 _INPUT_LIMIT = 45 * 1024 * 1024
 _OUTPUT_LIMIT = 2 * 1024 * 1024
+_DEFAULT_RSS_LIMIT = 512 * 1024 * 1024
 
 
 class ComponentWorker:
@@ -33,12 +34,20 @@ class ComponentWorker:
     Calling close concurrently with invoke is not supported.
     """
 
-    def __init__(self, command: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        command: tuple[str, ...],
+        *,
+        rss_limit: int = _DEFAULT_RSS_LIMIT,
+    ) -> None:
         if not command or not all(isinstance(arg, str) and arg for arg in command):
             raise ValueError("Wasm worker command is invalid")
         if not os.path.isabs(command[0]):
             raise ValueError("Wasm worker interpreter must be absolute")
+        if type(rss_limit) is not int or not 0 < rss_limit <= 2 * 1024 * 1024 * 1024:
+            raise ValueError("Wasm worker resident memory limit is invalid")
         self._command = tuple(command)
+        self._rss_limit = rss_limit
         self._claimed = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
 
@@ -84,6 +93,7 @@ class ComponentWorker:
                 timeout=timeout,
                 deadline=deadline,
                 cancelled=cancelled,
+                rss_limit=self._rss_limit,
             )
             if self._process.returncode != 0:
                 raise ProviderExecutionError("Wasm worker exited unsuccessfully")
@@ -91,6 +101,8 @@ class ComponentWorker:
             raise ProviderExecutionError("Wasm worker request was cancelled") from None
         except TimeoutError:
             raise ProviderExecutionError("Wasm worker deadline exceeded") from None
+        except MemoryError:
+            raise ProviderExecutionError("Wasm worker memory limit exceeded") from None
         except ValueError:
             raise ProviderExecutionError("Wasm worker output exceeds the limit") from None
         except OSError:

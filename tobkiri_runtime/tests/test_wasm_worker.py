@@ -66,17 +66,21 @@ def test_deadline_covers_blocked_input_and_reaps_child(children: list) -> None:
 
 @pytest.mark.parametrize("stage", ["close", "decode"])
 def test_deadline_still_applies_after_process_exit(
-    children: list, monkeypatch: pytest.MonkeyPatch, stage: str,
+    children: list,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
 ) -> None:
     """A timely child reply cannot extend the budget for cleanup or validation."""
-    owned = worker(
-        'import sys; sys.stdin.buffer.read(); print(\'{"status":"ok","data":{}}\')'
-    )
+    owned = worker('import sys; sys.stdin.buffer.read(); print(\'{"status":"ok","data":{}}\')')
     clock = wasm_worker.time.monotonic
     expired = threading.Event()
-    monkeypatch.setattr(wasm_worker, "time", SimpleNamespace(
-        monotonic=lambda: clock() + (60 if expired.is_set() else 0),
-    ))
+    monkeypatch.setattr(
+        wasm_worker,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock() + (60 if expired.is_set() else 0),
+        ),
+    )
     target = owned if stage == "close" else wasm_worker
     method = "close" if stage == "close" else "strict_loads"
     original = getattr(target, method)
@@ -134,6 +138,39 @@ def test_exit_failure_is_not_accepted_as_success(children: list) -> None:
             {}, cancelled=threading.Event()
         )
     assert children[0].returncode == 7
+
+
+@pytest.mark.parametrize("close_pipes", [False, True])
+def test_resident_memory_limit_stops_and_reaps_child(
+    children: list,
+    close_pipes: bool,
+) -> None:
+    source = "import os,sys,time; sys.stdin.buffer.read(); "
+    if close_pipes:
+        source += "os.close(0); os.close(1); os.close(2); "
+    source += "value=bytearray(96*1024*1024); time.sleep(30)"
+    owned = ComponentWorker(
+        (sys.executable, "-I", "-B", "-c", source),
+        rss_limit=32 * 1024 * 1024,
+    )
+    with pytest.raises(ProviderExecutionError, match="memory limit"):
+        owned.invoke({}, cancelled=threading.Event(), timeout=5)
+    assert len(children) == 1
+    assert children[0].returncode is not None
+    assert children[0].stdout.closed
+
+
+@pytest.mark.parametrize("rss_limit", [True, 0, -1, 2 * 1024 * 1024 * 1024 + 1])
+def test_invalid_resident_memory_limit_does_not_start(
+    rss_limit: int,
+    children: list,
+) -> None:
+    with pytest.raises(ValueError, match="resident memory"):
+        ComponentWorker(
+            (sys.executable, "-I", "-B", "-c", "pass"),
+            rss_limit=rss_limit,
+        )
+    assert children == []
 
 
 def test_invalid_response_is_rejected_after_reaping(children: list) -> None:
