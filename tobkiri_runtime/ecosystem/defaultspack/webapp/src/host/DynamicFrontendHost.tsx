@@ -78,8 +78,9 @@ export function contributionsForRoute(
     && (item.route === route || (
       item.route_match === "subpath"
       && item.route
+      && item.route !== "/"
       && route.startsWith(`${item.route.replace(/\/$/, "")}/`)
-      && /^\/[A-Za-z0-9_/-]+$/.test(route)
+      && /^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(route)
     ))
     && item.resolved_profile_id === catalog.profile_id
     && item.resolved_profile_revision === catalog.profile_revision

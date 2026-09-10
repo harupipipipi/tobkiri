@@ -38,6 +38,7 @@ def validate_frontend_entries(value: Any) -> dict[str, Any]:
             or _ROUTE.fullmatch(entry["route"]) is None
             or not isinstance(entry["match"], str)
             or entry["match"] not in {"exact", "subpath"}
+            or (entry["match"] == "subpath" and entry["route"] == "/")
         ):
             raise ProtocolError("Application frontend route is invalid")
         if (

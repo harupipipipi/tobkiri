@@ -60,6 +60,7 @@ pub(crate) fn resolve(
             || entry.label.trim().is_empty()
             || entry.label.chars().count() > 256
             || !matches!(entry.route_match.as_str(), "exact" | "subpath")
+            || (entry.route_match == "subpath" && entry.route == "/")
             || !valid_route(&entry.route)
         {
             bail!("Application frontend entry is invalid");
@@ -173,6 +174,15 @@ mod tests {
 
     #[test]
     fn external_query_fragment_traversal_and_ambiguous_entries_are_rejected() {
+        let mut catchall = map();
+        catchall["frontend"]["entries"]
+            .as_array_mut()
+            .unwrap()
+            .truncate(1);
+        catchall["frontend"]["default_entry_id"] = json!("chat");
+        catchall["frontend"]["entries"][0]["route"] = json!("/");
+        catchall["frontend"]["entries"][0]["match"] = json!("subpath");
+        assert!(resolve(&catchall, "digest", None).is_err());
         for route in [
             "https://example.test",
             "//host",

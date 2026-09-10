@@ -3563,8 +3563,8 @@
     {
       "path": "tobkiri_protocol/frontend_entries.py",
       "type": "regular-file",
-      "size": 3000,
-      "sha256": "1dc14d9261a06ece17d871506f3b8fb850832e8017724928be03ec602dc27f11",
+      "size": 3071,
+      "sha256": "b4d232aec1d0bf99e5f358a8226878b565cdab78a1685128705a2248a325c272",
       "executable": false
     },
     {

@@ -110,7 +110,7 @@ def test_invalid_frontend_path_is_rejected_even_in_a_digest_matched_map(tmp_path
         load_frontend_contract_bindings(path, manifest, **CONTEXT)
 
 
-@pytest.mark.parametrize("change", ["duplicate", "default", "extra", "overlap"])
+@pytest.mark.parametrize("change", ["duplicate", "default", "extra", "overlap", "catchall"])
 def test_ambiguous_or_incomplete_frontend_declaration_fails_closed(tmp_path, change):
     document = _document()
     frontend = document["frontend"]
@@ -120,6 +120,8 @@ def test_ambiguous_or_incomplete_frontend_declaration_fails_closed(tmp_path, cha
         frontend["default_entry_id"] = "unknown"
     elif change == "extra":
         frontend["entries"][0]["approved"] = True
+    elif change == "catchall":
+        frontend["entries"][0].update(route="/", match="subpath")
     else:
         frontend["entries"][0]["match"] = "subpath"
         frontend["entries"].append(

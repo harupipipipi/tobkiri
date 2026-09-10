@@ -111,10 +111,11 @@ test("the selected full Chat implementation is independent of Profile name", () 
 test("ambiguous routes fail closed and subpath entries require a path boundary", () => {
   const share = contribution({ route: "/share", route_match: "subpath" });
   assert.equal(contributionsForRoute(catalog([share]), "/share/record-1", "plan-1").length, 1);
-  for (const route of ["/shared/record", "/share/../chat", "/share/%2e%2e/chat", "/share?chat=1"]) {
+  for (const route of ["/shared/record", "/share/../chat", "/share/%2e%2e/chat", "/share?chat=1", "/share//record", "/share/record/"]) {
     assert.deepEqual(contributionsForRoute(catalog([share]), route, "plan-1"), []);
   }
   assert.deepEqual(contributionsForRoute(catalog([share, { ...share, contribution_id: "other.share" }]), "/share", "plan-1"), []);
+  assert.deepEqual(contributionsForRoute(catalog([contribution({ route: "/", route_match: "subpath" })]), "/unknown", "plan-1"), []);
 });
 
 test("route visibility follows the active resolved plan", () => {
