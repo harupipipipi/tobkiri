@@ -78,10 +78,8 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
         (factory.function_id, "rumi_tool_result_pack.tool-result.normalize",
          broker.NORMALIZE, "rumi_tool_result_pack.tool-result-normalize"),
     )
-    packs = ("rumi_tool_broker_pack", "rumi_tool_validation_pack", "rumi_tool_result_pack")
+    local = "rumi_tool_local_executor_pack.tool-executor.local"
     if local_selected:
-        local = "rumi_tool_local_executor_pack.tool-executor.local"
-        packs += ("rumi_tool_local_executor_pack", "rumi_default_tool_projection_pack")
         routes += (
             (factory.function_id, local, broker.EXECUTE,
              "rumi_tool_local_executor_pack.tool-local-execute"),
@@ -100,7 +98,11 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
     } for caller, target, contract, operation in routes]
     with captured_host_profile(
         tmp_path, monkeypatch,
-        packs=packs,
+        packs=(),
+        exclude_packs=() if local_selected else (
+            "rumi_tool_local_executor_pack", "rumi_default_tool_projection_pack",
+        ),
+        exclude_callers=(factory.function_id, local),
         edges=edges, backends=(),
     ) as (session, _store):
         session.assert_operation_ready(broker.CONTRACT, broker.OPERATION)

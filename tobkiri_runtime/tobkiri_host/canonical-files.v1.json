@@ -31,6 +31,7 @@
     "runtime.py",
     "saved_guest_dispatch.py",
     "saved_host_exchange.py",
+    "saved_turn_plan.py",
     "shells.py",
     "tauri_roles.py",
     "triggers.py",

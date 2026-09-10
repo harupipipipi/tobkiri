@@ -137,6 +137,8 @@ import sys
 sys.path.insert(0, {runtime!r})
 from ecosystem.defaultspack.domain.tool.definition_projection import project_tool_definition
 from ecosystem.defaultspack.domain.tool.service_catalog import ToolServiceCatalog
+assert not any(name.split('.')[0] in ('cryptography', 'jsonschema', 'yaml') for name in sys.modules)
+assert not any(name in sys.modules for name in ('tobkiri_protocol.composition', 'tobkiri_protocol.validation', 'tobkiri_protocol.migration'))
 assert not any(name.endswith(('.tool.registry', '.tool.executor', '.tool.security', '.tool.schema_adapter', '.catalog_contract_client')) for name in sys.modules)
 """
-    subprocess.run([sys.executable, "-I", "-S", "-c", script], check=True, timeout=5)
+    subprocess.run([sys.executable, "-B", "-I", "-S", "-c", script], check=True, timeout=5)
