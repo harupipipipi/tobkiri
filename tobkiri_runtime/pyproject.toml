@@ -13,6 +13,7 @@ dependencies = [
   "packaging>=24.0",
   "PyYAML>=6.0.2",
   "typing-extensions>=4.4",
+  "wasmtime==48.0.0",
 ]
 
 [project.scripts]
