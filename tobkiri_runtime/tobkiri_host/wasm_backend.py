@@ -334,6 +334,12 @@ def production_wasm_backend() -> WasmComponentBackend:
     runtime_files["tobkiri_host.wasm_component"] = (
         "sha256:" + hashlib.sha256(worker_entry.read_bytes()).hexdigest()
     )
+    runtime_root = worker_entry.parents[1]
+    worker_bootstrap = (
+        "import runpy,sys;"
+        f"sys.path.insert(0,{str(runtime_root)!r});"
+        "runpy.run_module('tobkiri_host.wasm_component',run_name='__main__',alter_sys=True)"
+    )
     runtime_digest = canonical_digest(
         runtime_files
     )
@@ -341,8 +347,8 @@ def production_wasm_backend() -> WasmComponentBackend:
         str(interpreter),
         "-I",
         "-B",
-        "-m",
-        "tobkiri_host.wasm_component",
+        "-c",
+        worker_bootstrap,
     )
     return WasmComponentBackend(
         command,

@@ -289,9 +289,7 @@ def test_production_factory_captures_pinned_runtime_files() -> None:
     backend = production_wasm_backend()
     assert backend.status.ready_for_production
     assert backend.status.backend_id == "tobkiri.wasmtime-pulley-v1"
-    assert backend._worker_command[1:] == (
-        "-I",
-        "-B",
-        "-m",
-        "tobkiri_host.wasm_component",
-    )
+    assert backend._worker_command[1:4] == ("-I", "-B", "-c")
+    bootstrap = backend._worker_command[4]
+    assert "tobkiri_host.wasm_component" in bootstrap
+    assert str(Path(__file__).resolve().parents[1]) in bootstrap
