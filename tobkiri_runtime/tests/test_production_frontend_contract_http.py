@@ -680,7 +680,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         assert status != 200, late_stop
         assert store.path.read_bytes() == conversation_before
         assert ledger.read_bytes() == ledger_before
-        assert len(ai_calls) == 1
+        assert len(ai_calls) == (2 if completion == "calculator" else 1)
     finally:
         servers.close()
 
