@@ -110,8 +110,8 @@ jobs:
           identity_launcher="$RUNNER_TEMP/tobkiri-packaging-identity-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN.py"
           test "$(/usr/bin/stat -f '%Su:%Lp' "$formal_git")" = "root:755"
           /usr/bin/codesign --verify --strict --all-architectures "$formal_git"
-          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -qx 'Identifier=com.apple.git'
-          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -qx 'TeamIdentifier=59GAB85EFG'
+          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -Fx 'Identifier=com.apple.git' > /dev/null
+          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -Fx 'TeamIdentifier=59GAB85EFG' > /dev/null
           export GIT_CONFIG=/dev/null GIT_CONFIG_GLOBAL=/dev/null
           export GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
           export GIT_ATTR_NOSYSTEM=1 GIT_EXEC_PATH=/private/var/empty
