@@ -83,6 +83,9 @@ generated-check python="python":
     {{python}} -B tobkiri_runtime/scripts/generate_executable_source_registry_v1.py --check
     {{python}} -B tobkiri_runtime/scripts/generate_executable_catalogs_v4.py --check
     {{python}} -B tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py --check
+    {{python}} -B tobkiri_runtime/scripts/quality/scan_command_protocol.py --inventory tobkiri_runtime/generated/pack_sdk/command_inventory.json --check-inventory
+    {{python}} -B tobkiri_runtime/scripts/tobkiri_pack.py generate tobkiri_runtime/generated/pack_sdk --check
+    {{python}} -B tobkiri_runtime/scripts/tobkiri_pack.py project-legacy tobkiri_runtime/examples/pack_v3/minimal_service.json tobkiri_runtime/examples/pack_v3/minimal_service.ecosystem.json --check
     {{python}} -B tobkiri_runtime/scripts/quality/scan_defaultspack_integrity.py --strict
     {{python}} -B scripts/quality/generate_presentation_catalog.py --check
     {{python}} -B scripts/quality/validate_pack_architecture.py
