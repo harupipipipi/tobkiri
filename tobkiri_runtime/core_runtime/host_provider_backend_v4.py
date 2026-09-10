@@ -60,6 +60,9 @@ class HostProviderInvocationContextV4(Protocol):
     def assert_current(self) -> None:
         """Reject cancelled, expired or stale captured invocations."""
 
+    def clipboard(self) -> ProviderOutcome:
+        """Execute this envelope's exact clipboard contract through the Host."""
+
 
 @dataclass(frozen=True)
 class HostProviderContributionV4:

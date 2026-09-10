@@ -45,7 +45,7 @@ from tobkiri_host.contracts import (
     ResolvedOperationBinding,
     StructuralAdapter,
 )
-from tobkiri_host.effects import InMemoryReconciliationStore
+from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
 from tobkiri_host.operation_cancellation import (
     OwnedCancellationBinding,
     OwnedCancellationHandles,
