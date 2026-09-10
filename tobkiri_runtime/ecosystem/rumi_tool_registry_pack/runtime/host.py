@@ -64,11 +64,8 @@ class ToolRegistryHostFactoryV4:
             raise ValueError("tool registry Function is unavailable")
         self.function_id = function_id
         self.declared_pack_data = (
-            (
-                HostProviderDataRequestV4(DEFAULT_TOOLS_PACK, "tools/"),
-                HostProviderDataRequestV4(DEFAULTS_PACK, "tools/"),
-            )
-            if function_id.endswith(".definition") else ()
+            HostProviderDataRequestV4(DEFAULT_TOOLS_PACK, "tools/"),
+            HostProviderDataRequestV4(DEFAULTS_PACK, "tools/"),
         )
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
@@ -200,10 +197,12 @@ def _invoke(
     if action == "save":
         if not isinstance(payload["definition"], dict):
             raise ValueError("tool definition is invalid")
+        _check_pack_names([payload["definition"]], (), pack_definitions)
         return registry.save(payload["definition"], payload["expected_revision"])
     if action == "delete":
         return registry.delete(_text(payload["tool_id"]), payload["expected_revision"])
     if action == "alias":
+        _check_pack_names([], (payload["alias"],), pack_definitions)
         return registry.alias(
             _text(payload["alias"]),
             _text(payload["target_tool_id"]),
@@ -217,6 +216,7 @@ def _invoke(
             or not isinstance(aliases, dict)
         ):
             raise ValueError("tool migration source is invalid")
+        _check_pack_names(definitions, tuple(aliases), pack_definitions)
         return registry.migrate(
             definitions, aliases, _text(payload["expected_source_hash"])
         )
@@ -224,6 +224,26 @@ def _invoke(
     if re.fullmatch(r"migration-[0-9a-f]{32}", migration_id) is None:
         raise ValueError("tool migration identity is invalid")
     return registry.rollback_migration(migration_id, payload["expected_revision"])
+
+
+def _check_pack_names(
+    definitions: list[Mapping[str, Any]],
+    aliases: tuple[object, ...],
+    pack_definitions: tuple[Mapping[str, Any], ...],
+) -> None:
+    """Reject writes claiming packaged names before creating any owner state."""
+    reserved = {
+        name
+        for item in pack_definitions
+        for name in (item["tool_id"], *item["aliases"])
+    }
+    requested = list(aliases)
+    for item in definitions:
+        requested.append(item.get("tool_id") or item.get("name"))
+        if isinstance(item.get("aliases"), list):
+            requested.extend(item["aliases"])
+    if any(str(name or "").strip() in reserved for name in requested):
+        raise ValueError("packaged tool names cannot be changed by registry writes")
 
 
 def _text(value: object) -> str:

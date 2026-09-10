@@ -114,7 +114,9 @@ def test_registry_rejects_wrong_or_empty_captured_source(captured_data, change):
         definitions_from_pack_data((replace(captured_data[0], **change),))
 
 
-def test_descriptor_aliases_and_disabled_entries_are_data(captured_data):
+def test_descriptor_aliases_and_disabled_entries_are_data(
+    captured_data, registry_host, tmp_path
+):
     source = captured_data[0]
     files = []
     for item in source.files:
@@ -127,14 +129,66 @@ def test_descriptor_aliases_and_disabled_entries_are_data(captured_data):
         files.append(
             replace(item, content=content, digest="sha256:" + hashlib.sha256(content).hexdigest())
         )
-    definitions = definitions_from_pack_data((replace(source, files=tuple(files)),))
+    data = (replace(source, files=tuple(files)),)
+    definitions = definitions_from_pack_data(data)
     assert len(definitions) == 1
     assert definitions[0]["aliases"] == ["calc"]
+    invoke, _client = registry_host
+    with pytest.raises(ValueError, match="packaged tool names"):
+        invoke(
+            "manage",
+            {"operation": "save", "definition": _definition("calc"), "expected_revision": 0},
+            pack_data=data,
+        )
+    assert not (tmp_path / "packs").exists()
 
 
-def test_only_read_factory_requests_pack_data():
-    for function, factory in host.HOST_PROVIDER_FACTORY.items():
-        assert bool(factory.declared_pack_data) == function.endswith(".definition")
+def test_all_registry_factories_capture_the_same_packaged_namespace():
+    for factory in host.HOST_PROVIDER_FACTORY.values():
+        assert {(item.pack_id, item.path_prefix) for item in factory.declared_pack_data} == {
+            ("defaultspack", "tools/"),
+            ("rumi_default_tools_pack", "tools/"),
+        }
+
+
+@pytest.mark.parametrize(
+    "kind", ["save_id", "save_name", "save_alias", "alias", "migrate_id", "migrate_alias"]
+)
+def test_captured_pack_names_are_rejected_before_any_mutation(
+    captured_data, registry_host, tmp_path, kind
+):
+    invoke, client = registry_host
+    definition = _definition("calculator" if kind.endswith("id") else "sample.read")
+    if kind == "save_name":
+        definition.pop("tool_id")
+        definition["name"] = " calculator "
+    if kind == "save_alias":
+        definition["aliases"] = ["calculator"]
+    if kind == "alias":
+        payload = {
+            "operation": "alias", "alias": "calculator",
+            "target_tool_id": "sample.read", "expected_revision": 0,
+        }
+    elif kind.startswith("migrate"):
+        source = {
+            "definitions": [definition],
+            "aliases": {"calculator": "sample.read"} if kind.endswith("alias") else {},
+        }
+        source_hash = hashlib.sha256(
+            json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        payload = {"operation": "migrate", **source, "expected_source_hash": source_hash}
+    else:
+        payload = {"operation": "save", "definition": definition, "expected_revision": 0}
+    with pytest.raises(ValueError, match="packaged tool names"):
+        invoke(
+            "migrate" if kind.startswith("migrate") else "manage",
+            payload, pack_data=captured_data,
+        )
+    assert not (tmp_path / "packs").exists()
+    assert client.calls == []
+    listed = invoke("definition", {"operation": "list"}, pack_data=captured_data)
+    assert listed["revision"] == 0 and len(listed["definitions"]) == 30
 
 
 def test_defaults_own_descriptors_join_the_selected_catalog(captured_data, registry_host):

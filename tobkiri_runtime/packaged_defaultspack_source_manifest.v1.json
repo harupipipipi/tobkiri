@@ -279,7 +279,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57698,
-      "sha256": "f71f002c452f91b57ba3c124088fb1c119b9e4b3d933d591f600d777210c16bb",
+      "sha256": "e7a01971d8f6705fcda56c4ee57f355d5239fadd7a21fa3e528a0e9ca711d8db",
       "executable": false
     },
     {
@@ -300,7 +300,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 37237,
-      "sha256": "a2dbbb5a356994484aeb290e989d3d06b8fafbf48521ca914e9e5480608d25b2",
+      "sha256": "1cce6b0043e85e50c8f4b7959268bf6e242f61089b8ab4ca0f6a3383b4d352dd",
       "executable": false
     },
     {
@@ -314,7 +314,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "5e3de475fbec5489124a0167704ae91ef2536489ff195c13bdd3bdeaa2d1db82",
+      "sha256": "edbe8cba1ec82b236495b41bdb33c5729097f7abda98964c5037987212b39d56",
       "executable": false
     },
     {
@@ -2106,14 +2106,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_registry_pack.executables.v4.json",
       "type": "regular-file",
       "size": 4311,
-      "sha256": "646290cd1ec0692fcccab31833584be225de6238b55eb8aa69782c5b5e652b7b",
+      "sha256": "492385098b6f2a2ac6d0ca3efd6535500d8ccb59888e1e968f2b44fe9dfad849",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_tool_registry_pack.pack.v4.json",
       "type": "regular-file",
       "size": 8014,
-      "sha256": "040927321fb6347557e74ebbade92754427fd0664b0bb7b898347502f3628bb6",
+      "sha256": "07b7ff91a18bb3357c9907ade639bb3a9c411aea1d2f382ef3ed3c68a51d6258",
       "executable": false
     },
     {
@@ -2491,7 +2491,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 899571,
-      "sha256": "66cee42410dfcce366883c7f002f03d54b5a1cf55a2f48f72b2018c90817f175",
+      "sha256": "d4ebf07a323f834a096a8b94be3dbad435b95d0c9d49a4742301bcb3263f4136",
       "executable": false
     },
     {

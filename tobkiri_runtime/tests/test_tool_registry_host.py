@@ -297,6 +297,12 @@ def test_registry_uses_real_broker_profile_grants_and_rejects_undeclared_write(
             invoke(write_contract, write_operation, {**request, "profile_id": "other"})
         with pytest.raises((ProviderExecutionError, ResolutionError)):
             invoke(write_contract, write_operation, {**request, "approved": True})
+        for packaged_id in ("calculator", "artifact_file_read"):
+            with pytest.raises(ProviderExecutionError):
+                invoke(
+                    write_contract, write_operation,
+                    {**request, "definition": _definition(packaged_id)},
+                )
         with pytest.raises(AuthorityDenied):
             invoke(
                 migrate_contract,
@@ -320,6 +326,17 @@ def test_registry_uses_real_broker_profile_grants_and_rejects_undeclared_write(
             invoke(write_contract, write_operation, request)
         listed = invoke(read_contract, read_operation, {"operation": "list"})
         assert listed["revision"] == 1 and len(listed["definitions"]) == 140
+        stored_path = root / "profiles/defaults/tool-definitions.json"
+        before = stored_path.read_bytes()
+        with pytest.raises(ProviderExecutionError):
+            invoke(
+                write_contract, write_operation,
+                {
+                    "operation": "alias", "alias": "calculator",
+                    "target_tool_id": "sample.read", "expected_revision": 1,
+                },
+            )
+        assert stored_path.read_bytes() == before
         assert not (root / "profiles" / "other").exists()
 
 
