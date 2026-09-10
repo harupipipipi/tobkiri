@@ -11,14 +11,22 @@ import time
 import pytest
 
 from tests.test_tobkiri_host_execution_integration import (
+    FakeAdmission,
+    FakeAudit,
+    FakeAuthority,
+    NoAdapters,
     context as base_context,
+    frame,
     fixture_artifact,
     fixture_catalog,
 )
 from tests.test_wasm_component import component, worker_command
-from tobkiri_host.broker import RequestEnvelope
-from tobkiri_host.effects import ProviderOutcome
+from tobkiri_host.backends import BackendRegistry
+from tobkiri_host.broker import RequestBroker, RequestEnvelope
+from tobkiri_host.contracts import AdapterPlanner
+from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
 from tobkiri_host.errors import BackendUnavailableError
+from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.ports import OpaqueInvocationLease
 from tobkiri_host.wasm_backend import WasmComponentBackend
 from tobkiri_protocol.canonical import canonical_digest
@@ -98,6 +106,44 @@ def test_real_worker_is_bound_to_exact_reservation_and_reaped() -> None:
     assert outcome == ProviderOutcome({"delivered": True})
     backend.release_materialization("reservation-1")
     assert backend._reservations == {}
+
+
+def test_real_worker_executes_through_broker_authority_and_audit() -> None:
+    backend, binding = _backend()
+    events: list[str] = []
+    broker = RequestBroker(
+        catalog=fixture_catalog(binding.artifact),
+        adapters=AdapterPlanner(()),
+        adapter_executor=NoAdapters(),
+        backends=BackendRegistry((backend,)),
+        materialization=MaterializationCoordinator(),
+        admission=FakeAdmission(events),
+        authority=FakeAuthority(events),
+        audit=FakeAudit(events),
+        reconciliation=InMemoryReconciliationStore(),
+    )
+    request_context = replace(
+        base_context(),
+        target_backend_digest=backend.status.backend_digest,
+    )
+    try:
+        assert broker.invoke(frame(), request_context, effect_scope={}) == {
+            "delivered": True
+        }
+    finally:
+        broker.close()
+    assert backend._reservations == {}
+    assert events == [
+        "authority_static",
+        "static_admission",
+        "queue_reserved",
+        "authority_final",
+        "audit_reserved",
+        "authority_effect_recheck",
+        "audit_dispatched",
+        "audit_committed",
+        "reservation_released",
+    ]
 
 
 def test_reservation_identity_cannot_select_another_worker() -> None:
