@@ -3,21 +3,6 @@
   "policy": "shrink_only_exact_edges",
   "exceptions": [
     {
-      "identity": "cross_pack_import|tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/browser_computer.py|ast-v1:071d19d6b7f6167ffc3f|rumi_default_tools_pack|defaultspack",
-      "rule": "cross_pack_import",
-      "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/domain/tool/browser_computer.py",
-      "line": 8404,
-      "fingerprint": "ast-v1:071d19d6b7f6167ffc3f",
-      "source": "rumi_default_tools_pack",
-      "target": "defaultspack",
-      "owner": "pack-architecture",
-      "reason": "Observed in the integrated full-v4 candidate and left unreviewed by Phase 0; remove or explicitly adjudicate before the sunset.",
-      "introduced_at": "2026-09-01",
-      "fix_by_wave": 10,
-      "sunset_at": "2027-09-01",
-      "violation_category": "cross_pack_import"
-    },
-    {
       "identity": "foreign_pack_id_branch|tobkiri_runtime/scripts/quality/scan_defaultspack_integrity.py|ast-v1:4ccba93f752c3fbc970b|host|defaultspack",
       "rule": "foreign_pack_id_branch",
       "path": "tobkiri_runtime/scripts/quality/scan_defaultspack_integrity.py",

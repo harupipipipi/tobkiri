@@ -194,96 +194,61 @@ def test_dry_run_does_not_execute_driver(controller):
     controller._computer_seat.click.assert_not_called()
 
 
-@pytest.mark.parametrize("context", [
-    {},
-    {"_tool_server_approved": True},
-    {"_tool_server_approval_token_valid": True},
-    {"_tool_server_approved": True, "_tool_server_approval_token_valid": True,
-     "_tool_server_approval_internal": True},
-])
-def test_pid_event_function_requires_approval_before_service(
-    tmp_path, monkeypatch, context
-):
-    """The standalone subprocess function must not dispatch PID input without approval."""
-    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
-    from ecosystem.rumi_default_tools_pack.functions import _computer_approval
+def test_pid_event_function_routes_through_captured_host_contract(monkeypatch):
+    """The standalone function must not verify tokens or call a native service."""
     from ecosystem.rumi_default_tools_pack.functions.computer_pid_event import main
 
-    approval_controller = BrowserComputerController(artifact_root=tmp_path / "artifacts")
-    approval_controller._approval_path = tmp_path / "shared" / "approvals.json"
-    monkeypatch.setattr(_computer_approval, "BrowserComputerController", lambda: approval_controller)
-    monkeypatch.setattr(
-        main,
-        "_get_service",
-        lambda: (_ for _ in ()).throw(AssertionError("service must not be used before approval")),
+    captured = {}
+
+    def fake_run_host_contract_action(action, payload, **kwargs):
+        captured["action"] = action
+        captured["payload"] = payload
+        captured["kwargs"] = kwargs
+        return {"status": "denied", "requires_approval": True}
+
+    monkeypatch.setattr(main, "run_host_contract_action", fake_run_host_contract_action)
+    arguments = {
+        "pid": 123,
+        "action": "type_text",
+        "text": "blocked",
+        "approved": True,
+        "approval_token": "forged",
+    }
+
+    result = main.run(
+        {"_tool_server_approved": True, "yolo_mode": True},
+        arguments,
     )
 
-    result = main.run(context, {"pid": 123, "action": "type_text", "text": "blocked"})
+    assert result == {"status": "denied", "requires_approval": True}
+    assert captured == {
+        "action": "computer.pid_event",
+        "payload": arguments,
+        "kwargs": {"source_function_id": "computer_pid_event"},
+    }
 
-    assert result["action"] == "computer.pid_event"
-    assert result["requires_approval"] is True
-    assert "approval_token" not in result
 
-
-def test_pid_event_function_consumes_scoped_stored_token_once(tmp_path, monkeypatch):
-    """A real isolated approval record permits one dispatch, not a flag replay."""
-    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import (
-        BrowserComputerController,
-    )
-    from ecosystem.rumi_default_tools_pack.functions import _computer_approval
+def test_pid_event_function_propagates_missing_host_session(monkeypatch):
+    """No captured dispatch session means no PID-scoped native execution."""
+    from ecosystem.rumi_default_tools_pack.domain.tool import host_contract_adapter
     from ecosystem.rumi_default_tools_pack.functions.computer_pid_event import main
 
-    controller = BrowserComputerController(artifact_root=tmp_path / "artifacts")
-    controller._approval_path = tmp_path / "shared" / "approvals.json"
-    monkeypatch.setattr(controller, "_approval_module", lambda: None)
-    monkeypatch.setattr(_computer_approval, "BrowserComputerController", lambda: controller)
-    service = MagicMock()
-    service.pid_event.return_value = {"executed": True}
-    monkeypatch.setattr(main, "_get_service", lambda: service)
-    arguments = {"pid": 123, "action": "type_text", "text": "approved"}
-    token = controller._issue_legacy_approval("computer.pid_event", arguments)
-    supplied = {**arguments, "approval_token": token}
+    class EmptyContainer:
+        @staticmethod
+        def get_or_none(name):
+            assert name == "v4_dispatch_session"
+            return None
 
-    assert main.run({}, supplied)["executed"] is True
-    assert main.run({"_tool_server_approved": True}, supplied)["requires_approval"]
-    service.pid_event.assert_called_once()
+    monkeypatch.setattr(host_contract_adapter, "get_container", EmptyContainer)
 
-    changed_token = controller._issue_legacy_approval("computer.pid_event", arguments)
-    assert main.run({}, {**arguments, "pid": 456, "approval_token": changed_token})[
-        "requires_approval"
-    ]
-    service.pid_event.assert_called_once()
+    result = main.run({}, {"pid": 123, "action": "click", "approved": True})
 
-
-def test_pid_event_function_consumes_signed_owner_token_once(tmp_path, monkeypatch):
-    """The standalone caller retains its real signed-token path during migration."""
-    from ecosystem.defaultspack.domain.safety import approval
-    from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import (
-        BrowserComputerController,
-    )
-    from ecosystem.rumi_default_tools_pack.functions import _computer_approval
-    from ecosystem.rumi_default_tools_pack.functions.computer_pid_event import main
-
-    controller = BrowserComputerController(artifact_root=tmp_path / "artifacts")
-    controller._approval_path = tmp_path / "shared" / "approvals.json"
-    monkeypatch.setattr(_computer_approval, "BrowserComputerController", lambda: controller)
-    service = MagicMock()
-    service.pid_event.return_value = {"executed": True}
-    monkeypatch.setattr(main, "_get_service", lambda: service)
-    arguments = {"pid": 123, "action": "type_text", "text": "approved fixture"}
-    request = approval.create_approval_request(
-        "computer.pid_event", "high",
-        {"action": "computer.pid_event", "payload": arguments},
-        details={"pack_id": "defaultspack"},
-    )
-    token = approval.approve(request["request_id"])["token"]
-    supplied = {**arguments, "approval_token": token}
-
-    assert main.run({}, {**supplied, "pid": 456})["requires_approval"]
-    service.pid_event.assert_not_called()
-    assert main.run({}, supplied)["executed"] is True
-    assert main.run({"_tool_server_approved": True}, supplied)["requires_approval"]
-    service.pid_event.assert_called_once()
+    assert result == {
+        "status": "unavailable",
+        "success": False,
+        "error_type": "global_host_contract_unavailable",
+        "action": "computer.pid_event",
+    }
 
 
 # --- Permission model tests ---

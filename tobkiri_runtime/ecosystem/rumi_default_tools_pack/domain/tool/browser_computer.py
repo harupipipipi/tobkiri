@@ -8363,18 +8363,6 @@ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         token = str(payload.get("approval_token") or "").strip()
         if not token:
             return False
-        approval = self._approval_module()
-        if approval is None:
-            return self._consume_legacy_approval(token, action, expected_payload)
-        expected_args = {"action": action, "payload": expected_payload}
-        verification = approval.verify_execution_token(
-            token,
-            action,
-            approval.hash_arguments(expected_args),
-            pack_id="defaultspack",
-        )
-        if bool(getattr(verification, "valid", False)):
-            return True
         return self._consume_legacy_approval(token, action, expected_payload)
 
     def _issue_legacy_approval(self, action: str, payload: dict[str, Any]) -> str:
@@ -8403,20 +8391,6 @@ $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         if float(record.get("expires_at") or 0) < time.time():
             return False
         return True
-
-    @staticmethod
-    def _approval_module():
-        try:
-            from ecosystem.defaultspack.domain.safety import approval
-
-            return approval
-        except Exception:
-            try:
-                from domain.safety import approval
-
-                return approval
-            except Exception:
-                return None
 
     def _read_approvals(self) -> dict[str, Any]:
         try:

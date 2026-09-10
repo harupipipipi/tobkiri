@@ -26,9 +26,11 @@ def test_computer_semantic_action_uses_host_contract_adapter():
     assert "DriverRegistry()" not in source
 
 
-def test_computer_pid_event_uses_factory():
+def test_computer_pid_event_uses_host_contract_adapter():
     source = (Path(_funcs_dir) / "computer_pid_event" / "main.py").read_text(encoding="utf-8")
-    assert "create_default_computer_tool_service" in source
+    assert "run_host_contract_action" in source
+    assert "create_default_computer_tool_service" not in source
+    assert "defaultspack.domain" not in source
     assert "DriverRegistry()" not in source
 
 
