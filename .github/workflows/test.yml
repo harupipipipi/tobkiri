@@ -278,6 +278,8 @@ jobs:
             tests/test_mcp_connection_owner.py \
             tests/test_mcp_host_provider.py \
             tests/test_tool_registry_host.py \
+            tests/test_tool_registry_pack_data.py \
+            tests/test_tool_registry_host_broker.py \
             tests/test_secure_persistence.py \
             tests/test_artifact_materialization.py \
             tests/test_declared_pack_data.py \
@@ -285,6 +287,7 @@ jobs:
             tests/test_mcp_host_broker.py \
             tests/test_mcp_gateway_bridge.py \
             tests/test_host_provider_capture_groups.py \
+            tests/test_host_provider_data_v4.py \
             tests/test_defaultspack_mcp_approval_gate.py \
             tests/test_continuation_chain.py \
             tests/test_continuation_envelope.py \

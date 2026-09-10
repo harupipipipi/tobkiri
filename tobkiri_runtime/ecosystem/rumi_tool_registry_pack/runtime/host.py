@@ -10,6 +10,11 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderCaptureContextV4,
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
+    HostProviderDataRequestV4,
+)
+from ecosystem.rumi_tool_registry_pack.runtime.pack_data import (
+    DEFAULT_TOOLS_PACK,
+    definitions_from_pack_data,
 )
 from ecosystem.rumi_tool_registry_pack.runtime.registry import (
     ToolDefinitionRegistry,
@@ -57,6 +62,10 @@ class ToolRegistryHostFactoryV4:
         if function_id not in _BINDINGS:
             raise ValueError("tool registry Function is unavailable")
         self.function_id = function_id
+        self.declared_pack_data = (
+            (HostProviderDataRequestV4(DEFAULT_TOOLS_PACK, "tools/"),)
+            if function_id.endswith(".definition") else ()
+        )
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Capture the existing data owner without discovering ambient state."""
@@ -74,6 +83,7 @@ class ToolRegistryHostFactoryV4:
         ):
             raise PermissionError("tool registry binding is unavailable")
         allowed_actions = _ACTIONS[self.function_id.rsplit(".", 1)[1]]
+        pack_definitions = definitions_from_pack_data(context.declared_pack_data)
 
         def invoke(
             operation_id: str,
@@ -131,7 +141,15 @@ class ToolRegistryHostFactoryV4:
                 user_data_root=context.user_data_root,
                 guard=invocation.assert_current,
             )
-            result = _invoke(registry, client, action, payload)
+            result = _invoke(registry, client, action, payload, pack_definitions)
+            if action == "list" and context.declared_pack_data:
+                result = {
+                    **result,
+                    "pack_data_sources": [
+                        {"pack_id": item.pack_id, "artifact_digest": item.artifact_digest}
+                        for item in context.declared_pack_data
+                    ],
+                }
             invocation.assert_current()
             return result
 
@@ -157,10 +175,12 @@ def _invoke(
     client: Any,
     action: str,
     payload: Mapping[str, Any],
+    pack_definitions: tuple[Mapping[str, Any], ...] = (),
 ) -> Mapping[str, Any]:
     if action in _ACTIONS["definition"]:
         catalog = _composed_catalog(
-            client, registry, contribution_contract=CONTRIBUTION
+            client, registry, contribution_contract=CONTRIBUTION,
+            pack_definitions=pack_definitions,
         )
         # Migration backups belong to the data owner, not the public resource.
         if isinstance(catalog.get("migration"), dict):

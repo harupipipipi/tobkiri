@@ -35,7 +35,7 @@ class Contributions:
 def registry_host(tmp_path):
     client = Contributions()
 
-    def invoke(kind, payload, *, change=None):
+    def invoke(kind, payload, *, change=None, pack_data=()):
         function = f"{host.PACK_ID}.tool-registry.{kind}"
         contract, operation = host._BINDINGS[function]
         binding = SimpleNamespace(
@@ -58,6 +58,7 @@ def registry_host(tmp_path):
             catalog_bindings=(binding,),
             domain_ids={(contract, operation, binding.principal_ref.value): "domain"},
             user_data_root=tmp_path,
+            declared_pack_data=pack_data,
         )
         provider = host.HOST_PROVIDER_FACTORY[function].capture(capture)
         invocation = _Invocation(operation, payload)

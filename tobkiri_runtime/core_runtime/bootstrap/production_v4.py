@@ -99,10 +99,12 @@ from ..credential_transport import (
 )
 from ..global_contract_dispatch import GlobalContractClient
 from ..host_provider_backend_v4 import (
+    CapturedHostPackDataV4,
     ExactHostProviderBackendV4,
     HostProviderCaptureContextV4,
     HostProviderInvocationContextV4,
 )
+from ..host_provider_data_v4 import HostProviderDataCaptureV4
 from ..host_provider_hooks_v4 import load_host_provider_factory
 from ..interactive_effect_coordinator import (
     CapturedInteractiveEffectRoute,
@@ -2397,6 +2399,7 @@ def capture_production_dispatch(
         *,
         workspace_mutation_port: HostWorkspaceMutationPort | None,
         interactive_effect_port: LateBoundInteractiveEffectPort | None = None,
+        declared_pack_data: tuple[CapturedHostPackDataV4, ...] = (),
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -2413,6 +2416,7 @@ def capture_production_dispatch(
             interactive_approval_port=authority_control,
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
+            declared_pack_data=declared_pack_data,
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -2477,11 +2481,13 @@ def capture_production_dispatch(
 
     from core_runtime.host_provider_hooks_v4 import group_host_provider_captures
 
+    host_provider_data = HostProviderDataCaptureV4(lock, ecosystem_root)
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
         captured_provider = factory.capture(
             host_provider_capture_context(
                 captured_bindings,
                 workspace_mutation_port=workspace_mutation_port,
+                declared_pack_data=host_provider_data.capture_for(factory),
                 interactive_effect_port=(
                     interactive_effect_port
                     if interactive_effect_coordinator is not None
@@ -2766,6 +2772,7 @@ def capture_production_dispatch(
                 "captured Pack filesystem identity changed",
                 code="digest_mismatch",
             )
+        host_provider_data.assert_current()
         for pack_id, approval_revision in captured_dynamic_approvals.items():
             try:
                 current_approval = capture_valid_pack_approval(pack_id)

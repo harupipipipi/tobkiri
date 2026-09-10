@@ -341,6 +341,7 @@ def create_resource_operation(client: Any) -> Callable[[str, Mapping[str, Any]],
 def _composed_catalog(
     client: Any, registry: ToolDefinitionRegistry, *,
     contribution_contract: str = DEFINITION_CONTRIBUTION,
+    pack_definitions: tuple[Mapping[str, Any], ...] = (),
 ) -> dict[str, Any]:
     """Compose stored definitions with explicit profile contributions."""
 
@@ -354,6 +355,16 @@ def _composed_catalog(
         _identifier(alias): _identifier(target)
         for alias, target in (snapshot.get("aliases") or {}).items()
     }
+    for raw in pack_definitions:
+        definition = _definition(raw)
+        tool_id = definition["tool_id"]
+        if tool_id in definitions or tool_id in aliases:
+            raise RuntimeError(f"packaged tool definition collides: {tool_id}")
+        definitions[tool_id] = definition
+        for alias in definition["aliases"]:
+            if alias in definitions or alias in aliases:
+                raise RuntimeError(f"packaged tool alias collides: {alias}")
+            aliases[alias] = tool_id
     sources: list[dict[str, str]] = []
     providers = sorted(
         client.providers(contribution_contract),

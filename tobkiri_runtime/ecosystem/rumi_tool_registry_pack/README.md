@@ -16,6 +16,20 @@ Saving a definition cannot shadow an existing alias. Rollback rejects stale
 revisions and preserves the current state in a backup before removing it.
 Registration of a definition does not authorize its execution.
 
+The read factory also requests sealed `tools/*/manifest.json` descriptors from
+Default Tools when that application Pack is selected in the Profile. The Host
+captures declared data using the Profile lock's artifact digest and admitted
+Pack root, independently of executable bindings. It supplies immutable bytes;
+request payloads cannot choose files or digests. Selected missing, modified or
+empty descriptor sources fail closed. An unselected Default Tools Pack adds no
+definitions. List results include the captured Pack ID and artifact digest.
+
+Packaged descriptors compose with stored definitions and selected contributions;
+duplicate IDs or aliases are rejected. This intake preserves their schemas,
+display metadata and widgets without importing the legacy Registry or Executor.
+It covers sealed tool manifests only. Dynamic, component and memo sources, their
+migration, and the local execution Provider still require separate integration.
+
 Read results omit private migration backup paths. Optional contributions are
 queried using their selected canonical operation, with no credentials. Host
 mutation lock waits recheck cancellation and expiry, keeping the existing lock

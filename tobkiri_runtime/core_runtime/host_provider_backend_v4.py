@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
+from tobkiri_host.artifact_materialization import MaterializedArtifactFile
 from tobkiri_host.backends import BackendStatus, REQUIRED_PRODUCTION_GATES
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.contracts import ResolvedOperationBinding
@@ -80,6 +81,24 @@ class HostProviderContributionV4:
 
 
 @dataclass(frozen=True)
+class HostProviderDataRequestV4:
+    """Static data prefix requested by a verified factory, if its Pack is selected."""
+
+    pack_id: str
+    path_prefix: str
+
+
+@dataclass(frozen=True)
+class CapturedHostPackDataV4:
+    """Digest-bound bytes, without a Pack path or an execution capability."""
+
+    pack_id: str
+    artifact_digest: str
+    path_prefix: str
+    files: tuple[MaterializedArtifactFile, ...]
+
+
+@dataclass(frozen=True)
 class HostProviderCaptureContextV4:
     """Host-owned immutable inputs supplied to a built-in Provider hook."""
 
@@ -100,6 +119,7 @@ class HostProviderCaptureContextV4:
     # has built the single Broker for the active Profile.
     interactive_effect_port: InteractiveEffectPort | None = None
     workspace_mutation_port: WorkspaceMutationPort | None = None
+    declared_pack_data: tuple[CapturedHostPackDataV4, ...] = ()
 
 
 @dataclass(frozen=True)

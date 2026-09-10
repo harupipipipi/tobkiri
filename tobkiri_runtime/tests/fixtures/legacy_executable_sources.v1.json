@@ -106,13 +106,13 @@
         "contract_id": "tobkiri.resource.tool.definition.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/registry.py",
-        "implementation_digest": "sha256:5fc358810fb14e9e4c984cf55b24ed118ec918523dfc28a95d6450c84555e4ea",
+        "implementation_digest": "sha256:0db04d22aa52f1f3416bcabddbe227ec3d10bf2811160a5b83aa0830b57ef722",
         "operation_ids": [
           "rumi_tool_registry_pack.tool-definition-resource"
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542"
+      "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39"
     },
     {
       "function_id": "rumi_tool_registry_pack.tool-registry.manage",
@@ -122,13 +122,13 @@
         "contract_id": "tobkiri.action.tool.definition.manage.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/registry.py",
-        "implementation_digest": "sha256:5fc358810fb14e9e4c984cf55b24ed118ec918523dfc28a95d6450c84555e4ea",
+        "implementation_digest": "sha256:0db04d22aa52f1f3416bcabddbe227ec3d10bf2811160a5b83aa0830b57ef722",
         "operation_ids": [
           "rumi_tool_registry_pack.tool-definition-manage"
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542"
+      "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39"
     },
     {
       "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
@@ -138,13 +138,13 @@
         "contract_id": "tobkiri.action.tool.definition.migrate.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/registry.py",
-        "implementation_digest": "sha256:5fc358810fb14e9e4c984cf55b24ed118ec918523dfc28a95d6450c84555e4ea",
+        "implementation_digest": "sha256:0db04d22aa52f1f3416bcabddbe227ec3d10bf2811160a5b83aa0830b57ef722",
         "operation_ids": [
           "rumi_tool_registry_pack.tool-definition-migrate"
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:6870034f3870e158dd53086c15eb159e3343f1968de47cc93be8ef5261d56542"
+      "implementation_digest": "sha256:8cdf78f5e9249017d11a582664b63b2a1beabe9dd29d76a2c962059fa4b13c39"
     }
   ],
   "operation_id_overrides": [
