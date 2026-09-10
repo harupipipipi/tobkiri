@@ -168,6 +168,7 @@ def test_recursive_tool_composition_fails_without_blocking_broker_workers(tool_h
 @pytest.mark.parametrize("change", [
     {"contract_id": "foreign"}, {"contract_version": "2.0.0"},
     {"operation_id": "foreign"}, {"target_principal": OpaqueAuthorityRef("foreign")},
+    {"target_domain": OpaqueAuthorityRef("foreign")},
     {"payload": {}},
 ])
 def test_changed_host_envelope_never_enters_owner_code(tool_host, change):
@@ -207,3 +208,32 @@ def test_boolean_enum_does_not_accept_integer_and_mcp_identity_is_preserved():
                       "connection_id": "connection-1"},
     }
     assert _definition(source)["execution"]["connection_id"] == "connection-1"
+
+
+@pytest.mark.parametrize("change", [
+    {}, {"provider_instance_id": "foreign"}, {"contract_id": "foreign"},
+    {"connection_id": ""}, {"namespace": "foreign"}, {"operation": ""},
+])
+def test_mcp_execution_keeps_captured_gateway_and_connection_identity(tool_host, change):
+    _, _, _, context = tool_host
+    gateway = SimpleNamespace(
+        operation=SimpleNamespace(
+            contract_id="tobkiri.service.mcp.tool.call.v1",
+            operation_id="rumi_mcp_gateway_pack.mcp-tool-call",
+        ),
+        function=SimpleNamespace(function_id="rumi_mcp_gateway_pack.gateway"),
+        artifact=SimpleNamespace(pack_id="rumi_mcp_gateway_pack"),
+    )
+    context = replace(context, catalog_bindings=(gateway,))
+    execution = {
+        "contract_id": "tobkiri.service.mcp.tool.call.v1", "provider_instance_id": "gateway",
+        "namespace": "mcp.sample", "connection_id": "connection-1", "operation": "ping",
+        **change,
+    }
+    if change:
+        with pytest.raises(ValueError, match="descriptor"):
+            broker._mcp_request(context, execution, {"value": 3})
+    else:
+        assert broker._mcp_request(context, execution, {"value": 3}) == {
+            "connection_id": "connection-1", "tool": "ping", "arguments": {"value": 3},
+        }

@@ -59,3 +59,54 @@ def test_production_registry_uses_selected_data_without_executable_bindings(
                 "rumi_default_tool_projection_pack.default-tool-local-operation",
                 {"_session_id": "registry-data"},
             )
+
+
+def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise real capture and nested authority without enabling legacy code."""
+    from ecosystem.rumi_tool_broker_pack.runtime import broker
+
+    factory = broker.HOST_PROVIDER_FACTORY
+    routes = (
+        ("shell.tauri.default", factory.function_id, broker.CONTRACT, broker.OPERATION),
+        (factory.function_id, "rumi_tool_registry_pack.tool-registry.definition",
+         broker.DEFINITION, "rumi_tool_registry_pack.tool-definition-resource"),
+        (factory.function_id, "rumi_tool_validation_pack.tool-validation.arguments",
+         broker.VALIDATE, "rumi_tool_validation_pack.tool-arguments-validate"),
+        (factory.function_id, "rumi_tool_result_pack.tool-result.normalize",
+         broker.NORMALIZE, "rumi_tool_result_pack.tool-result-normalize"),
+    )
+    edges = [{
+        "caller_function_id": caller, "target_provider_id": target,
+        "contract_id": contract, "operation_id": operation,
+        "authority_mode": "profile_grant",
+        "requested_scope_template": {
+            "capability": "operation.invoke",
+            "dimensions": {"contract": [contract], "operation": [operation]},
+            "quotas": {}, "exact_request_digest": None, "opaque": False,
+        },
+    } for caller, target, contract, operation in routes]
+    with captured_host_profile(
+        tmp_path, monkeypatch,
+        packs=("rumi_tool_broker_pack", "rumi_tool_validation_pack", "rumi_tool_result_pack"),
+        edges=edges, backends=(),
+    ) as (session, _store):
+        session.assert_operation_ready(broker.CONTRACT, broker.OPERATION)
+        request = {
+            "tool_id": "calculator", "tool_call_id": "call-1",
+            "arguments": {"expression": "1+2"}, "_session_id": "tool-composition",
+        }
+        with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
+            session.invoke(broker.CONTRACT, broker.OPERATION, request)
+        assert isinstance(failure.value.__cause__, PermissionError)
+        assert str(failure.value.__cause__) == "selected tool executor is unavailable"
+        with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
+            session.invoke(broker.CONTRACT, broker.OPERATION, {**request, "arguments": {}})
+        assert isinstance(failure.value.__cause__, ValueError)
+        assert str(failure.value.__cause__) == "tool arguments are invalid"
+        with pytest.raises(ProviderExecutionError, match="provider execution failed") as failure:
+            session.invoke(broker.CONTRACT, broker.OPERATION, {**request, "approved": True})
+        assert isinstance(failure.value.__cause__, ValueError)
+        assert str(failure.value.__cause__) == "tool invocation payload is invalid"
+        assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()
