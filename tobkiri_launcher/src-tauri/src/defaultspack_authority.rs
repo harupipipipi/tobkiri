@@ -3727,19 +3727,25 @@ mod tests {
         let source_pack = source_checkout.join("tobkiri_runtime/ecosystem/defaultspack");
         let destination_pack = app_dir.join("ecosystem/defaultspack");
         copy_tree(&source_pack.join("v4"), &destination_pack.join("v4"));
-        for relative in ["tools", "extensions/tools"] {
-            copy_tree(&source_pack.join(relative), &destination_pack.join(relative));
+        let manifest: Value =
+            serde_json::from_slice(&fs::read(source_pack.join("pack.v4.json")).unwrap()).unwrap();
+        for artifact in manifest["artifacts"].as_array().unwrap() {
+            let relative = artifact["path"].as_str().unwrap();
+            let source = source_pack.join(relative);
+            assert_eq!(
+                format!("sha256:{}", source_file_digest(&source)),
+                artifact["digest"].as_str().unwrap(),
+                "fixture artifact must match the canonical Pack manifest: {relative}"
+            );
+            let destination = destination_pack.join(relative);
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::copy(source, destination).unwrap();
         }
         for relative in [
             "pack.v4.json",
             "contracts.v4.json",
             "artifact-index.v4.json",
-            "executables.v4.json",
-            "host_contract_contributions.v1.json",
             "update_metadata.v1.json",
-            "runtime/application_presentation.py",
-            "runtime/conversation.py",
-            "runtime/saved_conversation.py",
             "defaultspack/desktop_app.py",
             "defaultspack/frontend_contract_map.v4.json",
         ] {
