@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import inspect
 from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -110,6 +111,12 @@ def _run_block_function(
         )
     module = importlib.import_module(block_module)
     run = getattr(module, "run")
+    if "settings_owner" in inspect.signature(run).parameters:
+        return run(
+            payload,
+            call_context,
+            settings_owner=_settings_owner_from_context(call_context),
+        )
     return run(payload, call_context)
 
 
@@ -190,6 +197,7 @@ def _run_tool_function(
     # directly here to avoid recursing through the AI tool facade.
     result = ToolExecutor(
         subagent_factory=subagent_factory,
+        settings_owner=_settings_owner_from_context(context),
     )._execute_local(tool_name, arguments, context)
     if function_id in {"browser_open_url", "browser_screenshot", "browser_session"} and isinstance(result, dict):
         try:
@@ -229,28 +237,48 @@ def _apply_function_defaults(function_id: str, payload: dict[str, Any]) -> dict[
     return payload
 
 
-def _model_runtime_service():
+def _settings_owner_from_context(context: dict[str, Any] | None) -> Any:
+    if not isinstance(context, dict):
+        return None
+    return context.get("_settings_owner_port")
+
+
+def _model_runtime_service(context: dict[str, Any] | None):
     from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
-    return ModelRuntimeSettingsService()
+    return ModelRuntimeSettingsService(
+        settings_owner=_settings_owner_from_context(context)
+    )
 
 
 def _provider_key_status(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     from blocks.ai.provider_key import run
 
-    return run({**args, "_method": "GET"}, context)
+    return run(
+        {**args, "_method": "GET"},
+        context,
+        settings_owner=_settings_owner_from_context(context),
+    )
 
 
 def _set_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     from blocks.ai.provider_key import run
 
-    return run({**args, "_method": "POST", "action": "upsert"}, context)
+    return run(
+        {**args, "_method": "POST", "action": "upsert"},
+        context,
+        settings_owner=_settings_owner_from_context(context),
+    )
 
 
 def _delete_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     from blocks.ai.provider_key import run
 
-    return run({**args, "_method": "POST", "action": "delete"}, context)
+    return run(
+        {**args, "_method": "POST", "action": "delete"},
+        context,
+        settings_owner=_settings_owner_from_context(context),
+    )
 
 
 def _rename_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
@@ -258,12 +286,15 @@ def _rename_provider_key(args: dict[str, Any], context: dict[str, Any]) -> dict[
 
     payload = {**args, "_method": "POST", "action": "rename"}
     payload.setdefault("name", args.get("new_name"))
-    return run(payload, context)
+    return run(
+        payload,
+        context,
+        settings_owner=_settings_owner_from_context(context),
+    )
 
 
 def _validate_model_params(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-    del context
-    service = _model_runtime_service()
+    service = _model_runtime_service(context)
     level = args.get("thinking_level") or args.get("level")
     if level is not None:
         validation = service.validate_thinking_level(str(level), args.get("profile_id"))
@@ -288,7 +319,12 @@ def _resolve_prompt_for_conversation(args: dict[str, Any], context: dict[str, An
 def _model_call(args: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     from domain.ai_client.model_call import call_model
 
-    result = call_model(args, context, call_handler=context.get("call_handler") if isinstance(context, dict) else None)
+    result = call_model(
+        args,
+        context,
+        call_handler=context.get("call_handler") if isinstance(context, dict) else None,
+        settings_owner=_settings_owner_from_context(context),
+    )
     if result.get("status") == "error":
         return error(str(result.get("error") or "model.call failed"), str(result.get("code") or "MODEL_CALL_FAILED"))
     return ok(result)
@@ -415,12 +451,12 @@ _PROMPT_HANDLERS = {
 
 _MODEL_RUNTIME_HANDLERS = {
     "ai_model_call": _model_call,
-    "ai_get_preferred_model": lambda args, ctx: ok({"profile_id": _model_runtime_service().get_preferred_model()}),
-    "ai_set_preferred_model": lambda args, ctx: ok(_model_runtime_service().set_preferred_model(str(args.get("profile_id") or args.get("model") or ""))),
-    "ai_get_thinking_level": lambda args, ctx: ok(_model_runtime_service().get_thinking_level(args.get("scope", "global"), args.get("profile_id"), args.get("conversation_id"))),
-    "ai_set_thinking_level": lambda args, ctx: ok(_model_runtime_service().set_thinking_level(str(args.get("level") or ""), args.get("scope", "global"), args.get("profile_id"), args.get("conversation_id"))),
-    "ai_get_effective_thinking_level": lambda args, ctx: ok(_model_runtime_service().get_effective_thinking_level(args.get("profile_id"), args.get("conversation_id"))),
-    "ai_normalize_thinking_level": lambda args, ctx: ok(_model_runtime_service().normalize_for_provider(str(args.get("provider_id") or ""), str(args.get("model_id") or args.get("model") or ""), str(args.get("level") or args.get("thinking_level") or ""))),
+    "ai_get_preferred_model": lambda args, ctx: ok({"profile_id": _model_runtime_service(ctx).get_preferred_model()}),
+    "ai_set_preferred_model": lambda args, ctx: ok(_model_runtime_service(ctx).set_preferred_model(str(args.get("profile_id") or args.get("model") or ""))),
+    "ai_get_thinking_level": lambda args, ctx: ok(_model_runtime_service(ctx).get_thinking_level(args.get("scope", "global"), args.get("profile_id"), args.get("conversation_id"))),
+    "ai_set_thinking_level": lambda args, ctx: ok(_model_runtime_service(ctx).set_thinking_level(str(args.get("level") or ""), args.get("scope", "global"), args.get("profile_id"), args.get("conversation_id"))),
+    "ai_get_effective_thinking_level": lambda args, ctx: ok(_model_runtime_service(ctx).get_effective_thinking_level(args.get("profile_id"), args.get("conversation_id"))),
+    "ai_normalize_thinking_level": lambda args, ctx: ok(_model_runtime_service(ctx).normalize_for_provider(str(args.get("provider_id") or ""), str(args.get("model_id") or args.get("model") or ""), str(args.get("level") or args.get("thinking_level") or ""))),
     "ai_validate_model_params": _validate_model_params,
     "ai_get_provider_key_status": _provider_key_status,
     "ai_set_provider_key": _set_provider_key,
