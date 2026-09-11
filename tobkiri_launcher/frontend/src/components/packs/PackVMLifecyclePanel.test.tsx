@@ -289,6 +289,54 @@ for (const validAck of [true, false]) {
   });
 }
 
+for (const ack of [null, digest('7'), digest('6')]) {
+  test(`PackVM storage change needs separate consent and an exact returned acknowledgment: ${ack}`, {concurrency: false}, async () => {
+    configureStore();
+    const registration = {
+      previous_attestation_digest: digest('1'), previous_config_digest: digest('2'),
+      previous_guest_runner_digest: digest('3'), previous_host_build_digest: digest('4'),
+      asset_manifest_digest: digest('5'),
+    };
+    const rebind = {
+      digest: digest('6'), previous_attestation_digest: digest('1'),
+      state_root: '/private/existing-vm', instance_root: '/private/existing-vm/instances/tobkiri-packvm-v4',
+      previous_device: 16777233, current_device: 16777234,
+      state_root_inode: 1234, instance_root_inode: 5678,
+    };
+    const {routes, bodies} = installFetch(async (route) => {
+      if (route === '/api/v4/packvm/prepare') {
+        return jsonResponse({...plan, image_download_required: false, registration_update: registration, storage_rebind: rebind});
+      }
+      if (route === '/api/v4/packvm/consent') {
+        return jsonResponse({...consent, previous_attestation_digest: digest('1'), storage_rebind_digest: ack});
+      }
+      throw new Error(`unexpected route ${route}`);
+    });
+    assert.ok(surface);
+    await renderPanel(surface.root);
+    await act(async () => buttonWithText(surface.container, 'Prepare plan').click());
+    assert.match(surface.container.textContent ?? '', /no volume UUID/);
+    assert.match(surface.container.textContent ?? '', /16777233/);
+    assert.match(surface.container.textContent ?? '', /16777234/);
+    const checkboxes = surface.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    assert.equal(checkboxes.length, 2);
+    await act(async () => checkboxes[0].click());
+    assert.equal(buttonWithText(surface.container, 'Record explicit consent').disabled, true);
+    assert.equal(routes.length, 1);
+    await act(async () => checkboxes[1].click());
+    await act(async () => buttonWithText(surface.container, 'Record explicit consent').click());
+    assert.equal(bodies[1].storage_rebind_digest, rebind.digest);
+    assert.equal(bodies[1].previous_attestation_digest, registration.previous_attestation_digest);
+    assert.equal(routes.length, 2);
+    if (ack === rebind.digest) {
+      assert.equal(buttonWithText(surface.container, 'Update registration').disabled, false);
+    } else {
+      assert.match(surface.container.textContent ?? '', /different pinned plan/);
+      assert.doesNotMatch(surface.container.textContent ?? '', /Plan consent recorded/);
+    }
+  });
+}
+
 test('PackVM GUI displays an unavailable plan reason and keeps provisioning disabled', {concurrency: false}, async () => {
   configureStore();
   const unavailableReason = 'A Developer ID signed PackVM helper is required.';

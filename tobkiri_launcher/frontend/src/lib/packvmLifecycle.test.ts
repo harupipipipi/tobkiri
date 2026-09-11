@@ -110,6 +110,30 @@ test('PackVM registration updates require exact old and new digest evidence and 
   assert.throws(() => normalizePackVMPlan({...updatePlan, image_download_required: true}));
 });
 
+test('PackVM storage re-registration requires exact current and previous identity', () => {
+  const registration = {
+    previous_attestation_digest: digest('1'), previous_config_digest: digest('2'),
+    previous_guest_runner_digest: digest('3'), previous_host_build_digest: digest('4'),
+    asset_manifest_digest: digest('5'),
+  };
+  const rebind = {
+    digest: digest('6'), previous_attestation_digest: digest('1'),
+    state_root: '/private/existing-vm', instance_root: '/private/existing-vm/instances/tobkiri-packvm-v4',
+    previous_device: 16777233, current_device: 16777234,
+    state_root_inode: 1234, instance_root_inode: 5678,
+  };
+  const candidate = {...planPayload, image_download_required: false, registration_update: registration, storage_rebind: rebind};
+  assert.deepEqual(normalizePackVMPlan(candidate).storage_rebind, rebind);
+  for (const invalid of [
+    {registration_update: null}, {image_download_required: true},
+    ...[{}, {...rebind, extra: true}, {...rebind, digest: null},
+      {...rebind, previous_attestation_digest: digest('2')}, {...rebind, current_device: rebind.previous_device},
+      {...rebind, state_root_inode: true}, {...rebind, instance_root: '/private/other'},
+      {...rebind, state_root: '/private/../existing-vm'}, {...rebind, state_root: '/private/\nvm'},
+    ].map((storage_rebind) => ({storage_rebind})),
+  ]) assert.throws(() => normalizePackVMPlan({...candidate, ...invalid}));
+});
+
 test('PackVM plan normalization accepts only strict fail-closed unavailable evidence', () => {
   const unavailablePlan = normalizePackVMPlan({
     ...planPayload,

@@ -5,6 +5,7 @@ import type {
   ApiPackVMOperation,
   ApiPackVMOperationState,
   ApiPackVMProvisioningPlan,
+  ApiPackVMStorageRebind,
 } from './apiTypes';
 import {getBrowserStorage, readSafeStorageValue, removeSafeStorageValue, writeSafeStorageValue} from './safeStorage';
 
@@ -222,6 +223,36 @@ export function isCanonicalPackVMOperationId(value: string): boolean {
   return UUID.test(value);
 }
 
+function normalizeStorageRebind(value: unknown): ApiPackVMStorageRebind | null {
+  if (value == null) return null;
+  const payload = record(value);
+  if (Object.keys(payload).sort().join(',') !== [
+    'current_device', 'digest', 'instance_root', 'instance_root_inode',
+    'previous_attestation_digest', 'previous_device', 'state_root', 'state_root_inode',
+  ].join(',')) {
+    throw new PackVMLifecycleProtocolError('Tobkiri returned invalid PackVM storage evidence.');
+  }
+  const stateRoot = stringField(payload, 'state_root');
+  const instanceRoot = stringField(payload, 'instance_root');
+  for (const path of [stateRoot, instanceRoot]) {
+    if (!path.startsWith('/') || path.length > 4096
+      || path.split('/').slice(1).some((part) => !part || part === '.' || part === '..')
+      || /[\u0000-\u001f\u007f]/.test(path)) {
+      throw new PackVMLifecycleProtocolError('Tobkiri returned an invalid PackVM storage path.');
+    }
+  }
+  return {
+    digest: stringField(payload, 'digest', {digest: true}),
+    previous_attestation_digest: stringField(payload, 'previous_attestation_digest', {digest: true}),
+    state_root: stateRoot,
+    instance_root: instanceRoot,
+    previous_device: positiveIntegerField(payload, 'previous_device'),
+    current_device: positiveIntegerField(payload, 'current_device'),
+    state_root_inode: positiveIntegerField(payload, 'state_root_inode'),
+    instance_root_inode: positiveIntegerField(payload, 'instance_root_inode'),
+  };
+}
+
 export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
   const payload = record(value);
   const imageDownloadRequired = booleanField(payload, 'image_download_required');
@@ -264,6 +295,7 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
     normalizedImageSource = safeHttpsUrl(payload, 'image_source');
   }
   const update = payload.registration_update == null ? null : record(payload.registration_update);
+  const rebind = normalizeStorageRebind(payload.storage_rebind);
   if (update && (
     imageDownloadRequired || imageSource === 'unavailable'
     || Object.keys(update).sort().join(',') !== [
@@ -272,6 +304,12 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
     ].join(',')
   )) {
     throw new PackVMLifecycleProtocolError('Tobkiri returned an invalid PackVM registration update.');
+  }
+  if (rebind && (!update
+    || rebind.previous_attestation_digest !== update.previous_attestation_digest
+    || rebind.current_device === rebind.previous_device
+    || rebind.instance_root !== `${rebind.state_root}/instances/${payload.instance}`)) {
+    throw new PackVMLifecycleProtocolError('Tobkiri returned inconsistent PackVM storage evidence.');
   }
   return {
     backend_id: stringField(payload, 'backend_id', {identifier: true}),
@@ -289,6 +327,7 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
     ceremony_nonce: stringField(payload, 'ceremony_nonce'),
     plan_digest: stringField(payload, 'plan_digest', {digest: true}),
     confirmation: stringField(payload, 'confirmation'),
+    storage_rebind: rebind,
     registration_update: update ? {
       previous_attestation_digest: stringField(update, 'previous_attestation_digest', {digest: true}),
       previous_config_digest: stringField(update, 'previous_config_digest', {digest: true}),
@@ -309,6 +348,7 @@ export function normalizePackVMConsent(value: unknown): ApiPackVMConsent {
     image_size_bytes: positiveIntegerField(payload, 'image_size_bytes'),
     image_download_approved: booleanField(payload, 'image_download_approved'),
     previous_attestation_digest: optionalDigest(payload, 'previous_attestation_digest'),
+    storage_rebind_digest: optionalDigest(payload, 'storage_rebind_digest'),
   };
 }
 

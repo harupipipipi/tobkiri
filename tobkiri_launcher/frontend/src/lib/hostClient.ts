@@ -247,6 +247,7 @@ export function consentPackVM(
     confirmation: string;
     approve_image_download: boolean;
     previous_attestation_digest?: string;
+    storage_rebind_digest?: string;
   },
 ): Promise<ApiPackVMConsent> {
   return packVMLifecyclePost<unknown>('consent', payload).then(normalizePackVMConsent);

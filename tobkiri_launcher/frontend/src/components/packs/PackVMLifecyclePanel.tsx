@@ -157,6 +157,7 @@ export function PackVMLifecyclePanel() {
   const [consent, setConsent] = useState<ApiPackVMConsent | null>(null);
   const [operation, setOperation] = useState<ApiPackVMOperation | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
+  const [storageConsentChecked, setStorageConsentChecked] = useState(false);
   const [cleanupText, setCleanupText] = useState('');
   const [cleanupRequested, setCleanupRequested] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -206,6 +207,7 @@ export function PackVMLifecyclePanel() {
       setPlan(null);
       setConsent(null);
       setConsentChecked(false);
+      setStorageConsentChecked(false);
       setOperation(null);
       throw new Error('PackVM returned a stale or tampered operation record.');
     }
@@ -246,6 +248,7 @@ export function PackVMLifecyclePanel() {
         setPlan(null);
         setConsent(null);
         setConsentChecked(false);
+        setStorageConsentChecked(false);
         setOperation(null);
       }
       setLifecycleError(safeUserError(
@@ -285,6 +288,7 @@ export function PackVMLifecyclePanel() {
       setPlan(nextPlan);
       setConsent(null);
       setConsentChecked(false);
+      setStorageConsentChecked(false);
       setOperation(null);
       clearPackVMOperationId();
       settledOperationRef.current = null;
@@ -296,7 +300,8 @@ export function PackVMLifecyclePanel() {
   };
 
   const handleConsent = async () => {
-    if (!plan || !consentChecked || !beginAction('consent')) return;
+    if (!plan || !consentChecked || (plan.storage_rebind && !storageConsentChecked)
+      || !beginAction('consent')) return;
     try {
       const nextConsent = await consentPackVM({
         plan_digest: plan.plan_digest,
@@ -306,6 +311,7 @@ export function PackVMLifecyclePanel() {
         ...(plan.registration_update ? {
           previous_attestation_digest: plan.registration_update.previous_attestation_digest,
         } : {}),
+        ...(plan.storage_rebind ? {storage_rebind_digest: plan.storage_rebind.digest} : {}),
       });
       if (
         nextConsent.plan_digest !== plan.plan_digest
@@ -315,6 +321,7 @@ export function PackVMLifecyclePanel() {
         || nextConsent.image_download_approved !== consentChecked
         || (nextConsent.previous_attestation_digest ?? null)
           !== (plan.registration_update?.previous_attestation_digest ?? null)
+        || (nextConsent.storage_rebind_digest ?? null) !== (plan.storage_rebind?.digest ?? null)
       ) {
         throw new Error('PackVM returned consent for a different pinned plan.');
       }
@@ -419,7 +426,8 @@ export function PackVMLifecyclePanel() {
     && plan.launcher_reason === null
     && plan.image_source !== 'unavailable';
   const canConsent = Boolean(
-    planIsAvailable && consentChecked && !consent && !pendingAction,
+    planIsAvailable && consentChecked && (!plan?.storage_rebind || storageConsentChecked)
+      && !consent && !pendingAction,
   );
   const canProvision = Boolean(
     planIsAvailable && consent && !operation && !pendingAction,
@@ -525,7 +533,8 @@ export function PackVMLifecyclePanel() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-text-main">
-                    {plan.registration_update ? 'Update the existing PackVM registration' : 'Pinned plan'}
+                    {plan.storage_rebind ? 'Review the changed PackVM storage identity'
+                      : plan.registration_update ? 'Update the existing PackVM registration' : 'Pinned plan'}
                   </p>
                   <p className="mt-1 text-xs text-text-muted">
                     Review these Host-provided facts before consenting. The Launcher never displays the Host executable path.
@@ -548,6 +557,15 @@ export function PackVMLifecyclePanel() {
                   {digestRow('Previous host build', plan.registration_update.previous_host_build_digest)}
                   {digestRow('New asset manifest', plan.registration_update.asset_manifest_digest)}
                 </> : null}
+                {plan.storage_rebind ? <>
+                  {digestRow('Existing storage location', plan.storage_rebind.state_root)}
+                  {digestRow('Existing instance location', plan.storage_rebind.instance_root)}
+                  {digestRow('Previous device number', String(plan.storage_rebind.previous_device))}
+                  {digestRow('Current device number', String(plan.storage_rebind.current_device))}
+                  {digestRow('Unchanged storage inode', String(plan.storage_rebind.state_root_inode))}
+                  {digestRow('Unchanged instance inode', String(plan.storage_rebind.instance_root_inode))}
+                  {digestRow('Storage confirmation digest', plan.storage_rebind.digest)}
+                </> : null}
                 {digestRow('Image source', plan.image_source)}
                 {digestRow('Image size', formatPackVMBytes(plan.image_size_bytes))}
                 {digestRow('Image digest', plan.image_digest)}
@@ -559,6 +577,15 @@ export function PackVMLifecyclePanel() {
                   ? `${formatPackVMBytes(plan.image_size_bytes)} for the pinned image download`
                   : 'No image download required')}
               </dl>
+              {plan.storage_rebind ? (
+                <p className="mt-4 text-sm text-text-main" role="note">
+                  The mounted device number changed. The Host verified the original registration,
+                  directory paths and inodes, ownership, and immutable image. The old registration
+                  has no volume UUID, so these checks do not prove that storage was never moved
+                  or restored. Only continue if you recognize this existing storage and authorize
+                  registering its current identity. The original registration will be retained.
+                </p>
+              ) : null}
               {plan.launcher_reason ? (
                 <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200" role="status">
                   {userSafePackVMError(plan.launcher_reason)}
@@ -588,6 +615,18 @@ export function PackVMLifecyclePanel() {
                         : 'I reviewed this exact plan and authorize the pinned image action shown above.'}
                     </span>
                   </label>
+                  {plan.storage_rebind ? (
+                    <label className="flex cursor-pointer items-start gap-3 text-sm text-text-main">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-border accent-accent"
+                        checked={storageConsentChecked}
+                        onChange={(event) => setStorageConsentChecked(event.target.checked)}
+                        disabled={Boolean(pendingAction)}
+                      />
+                      <span>I recognize this existing storage location and explicitly authorize its changed device identity.</span>
+                    </label>
+                  ) : null}
                   <Button
                     onClick={() => void handleConsent()}
                     disabled={!canConsent}

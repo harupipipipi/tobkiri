@@ -132,6 +132,17 @@ export interface ApiPackVMRegistrationUpdate {
   asset_manifest_digest: string;
 }
 
+export interface ApiPackVMStorageRebind {
+  digest: string;
+  previous_attestation_digest: string;
+  state_root: string;
+  instance_root: string;
+  previous_device: number;
+  current_device: number;
+  state_root_inode: number;
+  instance_root_inode: number;
+}
+
 export interface ApiPackVMProvisioningPlan {
   backend_id: string;
   instance: string;
@@ -149,6 +160,7 @@ export interface ApiPackVMProvisioningPlan {
   plan_digest: string;
   confirmation: string;
   registration_update?: ApiPackVMRegistrationUpdate | null;
+  storage_rebind?: ApiPackVMStorageRebind | null;
 }
 
 export interface ApiPackVMConsent {
@@ -159,6 +171,7 @@ export interface ApiPackVMConsent {
   image_size_bytes: number;
   image_download_approved: boolean;
   previous_attestation_digest?: string | null;
+  storage_rebind_digest?: string | null;
 }
 
 export type ApiPackVMOperationState =

@@ -64,6 +64,7 @@ from ecosystem.defaultspack.backend.sandbox.isolation.packvm_image_cache import 
     PackVMPinnedImage,
 )
 from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_registration import (
+    prepare_storage_rebind,
     retain_registration,
 )
 
@@ -692,10 +693,12 @@ class MacOSVZProvisioner:
                 guest_digest = manifest.agent_digest
                 helper_digest = manifest.helper_digest
             update = None
+            storage_rebind = None
             if manifest is not None and (self.state_path.exists() or self.state_path.is_symlink()):
                 try:
                     state = self._load_state()
-                    self._verify_registration_source(state, manifest)
+                    candidate_rebind = prepare_storage_rebind(self._state_dir, state)
+                    self._verify_registration_source(state, manifest, candidate_rebind)
                     update = {
                         "previous_attestation_digest": str(state["attestation_digest"]),
                         "previous_config_digest": str(state["cloud_template_digest"]),
@@ -703,6 +706,7 @@ class MacOSVZProvisioner:
                         "previous_host_build_digest": str(state["host_build_digest"]),
                         "asset_manifest_digest": manifest.manifest_digest,
                     }
+                    storage_rebind = candidate_rebind
                     cache_status, cache_reason = "verified_source", None
                 except (OSError, ValueError) as exc:
                     issue = str(exc)
@@ -737,6 +741,7 @@ class MacOSVZProvisioner:
                 "runtime_path_status": runtime_status,
                 "ceremony_nonce": nonce,
                 "registration_update": update,
+                "storage_rebind": storage_rebind,
             }
             plan_digest = _canonical_digest(facts)
             self._pending.clear()
@@ -767,6 +772,7 @@ class MacOSVZProvisioner:
                 plan_digest=plan_digest,
                 confirmation=f"{PACKVM_CONFIRMATION_PREFIX} {VZ_INSTANCE} {plan_digest[7:19]}",
                 registration_update=update,
+                storage_rebind=storage_rebind,
             )
             self._pending[nonce] = plan
             return plan
@@ -795,7 +801,10 @@ class MacOSVZProvisioner:
         manifest = self._require_manifest()
         if plan.registration_update is not None:
             return self._update_registration(request, plan, manifest, cancelled)
-        if request.previous_attestation_digest is not None:
+        if (
+            request.previous_attestation_digest is not None
+            or request.storage_rebind_digest is not None
+        ):
             raise ValueError("PackVM VZ create plan cannot update a registration")
         self._require_host_capacity(plan.image_download_bytes)
         authority = self._image_authority(
@@ -1425,6 +1434,8 @@ class MacOSVZProvisioner:
             "previous_attestation_digest"
         ):
             raise ValueError("PackVM VZ registration recovery proof changed")
+        if state.get("storage_rebind_digest") != expected_proof.get("storage_rebind_digest"):
+            raise ValueError("PackVM VZ storage recovery proof changed")
         for key in _recovery_fields():
             state_key = "cloud_template_digest" if key == "config_digest" else key
             if not _secure_equal(state.get(state_key), expected_proof.get(key)):
@@ -1435,12 +1446,13 @@ class MacOSVZProvisioner:
         return doctor
 
     def _verify_registration_source(
-        self, state: Mapping[str, Any], manifest: MacOSVZAssetManifest
+        self, state: Mapping[str, Any], manifest: MacOSVZAssetManifest,
+        storage_rebind: Mapping[str, str | int] | None = None,
     ) -> None:
         """Authenticate old ownership while requiring the same immutable image."""
         if state.get("stopped") is not False or state.get("protocol_ready") is not True:
             raise ValueError("PackVM VZ registration is stopped or incomplete")
-        self._verify_registration_roots(state)
+        self._verify_registration_roots(state, storage_rebind)
         for key, value in (
             ("image_digest", manifest.image_digest),
             ("image_source", manifest.image_source),
@@ -1456,7 +1468,20 @@ class MacOSVZProvisioner:
                 raise ValueError("PackVM VZ previous registration bindings are invalid")
         self._verify_instance_files(root, manifest)
 
-    def _verify_registration_roots(self, state: Mapping[str, Any]) -> None:
+    def _verify_registration_roots(
+        self, state: Mapping[str, Any],
+        storage_rebind: Mapping[str, str | int] | None = None,
+    ) -> None:
+        if storage_rebind is not None:
+            # Only the pending, separately acknowledged plan may bind new device
+            # numbers. Doctor, execution and cleanup keep their strict checks.
+            if prepare_storage_rebind(self._state_dir, state) != storage_rebind:
+                raise ValueError("PackVM VZ storage re-registration plan changed")
+            state = {
+                **state,
+                "vz_state_root_device": storage_rebind["current_device"],
+                "instance_root_device": storage_rebind["current_device"],
+            }
         for key, value in self.recovery_identity().items():
             if key != "vz_provisioner_digest" and state.get(key) != value:
                 raise ValueError(f"PackVM VZ {key} changed")
@@ -1475,6 +1500,10 @@ class MacOSVZProvisioner:
         assert update is not None
         if request.previous_attestation_digest != update["previous_attestation_digest"]:
             raise ValueError("PackVM VZ registration update requires exact explicit consent")
+        rebind = plan.storage_rebind
+        rebind_digest = rebind["digest"] if rebind is not None else None
+        if request.storage_rebind_digest != rebind_digest:
+            raise ValueError("PackVM VZ storage re-registration requires exact explicit consent")
         if (
             plan.image_download_required
             or manifest.manifest_digest != update["asset_manifest_digest"]
@@ -1494,7 +1523,7 @@ class MacOSVZProvisioner:
             state = self._load_state()
             if state["attestation_digest"] != update["previous_attestation_digest"]:
                 raise ValueError("PackVM VZ registration changed after preparation")
-            self._verify_registration_source(state, manifest)
+            self._verify_registration_source(state, manifest, rebind)
             _available, reason = self._host_capacity(3 * _MAX_STATE_BYTES)
             if reason:
                 raise ValueError(reason)
@@ -1505,7 +1534,10 @@ class MacOSVZProvisioner:
                         "packvm_image_cancelled", "PackVM VZ registration update was cancelled"
                     )
                 self._assert_state_current(state)
-                self._verify_registration_roots(state)
+                if rebind is not None:
+                    self._verify_registration_source(state, manifest, rebind)
+                else:
+                    self._verify_registration_roots(state)
                 if self._require_manifest() != manifest:
                     raise ValueError("PackVM VZ registration plan assets changed")
 
@@ -1522,6 +1554,7 @@ class MacOSVZProvisioner:
                 **binding,
                 **self.recovery_identity(),
                 "previous_attestation_digest": state["attestation_digest"],
+                "storage_rebind_digest": rebind_digest,
                 "cloud_template_digest": manifest.config_digest,
                 "helper_digest": manifest.helper_digest,
                 "guest_runner_digest": manifest.agent_digest,
@@ -1529,6 +1562,8 @@ class MacOSVZProvisioner:
                 "host_build_digest": manifest.helper_digest,
                 "registration_updated_unix": int(time.time()),
             })
+            if rebind is not None:
+                updated["instance_root_device"] = rebind["current_device"]
             updated = self._write_attested_state(updated, before_publish=before_publish)
             self._audit("registration_updated", str(updated["attestation_digest"]))
             return self.doctor()

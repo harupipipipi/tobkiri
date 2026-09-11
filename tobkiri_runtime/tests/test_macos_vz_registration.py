@@ -20,12 +20,15 @@ from tests.test_macos_vz_provisioner import (
 )
 
 
-@pytest.fixture
-def registration_case(attested_provisioner: Any) -> Any:  # noqa: F811
+@pytest.fixture(params=["registration", "storage_rebind"])
+def registration_case(attested_provisioner: Any, request: Any) -> Any:  # noqa: F811
     manager, manifest, root = attested_provisioner
     state = manager._load_state()
     state["protocol_ready"] = True
     state["vz_provisioner_digest"] = _digest(b"previous source")
+    if request.param == "storage_rebind":
+        state["vz_state_root_device"] -= 1
+        state["instance_root_device"] -= 1
     manager._write_attested_state(state)
     helper = _private_file(manifest.helper_path.with_name("updated-helper"), b"new helper", 0o700)
     runner = _private_file(manifest.agent_path.with_name("updated-runner"), b"new runner", 0o444)
@@ -50,6 +53,7 @@ def _request(manager: Any) -> tuple[Any, PackVMProvisioningRequest]:
         ceremony_nonce=plan.ceremony_nonce,
         confirmation=plan.confirmation,
         previous_attestation_digest=plan.registration_update["previous_attestation_digest"],
+        storage_rebind_digest=plan.storage_rebind["digest"] if plan.storage_rebind else None,
         session_digest=_digest(b"session"),
     )
 
@@ -66,6 +70,7 @@ def _proof(manager: Any, plan: Any, request: PackVMProvisioningRequest) -> dict[
         "guest_runner_digest": plan.guest_runner_digest,
         "host_build_digest": plan.host_build_digest,
         "previous_attestation_digest": request.previous_attestation_digest,
+        "storage_rebind_digest": request.storage_rebind_digest,
         **manager.recovery_identity(),
     }
 
@@ -99,6 +104,9 @@ def test_registration_updates_only_attested_metadata_and_recovers_without_replay
     assert updated["helper_digest"] == manifest.helper_digest
     assert updated["previous_attestation_digest"] == old["attestation_digest"]
     assert updated["instance_root_inode"] == old["instance_root_inode"]
+    assert updated["instance_root_device"] == root.stat().st_dev
+    assert updated["vz_state_root_device"] == manager.state_path.parent.stat().st_dev
+    assert updated["storage_rebind_digest"] == request.storage_rebind_digest
     retained = manager.state_path.parent / "registration-history" / (
         old["attestation_digest"][7:] + ".json"
     )
@@ -112,6 +120,8 @@ def test_registration_updates_only_attested_metadata_and_recovers_without_replay
         manager.provision(request)
     with pytest.raises(ValueError, match="recovery proof changed"):
         manager.recover_provision_operation({**proof, "previous_attestation_digest": _digest(b"other")})
+    with pytest.raises(ValueError, match="recovery proof changed"):
+        manager.recover_provision_operation({**proof, "storage_rebind_digest": _digest(b"other")})
 
 
 @pytest.mark.parametrize("ack", [None, _digest(b"other"), "correct"])
@@ -123,13 +133,15 @@ def test_update_consent_requires_previous_registration_before_host_operation(
     plan = lifecycle.prepare(session_id="panel")
     payload = {key: plan[key] for key in ("plan_digest", "ceremony_nonce", "confirmation")}
     payload["approve_image_download"] = False
+    if plan["storage_rebind"]:
+        payload["storage_rebind_digest"] = plan["storage_rebind"]["digest"]
     if ack is not None:
         payload["previous_attestation_digest"] = (
             plan["registration_update"]["previous_attestation_digest"] if ack == "correct" else ack
         )
     before = manager.state_path.read_bytes()
     if ack != "correct":
-        with pytest.raises(ValueError, match="exact explicit consent"):
+        with pytest.raises(ValueError, match="exact explicit consent|typed contract"):
             lifecycle.consent(payload, session_id="panel")
         assert manager.state_path.read_bytes() == before
         return
@@ -211,6 +223,85 @@ def test_update_failure_retains_existing_registration(
     assert manager.state_path.read_bytes() == before
     assert not manager.mutation_claim_path.exists()
     assert not manager.recovery_path.exists()
+
+
+@pytest.mark.parametrize("ack", [None, _digest(b"other"), True])
+def test_storage_rebind_requires_separate_exact_consent_in_host_and_provisioner(
+    registration_case: Any, ack: Any,
+) -> None:
+    manager, _manifest, _root = registration_case
+    # Exercise the storage path for either fixture, without changing real mounts.
+    state = manager._load_state()
+    state["vz_state_root_device"] = manager.state_path.parent.stat().st_dev - 1
+    state["instance_root_device"] = state["vz_state_root_device"]
+    manager._write_attested_state(state)
+    before = manager.state_path.read_bytes()
+    lifecycle = PackVMLifecycleV4(manager)
+    plan = lifecycle.prepare(session_id="panel")
+    assert plan["storage_rebind"]
+    assert manager.state_path.read_bytes() == before
+    assert not manager.doctor().ready
+    with pytest.raises(ValueError, match="changed"):
+        manager._verify_registration_roots(manager._load_state())
+    payload = {key: plan[key] for key in ("plan_digest", "ceremony_nonce", "confirmation")}
+    payload.update({
+        "approve_image_download": False,
+        "previous_attestation_digest": plan["registration_update"]["previous_attestation_digest"],
+    })
+    if ack is not None:
+        payload["storage_rebind_digest"] = ack
+    with pytest.raises(ValueError, match="exact explicit consent"):
+        lifecycle.consent(payload, session_id="panel")
+    _plan, request = _request(manager)
+    with pytest.raises(ValueError, match="exact explicit consent"):
+        manager.provision(replace(request, storage_rebind_digest=ack))
+    assert manager.state_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("fault", ["inode", "path", "private_mode", "owner", "mixed_device", "boolean_device"])
+def test_storage_proposal_does_not_approve_changed_ownership_or_directories(
+    registration_case: Any, monkeypatch: pytest.MonkeyPatch, fault: str,
+) -> None:
+    manager, _manifest, root = registration_case
+    state = manager._load_state()
+    if fault == "inode":
+        state["vz_state_root_inode"] += 1
+    elif fault == "path":
+        state["instance_root"] = str(root.parent / "different")
+    elif fault == "private_mode":
+        root.chmod(0o750)
+    elif fault == "owner":
+        monkeypatch.setattr(history.os, "getuid", lambda: root.stat().st_uid + 1)
+    elif fault == "mixed_device":
+        state["instance_root_device"] += 1
+    else:
+        state["vz_state_root_device"] = True
+    before = manager.state_path.read_bytes()
+    with pytest.raises(ValueError, match="storage re-registration"):
+        history.prepare_storage_rebind(manager.state_path.parent, state)
+    assert manager.state_path.read_bytes() == before
+
+
+def test_storage_update_revalidates_files_after_history_retention(
+    registration_case: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager, _manifest, _root = registration_case
+    state = manager._load_state()
+    state["vz_state_root_device"] = manager.state_path.parent.stat().st_dev - 1
+    state["instance_root_device"] = state["vz_state_root_device"]
+    manager._write_attested_state(state)
+    _plan, request = _request(manager)
+    before = manager.state_path.read_bytes()
+    original = vz.retain_registration
+
+    def replace_image_after_retention(*args: Any, **kwargs: Any) -> None:
+        original(*args, **kwargs)
+        Path(state["base_image_path"]).write_bytes(b"changed after initial verification")
+
+    monkeypatch.setattr(vz, "retain_registration", replace_image_after_retention)
+    with pytest.raises(ValueError, match="immutable base image changed"):
+        manager.provision(request)
+    assert manager.state_path.read_bytes() == before
 
 
 @pytest.mark.parametrize("published", [False, True])

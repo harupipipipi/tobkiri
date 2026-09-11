@@ -147,6 +147,7 @@ class PackVMProvisioningPlan:
     plan_digest: str
     confirmation: str
     registration_update: dict[str, str] | None = None
+    storage_rebind: dict[str, str | int] | None = None
 
 
 @dataclass(frozen=True)

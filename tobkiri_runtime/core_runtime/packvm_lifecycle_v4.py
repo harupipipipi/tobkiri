@@ -58,6 +58,7 @@ class PackVMProvisioningRequest:
     session_digest: str | None = None
     operation_id: str | None = None
     previous_attestation_digest: str | None = None
+    storage_rebind_digest: str | None = None
 
 
 class PackVMLifecycleCancelled(RuntimeError):
@@ -206,7 +207,8 @@ class PackVMLifecycleV4:
             "approve_image_download",
         }
         if set(payload) not in (
-            expected_keys, expected_keys | {"previous_attestation_digest"}
+            expected_keys, expected_keys | {"previous_attestation_digest"},
+            expected_keys | {"previous_attestation_digest", "storage_rebind_digest"},
         ):
             raise ValueError("PackVM consent payload does not match the typed contract")
         plan_digest = payload.get("plan_digest")
@@ -238,9 +240,16 @@ class PackVMLifecycleV4:
             )
             if update is not None:
                 expected_keys.add("previous_attestation_digest")
+            rebind = plan.storage_rebind
+            rebind_digest = rebind["digest"] if rebind is not None else None
+            if rebind is not None:
+                if update is None or not isinstance(rebind_digest, str):
+                    raise ValueError("PackVM storage re-registration plan is invalid")
+                expected_keys.add("storage_rebind_digest")
             if (
                 set(payload) != expected_keys
                 or payload.get("previous_attestation_digest") != previous_attestation
+                or payload.get("storage_rebind_digest") != rebind_digest
             ):
                 raise ValueError("PackVM registration update requires exact explicit consent")
             if plan.image_download_required and not approve_download:
@@ -265,6 +274,7 @@ class PackVMLifecycleV4:
                         approve_image_download=approve_download,
                         session_digest=current_session_digest,
                         previous_attestation_digest=previous_attestation,
+                        storage_rebind_digest=rebind_digest,
                     ),
                     plan,
                 )
@@ -276,6 +286,7 @@ class PackVMLifecycleV4:
                 "image_size_bytes": plan.image_size_bytes,
                 "image_download_approved": approve_download,
                 "previous_attestation_digest": previous_attestation,
+                "storage_rebind_digest": rebind_digest,
             }
 
     def provision(
@@ -332,6 +343,8 @@ class PackVMLifecycleV4:
                     "host_build_digest": plan.host_build_digest,
                     **({"previous_attestation_digest": request.previous_attestation_digest}
                        if request.previous_attestation_digest is not None else {}),
+                    **({"storage_rebind_digest": request.storage_rebind_digest}
+                       if request.storage_rebind_digest is not None else {}),
                     **self._provisioner.recovery_identity(),
                 },
                 "updated_unix": int(time.time()),
