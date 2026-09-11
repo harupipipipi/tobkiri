@@ -30,12 +30,22 @@ def worker_command(*, isolated: bool = True) -> tuple[str, ...]:
     return (sys.executable, *(["-I"] if isolated else []), "-B", "-c", code)
 
 
-def invoke_worker(request: object, *, isolated: bool = True) -> subprocess.CompletedProcess:
+def invoke_worker(
+    request: object,
+    *,
+    isolated: bool = True,
+    rss_limit: int | None = None,
+) -> subprocess.CompletedProcess:
     """Launch a real child; fixture roots are trusted, never read from its request."""
     return subprocess.run(
         worker_command(isolated=isolated),
         input=json.dumps(request).encode(), capture_output=True,
-        env={}, close_fds=True, timeout=15, check=False,
+        env=(
+            {}
+            if rss_limit is None
+            else {"TOBKIRI_WASM_WORKER_RSS_LIMIT_BYTES": str(rss_limit)}
+        ),
+        close_fds=True, timeout=15, check=False,
     )
 
 
@@ -60,6 +70,15 @@ def test_supervised_real_component_returns_after_child_exit() -> None:
     owned = ComponentWorker(worker_command())
     assert owned.invoke(worker_request(), cancelled=threading.Event()) == {"ok": True}
     assert owned._process is None
+
+
+def test_child_worker_rejects_success_above_os_peak_rss_limit() -> None:
+    result = invoke_worker(worker_request(), rss_limit=1)
+    assert result.returncode == 3
+    assert json.loads(result.stdout) == {
+        "status": "error", "code": "wasm_worker_memory_limit"
+    }
+    assert result.stderr == b""
 
 
 @pytest.mark.parametrize("change", [

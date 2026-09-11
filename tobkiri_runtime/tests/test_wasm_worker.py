@@ -228,6 +228,19 @@ def test_environment_and_inheritable_descriptors_are_not_forwarded(
         }
 
 
+def test_trusted_resident_limit_is_forwarded_to_worker() -> None:
+    script = (
+        "import json, os, sys; sys.stdin.buffer.read(); "
+        "print(json.dumps({'status':'ok','data':{'limit':os.getenv("
+        "'TOBKIRI_WASM_WORKER_RSS_LIMIT_BYTES')}}))"
+    )
+    owned = ComponentWorker(
+        (sys.executable, "-I", "-B", "-c", script),
+        rss_limit=123_456_789,
+    )
+    assert owned.invoke({}, cancelled=threading.Event()) == {"limit": "123456789"}
+
+
 @pytest.mark.parametrize("timeout", [True, 0, -1, 61, float("nan"), float("inf")])
 def test_invalid_deadline_does_not_start(timeout: float, children: list) -> None:
     with pytest.raises(ValueError, match="deadline"):

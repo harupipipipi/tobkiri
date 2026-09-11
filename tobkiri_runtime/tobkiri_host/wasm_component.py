@@ -134,8 +134,10 @@ def worker_main() -> int:
     # A supervisor supplies verified import roots, never a request-supplied path.
     if not sys.flags.isolated:
         return 2
+    raw_rss_limit = os.environ.get("TOBKIRI_WASM_WORKER_RSS_LIMIT_BYTES")
     os.environ.clear()
     try:
+        rss_limit = _parse_worker_rss_limit(raw_rss_limit)
         # These limits apply before importing the engine or compiling the guest.
         # RLIMIT_RSS/AS are deliberately not claimed as a macOS memory sandbox.
         for kind, ceiling in (
@@ -163,17 +165,51 @@ def worker_main() -> int:
         engine = PureComponent(binary, request["digest"])
         result = engine.invoke(request["operation_id"], request["payload"])
         response = {"status": "ok", "data": result}
+        encoded_response = canonical_json(response)
+        _enforce_worker_peak_rss(resource, sys.platform, rss_limit)
         exit_code = 0
+    except MemoryError:
+        encoded_response = canonical_json(
+            {"status": "error", "code": "wasm_worker_memory_limit"}
+        )
+        exit_code = 3
     except (
         ValueError, TypeError, RecursionError, OSError, ImportError,
         InvalidArtifactError, ProviderExecutionError,
     ):
-        response = {"status": "error", "code": "wasm_worker_failed"}
+        encoded_response = canonical_json(
+            {"status": "error", "code": "wasm_worker_failed"}
+        )
         exit_code = 1
     # No guest exception, payload, engine traceback or secret enters diagnostics.
-    sys.stdout.buffer.write(canonical_json(response))
+    sys.stdout.buffer.write(encoded_response)
     sys.stdout.buffer.flush()
     return exit_code
+
+
+def _parse_worker_rss_limit(raw: str | None) -> int | None:
+    """Parse the trusted supervisor's optional resident-memory ceiling."""
+    if raw is None:
+        return None
+    if not raw.isascii() or not raw.isdecimal() or raw.startswith("0"):
+        raise ValueError("invalid worker resident memory limit")
+    limit = int(raw)
+    if limit > 2 * 1024 * 1024 * 1024:
+        raise ValueError("invalid worker resident memory limit")
+    return limit
+
+
+def _enforce_worker_peak_rss(resource: Any, platform: str, limit: int | None) -> None:
+    """Reject a success whose process high-water RSS exceeded its ceiling."""
+    if limit is None:
+        return
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if platform.startswith("linux"):
+        peak *= 1024
+    elif platform != "darwin":
+        raise OSError("worker peak resident memory is unavailable")
+    if peak > limit:
+        raise MemoryError("worker peak resident memory exceeds size limit")
 
 
 if __name__ == "__main__":

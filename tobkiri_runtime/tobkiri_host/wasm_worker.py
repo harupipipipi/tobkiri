@@ -23,6 +23,7 @@ from .errors import ProviderExecutionError
 _INPUT_LIMIT = 45 * 1024 * 1024
 _OUTPUT_LIMIT = 2 * 1024 * 1024
 _DEFAULT_RSS_LIMIT = 512 * 1024 * 1024
+_RSS_LIMIT_ENV = "TOBKIRI_WASM_WORKER_RSS_LIMIT_BYTES"
 
 
 class ComponentWorker:
@@ -80,7 +81,10 @@ class ComponentWorker:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env={},
+                # This is trusted supervisor configuration, not request or
+                # ambient process state. worker_main consumes it before
+                # clearing its environment and checks the OS high-water RSS.
+                env={_RSS_LIMIT_ENV: str(self._rss_limit)},
                 close_fds=True,
                 cwd="/",
                 start_new_session=True,
@@ -95,6 +99,8 @@ class ComponentWorker:
                 cancelled=cancelled,
                 rss_limit=self._rss_limit,
             )
+            if self._process.returncode == 3:
+                raise MemoryError("Wasm worker reported a peak RSS violation")
             if self._process.returncode != 0:
                 raise ProviderExecutionError("Wasm worker exited unsuccessfully")
         except InterruptedError:
