@@ -296,8 +296,8 @@ def test_active_shell_policy_pack_is_not_a_read_only_compatibility_projection() 
     assert manifest["migration"]["compatibility"] == "none"
 
 
-def test_default_tool_definitions_are_sealed_data_without_execution_grants() -> None:
-    """Every shipped definition participates in the Pack's artifact identity."""
+def test_default_tool_definitions_are_sealed_beside_finite_owned_runtime() -> None:
+    """Tool definitions remain data beside the one owned Calculator runtime."""
     record = next(
         item for item in _catalog()["packs"]
         if item["pack_id"] == "rumi_default_tools_pack"
@@ -326,11 +326,21 @@ def test_default_tool_definitions_are_sealed_data_without_execution_grants() -> 
             item["path"]: item["digest"] for item in document["artifacts"]
             if item["path"].startswith("tools/")
         } == definitions
-    assert manifest["pack"]["kind"] == "application"
-    assert manifest["requirements"]["execution_boundary"] == "declarative_only"
-    assert manifest["requirements"]["capabilities"] == []
-    assert manifest["functions"] == manifest["contracts"] == []
-    assert manifest["operation_catalog"] == manifest["provider_catalog"] == []
+    assert manifest["pack"]["kind"] == "host_extension"
+    assert manifest["requirements"]["execution_boundary"] == "host_brokered"
+    assert manifest["requirements"]["capabilities"] == ["tool.local.operation"]
+    assert [item["id"] for item in manifest["functions"]] == [
+        "rumi_default_tools_pack.calculator"
+    ]
+    assert [item["contract_id"] for item in manifest["contracts"]] == [
+        "tobkiri.service.tool.local.operation.v1"
+    ]
+    assert [item["operation_id"] for item in manifest["operation_catalog"]] == [
+        "rumi_default_tools_pack.calculator-evaluate"
+    ]
+    assert [item["provider_id"] for item in manifest["provider_catalog"]] == [
+        "rumi_default_tools_pack.calculator"
+    ]
 
 
 @pytest.mark.parametrize("check", [False, True])
