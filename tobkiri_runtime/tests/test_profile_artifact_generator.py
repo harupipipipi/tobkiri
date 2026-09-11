@@ -98,6 +98,27 @@ def test_saved_stop_caller_survives_profile_generation() -> None:
     }
 
 
+def test_saved_coordinator_lifecycle_caller_survives_profile_generation() -> None:
+    """The saved Function must begin through its captured lifecycle edge."""
+    rendered = _render(BUNDLE)
+    profile = json.loads(rendered[_paths(BUNDLE)["compatibility"]])
+    edges = [
+        edge
+        for edge in profile["requested_edges"]
+        if edge["caller_function_id"]
+        == "rumi_turn_runtime_pack.turn-runtime.saved"
+        and edge["operation_id"] == "rumi_turn_runtime_pack.turn-lifecycle"
+    ]
+    assert len(edges) == 1
+    assert edges[0]["target_provider_id"] == (
+        "rumi_turn_runtime_pack.turn-runtime.lifecycle"
+    )
+    assert edges[0]["requested_scope_template"]["dimensions"] == {
+        "contract": ["tobkiri.action.turn.lifecycle.v1"],
+        "operation": ["rumi_turn_runtime_pack.turn-lifecycle"],
+    }
+
+
 def test_checked_in_profile_artifacts_are_deterministic_and_schema_valid() -> None:
     rendered = _render(BUNDLE)
     assert all(path.read_bytes() == raw for path, raw in rendered.items())
