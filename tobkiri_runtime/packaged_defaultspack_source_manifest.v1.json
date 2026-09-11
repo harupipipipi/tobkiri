@@ -3206,8 +3206,8 @@
     {
       "path": "scripts/generate_defaultspack_v4_bundle.py",
       "type": "regular-file",
-      "size": 50890,
-      "sha256": "df966397703cc0c24cae238690e98d240d053835ef6182c6ae7cf0f0cbbf2231",
+      "size": 52766,
+      "sha256": "8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
       "executable": false
     },
     {
