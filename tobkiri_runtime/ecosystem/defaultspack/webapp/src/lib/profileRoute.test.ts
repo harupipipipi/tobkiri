@@ -11,6 +11,7 @@ import {
 test("profile screen paths preserve persistent IDs and declared routes", () => {
   assert.equal(profileScreenPath("profile-a", "/coding"), "/p/profile-a/coding");
   assert.equal(profileScreenPath("利用者", "/chat"), "/p/%E5%88%A9%E7%94%A8%E8%80%85/chat");
+  assert.equal(profileScreenPath("profile!'()*", "/chat"), "/p/profile%21%27%28%29%2A/chat");
   assert.deepEqual(parseProfileScreenPath("/p/profile-a/coding"), {
     profileId: "profile-a",
     applicationRoute: "/coding",
@@ -31,6 +32,8 @@ test("unqualified, malformed, traversal and noncanonical paths fail closed", () 
     "/chat",
     "/p/",
     "/p/profile%2Fa/chat",
+    "/p/profile%2Da/chat",
+    "/p/profile%2da/chat",
     "/p/profile%ZZ/chat",
     "/p/profile-a/../chat",
     "/p/profile-a/chat/",
@@ -39,5 +42,6 @@ test("unqualified, malformed, traversal and noncanonical paths fail closed", () 
     assert.equal(parseProfileScreenPath(path), null, path);
   }
   assert.throws(() => profileScreenPath("../other", "/chat"));
+  assert.throws(() => profileScreenPath("界".repeat(43), "/chat"));
   assert.throws(() => profileScreenPath("profile-a", "/chat?code=x"));
 });

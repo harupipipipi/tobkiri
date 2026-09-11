@@ -255,11 +255,28 @@ pub(crate) fn profile_id_from_screen_route(route: &str) -> Result<Option<String>
             .context("Profile screen route is missing its Application route")?;
         let profile_id = decode_profile_path_segment(encoded_profile)?;
         crate::host_contract::validate_profile_id(&profile_id)?;
+        if encode_profile_path_segment(&profile_id)? != encoded_profile {
+            bail!("Profile screen route identity is not canonically encoded");
+        }
         validate_unqualified_application_route(&format!("/{application_route}"))?;
         return Ok(Some(profile_id));
     }
     validate_unqualified_application_route(route)?;
     Ok(None)
+}
+
+pub(crate) fn encode_profile_path_segment(profile_id: &str) -> Result<String> {
+    crate::host_contract::validate_profile_id(profile_id)?;
+    let mut encoded = String::with_capacity(profile_id.len());
+    for byte in profile_id.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    Ok(encoded)
 }
 
 fn validate_unqualified_application_route(route: &str) -> Result<()> {
@@ -531,6 +548,7 @@ mod tests {
         for route in [
             "/p/profile-a/chat",
             "/p/%E5%88%A9%E7%94%A8%E8%80%85/coding",
+            "/p/profile%21%27%28%29%2A/chat",
             "/chat",
         ] {
             validate_application_route(route).unwrap();
@@ -539,6 +557,9 @@ mod tests {
             "/p/profile-a",
             "/p//chat",
             "/p/profile%2Fa/chat",
+            "/p/profile%2Da/chat",
+            "/p/profile%2da/chat",
+            "/p/profile!'()*/chat",
             "/p/profile-a/../chat",
             "/p/profile-a/chat?code=x",
         ] {

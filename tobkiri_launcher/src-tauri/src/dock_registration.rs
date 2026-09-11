@@ -197,9 +197,9 @@ fn application_url_with_bootstrap_code(
     route: &str,
     code: &str,
 ) -> AnyResult<String> {
-    crate::host_contract::validate_profile_id(profile_id)?;
     crate::health_check::validate_application_route(route)?;
-    let qualified_route = format!("/p/{}{}", encode_url_fragment_value(profile_id), route);
+    let encoded_profile = crate::health_check::encode_profile_path_segment(profile_id)?;
+    let qualified_route = format!("/p/{encoded_profile}{route}");
     crate::health_check::validate_application_route(&qualified_route)?;
     let mut url = Url::parse(&application_origin(port))
         .with_context(|| format!("invalid defaultspack window port: {port}"))?;
