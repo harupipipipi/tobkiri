@@ -204,9 +204,7 @@ class CapturedMcpConnectionOwner:
             # this connection, stop it, and never reconnect/replay the effect.
             with self._lock:
                 record.ready = False
-            try:
-                self._connections.disconnect(connection_id)
-            except Exception:
+            if not self._disconnect_after_failure(connection_id):
                 raise RuntimeError("MCP connection cleanup is incomplete") from None
             with self._lock:
                 self._records.pop(connection_id, None)
@@ -318,9 +316,7 @@ class CapturedMcpConnectionOwner:
                     raise PermissionError("MCP connection owner is closed")
                 record.ready = True
         except Exception:
-            try:
-                self._connections.disconnect(connection_id)
-            except Exception:
+            if not self._disconnect_after_failure(connection_id):
                 # Keep both owner records so close() can retry collection.
                 raise RuntimeError("MCP connection cleanup is incomplete") from None
             with self._lock:
@@ -332,6 +328,16 @@ class CapturedMcpConnectionOwner:
             "tools": sorted(allowed_tools),
             "connected": True,
         }
+
+    def _disconnect_after_failure(self, connection_id: str) -> bool:
+        """Retry resource collection once without retrying the remote effect."""
+        for _attempt in range(2):
+            try:
+                self._connections.disconnect(connection_id)
+            except Exception:
+                continue
+            return True
+        return False
 
     def _config(self, value: object) -> dict[str, Any]:
         # The initial owner uses explicit stdio snapshots. SSE is deliberately

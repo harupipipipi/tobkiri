@@ -245,6 +245,86 @@ def test_cancelled_in_flight_request_is_not_replayed(owner, connection_request, 
         thread.join(3)
 
 
+def test_cancelled_request_retries_only_cleanup(
+    owner, connection_request, tmp_path, monkeypatch,
+):
+    """A transient teardown race cannot replace the original cancellation."""
+    connection_id = owner.invoke(
+        _prepared_invocation(owner, connection_request)
+    )["connection_id"]
+    invocation = _call(connection_id, tool="wait")
+    disconnect = owner._connections.disconnect
+    attempts = 0
+
+    def transient_cleanup_failure(value: str) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("transient cleanup race")
+        disconnect(value)
+
+    monkeypatch.setattr(
+        owner._connections, "disconnect", transient_cleanup_failure
+    )
+    failures = []
+
+    def run() -> None:
+        try:
+            owner.invoke(invocation)
+        except BaseException as error:
+            failures.append(error)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    try:
+        until = time.monotonic() + 3
+        while (
+            not (tmp_path / "calls.jsonl").exists()
+            and time.monotonic() < until
+        ):
+            time.sleep(0.01)
+        assert (tmp_path / "calls.jsonl").exists()
+        invocation.envelope.cancellation_requested.set()
+        thread.join(1)
+        assert not thread.is_alive()
+        assert len(failures) == 1
+        assert isinstance(failures[0], InterruptedError)
+        assert attempts == 2
+        assert owner._records == {}
+        calls = (tmp_path / "calls.jsonl").read_text().splitlines()
+        assert len(calls) == 1
+    finally:
+        owner.close()
+        thread.join(3)
+
+
+def test_persistent_call_cleanup_failure_retains_resource(
+    owner, connection_request, monkeypatch,
+):
+    """Two failed cleanup attempts keep the fenced resource for owner close."""
+    connection_id = owner.invoke(
+        _prepared_invocation(owner, connection_request)
+    )["connection_id"]
+    attempts = 0
+
+    def cancelled_call(*args, **kwargs):
+        raise InterruptedError("cancelled after dispatch")
+
+    def failed_cleanup(value: str) -> None:
+        nonlocal attempts
+        assert value == connection_id
+        attempts += 1
+        raise RuntimeError("persistent cleanup failure")
+
+    monkeypatch.setattr(owner._connections, "call", cancelled_call)
+    monkeypatch.setattr(owner._connections, "disconnect", failed_cleanup)
+    with pytest.raises(RuntimeError, match="cleanup is incomplete"):
+        owner.invoke(_call(connection_id))
+    assert attempts == 2
+    assert owner.connection_ids == frozenset({connection_id})
+    assert owner._records[connection_id].ready is False
+
+
 def test_unknown_tool_during_registration_reaps_child(owner, connection_request):
     connection_request["allowed_tools"] = ["not-discovered"]
     with pytest.raises(RuntimeError, match="connection failed"):
