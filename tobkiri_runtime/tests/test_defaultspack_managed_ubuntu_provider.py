@@ -1573,14 +1573,21 @@ def test_managed_ubuntu_seeds_trusted_workspace_overlay(monkeypatch, tmp_path) -
     assert _workspace_seed_member(payload, "package.json") == package_path.read_bytes()
 
 
-def test_default_sandbox_api_registers_cross_platform_runtime_providers(monkeypatch) -> None:
+def test_default_sandbox_api_registers_cross_platform_runtime_providers(
+    monkeypatch, tmp_path
+) -> None:
     from ecosystem.defaultspack.blocks.sandbox import api
 
     monkeypatch.delenv("RUMI_CLOUDFLARE_SANDBOX_BRIDGE_URL", raising=False)
     monkeypatch.delenv("RUMI_CLOUDFLARE_SANDBOX_API_KEY", raising=False)
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_SANDBOX_STATE_DIR", str(tmp_path))
     service = api._SandboxApiService()
-    provider_ids = set(service.provider_registry.provider_ids())
-    cloudflare_status = service.provider_registry.doctor("cloudflare_sandbox_bridge")
+    try:
+        assert service.manager.state_dir == tmp_path
+        provider_ids = set(service.provider_registry.provider_ids())
+        cloudflare_status = service.provider_registry.doctor("cloudflare_sandbox_bridge")
+    finally:
+        service.close()
 
     assert {"linux_native", "mac_lima", "windows_wsl", "docker", "cloudflare_sandbox_bridge"} <= provider_ids
     assert cloudflare_status.ready is False
