@@ -1487,14 +1487,30 @@ def test_transport_accepts_one_mebibyte_protocol_lines_not_state_limit() -> None
         _helper_process_for_test(oversized)._exchange_line({"request": "ok"})
 
 
+@pytest.mark.parametrize(
+    ("system", "machine", "expected_reason"),
+    [
+        ("Darwin", "arm64", "packaged macOS VZ bundle binding is unavailable"),
+        (
+            "Linux",
+            "x86_64",
+            "direct PackVM VZ production requires macOS on Apple Silicon",
+        ),
+    ],
+)
 def test_lifecycle_ignores_ambient_limactl_and_reports_direct_vz_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    system: str,
+    machine: str,
+    expected_reason: str,
 ) -> None:
     """A PATH-visible Lima install never changes production lifecycle selection."""
 
     limactl = _private_file(tmp_path / "limactl", b"#!/bin/sh\nexit 99\n", 0o700)
     monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(macos_vz_provisioner.host_platform, "system", lambda: system)
+    monkeypatch.setattr(macos_vz_provisioner.host_platform, "machine", lambda: machine)
     monkeypatch.setattr(
         macos_vz_provisioner,
         "_default_state_dir",
@@ -1512,7 +1528,7 @@ def test_lifecycle_ignores_ambient_limactl_and_reports_direct_vz_failure(
     assert isinstance(lifecycle._provisioner, MacOSVZProvisioner)
     plan = lifecycle.prepare()
     assert plan["limactl"] is None
-    assert "macOS VZ" in str(plan["launcher_reason"])
+    assert plan["launcher_reason"] == expected_reason
     readiness = lifecycle.readiness_snapshot()
     assert readiness["ready"] is False
     assert readiness["platform"] == "macos-arm64"
