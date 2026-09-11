@@ -66,6 +66,7 @@ import { gestureStatusLabel } from "./AmbientPermissionSections";
 import { useFinalAnswerBridge } from "./useFinalAnswerBridge";
 import { useAmbientHandTracker } from "./useAmbientHandTracker";
 import { useAmbientRouting } from "./useAmbientRouting";
+import { applicationPathname, profileScreenUrlFromLocation } from "../lib/profileRoute";
 
 export type AmbientApprovalTarget = {
   kind: "browser" | "runtime" | "authority";
@@ -312,7 +313,8 @@ export function AmbientTriggerPanel({
   const allRumiPermissionsGranted = useMemo(() => hasAllRumiPermissions(status), [status]);
   const allOsPermissionsGranted = useMemo(() => hasAllOsPermissions(status), [status]);
   const rumiApprovalPending = rumiApprovalOpen && !allRumiPermissionsGranted;
-  const surfaceTitle = standalone && (window.location.pathname === "/finger-recording" || window.location.pathname === "/ambient-debug") ? ambientCopyJa.subtitle : ambientCopyJa.title;
+  const applicationRoute = applicationPathname(window.location.pathname);
+  const surfaceTitle = standalone && (applicationRoute === "/finger-recording" || applicationRoute === "/ambient-debug") ? ambientCopyJa.subtitle : ambientCopyJa.title;
   const pendingApproval = status?.pending_approval ?? null;
   const visibleMessage = useMemo(() => ambientRenderableMessage(message), [message]);
   const ambientDispatchGranted = Boolean(status?.permissions.rumi["ambient.trigger.dispatch"]?.granted);
@@ -1143,7 +1145,7 @@ export function AmbientTriggerPanel({
       }
       if (browserApprovalQaEnabled) {
         const approvalUrl = browserAuthorityApprovalPath(resolvedApproval.requestId, ambientAuthorityApprovalReturnPath());
-        const popup = window.open(approvalUrl, `rumi-authority-approval-${resolvedApproval.requestId}`, "width=720,height=820,noopener,noreferrer");
+        const popup = window.open(profileScreenUrlFromLocation(approvalUrl), `rumi-authority-approval-${resolvedApproval.requestId}`, "width=720,height=820,noopener,noreferrer");
         if (popup) {
           if (!options?.auto) setMessage("ブラウザ承認ページを開きました。");
           return;
@@ -1544,7 +1546,9 @@ export function AmbientTriggerPanel({
   async function openMiniChatConversation() {
     const targetConversationId = miniConversation?.id || miniConversationId || null;
     if (!targetConversationId) return;
-    const path = `/chat?chat=${encodeURIComponent(targetConversationId)}`;
+    const path = profileScreenUrlFromLocation(
+      `/chat?chat=${encodeURIComponent(targetConversationId)}`,
+    );
     try {
       if (await launchActivePresentationFromAuxiliary()) return;
     } catch (error) {

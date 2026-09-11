@@ -245,6 +245,24 @@ fn validate_contract_namespace(value: &str) -> Result<()> {
 }
 
 pub(crate) fn validate_application_route(route: &str) -> Result<()> {
+    profile_id_from_screen_route(route).map(|_| ())
+}
+
+pub(crate) fn profile_id_from_screen_route(route: &str) -> Result<Option<String>> {
+    if let Some(qualified) = route.strip_prefix("/p/") {
+        let (encoded_profile, application_route) = qualified
+            .split_once('/')
+            .context("Profile screen route is missing its Application route")?;
+        let profile_id = decode_profile_path_segment(encoded_profile)?;
+        crate::host_contract::validate_profile_id(&profile_id)?;
+        validate_unqualified_application_route(&format!("/{application_route}"))?;
+        return Ok(Some(profile_id));
+    }
+    validate_unqualified_application_route(route)?;
+    Ok(None)
+}
+
+fn validate_unqualified_application_route(route: &str) -> Result<()> {
     if route.is_empty()
         || route.len() > 2048
         || !route.starts_with('/')
@@ -258,6 +276,46 @@ pub(crate) fn validate_application_route(route: &str) -> Result<()> {
         bail!("active Application launch route is not a safe same-origin path");
     }
     Ok(())
+}
+
+fn decode_profile_path_segment(value: &str) -> Result<String> {
+    if value.is_empty() || value.len() > 512 {
+        bail!("Profile screen route identity is invalid");
+    }
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                bail!("Profile screen route identity is invalid");
+            }
+            let high =
+                hex_value(bytes[index + 1]).context("Profile screen route identity is invalid")?;
+            let low =
+                hex_value(bytes[index + 2]).context("Profile screen route identity is invalid")?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            if !bytes[index].is_ascii_alphanumeric()
+                && !matches!(bytes[index], b'-' | b'_' | b'.' | b'~')
+            {
+                bail!("Profile screen route identity is invalid");
+            }
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).context("Profile screen route identity is not UTF-8")
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        _ => None,
+    }
 }
 
 fn identity_from_health(payload: &HealthPayload) -> Result<Option<ExecutionProfileIdentity>> {
@@ -466,6 +524,26 @@ mod tests {
             hmac_sha256_hex("key", "The quick brown fox jumps over the lazy dog"),
             "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8"
         );
+    }
+
+    #[test]
+    fn profile_screen_routes_validate_identity_and_inner_application_route() {
+        for route in [
+            "/p/profile-a/chat",
+            "/p/%E5%88%A9%E7%94%A8%E8%80%85/coding",
+            "/chat",
+        ] {
+            validate_application_route(route).unwrap();
+        }
+        for route in [
+            "/p/profile-a",
+            "/p//chat",
+            "/p/profile%2Fa/chat",
+            "/p/profile-a/../chat",
+            "/p/profile-a/chat?code=x",
+        ] {
+            assert!(validate_application_route(route).is_err(), "{route}");
+        }
     }
 
     #[test]

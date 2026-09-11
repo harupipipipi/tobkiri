@@ -15,6 +15,21 @@ def test_direct_spa_route_serves_shell_after_route_miss() -> None:
     assert pattern == "/share/{token}"
 
 
+def test_profile_qualified_spa_route_serves_shell_after_route_miss() -> None:
+    server = DefaultsHttpServer(None)
+
+    handler, path_params, source, path_inject, pattern = server._match_route(
+        "GET",
+        "/p/coding-profile/coding",
+    )
+
+    assert handler == server._handle_static
+    assert path_params == {}
+    assert source == "fallback"
+    assert path_inject == {}
+    assert pattern == "/share/{token}"
+
+
 def test_api_desktops_does_not_fall_back_to_spa_or_legacy_api():
     from tests.v4_batch_support import assert_route_cutover
 

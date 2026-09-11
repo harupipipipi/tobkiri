@@ -432,7 +432,7 @@ mod tests {
     }
 }
 
-fn validate_profile_id(value: &str) -> Result<()> {
+pub(crate) fn validate_profile_id(value: &str) -> Result<()> {
     let trimmed = value.trim();
     if trimmed != value
         || trimmed.is_empty()

@@ -191,11 +191,19 @@ fn add_defaultspack_bootstrap_code(mut url: Url, code: &str) -> AnyResult<Url> {
     Ok(url)
 }
 
-fn application_url_with_bootstrap_code(port: u16, route: &str, code: &str) -> AnyResult<String> {
+fn application_url_with_bootstrap_code(
+    port: u16,
+    profile_id: &str,
+    route: &str,
+    code: &str,
+) -> AnyResult<String> {
+    crate::host_contract::validate_profile_id(profile_id)?;
     crate::health_check::validate_application_route(route)?;
+    let qualified_route = format!("/p/{}{}", encode_url_fragment_value(profile_id), route);
+    crate::health_check::validate_application_route(&qualified_route)?;
     let mut url = Url::parse(&application_origin(port))
         .with_context(|| format!("invalid defaultspack window port: {port}"))?;
-    url.set_path(route);
+    url.set_path(&qualified_route);
     Ok(add_defaultspack_bootstrap_code(url, code)?.to_string())
 }
 
@@ -335,7 +343,12 @@ pub(crate) fn prepare_defaultspack_shell_runtime_url(
         let code = crate::request_panel_bootstrap_code_with_retry(metadata.port, &bootstrap_secret)
             .context("failed to issue a Defaultspack shell bootstrap code")?;
         Ok(PreparedShellRuntime {
-            url: application_url_with_bootstrap_code(metadata.port, launch_route, &code)?,
+            url: application_url_with_bootstrap_code(
+                metadata.port,
+                &metadata.execution_identity.profile_id,
+                launch_route,
+                &code,
+            )?,
             identity: metadata.execution_identity.clone(),
             catalog_revision: metadata.catalog_revision.clone(),
             base_pack_id: metadata.base_pack_id.clone(),
@@ -1489,21 +1502,40 @@ mod tests {
         assert_eq!(
             application_url_with_bootstrap_code(
                 DEFAULTSPACK_DEFAULT_PORT,
+                "profile-a",
                 "/workspace",
                 "one-time+code/1="
             )
             .unwrap(),
-            "http://127.0.0.1:8766/workspace?code=one-time%2Bcode%2F1%3D"
+            "http://127.0.0.1:8766/p/profile-a/workspace?code=one-time%2Bcode%2F1%3D"
         );
         assert_eq!(
             application_url_with_bootstrap_code(
                 DEFAULTSPACK_DEFAULT_PORT,
+                "coding-profile",
                 "/chat",
                 "one-time+code/1="
             )
             .unwrap(),
-            "http://127.0.0.1:8766/chat?code=one-time%2Bcode%2F1%3D"
+            "http://127.0.0.1:8766/p/coding-profile/chat?code=one-time%2Bcode%2F1%3D"
         );
+        assert_eq!(
+            application_url_with_bootstrap_code(
+                DEFAULTSPACK_DEFAULT_PORT,
+                "利用者",
+                "/coding",
+                "code",
+            )
+            .unwrap(),
+            "http://127.0.0.1:8766/p/%E5%88%A9%E7%94%A8%E8%80%85/coding?code=code"
+        );
+        assert!(application_url_with_bootstrap_code(
+            DEFAULTSPACK_DEFAULT_PORT,
+            "../other",
+            "/chat",
+            "code",
+        )
+        .is_err());
     }
 
     #[test]

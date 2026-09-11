@@ -91,6 +91,14 @@ def defaultspack_web_mounts(pack_root: Path) -> tuple[dict[str, Any], ...]:
     ui_root = Path(pack_root).resolve() / "ui"
     return (
         {
+            "path_prefix": "/p",
+            "web_root": ui_root,
+            "spa_fallback": True,
+            "index_file": "shell.html",
+            "auth_required": True,
+            "auth_bootstrap": True,
+        },
+        {
             "path_prefix": "/chat",
             "web_root": ui_root,
             "spa_fallback": True,

@@ -48,6 +48,7 @@ import {
   workspaceKindForPathname,
   workspaceUrlForKind,
 } from "./lib/workspaceRouting";
+import { applicationPathname, profileScreenPathFromLocation } from "./lib/profileRoute";
 import { UiPrecisionComparator } from "./pages/UiPrecisionComparator";
 import { ConversationShareLanding, ImportedConversationNotice } from "./pages/ConversationShareLanding";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
@@ -2272,7 +2273,9 @@ function replaceChatIdInUrl(conversationId: string | null, pending?: boolean) {
   const routeKind = workspaceKindForPathname(window.location.pathname);
   if (routeKind && routeKind !== "chat" && routeKind !== "coding") return;
   const url = new URL(window.location.href);
-  url.pathname = window.location.pathname === "/coding" ? "/coding" : "/chat";
+  url.pathname = profileScreenPathFromLocation(
+    applicationPathname(window.location.pathname) === "/coding" ? "/coding" : "/chat",
+  );
   if (conversationId) {
     url.searchParams.set("chat", conversationId);
   } else {
@@ -2707,7 +2710,7 @@ export function ChatApp() {
     if (
       !allowManualRuntimeModeSelection
       && mode !== "agent"
-      && window.location.pathname !== "/coding"
+      && applicationPathname(window.location.pathname) !== "/coding"
     ) {
       setMode("agent");
     }
@@ -3557,7 +3560,7 @@ export function ChatApp() {
   }, [mode, loadCodingContext, loadCodingWorkspaces, reportCodingLoadError]);
 
   useEffect(() => {
-    if (window.location.pathname !== "/coding") return;
+    if (applicationPathname(window.location.pathname) !== "/coding") return;
     setMode("coding");
   }, [setMode]);
 
@@ -5479,13 +5482,13 @@ export function ChatApp() {
     if (newMode !== "coding") cancelPendingMentionAttachments();
     setMode(newMode);
     if (!updateRoute) return;
-    if (newMode === "coding" && window.location.pathname !== "/coding") {
+    if (newMode === "coding" && applicationPathname(window.location.pathname) !== "/coding") {
       const url = new URL(window.location.href);
-      url.pathname = "/coding";
+      url.pathname = profileScreenPathFromLocation("/coding");
       window.history.pushState({ mode: "coding", conversationId: activeConversationId }, "", `${url.pathname}${url.search}${url.hash}`);
-    } else if (newMode !== "coding" && window.location.pathname === "/coding") {
+    } else if (newMode !== "coding" && applicationPathname(window.location.pathname) === "/coding") {
       const url = new URL(window.location.href);
-      url.pathname = "/chat";
+      url.pathname = profileScreenPathFromLocation("/chat");
       if (activeConversationId) url.searchParams.set("chat", activeConversationId);
       else url.searchParams.delete("chat");
       url.searchParams.delete("pending");
@@ -7598,7 +7601,7 @@ function AmbientWindowLauncher({ enabled }: { enabled: boolean }) {
       const opened = await openFingerRecordingWindow();
       if (opened) return;
       const popup = window.open(
-        "/finger-recording",
+        profileScreenPathFromLocation("/finger-recording"),
         "rumi-finger-recording",
         "width=380,height=520,noopener,noreferrer",
       );
@@ -7636,7 +7639,10 @@ function AmbientWindowLauncher({ enabled }: { enabled: boolean }) {
 }
 
 export default function App() {
-  const pathname = window.location.pathname;
+  const pathname = applicationPathname(window.location.pathname);
+  if (pathname === null) {
+    throw new Error("profile_screen_identity_unavailable");
+  }
   const searchParams = new URLSearchParams(window.location.search);
   const fingerDebugMode = pathname === "/ambient-debug"
     || searchParams.get("debug") === "1"

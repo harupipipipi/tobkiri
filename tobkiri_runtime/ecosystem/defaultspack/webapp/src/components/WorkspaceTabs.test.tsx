@@ -46,7 +46,10 @@ test("workspaceTabDisplayTitle falls back to the kind label", () => {
 test("workspace routing preserves every enabled workspace kind", () => {
   for (const kind of ["calendar", "kanban", "desktops", "subagents", "canvas", "tools"] as const) {
     assert.equal(workspaceKindForPathname(`/${kind}`), kind);
-    assert.equal(workspaceUrlForKind(kind, "https://example.test/chat?chat=old#anchor"), `/${kind}#anchor`);
+    assert.equal(
+      workspaceUrlForKind(kind, "https://example.test/p/profile-a/chat?chat=old#anchor"),
+      `/p/profile-a/${kind}#anchor`,
+    );
     assert.equal(initialWorkspaceTabsForPathname(`/${kind}`, 42).at(-1)?.kind, kind);
     assert.equal(initialActiveWorkspaceTabIdForPathname(`/${kind}`), `workspace-tab-route-${kind}`);
   }

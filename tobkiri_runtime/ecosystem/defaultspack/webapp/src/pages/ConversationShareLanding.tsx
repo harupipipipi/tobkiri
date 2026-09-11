@@ -3,6 +3,7 @@ import { AlertTriangle, Download, Eye, Import, Loader2, Lock, ShieldCheck, X } f
 
 import { api, type ConversationShareRecord } from "../lib/api";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { applicationPathname, profileScreenUrlFromLocation } from "../lib/profileRoute";
 
 
 export type ShareImportMode = "read_only" | "continue_copy";
@@ -58,7 +59,7 @@ export function ImportedConversationNotice({ onDismiss, importMode }: { onDismis
 }
 
 export function ConversationShareLanding() {
-  const token = shareTokenFromPath(window.location.pathname);
+  const token = shareTokenFromPath(applicationPathname(window.location.pathname) ?? "");
   const [record, setRecord] = useState<ConversationShareRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState<ShareImportMode | null>(null);
@@ -78,7 +79,9 @@ export function ConversationShareLanding() {
     setError(null);
     try {
       const result = await api.importShare(token, window.location.href, mode);
-      window.location.assign(shareImportDestination(result.conversation_id));
+      window.location.assign(profileScreenUrlFromLocation(
+        shareImportDestination(result.conversation_id),
+      ));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Import failed.");
       setImporting(null);
@@ -168,7 +171,7 @@ export function ConversationShareLanding() {
             </div>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <button type="button" onClick={() => void downloadHistory()} className="inline-flex h-10 items-center justify-center gap-2 px-3 text-sm text-zinc-300 hover:text-white"><Download size={16} /> Download redacted history</button>
-              <button type="button" onClick={() => window.location.assign("/chat")} className="inline-flex h-10 items-center justify-center gap-2 px-3 text-sm text-zinc-400 hover:text-white"><X size={16} /> Cancel</button>
+              <button type="button" onClick={() => window.location.assign(profileScreenUrlFromLocation("/chat"))} className="inline-flex h-10 items-center justify-center gap-2 px-3 text-sm text-zinc-400 hover:text-white"><X size={16} /> Cancel</button>
             </div>
           </>
         )}

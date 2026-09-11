@@ -261,6 +261,20 @@ class TestPackAPIHandlerWebMountSecurity(unittest.TestCase):
         self.assertTrue(match["auth_required"])
         self.assertTrue(match["auth_bootstrap"])
 
+    def test_defaultspack_contribution_owns_profile_screen_routes(self):
+        from ecosystem.defaultspack.defaultspack.surface_contributions import (
+            defaultspack_web_mounts,
+        )
+
+        mounts = defaultspack_web_mounts(Path("/pack/defaultspack"))
+        match = next(mount for mount in mounts if mount["path_prefix"] == "/p")
+
+        self.assertEqual(match["web_root"], Path("/pack/defaultspack/ui"))
+        self.assertEqual(match["index_file"], "shell.html")
+        self.assertTrue(match["spa_fallback"])
+        self.assertTrue(match["auth_required"])
+        self.assertTrue(match["auth_bootstrap"])
+
     def test_pack_owned_desktops_alias_does_not_capture_api_desktops(self):
         handler = object.__new__(self.Handler)
 

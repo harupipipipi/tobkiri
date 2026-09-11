@@ -375,9 +375,24 @@ class DefaultspackHTTPPresentation:
         # Display declarations come from the selected Application's verified
         # map. They never add an operation to the invocation snapshot.
         entries = []
+        selected_route = ""
         if session is not None and binding.frontend_entries:
             session.assert_current()
-            entries = strict_loads(binding.frontend_entries)["entries"]
+            declaration = strict_loads(binding.frontend_entries)
+            entries = declaration["entries"]
+            selected_entry_id = str(
+                getattr(session, "frontend_entry_id", "")
+                or declaration["default_entry_id"]
+            )
+            selected = [
+                entry for entry in entries
+                if entry["entry_id"] == selected_entry_id
+            ]
+            if len(selected) != 1:
+                raise RuntimeError(
+                    "captured Profile frontend entry is unavailable in the Application"
+                )
+            selected_route = str(selected[0]["route"])
         return {
             **dict(result),
             "dynamic_host": {
@@ -386,6 +401,7 @@ class DefaultspackHTTPPresentation:
                 "profile_revision": str(getattr(session, "profile_revision", "")),
                 "activation_id": str(getattr(session, "activation_id", "")),
                 "plan_hash": str(getattr(session, "plan_digest", "")),
+                "selected_entry_route": selected_route,
                 "contributions": [
                     _frontend_entry(entry, index, binding, session)
                     for index, entry in enumerate(entries)

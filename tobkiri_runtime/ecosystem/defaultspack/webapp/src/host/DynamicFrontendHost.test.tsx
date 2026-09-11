@@ -55,6 +55,7 @@ const catalog = (
   profile_revision: "r1",
   activation_id: "activation:fixture-1",
   plan_hash: "plan-1",
+  selected_entry_route: "/chat",
   contributions: items,
   diagnostics: [],
   quarantined_pack_ids: [],

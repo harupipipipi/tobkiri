@@ -17,6 +17,10 @@ import type {
   FrontendCapabilityInvoker,
   FrontendCatalog,
 } from "./frontendContracts";
+import {
+  parseProfileScreenPath,
+  profileScreenPath,
+} from "../lib/profileRoute";
 
 type ApiEnvelope<T> = {
   success: boolean;
@@ -92,13 +96,66 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+export type ProfileScreenResolution =
+  | { kind: "route"; route: string }
+  | { kind: "redirect"; destination: string }
+  | { kind: "reject"; reason: string };
+
+/** Resolve identity-bearing screen navigation against one captured Host catalog. */
+export function resolveProfileScreenRequest(
+  pathname: string,
+  catalog: FrontendCatalog,
+): ProfileScreenResolution {
+  const requested = parseProfileScreenPath(pathname);
+  if (!requested) {
+    return {
+      kind: "reject",
+      reason: "The screen URL does not contain a valid Runtime Profile identity.",
+    };
+  }
+  if (requested.profileId !== catalog.profile_id) {
+    return {
+      kind: "reject",
+      reason: "The screen URL does not match the active captured Profile.",
+    };
+  }
+  if (requested.applicationRoute === null) {
+    try {
+      return {
+        kind: "redirect",
+        destination: profileScreenPath(
+          catalog.profile_id,
+          catalog.selected_entry_route,
+        ),
+      };
+    } catch {
+      return {
+        kind: "reject",
+        reason: "The active Profile's selected Application entry is unavailable.",
+      };
+    }
+  }
+  const hasRoute = contributionsForRoute(
+    catalog,
+    requested.applicationRoute,
+    catalog.plan_hash,
+  ).length > 0;
+  return hasRoute
+    ? { kind: "route", route: requested.applicationRoute }
+    : {
+      kind: "reject",
+      reason: "This screen is not available in the active Profile. Check the selected Application in Tobkiri Launcher, then retry.",
+    };
+}
+
 export function HostBootstrap({
-  route,
+  pathname,
 }: {
-  route: string;
+  pathname: string;
 }) {
   const [catalog, setCatalog] = useState<FrontendCatalog | null>(null);
   const [failed, setFailed] = useState(false);
+  const requested = useMemo(() => parseProfileScreenPath(pathname), [pathname]);
 
   const refreshCatalog = useCallback(async (): Promise<FrontendCatalog> => {
     const value = await fetchDynamicCatalog();
@@ -144,30 +201,40 @@ export function HostBootstrap({
   const retry = () => {
     void refreshCatalog().catch(() => undefined);
   };
+  if (!requested) {
+    return (
+      <HostBootstrapFallback
+        onRetry={retry}
+        reason="The screen URL does not contain a valid Runtime Profile identity."
+        route={pathname}
+      />
+    );
+  }
   if (failed) {
     return (
       <HostBootstrapFallback
         onRetry={retry}
         reason="The selected Application could not be loaded."
-        route={route}
+        route={pathname}
       />
     );
   }
   if (!catalog) return <TobkiriLoadingScreen />;
-  const hasRoute = contributionsForRoute(
-    catalog,
-    route,
-    catalog.plan_hash,
-  ).length > 0;
-  if (!hasRoute) {
+  const resolution = resolveProfileScreenRequest(pathname, catalog);
+  if (resolution.kind === "reject") {
     return (
       <HostBootstrapFallback
         onRetry={retry}
-        reason="This screen is not available in the active Profile. Check the selected Application in Tobkiri Launcher, then retry."
-        route={route}
+        reason={resolution.reason}
+        route={pathname}
       />
     );
   }
+  if (resolution.kind === "redirect") {
+    window.location.replace(`${resolution.destination}${window.location.search}${window.location.hash}`);
+    return <TobkiriLoadingScreen />;
+  }
+  const route = resolution.route;
   return (
     <DynamicFrontendHost
       catalog={catalog}

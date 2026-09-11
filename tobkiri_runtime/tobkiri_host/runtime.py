@@ -113,6 +113,7 @@ class ProductionRuntimeV4:
             plan_digest=str(self.composition.plan["plan_digest"]),
             profile_revision=str(self.composition.plan["profile_revision"]),
             activation_id=str(self.composition.activation["activation_id"]),
+            frontend_entry_id=str(self.composition.profile.get("frontend_entry_id") or ""),
             security_epoch=int(self.composition.activation["security_epoch"]),
             authority_control=authority_control,
             current_capture_check=current_capture_check,
@@ -134,6 +135,7 @@ class V4DispatchSession:
     plan_digest: str
     profile_revision: str
     activation_id: str
+    frontend_entry_id: str = ""
     security_epoch: int = 0
     authority_control: AuthorityV4Adapter | None = None
     current_capture_check: Callable[[], None] | None = None

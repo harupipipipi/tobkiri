@@ -16,13 +16,13 @@ installKeyboardOnlyFocusRings();
 
 installGlobalClientDiagnostics();
 
-const route = window.location.pathname;
+const pathname = window.location.pathname;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <Suspense fallback={<TobkiriLoadingScreen />}>
-        <HostBootstrap route={route} />
+        <HostBootstrap pathname={pathname} />
       </Suspense>
     </AppErrorBoundary>
   </React.StrictMode>,

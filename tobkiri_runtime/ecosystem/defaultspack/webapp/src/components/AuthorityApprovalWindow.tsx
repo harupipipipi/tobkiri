@@ -25,6 +25,7 @@ import {
   type InteractiveApprovalRequest,
 } from "../features/chat/resources/authorityApprovalResources";
 import { broadcastAuthorityApprovalSettlement } from "../lib/authorityApprovalEvents";
+import { profileScreenUrlFromLocation } from "../lib/profileRoute";
 import { closeCurrentWindow, getAuthorityApprovalContext, openFingerRecordingWindow } from "../lib/desktopApproval";
 import { cn } from "../lib/cn";
 import { ErrorNotice } from "./ErrorNotice";
@@ -133,7 +134,9 @@ async function returnToFingerRecordingAfterApproval(): Promise<void> {
   }
   window.close();
   window.setTimeout(() => {
-    if (!document.hidden) window.location.replace("/finger-recording?authority_approved=1");
+    if (!document.hidden) window.location.replace(
+      profileScreenUrlFromLocation("/finger-recording?authority_approved=1"),
+    );
   }, 250);
 }
 

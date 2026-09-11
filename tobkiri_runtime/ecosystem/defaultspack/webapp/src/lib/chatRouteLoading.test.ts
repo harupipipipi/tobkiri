@@ -169,22 +169,22 @@ test("workspace routing opens calendar route as the calendar workspace", () => {
 
 test("workspace routing keeps desktops URL separate from chat conversations", () => {
   assert.equal(
-    workspaceUrlForKind("desktops", "http://127.0.0.1:8766/chat?chat=abc&pending=1#panel", "abc"),
-    "/desktops#panel",
+    workspaceUrlForKind("desktops", "http://127.0.0.1:8766/p/profile-a/chat?chat=abc&pending=1#panel", "abc"),
+    "/p/profile-a/desktops#panel",
   );
   assert.equal(
-    workspaceUrlForKind("chat", "http://127.0.0.1:8766/desktops#panel", "abc"),
-    "/chat?chat=abc#panel",
+    workspaceUrlForKind("chat", "http://127.0.0.1:8766/p/profile-a/desktops#panel", "abc"),
+    "/p/profile-a/chat?chat=abc#panel",
   );
 });
 
 test("workspace routing keeps calendar URL separate from stale chat conversations", () => {
   assert.equal(
-    workspaceUrlForKind("calendar", "http://127.0.0.1:8766/chat?chat=abc&pending=1#panel", "abc"),
-    "/calendar#panel",
+    workspaceUrlForKind("calendar", "http://127.0.0.1:8766/p/profile-a/chat?chat=abc&pending=1#panel", "abc"),
+    "/p/profile-a/calendar#panel",
   );
   assert.equal(
-    workspaceUrlForKind("chat", "http://127.0.0.1:8766/calendar#panel", "abc"),
-    "/chat?chat=abc#panel",
+    workspaceUrlForKind("chat", "http://127.0.0.1:8766/p/profile-a/calendar#panel", "abc"),
+    "/p/profile-a/chat?chat=abc#panel",
   );
 });

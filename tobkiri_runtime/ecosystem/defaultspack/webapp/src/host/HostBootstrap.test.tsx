@@ -5,6 +5,7 @@ import {
   FrontendCapabilityError,
   fetchDynamicCatalog,
   invokeCapability,
+  resolveProfileScreenRequest,
 } from "./HostBootstrap";
 import type {
   CapturedCapabilityInvocation,
@@ -17,6 +18,7 @@ const catalog: FrontendCatalog = {
   profile_revision: "profile-1",
   activation_id: "activation:defaults-1",
   plan_hash: "plan-1",
+  selected_entry_route: "/chat",
   contributions: [],
   diagnostics: [],
   quarantined_pack_ids: [],
@@ -36,6 +38,51 @@ const invocation = (
   planHash: catalog.plan_hash,
   catalogHash: catalog.catalog_hash,
   ...overrides,
+});
+
+test("screen route resolution binds URL identity and declared non-Chat entries", () => {
+  const codingCatalog: FrontendCatalog = {
+    ...catalog,
+    profile_id: "coding-profile",
+    selected_entry_route: "/coding",
+    contributions: [{
+      contribution_id: "coding.frontend",
+      kind: "route",
+      mode: "declarative",
+      label: "Coding",
+      priority: 0,
+      owner_pack_id: "codingpack",
+      owner_pack_hash: `sha256:${"2".repeat(64)}`,
+      build_identity: "coding.fixture",
+      resolved_profile_id: "coding-profile",
+      resolved_profile_revision: catalog.profile_revision,
+      resolved_activation_id: catalog.activation_id,
+      resolved_plan_hash: catalog.plan_hash,
+      descriptor_hash: `sha256:${"3".repeat(64)}`,
+      route: "/coding",
+      view: { title: "Coding" },
+      localization: {},
+      accessibility: { name: "Coding", keyboard: true },
+    }],
+  };
+
+  assert.deepEqual(resolveProfileScreenRequest("/p/coding-profile", codingCatalog), {
+    kind: "redirect",
+    destination: "/p/coding-profile/coding",
+  });
+  assert.deepEqual(resolveProfileScreenRequest("/p/coding-profile/coding", codingCatalog), {
+    kind: "route",
+    route: "/coding",
+  });
+  assert.equal(
+    resolveProfileScreenRequest("/p/defaults/coding", codingCatalog).kind,
+    "reject",
+  );
+  assert.equal(
+    resolveProfileScreenRequest("/p/coding-profile/chat", codingCatalog).kind,
+    "reject",
+  );
+  assert.equal(resolveProfileScreenRequest("/coding", codingCatalog).kind, "reject");
 });
 
 test("HostBootstrap accepts the canonical PackAPI success envelope", async (context) => {

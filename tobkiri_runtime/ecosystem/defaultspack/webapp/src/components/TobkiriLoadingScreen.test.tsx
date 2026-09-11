@@ -72,7 +72,7 @@ test("keeps failures inside the startup boundary and offers a retry", () => {
 
 test("uses the branded loading screen while the dynamic interface catalog loads", () => {
   const markup = renderToStaticMarkup(
-    <HostBootstrap route="/chat" />,
+    <HostBootstrap pathname="/p/defaults/chat" />,
   );
 
   assert.match(markup, /data-tobkiri-loading-screen=""/);

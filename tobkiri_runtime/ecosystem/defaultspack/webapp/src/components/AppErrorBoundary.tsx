@@ -3,6 +3,7 @@ import { Component, createRef, type ErrorInfo, type ReactNode } from "react";
 import { diagnosticFingerprint, reportClientDiagnosticResult, sanitizeDiagnosticDetail } from "../lib/clientDiagnostics";
 import { crashDraftExport, recoverableDraftSnapshot, recordCrash, resetAffectedClientState, type CrashDraftSnapshot } from "../lib/crashRecovery";
 import { ErrorNotice } from "./ErrorNotice";
+import { profileScreenUrlFromLocation } from "../lib/profileRoute";
 
 type Props = { children: ReactNode };
 type DiagnosticStatus = "idle" | "sending" | "recorded" | "not_recorded";
@@ -51,10 +52,10 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   private retry = () => this.setState({ failed: false, diagnosticStatus: "idle", safeDetails: "" });
-  private stableWorkspace = () => { window.history.replaceState({}, "", "/chat"); this.retry(); };
+  private stableWorkspace = () => { window.history.replaceState({}, "", profileScreenUrlFromLocation("/chat")); this.retry(); };
   private safeMode = () => {
     resetAffectedClientState(typeof localStorage === "undefined" ? null : localStorage);
-    window.location.assign("/chat?safe_mode=1");
+    window.location.assign(profileScreenUrlFromLocation("/chat?safe_mode=1"));
   };
   private exportDraft = () => {
     if (!this.state.draft) return;

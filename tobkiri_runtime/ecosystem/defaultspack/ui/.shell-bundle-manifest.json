@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "1a8cc0bbd3f4b45d810cbf6cb29ef359107f5dd36efc3a4dcf2e97852164fb69",
+    "digest": "84ef37af7e12bdae2521e81912cb05bc1284d5155f542d73b133e35fe7201daf",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5605,
-        "sha256": "798f95362249a2e2a542c4214f24ce981d3237eb20519c26f5c41ad8bee9ca0e"
+        "size": 5634,
+        "sha256": "6a69458b873f63a18f029321acc69e3b819884a1f6b642bc9ab024cebcbd2465"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 341896,
-        "sha256": "bdb18b3ca1754156313a3f8ec4877e374e0433b30c407a1a3a2536e1d49cc85d"
+        "size": 342335,
+        "sha256": "33739a69ba79c6a5736a2326f02e666c34f92c18e5755cccdea2a497321c67eb"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -190,13 +190,13 @@
       },
       {
         "path": "src/ambient/AmbientRoutingSettings.tsx",
-        "size": 14103,
-        "sha256": "d68ef9a04742dd402bf8351ab98c6ba139d6848b6e1ecefaa1bfc758c4a5db07"
+        "size": 14201,
+        "sha256": "653715c04c1a9b7a20c27d00340d14ad8cf0bbc5cee9bdc471d041d71b029ce4"
       },
       {
         "path": "src/ambient/AmbientTriggerPanel.tsx",
-        "size": 110867,
-        "sha256": "f83f067ca2a1f2146a414198bd6b1f73491c039334d8b4f289b69983dfba456f"
+        "size": 111087,
+        "sha256": "890e3592e301086d746a928a46484849cc9fceb3da1917be0aa297aea908d49a"
       },
       {
         "path": "src/ambient/AmbientTriggerStatusIcon.tsx",
@@ -215,8 +215,8 @@
       },
       {
         "path": "src/ambient/ambientApprovalBoundary.test.ts",
-        "size": 22133,
-        "sha256": "dfe259b181ffd1d53748469cb3f057d92106d86a3a38cbd0c7a7141dde431ade"
+        "size": 22165,
+        "sha256": "7ea07989ff692fd642d3c43af019808b4d83b311384dcfbead3ff079a16e4d18"
       },
       {
         "path": "src/ambient/ambientConversationCompletion.ts",
@@ -335,8 +335,8 @@
       },
       {
         "path": "src/components/AppErrorBoundary.tsx",
-        "size": 7359,
-        "sha256": "bc987102274d37551ee9565a43c1b494e06272b91453d5e18df63eca38db7a28"
+        "size": 7487,
+        "sha256": "aa14c84782fda95840727ec480b39417224f9a8b1170338d16114c3073f2fe85"
       },
       {
         "path": "src/components/ApprovalDecisionSurface.test.tsx",
@@ -365,8 +365,8 @@
       },
       {
         "path": "src/components/AuthorityApprovalWindow.tsx",
-        "size": 24460,
-        "sha256": "a014e0ea1bd115a8dc32a7e8260144d257a0991980755732ccddb3f422a14a8f"
+        "size": 24571,
+        "sha256": "ba290f0ceed21647d641aa8be249814f05768802bd034f1c35ddc49d5d782f8d"
       },
       {
         "path": "src/components/ConversationSpotlight.tsx",
@@ -450,8 +450,8 @@
       },
       {
         "path": "src/components/TobkiriLoadingScreen.test.tsx",
-        "size": 4689,
-        "sha256": "7d3833aea2ae4ce158b8a80f2ebc4bbcbfc53da582e432cbe556955068c8e51c"
+        "size": 4703,
+        "sha256": "4c6efde70cf6b104e62f35b48710f04ef9c81e3d5934dadff3d3f79a1491a24f"
       },
       {
         "path": "src/components/TobkiriLoadingScreen.tsx",
@@ -505,8 +505,8 @@
       },
       {
         "path": "src/components/WorkspaceTabs.test.tsx",
-        "size": 2027,
-        "sha256": "70624b1dcabc30546e2a06b2c9a3172283637d73da6562e706b12ac3ada3562b"
+        "size": 2070,
+        "sha256": "fe84ed65461dd3a0b6470f5134fd5080e2bde5b7b157b2a81bd9e10cb39142c3"
       },
       {
         "path": "src/components/WorkspaceTabs.tsx",
@@ -1065,8 +1065,8 @@
       },
       {
         "path": "src/host/DynamicFrontendHost.test.tsx",
-        "size": 12015,
-        "sha256": "90afc44b91ea7f36aa674e88c125889c9610635aec9a21486e94426d6160d489"
+        "size": 12048,
+        "sha256": "ec26ecbd803909269f2a9d6e82d2313a3d12c137d7b07dadaa8a77cca4a5e0a5"
       },
       {
         "path": "src/host/DynamicFrontendHost.tsx",
@@ -1075,18 +1075,18 @@
       },
       {
         "path": "src/host/HostBootstrap.test.tsx",
-        "size": 3456,
-        "sha256": "57cfd650020d6b64d7ae7c098e715c46f7f4222e1136b65b43607c8748525bd9"
+        "size": 5038,
+        "sha256": "14ac36d7349e1e8a6d2eb835d2116ff22505b6a7c53babb4bb646b98b40abc70"
       },
       {
         "path": "src/host/HostBootstrap.tsx",
-        "size": 5488,
-        "sha256": "d6230fa2123f12fd4b05f073ab938972678e8824bb8cd8a7aec5b11060d32382"
+        "size": 7490,
+        "sha256": "5a2eaf2420ab62bbc94b2714676c0dbbafbfb711eecfed6fa837c79f8ea78cbc"
       },
       {
         "path": "src/host/frontendContracts.ts",
-        "size": 2751,
-        "sha256": "0687dbdfb2bbbf6eac99dd27589f2f1450f24c32bbc6e47144a669a7805f4d8d"
+        "size": 2783,
+        "sha256": "0ba4aa10d6c47583bffb657b3a919e6866a891909ad28faddb91d4ab37af4d98"
       },
       {
         "path": "src/hostPermissions/HostPermissionsPage.tsx",
@@ -1255,8 +1255,8 @@
       },
       {
         "path": "src/lib/chatRouteLoading.test.ts",
-        "size": 5967,
-        "sha256": "054be11fbff40d78e7e773f75335d50c03bca5e2fcd95bee37e90a5e73580ca1"
+        "size": 6063,
+        "sha256": "c0a648a9f8b71f70b1556bc5e478378658a2b846a9d573c0b88d8e6855dd1a99"
       },
       {
         "path": "src/lib/chatRouteLoading.ts",
@@ -1509,6 +1509,16 @@
         "sha256": "9d3878917c1d5fba6f0c6a3cd20d42174ac1af3f0d2e4040ddc3828612610f9a"
       },
       {
+        "path": "src/lib/profileRoute.test.ts",
+        "size": 1436,
+        "sha256": "d5c634d1ad0fc52a30b8dbc9a1e57fec8d82bf841d78847312f8e840244173a7"
+      },
+      {
+        "path": "src/lib/profileRoute.ts",
+        "size": 2890,
+        "sha256": "2bfd4e51897d2c961e76a3cc655620b476e5b5a4fdfa5194333fcef9fc5533e7"
+      },
+      {
         "path": "src/lib/providerConfiguration.ts",
         "size": 7630,
         "sha256": "ce5ba9d636ab0cf0482e73b1cdc5a7919cb658c9db85de53f339ce743e74cd26"
@@ -1650,18 +1660,18 @@
       },
       {
         "path": "src/lib/workspaceRouting.ts",
-        "size": 2341,
-        "sha256": "c3066f5adcd8cca37329d4969c9722302b037b8e5742df808c877cb10e3315a4"
+        "size": 2669,
+        "sha256": "1b8333b923a7344b845c7b6d8d5c9f491542bff6329ada7039cad1e63e31a140"
       },
       {
         "path": "src/main.tsx",
-        "size": 957,
-        "sha256": "918e6ea98d70c4f1cb5a60297e0c9b61073fd415ae86b100976214d707aa62a7"
+        "size": 966,
+        "sha256": "feb93b3b02e20d34d4137195876e860c389beb463f1e876203514adcb45bf07e"
       },
       {
         "path": "src/pages/ConversationShareLanding.tsx",
-        "size": 11400,
-        "sha256": "79cd8df5505abb3521be38d62cfb4d30addc55b0118563a83e2b354ffdc17143"
+        "size": 11593,
+        "sha256": "d01965ae0b25fb60b921bbea2b5dad3091c341bcbd7da15a7b30237609de0c3a"
       },
       {
         "path": "src/pages/UiPrecisionComparator.test.tsx",
@@ -1906,7 +1916,7 @@
     ]
   },
   "bundle": {
-    "digest": "c488e88e1f1261ea5eb52430b014826877f5e7976470430d5b5360fb70b55d0b",
+    "digest": "286facdde92661260b1e21cf11a3130543118f52921eb7a45bf4586b73efe372",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1915,13 +1925,13 @@
       },
       {
         "path": "shell-app.js",
-        "size": 24254,
-        "sha256": "bf5586a392080487716bbb7e9e303bb26342b08dc45280f1f99e53a84a83c3a0"
+        "size": 25210,
+        "sha256": "d795c05dc943fea1f1281b0fcb762bcbaee014031dede64115590aa523dc3a61"
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2220934,
-        "sha256": "bc54ffbfd553129c49cfa0fb4939f9a5f410c761e7d9c979b35941d13ff110b1"
+        "size": 2222355,
+        "sha256": "d1f514158ed00c10fa827893db6b71566e472b250cb7e662447ec2bfc81bea16"
       },
       {
         "path": "shell-rolldown-runtime.js",
@@ -1931,7 +1941,7 @@
       {
         "path": "shell-vendor.js",
         "size": 181067,
-        "sha256": "07ef176c3a60f4e9ba938853d9c14ee6732db5669febebc1e1e245baff334b58"
+        "sha256": "1821d54f8898ef0b3c23b5011f52aeb00f2cf0e49d96cb48ca681f776b3e7625"
       },
       {
         "path": "shell.html",

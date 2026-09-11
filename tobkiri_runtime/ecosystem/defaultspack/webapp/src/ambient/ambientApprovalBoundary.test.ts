@@ -63,7 +63,7 @@ test("ambient mini authority browser fallback is debug-only and opens credential
   assert.match(source, /browserAuthorityApprovalPath\(miniAuthorityApproval\.requestId, ambientAuthorityApprovalReturnPath\(\)\)/);
   assert.match(source, /function ambientAuthorityApprovalReturnPath\(\)/);
   assert.match(source, /url\.searchParams\.set\("authority_approved", "1"\)/);
-  assert.match(source, /window\.open\(approvalUrl/);
+  assert.match(source, /window\.open\(profileScreenUrlFromLocation\(approvalUrl\)/);
   assert.doesNotMatch(source, /browserApprovalToken|browser_approval_token/);
   assert.doesNotMatch(source, /window\.open\(["'`]\/approval\?request_id/);
   assert.doesNotMatch(helperSource, /params\.set\("browser_approval_token"/);

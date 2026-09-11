@@ -60,6 +60,7 @@ export type FrontendCatalog = {
   profile_revision: string;
   activation_id: string;
   plan_hash: string;
+  selected_entry_route: string;
   contributions: VerifiedFrontendContribution[];
   diagnostics: Array<{
     code: string;

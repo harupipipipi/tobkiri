@@ -587,8 +587,12 @@ fn validate_payload(
     {
         bail!("Shell runtime URL is outside the authenticated loopback contract");
     }
-    crate::health_check::validate_application_route(runtime_url.path())
-        .context("Shell runtime URL has an unsafe Application route")?;
+    let route_profile_id = crate::health_check::profile_id_from_screen_route(runtime_url.path())
+        .context("Shell runtime URL has an unsafe Application route")?
+        .context("Shell runtime URL is missing its Profile identity")?;
+    if route_profile_id != identity.profile_id {
+        bail!("Shell runtime URL does not match its captured Profile identity");
+    }
     let runtime_port = runtime_url
         .port()
         .context("Shell runtime URL must use an explicit loopback port")?;
@@ -1326,7 +1330,10 @@ mod tests {
                 artifact_digest: &format!("sha256:{}", "d".repeat(64)),
                 entrypoint_digest: &format!("sha256:{}", "e".repeat(64)),
             },
-            &format!("http://127.0.0.1:8766/?code={}", "f".repeat(64)),
+            &format!(
+                "http://127.0.0.1:8766/p/profile-a/chat?code={}",
+                "f".repeat(64)
+            ),
         )
         .unwrap();
         let payload: ShellHandoffPayload =
@@ -1354,7 +1361,10 @@ mod tests {
             artifact_id: "fixture.shell.macos-arm64".into(),
             artifact_digest: format!("sha256:{}", "d".repeat(64)),
             entrypoint_digest: format!("sha256:{}", "e".repeat(64)),
-            runtime_url: format!("http://127.0.0.1:8766/?code={}", "c".repeat(64)),
+            runtime_url: format!(
+                "http://127.0.0.1:8766/p/profile-a/chat?code={}",
+                "c".repeat(64)
+            ),
             created_at: now,
             expires_at: now + 60,
             nonce: "A".repeat(40),
@@ -1362,6 +1372,17 @@ mod tests {
         };
         let root = std::env::temp_dir();
         assert!(validate_payload(&base, now, &root).is_ok());
+        let mut mismatched_route_profile = serde_json::to_value(&base).unwrap();
+        mismatched_route_profile["runtime_url"] = serde_json::Value::String(format!(
+            "http://127.0.0.1:8766/p/profile-b/chat?code={}",
+            "c".repeat(64)
+        ));
+        assert!(validate_payload(
+            &serde_json::from_value(mismatched_route_profile).unwrap(),
+            now,
+            &root,
+        )
+        .is_err());
         let mut wrong_schema = serde_json::to_value(&base).unwrap();
         wrong_schema["schema"] = serde_json::Value::String("wrong".into());
         assert!(
@@ -1386,6 +1407,7 @@ mod tests {
         for invalid_url in [
             "http://127.0.0.1:8766/#rumi_local_auth=legacy-token".to_string(),
             "http://127.0.0.1:8766/?code=short".to_string(),
+            format!("http://127.0.0.1:8766/chat?code={}", "c".repeat(64)),
             format!("http://127.0.0.1:8766/?code={}&extra=1", "c".repeat(64)),
         ] {
             let mut invalid = serde_json::to_value(&base).unwrap();
@@ -1445,7 +1467,10 @@ mod tests {
             artifact_id: "fixture.shell.macos-arm64".into(),
             artifact_digest: format!("sha256:{}", "d".repeat(64)),
             entrypoint_digest: format!("sha256:{}", "e".repeat(64)),
-            runtime_url: format!("http://127.0.0.1:8766/?code={}", "c".repeat(64)),
+            runtime_url: format!(
+                "http://127.0.0.1:8766/p/profile-a/chat?code={}",
+                "c".repeat(64)
+            ),
             created_at: now,
             expires_at: now + HANDOFF_TTL_SECONDS,
             nonce: "C".repeat(40),
