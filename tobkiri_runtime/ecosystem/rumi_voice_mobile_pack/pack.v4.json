@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:751867fd5199077c5b848f8ad7c3f49031792d5a994b0dd75778c9ffd29f42fb",
+      "digest": "sha256:292cc98174cbbb6d964ed352b5811d6e0390b944a29cf4cbd6250dc3e7bfccb7",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:3e513933f30e8e657cb6a5d97a69671a29c9e89d80ec6bbdd00c6663f1ba5378",
-    "contract_catalog_digest": "sha256:bf0b09cf7963d44292ab2de37f696d9b7caa8302a09ff7f415c9769b2f209842",
-    "source_identity": "sha256:aae7600fb944aa3e56f8964346a70913c3768badec32b2f15f2e23fed6d1f5a7"
+    "artifact_set_digest": "sha256:3218a0e7c4ae93d708c2395423b166546f822103aa3129ea85b531cf3f41dc2c",
+    "contract_catalog_digest": "sha256:57ab8be82ce950db57afb26e499230ce54c01e75db60c942da8947489b255fee",
+    "source_identity": "sha256:6b7c8f2a632a11ebd7606e78be66e93d8597d6f2451b0d1230e63cd41c1dfbdc"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_voice_mobile_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:3e513933f30e8e657cb6a5d97a69671a29c9e89d80ec6bbdd00c6663f1ba5378",
+    "artifact_digest": "sha256:3218a0e7c4ae93d708c2395423b166546f822103aa3129ea85b531cf3f41dc2c",
     "display_name": "Rumi Voice Mobile Pack",
     "id": "rumi_voice_mobile_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:aae7600fb944aa3e56f8964346a70913c3768badec32b2f15f2e23fed6d1f5a7",
+        "digest": "sha256:6b7c8f2a632a11ebd7606e78be66e93d8597d6f2451b0d1230e63cd41c1dfbdc",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:aae7600fb944aa3e56f8964346a70913c3768badec32b2f15f2e23fed6d1f5a7",
+    "source_digest": "sha256:6b7c8f2a632a11ebd7606e78be66e93d8597d6f2451b0d1230e63cd41c1dfbdc",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_voice_mobile_pack"
   },

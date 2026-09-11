@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:5022f3a33ae7c5162a568d740180783d855a509fe597b40e310b42ef60e27855",
+  "catalog_digest": "sha256:43719c2d848cf3d38bd0904bff1a401dfbc66e767805e6787543da9636419c7d",
   "pack_id": "rumi_workflow_scheduler_pack",
-  "source_identity": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36",
+  "source_identity": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f",
   "variants": []
 }

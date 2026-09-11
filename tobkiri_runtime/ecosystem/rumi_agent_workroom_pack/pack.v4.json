@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:c4abe8ce3f79885a59f126f3848cd79a3770de687a992218ee766aba1c3c4617",
+      "digest": "sha256:b4e6e6fd3487e727f91f2153864db0e272208bcc7d801aba52929c849ae60775",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:f2091a7e35b605399f75e990ebcca7f24af04176657fd75db127e56880aa0ec9",
-    "contract_catalog_digest": "sha256:bc6645f20b80282b3a9c9f9f617bee726194d4a721995725ed2ad1333ed9ace8",
-    "source_identity": "sha256:1b55209cd437d487844e6461c5a3059719c620601131e05e327ce7d72fa3f1fb"
+    "artifact_set_digest": "sha256:492078d3efd886c9bcc9fea8426e0f013401c86011fcd104d56bc43b2db4c4d2",
+    "contract_catalog_digest": "sha256:be5acfa62722656b1a9d54e340575882242b2f1abd6d6da934bc2fdf4baf6522",
+    "source_identity": "sha256:aa573a65d7bc965a6f56efa1c99839717523bf4d97295a1ef42c81a6e485c3b6"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_agent_workroom_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:f2091a7e35b605399f75e990ebcca7f24af04176657fd75db127e56880aa0ec9",
+    "artifact_digest": "sha256:492078d3efd886c9bcc9fea8426e0f013401c86011fcd104d56bc43b2db4c4d2",
     "display_name": "Rumi Agent Workroom Pack",
     "id": "rumi_agent_workroom_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:1b55209cd437d487844e6461c5a3059719c620601131e05e327ce7d72fa3f1fb",
+        "digest": "sha256:aa573a65d7bc965a6f56efa1c99839717523bf4d97295a1ef42c81a6e485c3b6",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:1b55209cd437d487844e6461c5a3059719c620601131e05e327ce7d72fa3f1fb",
+    "source_digest": "sha256:aa573a65d7bc965a6f56efa1c99839717523bf4d97295a1ef42c81a6e485c3b6",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_agent_workroom_pack"
   },

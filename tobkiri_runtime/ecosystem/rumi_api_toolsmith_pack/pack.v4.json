@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:71f5936bcdd2bc64fd3408b3062274824f8fd49bf1d48137997d75cc32bda97f",
+      "digest": "sha256:c4d874c55dceb5400567e3f9599130f554365089ed13f5e0335a6cb43ba2fff1",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
-    "contract_catalog_digest": "sha256:de94535c2f326fe5b06e0c6f068396b79795d912099eb64f52a3486fe68c3787",
-    "source_identity": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c"
+    "artifact_set_digest": "sha256:3c74f14c1cf9f6c43a264bc5b2432484020d9704acea0ba84fd79c0a84cfa3fc",
+    "contract_catalog_digest": "sha256:2899bb0a8bed27d33b8bd836c6a5f1d2b224d2cb0d9ba80e0509825edcefe042",
+    "source_identity": "sha256:89bb9980c241df9d4fd230d2d2e3bd25a32a8e90beefe20f6fcff0c3c28729a7"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_api_toolsmith_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
+    "artifact_digest": "sha256:3c74f14c1cf9f6c43a264bc5b2432484020d9704acea0ba84fd79c0a84cfa3fc",
     "display_name": "Rumi API Toolsmith Pack",
     "id": "rumi_api_toolsmith_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c",
+        "digest": "sha256:89bb9980c241df9d4fd230d2d2e3bd25a32a8e90beefe20f6fcff0c3c28729a7",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c",
+    "source_digest": "sha256:89bb9980c241df9d4fd230d2d2e3bd25a32a8e90beefe20f6fcff0c3c28729a7",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_api_toolsmith_pack"
   },

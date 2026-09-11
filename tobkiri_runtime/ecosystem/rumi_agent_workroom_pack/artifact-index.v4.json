@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:f2091a7e35b605399f75e990ebcca7f24af04176657fd75db127e56880aa0ec9",
+  "artifact_set_digest": "sha256:492078d3efd886c9bcc9fea8426e0f013401c86011fcd104d56bc43b2db4c4d2",
   "artifacts": [
     {
-      "digest": "sha256:bc6645f20b80282b3a9c9f9f617bee726194d4a721995725ed2ad1333ed9ace8",
+      "digest": "sha256:be5acfa62722656b1a9d54e340575882242b2f1abd6d6da934bc2fdf4baf6522",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:c4abe8ce3f79885a59f126f3848cd79a3770de687a992218ee766aba1c3c4617",
+      "digest": "sha256:b4e6e6fd3487e727f91f2153864db0e272208bcc7d801aba52929c849ae60775",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:f6ac3fe5a8a6585e40a7de7ac913bf39d78f9a30c66a2cd214d58c7ba050a461",
+      "digest": "sha256:56d711fc1250122a005f24d16feb2640effc492d21232e8234fe7a81e19dc783",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     }
@@ -20,8 +20,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:a5c35e78efea99038d22fd6460f8c4c97c082f803b3fa2271b7fb5aadb498469"
+    "signed_digest": "sha256:9b9812060f2c0ef01d4160b4546cf66c733564276acbae6096d9a850e2c2f963"
   },
   "pack_id": "rumi_agent_workroom_pack",
-  "source_identity": "sha256:1b55209cd437d487844e6461c5a3059719c620601131e05e327ce7d72fa3f1fb"
+  "source_identity": "sha256:aa573a65d7bc965a6f56efa1c99839717523bf4d97295a1ef42c81a6e485c3b6"
 }

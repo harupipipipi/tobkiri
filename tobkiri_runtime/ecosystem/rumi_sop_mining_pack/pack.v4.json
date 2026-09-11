@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:7d136a11e6d940a5a7572a61f7b66f9d6e82c9673df024a97fde83a5c833e456",
+      "digest": "sha256:79dfa590caf9b015781b7d64a637190e192d15ace5f279d40d9ffb0295f5f9ad",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:5102398c55350d94472f8420f05b2d50aec423c6d0754f00524aefc22fcd6b98",
-    "contract_catalog_digest": "sha256:39142bc46aa0f5503ecf68eba74b85e6c6945f50ef2b3b5ca20c7d8553ab27bd",
-    "source_identity": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398"
+    "artifact_set_digest": "sha256:37b99b504839c83b03b65e810b03591103bf7afca111978287b5d9bc24e25dd1",
+    "contract_catalog_digest": "sha256:067ad0defdf647048a83732b37a47a3be6d2b1950c16e5c493b7e75b7e3fe2c9",
+    "source_identity": "sha256:791d3223e9412b8087ba149a2277f1a963bc80619f44bf834efe55226159f53f"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_sop_mining_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:5102398c55350d94472f8420f05b2d50aec423c6d0754f00524aefc22fcd6b98",
+    "artifact_digest": "sha256:37b99b504839c83b03b65e810b03591103bf7afca111978287b5d9bc24e25dd1",
     "display_name": "Rumi SOP Mining Pack",
     "id": "rumi_sop_mining_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398",
+        "digest": "sha256:791d3223e9412b8087ba149a2277f1a963bc80619f44bf834efe55226159f53f",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398",
+    "source_digest": "sha256:791d3223e9412b8087ba149a2277f1a963bc80619f44bf834efe55226159f53f",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_sop_mining_pack"
   },

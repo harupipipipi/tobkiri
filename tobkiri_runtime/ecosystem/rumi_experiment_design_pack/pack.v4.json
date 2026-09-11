@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:74258d32bcc71b0a1fe58ed2079bc1797fbfc4271ed1389f8f865028ad5b0433",
+      "digest": "sha256:a9708302007abc0415bdaa5fb02b5293bfaad7fb66cccfe3effdb6b7d2c886f5",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:91ed3ca4170dd6112d0b6e52c8e1db234e7c5e45ffd4249918d535ff4c6c9f1b",
-    "contract_catalog_digest": "sha256:4edf708bf2e2bf9d00ae1fa2907775d658bd4b76e30a97d315a39b0ec97d9243",
-    "source_identity": "sha256:a0c347c0a7dfa63d270ae0e4b6aec50788ee48f215ebcc3269b1ae2574b9f645"
+    "artifact_set_digest": "sha256:a9e9d6ca95120841600c91de9b492e578c1a68bc26ec57185d8e07d6d1111ffd",
+    "contract_catalog_digest": "sha256:fae00a609d64ab420bd982d99a5f7e8c4f0551562b912b6360d78175195fe222",
+    "source_identity": "sha256:05d6740eba7d7531d5ef79ad24d7756622182334b1bde2cfae6e150436547921"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_experiment_design_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:91ed3ca4170dd6112d0b6e52c8e1db234e7c5e45ffd4249918d535ff4c6c9f1b",
+    "artifact_digest": "sha256:a9e9d6ca95120841600c91de9b492e578c1a68bc26ec57185d8e07d6d1111ffd",
     "display_name": "Rumi Experiment Design Pack",
     "id": "rumi_experiment_design_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:a0c347c0a7dfa63d270ae0e4b6aec50788ee48f215ebcc3269b1ae2574b9f645",
+        "digest": "sha256:05d6740eba7d7531d5ef79ad24d7756622182334b1bde2cfae6e150436547921",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:a0c347c0a7dfa63d270ae0e4b6aec50788ee48f215ebcc3269b1ae2574b9f645",
+    "source_digest": "sha256:05d6740eba7d7531d5ef79ad24d7756622182334b1bde2cfae6e150436547921",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_experiment_design_pack"
   },

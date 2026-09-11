@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:50fc8858c65ee4d2404b5cbc3cf407014479062c80ab189b3f9bc485613c4498",
+      "digest": "sha256:f8cc8bd23fe52556859f111aea71801ad69c18cc7a97f88703a8d6dcebc563f9",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:7a3d8ca54b5ffc40215892fe58b1dc3a8c9374de6453363856b70b63c45a1fed",
-    "contract_catalog_digest": "sha256:eb8e9d513bbe0db5182bc07b32ce3bf8c960786bf58f41a9cf05580778faac33",
-    "source_identity": "sha256:90dcc1063765278230742732fd89c10a7013345f8a14a0fed9136e0eddd4cb4d"
+    "artifact_set_digest": "sha256:432bc34761f64e01f7cb9dba3106eaf9186f4207b1e91b561b048e90a0554247",
+    "contract_catalog_digest": "sha256:b27d0d24792a053e8e83902f79cad61882f9fa3699f2a86c7299c323e432912e",
+    "source_identity": "sha256:b08b188b7ccb8b12e5d34cff972e2135f38cf0116fab65590e2cdd3c1d097920"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_code_ide_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:7a3d8ca54b5ffc40215892fe58b1dc3a8c9374de6453363856b70b63c45a1fed",
+    "artifact_digest": "sha256:432bc34761f64e01f7cb9dba3106eaf9186f4207b1e91b561b048e90a0554247",
     "display_name": "rumi_code_ide_pack",
     "id": "rumi_code_ide_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:90dcc1063765278230742732fd89c10a7013345f8a14a0fed9136e0eddd4cb4d",
+        "digest": "sha256:b08b188b7ccb8b12e5d34cff972e2135f38cf0116fab65590e2cdd3c1d097920",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:90dcc1063765278230742732fd89c10a7013345f8a14a0fed9136e0eddd4cb4d",
+    "source_digest": "sha256:b08b188b7ccb8b12e5d34cff972e2135f38cf0116fab65590e2cdd3c1d097920",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_code_ide_pack"
   },

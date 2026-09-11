@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:5ce1e586a9b4d37be088de2fec1a4d7dc270e4e5a9219caecece36316d875495",
+      "digest": "sha256:703e3b0a6a4b84b75b3a088a3d046125e64e59cd107b44833b00a20c092b7f93",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:7c08f69a6702c02d91ad608d5caaa4aaffd43e7a20389ecf0b490f480fb7ced0",
-    "contract_catalog_digest": "sha256:d77b9ab090ca588fe2ad26d9fd99aeab30ef3c1c4c74213d75c543db29dbc3d1",
-    "source_identity": "sha256:21c5542259b43c2aeb18d47a9cadcbfb565ad11b84bd2a0d1423d7be01412092"
+    "artifact_set_digest": "sha256:9199707e53f6bd516863def264bc09159d9042167f2def2c837c554db3dd7864",
+    "contract_catalog_digest": "sha256:7c661a06d0fa71ff60cdcc1a4a10eccf2ef8b68b8337cacdd0c9c9f7996ad5b4",
+    "source_identity": "sha256:400946e7a37e6aed78bc80644172f44d6df58e54ee7d817889e4f76333176c8e"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_connector_gateway_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:7c08f69a6702c02d91ad608d5caaa4aaffd43e7a20389ecf0b490f480fb7ced0",
+    "artifact_digest": "sha256:9199707e53f6bd516863def264bc09159d9042167f2def2c837c554db3dd7864",
     "display_name": "Rumi Connector Gateway Pack",
     "id": "rumi_connector_gateway_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:21c5542259b43c2aeb18d47a9cadcbfb565ad11b84bd2a0d1423d7be01412092",
+        "digest": "sha256:400946e7a37e6aed78bc80644172f44d6df58e54ee7d817889e4f76333176c8e",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:21c5542259b43c2aeb18d47a9cadcbfb565ad11b84bd2a0d1423d7be01412092",
+    "source_digest": "sha256:400946e7a37e6aed78bc80644172f44d6df58e54ee7d817889e4f76333176c8e",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_gateway_pack"
   },

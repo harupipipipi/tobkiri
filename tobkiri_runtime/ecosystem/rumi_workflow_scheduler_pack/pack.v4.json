@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:ebbd964b415719e768ec7d38f36ecbaf30ead9a4455de3884f0308ed855404b4",
+      "digest": "sha256:adce2ab47a1c95b157bc43636d12be9a35af52d76def06fb50939d5feef36241",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:68f6f16e72c86f6276a39282e662ad5e81912af4483caaa7cbe91054edf5e8c6",
-    "contract_catalog_digest": "sha256:bf61b4a98e44da39ce130403ed059e3f2f981e683b4b5947bf64822e73bd6389",
-    "source_identity": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36"
+    "artifact_set_digest": "sha256:b288a852c50e397b879e2e6f7cac9d6e8bf25d7e33cccd7ff93fd75c6f53a4be",
+    "contract_catalog_digest": "sha256:76e5d4e3536dc7a12a50200233e1e32505f0b62f1cb4d9f1545ef37e779d707f",
+    "source_identity": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f"
   },
   "migration": {
     "compatibility": "read_only",
@@ -20,11 +20,11 @@
       "rumi_workflow_scheduler_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:68f6f16e72c86f6276a39282e662ad5e81912af4483caaa7cbe91054edf5e8c6",
+    "artifact_digest": "sha256:b288a852c50e397b879e2e6f7cac9d6e8bf25d7e33cccd7ff93fd75c6f53a4be",
     "display_name": "rumi_workflow_scheduler_pack",
     "id": "rumi_workflow_scheduler_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36",
+        "digest": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36",
+    "source_digest": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_workflow_scheduler_pack"
   },
