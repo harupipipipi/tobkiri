@@ -231,6 +231,43 @@ def test_state_proposal_retains_receipts_without_receiving_a_callback(tmp_path: 
     assert saved["unknown"] == "kept"
 
 
+def test_state_receipt_survives_owner_restart_without_reapplying(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    first_owner = FrontendSettingsStore(path)
+    initial = first_owner.update(
+        lambda _: {"models": {"enabled": False}, "unknown": {"kept": True}}
+    )
+    proposal = {**initial, "models": {"enabled": True}}
+    first = first_owner.compare_and_swap_state(
+        "models.enabled",
+        proposal,
+        {"enabled": True},
+        expected_document_revision=1,
+        expected_revision=0,
+        idempotency_key="request-after-restart",
+        request_fingerprint="toggle-after-restart",
+    )
+    committed_bytes = path.read_bytes()
+
+    restarted_owner = FrontendSettingsStore(path)
+    replay = restarted_owner.compare_and_swap_state(
+        "models.enabled",
+        proposal,
+        {"enabled": True},
+        expected_document_revision=1,
+        expected_revision=0,
+        idempotency_key="request-after-restart",
+        request_fingerprint="toggle-after-restart",
+    )
+
+    assert replay == {**first, "idempotent_replay": True}
+    assert path.read_bytes() == committed_bytes
+    saved = restarted_owner.read_snapshot()
+    assert saved[REVISION_KEY] == 2
+    assert saved[STATE_REVISIONS_KEY] == {"models.enabled": 1}
+    assert saved["unknown"] == {"kept": True}
+
+
 def test_document_retry_only_after_proven_conflict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = FrontendSettingsStore(tmp_path / "settings.json")
     commit = store.compare_and_swap_document
