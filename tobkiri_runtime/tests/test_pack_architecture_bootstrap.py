@@ -60,14 +60,18 @@ def test_reviewed_bootstrap_reference_rejects_candidate_expansion_or_tampering(
     verifier = _verifier()
     reference = tmp_path / "reference.json"
     candidate = tmp_path / "candidate.json"
-    reference.write_bytes(_bootstrap_reference())
+    reference_bytes = _bootstrap_reference()
+    reference.write_bytes(reference_bytes)
     document = json.loads(BASELINE.read_text(encoding="utf-8"))
+    reviewed = json.loads(reference_bytes)["exceptions"][0]
     if drift == "extra":
-        extra = dict(document["exceptions"][0])
+        extra = dict(reviewed)
         extra["identity"] += "-extra"
         document["exceptions"].append(extra)
     else:
-        document["exceptions"][0]["reason"] = "candidate-authored reason"
+        modified = dict(reviewed)
+        modified["reason"] = "candidate-authored reason"
+        document["exceptions"].append(modified)
     _write(document, candidate)
 
     with pytest.raises(ValueError):
@@ -83,7 +87,6 @@ def test_reviewed_bootstrap_reference_accepts_further_resolved_subset(
     candidate = tmp_path / "candidate.json"
     reference.write_bytes(_bootstrap_reference())
     document = json.loads(BASELINE.read_text(encoding="utf-8"))
-    document["exceptions"].pop()
     _write(document, candidate)
 
     verifier.verify_bootstrap(candidate, reference)
