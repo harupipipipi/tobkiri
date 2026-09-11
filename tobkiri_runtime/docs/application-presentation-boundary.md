@@ -88,16 +88,16 @@ application's former store module is a data-only client, not an import alias or
 another parser/writer. Shared revision/error types and the trusted owner port
 live in `tobkiri_protocol/settings_state.py`; that module has no file IO.
 
-This is a staged source transfer, **not a completed caller or live cutover**.
+This is a staged source transfer, **not a completed native or live cutover**.
 Legacy paths are diagnostic metadata and cannot grant access. Unbound legacy
 clients raise `explicit settings owner binding is required`. FrontendRegistry,
 ModelRuntimeSettingsService and CommandProtocol accept an explicit owner port;
 the legacy settings block can receive one only through its separate trusted
-Host context, not request data. Existing standalone callers are not all wired:
-the model/isolated-settings audit currently has 27 failures and 7 passes.
-Do not restore an ambient file fallback or publish a full-document RPC merely
-to make those tests green. Finite captured callers and their tests must be
-connected before this source can be accepted or deployed.
+Host context, not request data. The finite in-source settings consumers now
+propagate that explicit owner through their normal call chains. This source
+coverage does not prove that a native startup injected the intended owner or
+that the live settings file has changed owners. Do not restore an ambient file
+fallback or publish a full-document RPC to bypass either remaining acceptance.
 
 The legacy transition must cover more than the presentation reader:
 
@@ -113,16 +113,17 @@ The legacy transition must cover more than the presentation reader:
 - Optional settings reads in AIClient, chat requests, tool recommendation and
   permissions, trigger decisions, chat debug logging and LINE addressing/output
   policy now use `domain/frontend_settings.py` and the owner's `read_snapshot()`.
-  These nine reads no longer parse the file independently, but their explicit
-  owner binding is still pending. Their existing unreadable/corrupt fallback is
-  local compatibility behavior;
+  These nine reads no longer parse the file independently and their normal
+  in-source call chains carry the same explicit owner. Their existing
+  unreadable/corrupt fallback is local compatibility behavior;
   it must not absorb future captured-contract authorization failures. They do
   not recover from backup or create locks/directories/diagnostics.
 - The model service no longer caches resolved values using filesystem size and
   modification time. Those attributes can remain identical across different
   settings documents and are not an owner revision. Each resolution now reads
   the current owner snapshot and credential availability without retaining a
-  second global settings cache. Captured owner binding is still pending.
+  second global settings cache. Native owner injection and live-file cutover
+  remain separate acceptance work.
   The command registry accepts a trusted `command_state_dir` constructor binding
   or `RUMI_DEFAULTSPACK_COMMAND_STATE_DIR` startup binding for its separate
   event/offline databases. Desktop startup fixes the existing location without
@@ -195,8 +196,9 @@ queued success advances the owner revision without overwriting later edits;
 reads started before a local save cannot replace its resulting snapshot.
 The full-document PUT fallback is removed. Interactive queue/conflict acceptance,
 explicit stale-draft reconciliation, lock-wait cancellation and live cutover
-remain pending. The storage source transfer has
-removed the cross-Pack import, but has not connected those application callers.
+remain pending. The storage source transfer removed the cross-Pack import; it
+does not by itself prove native startup, live storage ownership, or old-writer
+shutdown.
 
 Both settings read and the full catalog's settings projection now include
 `document_revision` from the same single snapshot used for their public values.
