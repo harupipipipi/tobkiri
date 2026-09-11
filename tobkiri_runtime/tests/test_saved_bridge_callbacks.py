@@ -158,6 +158,33 @@ def test_owned_special_context_is_rejected_before_user_append(
     assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
 
 
+def test_owned_agent_context_fails_before_guest_can_request_a_write(tmp_path: Path) -> None:
+    """Return an explicit context failure before persistence for an owned agent."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.update(
+        "conversation-1",
+        {"agent_id": "agent-1"},
+        expected_conversation_revision=1,
+    )
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="context resolution"):
+        callbacks.preflight(outer)
+    intent = saved.start(outer.payload["request"])
+    outcome = saved.resume(
+        intent["state"],
+        {
+            "status": "ok",
+            "value": {"conversation": store.get("conversation-1")},
+        },
+    )
+    assert outcome["status"] == "error"
+    assert outcome["error"]["code"] == "CONTEXT_RESOLUTION_REQUIRED"
+    assert "hop" not in outcome
+    assert store.path.read_bytes() == before
+    assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
+
+
 @pytest.mark.parametrize("logs", [{}, False, 0, "", None, []])
 def test_preflight_checks_owned_history_tool_logs_before_readiness(
     tmp_path: Path,
@@ -259,6 +286,31 @@ def test_saved_text_blocks_do_not_admit_unresolved_content(
             "id": "prior-assistant",
             "role": "assistant",
             "content": content,
+        },
+        expected_conversation_revision=1,
+    )
+    outer.payload["request"]["conversation_revision"] = 2
+    before = store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="additional content resolution"):
+        callbacks.preflight(outer)
+    assert store.path.read_bytes() == before
+    assert calls and all(target == saved.TARGETS[0] for target, _ in calls)
+
+
+@pytest.mark.parametrize("field", ["parts", "widget"])
+def test_saved_history_rejects_unresolved_structured_context_before_write(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    """Reject unresolved structured history before readiness or persistence."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    store.append_message(
+        "conversation-1",
+        {
+            "id": "prior-assistant",
+            "role": "assistant",
+            "content": "Earlier reply",
+            field: {"type": "unresolved"},
         },
         expected_conversation_revision=1,
     )
