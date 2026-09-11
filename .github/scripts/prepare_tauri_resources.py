@@ -1431,9 +1431,10 @@ def _validate_defaultspack_v4(
     integrity_script = (
         repository_root
         / APP_SOURCE_DIR
-        / "scripts"
+        / "ecosystem"
+        / "defaultspack"
         / "quality"
-        / "scan_defaultspack_integrity.py"
+        / "scan_integrity.py"
     )
     if not integrity_script.is_file():
         raise FileNotFoundError(

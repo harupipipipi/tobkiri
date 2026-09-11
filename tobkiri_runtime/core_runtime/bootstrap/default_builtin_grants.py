@@ -6,7 +6,6 @@ from typing import Any
 
 AUTHORITY_WINDOW_PRINCIPAL = "system:authority-approval-window"
 HOST_CAPABILITY_BROKER_PRINCIPAL = "system:host-capability-broker"
-HOST_CAPABILITIES_PACK_ID = "rumi_host_capabilities_pack"
 
 
 AUTHORITY_WINDOW_PERMISSIONS = (

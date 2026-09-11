@@ -478,7 +478,7 @@ jobs:
           python -B scripts/generate_executable_source_registry_v1.py --check
           python -B scripts/generate_executable_catalogs_v4.py --check
           python -B scripts/generate_defaultspack_v4_bundle.py --check
-          python -B scripts/quality/scan_defaultspack_integrity.py --strict
+          python -B ecosystem/defaultspack/quality/scan_integrity.py --strict
 
       - name: Verify generated Tobkiri Launcher presentation catalog
         run: python scripts/quality/generate_presentation_catalog.py --check

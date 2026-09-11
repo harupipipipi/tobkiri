@@ -121,7 +121,7 @@ def test_relocated_source_checkout_preserves_all_locked_catalog_sidecars(
         for entry in lock["entries"]
         if entry["kind"] == "executable_catalog"
     }
-    assert len(expected) == 64
+    assert len(expected) == 141
     source_root = checkout / "tobkiri_runtime"
     assert (source_root / "ecosystem/defaultspack/executables.v4.json").is_file()
     for relative, digest in expected.items():

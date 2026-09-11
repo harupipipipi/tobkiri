@@ -45,7 +45,7 @@ frontend-check:
 
 # Run the defaultspack integrity scan used by CI.
 integrity:
-    cd tobkiri_runtime && python scripts/quality/scan_defaultspack_integrity.py --strict
+    cd tobkiri_runtime && python ecosystem/defaultspack/quality/scan_integrity.py --strict
 
 # Run the debt scan plus the no-baseline Python structural boundary gate.
 pack-architecture:
@@ -89,7 +89,7 @@ generated-check python="python":
     {{python}} -B tobkiri_runtime/scripts/quality/scan_command_protocol.py --inventory tobkiri_runtime/generated/pack_sdk/command_inventory.json --check-inventory
     {{python}} -B tobkiri_runtime/scripts/tobkiri_pack.py generate tobkiri_runtime/generated/pack_sdk --check
     {{python}} -B tobkiri_runtime/scripts/tobkiri_pack.py project-legacy tobkiri_runtime/examples/pack_v3/minimal_service.json tobkiri_runtime/examples/pack_v3/minimal_service.ecosystem.json --check
-    {{python}} -B tobkiri_runtime/scripts/quality/scan_defaultspack_integrity.py --strict
+    {{python}} -B tobkiri_runtime/ecosystem/defaultspack/quality/scan_integrity.py --strict
     {{python}} -B scripts/quality/generate_presentation_catalog.py --check
     {{python}} -B scripts/quality/validate_pack_architecture.py
     {{python}} -B scripts/quality/scan_pack_boundaries.py

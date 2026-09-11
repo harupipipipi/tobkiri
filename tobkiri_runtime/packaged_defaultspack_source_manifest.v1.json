@@ -3386,17 +3386,10 @@
       "executable": false
     },
     {
-      "path": "scripts/quality/scan_defaultspack_integrity.py",
-      "type": "regular-file",
-      "size": 34027,
-      "sha256": "424e38866a75674ad672a183ec6a80ac87eab39d300e8fcacaf9f8cade1e25b0",
-      "executable": false
-    },
-    {
       "path": "scripts/quality/scan_pack_architecture.py",
       "type": "regular-file",
-      "size": 38203,
-      "sha256": "9baac5f2c9d3a53be1123072bb879e0de5129a983835c37a531d477ea345368d",
+      "size": 39665,
+      "sha256": "698925f60ce44efbe626412bcea1218495908301dfe0228b7337291ec9d895a6",
       "executable": false
     },
     {

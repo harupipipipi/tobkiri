@@ -50,9 +50,12 @@ IMPORT_RE = re.compile(
 PACK_PATH_RE = re.compile(r"(?:^|/)ecosystem/([a-zA-Z0-9_.-]+)(?:/|$)")
 API_LITERAL_RE = re.compile(r"['\"](/api/(?!contracts/)[^'\"]*)['\"]")
 PACK_DISCOVERY_RE = re.compile(
-    r"(?:glob|rglob|iterdir)\s*\([^\n)]*\)|(?:all_installed|installed_packs)",
+    r"(?:(?P<receiver>[a-zA-Z_$][\w$]*(?:\.[a-zA-Z_$][\w$]*)*)\s*\.\s*"
+    r"(?:glob|rglob|iterdir)\s*\([^\n)]*\)|"
+    r"(?P<inventory>all_installed|installed_packs))",
     re.IGNORECASE,
 )
+PACK_DISCOVERY_RECEIVER_RE = re.compile(r"(?:ecosystem|install|pack)", re.IGNORECASE)
 SECRET_INJECTION_RE = re.compile(
     r"(?:os\.environ|process\.env|Platform\.environment).{0,100}"
     r"(?:api[_-]?key|token|secret|credential)",
@@ -119,13 +122,31 @@ def _load_pack_catalog(ecosystem_dir: Path) -> dict[str, Any]:
     if payload.get("catalog_api_version") != PACK_CATALOG_API_VERSION:
         raise PackCatalogError("unknown canonical v4 Pack catalog version")
     pack_ids = payload.get("pack_ids")
+    excluded_packs = payload.get("excluded_packs")
     records = payload.get("packs")
-    if not isinstance(pack_ids, list) or not isinstance(records, list):
+    if (
+        not isinstance(pack_ids, list)
+        or not isinstance(excluded_packs, list)
+        or not isinstance(records, list)
+    ):
         raise PackCatalogError("canonical v4 Pack catalog inventory is malformed")
     if any(not isinstance(pack_id, str) or not pack_id.strip() for pack_id in pack_ids):
         raise PackCatalogError("canonical v4 Pack catalog contains an invalid Pack ID")
     if pack_ids != sorted(pack_ids) or len(set(pack_ids)) != len(pack_ids):
         raise PackCatalogError("canonical v4 Pack catalog Pack IDs are not unique and sorted")
+    if any(
+        not isinstance(pack_id, str) or not pack_id.strip()
+        for pack_id in excluded_packs
+    ):
+        raise PackCatalogError("canonical v4 Pack catalog contains an invalid excluded Pack ID")
+    if (
+        excluded_packs != sorted(excluded_packs)
+        or len(set(excluded_packs)) != len(excluded_packs)
+        or set(pack_ids) & set(excluded_packs)
+    ):
+        raise PackCatalogError(
+            "canonical v4 Pack catalog excluded Pack IDs are not unique, sorted, and disjoint"
+        )
     record_ids: list[str] = []
     for record in records:
         if not isinstance(record, dict) or not isinstance(record.get("pack_id"), str):
@@ -305,7 +326,14 @@ def scan_repository(root: Path) -> list[Violation]:
         if (ecosystem / pack_id).is_dir()
     }
     violations: set[Violation] = set()
-    violations.update(_scan_catalog_disk_alignment(root, ecosystem, pack_names))
+    violations.update(
+        _scan_catalog_disk_alignment(
+            root,
+            ecosystem,
+            pack_names,
+            set(catalog["excluded_packs"]),
+        )
+    )
     violations.update(_scan_catalog_graph(root, catalog, pack_names))
     for path in _source_files(root):
         source_pack = _source_pack(root, path, pack_roots)
@@ -344,7 +372,16 @@ def _source_files(root: Path) -> Iterable[Path]:
             continue
         if _is_ignored_source_path(root, path):
             continue
-        if "/tests/" in path.as_posix() or "/fixtures/" in path.as_posix():
+        relative = path.relative_to(root)
+        directory_parts = set(relative.parts[:-1])
+        quality_test_file = (
+            {"scripts", "quality"} <= directory_parts
+            and (path.name.startswith("test_") or path.stem.endswith("_test"))
+        )
+        if (
+            {"test", "tests", "fixtures"} & directory_parts
+            or quality_test_file
+        ):
             continue
         yield path
 
@@ -361,7 +398,10 @@ def _is_ignored_source_path(root: Path, path: Path) -> bool:
 
 
 def _scan_catalog_disk_alignment(
-    root: Path, ecosystem: Path, pack_names: set[str]
+    root: Path,
+    ecosystem: Path,
+    pack_names: set[str],
+    excluded_pack_names: set[str],
 ) -> set[Violation]:
     """Report Pack directories that disagree with the canonical inventory."""
     found: set[Violation] = set()
@@ -386,7 +426,7 @@ def _scan_catalog_disk_alignment(
                 _value_fingerprint("catalog-v1", f"missing:{pack_id}"),
             )
         )
-    for pack_id in sorted(disk_names - pack_names):
+    for pack_id in sorted(disk_names - pack_names - excluded_pack_names):
         found.add(
             _line_violation(
                 root,
@@ -730,6 +770,9 @@ def _scan_runtime_policy(root: Path, path: Path, text: str, source_pack: str) ->
     )
     if source_pack == "kernel" and discovery_surface:
         for match in PACK_DISCOVERY_RE.finditer(text):
+            receiver = match.group("receiver")
+            if receiver is not None and not PACK_DISCOVERY_RECEIVER_RE.search(receiver):
+                continue
             found.add(
                 _violation(
                     root,

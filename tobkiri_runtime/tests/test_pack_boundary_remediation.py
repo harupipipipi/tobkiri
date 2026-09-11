@@ -25,7 +25,7 @@ def test_v4_catalog_resolves_only_explicit_pack_ids() -> None:
     """The catalog owns all Pack roots and rejects injected or missing IDs."""
 
     catalog = load_pack_catalog()
-    assert len(catalog) == 140
+    assert len(catalog) == 142
     assert set(resolve_selected_pack_roots(["defaults", "defaultspack"])) == {
         "defaults",
         "defaultspack",
@@ -67,8 +67,8 @@ def test_pack_architecture_boundary_debt_is_exactly_baselined() -> None:
     )
     violations = scan_pack_architecture.scan_repository(REPOSITORY)
 
-    assert len(baseline) == 44
-    assert len(violations) == 44
+    assert len(baseline) == 16
+    assert len(violations) == 16
     assert scan_pack_architecture.find_unbaselined_violations(violations, baseline) == []
     assert scan_pack_architecture.find_stale_baseline_exceptions(
         violations, baseline

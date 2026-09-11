@@ -43,5 +43,5 @@ Run the guard locally with:
 
 ```bash
 cd tobkiri_runtime
-python scripts/quality/scan_defaultspack_integrity.py --strict
+python ecosystem/defaultspack/quality/scan_integrity.py --strict
 ```

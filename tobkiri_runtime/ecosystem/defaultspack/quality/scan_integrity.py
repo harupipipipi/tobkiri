@@ -11,8 +11,8 @@ from pathlib import PurePosixPath
 from typing import Any, Iterable
 
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
+ROOT = Path(__file__).resolve().parents[3]
+DEFAULTSPACK_ROOT = Path(__file__).resolve().parents[1]
 WEBAPP_ROOT = DEFAULTSPACK_ROOT / "webapp"
 
 if str(ROOT) not in sys.path:

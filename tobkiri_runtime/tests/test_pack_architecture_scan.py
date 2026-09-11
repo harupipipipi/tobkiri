@@ -219,6 +219,66 @@ def test_legacy_manifest_cannot_be_used_for_pack_discovery(tmp_path: Path) -> No
         scanner.scan_repository(tmp_path)
 
 
+def test_cataloged_compatibility_alias_is_not_an_unlisted_pack(tmp_path: Path) -> None:
+    scanner = _scanner()
+    _pack(tmp_path, "pack_a")
+    ecosystem = tmp_path / "tobkiri_runtime" / "ecosystem"
+    alias = ecosystem / "retired_pack"
+    alias.mkdir()
+    (alias / "compatibility-alias.v1.json").write_text("{}", encoding="utf-8")
+    catalog_path = tmp_path / "tobkiri_runtime" / "schemas" / "pack_v4_catalog.v1.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["excluded_packs"] = ["retired_pack"]
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    violations = scanner.scan_repository(tmp_path)
+
+    assert not [item for item in violations if item.rule == "unlisted_pack_directory"]
+
+
+def test_production_scan_ignores_test_sources(tmp_path: Path) -> None:
+    scanner = _scanner()
+    _pack(tmp_path, "pack_a")
+    _pack(tmp_path, "pack_b")
+    candidates = (
+        tmp_path / "scripts" / "quality" / "test_pack_policy.py",
+        tmp_path / "tobkiri_mobile" / "test" / "pack_policy_test.dart",
+    )
+    for source in candidates:
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(
+            "PREFERRED_PACK = 'pack_a'\nif PREFERRED_PACK == 'pack_b':\n    pass\n",
+            encoding="utf-8",
+        )
+
+    violations = scanner.scan_repository(tmp_path)
+
+    paths = {item.path for item in violations}
+    assert not paths.intersection(
+        source.relative_to(tmp_path).as_posix() for source in candidates
+    )
+
+
+def test_test_named_kernel_source_cannot_evade_production_scan(tmp_path: Path) -> None:
+    scanner = _scanner()
+    _pack(tmp_path, "pack_a")
+    kernel = tmp_path / "tobkiri_runtime" / "core_runtime"
+    kernel.mkdir(parents=True)
+    source = kernel / "test_pack_policy.py"
+    source.write_text(
+        "PREFERRED_PACK = 'pack_a'\nif configured_pack == PREFERRED_PACK:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    violations = scanner.scan_repository(tmp_path)
+
+    assert any(
+        item.path.endswith("core_runtime/test_pack_policy.py")
+        and item.rule == "product_pack_branch"
+        for item in violations
+    )
+
+
 def test_unscoped_kernel_discovery_secret_and_domain_branch_are_detected(
     tmp_path: Path,
 ) -> None:
@@ -241,6 +301,29 @@ def test_unscoped_kernel_discovery_secret_and_domain_branch_are_detected(
         "unscoped_global_secret",
         "kernel_domain_branch",
     } <= rules
+
+
+def test_profile_projection_inventory_is_not_pack_discovery(tmp_path: Path) -> None:
+    """A bounded Profile content walk is not an all-Pack inventory scan."""
+    scanner = _scanner()
+    _pack(tmp_path, "pack_a")
+    kernel = tmp_path / "tobkiri_runtime" / "core_runtime"
+    kernel.mkdir(parents=True)
+    source = kernel / "profile_content_projection.py"
+    source.write_text(
+        "def inventory(projection_root):\n"
+        "    return sorted(projection_root.rglob('*'))\n",
+        encoding="utf-8",
+    )
+
+    violations = scanner.scan_repository(tmp_path)
+
+    assert not [
+        item
+        for item in violations
+        if item.path.endswith("profile_content_projection.py")
+        and item.rule == "unscoped_pack_discovery"
+    ]
 
 
 def test_baseline_rejects_wildcards_and_missing_metadata(tmp_path: Path) -> None:

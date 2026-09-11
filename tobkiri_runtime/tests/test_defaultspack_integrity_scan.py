@@ -13,7 +13,7 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 
-from scripts.quality.scan_defaultspack_integrity import (  # noqa: E402
+from ecosystem.defaultspack.quality.scan_integrity import (  # noqa: E402
     check_v4_integrity,
 )
 
@@ -68,7 +68,7 @@ def test_defaultspack_integrity_scan_strict_passes():
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/quality/scan_defaultspack_integrity.py",
+            "ecosystem/defaultspack/quality/scan_integrity.py",
             "--strict",
         ],
         cwd=ROOT,
