@@ -50,7 +50,7 @@ def call_model(
     )
     model_requirements = model_requirements_from_tokens(required_capabilities)
     model_settings = ModelRuntimeSettingsService(settings_owner=settings_owner).get_settings()
-    profiles = get_profile_catalog()
+    profiles = get_profile_catalog(settings=model_settings)
     preferred_model = str(
         payload.get("model_hint")
         or payload.get("model")
@@ -82,13 +82,20 @@ def call_model(
         decision = route_model_request(routing_request)
     model = decision.selected_model
     try:
-        selected_capabilities = get_model_capabilities(model, profiles=profiles) or {}
+        selected_capabilities = get_model_capabilities(
+            model,
+            profiles=profiles,
+            settings=model_settings,
+        ) or {}
     except TypeError as exc:
         # Keep compatibility with injected/legacy capability resolvers that
         # still expose the original single-argument callable contract.
         if "profiles" not in str(exc):
             raise
-        selected_capabilities = get_model_capabilities(model) or {}
+        selected_capabilities = get_model_capabilities(
+            model,
+            settings=model_settings,
+        ) or {}
     missing_capabilities = missing_model_capabilities(required_capabilities, selected_capabilities)
     if missing_capabilities:
         return {

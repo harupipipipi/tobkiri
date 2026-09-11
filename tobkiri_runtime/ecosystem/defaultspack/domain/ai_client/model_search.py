@@ -8,10 +8,15 @@ from domain.ai_client.audio_capability import metadata_supports_audio_input
 from domain.ai_client.model_groups import normalize_model_groups
 
 
-def search_models(filters: dict[str, Any] | None = None, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def search_models(
+    filters: dict[str, Any] | None = None,
+    *,
+    profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     filters = dict(filters or {})
     if profiles is None:
-        profiles = _profile_catalog()
+        profiles = _profile_catalog(settings=settings)
     query = str(filters.get("query") or "").strip().casefold()
     type_filter = _as_set(filters.get("type") or filters.get("model_type"))
     if not type_filter:
@@ -70,19 +75,27 @@ def search_models(filters: dict[str, Any] | None = None, *, profiles: list[dict[
     }
 
 
-def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+def get_model_capabilities(
+    profile_id: str,
+    *,
+    profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     needle = str(profile_id or "").strip()
     if not needle:
         return None
     try:
         from domain.ai_client.model_pack_store import ModelPackStore
 
-        if ModelPackStore.is_model_pack_ref(needle):
-            settings = None
+        if ModelPackStore.is_model_pack_ref(needle) and isinstance(settings, dict):
             pack = ModelPackStore(settings).get(needle)
             if pack is not None:
                 member_caps = [
-                    get_model_capabilities(member.model, profiles=profiles)
+                    get_model_capabilities(
+                        member.model,
+                        profiles=profiles,
+                        settings=settings,
+                    )
                     for member in pack.members
                     if member.model and member.model != needle
                 ]
@@ -113,7 +126,9 @@ def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | 
                 }
     except Exception:
         pass
-    for profile in profiles if profiles is not None else _profile_catalog():
+    for profile in (
+        profiles if profiles is not None else _profile_catalog(settings=settings)
+    ):
         if not isinstance(profile, dict):
             continue
         aliases = {
@@ -126,12 +141,19 @@ def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | 
     return None
 
 
-def get_profile_catalog() -> list[dict[str, Any]]:
+def get_profile_catalog(
+    *, settings: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Return the resolved model profile catalog for one runtime operation."""
-    return _profile_catalog()
+    return _profile_catalog(settings=settings)
 
 
-def recommend_model(request: dict[str, Any] | None = None, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def recommend_model(
+    request: dict[str, Any] | None = None,
+    *,
+    profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     request = dict(request or {})
     filters = {
         "query": request.get("query", ""),
@@ -142,7 +164,7 @@ def recommend_model(request: dict[str, Any] | None = None, *, profiles: list[dic
         "provider_id": request.get("provider_id", ""),
         "max_results": request.get("max_results", 10),
     }
-    result = search_models(filters, profiles=profiles)
+    result = search_models(filters, profiles=profiles, settings=settings)
     selected = result["models"][0] if result["models"] else None
     return {
         "selected_model": selected,
@@ -214,7 +236,9 @@ def _capability_dict(value: Any) -> dict[str, bool]:
     return {}
 
 
-def _profile_catalog() -> list[dict[str, Any]]:
+def _profile_catalog(
+    *, settings: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     profiles: list[dict[str, Any]] = []
     try:
         from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
@@ -236,13 +260,11 @@ def _profile_catalog() -> list[dict[str, Any]]:
         profiles.extend(_openrouter_chat_reasoning_profiles(list_model_catalog("openrouter")))
     except Exception:
         pass
-    try:
+    if isinstance(settings, dict):
         from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
         service = ModelRuntimeSettingsService()
-        profiles.extend(service.runtime_defined_profiles(service.get_settings()))
-    except Exception:
-        pass
+        profiles.extend(service.runtime_defined_profiles(settings))
     return _dedupe_profiles(profiles)
 
 

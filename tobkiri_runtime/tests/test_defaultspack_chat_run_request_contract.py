@@ -148,7 +148,7 @@ def _setup_store(tmp_path, monkeypatch):
     monkeypatch.setattr("domain.chat.run_request.get_manager", lambda: _Manager())
     monkeypatch.setattr(
         "domain.chat.run_request.get_model_capabilities",
-        lambda _model: {"supports_tool_calling": True},
+        lambda _model, **kwargs: {"supports_tool_calling": True},
     )
     monkeypatch.setattr(
         "domain.chat.run_request.enrich_messages",

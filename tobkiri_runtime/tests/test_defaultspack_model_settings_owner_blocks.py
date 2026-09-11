@@ -113,7 +113,11 @@ def test_model_switch_bridge_uses_explicit_captured_settings_owner(
     owner = object()
     _SettingsService.seen = []
     monkeypatch.setattr(block, "ModelRuntimeSettingsService", _SettingsService)
-    monkeypatch.setattr(block, "get_model_capabilities", lambda model: {})
+    monkeypatch.setattr(
+        block,
+        "get_model_capabilities",
+        lambda model, **kwargs: {},
+    )
     monkeypatch.setattr(
         block,
         "detect_modalities",
@@ -142,3 +146,127 @@ def test_model_switch_bridge_uses_explicit_captured_settings_owner(
         "summary": "image"
     }
     assert _SettingsService.seen == [owner]
+
+
+def test_search_models_uses_captured_owner_and_forwards_snapshot(
+    monkeypatch: Any,
+) -> None:
+    import blocks.ai.search_models as block
+
+    owner = object()
+    _SettingsService.seen = []
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(block, "ModelRuntimeSettingsService", _SettingsService)
+    monkeypatch.setattr(
+        block,
+        "search_models",
+        lambda filters, *, settings: captured.append(settings) or {"models": []},
+    )
+
+    result = block.run(
+        {"settings_owner": "payload-owner"},
+        {"settings_owner": "context-owner"},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert _SettingsService.seen == [owner]
+    assert captured == [{}]
+
+
+def test_get_model_capabilities_uses_captured_owner_and_forwards_snapshot(
+    monkeypatch: Any,
+) -> None:
+    import blocks.ai.get_model_capabilities as block
+
+    owner = object()
+    _SettingsService.seen = []
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(block, "ModelRuntimeSettingsService", _SettingsService)
+    monkeypatch.setattr(
+        block,
+        "get_model_capabilities",
+        lambda profile_id, *, settings: captured.append(settings)
+        or {"profile_id": profile_id},
+    )
+
+    result = block.run(
+        {"profile_id": "provider/model", "settings_owner": "payload-owner"},
+        {"settings_owner": "context-owner"},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert _SettingsService.seen == [owner]
+    assert captured == [{}]
+
+
+def test_recommend_model_uses_captured_owner_and_forwards_snapshot(
+    monkeypatch: Any,
+) -> None:
+    import blocks.ai.recommend_model as block
+
+    owner = object()
+    _SettingsService.seen = []
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(block, "ModelRuntimeSettingsService", _SettingsService)
+    monkeypatch.setattr(
+        block,
+        "recommend_model",
+        lambda request, *, profiles, settings: captured.append(settings)
+        or {"selected_model": None},
+    )
+
+    result = block.run(
+        {"settings_owner": "payload-owner"},
+        {"settings_owner": "context-owner"},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert _SettingsService.seen == [owner]
+    assert captured == [{}]
+
+
+def test_model_catalog_uses_only_the_supplied_settings_snapshot(
+    monkeypatch: Any,
+) -> None:
+    from ecosystem.defaultspack.backend.ai_client import provider_catalog
+    from domain.ai_client import model_search
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+
+    settings = {"snapshot": "captured-owner"}
+    seen: list[dict[str, Any]] = []
+    monkeypatch.setattr(provider_catalog, "list_profile_catalog", lambda: [])
+    monkeypatch.setattr(provider_catalog, "list_model_catalog", lambda *args: [])
+    monkeypatch.setattr(
+        ModelRuntimeSettingsService,
+        "get_settings",
+        lambda self: (_ for _ in ()).throw(AssertionError("ambient read")),
+    )
+    monkeypatch.setattr(
+        ModelRuntimeSettingsService,
+        "runtime_defined_profiles",
+        lambda self, value: seen.append(value)
+        or [
+            {
+                "profile_id": "captured/model",
+                "provider_id": "captured",
+                "model_id": "model",
+                "type": "chat",
+                "configured": True,
+                "supports_tool_calling": True,
+            }
+        ],
+    )
+
+    profiles = model_search.get_profile_catalog(settings=settings)
+    capabilities = model_search.get_model_capabilities(
+        "captured/model",
+        settings=settings,
+    )
+
+    assert [profile["profile_id"] for profile in profiles] == ["captured/model"]
+    assert capabilities is not None
+    assert capabilities["supports_tool_calling"] is True
+    assert seen == [settings, settings]

@@ -847,7 +847,13 @@ class AgentEngine:
             context=execution_context,
             settings_owner=self._settings_owner,
         )
-        selected_capabilities = get_model_capabilities(model if model else "default") or {}
+        model_settings = ModelRuntimeSettingsService(
+            settings_owner=self._settings_owner
+        ).get_settings()
+        selected_capabilities = get_model_capabilities(
+            model if model else "default",
+            settings=model_settings,
+        ) or {}
         missing_capabilities = missing_model_capabilities(required_capabilities, selected_capabilities)
         if missing_capabilities:
             execution = AgentExecution(

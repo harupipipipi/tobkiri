@@ -639,7 +639,10 @@ def prepare_chat_run(
     _ensure_must_use_has_eligible_tools(tool_selection, raw_tools)
     modalities = detect_modalities(content, metadata)
     route_preferred_model = model
-    route_preferred_capabilities = get_model_capabilities(route_preferred_model) or {}
+    route_preferred_capabilities = get_model_capabilities(
+        route_preferred_model,
+        settings=model_settings,
+    ) or {}
     routing_decision = route_model_request(
         ModelRoutingRequest(
             conversation_id=conversation_id,
@@ -683,7 +686,10 @@ def prepare_chat_run(
             routing_decision.explanation = f"{model} selected because it was explicitly requested."
     else:
         model = routing_decision.selected_model
-    selected_capabilities = get_model_capabilities(model) or {}
+    selected_capabilities = get_model_capabilities(
+        model,
+        settings=model_settings,
+    ) or {}
     provider_model_metadata = None
     if selected_capabilities:
         provider_model_metadata = {

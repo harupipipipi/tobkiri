@@ -47,7 +47,13 @@ def _with_model_switch_compatibility(
     target_model = str(updates.get("model") or "").strip()
     if not target_model:
         return updates
-    capabilities = get_model_capabilities(target_model) or {}
+    settings = ModelRuntimeSettingsService(
+        settings_owner=settings_owner
+    ).get_settings()
+    capabilities = get_model_capabilities(
+        target_model,
+        settings=settings,
+    ) or {}
     if capabilities.get("supports_vision"):
         return updates
     metadata = conversation.get("metadata") if isinstance(conversation.get("metadata"), dict) else {}
@@ -58,9 +64,6 @@ def _with_model_switch_compatibility(
     has_images = any(detect_modalities(message.get("content"), message.get("metadata")).get("has_images") for message in messages if isinstance(message, dict))
     if not has_images:
         return updates
-    settings = ModelRuntimeSettingsService(
-        settings_owner=settings_owner
-    ).get_settings()
     policy = str(settings.get("on_switch_to_non_vision_with_images") or "auto_bridge")
     if policy == "block":
         raise ValueError("target model does not support vision and conversation contains images")

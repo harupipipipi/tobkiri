@@ -421,7 +421,14 @@ class ToolSelectionService:
         if not bool(self._tool_settings.get("auto_discover_embedding_model", False)):
             return ""
         try:
-            result = search_models({"type": "embedding", "configured_only": True, "max_results": 1})
+            result = search_models(
+                {
+                    "type": "embedding",
+                    "configured_only": True,
+                    "max_results": 1,
+                },
+                settings=self._settings,
+            )
         except Exception:
             return ""
         models = result.get("models") if isinstance(result, dict) else []

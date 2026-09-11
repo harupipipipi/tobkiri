@@ -833,7 +833,7 @@ def test_model_pack_deepthink_chain_selects_harness_tools_separate_from_model_to
 
     monkeypatch.setattr(
         "domain.ai_client.model_pack_router.get_model_capabilities",
-        lambda model, profiles=None: {"supports_tool_calling": True, "supports_thinking": True} if str(model).startswith("demo/") else {},
+        lambda model, **kwargs: {"supports_tool_calling": True, "supports_thinking": True} if str(model).startswith("demo/") else {},
     )
     monkeypatch.setattr(AIClient, "resolve_provider", fake_resolve)
 
@@ -1154,7 +1154,7 @@ def test_model_call_uses_required_capabilities(monkeypatch, tmp_path):
         return _fake_route_decision("demo/tool")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_tool_calling": True})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_tool_calling": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
     result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.tool_calling"]})
@@ -1173,7 +1173,7 @@ def test_model_call_requires_image_input_routes_to_vision_model(monkeypatch, tmp
         return _fake_route_decision("demo/vision")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_vision": True, "supports_image_input": True})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_vision": True, "supports_image_input": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
     result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.image_input"]})
@@ -1192,7 +1192,7 @@ def test_model_call_uses_fast_required_capability(monkeypatch, tmp_path):
         return _fake_route_decision("demo/fast")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_fast": True})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_fast": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
     result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.fast"]})
@@ -1210,7 +1210,7 @@ def test_model_call_errors_when_required_capability_unavailable(monkeypatch, tmp
         raise AssertionError("LLM should not be called when capabilities are unsatisfied")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_vision": False, "supports_image_input": False})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_vision": False, "supports_image_input": False})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", fail_complete)
 
     result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.image_input"]})
@@ -1299,7 +1299,7 @@ def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
     )
 
     monkeypatch.setattr("domain.chat.run_request.route_model_request", lambda request: _fake_route_decision(request.preferred_model))
-    monkeypatch.setattr("domain.chat.run_request.get_model_capabilities", lambda model: {"supports_thinking": True, "supports_tool_calling": False})
+    monkeypatch.setattr("domain.chat.run_request.get_model_capabilities", lambda model, **kwargs: {"supports_thinking": True, "supports_tool_calling": False})
 
     prepared = prepare_chat_run(
         {"conversation_id": conversation["id"], "message": {"role": "user", "content": "hello"}},

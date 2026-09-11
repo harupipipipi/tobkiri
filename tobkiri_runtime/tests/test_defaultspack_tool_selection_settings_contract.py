@@ -355,7 +355,7 @@ def test_semantic_auto_resolves_configured_embedding_model(monkeypatch):
     monkeypatch.setattr(
         service_module,
         "search_models",
-        lambda filters: {
+        lambda filters, **kwargs: {
             "models": [
                 {
                     "profile_id": "google/text-embedding-004",
