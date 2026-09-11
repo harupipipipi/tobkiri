@@ -192,6 +192,20 @@ def test_detects_requested_pack_boundary_violations(
     )
     _write_pack(tmp_path, "working", working)
 
+    content_bound = _pack(
+        "content-bound",
+        normative=True,
+        repository_commit="working-tree",
+    )
+    content_bound["provenance"] = {
+        "schema": "io.tobkiri.provenance.v2",
+        "normative": True,
+        "repository_commit": "working-tree",
+        "repository_commit_trusted": False,
+        "content_root_digest": f"sha256:{'a' * 64}",
+    }
+    _write_pack(tmp_path, "content-bound", content_bound)
+
     profile = {
         "profile_api_version": "io.tobkiri.profile.v5",
         "description": "a v5 API in a v4-named document",
@@ -216,6 +230,14 @@ def test_detects_requested_pack_boundary_violations(
         "pack-boundary.pure-operation-dedicated-process",
         "pack-boundary.v4-file-uses-v5-api",
     } <= rules
+    content_bound_path = (
+        "tobkiri_runtime/ecosystem/content-bound/pack.v4.json"
+    )
+    assert not any(
+        item["rule_id"] == "pack-boundary.normative-working-tree"
+        and item["path"] == content_bound_path
+        for item in scanner.scan_repository(tmp_path)
+    )
 
 
 def test_committed_baseline_does_not_excuse_the_non_authoritative_profile(
@@ -232,7 +254,7 @@ def test_committed_baseline_does_not_excuse_the_non_authoritative_profile(
         and item["path"] == profile_path
     ]
     assert profile_exceptions == []
-    assert baseline["summary"]["by_rule"]["pack-boundary.normative-working-tree"] == 8
+    assert "pack-boundary.normative-working-tree" not in baseline["summary"]["by_rule"]
 
     violations = scanner.scan_repository(repo_root)
     assert not any(

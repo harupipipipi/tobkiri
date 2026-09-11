@@ -89,6 +89,18 @@ def _walk_dicts(value: Any, path: str = "$") -> Iterable[tuple[str, dict[str, An
             yield from _walk_dicts(item, f"{path}[{index}]")
 
 
+def _uses_content_bound_provenance(node: dict[str, Any]) -> bool:
+    """Return whether v2 provenance explicitly distrusts its commit label."""
+
+    digest = node.get("content_root_digest")
+    return (
+        node.get("schema") == "io.tobkiri.provenance.v2"
+        and node.get("repository_commit_trusted") is False
+        and isinstance(digest, str)
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is not None
+    )
+
+
 def _discover_json_files(
     repo_root: Path,
     ecosystem_root: Path,
@@ -402,8 +414,10 @@ def scan_repository(repo_root: Path) -> list[dict[str, Any]]:
     for path, (document, text) in sorted(documents.items()):
         diagnostics.extend(_scan_schema(repo_root, path, document, text))
         for json_path, node in _walk_dicts(document):
-            if node.get("normative") is True and node.get("repository_commit") == (
-                "working-tree"
+            if (
+                node.get("normative") is True
+                and node.get("repository_commit") == "working-tree"
+                and not _uses_content_bound_provenance(node)
             ):
                 relative = path.relative_to(repo_root).as_posix()
                 diagnostics.append(

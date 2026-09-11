@@ -4,10 +4,9 @@
   "summary": {
     "by_rule": {
       "pack-boundary.empty-pack-boundary": 41,
-      "pack-boundary.normative-working-tree": 8,
       "pack-boundary.v4-file-uses-v5-api": 1
     },
-    "total": 50
+    "total": 42
   },
   "violations": [
     {
@@ -501,78 +500,6 @@
       "line": 10,
       "path": "tobkiri_runtime/ecosystem/search_home_pack/pack.v4.json",
       "rule_id": "pack-boundary.empty-pack-boundary"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:2e05a6a18c1e8da1d84e4b7861b1d6d3b522784c5a4b9069092dcb3297946c09",
-      "line": 24,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults-basepack.base.v1.json",
-      "rule_id": "pack-boundary.normative-working-tree"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:af0ce94e83869318f8e708d6f778dfb79e3779426feae2ab93db9c10aa5a1897",
-      "line": 30,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
-      "rule_id": "pack-boundary.normative-working-tree"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:7e4f0aad9acc897c0a1688ce76d60216caf444b3691c894612552ecb6129c39b",
-      "line": 44,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/dev.tauri.toolchain.default.pack.v4.json",
-      "rule_id": "pack-boundary.normative-working-tree"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:901c0fee9f6fc7a08816f4e61c76493f0b7e9ec9fc51d3006fe58fa9e80ba54a",
-      "line": 44,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-      "rule_id": "pack-boundary.normative-working-tree"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:6d961ad26d08f95bb366fcbf618bf0ba136f4f4a62e13ab1af0f5493be775a79",
-      "line": 58,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/shell.cli.default.pack.v4.json",
-      "rule_id": "pack-boundary.normative-working-tree"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:d2b37b77d95e1f98efcbe808d92ef30ee37e7a4905953329fa57e1e7e5554818",
-      "line": 60,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/shell.tauri.default.pack.v4.json",
-      "rule_id": "pack-boundary.normative-working-tree"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:e8b59d4e2232ac2a25463046d2bc61907411010a0dbb8e6facb350adfd138464",
-      "line": 48,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/shell.cli.default.shell.v1.json",
-      "rule_id": "pack-boundary.normative-working-tree"
-    },
-    {
-      "evidence": {
-        "json_path": "$.provenance"
-      },
-      "fingerprint": "sha256:98ead9313ca7504eb10cbc2deeaff1c6b176142e4a8e0e046891fba209748cf3",
-      "line": 72,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/shell.tauri.default.shell.v1.json",
-      "rule_id": "pack-boundary.normative-working-tree"
     },
     {
       "evidence": {
