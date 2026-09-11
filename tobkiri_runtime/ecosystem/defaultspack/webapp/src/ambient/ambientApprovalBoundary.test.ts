@@ -182,17 +182,18 @@ test("ambient mini window removed browser QA simulated OK payload", () => {
   assert.match(miniChatSource, /data-testid="ambient-mini-chat-input"/);
 });
 
-test("ambient mini chat open button opens the linked chat in the Defaultspack main window", () => {
+test("ambient mini chat opens the verified active presentation in Tauri", () => {
   const panelSource = readSource("ambient", "AmbientTriggerPanel.tsx");
   const miniChatSource = readSource("ambient", "AmbientMiniChat.tsx");
   const desktopSource = readSource("lib", "desktopApproval.ts");
 
   assert.match(miniChatSource, /data-testid="ambient-mini-chat-open"/);
   assert.match(panelSource, /function openMiniChatConversation\(\)/);
-  assert.match(panelSource, /openDefaultspackMainWindow\(path\)/);
+  assert.match(panelSource, /launchActivePresentationFromAuxiliary\(\)/);
   assert.match(panelSource, /window\.open\(defaultspackUrlWithLocalAuth\(path\), "rumi-defaultspack"/);
   assert.doesNotMatch(panelSource, /window\.location\.assign/);
-  assert.match(desktopSource, /open_defaultspack_main_window/);
+  assert.match(desktopSource, /launch_active_presentation_from_auxiliary/);
+  assert.doesNotMatch(desktopSource, /open_defaultspack_main_window/);
   assert.match(panelSource, /onOpenChat=\{openMiniChatConversation\}/);
 });
 

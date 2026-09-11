@@ -54,10 +54,10 @@ export async function openFingerRecordingWindow(): Promise<boolean> {
   return true;
 }
 
-export async function openDefaultspackMainWindow(path = "/chat"): Promise<boolean> {
+export async function launchActivePresentationFromAuxiliary(): Promise<boolean> {
   const invoke = await loadTauriInvoke();
   if (!invoke) return false;
-  await invoke("open_defaultspack_main_window", { path });
+  await invoke("launch_active_presentation_from_auxiliary");
   return true;
 }
 

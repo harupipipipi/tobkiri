@@ -13,7 +13,7 @@ import { subscribeAuthorityApprovalSettlements } from "../lib/authorityApprovalE
 import {
   browserAuthorityApprovalPath,
 } from "../lib/authorityApprovalBrowserToken";
-import { openDefaultsConsoleWindow, openFingerRecordingWindow, openAuthorityApprovalWindow, openDefaultspackMainWindow, openHostPermissionsPageWindow } from "../lib/desktopApproval";
+import { launchActivePresentationFromAuxiliary, openDefaultsConsoleWindow, openFingerRecordingWindow, openAuthorityApprovalWindow, openHostPermissionsPageWindow } from "../lib/desktopApproval";
 import { LayerPortal } from "../ui/layers/LayerPortal";
 import { ambientTriggerClient, type AmbientEventPayload, type AmbientStatus } from "./ambientTriggerClient";
 import { ambientConversationCompletionFromSnapshot, waitForAmbientAssistantResponse } from "./ambientConversationCompletion";
@@ -1546,14 +1546,16 @@ export function AmbientTriggerPanel({
     if (!targetConversationId) return;
     const path = `/chat?chat=${encodeURIComponent(targetConversationId)}`;
     try {
-      if (await openDefaultspackMainWindow(path)) return;
-      const popup = window.open(defaultspackUrlWithLocalAuth(path), "rumi-defaultspack", "width=980,height=720");
-      if (popup) {
-        popup.focus();
-        return;
-      }
+      if (await launchActivePresentationFromAuxiliary()) return;
     } catch (error) {
-      console.info("[ambient] defaultspack main window unavailable", error);
+      console.info("[ambient] active presentation unavailable", error);
+      setMiniChatError("選択中のTobkiri画面を開けませんでした。Tobkiri Launcherから開いてください。");
+      return;
+    }
+    const popup = window.open(defaultspackUrlWithLocalAuth(path), "rumi-defaultspack", "width=980,height=720");
+    if (popup) {
+      popup.focus();
+      return;
     }
     setMiniChatError("Defaultspack本体ウィンドウを開けませんでした。Tobkiri LauncherからDefaultspackを開いてください。");
   }

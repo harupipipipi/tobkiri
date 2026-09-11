@@ -51,9 +51,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use config::AppConfig;
 use debug_approval::{DebugApprovalManager, DebugApprovalStatus};
 use defaultspack_manager::DefaultspackManager;
+use host_broker::HostBrokerRuntime;
 #[cfg(any(debug_assertions, test))]
 use host_broker::DEFAULT_PORT as DEFAULT_HOST_BROKER_PORT;
-use host_broker::{BrokerAttestationIdentity, HostBrokerRuntime};
 use kernel_manager::KernelManager;
 
 mod dock_registration;
@@ -65,6 +65,7 @@ pub struct AllowedNavigationPorts(pub Arc<Mutex<Vec<u16>>>);
 
 const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
 const DEFAULTSPACK_RESERVED_PORT: u16 = 8766;
+#[cfg(test)]
 const DEFAULTSPACK_MAIN_WINDOW_LABEL: &str = "defaultspack-main";
 const AUTHORITY_APPROVAL_WINDOW_LABEL: &str = "authority-approval";
 const AUTHORITY_APPROVAL_WINDOW_TITLE: &str = "Tobkiriの許可";
@@ -80,6 +81,8 @@ const HOST_PERMISSIONS_WINDOW_TITLE: &str = "Tobkiri Launcher Host Permissions";
 const AUTHORITY_UI_OPERATOR_TTL_SECONDS: u64 = 180;
 const PANEL_SESSION_CALLER_DENIED: &str =
     "panel session renewal is unavailable from this Launcher window";
+const AUXILIARY_PRESENTATION_CALLER_DENIED: &str =
+    "presentation launch is unavailable from this Launcher window";
 #[cfg(any(debug_assertions, test))]
 const DEBUG_INSTANCE_ID_ENV: &str = "RUMI_VIEWER_DEBUG_INSTANCE_ID";
 #[cfg(any(debug_assertions, test))]
@@ -248,22 +251,6 @@ struct AuthorityUiOperator {
 struct AuthorityApprovalContext {
     request_id: String,
     ui_operator: AuthorityUiOperator,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct CodingUiOperator {
-    version: u8,
-    kind: String,
-    origin: String,
-    instance_nonce: String,
-    window_label: String,
-    request_id: String,
-    expected_digest: String,
-    decision: String,
-    issued_at: u64,
-    expires_at: u64,
-    nonce: String,
-    signature: String,
 }
 
 /// Returns the current setup progress message.
@@ -539,25 +526,40 @@ fn validate_authority_approval_open_caller(
         return Err("approval window is unavailable from this caller origin".into());
     }
     let path_allowed = match window_label {
-        DEFAULTSPACK_MAIN_WINDOW_LABEL => matches!(
-            current_url.path(),
-            "/" | "/chat"
-                | "/defaultspack"
-                | "/pack/defaultspack"
-                | "/coding"
-                | "/calendar"
-                | "/kanban"
-                | "/desktops"
-                | "/subagents"
-                | "/canvas"
-                | "/tools"
-        ),
         AMBIENT_TRIGGER_WINDOW_LABEL => current_url.path() == "/ambient",
         FINGER_RECORDING_WINDOW_LABEL => current_url.path() == "/finger-recording",
         _ => false,
     };
     if !path_allowed {
         return Err("approval window is unavailable from this caller route".into());
+    }
+    Ok(())
+}
+
+fn validate_auxiliary_presentation_launch_caller(
+    window_label: &str,
+    focused: bool,
+    current_url: &Url,
+    expected_port: u16,
+) -> Result<(), String> {
+    if !focused {
+        return Err(AUXILIARY_PRESENTATION_CALLER_DENIED.into());
+    }
+    if current_url.scheme() != "http"
+        || !current_url.username().is_empty()
+        || current_url.password().is_some()
+        || current_url.host_str() != Some("127.0.0.1")
+        || current_url.port_or_known_default() != Some(expected_port)
+    {
+        return Err(AUXILIARY_PRESENTATION_CALLER_DENIED.into());
+    }
+    let route_matches = match window_label {
+        AMBIENT_TRIGGER_WINDOW_LABEL => current_url.path() == "/ambient",
+        FINGER_RECORDING_WINDOW_LABEL => current_url.path() == "/finger-recording",
+        _ => false,
+    };
+    if !route_matches {
+        return Err(AUXILIARY_PRESENTATION_CALLER_DENIED.into());
     }
     Ok(())
 }
@@ -696,18 +698,37 @@ async fn open_finger_recording_window(
 }
 
 #[tauri::command]
-async fn open_defaultspack_main_window(
+async fn launch_active_presentation_from_auxiliary(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     config: tauri::State<'_, AppConfig>,
-    path: Option<String>,
 ) -> Result<(), String> {
-    dock_registration::open_defaultspack_desktop_window_path_impl(
-        &app,
-        config.inner(),
-        path.as_deref().unwrap_or("/chat"),
-    )
-    .map(|_| ())
-    .map_err(|error| format!("{error:#}"))
+    let focused = window
+        .is_focused()
+        .map_err(|error| format!("failed to inspect auxiliary caller focus: {error}"))?;
+    let current_url = window
+        .url()
+        .map_err(|error| format!("failed to inspect auxiliary caller URL: {error}"))?;
+    validate_auxiliary_presentation_launch_caller(
+        window.label(),
+        focused,
+        &current_url,
+        active_defaultspack_http_port(),
+    )?;
+    let app_handle = app.clone();
+    let app_config = config.inner().clone();
+    let launch_result = tauri::async_runtime::spawn_blocking(move || {
+        presentation::launch_selected_presentation_impl(&app_handle, &app_config)
+    })
+    .await
+    .map_err(|error| {
+        error!("auxiliary presentation launch task failed: {error}");
+        "selected presentation could not be launched".to_string()
+    })?;
+    launch_result.map(|_| ()).map_err(|error| {
+        error!("auxiliary presentation launch blocked: {error:#}");
+        "selected presentation could not be launched".to_string()
+    })
 }
 
 fn open_defaults_console_window_for_app(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
@@ -1314,105 +1335,6 @@ fn authority_operator_message(operator: &AuthorityUiOperator) -> String {
         operator.nonce.clone(),
     ]);
     fields.join("\n")
-}
-
-fn coding_operator_message(operator: &CodingUiOperator) -> String {
-    [
-        format!("v{}", operator.version),
-        operator.origin.clone(),
-        operator.instance_nonce.clone(),
-        operator.window_label.clone(),
-        operator.request_id.clone(),
-        operator.expected_digest.clone(),
-        operator.decision.clone(),
-        operator.issued_at.to_string(),
-        operator.expires_at.to_string(),
-        operator.nonce.clone(),
-    ]
-    .join("\n")
-}
-
-#[tauri::command]
-async fn coding_approval_operator(
-    window: tauri::WebviewWindow,
-    attestation: tauri::State<'_, BrokerAttestationIdentity>,
-    request_id: String,
-    expected_digest: String,
-    decision: String,
-) -> Result<CodingUiOperator, String> {
-    if window.label() != "defaultspack-main" {
-        return Err("coding approval is only available in the Defaultspack Launcher window".into());
-    }
-    if !window
-        .is_focused()
-        .map_err(|error| format!("failed to inspect Defaultspack focus: {error}"))?
-    {
-        return Err("Defaultspack approval window must be focused".into());
-    }
-    let url = window
-        .url()
-        .map_err(|error| format!("failed to inspect Defaultspack URL: {error}"))?;
-    if !matches!(url.host_str().unwrap_or(""), "127.0.0.1" | "localhost")
-        || url.port_or_known_default() != Some(DEFAULTSPACK_RESERVED_PORT)
-    {
-        return Err("coding approval is unavailable from this window origin".into());
-    }
-    if !valid_authority_request_id(&request_id)
-        || expected_digest.len() != 64
-        || !expected_digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-        || !matches!(decision.as_str(), "approve" | "deny")
-    {
-        return Err("coding approval binding is invalid".into());
-    }
-    let confirmed = window
-        .dialog()
-        .message(format!(
-            "{} request {}\nDigest: {}\n\nこのexact requestだけに適用します。",
-            if decision == "approve" {
-                "Approve"
-            } else {
-                "Deny"
-            },
-            request_id,
-            expected_digest,
-        ))
-        .title("Tobkiri coding approval")
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            if decision == "approve" {
-                "Approve once".into()
-            } else {
-                "Deny".into()
-            },
-            "Cancel".into(),
-        ))
-        .blocking_show();
-    if !confirmed {
-        return Err("native coding approval was cancelled".into());
-    }
-    let issued_at = unix_now_seconds();
-    let nonce: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect();
-    let mut operator = CodingUiOperator {
-        version: 4,
-        kind: "coding_ui_operator".into(),
-        origin: "tauri_webview_window".into(),
-        instance_nonce: attestation.instance_nonce().into(),
-        window_label: "defaultspack-main".into(),
-        request_id,
-        expected_digest,
-        decision,
-        issued_at,
-        expires_at: issued_at + 60,
-        nonce,
-        signature: String::new(),
-    };
-    operator.signature =
-        attestation.sign_message_base64(coding_operator_message(&operator).as_bytes());
-    Ok(operator)
 }
 
 fn sign_authority_ui_operator(
@@ -2127,10 +2049,6 @@ pub(crate) fn primary_window_label(has_panel: bool, has_main: bool) -> Option<&'
 
 fn should_send_to_background_on_close(label: &str) -> bool {
     PRIMARY_WINDOW_LABELS.contains(&label)
-}
-
-fn should_restore_primary_on_close(label: &str) -> bool {
-    dock_registration::is_defaultspack_main_window(label)
 }
 
 fn restore_primary_window(app: &AppHandle, refresh_panel_session: bool) -> Result<(), String> {
@@ -3120,10 +3038,6 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
                     if let Err(error) = send_app_to_background(window.app_handle()) {
                         error!("Failed to send app to background: {error}");
                     }
-                } else if should_restore_primary_on_close(window.label()) {
-                    if let Err(error) = restore_primary_window(window.app_handle(), true) {
-                        error!("Failed to restore launcher after closing Tobkiri: {error}");
-                    }
                 }
             }
         })
@@ -3139,11 +3053,10 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             open_authority_approval_window,
             open_ambient_trigger_window,
             open_finger_recording_window,
-            open_defaultspack_main_window,
+            launch_active_presentation_from_auxiliary,
             open_defaults_console_window,
             open_host_permissions_window,
             authority_approval_context,
-            coding_approval_operator,
             send_to_background,
             show_app_window,
             get_background_control_status,
@@ -3749,8 +3662,6 @@ mod tests {
     #[test]
     fn authority_approval_open_requires_focused_exact_launcher_route() {
         for (label, route) in [
-            (DEFAULTSPACK_MAIN_WINDOW_LABEL, "/chat?chat=conversation-1"),
-            (DEFAULTSPACK_MAIN_WINDOW_LABEL, "/coding"),
             (AMBIENT_TRIGGER_WINDOW_LABEL, "/ambient"),
             (FINGER_RECORDING_WINDOW_LABEL, "/finger-recording"),
         ] {
@@ -3763,9 +3674,9 @@ mod tests {
             .unwrap();
         }
 
-        let main_url = Url::parse("http://127.0.0.1:18771/chat").unwrap();
+        let main_url = Url::parse("http://127.0.0.1:18771/ambient").unwrap();
         assert!(validate_authority_approval_open_caller(
-            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            AMBIENT_TRIGGER_WINDOW_LABEL,
             false,
             &main_url,
             18771,
@@ -3810,6 +3721,71 @@ mod tests {
                 18771,
             )
             .is_err());
+        }
+    }
+
+    #[test]
+    fn auxiliary_presentation_launch_requires_focused_exact_auxiliary_route() {
+        for (label, route) in [
+            (AMBIENT_TRIGGER_WINDOW_LABEL, "/ambient"),
+            (FINGER_RECORDING_WINDOW_LABEL, "/finger-recording"),
+        ] {
+            validate_auxiliary_presentation_launch_caller(
+                label,
+                true,
+                &Url::parse(&format!("http://127.0.0.1:18771{route}")).unwrap(),
+                18771,
+            )
+            .unwrap();
+        }
+
+        for (label, focused, rejected) in [
+            (
+                AMBIENT_TRIGGER_WINDOW_LABEL,
+                false,
+                "http://127.0.0.1:18771/ambient",
+            ),
+            (
+                AMBIENT_TRIGGER_WINDOW_LABEL,
+                true,
+                "http://127.0.0.1:18771/finger-recording",
+            ),
+            (
+                FINGER_RECORDING_WINDOW_LABEL,
+                true,
+                "http://127.0.0.1:18771/ambient",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                true,
+                "http://127.0.0.1:18771/chat",
+            ),
+            (
+                AMBIENT_TRIGGER_WINDOW_LABEL,
+                true,
+                "http://localhost:18771/ambient",
+            ),
+            (
+                AMBIENT_TRIGGER_WINDOW_LABEL,
+                true,
+                "https://127.0.0.1:18771/ambient",
+            ),
+            (
+                AMBIENT_TRIGGER_WINDOW_LABEL,
+                true,
+                "http://127.0.0.1:8766/ambient",
+            ),
+        ] {
+            assert_eq!(
+                validate_auxiliary_presentation_launch_caller(
+                    label,
+                    focused,
+                    &Url::parse(rejected).unwrap(),
+                    18771,
+                )
+                .unwrap_err(),
+                AUXILIARY_PRESENTATION_CALLER_DENIED,
+            );
         }
     }
 
@@ -3861,7 +3837,7 @@ mod tests {
                 .unwrap();
         assert_eq!(
             open["windows"],
-            serde_json::json!(["defaultspack-main", "ambient-trigger", "finger-recording"])
+            serde_json::json!(["ambient-trigger", "finger-recording"])
         );
         assert_eq!(
             open["remote"]["urls"],
@@ -3870,6 +3846,23 @@ mod tests {
         assert_eq!(
             open["permissions"],
             serde_json::json!(["allow-open-authority-approval-window"])
+        );
+
+        let launch: serde_json::Value = serde_json::from_str(include_str!(
+            "../capabilities/auxiliary-presentation-open.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            launch["windows"],
+            serde_json::json!(["ambient-trigger", "finger-recording"])
+        );
+        assert_eq!(
+            launch["remote"]["urls"],
+            serde_json::json!(["http://127.0.0.1:*/*"])
+        );
+        assert_eq!(
+            launch["permissions"],
+            serde_json::json!(["allow-launch-active-presentation-from-auxiliary"])
         );
 
         let context: serde_json::Value = serde_json::from_str(include_str!(
@@ -4073,8 +4066,6 @@ mod tests {
         assert!(!should_send_to_background_on_close(
             AUTHORITY_APPROVAL_WINDOW_LABEL
         ));
-        assert!(should_restore_primary_on_close("defaultspack-main"));
-        assert!(!should_restore_primary_on_close("authority-approval"));
     }
 
     #[test]

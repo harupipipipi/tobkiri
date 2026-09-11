@@ -1,4 +1,4 @@
-//! Defaultspack launch coordination and legacy Dock command handling.
+//! Defaultspack launch coordination and Dock command handling.
 
 use std::ffi::OsString;
 use std::fs;
@@ -16,7 +16,7 @@ use anyhow::{anyhow, bail, Context, Result as AnyResult};
 use log::{error, info, warn};
 use serde_json::json;
 use serde_json::Value;
-use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, Url};
 
 use crate::config::AppConfig;
 use crate::defaultspack_manager::DefaultspackManager;
@@ -26,8 +26,6 @@ use crate::process_utils;
 const DEFAULTSPACK_DEFAULT_PORT: u16 = 8766;
 const DEFAULTSPACK_READY_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULTSPACK_READY_POLL_INTERVAL: Duration = Duration::from_millis(250);
-const DEFAULTSPACK_WINDOW_LABEL: &str = "defaultspack-main";
-const DEFAULTSPACK_WINDOW_TITLE: &str = "Tobkiri";
 static DEFAULTSPACK_LAUNCH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn with_defaultspack_launch_coordination<T>(
@@ -181,16 +179,6 @@ fn encode_url_fragment_value(value: &str) -> String {
     encoded
 }
 
-fn defaultspack_window_url_with_local_auth(port: u16, api_token: &str) -> AnyResult<String> {
-    let mut url = Url::parse(&application_origin(port))
-        .with_context(|| format!("invalid defaultspack window port: {port}"))?;
-    url.set_fragment(Some(&format!(
-        "rumi_local_auth={}",
-        encode_url_fragment_value(api_token)
-    )));
-    Ok(url.to_string())
-}
-
 fn add_defaultspack_bootstrap_code(mut url: Url, code: &str) -> AnyResult<Url> {
     if code.is_empty() {
         bail!("Defaultspack panel bootstrap code must not be empty");
@@ -211,29 +199,6 @@ fn application_url_with_bootstrap_code(port: u16, route: &str, code: &str) -> An
     Ok(add_defaultspack_bootstrap_code(url, code)?.to_string())
 }
 
-fn defaultspack_window_url_with_path(authenticated_url: &str, path: &str) -> AnyResult<String> {
-    let mut url = Url::parse(authenticated_url)
-        .with_context(|| format!("invalid authenticated Defaultspack URL: {authenticated_url}"))?;
-    let fragment = url.fragment().map(str::to_owned);
-    let trimmed = path.trim();
-    let path = if trimmed.is_empty() { "/" } else { trimmed };
-    if path.contains("://") || path.starts_with("//") || path.contains('\\') {
-        bail!("Defaultspack window path must be a same-origin path");
-    }
-    let path_without_fragment = path.split('#').next().unwrap_or(path);
-    let (pathname, query) = match path_without_fragment.split_once('?') {
-        Some((pathname, query)) => (pathname, Some(query)),
-        None => (path_without_fragment, None),
-    };
-    if !pathname.starts_with('/') {
-        bail!("Defaultspack window path must start with /");
-    }
-    url.set_path(pathname);
-    url.set_query(query);
-    url.set_fragment(fragment.as_deref());
-    Ok(url.to_string())
-}
-
 pub(crate) fn add_defaultspack_local_auth(config: &AppConfig, mut url: Url) -> AnyResult<Url> {
     let api_token = read_desktop_api_token_from_config(config)
         .context("failed to read Viewer local auth token")?;
@@ -242,17 +207,6 @@ pub(crate) fn add_defaultspack_local_auth(config: &AppConfig, mut url: Url) -> A
         encode_url_fragment_value(&api_token)
     )));
     Ok(url)
-}
-
-fn defaultspack_window_url_for_log(url: &str) -> String {
-    match Url::parse(url) {
-        Ok(mut parsed) => {
-            parsed.set_query(None);
-            parsed.set_fragment(None);
-            parsed.to_string()
-        }
-        Err(_) => "<invalid defaultspack url>".to_string(),
-    }
 }
 
 fn defaultspack_health_url(port: u16) -> String {
@@ -404,27 +358,6 @@ pub(crate) fn prepare_defaultspack_guardian_impl(
     with_defaultspack_launch_coordination(|| {
         ensure_defaultspack_desktop_ready(app, config)?;
         Ok(())
-    })
-}
-
-pub(crate) fn open_defaultspack_desktop_window_path_impl(
-    app: &AppHandle,
-    config: &AppConfig,
-    path: &str,
-) -> AnyResult<String> {
-    with_defaultspack_launch_coordination(|| {
-        info!("open_defaultspack_desktop_window_path_impl: starting");
-        let (metadata, _) = ensure_defaultspack_desktop_ready(app, config)?;
-        let api_token = read_desktop_api_token_from_config(config)
-            .context("failed to read Viewer local auth token for Defaultspack window")?;
-        let authenticated_url = defaultspack_window_url_with_local_auth(metadata.port, &api_token)?;
-        let url = defaultspack_window_url_with_path(&authenticated_url, path)?;
-        open_defaultspack_tauri_window(app, &url)?;
-        info!(
-            "open_defaultspack_desktop_window_path_impl: opened Tauri window {}",
-            defaultspack_window_url_for_log(&url)
-        );
-        Ok("Tobkiriを開きました".into())
     })
 }
 
@@ -838,55 +771,6 @@ fn process_is_descendant_of(mut process_id: u32, ancestor_id: u32) -> AnyResult<
         process_id = parent;
     }
     Ok(false)
-}
-
-fn focus_defaultspack_window(window: &tauri::WebviewWindow) -> AnyResult<()> {
-    window
-        .unminimize()
-        .context("failed to unminimize defaultspack window")?;
-    window
-        .show()
-        .context("failed to show defaultspack window")?;
-    window
-        .set_focus()
-        .context("failed to focus defaultspack window")
-}
-
-pub(crate) fn is_defaultspack_main_window(label: &str) -> bool {
-    label == DEFAULTSPACK_WINDOW_LABEL
-}
-
-fn focus_defaultspack_workspace(app: &AppHandle, window: &tauri::WebviewWindow) -> AnyResult<()> {
-    focus_defaultspack_window(window)?;
-    crate::send_app_to_background(app)
-        .map_err(|error| anyhow!("failed to hide launcher behind Tobkiri: {error}"))
-}
-
-fn open_defaultspack_tauri_window(app: &AppHandle, url: &str) -> AnyResult<()> {
-    let url = Url::parse(url).with_context(|| format!("invalid defaultspack URL: {url}"))?;
-    if let Some(window) = app.get_webview_window(DEFAULTSPACK_WINDOW_LABEL) {
-        window
-            .navigate(url)
-            .context("failed to navigate defaultspack window")?;
-        return focus_defaultspack_workspace(app, &window);
-    }
-
-    let builder =
-        WebviewWindowBuilder::new(app, DEFAULTSPACK_WINDOW_LABEL, WebviewUrl::External(url))
-            .title(DEFAULTSPACK_WINDOW_TITLE)
-            .inner_size(980.0, 720.0)
-            .min_inner_size(860.0, 600.0)
-            .resizable(true)
-            .focused(true)
-            .visible(true);
-    #[cfg(target_os = "macos")]
-    let builder = builder
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Transparent);
-    let window = builder
-        .build()
-        .context("failed to open defaultspack window")?;
-    focus_defaultspack_workspace(app, &window)
 }
 
 fn read_defaultspack_desktop_metadata(
@@ -1619,49 +1503,6 @@ mod tests {
             )
             .unwrap(),
             "http://127.0.0.1:8766/chat?code=one-time%2Bcode%2F1%3D"
-        );
-    }
-
-    #[test]
-    fn defaultspack_window_url_with_local_auth_keeps_auxiliary_fragment_contract() {
-        assert_eq!(
-            defaultspack_window_url_with_local_auth(DEFAULTSPACK_DEFAULT_PORT, "local+token/1=")
-                .unwrap(),
-            "http://127.0.0.1:8766/#rumi_local_auth=local%2Btoken%2F1%3D"
-        );
-    }
-
-    #[test]
-    fn defaultspack_window_url_with_path_preserves_local_auth_fragment() {
-        assert_eq!(
-            defaultspack_window_url_with_path(
-                "http://127.0.0.1:8766/#rumi_local_auth=local-token",
-                "/workspace?item=abc-123"
-            )
-            .unwrap(),
-            "http://127.0.0.1:8766/workspace?item=abc-123#rumi_local_auth=local-token"
-        );
-    }
-
-    #[test]
-    fn defaultspack_window_url_with_path_rejects_external_url() {
-        let err = defaultspack_window_url_with_path(
-            "http://127.0.0.1:8766/#rumi_local_auth=local-token",
-            "https://example.com/workspace",
-        )
-        .unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Defaultspack window path must be a same-origin path"));
-    }
-
-    #[test]
-    fn defaultspack_window_url_for_log_strips_query_and_fragment() {
-        assert_eq!(
-            defaultspack_window_url_for_log(
-                "http://127.0.0.1:8766/workspace?item=abc&code=one-time-code#ignored"
-            ),
-            "http://127.0.0.1:8766/workspace"
         );
     }
 
