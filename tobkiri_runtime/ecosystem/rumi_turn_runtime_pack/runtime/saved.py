@@ -138,7 +138,18 @@ def execute_saved_turn(
     )
     guard()
     _validate_begun_turn(store.profile_id, initial, begun)
-    claim = store.claim_saved(initial)
+    guard()
+    claim = client.invoke(
+        LIFECYCLE_CONTRACT,
+        LIFECYCLE_OPERATION,
+        {
+            "profile_id": store.profile_id,
+            "operation": "claim_saved",
+            **initial,
+        },
+    )
+    guard()
+    claim = _validate_saved_claim(store, initial, claim)
     if not claim["claimed"]:
         # A running snapshot may still have a live executor. Do not rewrite it
         # as terminal or treat a repeat request as a restart/recovery signal.
@@ -189,6 +200,28 @@ def _validate_begun_turn(
         record.get(key) != value for key, value in expected.items()
     ):
         raise ValueError("saved lifecycle owner response is invalid")
+
+
+def _validate_saved_claim(
+    store: DurableTurnRuntime,
+    initial: Mapping[str, Any],
+    claim: object,
+) -> Mapping[str, Any]:
+    """Accept only the exact claim state committed by the lifecycle owner."""
+    if (
+        not isinstance(claim, Mapping)
+        or set(claim) != {"claimed", "turn"}
+        or type(claim["claimed"]) is not bool
+        or not isinstance(claim["turn"], Mapping)
+    ):
+        raise ValueError("saved lifecycle claim response is invalid")
+    record = claim["turn"]
+    _validate_begun_turn(store.profile_id, initial, record)
+    if claim["claimed"] and record.get("status") != "running":
+        raise ValueError("saved lifecycle claim response is invalid")
+    if store.get(initial["request"]["turn_id"]) != record:
+        raise ValueError("saved lifecycle claim state is unconfirmed")
+    return claim
 
 
 def _reconcile(
