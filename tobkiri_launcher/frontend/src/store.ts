@@ -1,8 +1,6 @@
 import {create} from 'zustand';
 import {
   approvePack as apiApprovePack,
-  checkHealth,
-  fetchPackVMDoctor as apiFetchPackVMDoctor,
   disablePack as apiDisablePack,
   enablePack as apiEnablePack,
   fetchFrontendCatalog,
@@ -10,8 +8,12 @@ import {
   installPack as apiInstallPack,
   invokeFrontendCapability,
   revokePackApproval as apiRevokePackApproval,
+} from './lib/defaultspackClient';
+import {
+  checkHealth,
+  fetchPackVMDoctor as apiFetchPackVMDoctor,
   parseHealthResponse,
-} from './lib/api';
+} from './lib/hostClient';
 import type {
   ApiDynamicFrontendCatalog,
   ApiPackVMDoctor,

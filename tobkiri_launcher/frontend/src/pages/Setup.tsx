@@ -20,9 +20,9 @@ import {
   fetchPresentationState,
   isDesktopShellAvailable,
   launchSelectedPresentation,
-  reconcileDefaultsRuntime,
   selectPresentation,
-} from '@/src/lib/api';
+} from '@/src/lib/desktopHost';
+import {reconcileDefaultsRuntime} from '@/src/lib/hostClient';
 import {refreshMountedRuntimeSurfaces} from '@/src/lib/runtimeSurfaceRefresh';
 import type {ApiPresentationSelection, ApiPresentationState} from '@/src/lib/apiTypes';
 import {

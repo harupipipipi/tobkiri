@@ -19,7 +19,7 @@ import { Dashboard } from '@/src/pages/Dashboard';
 import { ToastContainer } from '@/src/components/ui/ToastContainer';
 import { DialogContainer } from '@/src/components/ui/DialogContainer';
 import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
-import { bootstrapPanelSession, hasPendingPanelBootstrapCode } from '@/src/lib/api';
+import {bootstrapPanelSession, hasPendingPanelBootstrapCode} from '@/src/lib/apiTransport';
 import { applyAppearanceToRoot } from '@/src/lib/appearance';
 import { runtimeMonitorDelay } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';

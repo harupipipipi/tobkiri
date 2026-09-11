@@ -41,6 +41,21 @@ an unavailable screen and never load a compatibility App implicitly.
 These source invariants require regression and native acceptance evidence;
 they do not establish successful Provider conversations or a product DMG.
 
+Launcher HTTP clients separate Host operations from Application projections.
+`hostClient.ts` owns the finite health, setup, Profile and PackVM routes and
+does not load the Defaultspack map. `defaultspackClient.ts` owns the optional,
+digest-pinned Defaultspack operation resolver and its existing physical
+namespace. Neither client accepts the other client's routes or arbitrary URLs.
+Production callers import the appropriate client; `api.ts` only preserves the
+previous exports for callers migrating to the explicit modules.
+
+Both clients use `apiTransport.ts` for the same panel session, request cache,
+CSRF, request identity, runtime dispatch gate and deadline/cancellation handling.
+The transport requires a finite route classifier before making a request;
+classification cannot replace Host Authority/Broker authorization. Native
+commands live in `desktopHost.ts`. A Tauri module-loading failure propagates
+instead of enabling the ordinary browser fallback.
+
 - `rumi_command_protocol_pack.catalog.read` requests the sealed command
   presentation. It retains its own execution-availability and approval policy:
   only its known high-risk adapter references can become available when the

@@ -1,9 +1,9 @@
+import {ApiRequestTimeoutError} from './apiTransport';
 import {
-  ApiRequestTimeoutError,
   fetchFrontendContractOperation,
   invokeFrontendCapability,
   type FrontendContractMethod,
-} from './api';
+} from './defaultspackClient';
 import {
   generatedTargetFor,
   VERIFIED_GENERATED_RUNTIME_TARGETS,

@@ -22,14 +22,13 @@ import {
   createNamedProfile,
   deleteNamedProfile,
   duplicateNamedProfile,
-  fetchDashboard,
   fetchNamedProfiles,
-  isDesktopShellAvailable,
-  launchSelectedPresentation,
   updateNamedProfile,
   type NamedProfileRecord,
   type NamedProfileRegistry,
-} from '@/src/lib/api';
+} from '@/src/lib/hostClient';
+import {fetchDashboard} from '@/src/lib/defaultspackClient';
+import {isDesktopShellAvailable, launchSelectedPresentation} from '@/src/lib/desktopHost';
 import {panelRoutes} from '@/src/lib/routes';
 import {
   buildNamedProfileView,

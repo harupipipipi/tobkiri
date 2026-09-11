@@ -11,7 +11,7 @@ import {
   fetchPresentationState,
   isDesktopShellAvailable,
   launchSelectedPresentation,
-} from '@/src/lib/api';
+} from '@/src/lib/desktopHost';
 import type {ApiPresentationState} from '@/src/lib/apiTypes';
 import {launchDisabledReason} from '@/src/lib/presentation';
 import {useAppStore} from '@/src/store';

@@ -8,7 +8,7 @@ import {
   preparePackVM,
   provisionPackVM,
   stopPackVM,
-} from '@/src/lib/api';
+} from '@/src/lib/hostClient';
 import type {
   ApiPackVMConsent,
   ApiPackVMDoctor,

@@ -1,4 +1,4 @@
-import {apiFetch} from './api';
+import {hostApiFetch as apiFetch} from './hostClient';
 import {
   DEFAULTS_BASE_KEYS,
   DEFAULTS_BINDING_DOMAIN_KINDS,

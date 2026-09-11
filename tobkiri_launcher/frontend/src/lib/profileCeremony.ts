@@ -1,6 +1,4 @@
-import {
-  fetchFrontendContractOperation,
-} from './api';
+import {fetchFrontendContractOperation} from './defaultspackClient';
 import {
   assertVerifiedRuntimeTarget,
   RUNTIME_PROFILE_CEREMONY_TARGETS as GENERATED_PROFILE_CEREMONY_TARGETS,
