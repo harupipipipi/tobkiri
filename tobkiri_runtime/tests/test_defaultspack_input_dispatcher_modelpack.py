@@ -1262,6 +1262,28 @@ def test_model_switch_updates_conversation_default(monkeypatch, tmp_path):
     assert ChatStore().get_conversation(conversation["id"])["model"] == "demo/next"
 
 
+def test_model_switch_updates_default_through_captured_settings_owner(
+    monkeypatch, tmp_path,
+):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    _configure_paths(monkeypatch, tmp_path)
+    owner = FrontendSettingsStore(tmp_path / "captured_settings.json")
+
+    result = dispatch_input(
+        {
+            "delivery": {"action_id": "model.switch"},
+            "params": {"model": "demo/captured"},
+        },
+        {},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert result["model"] == "demo/captured"
+    assert owner.read()["models"]["preferred_model"] == "demo/captured"
+
+
 def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
     from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
