@@ -243,6 +243,8 @@ class _SavedPackVmBackend(_ShellPolicyPackVmBackend):
         self._saved_preflight(request)
         intent = saved_conversation.start(request.payload["request"])
         for _ in range(4):
+            if intent.get("kind") != "tobkiri.packvm.continuation.intent.v2":
+                break
             outcome = self._saved_callback(request, _frame(intent, request.context.request_id))
             intent = saved_conversation.resume(intent["state"], outcome)
         return ProviderOutcome(intent)
