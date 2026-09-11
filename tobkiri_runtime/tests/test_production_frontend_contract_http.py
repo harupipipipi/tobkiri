@@ -2594,6 +2594,171 @@ def test_home_and_pack_workflow_use_only_real_broker_contracts(
         assert len(current_authority.audit_events()) == audit_before_legacy
 
 
+def test_workroom_pack_lifecycle_persists_through_production_http(
+    production_server,
+) -> None:
+    """Workroom lifecycle state, journal results, and selection stay aligned."""
+
+    server, _session, _authority = production_server
+    auth: dict[str, str] = {}
+
+    def authenticate() -> None:
+        origin = f"http://127.0.0.1:{server.port}"
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
+        exchange_headers = {"Origin": origin}
+        if cookie := auth.get("cookie"):
+            exchange_headers["Cookie"] = cookie
+        status, exchange, response_headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={"code": bootstrap["data"]["code"]},
+            headers=exchange_headers,
+        )
+        assert status == 200, exchange
+        cookie = next(
+            value
+            for key, value in response_headers
+            if key.lower() == "set-cookie"
+        )
+        auth.update(
+            cookie=cookie.split(";", 1)[0],
+            csrf=str(exchange["data"]["csrf_token"]),
+            origin=origin,
+        )
+
+    def get(target: str, *, request_id: str | None = None):
+        path = _contract("GET", target)
+        if request_id is not None:
+            path = f"{path}?request_id={quote(request_id, safe='')}"
+        return _request(
+            server,
+            "GET",
+            path,
+            headers={
+                "Cookie": auth["cookie"],
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+
+    def post(target: str, body: Mapping[str, object]):
+        request_id = str(uuid.uuid4())
+        status, payload, _ = _request(
+            server,
+            "POST",
+            _contract("POST", target),
+            body=body,
+            headers={
+                "Cookie": auth["cookie"],
+                "Origin": auth["origin"],
+                "X-Rumi-CSRF": auth["csrf"],
+                "X-Tobkiri-Request-ID": request_id,
+            },
+        )
+        return request_id, status, payload
+
+    def assert_succeeded(request_id: str, operation_id: str) -> None:
+        status, payload, _ = get(
+            "/api/runtime-surface/operation-status",
+            request_id=request_id,
+        )
+        assert status == 200, payload
+        assert payload["data"]["request_id"] == request_id
+        assert payload["data"]["operation_id"] == operation_id
+        assert payload["data"]["state"] == "succeeded"
+
+    def catalog_pack(pack_id: str) -> dict[str, object]:
+        status, payload, _ = get("/api/pack-control/catalog")
+        assert status == 200, payload
+        return next(
+            item for item in payload["data"]["packs"] if item["pack_id"] == pack_id
+        )
+
+    def lifecycle_state(pack_id: str) -> tuple[object, object, object]:
+        pack = catalog_pack(pack_id)
+        return pack["installed"], pack["approved"], pack["enabled"]
+
+    def selected_pack_ids() -> list[str]:
+        status, payload, _ = get("/api/runtime-surface/profile")
+        assert status == 200, payload
+        return [
+            item["pack_id"]
+            for item in payload["data"]["data"]["profile_document"]["packs"]
+        ]
+
+    authenticate()
+    pack_id = "rumi_agent_workroom_pack"
+    defaultspack_before = lifecycle_state("defaultspack")
+
+    install_id, status, installed = post(
+        "/api/pack-control/install",
+        {"pack_id": pack_id},
+    )
+    assert status == 200, installed
+    assert_succeeded(install_id, "pack.install")
+
+    _, status, candidate = post(
+        "/api/pack-control/approval-candidate",
+        {"pack_id": pack_id},
+    )
+    assert status == 200, candidate
+    approve_id, status, approved = post(
+        "/api/pack-control/approval-approve",
+        {
+            "pack_id": pack_id,
+            "candidate_id": candidate["data"]["candidate_id"],
+        },
+    )
+    assert status == 200, approved
+    assert_succeeded(approve_id, "approval.approve")
+
+    enable_id, status, enabled = post(
+        "/api/pack-control/enable",
+        {"pack_id": pack_id},
+    )
+    assert status == 200, enabled
+    authenticate()
+    assert_succeeded(enable_id, "pack.enable")
+    assert selected_pack_ids().count(pack_id) == 1
+
+    disable_id, status, disabled = post(
+        "/api/pack-control/disable",
+        {"pack_id": pack_id},
+    )
+    assert status == 200, disabled
+    authenticate()
+    assert_succeeded(disable_id, "pack.disable")
+
+    workroom_after = catalog_pack(pack_id)
+    assert workroom_after["installed"] is True
+    assert workroom_after["approved"] is True
+    assert workroom_after["enabled"] is False
+    assert pack_id not in selected_pack_ids()
+    assert lifecycle_state("defaultspack") == defaultspack_before
+
+    status, operations, _ = get("/api/runtime-surface/topology/operations")
+    assert status == 200, operations
+    assert all(
+        item.get("owner_pack_id") != pack_id
+        for item in operations["data"]["data"]["operations"]
+    )
+
+    _, status, restarted = post("/api/pack-control/restart", {})
+    assert status == 200, restarted
+    authenticate()
+    assert_succeeded(disable_id, "pack.disable")
+    assert lifecycle_state(pack_id) == (True, True, False)
+    assert pack_id not in selected_pack_ids()
+    assert lifecycle_state("defaultspack") == defaultspack_before
+
+
 @pytest.mark.parametrize("refresh_error", [RuntimeError, TypeError])
 def test_pack_enable_keeps_journal_success_when_runtime_refresh_fails(
     production_server,
