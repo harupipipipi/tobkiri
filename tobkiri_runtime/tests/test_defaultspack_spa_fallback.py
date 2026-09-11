@@ -27,7 +27,7 @@ def test_profile_qualified_spa_route_serves_shell_after_route_miss() -> None:
     assert path_params == {}
     assert source == "fallback"
     assert path_inject == {}
-    assert pattern == "/share/{token}"
+    assert pattern == ""
 
 
 def test_api_desktops_does_not_fall_back_to_spa_or_legacy_api():
