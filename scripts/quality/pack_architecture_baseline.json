@@ -3,21 +3,6 @@
   "policy": "shrink_only_exact_edges",
   "exceptions": [
     {
-      "identity": "product_pack_branch|scripts/quality/scan_launcher_frontend_routes.py|ast-v1:5ffe3ffffa9d29abd5bd|host|defaultspack",
-      "rule": "product_pack_branch",
-      "path": "scripts/quality/scan_launcher_frontend_routes.py",
-      "line": 58,
-      "fingerprint": "ast-v1:5ffe3ffffa9d29abd5bd",
-      "source": "host",
-      "target": "defaultspack",
-      "owner": "pack-architecture",
-      "reason": "Observed in the integrated full-v4 candidate and left unreviewed by Phase 0; remove or explicitly adjudicate before the sunset.",
-      "introduced_at": "2026-09-01",
-      "fix_by_wave": 10,
-      "sunset_at": "2027-09-01",
-      "violation_category": "product_pack_branch"
-    },
-    {
       "identity": "product_pack_branch|tobkiri_launcher/scripts/verify_presentation_release.py|ast-v1:854c17faa550a27ef7ac|host|defaults",
       "rule": "product_pack_branch",
       "path": "tobkiri_launcher/scripts/verify_presentation_release.py",

@@ -32,6 +32,7 @@ def _fixture(tmp_path: Path, source: str) -> tuple[Path, Path]:
     contract_map.write_text(
         json.dumps(
             {
+                "pack_id": "fixture_pack",
                 "routes": [
                     {
                         "method": "GET",
@@ -49,7 +50,7 @@ def _fixture(tmp_path: Path, source: str) -> tuple[Path, Path]:
 def test_exact_copied_route_is_green(tmp_path: Path) -> None:
     panel, contract_map = _fixture(
         tmp_path,
-        "const prefix='/api/contracts/defaultspack/';const path='/api/home/dashboard';",
+        "const prefix='/api/contracts/fixture_pack/';const path='/api/home/dashboard';",
     )
     assert scan_panel(panel, contract_map) == []
 
@@ -57,7 +58,7 @@ def test_exact_copied_route_is_green(tmp_path: Path) -> None:
 def test_generic_client_selected_dispatch_is_red(tmp_path: Path) -> None:
     panel, contract_map = _fixture(
         tmp_path,
-        "const prefix='/api/contracts/defaultspack/';"
+        "const prefix='/api/contracts/fixture_pack/';"
         "const path='/api/home/dashboard';"
         "fetch('/api/v4/dispatch',{body:JSON.stringify({contract_id,operation_id})});",
     )
@@ -70,10 +71,23 @@ def test_generic_client_selected_dispatch_is_red(tmp_path: Path) -> None:
     ]
 
 
+def test_contract_map_without_pack_identity_is_red(tmp_path: Path) -> None:
+    panel, contract_map = _fixture(
+        tmp_path,
+        "const prefix='/api/contracts/fixture_pack/';const path='/api/home/dashboard';",
+    )
+    document = json.loads(contract_map.read_text(encoding="utf-8"))
+    document.pop("pack_id")
+    contract_map.write_text(json.dumps(document), encoding="utf-8")
+    assert scan_panel(panel, contract_map) == [
+        {"rule": "contract_map_invalid", "path": str(contract_map)}
+    ]
+
+
 def test_cli_scans_explicit_build_output(tmp_path: Path) -> None:
     panel, contract_map = _fixture(
         tmp_path,
-        "const prefix='/api/contracts/defaultspack/';const path='/api/home/dashboard';",
+        "const prefix='/api/contracts/fixture_pack/';const path='/api/home/dashboard';",
     )
     command = [
         sys.executable, str(SCANNER_PATH), "--panel-root", str(panel),
@@ -82,7 +96,7 @@ def test_cli_scans_explicit_build_output(tmp_path: Path) -> None:
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
     (panel / "assets" / "app.js").write_text(
-        "const prefix='/api/contracts/defaultspack/';", encoding="utf-8"
+        "const prefix='/api/contracts/fixture_pack/';", encoding="utf-8"
     )
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     assert result.returncode == 1
