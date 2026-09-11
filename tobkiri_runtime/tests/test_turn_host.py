@@ -1,5 +1,6 @@
 """Captured turn contracts share persistence without ambient Profile authority."""
 
+from contextlib import nullcontext
 from pathlib import Path
 import copy
 import json
@@ -11,6 +12,10 @@ import pytest
 from ecosystem.rumi_turn_runtime_pack.runtime.host import TurnHostFactoryV4
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
 from tobkiri_protocol.canonical import canonical_digest
+
+
+def _cancellation() -> Any:
+    return SimpleNamespace(track=lambda _: nullcontext())
 
 
 def _context(root: Path, factory: TurnHostFactoryV4) -> Any:
@@ -140,6 +145,7 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
 
     invocation = SimpleNamespace(
         contract_client=client, assert_current=lambda: guards.append("checked"),
+        cancellation=_cancellation(),
     )
     factory = TurnHostFactoryV4("saved")
     captured = factory.capture(_context(tmp_path, factory))
@@ -150,7 +156,7 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
         "allowed_contract_ids": SAVED_CONTRACTS,
         "consumer_pack_id": "rumi_turn_runtime_pack",
     }]
-    assert len(guards) == 3
+    assert len(guards) == 6
     assert invoke(factory.operation_id, session.initial, invocation) == {
         "status": "existing", "turn": result["turn"],
     }
@@ -174,7 +180,11 @@ def test_saved_factory_rejects_external_authority_and_resume_fields(
     contribution = factory.capture(_context(tmp_path, factory)).contributions[0]
     with pytest.raises(ValueError, match="initial fields"):
         contribution.invoke(factory.operation_id, {**session.initial, extra: "injected"},
-                            SimpleNamespace(contract_client=client, assert_current=lambda: None))
+                            SimpleNamespace(
+                                contract_client=client,
+                                assert_current=lambda: None,
+                                cancellation=_cancellation(),
+                            ))
     assert session.calls == 0
     assert not list(tmp_path.rglob("turns.sqlite3"))
 
@@ -196,7 +206,11 @@ def test_saved_factory_checks_invocation_before_claim(tmp_path: Path) -> None:
     contribution = factory.capture(_context(tmp_path, factory)).contributions[0]
     with pytest.raises(PermissionError, match="expired capture"):
         contribution.invoke(factory.operation_id, session.initial,
-                            SimpleNamespace(contract_client=client, assert_current=expired))
+                            SimpleNamespace(
+                                contract_client=client,
+                                assert_current=expired,
+                                cancellation=_cancellation(),
+                            ))
     assert session.calls == 0
     assert not list(tmp_path.rglob("turns.sqlite3"))
 
