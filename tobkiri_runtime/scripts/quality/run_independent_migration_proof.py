@@ -129,6 +129,21 @@ def _identity_proof(source: Mapping[str, Any]) -> dict[str, Any]:
         raise IndependentMigrationProofError(
             "legacy proof input must contain at least three Profiles"
         )
+    reserved_prefixes = source.get("reserved_identity_prefixes")
+    if not isinstance(reserved_prefixes, list) or not reserved_prefixes:
+        raise IndependentMigrationProofError(
+            "reserved identity prefixes must be unique non-empty strings"
+        )
+    if not all(
+        isinstance(prefix, str) and prefix.strip() == prefix and prefix
+        for prefix in reserved_prefixes
+    ) or len(reserved_prefixes) != len(set(reserved_prefixes)):
+        raise IndependentMigrationProofError(
+            "reserved identity prefixes must be unique non-empty strings"
+        )
+    folded_reserved_prefixes = tuple(
+        prefix.casefold() for prefix in reserved_prefixes
+    )
     identity_sets: dict[str, list[str]] = {
         "profile_ids": [],
         "workspace_ids": [],
@@ -195,9 +210,13 @@ def _identity_proof(source: Mapping[str, Any]) -> dict[str, Any]:
         if any(not isinstance(value, str) or not value.strip() for _, value in values):
             raise IndependentMigrationProofError(f"named identity is empty: {profile_id}")
         for field, value in values:
-            if value.casefold() == "defaults" or value.casefold().startswith("defaults-"):
+            folded_value = value.casefold()
+            if any(
+                folded_value == prefix or folded_value.startswith(f"{prefix}-")
+                for prefix in folded_reserved_prefixes
+            ):
                 raise IndependentMigrationProofError(
-                    f"legacy identity is collapsed into Defaults: {field}:{value}"
+                    f"legacy identity uses a reserved prefix: {field}:{value}"
                 )
             identity_sets[field].append(value)
         profile_names[profile_id] = display_name

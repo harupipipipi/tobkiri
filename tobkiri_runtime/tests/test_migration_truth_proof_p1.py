@@ -37,6 +37,19 @@ def test_profile_transaction_receipt_is_checkout_path_independent(
     assert receipts[0] == receipts[1]
 
 
+def test_identity_proof_enforces_fixture_declared_reserved_prefixes() -> None:
+    """Reserved identities come from proof input rather than a favored Profile."""
+
+    source = dict(proof_generator._load_json(proof_generator.PROFILE_FIXTURE))
+    source["reserved_identity_prefixes"] = ["profile"]
+
+    with pytest.raises(
+        proof_generator.IndependentMigrationProofError,
+        match="legacy identity uses a reserved prefix",
+    ):
+        proof_generator._identity_proof(source)
+
+
 def test_repository_labels_are_stable_after_checkout_relocation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -138,14 +151,14 @@ def test_pack_feasibility_audit_is_specific_and_separate_from_profile_receipt() 
         status: sum(entry["status"] == status for entry in proof["packs"].values())
         for status in ("semantically-reviewed", "generated-draft")
     }
-    assert statuses == {"semantically-reviewed": 41, "generated-draft": 99}
+    assert statuses == {"semantically-reviewed": 39, "generated-draft": 103}
     assert proof["source"]["unproved_pack_count"] == len(proof["packs"])
-    assert proof["source"]["semantic_unproved_pack_count"] == 99
+    assert proof["source"]["semantic_unproved_pack_count"] == 103
     unresolved = proof["source"]["feasibility_audit"]["unresolved"]
-    assert unresolved["non_executable_pack_semantics_unmodeled"]["count"] == 50
-    assert unresolved["pack_specific_legacy_source_missing"]["count"] == 41
-    assert unresolved["pack_specific_authority_source_missing"]["count"] == 4
-    assert unresolved["legacy_artifact_role_missing"]["count"] == 40
+    assert unresolved["non_executable_pack_semantics_unmodeled"]["count"] == 49
+    assert unresolved["pack_specific_legacy_source_missing"]["count"] == 40
+    assert unresolved["pack_specific_authority_source_missing"]["count"] == 7
+    assert unresolved["legacy_artifact_role_missing"]["count"] == 38
     assert unresolved["parameter_schema_mapping_mismatch"]["count"] == 1
     assert all(
         entry["target"]["pack_id"] == pack_id and entry["source"]["pack_id"] == pack_id

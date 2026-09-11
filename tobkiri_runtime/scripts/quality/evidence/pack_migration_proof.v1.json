@@ -11711,7 +11711,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:92557d888efb0c27d88e1cbe15bf2a7629ae434468719f0b0140e907abe43f7b",
+    "content_digest": "sha256:87a37afe94f87e32c1f16b3bc9ffaf077983ed32513cd4b5cc171a55dfd41aa0",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 39,
@@ -11955,7 +11955,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:869fd11295b70e18fe41db7010b7f9c9642709b395983189bc9365dc79b5cd12",
+    "input_digest": "sha256:5acd05656695a3a95adf8b12a8056a2d171debf2f4bf78b42c664313a9fabae9",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaults/artifact-index.v4.json",
@@ -18540,7 +18540,7 @@
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
       {
-        "digest": "sha256:aa553d60cdd1ee7d53fd92c6997b330c83408e4cc98644f6f7b4cb4c81ed8dde",
+        "digest": "sha256:93f4dc0b59d9941c19daef48fa0a5d4a15fa10a60d473b8b78f430f393e549c8",
         "kind": "proof-algorithm",
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
@@ -18550,7 +18550,7 @@
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
       {
-        "digest": "sha256:0c8d2162d83187828e6c3b9dfcc6f294208773a1f14a91e0f5a4453ae9ffed11",
+        "digest": "sha256:52c6f19025ba69bcd00487ad296dac25449e1c5f8b2d633be99d3f67eb35c5b6",
         "kind": "legacy-profile-bundle",
         "path": "tobkiri_runtime/tests/fixtures/legacy_profile_bundle.v1.json"
       },
@@ -18596,7 +18596,7 @@
       "release-verified": 0,
       "semantically-reviewed": 39
     },
-    "observed_head_sha": "d950bbb5496036ee96e4c2f97d96b2adec22c127",
+    "observed_head_sha": "7e616e8cd361910c7b86d37764d2b563ec2f88b9",
     "pack_count": 142,
     "profile_collection_proof": {
       "identity_proof": {
@@ -18638,7 +18638,7 @@
       },
       "transaction": {
         "algorithm": "profile-definition-store.import_legacy_collection.v1",
-        "committed_store_digest": "sha256:24bcbddf66feb10270116bf4760b492e13ba6638b2a6973564faa84a1a39d335",
+        "committed_store_digest": "sha256:01d19bbd79c049d81d0c360222f2f545e928426557befe507b9175f3c054e027",
         "failure_injection": {
           "state_write": {
             "committed_state": false,
@@ -18651,10 +18651,10 @@
         },
         "identity_proof_digest": "sha256:fafc1c5bd09b162423b231b7e7e344df80bf1793a87dafbb1b87929f12f1538f",
         "lossless": true,
-        "receipt_digest": "sha256:017ff1f888e3d5f36ff3a8154b60f9200e0ca0538345123781206bbb49f498c2",
+        "receipt_digest": "sha256:091472207a3e9617883ec9d0cc8a0731d241bb11077a71a44f4810e3ed6a449c",
         "replay_rejected_without_mutation": true,
         "restart_verified": true,
-        "source_digest": "sha256:7c3e35630e2bd38d3dd6ca36bab31b8f93a8235143dec93a012b57392cb8fcd3",
+        "source_digest": "sha256:bef042cb84d1b59da482c053f5055ba0298d7b9b8e2f993b875c27477d446a55",
         "workspace_digests": {
           "profile-aoi": "sha256:9aacdb19d13a0ac9711404f908ce8f598f14001a42f50796c7252ec6da55f2b3",
           "profile-bora": "sha256:a9b3aa7cb94855317a0847e8868df20acdffddd9f643157855ced106c295e983",

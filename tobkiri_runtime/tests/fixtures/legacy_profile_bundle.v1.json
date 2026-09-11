@@ -1,6 +1,9 @@
 {
   "schema": "io.tobkiri.legacy-profile-bundle.v1",
   "version": 3,
+  "reserved_identity_prefixes": [
+    "defaults"
+  ],
   "active_profile_id": "profile-bora",
   "last_launched_profile_id": "profile-aoi",
   "legacy_selection": {
