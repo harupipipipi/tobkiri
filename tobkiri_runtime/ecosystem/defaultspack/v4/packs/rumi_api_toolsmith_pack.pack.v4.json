@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:e278e9f82304382b4df4444d4bf6ee24572d28efc028523a14740df0ce7f34ba",
+      "digest": "sha256:91de598866d3bdf3e99d25ebba428b64db64a0dc6d96b7c306e34fbf57ddd093",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,8 +9,8 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:cefd86c87339376635687d533e2309263befdccfa77882caddbd56edc10f794a",
-    "artifact_set_digest": "sha256:9ad02d0212c2b0d7ceb90fa7eb181f7d7dea08e3d448e4b5de29ddb2767065c4",
+    "source_identity": "sha256:32a7b4fda0707783d4c9f009b78886faf53d8e9d59ded6996a7369541d28ef3b",
+    "artifact_set_digest": "sha256:8fdf880b75d9585be5ef923fa873539d30e692b800a2afd39b3338d83973ae93",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -20,11 +20,11 @@
       "rumi_api_toolsmith_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
+    "artifact_digest": "sha256:3c74f14c1cf9f6c43a264bc5b2432484020d9704acea0ba84fd79c0a84cfa3fc",
     "display_name": "Rumi API Toolsmith Pack",
     "id": "rumi_api_toolsmith_pack",
     "kind": "application",
@@ -35,15 +35,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_api_toolsmith_pack/pack.v4.json",
-    "source_digest": "sha256:cefd86c87339376635687d533e2309263befdccfa77882caddbd56edc10f794a",
+    "source_digest": "sha256:32a7b4fda0707783d4c9f009b78886faf53d8e9d59ded6996a7369541d28ef3b",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:e6c4296c8ae789f25e0a558f84ce39b1e4b3944d8f8d76be3992a2338de8434f",
+    "content_root_digest": "sha256:df137d8808546294495043e1f17e70cb5a9785d7a7fe8cd88a5397c38b1e32c7",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:5c94161d9d6567d91b5e774955be56a60508d6686a149191de55d2646a92fcfe",
+    "input_inventory_digest": "sha256:26e9a31e3ad2d4b754c47d65ed9b1155f8a592b68ec08625a05a52be4052520b",
     "normative": true,
     "evidence": [
       {
@@ -54,7 +54,7 @@
       {
         "path": "ecosystem/rumi_api_toolsmith_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:cefd86c87339376635687d533e2309263befdccfa77882caddbd56edc10f794a"
+        "digest": "sha256:32a7b4fda0707783d4c9f009b78886faf53d8e9d59ded6996a7369541d28ef3b"
       }
     ]
   },

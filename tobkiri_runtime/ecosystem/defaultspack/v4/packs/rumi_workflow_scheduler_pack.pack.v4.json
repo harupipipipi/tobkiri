@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:94a1db8264c8b06943559d6639b4b0560b69a009a11cf80d424de45a408d0763",
+      "digest": "sha256:a6f430617d1089976c79bb3572492506da96a0f518f86f7daab82e98f69d64c3",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,8 +9,8 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:0dbd77af4a168480eb23e02e2148ddbb7b50bec3eec6c04cd44c64caa53bd753",
-    "artifact_set_digest": "sha256:6d1dff687ba1be84bb64b26abacfc2e2f6974f68c1aebfc46fe0d8ce6aa92562",
+    "source_identity": "sha256:2873ef8c44479ccb735352debadccc2c96281167ef9a25c708c64e901c63142a",
+    "artifact_set_digest": "sha256:b66c750c6d029e7bc3c666f2a66a62b03b9a6603873c846cfbc95d1b0756c746",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -20,11 +20,11 @@
       "rumi_workflow_scheduler_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:68f6f16e72c86f6276a39282e662ad5e81912af4483caaa7cbe91054edf5e8c6",
+    "artifact_digest": "sha256:b288a852c50e397b879e2e6f7cac9d6e8bf25d7e33cccd7ff93fd75c6f53a4be",
     "display_name": "rumi_workflow_scheduler_pack",
     "id": "rumi_workflow_scheduler_pack",
     "kind": "application",
@@ -35,15 +35,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_workflow_scheduler_pack/pack.v4.json",
-    "source_digest": "sha256:0dbd77af4a168480eb23e02e2148ddbb7b50bec3eec6c04cd44c64caa53bd753",
+    "source_digest": "sha256:2873ef8c44479ccb735352debadccc2c96281167ef9a25c708c64e901c63142a",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:15d87223642826c7c19bc57ae84b5b1a14bc81b02bb5b998d8ed2870aa7d4bb2",
+    "content_root_digest": "sha256:abcb7aa0272eba49abc615d51dc75ac251245e83cf5b1c1de8a567fd87bde59f",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:1f0025e6b6fde8edcb1c0020593e78159441c65308058f1d7ccf090d84283232",
+    "input_inventory_digest": "sha256:30ddd2b2baf9e335f1fce911fa447acb4b37c93f5f8a2e32753eaac19a37b394",
     "normative": true,
     "evidence": [
       {
@@ -54,7 +54,7 @@
       {
         "path": "ecosystem/rumi_workflow_scheduler_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:0dbd77af4a168480eb23e02e2148ddbb7b50bec3eec6c04cd44c64caa53bd753"
+        "digest": "sha256:2873ef8c44479ccb735352debadccc2c96281167ef9a25c708c64e901c63142a"
       }
     ]
   },

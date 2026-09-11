@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_agent_continuity_pack",
-  "source_identity": "sha256:f4e6c005422bbb12427d3e4f5fe185b63f9dffa6accfeea4f84dde6fe9772259",
+  "source_identity": "sha256:2cc1d9c53b32972279e1efbe824cd234870125f6c6192ea632bf00536df5eda8",
   "variants": [],
-  "materialization_catalog_digest": "sha256:07ad2887ebd298f91964655aec452999ab5ca8da2e73495db140df0ba09375b5",
-  "catalog_digest": "sha256:16df45c5463f24f1471d465c6e39b74bbf2492b34a3f41fe25930db478beec3f"
+  "materialization_catalog_digest": "sha256:c675ce6d203299acb29ad26bb0c90a2408c014864edaa96aa4eecb2fd2db7c34",
+  "catalog_digest": "sha256:e103fd887315741129371048d2a3082cf8c280f693ae32a16ee7e2664e59cfb1"
 }

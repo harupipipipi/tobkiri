@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_subagent_pr_manager_pack",
-  "source_identity": "sha256:00d165629d2dfa1e3b749b2611b1db31e1ab0587814c9d16b02acc76e5ed9646",
+  "source_identity": "sha256:f826ed54b5fda2fc2a4e8154de267a7c23878452e309b83021fc392404522c35",
   "variants": [],
-  "materialization_catalog_digest": "sha256:c5afd0278543f87f9437d0651594dfd6f4c4bd20ced20ed8c9f8762b50685e82",
-  "catalog_digest": "sha256:81ca4c1919f490f5f41e0467c22104af38478840e9554fcc8f73abec71a413b8"
+  "materialization_catalog_digest": "sha256:c7dd56a0aa0f99750f3e431dbe92f248aa20e33d3a3b09ece80b5e70551eea4d",
+  "catalog_digest": "sha256:7de71ddc1168dfaba6e0d8493543056a96e41fde36a1ef85c5cd617633f33a1e"
 }

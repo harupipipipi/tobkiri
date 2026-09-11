@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:a6cf04c81735ecc997fd1bf4a6ed0a85a8c8168d38e86d4f460687d4d2a3dabe",
+      "digest": "sha256:36ea92ee8f72fde4dac768b6c50f8916488689a266ac91f5e9dc03a41ce912e5",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,8 +9,8 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:38971f45942121c007de06b4010f41eae758ffef823e36c4cbc1c68e34e966ef",
-    "artifact_set_digest": "sha256:501419d804f7ae6b1928513974b85bf5e02e3d4b6efe93e18e6b9ccc38be60b6",
+    "source_identity": "sha256:774a64d320219368e413421f8019224aeee7791c05cda19b4dd98d7544a355e4",
+    "artifact_set_digest": "sha256:811a2a091041f2836d8f05de8ad0b32697bcacccc2fac18aa5df72c4e5f87dbf",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -20,11 +20,11 @@
       "rumi_knowledge_marketplace_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:ae11e5127c0bb4a1dab5f1a763c5f9b87378b27454f74ef80a9a27613e6ab6b1",
+    "artifact_digest": "sha256:515d9bf2b946eee12bb7fe870dc5f75231fa12e762855e97b372dc4c8d3f18e2",
     "display_name": "Rumi Knowledge Marketplace Pack",
     "id": "rumi_knowledge_marketplace_pack",
     "kind": "application",
@@ -35,15 +35,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_knowledge_marketplace_pack/pack.v4.json",
-    "source_digest": "sha256:38971f45942121c007de06b4010f41eae758ffef823e36c4cbc1c68e34e966ef",
+    "source_digest": "sha256:774a64d320219368e413421f8019224aeee7791c05cda19b4dd98d7544a355e4",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:22e59f2f479bdef2956ab5228bf0a797ea82437f14202b90534f8045c5c275e6",
+    "content_root_digest": "sha256:6f4dfc75c0c56b1e91b9f63ac180ddaf22b2ba9e9a89a8d733bcf01e2e5c34e7",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:ee907fe9c5b9465b51fa41481aaab1f535a3e4d518b9c51924d03f75b7a00c8e",
+    "input_inventory_digest": "sha256:641e6f06396bb53130178cdbcc41e410b17039487b270cf12a04fc348a5a757e",
     "normative": true,
     "evidence": [
       {
@@ -54,7 +54,7 @@
       {
         "path": "ecosystem/rumi_knowledge_marketplace_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:38971f45942121c007de06b4010f41eae758ffef823e36c4cbc1c68e34e966ef"
+        "digest": "sha256:774a64d320219368e413421f8019224aeee7791c05cda19b4dd98d7544a355e4"
       }
     ]
   },

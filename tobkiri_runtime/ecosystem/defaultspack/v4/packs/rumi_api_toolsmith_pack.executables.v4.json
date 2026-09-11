@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_api_toolsmith_pack",
-  "source_identity": "sha256:cefd86c87339376635687d533e2309263befdccfa77882caddbd56edc10f794a",
+  "source_identity": "sha256:32a7b4fda0707783d4c9f009b78886faf53d8e9d59ded6996a7369541d28ef3b",
   "variants": [],
-  "materialization_catalog_digest": "sha256:f845e961f58be550a230669ced82b31d2977863bb1c8584054bd0b891bfb10f5",
-  "catalog_digest": "sha256:33f2242d151b29d783b8276ddc3a0923ead60652426cd945b2ceb00d169f1ad0"
+  "materialization_catalog_digest": "sha256:c5f9c88760b3ba72484b3948b9778908588db7a0b0d1cf781524ac776b4917ca",
+  "catalog_digest": "sha256:1dc8112e1ef767bdff1923b412fa06c45e411674f9a71723716521bf650feb28"
 }

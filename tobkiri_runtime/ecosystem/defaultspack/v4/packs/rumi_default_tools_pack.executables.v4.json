@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:af471ae28a894bff7293ff8dbfb837054a426f2571969ec1a277f8fd1a89961c",
+  "source_identity": "sha256:d83015374b5f8ae53a3dfd012f42edaccc8f30d4ea6c4c971f79fb7b1da50124",
   "variants": [
     {
       "variant_id": "rumi_default_tools_pack.calculator.python",
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:490d5361ccd47f107865a45e89a05c5b12ecdd225e1e5cc7e8f65de19f147086",
-  "catalog_digest": "sha256:d522f01e292c866ca488be6f3ed083f4b44e284d5c1771ae04b27c4f958f89d2"
+  "materialization_catalog_digest": "sha256:696600e804b7625f78133a6fb1932cbe9c71b0f29e1de02b9352ede50941ed52",
+  "catalog_digest": "sha256:366c5ef86fca128637bfc839688901af9d39adda9b703997a88527c86dab5244"
 }

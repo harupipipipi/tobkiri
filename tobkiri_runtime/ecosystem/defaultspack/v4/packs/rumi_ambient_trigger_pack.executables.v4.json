@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ambient_trigger_pack",
-  "source_identity": "sha256:09a12f90c36ceb7d073c337ca4c39f343df5a0de621f357c12db001880793b25",
+  "source_identity": "sha256:641dc7544ed1621dd836dcf0b0b9a259d2dfec7a38f6b03ca64d6507aef71677",
   "variants": [],
-  "materialization_catalog_digest": "sha256:cb6bafdddd3940c9cde96aaee18f7398efbbdfba246e6d4473ed2034eb132357",
-  "catalog_digest": "sha256:d326f61094ef474ab084eec7a41c9e8452b1ae0a272e4ba02c1601f5eebbaf55"
+  "materialization_catalog_digest": "sha256:ffb689d8ba0942eee8398dcf3afe11a082421011a47dd2ee798c6428ab46d4a5",
+  "catalog_digest": "sha256:a81b24ae69319bdec16f81a9082ea490d0d4cc02ddc12d992af5435c3d550e4f"
 }

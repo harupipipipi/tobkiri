@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_omnichannel_agent_inbox_pack",
-  "source_identity": "sha256:cedd4c11489a8a9ad428f4c462aab920909d08c704bbf2e0361f46869f379e80",
+  "source_identity": "sha256:580e65113da24f21674fb68905f60f0cc1b8794f5626e158520469cc411e4162",
   "variants": [],
-  "materialization_catalog_digest": "sha256:4997977461b1324fa00778987047c95833081c93d79cdc2e374de7bc041e7cd3",
-  "catalog_digest": "sha256:8cc4102348f5c0ec76acbfd268ebd825f5e106a6c718ca46c36838471992ef84"
+  "materialization_catalog_digest": "sha256:b852d6503db75f7445e112b20b7628a61e8438887d314e0f857fbaddc6650793",
+  "catalog_digest": "sha256:5ee7ad16d9f1577a4829a564f6ce415c35c5a180cbb3078470c0fd0523ad60b0"
 }

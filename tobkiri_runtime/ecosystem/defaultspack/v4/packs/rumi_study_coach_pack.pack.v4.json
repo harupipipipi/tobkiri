@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:930a38cd5369b94eadf4756a33adf48ebfd605af0e2cc8b3fa8093089084c206",
+      "digest": "sha256:99b3d87eebbb900ea95a0c814f82e0db12d59cf59588085ae3ed063d18083c44",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,8 +9,8 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:552f5477c4223eb15b4f7b964c35e5d46e032c5d7bca4250032437d5c49db0a8",
-    "artifact_set_digest": "sha256:ae9493e63f8048a502616e87fc25e80c1111cde5c0218ffea80dcbe161819351",
+    "source_identity": "sha256:688b23c2d0987f8fe780fe0ac0557e5f363ab29a2d5b77bea851754b1893c4aa",
+    "artifact_set_digest": "sha256:41ba6aa2da62d2eb9560888770b0d66f7e37398a240b6cf834ac5653777a7ba3",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -20,11 +20,11 @@
       "rumi_study_coach_pack"
     ],
     "removal_wave": 10,
-    "sunset_at": "2099-01-01"
+    "sunset_at": "2027-12-31"
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:a7837f556d5c492c64105a8988efbf22f7917dad9d5018c277a55afdb7433714",
+    "artifact_digest": "sha256:4342e0add728cb85de3c6bd73fc7f9447bd70d4f7fc545f50e43ba9e7a60f995",
     "display_name": "Rumi Study Coach Pack",
     "id": "rumi_study_coach_pack",
     "kind": "application",
@@ -35,15 +35,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_study_coach_pack/pack.v4.json",
-    "source_digest": "sha256:552f5477c4223eb15b4f7b964c35e5d46e032c5d7bca4250032437d5c49db0a8",
+    "source_digest": "sha256:688b23c2d0987f8fe780fe0ac0557e5f363ab29a2d5b77bea851754b1893c4aa",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:f8b62335ac16c1eb62a4ac8ce64e20a478a52f010e7faf2f4a0b470ffbc15776",
+    "content_root_digest": "sha256:640ab52ed00c50f91f6652609dd03bc47ff282f2d8cccdd46eb8e185d65cf989",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:02415d53909cc6a1b0df6463372584c385c1309ab013ce17fe23cb132bbbcca0",
+    "input_inventory_digest": "sha256:a59282565d9d5d1446f1e590d090fb9539f96e15210f71f73abc29f50c09d773",
     "normative": true,
     "evidence": [
       {
@@ -54,7 +54,7 @@
       {
         "path": "ecosystem/rumi_study_coach_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:552f5477c4223eb15b4f7b964c35e5d46e032c5d7bca4250032437d5c49db0a8"
+        "digest": "sha256:688b23c2d0987f8fe780fe0ac0557e5f363ab29a2d5b77bea851754b1893c4aa"
       }
     ]
   },
