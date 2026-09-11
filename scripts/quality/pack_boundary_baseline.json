@@ -3,24 +3,11 @@
   "policy": "exact-current-shrink-only-from-reference",
   "summary": {
     "by_rule": {
-      "pack-boundary.empty-pack-boundary": 1,
       "pack-boundary.v4-file-uses-v5-api": 1
     },
-    "total": 2
+    "total": 1
   },
   "violations": [
-    {
-      "evidence": {
-        "contract_dependencies": 0,
-        "contracts": 0,
-        "functions": 0,
-        "pack_dependencies": 0
-      },
-      "fingerprint": "sha256:b32fd5a1c057aa255c81443c3347eb0ac08f53f1bcba57169d32bcdc57dbbdd7",
-      "line": 10,
-      "path": "tobkiri_runtime/ecosystem/defaults/pack.v4.json",
-      "rule_id": "pack-boundary.empty-pack-boundary"
-    },
     {
       "evidence": {
         "declaration": "profile_api_version",

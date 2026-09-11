@@ -1,6 +1,5 @@
 {
   "packs": {
-    "defaults": "v4-authoritative",
     "defaultspack": "v4-authoritative",
     "rumi_agent_continuity_pack": "v4-authoritative",
     "rumi_agent_runtime_service_pack": "v4-authoritative",

@@ -8,7 +8,6 @@
   ],
   "migration_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
   "pack_ids": [
-    "defaults",
     "defaultspack",
     "rumi_agent_continuity_pack",
     "rumi_agent_runtime_service_pack",
@@ -152,47 +151,6 @@
     "tobkiri_workflow_pack"
   ],
   "packs": [
-    {
-      "approval_policy": "none",
-      "authority": "v4-authoritative",
-      "capabilities": [],
-      "dependencies": {},
-      "description": "Canonical Defaults v4 composition artifact.",
-      "display_name": "Tobkiri Defaults Base",
-      "execution_boundary": "declarative_only",
-      "kind": "base",
-      "legacy_ids": [],
-      "legacy_operations": [],
-      "migration": {
-        "compatibility": "none",
-        "removal_wave": 0,
-        "sunset_at": "2026-08-05"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "defaults",
-      "provided_contracts": [],
-      "required_contracts": [],
-      "runtime_artifacts": [],
-      "secrets": [],
-      "source_evidence": [
-        {
-          "digest": "sha256:eeb549d2a384b85ad805148da20ee1e37480b80751670ea9050202cd219b21a0",
-          "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
-          "rule_id": "canonical-bundled-v4-source"
-        }
-      ],
-      "source_provenance": {
-        "historical_classification": "modern-only",
-        "mode": "canonical-v4",
-        "owner": "defaults",
-        "source_format": "pack.v4.json"
-      },
-      "version": "4.0.0",
-      "workspace_boundary": "pack_local"
-    },
     {
       "approval_policy": "none",
       "authority": "v4-authoritative",
