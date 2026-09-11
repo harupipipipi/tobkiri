@@ -2578,11 +2578,18 @@ export type ChatToolStreamEvent = ChatActivityEvent & {
 };
 
 export type ChatStreamEvent =
-  | { type: "delta"; delta: string }
-  | { type: "thinking_delta"; delta: string }
-  | { type: "message" | "done" | "user_message"; message?: ChatMessage }
-  | { type: "error"; error?: ChatStreamError }
-  | ChatToolStreamEvent;
+  ({
+    run_id?: string;
+    conversation_id?: string;
+    chat_operation_id?: string;
+    seq?: number;
+  } & (
+    | { type: "delta"; delta: string }
+    | { type: "thinking_delta"; delta: string }
+    | { type: "message" | "done" | "user_message"; message?: ChatMessage }
+    | { type: "error"; error?: ChatStreamError }
+    | ChatToolStreamEvent
+  ));
 
 type ChatStreamHandlers = {
   onEvent?: (event: ChatStreamEvent) => void;
@@ -2626,28 +2633,39 @@ export function normalizeChatStreamEvent(value: unknown): ChatStreamEvent | null
   const rawType = streamString(record, "type").trim();
   if (!rawType) return null;
   const data = streamRecord(record.data);
+  const identity = {
+    run_id: streamString(record, "run_id") || undefined,
+    conversation_id: streamString(record, "conversation_id") || undefined,
+    chat_operation_id: streamString(record, "chat_operation_id") || undefined,
+    seq: typeof record.seq === "number" ? record.seq : undefined,
+  };
   const delta = streamString(data, "delta") || streamString(record, "delta") || streamString(data, "content") || streamString(record, "content");
 
   if (rawType === "delta" || rawType === "content_delta") {
-    return { type: "delta", delta };
+    return { type: "delta", delta, ...identity };
   }
   if (rawType === "thinking_delta") {
-    return { type: "thinking_delta", delta };
+    return { type: "thinking_delta", delta, ...identity };
   }
   if (rawType === "user_message" || rawType === "user_message_committed") {
-    return { type: "user_message", message: streamMessageValue(record, data) };
+    return { type: "user_message", message: streamMessageValue(record, data), ...identity };
   }
   if (rawType === "message" || rawType === "assistant_message_completed") {
-    return { type: "message", message: streamMessageValue(record, data) };
+    return { type: "message", message: streamMessageValue(record, data), ...identity };
   }
   if (rawType === "done" || rawType === "stream_end") {
-    return { type: "done", message: streamMessageValue(record, data) };
+    return { type: "done", message: streamMessageValue(record, data), ...identity };
   }
   if (rawType === "error" || rawType === "cancelled") {
-    return { type: "error", error: rawType === "cancelled" ? "cancelled" : streamErrorValue(record, data) };
+    return { type: "error", error: rawType === "cancelled" ? "cancelled" : streamErrorValue(record, data), ...identity };
   }
 
-  const merged: Record<string, unknown> = { ...record, ...data, type: rawType };
+  const merged: Record<string, unknown> = {
+    ...record,
+    ...data,
+    type: rawType,
+    ...identity,
+  };
   delete merged.data;
   delete merged.schema_version;
   return merged as ChatStreamEvent;
@@ -3203,6 +3221,7 @@ function createChatOperationId(): string {
 
 async function readStreamEvents(
   response: Response,
+  expected: { conversationId: string; chatOperationId: string },
   handlers: ChatStreamHandlers = {},
 ): Promise<ChatMessage | null> {
   if (!response.body) {
@@ -3215,6 +3234,8 @@ async function readStreamEvents(
   let partialText = "";
   let thinkingText = "";
   let sawActivity = false;
+  let streamRunId = "";
+  let lastSequence = 0;
 
   const streamErrorMessage = (value: ChatStreamError | undefined): string => {
     if (typeof value === "string" && value.trim()) return value;
@@ -3242,6 +3263,27 @@ async function readStreamEvents(
       event = normalized;
     } catch {
       throw new Error("defaultspack stream returned a malformed event");
+    }
+    if (event.conversation_id !== expected.conversationId
+      || event.chat_operation_id !== expected.chatOperationId) {
+      throw new Error("defaultspack stream returned an event for a different chat operation");
+    }
+    if (event.run_id) {
+      if (streamRunId && event.run_id !== streamRunId) {
+        throw new Error("defaultspack stream changed run identity");
+      }
+      streamRunId = event.run_id;
+    } else if (event.type !== "error") {
+      throw new Error("defaultspack stream returned an event without run identity");
+    }
+    if (!Number.isSafeInteger(event.seq) || Number(event.seq) <= lastSequence) {
+      throw new Error("defaultspack stream returned an invalid event sequence");
+    }
+    lastSequence = Number(event.seq);
+    if ("message" in event && event.message && typeof event.message === "object"
+      && "conversation_id" in event.message
+      && event.message.conversation_id !== expected.conversationId) {
+      throw new Error("defaultspack stream returned a message for a different conversation");
     }
     handlers.onEvent?.(event);
     if (event.type === "delta") {
@@ -3640,9 +3682,11 @@ export const api = {
     options?: SendMessageOptions,
     handlers?: ChatStreamHandlers,
   ) {
+    const body = messageRequestBody(text, options);
+    const chatOperationId = String(body.idempotency_key ?? "");
     const response = await defaultspackApiFetch(defaultspackContractRoute(`api/chat/conversations/${conversationId}/stream`), {
       method: "POST",
-      body: JSON.stringify(messageRequestBody(text, options)),
+      body: JSON.stringify(body),
       signal: handlers?.signal,
     });
 
@@ -3660,10 +3704,13 @@ export const api = {
       if (!response.ok) {
         throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
       }
+      if (payload.data.conversation_id !== conversationId) {
+        throw new Error("defaultspack API returned a message for a different conversation");
+      }
       handlers?.onMessage?.(payload.data);
       return payload.data;
     }
-    return readStreamEvents(response, handlers);
+    return readStreamEvents(response, { conversationId, chatOperationId }, handlers);
   },
 
   stopMessage(conversationId: string) {

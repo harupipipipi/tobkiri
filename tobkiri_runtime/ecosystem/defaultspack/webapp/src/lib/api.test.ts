@@ -41,6 +41,23 @@ function requestTarget(input: RequestInfo | URL): string {
   return separator < 0 ? operation : operation.slice(separator + 1);
 }
 
+function bindChatStream(body: string, init?: RequestInit): string {
+  const request = JSON.parse(String(init?.body ?? "{}")) as { idempotency_key?: string };
+  let sequence = 0;
+  return body.replace(/^data: (.+)$/gm, (line, payload: string) => {
+    if (payload === "[DONE]") return line;
+    const event = JSON.parse(payload) as Record<string, unknown>;
+    sequence += 1;
+    return `data: ${JSON.stringify({
+      ...event,
+      run_id: "run-1",
+      conversation_id: "c1",
+      chat_operation_id: request.idempotency_key,
+      seq: sequence,
+    })}`;
+  });
+}
+
 test("saved turn reconciliation is a read with no replay or caller Profile", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
@@ -2161,7 +2178,7 @@ test("streamMessage serializes auto tool selection without tools", async () => {
     const body = [
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"ok"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2219,14 +2236,14 @@ test("streamMessage parses SSE deltas and final message", async () => {
   const originalFetch = globalThis.fetch;
   const events: string[] = [];
   let finalId = "";
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"delta","delta":"he"}\n\n',
       'data: {"type":"delta","delta":"llo"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"hello"}],"created_at":1,"conversation_id":"c1"}}\n\n',
       'data: {"type":"done","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"hello"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2254,7 +2271,7 @@ test("streamMessage accepts canonical defaultspack stream events", async () => {
   const originalFetch = globalThis.fetch;
   const events: string[] = [];
   let finalId = "";
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const finalMessage = {
       id: "m2",
       role: "assistant",
@@ -2269,7 +2286,7 @@ test("streamMessage accepts canonical defaultspack stream events", async () => {
       `data: ${JSON.stringify({ type: "assistant_message_completed", data: { message: finalMessage } })}\n\n`,
       `data: ${JSON.stringify({ type: "done", data: { message: finalMessage } })}\n\n`,
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2296,10 +2313,18 @@ test("streamMessage accepts canonical defaultspack stream events", async () => {
 test("normalizeChatStreamEvent lifts canonical activity data", () => {
   assert.deepEqual(normalizeChatStreamEvent({
     type: "tool_call_started",
+    run_id: "run-1",
+    conversation_id: "c1",
+    chat_operation_id: "op-1",
+    seq: 1,
     data: {
       tool_name: "browser_use",
       tool_call_id: "call-1",
       message: "browser_use を使用中",
+      run_id: "foreign-run",
+      conversation_id: "foreign-conversation",
+      chat_operation_id: "foreign-operation",
+      seq: 99,
     },
     message: "tool started",
   }), {
@@ -2307,20 +2332,24 @@ test("normalizeChatStreamEvent lifts canonical activity data", () => {
     tool_name: "browser_use",
     tool_call_id: "call-1",
     message: "browser_use を使用中",
+    run_id: "run-1",
+    conversation_id: "c1",
+    chat_operation_id: "op-1",
+    seq: 1,
   });
 });
 
 test("streamMessage forwards thinking deltas", async () => {
   const originalFetch = globalThis.fetch;
   const thinkingEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"thinking_delta","delta":"private "}\n\n',
       'data: {"type":"thinking_delta","delta":"plan"}\n\n',
       'data: {"type":"delta","delta":"done"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2342,13 +2371,13 @@ test("streamMessage forwards thinking deltas", async () => {
 test("streamMessage forwards realtime tool activity events", async () => {
   const originalFetch = globalThis.fetch;
   const activityEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"status","message":"toolを接続しました","phase":"tools_attached"}\n\n',
       'data: {"type":"tool_call_started","tool_name":"browser_computer","tool_call_id":"call_1","arguments":{"action":"computer.screenshot"},"message":"browser_computer を使用中"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2370,12 +2399,12 @@ test("streamMessage forwards realtime tool activity events", async () => {
 test("streamMessage forwards explicit browser screenshot events", async () => {
   const originalFetch = globalThis.fetch;
   const activityEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"browser_screenshot","tool_name":"browser_computer","tool_call_id":"call_1","data_url":"data:image/png;base64,abc"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2397,12 +2426,12 @@ test("streamMessage forwards explicit browser screenshot events", async () => {
 test("streamMessage forwards browser state snapshot events", async () => {
   const originalFetch = globalThis.fetch;
   const activityEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"browser_state_snapshot","tool_name":"browser_computer","tool_call_id":"call_1","state_revision":7,"snapshot":{"active_window":{"title":"Example"}}}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2423,8 +2452,8 @@ test("streamMessage forwards browser state snapshot events", async () => {
 
 test("streamMessage surfaces structured stream errors", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    return new Response('data: {"type":"error","error":{"code":"STREAM_FAILED","message":"thinking-only stream"}}\n\n', {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    return new Response(bindChatStream('data: {"type":"error","error":{"code":"STREAM_FAILED","message":"thinking-only stream"}}\n\n', init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2442,8 +2471,8 @@ test("streamMessage surfaces structured stream errors", async () => {
 
 test("streamMessage rejects streams without a final message", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    return new Response('data: {"type":"delta","delta":"partial"}\n\n', {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    return new Response(bindChatStream('data: {"type":"delta","delta":"partial"}\n\n', init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -2457,6 +2486,46 @@ test("streamMessage rejects streams without a final message", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("streamMessage rejects foreign conversation, operation, and run events", async () => {
+  const originalFetch = globalThis.fetch;
+  const observed: string[] = [];
+  const cases = [
+    { conversation_id: "c2", chat_operation_id: "op-1", run_id: "run-1" },
+    { conversation_id: "c1", chat_operation_id: "op-2", run_id: "run-1" },
+  ];
+  try {
+    for (const identity of cases) {
+      globalThis.fetch = (async () => new Response(
+        `data: ${JSON.stringify({ type: "delta", delta: "foreign", seq: 1, ...identity })}\n\n`,
+        { status: 200, headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
+      )) as typeof fetch;
+      await assert.rejects(
+        api.streamMessage("c1", "hello", { idempotency_key: "op-1" }, {
+          onDelta: (delta) => observed.push(delta),
+        }),
+        /different chat operation/,
+      );
+    }
+
+    globalThis.fetch = (async () => new Response([
+      'data: {"type":"delta","delta":"first","conversation_id":"c1","chat_operation_id":"op-1","run_id":"run-1","seq":1}\n\n',
+      'data: {"type":"delta","delta":"foreign","conversation_id":"c1","chat_operation_id":"op-1","run_id":"run-2","seq":2}\n\n',
+    ].join(""), {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+    })) as typeof fetch;
+    await assert.rejects(
+      api.streamMessage("c1", "hello", { idempotency_key: "op-1" }, {
+        onDelta: (delta) => observed.push(delta),
+      }),
+      /changed run identity/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(observed, ["first"]);
 });
 
 test("reportClientEvent posts diagnostics to the UI contract endpoint", async () => {

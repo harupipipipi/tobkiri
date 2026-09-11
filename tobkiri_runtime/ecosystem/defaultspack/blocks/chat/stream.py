@@ -35,6 +35,21 @@ def _input_with_default_empty_tools(input_data):
 def _engine_events(
     input_data, context, *, settings_owner: SettingsOwnerPort | None = None,
 ):
+    conversation_id = str(input_data.get("conversation_id") or "").strip()
+    chat_operation_id = str(input_data.get("idempotency_key") or "").strip()
+
+    def bind_operation(event: dict[str, object]) -> dict[str, object]:
+        event_conversation_id = str(event.get("conversation_id") or "").strip()
+        if event_conversation_id and event_conversation_id != conversation_id:
+            raise ValueError("chat stream event conversation identity mismatch")
+        event_chat_operation_id = str(event.get("chat_operation_id") or "").strip()
+        if event_chat_operation_id and event_chat_operation_id != chat_operation_id:
+            raise ValueError("chat stream event operation identity mismatch")
+        bound = dict(event)
+        bound["conversation_id"] = conversation_id
+        bound["chat_operation_id"] = chat_operation_id
+        return bound
+
     try:
         engine_context = dict(context or {}) if isinstance(context, dict) else {}
         engine_context.setdefault("run_source", "blocks.chat.stream")
@@ -47,11 +62,19 @@ def _engine_events(
         ):
             legacy = to_legacy_chat_stream_event(event)
             if legacy is not None:
-                yield legacy
+                yield bind_operation(legacy)
     except ValueError as exc:
-        yield {"type": "error", "error": {"message": str(exc)}}
+        yield bind_operation(
+            {"type": "error", "error": {"message": str(exc)}, "seq": 1}
+        )
     except Exception as exc:
-        yield {"type": "error", "error": {"message": "AI request failed: " + str(exc)}}
+        yield bind_operation(
+            {
+                "type": "error",
+                "error": {"message": "AI request failed: " + str(exc)},
+                "seq": 1,
+            }
+        )
 
 
 def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
