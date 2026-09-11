@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 import threading
 import time
@@ -22,6 +25,7 @@ from core_runtime.mcp.connection_owner import (
     CapturedMcpConnectionOwner,
 )
 from core_runtime.mcp.transport import McpConnections
+from core_runtime.mcp import preparation
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.models import OpaqueAuthorityRef
 from tobkiri_protocol.canonical import canonical_json, strict_loads
@@ -247,6 +251,109 @@ def test_unknown_tool_during_registration_reaps_child(owner, connection_request)
         owner.invoke(_prepared_invocation(owner, connection_request))
     assert owner._records == {}
     assert owner._connections.list_servers() == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO open semantics")
+def test_preparation_rejects_fifo_without_waiting_for_a_writer(tmp_path: Path) -> None:
+    """A special-file path cannot park the Host before its lifetime checks."""
+    fifo = tmp_path / "executable"
+    os.mkfifo(fifo, 0o700)
+    script = """
+import sys, threading, time
+from pathlib import Path
+from core_runtime.mcp.preparation import connection_plan
+try:
+    connection_plan(
+        request={}, config={"command": [sys.argv[1]], "cwd": sys.argv[2]},
+        capture=("profile", "activation", "plan", 1), owner=("caller", "session"),
+        workspace_root=Path(sys.argv[2]), workspace_id="workspace",
+        workspace_revision=1, deadline=time.monotonic() + 1,
+        cancellation=threading.Event(),
+    )
+except PermissionError:
+    print("special file rejected")
+else:
+    raise AssertionError("FIFO must not produce an executable plan")
+"""
+    # subprocess.run kills and reaps on timeout, including the old blocking-open
+    # regression. No writer is ever opened to rescue an unbounded preparation.
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script, str(fifo), str(tmp_path)],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+        timeout=5, check=True,
+    )
+    assert result.stdout.strip() == "special file rejected"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow open semantics")
+def test_preparation_rejects_symlink_installed_after_resolution(
+    owner, connection_request, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed final path component must not redirect the inspection read."""
+    executable = tmp_path / "executable"
+    executable.write_bytes(b"approved bytes")
+    executable.chmod(0o700)
+    replacement = tmp_path / "replacement"
+    replacement.write_bytes(b"unapproved bytes")
+    replacement.chmod(0o700)
+    connection_request["config"]["command"] = [str(executable)]
+    resolve = Path.resolve
+
+    def replace_after_resolution(path: Path, *args, **kwargs) -> Path:
+        resolved = resolve(path, *args, **kwargs)
+        if path == executable:
+            executable.unlink()
+            executable.symlink_to(replacement)
+        return resolved
+
+    monkeypatch.setattr(Path, "resolve", replace_after_resolution)
+    with pytest.raises(OSError):
+        owner.invoke(_Invocation(PREPARE, connection_request))
+    assert owner.connection_ids == frozenset()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX installed symlink")
+def test_preparation_keeps_explicit_installed_executable_symlink(
+    owner, connection_request, tmp_path: Path,
+) -> None:
+    """Resolving an existing installed link still binds the target bytes."""
+    target = tmp_path / "installed"
+    data = b"#!/bin/sh\nexit 0\n"
+    target.write_bytes(data)
+    target.chmod(0o700)
+    link = tmp_path / "executable"
+    link.symlink_to(target)
+    connection_request["config"]["command"] = [str(link)]
+    plan = owner.invoke(_Invocation(PREPARE, connection_request))
+    assert plan["executable"]["path"] == str(target.resolve())
+    assert plan["executable"]["sha256"] == "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def test_preparation_bounds_growing_file_and_closes_descriptor(
+    owner, connection_request, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The read budget applies even when a regular file grows after fstat."""
+    executable = tmp_path / "executable"
+    executable.write_bytes(b"initial")
+    executable.chmod(0o700)
+    connection_request["config"]["command"] = [str(executable)]
+    monkeypatch.setattr(preparation, "_EXECUTABLE_BYTE_LIMIT", 8)
+    read = os.read
+    descriptors: list[int] = []
+
+    def grow_then_read(descriptor: int, count: int) -> bytes:
+        descriptors.append(descriptor)
+        with executable.open("ab") as stream:
+            stream.write(b"growth")
+        return read(descriptor, count)
+
+    monkeypatch.setattr(preparation.os, "read", grow_then_read)
+    with pytest.raises(PermissionError, match="exceeds preparation limit"):
+        owner.invoke(_Invocation(PREPARE, connection_request))
+    assert len(descriptors) == 1
+    with pytest.raises(OSError):
+        os.fstat(descriptors[0])
+    assert owner.connection_ids == frozenset()
 
 
 def test_prepare_reserves_space_for_the_execute_plan(owner, connection_request):
