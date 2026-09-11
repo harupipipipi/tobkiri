@@ -16,6 +16,13 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
 
 
+def _settings_owner(tmp_path: Path):
+    """Return one explicit settings owner isolated to this test directory."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return FrontendSettingsStore(tmp_path / "settings" / "frontend_settings.json")
+
+
 def _write_v2_skill(skill_dir, *, skill_id, display_name, trigger, instruction):
     """Write the smallest valid v2 skill fixture with a trusted SKILL.md."""
     skill_dir.mkdir(parents=True)
@@ -157,7 +164,7 @@ def test_chat_run_engine_has_no_default_four_tool_call_limit(tmp_path, monkeypat
     monkeypatch.setattr(ChatRunEngine, "_model_turn", fake_model_turn)
     monkeypatch.setattr(ChatRunEngine, "_execute_tool", fake_execute_tool)
 
-    engine = ChatRunEngine()
+    engine = ChatRunEngine(settings_owner=_settings_owner(tmp_path))
     events = list(
         engine.stream(
             {
@@ -248,6 +255,9 @@ def test_send_wrapper_returns_cancelled_final_when_nonstream_run_is_cancelled(tm
     conversation = store.create_conversation(model="stub/default")
 
     class RuntimeSettingsStub:
+        def __init__(self, *, settings_owner=None):
+            assert settings_owner is not None
+
         def get_settings(self):
             return {"deepthink_enabled": False}
 
@@ -288,6 +298,7 @@ def test_send_wrapper_returns_cancelled_final_when_nonstream_run_is_cancelled(tm
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert result["status"] == "ok"
@@ -340,6 +351,7 @@ def test_chat_send_and_stream_wrappers_write_inspector_logs(tmp_path, monkeypatc
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     assert send_result["status"] == "ok"
     send_log = Inspector().get_latest()
@@ -356,6 +368,7 @@ def test_chat_send_and_stream_wrappers_write_inspector_logs(tmp_path, monkeypatc
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     events = list(stream_result["events"])
     assert events[-1]["type"] == "done"
@@ -394,6 +407,7 @@ def test_prepare_chat_run_current_turn_history_mode_excludes_old_tool_logs(tmp_p
             "tools": [],
         },
         {"external_chat_history_mode": "current_turn"},
+        settings_owner=_settings_owner(tmp_path),
     )
     combined = "\n".join(str(message.get("content") or "") for message in prepared.standard_messages)
 
@@ -422,6 +436,7 @@ def test_prepare_chat_run_allows_explicit_model_override(tmp_path, monkeypatch):
             "tools": [],
         },
         {"run_source": "scheduler"},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert prepared.model == "google/gemini-2.5-flash"
@@ -458,6 +473,7 @@ def test_prepare_chat_run_forwards_approval_followup_token_to_tool_context(tmp_p
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     expected = {
@@ -503,6 +519,7 @@ def test_prepare_chat_run_promotes_profile_and_agent_ids_into_tool_context(tmp_p
             "tools": ["todo"],
         },
         {"run_source": "scheduler"},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert prepared.request_context["profile_id"] == "defaults"
@@ -541,6 +558,7 @@ def test_prepare_chat_run_maps_computer_approval_followup_aliases(tmp_path, monk
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     expected = {
@@ -581,7 +599,7 @@ def test_approval_followup_executes_exact_payload_before_model_turn(tmp_path, mo
     monkeypatch.setattr(ChatRunEngine, "_execute_tool", fake_execute_tool)
     monkeypatch.setattr(ChatRunEngine, "_model_turn", fake_model_turn)
 
-    engine = ChatRunEngine()
+    engine = ChatRunEngine(settings_owner=_settings_owner(tmp_path))
     events = list(engine.stream(
         {
             "conversation_id": conversation["id"],
@@ -698,6 +716,7 @@ def test_prepare_chat_run_injects_matched_skill_and_chat_references(tmp_path, mo
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     combined = "\n".join(str(message.get("content") or "") for message in prepared.standard_messages)
 
@@ -747,6 +766,7 @@ def test_prepare_chat_run_leaves_unmatched_skills_out_of_system_context(tmp_path
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     combined = "\n".join(str(message.get("content") or "") for message in prepared.standard_messages)
 
@@ -1068,7 +1088,7 @@ def test_chat_run_engine_observes_external_cancel_checker():
     assert engine._is_cancelled() is True
 
 
-def test_complete_with_tools_rejects_unattached_model_tool_call():
+def test_complete_with_tools_rejects_unattached_model_tool_call(tmp_path):
     from blocks.chat import send
 
     ai_calls = 0
@@ -1104,6 +1124,7 @@ def test_complete_with_tools_rejects_unattached_model_tool_call():
         {},
         call_handler,
         {"max_tool_calls": 3},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert ai_calls == 1
@@ -1116,7 +1137,7 @@ def test_complete_with_tools_rejects_unattached_model_tool_call():
     assert any(event.get("phase") == "tool_call_rejected" for event in response["events"])
 
 
-def test_legacy_complete_with_tools_retries_transient_ai_error_after_tool_use():
+def test_legacy_complete_with_tools_retries_transient_ai_error_after_tool_use(tmp_path):
     from blocks.chat import send
 
     ai_calls = 0
@@ -1168,6 +1189,7 @@ def test_legacy_complete_with_tools_retries_transient_ai_error_after_tool_use():
         {"profile_policy": {"max_tool_calls": 3}},
         call_handler,
         {"retry": {"max_attempts": 2, "delays": [0]}},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert ai_calls == 3
@@ -1216,7 +1238,11 @@ def _run_ir_tool_loop(tmp_path, monkeypatch):
     conversation = store.create_conversation(model="openai/gpt-5.5")
     monkeypatch.setattr(ToolExecutor, "execute", lambda self, name, arguments, context: {"result": "tool ok", "is_error": False})
     gateway = _IRFakeGateway()
-    engine = ChatRunEngine(store=store, gateway=gateway)
+    engine = ChatRunEngine(
+        store=store,
+        gateway=gateway,
+        settings_owner=_settings_owner(tmp_path),
+    )
     events = list(
         engine.stream(
             {
@@ -2214,7 +2240,13 @@ def test_stream_engine_scheduled_desktop_frame_replay_canonicalizes_display_tool
             return Provider(), model
 
     monkeypatch.setattr(ToolExecutor, "execute", fake_execute)
-    events = list(ChatRunEngine(store=store, gateway=Gateway()).stream({}, {}, stream_mode=False))
+    events = list(
+        ChatRunEngine(
+            store=store,
+            gateway=Gateway(),
+            settings_owner=_settings_owner(tmp_path),
+        ).stream({}, {}, stream_mode=False)
+    )
     stored = store.get_conversation(conversation_id)["messages"][-1]
     ChatStore._instance = None
 
@@ -2573,7 +2605,13 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
     fake_api = FakeSandboxApi()
     monkeypatch.setattr(desktop_tools, "_sandbox_api", lambda: fake_api)
 
-    events = list(ChatRunEngine(store=store, gateway=Gateway()).stream({}, {}, stream_mode=False))
+    events = list(
+        ChatRunEngine(
+            store=store,
+            gateway=Gateway(),
+            settings_owner=_settings_owner(tmp_path),
+        ).stream({}, {}, stream_mode=False)
+    )
     stored = store.get_conversation(conversation_id)["messages"][-1]
     ChatStore._instance = None
 

@@ -1225,7 +1225,13 @@ def _frontend_debug_settings_enabled(*, settings_owner: SettingsOwnerPort | None
     return _truthy(debug.get("ai_request_logging") or debug.get("enabled"))
 
 
-def _ai_debug_enabled(input_data=None, params=None, context=None):
+def _ai_debug_enabled(
+    input_data=None,
+    params=None,
+    context=None,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if _truthy(os.environ.get("RUMI_DEFAULTSPACK_AI_DEBUG")):
         return True
     for source in (context, params, input_data):
@@ -1234,7 +1240,7 @@ def _ai_debug_enabled(input_data=None, params=None, context=None):
         for key in ("ai_debug_enabled", "ai_debug", "debug_mode", "debug", "log_ai_requests"):
             if key in source and _truthy(source.get(key)):
                 return True
-    return _frontend_debug_settings_enabled()
+    return _frontend_debug_settings_enabled(settings_owner=settings_owner)
 
 
 def _ai_debug_log_dir(context):
@@ -1318,8 +1324,22 @@ def _write_debug_json(path, payload):
     tmp_path.replace(path)
 
 
-def _log_ai_debug_request(context, *, model, messages, tools, params, step_index, reason=""):
-    if not _ai_debug_enabled(params=params, context=context):
+def _log_ai_debug_request(
+    context,
+    *,
+    model,
+    messages,
+    tools,
+    params,
+    step_index,
+    reason="",
+    settings_owner: SettingsOwnerPort | None = None,
+):
+    if not _ai_debug_enabled(
+        params=params,
+        context=context,
+        settings_owner=settings_owner,
+    ):
         return None
     debug_dir = _ai_debug_log_dir(context)
     debug_dir.mkdir(parents=True, exist_ok=True)
@@ -1543,7 +1563,16 @@ def _tool_visibility_message(tools):
 
 # Compatibility helper retained for focused legacy tests and comparison only.
 # `send.run()` now routes through `ChatRunEngine` instead of this tool loop.
-def _complete_with_tools(model, messages, tools, context, call_handler, params):
+def _complete_with_tools(
+    model,
+    messages,
+    tools,
+    context,
+    call_handler,
+    params,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     events = []
     _append_event(events, context, _event("status", "{} が考えています".format(model), phase="thinking", model=model))
     tool_logs = []
@@ -1596,6 +1625,7 @@ def _complete_with_tools(model, messages, tools, context, call_handler, params):
             tools=tools,
             params=params,
             step_index=step_index + 1,
+            settings_owner=settings_owner,
         )
         if debug_request_path:
             debug_logs.append(debug_request_path)
@@ -1659,6 +1689,7 @@ def _complete_with_tools(model, messages, tools, context, call_handler, params):
                     params=retry_params,
                     step_index="{}-retry-no-thinking".format(step_index + 1),
                     reason="empty_response_retry_without_thinking",
+                    settings_owner=settings_owner,
                 )
                 if retry_debug_path:
                     debug_logs.append(retry_debug_path)
