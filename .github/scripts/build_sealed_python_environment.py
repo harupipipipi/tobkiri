@@ -135,35 +135,12 @@ APPLICATION_LEGACY_AUTHORITY_FILENAMES = {
     "ecosystem.json",
     "rumi.pack.v3.json",
 }
-SEALED_APPLICATION_ROLE_TARGETS = (
-    "app/app.py",
-    "app/ecosystem/defaultspack/defaultspack/desktop_app.py",
-    "app/core_runtime/host_broker/computer_host_helper.py",
+SEALED_APPLICATION_CLOSURE_POLICY = (
+    REPOSITORY_ROOT
+    / "tobkiri_runtime"
+    / "schemas"
+    / "sealed_application_closure.v1.json"
 )
-PACKAGED_APPLICATION_CLOSURE_FILES = (
-    "bundled/presentation_catalog.json",
-    "bundled/presentation_release.v4.json",
-    "bundled/shell_artifact_index.v4.json",
-    "bundled/shell_profile_lock.v4.json",
-    "ecosystem/defaultspack/pack.v4.json",
-    "ecosystem/defaultspack/contracts.v4.json",
-    "ecosystem/defaultspack/artifact-index.v4.json",
-    "ecosystem/defaultspack/executables.v4.json",
-)
-PACKAGED_APPLICATION_CLOSURE_DIRECTORIES = (
-    "bundled/presentation-artifacts",
-    "ecosystem/defaultspack/v4",
-    "ecosystem/defaultspack/platform-artifacts",
-)
-PACKAGED_APPLICATION_BUNDLE_LOCK = "ecosystem/defaultspack/v4/bundle.lock.json"
-PACKAGED_APPLICATION_BUNDLE_LOCK_SCHEMA = "io.tobkiri.defaultspack-bundle-lock.v1"
-PACKAGED_APPLICATION_BUNDLE_ENTRY_KINDS = {
-    "pack",
-    "base",
-    "shell",
-    "profile",
-    "executable_catalog",
-}
 
 
 @dataclass(frozen=True)
@@ -231,6 +208,122 @@ class _VenvInterpreterCandidate:
 
 class SealedEnvironmentError(RuntimeError):
     """Raised when a sealed environment cannot be safely built or verified."""
+
+
+@dataclass(frozen=True)
+class ApplicationClosurePolicy:
+    """Finite source-owned inputs required in a sealed application."""
+
+    role_targets: tuple[str, ...]
+    closure_files: tuple[str, ...]
+    closure_directories: tuple[str, ...]
+    bundle_lock: str
+    bundle_lock_schema: str
+    bundle_entry_kinds: frozenset[str]
+
+
+def _policy_relative_path(value: object, field: str) -> str:
+    """Validate one canonical policy-relative POSIX path."""
+
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.startswith(("/", "~"))
+        or "\\" in value
+        or "\x00" in value
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+        or Path(value).as_posix() != value
+    ):
+        raise SealedEnvironmentError(
+            f"sealed application closure policy has invalid {field} path"
+        )
+    return value
+
+
+def _load_application_closure_policy(
+    path: Path = SEALED_APPLICATION_CLOSURE_POLICY,
+) -> ApplicationClosurePolicy:
+    """Load the finite application closure without product paths in Host code."""
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SealedEnvironmentError(
+            f"cannot read sealed application closure policy: {exc}"
+        ) from exc
+    expected_keys = {
+        "schema",
+        "role_targets",
+        "closure_files",
+        "closure_directories",
+        "bundle_lock",
+        "bundle_lock_schema",
+        "bundle_entry_kinds",
+    }
+    if not isinstance(payload, dict) or set(payload) != expected_keys:
+        raise SealedEnvironmentError(
+            "sealed application closure policy has invalid keys"
+        )
+    if payload.get("schema") != "io.tobkiri.sealed-application-closure-policy.v1":
+        raise SealedEnvironmentError(
+            "sealed application closure policy has invalid schema"
+        )
+
+    def finite_strings(field: str) -> tuple[str, ...]:
+        values = payload.get(field)
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(value, str) and value for value in values)
+            or values != sorted(values)
+            or len(values) != len(set(values))
+        ):
+            raise SealedEnvironmentError(
+                f"sealed application closure policy has invalid {field}"
+            )
+        return tuple(values)
+
+    role_targets = tuple(
+        _policy_relative_path(value, "role_targets")
+        for value in finite_strings("role_targets")
+    )
+    closure_files = tuple(
+        _policy_relative_path(value, "closure_files")
+        for value in finite_strings("closure_files")
+    )
+    closure_directories = tuple(
+        _policy_relative_path(value, "closure_directories")
+        for value in finite_strings("closure_directories")
+    )
+    bundle_lock = _policy_relative_path(payload.get("bundle_lock"), "bundle_lock")
+    bundle_lock_schema = payload.get("bundle_lock_schema")
+    if not isinstance(bundle_lock_schema, str) or not bundle_lock_schema:
+        raise SealedEnvironmentError(
+            "sealed application closure policy has invalid bundle_lock_schema"
+        )
+    return ApplicationClosurePolicy(
+        role_targets=role_targets,
+        closure_files=closure_files,
+        closure_directories=closure_directories,
+        bundle_lock=bundle_lock,
+        bundle_lock_schema=bundle_lock_schema,
+        bundle_entry_kinds=frozenset(finite_strings("bundle_entry_kinds")),
+    )
+
+
+_APPLICATION_CLOSURE_POLICY = _load_application_closure_policy()
+SEALED_APPLICATION_ROLE_TARGETS = _APPLICATION_CLOSURE_POLICY.role_targets
+PACKAGED_APPLICATION_CLOSURE_FILES = _APPLICATION_CLOSURE_POLICY.closure_files
+PACKAGED_APPLICATION_CLOSURE_DIRECTORIES = (
+    _APPLICATION_CLOSURE_POLICY.closure_directories
+)
+PACKAGED_APPLICATION_BUNDLE_LOCK = _APPLICATION_CLOSURE_POLICY.bundle_lock
+PACKAGED_APPLICATION_BUNDLE_LOCK_SCHEMA = (
+    _APPLICATION_CLOSURE_POLICY.bundle_lock_schema
+)
+PACKAGED_APPLICATION_BUNDLE_ENTRY_KINDS = (
+    _APPLICATION_CLOSURE_POLICY.bundle_entry_kinds
+)
 
 
 def target_spec(target: str) -> TargetSpec:
