@@ -12,6 +12,7 @@ import threading
 
 import pytest
 
+from tobkiri_host import wasm_worker
 from tobkiri_host.errors import InvalidArtifactError, ProviderExecutionError
 from tobkiri_host.wasm_component import PureComponent
 from tobkiri_host.wasm_worker import ComponentWorker
@@ -49,9 +50,9 @@ def invoke_worker(
     )
 
 
-def worker_request() -> dict[str, object]:
+def worker_request(binary: bytes | None = None) -> dict[str, object]:
     """Return a complete request for an import-free fixture component."""
-    binary = component()
+    binary = component() if binary is None else binary
     return {
         "artifact": base64.b64encode(binary).decode(),
         "digest": "sha256:" + hashlib.sha256(binary).hexdigest(),
@@ -70,6 +71,34 @@ def test_supervised_real_component_returns_after_child_exit() -> None:
     owned = ComponentWorker(worker_command())
     assert owned.invoke(worker_request(), cancelled=threading.Event()) == {"ok": True}
     assert owned._process is None
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS native RSS acceptance")
+def test_supervisor_stops_short_real_component_during_rss_overage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catch a short compiler peak before its successful worker response is accepted."""
+    children: list[subprocess.Popen[bytes]] = []
+    real_popen = subprocess.Popen
+
+    def capture_popen(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_popen(*args, **kwargs)
+        children.append(process)
+        return process
+
+    monkeypatch.setattr(wasm_worker.subprocess, "Popen", capture_popen)
+    owned = ComponentWorker(worker_command(), rss_limit=64 * 1024 * 1024)
+    with pytest.raises(ProviderExecutionError, match="memory limit"):
+        owned.invoke(
+            worker_request(short_memory_peak_component()),
+            cancelled=threading.Event(),
+        )
+
+    assert len(children) == 1
+    # Exit 3 is the worker's post-completion high-water rejection. A signal exit
+    # proves that the supervisor observed the live overage and stopped the child.
+    assert children[0].returncode is not None and children[0].returncode < 0
+    assert children[0].stdout is not None and children[0].stdout.closed
 
 
 def test_child_worker_rejects_success_above_os_peak_rss_limit() -> None:
@@ -106,7 +135,12 @@ def test_child_worker_refuses_nonisolated_python() -> None:
     assert result.stderr == b""
 
 
-def component(body: str = "i32.const 0", *, output: str = '{"ok":true}') -> bytes:
+def component(
+    body: str = "i32.const 0",
+    *,
+    output: str = '{"ok":true}',
+    memory_pages: int = 1,
+) -> bytes:
     """Build a tiny component with the same ABI as the Shell Policy guest."""
     content = output.encode("utf-8")
     descriptor = bytes(4) + (32).to_bytes(4, "little") + len(content).to_bytes(4, "little")
@@ -117,7 +151,7 @@ def component(body: str = "i32.const 0", *, output: str = '{"ok":true}') -> byte
             f"""
         (component
           (core module $guest
-            (memory (export "memory") 1)
+            (memory (export "memory") {memory_pages})
             (data (i32.const 0) "{descriptor_wat}")
             (data (i32.const 32) "{content_wat}")
             (func (export "realloc") (param i32 i32 i32 i32) (result i32)
@@ -135,6 +169,20 @@ def component(body: str = "i32.const 0", *, output: str = '{"ok":true}') -> byte
     """
         )
     )
+
+
+def short_memory_peak_component() -> bytes:
+    """Build a finite guest that touches 64 MiB before returning valid JSON."""
+    body = """
+      (local $counter i32)
+      i32.const 65536 i32.const 1 i32.const 67108864 memory.fill
+      i32.const 2000000 local.set $counter
+      (loop $busy
+        local.get $counter i32.const 1 i32.sub local.tee $counter
+        br_if $busy)
+      i32.const 0
+    """
+    return component(body, memory_pages=1025)
 
 
 def guest(binary: bytes) -> PureComponent:

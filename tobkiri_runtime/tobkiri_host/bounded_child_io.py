@@ -13,6 +13,9 @@ import time
 from pathlib import Path
 
 
+_SUPERVISION_INTERVAL_SECONDS = 0.001
+
+
 def communicate_bounded(
     process: subprocess.Popen[bytes],
     payload: bytes,
@@ -70,7 +73,7 @@ def communicate_bounded(
                     raise TimeoutError("child pipe exchange timed out")
                 interval = remaining
                 if cancelled is not None or rss_limit is not None:
-                    interval = min(0.05, remaining)
+                    interval = min(_SUPERVISION_INTERVAL_SECONDS, remaining)
                 for key, _ in selector.select(interval):
                     if key.data == "stdin":
                         try:
@@ -112,7 +115,7 @@ def communicate_bounded(
             try:
                 interval = remaining
                 if cancelled is not None or rss_limit is not None:
-                    interval = min(0.05, remaining)
+                    interval = min(_SUPERVISION_INTERVAL_SECONDS, remaining)
                 process.wait(timeout=interval)
                 break
             except subprocess.TimeoutExpired:
@@ -137,9 +140,11 @@ def _enforce_rss_limit(
     try:
         resident = _resident_bytes(process.pid)
     except ProcessLookupError:
-        if process.poll() is not None:
-            return
-        raise
+        # The OS may report that a short-lived child is gone just before
+        # Popen.poll() reaps and records its status. There is no live resident
+        # allocation left to supervise; pipe and exit-status validation below
+        # still decide whether the exchange succeeded.
+        return
     if resident > rss_limit:
         raise MemoryError("child resident memory exceeds size limit")
 
