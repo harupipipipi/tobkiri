@@ -79,12 +79,24 @@ class DurableTurnRuntime:
         if record["status"] != "queued":
             return {"claimed": False, "turn": record}
         try:
+            request = validate_saved_conversation_input(payload)["request"]
+            message_ids = {
+                role: "message:"
+                + canonical_digest(
+                    [request["conversation_id"], request["turn_id"], role]
+                ).removeprefix("sha256:")
+                for role in ("user", "assistant")
+            }
             record = self.mutate(
                 "transition",
                 record["id"],
                 expected_revision=record["revision"],
                 status="running",
-                details={"phase": "saved_execution_claimed"},
+                details={
+                    "phase": "saved_execution_claimed",
+                    "user_message_id": message_ids["user"],
+                    "assistant_message_id": message_ids["assistant"],
+                },
             )
         except TurnConflict:
             # Revalidate the complete input binding on the readback too.

@@ -6,6 +6,8 @@ import {
   PENDING_USER_ONLY_GRACE_MS,
   savedTurnSnapshotState,
   savedTurnSnapshotNotice,
+  savedTurnProgressNotice,
+  savedTurnProgressState,
   updateSavedTurnNotice,
   isAssistantMessageStillRunning,
   shouldClearPendingAfterConversationRefresh,
@@ -117,6 +119,73 @@ test("saved completion distinguishes current, changed, unavailable and unverifie
   assert.match(savedTurnSnapshotNotice("changed")!, /その後更新/);
   assert.match(savedTurnSnapshotNotice("unavailable")!, /自動再送はしません/);
   assert.equal(savedTurnSnapshotNotice("current"), null);
+});
+
+test("pending saved turn distinguishes owner message persistence without authorizing replay", () => {
+  const turn: SavedTurnResult["turn"] = {
+    id: "turn-1", conversation_id: "c1", status: "waiting", revision: 3,
+    events: [{
+      name: "turn.running",
+      details: {
+        phase: "saved_execution_claimed",
+        user_message_id: "message:" + "a".repeat(64),
+        assistant_message_id: "message:" + "b".repeat(64),
+      },
+    }],
+  };
+  const snapshot = {
+    id: "c1", conversation_revision: 2, messages: [
+      message({
+        id: "message:" + "a".repeat(64),
+        role: "user",
+        metadata: { turn_id: "turn-1" },
+      }),
+    ],
+  };
+  const classify = (
+    value: typeof snapshot | null,
+    result = turn,
+  ) => savedTurnProgressState(result, value, "c1", "turn-1");
+  assert.equal(classify({ ...snapshot, messages: [] }), "ledger_only");
+  assert.equal(classify(snapshot), "user_saved");
+  assert.equal(classify({
+    ...snapshot,
+    conversation_revision: 3,
+    messages: [
+      ...snapshot.messages,
+      message({
+        id: "message:" + "b".repeat(64),
+        metadata: { turn_id: "turn-1" },
+        finish_reason: "stop",
+      }),
+    ],
+  }), "all_messages_saved_unconfirmed");
+  assert.equal(classify({
+    ...snapshot,
+    messages: [
+      ...snapshot.messages,
+      message({
+        id: "message:" + "b".repeat(64),
+        metadata: { turn_id: "turn-1", thinking: { state: "streaming" } },
+        finish_reason: "streaming",
+      }),
+    ],
+  }), "user_saved");
+  assert.equal(classify(null), "conversation_unavailable");
+  assert.equal(classify(snapshot, { ...turn, id: "other" }), "ledger_only");
+  assert.equal(classify(snapshot, { ...turn, events: [] }), "ledger_only");
+  assert.equal(classify({
+    ...snapshot,
+    messages: [message({
+      id: "forged",
+      role: "user",
+      metadata: { turn_id: "turn-1" },
+    })],
+  }), "ledger_only");
+  assert.match(savedTurnProgressNotice("user_saved"), /assistant の保存状態/);
+  assert.match(savedTurnProgressNotice("all_messages_saved_unconfirmed"), /完了状態/);
+  assert.match(savedTurnProgressNotice("conversation_unavailable"), /取得できません/);
+  assert.match(savedTurnProgressNotice("ledger_only"), /保存状態/);
 });
 
 test("stale user-only pending is cleared after reload grace", () => {

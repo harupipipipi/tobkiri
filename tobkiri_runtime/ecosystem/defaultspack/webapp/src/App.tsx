@@ -115,7 +115,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnSnapshotState, savedTurnSnapshotNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -4117,9 +4117,19 @@ export function ChatApp() {
             if (disposed) return;
           }
           if (turn.status !== "completed") {
-            const status = turn.status === "running"
-              ? "turn台帳は処理中です（実行の生存確認ではありません）"
-              : "turn台帳は未完了です。再実行せず照合を待ちます。";
+            const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+              if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+              throw error;
+            });
+            if (disposed) return;
+            const progress = savedTurnProgressState(
+              turn,
+              conversation,
+              activeConversationId,
+              pendingRequest.operationId,
+            );
+            const status = savedTurnProgressNotice(progress);
+            if (conversation) setActiveConversation(conversation);
             updatePendingRequests((current) => {
               const entry = current[activeConversationId];
               return entry && entry.status !== status

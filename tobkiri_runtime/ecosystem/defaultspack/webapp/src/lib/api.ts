@@ -81,6 +81,10 @@ export type SavedTurnResult = {
     conversation_id: string;
     status: string;
     revision: number;
+    events?: Array<{
+      name?: string;
+      details?: Record<string, unknown>;
+    }>;
     result_reference?: {
       conversation_id: string;
       conversation_revision: number;

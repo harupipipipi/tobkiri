@@ -33,6 +33,59 @@ export function savedTurnSnapshotNotice(state: ReturnType<typeof savedTurnSnapsh
   return null;
 }
 
+export type SavedTurnProgressState =
+  | "ledger_only"
+  | "user_saved"
+  | "all_messages_saved_unconfirmed"
+  | "conversation_unavailable";
+
+export function savedTurnProgressState(
+  turn: SavedTurnResult["turn"],
+  conversation: Pick<Conversation, "id" | "conversation_revision" | "messages"> | null,
+  conversationId: string,
+  turnId: string,
+): SavedTurnProgressState {
+  if (conversation === null) return "conversation_unavailable";
+  if (turn.id !== turnId || turn.conversation_id !== conversationId
+    || turn.status === "completed" || conversation.id !== conversationId
+    || !Number.isSafeInteger(conversation.conversation_revision)
+    || (conversation.conversation_revision ?? 0) < 1) return "ledger_only";
+  const claim = [...(turn.events ?? [])].reverse().find(
+    (event) => event.name === "turn.running"
+      && event.details?.phase === "saved_execution_claimed",
+  );
+  const userId = claim?.details?.user_message_id;
+  const assistantId = claim?.details?.assistant_message_id;
+  if (typeof userId !== "string" || typeof assistantId !== "string"
+    || !/^message:[a-f0-9]{64}$/.test(userId)
+    || !/^message:[a-f0-9]{64}$/.test(assistantId)) return "ledger_only";
+  const messages = conversation.messages.filter(
+    (message) => message.metadata?.turn_id === turnId,
+  );
+  const userSaved = messages.some(
+    (message) => message.id === userId && message.role === "user",
+  );
+  const assistantSaved = messages.some(
+    (message) => message.id === assistantId && message.role === "assistant"
+      && !isAssistantMessageStillRunning(message),
+  );
+  if (userSaved && assistantSaved) return "all_messages_saved_unconfirmed";
+  return userSaved ? "user_saved" : "ledger_only";
+}
+
+export function savedTurnProgressNotice(state: SavedTurnProgressState): string {
+  if (state === "user_saved") {
+    return "ユーザーメッセージは保存済みです。assistant の保存状態を照合中です。自動再送はしません。";
+  }
+  if (state === "all_messages_saved_unconfirmed") {
+    return "user／assistant メッセージは保存済みです。turn の完了状態を照合中です。自動再送はしません。";
+  }
+  if (state === "conversation_unavailable") {
+    return "turn 台帳は未完了で、現在の会話を取得できません。自動再送せず照合を待ちます。";
+  }
+  return "turn 台帳は未完了です。保存状態を照合中のため自動再送はしません。";
+}
+
 export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;
