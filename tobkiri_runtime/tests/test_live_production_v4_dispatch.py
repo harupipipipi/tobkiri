@@ -258,7 +258,7 @@ def test_production_dispatch_executes_credentialed_provider_request(
 
     monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", check_invocation)
 
-    def open_request(request, *, timeout: float) -> _ProviderResponse:
+    def open_request(request, *, timeout: float, **lifetime) -> _ProviderResponse:
         observed.append((request.headers.get("Authorization"), timeout))
         return _ProviderResponse()
 

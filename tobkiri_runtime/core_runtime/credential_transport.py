@@ -25,7 +25,7 @@ import socket
 import ssl
 import subprocess
 import tempfile
-from threading import RLock
+from threading import Event, RLock
 import time
 from typing import Any, Protocol, cast
 import urllib.error
@@ -41,6 +41,7 @@ from core_runtime.executable_trust import (
     ExecutableTrustError,
     trusted_executable_path,
 )
+from core_runtime.http_request_lifetime import HttpRequestLifetime
 from tobkiri_host.broker import RequestEnvelope
 
 
@@ -435,7 +436,12 @@ class HostBoundCredentialTransport:
             if not self._authority_still_active():
                 raise CredentialTransportDenied("binding_invalid")
             timeout = min(60.0, remaining)
-            with self._opener(request, timeout=timeout) as response:
+            with self._opener(
+                request, timeout=timeout,
+                deadline=deadline_started + initial_remaining,
+                cancellation=self._envelope.cancellation_requested,
+                clock=self._monotonic_clock,
+            ) as response:
                 response_bytes = response.read(_MAX_RESPONSE_BYTES + 1)
                 if len(response_bytes) > _MAX_RESPONSE_BYTES:
                     raise CredentialTransportDenied("response_invalid")
@@ -999,8 +1005,12 @@ def _credential_origin(value: str) -> str:
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     """TLS connection whose TCP peer is a previously validated address."""
 
-    def __init__(self, host: str, resolved_ip: str, **kwargs: Any) -> None:
+    def __init__(
+        self, host: str, resolved_ip: str, *, lifetime: HttpRequestLifetime,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(host, **kwargs)
+        self._lifetime = lifetime
         self._resolved_ip = resolved_ip
         self._pinned_source_address = kwargs.get("source_address")
         self._pinned_context = kwargs.get("context") or ssl.create_default_context()
@@ -1009,12 +1019,22 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
         """Connect to the vetted IP while authenticating the original hostname."""
         raw_socket = socket.create_connection(
             (self._resolved_ip, self.port),
-            self.timeout,
+            self._lifetime.remaining(),
             self._pinned_source_address,
         )
-        self.sock = self._pinned_context.wrap_socket(
-            raw_socket, server_hostname=self.host
-        )
+        try:
+            self._lifetime.attach(raw_socket)
+            self.sock = self._pinned_context.wrap_socket(
+                raw_socket, server_hostname=self.host, do_handshake_on_connect=False,
+            )
+            self._lifetime.attach(self.sock)
+            self.sock.settimeout(self._lifetime.remaining())
+            self.sock.do_handshake()
+            self._lifetime.check()
+        except BaseException:
+            raw_socket.close()
+            self.close()
+            raise
 
 
 class _PinnedResponse:
@@ -1024,28 +1044,52 @@ class _PinnedResponse:
         self,
         connection: http.client.HTTPConnection,
         response: http.client.HTTPResponse,
+        lifetime: HttpRequestLifetime,
     ) -> None:
         self._connection = connection
         self._response = response
+        self._lifetime = lifetime
 
     def __enter__(self) -> "_PinnedResponse":
         return self
 
     def __exit__(self, *args: object) -> None:
-        self._response.close()
-        self._connection.close()
+        try:
+            self._response.close()
+        finally:
+            self._connection.close()
+            self._lifetime.close()
 
     def read(self, amount: int | None = None) -> bytes:
         """Read at most the caller-provided response limit."""
-        return self._response.read(amount)
+        self._lifetime.check()
+        value = self._response.read(amount)
+        self._lifetime.check()
+        return value
 
 
 def _open_pinned_request(
     request: urllib.request.Request,
     *,
     timeout: float,
+    deadline: float | None = None,
+    cancellation: Event | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> JsonResponse:
     """Open one non-redirecting request to an egress-vetted, DNS-pinned peer."""
+    lifetime = HttpRequestLifetime(
+        timeout=timeout, deadline=deadline, cancellation=cancellation, clock=clock,
+    )
+    try:
+        return _open_pinned_response(request, lifetime=lifetime)
+    except BaseException:
+        lifetime.close()
+        raise
+
+
+def _open_pinned_response(
+    request: urllib.request.Request, *, lifetime: HttpRequestLifetime,
+) -> JsonResponse:
     parsed = urllib.parse.urlsplit(request.full_url)
     origin = _origin(request.full_url)
     if not origin:
@@ -1058,6 +1102,7 @@ def _open_pinned_request(
         resolved = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError:
         raise CredentialTransportDenied("credential transport denied") from None
+    lifetime.check()
     addresses = tuple(dict.fromkeys(str(item[4][0]) for item in resolved))
     if not addresses or any(not _safe_egress_address(address) for address in addresses):
         raise CredentialTransportDenied("credential transport denied")
@@ -1070,23 +1115,47 @@ def _open_pinned_request(
     body = request.data
     last_error: OSError | None = None
     for address in addresses:
+        lifetime.check()
         if parsed.scheme == "https":
             connection: http.client.HTTPConnection = _PinnedHTTPSConnection(
                 host,
                 address,
                 port=port,
-                timeout=timeout,
+                timeout=lifetime.remaining(),
+                lifetime=lifetime,
                 context=ssl.create_default_context(),
             )
         else:
-            connection = http.client.HTTPConnection(address, port=port, timeout=timeout)
+            connection = http.client.HTTPConnection(
+                address, port=port, timeout=lifetime.remaining(),
+            )
         try:
-            connection.request(request.get_method(), path, body=body, headers=headers)
-            response = connection.getresponse()
+            # Address failover is safe only before any HTTP request bytes.
+            connection.connect()
         except OSError as exc:
             connection.close()
             last_error = exc
             continue
+        response = None
+        try:
+            if connection.sock is None:
+                raise OSError("HTTP connection socket is unavailable")
+            lifetime.attach(connection.sock)
+            connection.sock.settimeout(lifetime.remaining())
+            connection.auto_open = 0
+            lifetime.check()
+            connection.request(request.get_method(), path, body=body, headers=headers)
+            response = connection.getresponse()
+            lifetime.check()
+        except BaseException:
+            # Sending or waiting for a reply may already have caused an effect.
+            # Never retry that POST against another address or connection.
+            try:
+                if response is not None:
+                    response.close()
+            finally:
+                connection.close()
+            raise
         if 300 <= response.status < 400:
             response.close()
             connection.close()
@@ -1102,7 +1171,7 @@ def _open_pinned_request(
                 Message(),
                 None,
             )
-        return _PinnedResponse(connection, response)
+        return _PinnedResponse(connection, response, lifetime)
     if last_error is not None:
         raise last_error
     raise CredentialTransportDenied("credential transport denied")

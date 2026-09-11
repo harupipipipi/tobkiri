@@ -259,6 +259,7 @@ jobs:
             tests/test_approval_security.py \
             tests/test_security_guards.py \
             tests/test_cryptography_dependency_security.py \
+            tests/test_credential_http_lifetime.py \
             tests/test_defaultspack_integrity_scan.py \
             tests/test_defaultspack_boundary_scan.py \
             tests/test_defaultspack_shipped_bundle_hardening.py \

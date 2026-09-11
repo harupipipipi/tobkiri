@@ -124,6 +124,7 @@ def _https_transport(
     tmp_path: Path,
     *,
     secret: str = "redirect-secret",
+    endpoint_origin: str = "https://provider.example",
 ) -> tuple[HostBoundCredentialTransport, dict[str, Any]]:
     service = CredentialBrokerService(user_data_root=tmp_path / "credential")
     created = service.invoke(
@@ -147,12 +148,12 @@ def _https_transport(
         provider_instance_id="provider.adapter-main",
         credential_scope="generate",
         credential_purpose="provider.invoke",
-        endpoint_origin="https://provider.example",
+        endpoint_origin=endpoint_origin,
         current_security_epoch=lambda: authority.store.security_epoch,
         consumer_pack_id="provider-adapter-pack",
     )
     arguments = {
-        "endpoint": "https://provider.example/v1/messages",
+        "endpoint": endpoint_origin + "/v1/messages",
         "headers": {},
         "body": {},
         "credential_handle": created["handle"],
@@ -263,7 +264,7 @@ def test_transport_rechecks_deadline_after_secret_resolution(
         clock[0] = resolved_at
         return material
 
-    def open_request(request: urllib.request.Request, *, timeout: float) -> _Response:
+    def open_request(request: urllib.request.Request, *, timeout: float, **lifetime: Any) -> _Response:
         opened.append((request.get_header("Authorization"), timeout))
         return _Response({})
 
@@ -317,7 +318,7 @@ def test_transport_fences_host_stop_before_egress_and_after_response(
             request_stop()
         return material
 
-    def open_request(request: urllib.request.Request, *, timeout: float) -> _Response:
+    def open_request(request: urllib.request.Request, *, timeout: float, **lifetime: Any) -> _Response:
         touched.append("open")
         assert timeout <= 1.0
         if stage == "response":
@@ -973,7 +974,7 @@ def test_generic_resolution_is_denied_and_host_transport_applies_once(
     audit: list[dict[str, Any]] = []
     observed_authorization = []
 
-    def opener(request, *, timeout):
+    def opener(request, *, timeout, **lifetime):
         del timeout
         observed_authorization.append(request.get_header("Authorization"))
         return _Response(

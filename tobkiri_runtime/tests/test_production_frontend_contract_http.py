@@ -1729,7 +1729,7 @@ def test_saved_settings_reach_host_credential_transport(
         else "Host transport reply"
     )
 
-    def open_provider(request, *, timeout):
+    def open_provider(request, *, timeout, **lifetime):
         assert timeout > 0
         assert request.full_url == "https://provider.example/v1/chat/completions"
         assert request.get_header("Authorization") == (
