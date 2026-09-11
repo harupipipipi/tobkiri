@@ -17,6 +17,8 @@ from ecosystem.rumi_prompt_studio_pack.runtime.service import PromptStudioServic
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
+    LIFECYCLE_CONTRACT,
+    LIFECYCLE_OPERATION,
     RECEIPT_CONTRACT,
     RECEIPT_OPERATION,
     SAVED_CONTRACTS,
@@ -40,12 +42,25 @@ class _Session:
         self.initial = {"request": request}
         self.calls = 0
         self.ai_calls = 0
+        self.begin_calls = 0
+        self.events = []
+        self.turns = DurableTurnRuntime("defaults", user_data_root=root)
+        self.begin_transform = lambda value: value
         self.transform = lambda value: value
 
     def provider_metadata(self, contract_id: str) -> tuple:
         return ()
 
     def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+        if (contract_id, operation) == (LIFECYCLE_CONTRACT, LIFECYCLE_OPERATION):
+            assert payload == {
+                "profile_id": "defaults",
+                "operation": "begin_saved",
+                **self.initial,
+            }
+            self.begin_calls += 1
+            self.events.append("begin_saved")
+            return self.begin_transform(self.turns.begin_saved(self.initial))
         if (contract_id, operation) == PROMPT_TARGET:
             assert payload.get("operation") == "get"
             return PromptStudioService._get(self.prompts, payload)
@@ -66,6 +81,7 @@ class _Session:
         assert (contract_id, operation) == (CONTRACT, OPERATION)
         assert payload == self.initial
         self.calls += 1
+        self.events.append("saved_dispatch")
         intent = application.start(payload["request"])
         for hop in range(4):
             if hop == 2:
@@ -245,6 +261,36 @@ def test_saved_execution_completes_once_and_keeps_transcript_in_conversation_own
     reopened = DurableTurnRuntime("defaults", user_data_root=tmp_path)
     assert _run(reopened, session) == {"status": "existing", "turn": result["turn"]}
     assert session.calls == 1
+    assert session.events == ["begin_saved", "saved_dispatch", "begin_saved"]
+
+
+def test_lifecycle_identity_is_required_before_saved_dispatch(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    session.begin_transform = lambda record: {
+        **record,
+        "input_digest": "sha256:" + "0" * 64,
+    }
+    with pytest.raises(ValueError, match="lifecycle owner response"):
+        _run(store, session)
+    assert session.calls == session.ai_calls == 0
+    assert session.events == ["begin_saved"]
+    assert store.get("turn-1")["status"] == "queued"
+
+
+def test_lost_lifecycle_reply_never_dispatches_saved_function(tmp_path: Path) -> None:
+    session = _Session(tmp_path)
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+
+    def lose_reply(record: dict) -> dict:
+        raise TimeoutError("lifecycle reply lost")
+
+    session.begin_transform = lose_reply
+    with pytest.raises(TimeoutError, match="lifecycle reply lost"):
+        _run(store, session)
+    assert session.calls == session.ai_calls == 0
+    assert session.events == ["begin_saved"]
+    assert store.get("turn-1")["status"] == "queued"
 
 
 def test_lost_result_never_replays_committed_messages(tmp_path: Path) -> None:
@@ -297,7 +343,7 @@ def test_invalid_acknowledgement_never_marks_completed(
     assert session.calls == 1
 
 
-@pytest.mark.parametrize("guard_call", [1, 2, 3, 4])
+@pytest.mark.parametrize("guard_call", [1, 2, 3, 4, 5])
 def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
     tmp_path: Path,
     guard_call: int,
@@ -312,15 +358,18 @@ def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
         if calls == guard_call:
             raise TimeoutError("original invocation is no longer active")
 
-    if guard_call <= 2:
+    if guard_call <= 3:
         with pytest.raises(TimeoutError):
             _run(store, session, guard)
-        assert not store.path.exists()
+        if guard_call <= 2:
+            assert not store.path.exists()
+        else:
+            assert store.get("turn-1")["status"] == "queued"
     else:
         result = _run(store, session, guard)
         assert result["status"] == "reconciliation_required"
         assert result["turn"]["status"] == "waiting"
-    assert session.calls == (1 if guard_call == 4 else 0)
+    assert session.calls == (1 if guard_call == 5 else 0)
 
 
 def test_duplicate_request_can_reconcile_commit_without_reexecuting_live_turn(

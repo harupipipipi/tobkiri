@@ -30,7 +30,16 @@ from tobkiri_protocol.saved_context import (
 
 RECEIPT_CONTRACT = "tobkiri.resource.conversation.v1"
 RECEIPT_OPERATION = "rumi_conversation_store_pack.conversation-resource"
-SAVED_CONTRACTS = frozenset({SAVED_CONVERSATION_CONTRACT, RECEIPT_CONTRACT, PROMPT_TARGET[0]})
+LIFECYCLE_CONTRACT = "tobkiri.action.turn.lifecycle.v1"
+LIFECYCLE_OPERATION = "rumi_turn_runtime_pack.turn-lifecycle"
+SAVED_CONTRACTS = frozenset(
+    {
+        SAVED_CONVERSATION_CONTRACT,
+        RECEIPT_CONTRACT,
+        PROMPT_TARGET[0],
+        LIFECYCLE_CONTRACT,
+    }
+)
 
 
 def reconcile_saved_turn(
@@ -117,6 +126,18 @@ def execute_saved_turn(
         model = conversation.get("model_reference")
         if not isinstance(model, str) or not model.strip():
             raise ValueError("saved conversation model reference is required")
+    guard()
+    begun = client.invoke(
+        LIFECYCLE_CONTRACT,
+        LIFECYCLE_OPERATION,
+        {
+            "profile_id": store.profile_id,
+            "operation": "begin_saved",
+            **initial,
+        },
+    )
+    guard()
+    _validate_begun_turn(store.profile_id, initial, begun)
     claim = store.claim_saved(initial)
     if not claim["claimed"]:
         # A running snapshot may still have a live executor. Do not rewrite it
@@ -145,6 +166,29 @@ def execute_saved_turn(
             },
         )
     return _settle(store, record, "completed", {"result_reference": reference})
+
+
+def _validate_begun_turn(
+    profile_id: str,
+    initial: Mapping[str, Any],
+    record: object,
+) -> None:
+    """Require the lifecycle owner to bind the exact saved-send identity."""
+    request = initial["request"]
+    request_id = "saved-turn." + canonical_digest(
+        {"profile_id": profile_id, "turn_id": request["turn_id"]}
+    ).removeprefix("sha256:")
+    expected = {
+        "id": request["turn_id"],
+        "request_id": request_id,
+        "conversation_id": request["conversation_id"],
+        "conversation_revision": request["conversation_revision"],
+        "input_digest": canonical_digest(initial),
+    }
+    if not isinstance(record, Mapping) or any(
+        record.get(key) != value for key, value in expected.items()
+    ):
+        raise ValueError("saved lifecycle owner response is invalid")
 
 
 def _reconcile(
