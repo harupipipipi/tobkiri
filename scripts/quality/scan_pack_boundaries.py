@@ -274,6 +274,21 @@ def _effect_classes(executable: Any) -> dict[tuple[str, str], str | None]:
     return result
 
 
+def _declared_content_artifacts(document: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return Pack-owned artifacts other than the mandatory executable index."""
+
+    artifacts = document.get("artifacts")
+    if not isinstance(artifacts, list):
+        return []
+    return [
+        artifact
+        for artifact in artifacts
+        if isinstance(artifact, dict)
+        and isinstance(artifact.get("path"), str)
+        and artifact["path"] != "executables.v4.json"
+    ]
+
+
 def _scan_pack(
     repo_root: Path,
     path: Path,
@@ -288,11 +303,13 @@ def _scan_pack(
     functions = document.get("functions")
     contracts = document.get("contracts")
     contract_dependencies, pack_dependencies = _pack_dependencies(document)
+    content_artifacts = _declared_content_artifacts(document)
     if (
         functions == []
         and contracts == []
         and contract_dependencies == []
         and pack_dependencies == {}
+        and content_artifacts == []
     ):
         diagnostics.append(
             _diagnostic(

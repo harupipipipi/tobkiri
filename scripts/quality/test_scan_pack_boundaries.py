@@ -240,6 +240,37 @@ def test_detects_requested_pack_boundary_violations(
     )
 
 
+def test_declared_content_artifact_is_a_boundary_but_empty_index_is_not(
+    scanner: ModuleType, tmp_path: Path
+) -> None:
+    content = _pack("content")
+    content["functions"] = []
+    content["contracts"] = []
+    content["requirements"] = {
+        "contract_dependencies": [],
+        "pack_dependencies": {},
+    }
+    content["artifacts"] = [
+        {"kind": "sidecar", "path": "executables.v4.json"},
+        {"kind": "sidecar", "path": "frontend/contributions/content.json"},
+    ]
+    _write_pack(tmp_path, "content", content)
+
+    empty = dict(content)
+    empty["pack"] = {**content["pack"], "id": "index-only"}
+    empty["artifacts"] = [{"kind": "sidecar", "path": "executables.v4.json"}]
+    _write_pack(tmp_path, "index-only", empty)
+
+    violations = scanner.scan_repository(tmp_path)
+    empty_paths = {
+        item["path"]
+        for item in violations
+        if item["rule_id"] == "pack-boundary.empty-pack-boundary"
+    }
+    assert "tobkiri_runtime/ecosystem/content/pack.v4.json" not in empty_paths
+    assert "tobkiri_runtime/ecosystem/index-only/pack.v4.json" in empty_paths
+
+
 def test_committed_baseline_does_not_excuse_the_non_authoritative_profile(
     scanner: ModuleType,
 ) -> None:
