@@ -419,10 +419,11 @@ def verify_release_binding(catalog: dict[str, Any], root: Path) -> dict[str, Any
         raise RuntimeError("Defaults bundle lock entries are missing")
     bundle_root = root / "ecosystem" / "defaultspack" / "v4"
     _verify_defaultspack_bundle(entries, bundle_root)
+    profile_entry_path = Path(fixed_paths["default_profile_path"]).name
     profile_entries = [
         entry
         for entry in entries
-        if entry.get("path") == "defaults.profile.v4.json"
+        if entry.get("path") == profile_entry_path
         and entry.get("kind") == "profile"
     ]
     if len(profile_entries) != 1 or profile_entries[0].get("digest") != _byte_digest(

@@ -31,6 +31,21 @@ def _load_generator() -> ModuleType:
     return module
 
 
+def test_profile_bundle_policy_rejects_parent_escape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _load_generator()
+    policy = dict(generator.PROFILE_BUNDLE_POLICY)
+    policy["bundle_root"] = "../outside"
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    monkeypatch.setattr(generator, "PROFILE_BUNDLE_POLICY_PATH", path)
+
+    with pytest.raises(ValueError, match="bundle_root"):
+        generator._load_profile_bundle_policy()
+
+
 def _snapshot(root: Path) -> dict[str, bytes]:
     return {
         path.relative_to(root).as_posix(): path.read_bytes()

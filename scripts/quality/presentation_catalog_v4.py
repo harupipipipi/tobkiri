@@ -40,7 +40,9 @@ PROFILE_LOCK_PATH = "bundled/shell_profile_lock.v4.json"
 DEFAULT_CATALOG_RELATIVE = (
     "tobkiri_launcher/src-tauri/bundled/presentation_catalog.json"
 )
-V4_ROOT_RELATIVE = "tobkiri_runtime/ecosystem/defaultspack/v4"
+PROFILE_BUNDLE_POLICY_RELATIVE = (
+    "tobkiri_runtime/schemas/profile_bundle_generation.v1.json"
+)
 BUNDLE_LOCK_NAME = "bundle.lock.json"
 NON_PRESENTATION_V4_FILES = frozenset(
     {
@@ -111,6 +113,32 @@ def _read_regular_json(path: Path, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PresentationCatalogError(f"{label} must be a JSON object: {path}")
     return value
+
+
+def _profile_bundle_root(repository_root: Path) -> Path:
+    """Resolve the finite presentation bundle from its checked-in build policy."""
+    policy = _read_regular_json(
+        repository_root / PROFILE_BUNDLE_POLICY_RELATIVE,
+        "Profile bundle generation policy",
+    )
+    required = {
+        "schema",
+        "bundle_root",
+        "desktop_entrypoint",
+        "frontend_contract_map",
+        "legacy_pack_id_aliases",
+        "legacy_provider_edge_aliases",
+    }
+    if set(policy) != required or policy.get("schema") != (
+        "io.tobkiri.profile-bundle-generation-policy.v1"
+    ):
+        raise PresentationCatalogError("Profile bundle generation policy is invalid")
+    relative = _validate_relative_path(policy.get("bundle_root"), "bundle root")
+    runtime_root = (repository_root / "tobkiri_runtime").resolve()
+    bundle_root = (runtime_root / relative).resolve()
+    if not bundle_root.is_relative_to(runtime_root):
+        raise PresentationCatalogError("Profile bundle root escapes the runtime")
+    return bundle_root
 
 
 def _validate_relative_path(value: object, label: str) -> str:
@@ -244,7 +272,7 @@ def _validate_v4_documents(bundle: V4Bundle) -> tuple[str, ...]:
 def load_v4_bundle(repository_root: Path) -> V4Bundle:
     """Load the exact v4 source set and reject drift, escapes, and symlinks."""
     root = repository_root.resolve()
-    bundle_root = root / V4_ROOT_RELATIVE
+    bundle_root = _profile_bundle_root(root)
     if not bundle_root.is_dir() or bundle_root.is_symlink():
         raise PresentationCatalogError(f"v4 source root is missing: {bundle_root}")
 

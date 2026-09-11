@@ -43,7 +43,55 @@ from scripts.profile_compatibility_provenance import (  # noqa: E402
 )
 
 
-BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
+PROFILE_BUNDLE_POLICY_PATH = ROOT / "schemas" / "profile_bundle_generation.v1.json"
+
+
+def _load_profile_bundle_policy() -> dict[str, Any]:
+    """Load strict, finite build inputs without embedding Pack branches in Host code."""
+    policy = json.loads(PROFILE_BUNDLE_POLICY_PATH.read_text(encoding="utf-8"))
+    required = {
+        "schema",
+        "bundle_root",
+        "desktop_entrypoint",
+        "frontend_contract_map",
+        "legacy_pack_id_aliases",
+        "legacy_provider_edge_aliases",
+    }
+    if set(policy) != required or policy.get("schema") != (
+        "io.tobkiri.profile-bundle-generation-policy.v1"
+    ):
+        raise ValueError("Profile bundle generation policy is invalid")
+    for field in ("bundle_root", "desktop_entrypoint", "frontend_contract_map"):
+        value = policy.get(field)
+        if (
+            not isinstance(value, str)
+            or not value
+            or Path(value).is_absolute()
+            or ".." in Path(value).parts
+        ):
+            raise ValueError(f"Profile bundle generation {field} is invalid")
+    pack_aliases = policy.get("legacy_pack_id_aliases")
+    provider_aliases = policy.get("legacy_provider_edge_aliases")
+    if (
+        not isinstance(pack_aliases, dict)
+        or not all(isinstance(key, str) and key and isinstance(value, str) and value
+                   for key, value in pack_aliases.items())
+        or not isinstance(provider_aliases, dict)
+        or not all(
+            isinstance(key, str)
+            and key
+            and isinstance(value, dict)
+            and set(value) == {"target_provider_id", "contract_id", "operation_id"}
+            and all(isinstance(item, str) and item for item in value.values())
+            for key, value in provider_aliases.items()
+        )
+    ):
+        raise ValueError("Profile bundle generation aliases are invalid")
+    return policy
+
+
+PROFILE_BUNDLE_POLICY = _load_profile_bundle_policy()
+BUNDLE = ROOT / PROFILE_BUNDLE_POLICY["bundle_root"]
 PACKS = BUNDLE / "packs"
 PACK_SOURCE_CATALOG = ROOT / "schemas" / "pack_v4_catalog.v1.json"
 CANONICAL_PACK_FILES = {
@@ -112,8 +160,8 @@ TAURI_ROLE_PACKS = {
         "isolation": "dedicated_process",
     },
 }
-DEFAULTSPACK_DESKTOP_ENTRYPOINT = "defaultspack/desktop_app.py"
-DEFAULTSPACK_FRONTEND_CONTRACT_MAP = "defaultspack/frontend_contract_map.v4.json"
+DEFAULTSPACK_DESKTOP_ENTRYPOINT = PROFILE_BUNDLE_POLICY["desktop_entrypoint"]
+DEFAULTSPACK_FRONTEND_CONTRACT_MAP = PROFILE_BUNDLE_POLICY["frontend_contract_map"]
 PROFILE_ARTIFACT_COMPANIONS = (
     Path("defaults.profile.intent.v1.json"),
     Path("defaults.profile.lock.v5.json"),
@@ -881,9 +929,11 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
         shells.append((path, validate_document(shell, "shell")))
     for profile_path in profile_paths:
         profile = _normalize_profile(json.loads(profile_path.read_text(encoding="utf-8")))
+        pack_aliases = PROFILE_BUNDLE_POLICY["legacy_pack_id_aliases"]
         for pack in profile["packs"]:
-            if pack["pack_id"] == "rumi-file-inspect":
-                pack["pack_id"] = "rumi_file_inspect_pack"
+            replacement = pack_aliases.get(pack["pack_id"])
+            if replacement is not None:
+                pack["pack_id"] = replacement
         if not any(
             pack["pack_id"] == "runtime.tauri.application.default" for pack in profile["packs"]
         ):
@@ -896,15 +946,11 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
             )
         if any(pack["pack_id"].startswith("dev.tauri.") for pack in profile["packs"]):
             raise ValueError("Development Realm Tauri toolchain cannot enter production Profile")
+        provider_aliases = PROFILE_BUNDLE_POLICY["legacy_provider_edge_aliases"]
         for edge in profile["requested_edges"]:
-            if edge["target_provider_id"] == "defaultspack.file.inspect":
-                edge.update(
-                    {
-                        "target_provider_id": ("rumi_file_inspect_pack.file-inspect.service"),
-                        "contract_id": "tobkiri.service.file.inspect.v1",
-                        "operation_id": "rumi_file_inspect_pack.file-inspect",
-                    }
-                )
+            replacement = provider_aliases.get(edge["target_provider_id"])
+            if replacement is not None:
+                edge.update(replacement)
             template = edge["requested_scope_template"]
             if template and "dimensions" not in template:
                 template = {

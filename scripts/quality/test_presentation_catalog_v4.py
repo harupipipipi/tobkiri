@@ -18,6 +18,7 @@ assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+POLICY = ROOT / MODULE.PROFILE_BUNDLE_POLICY_RELATIVE
 
 
 def _copy_bundle(tmp_path: Path) -> tuple[Path, Path]:
@@ -25,7 +26,21 @@ def _copy_bundle(tmp_path: Path) -> tuple[Path, Path]:
     bundle = repository / "tobkiri_runtime" / "ecosystem" / "defaultspack" / "v4"
     bundle.parent.mkdir(parents=True)
     shutil.copytree(V4_ROOT, bundle)
+    policy = repository / MODULE.PROFILE_BUNDLE_POLICY_RELATIVE
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(POLICY, policy)
     return repository, bundle
+
+
+def test_bundle_policy_rejects_runtime_escape(tmp_path: Path) -> None:
+    repository, _ = _copy_bundle(tmp_path)
+    policy_path = repository / MODULE.PROFILE_BUNDLE_POLICY_RELATIVE
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["bundle_root"] = "../outside"
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+
+    with pytest.raises(MODULE.PresentationCatalogError, match="bundle root"):
+        MODULE.load_v4_bundle(repository)
 
 
 def test_v4_catalog_is_byte_identical_and_uninstalled_variants_fail_closed(
