@@ -1114,7 +1114,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57698,
-      "sha256": "952ec4b54afcb3dcee02c2dd1b892ce7975f63383aae403505008413870eac5d",
+      "sha256": "34050738b62d36bafdbc7f5633beb76f72cae69c0c913369e0ab36c37267dcd3",
       "executable": false
     },
     {
@@ -1127,29 +1127,29 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
       "type": "regular-file",
-      "size": 87755,
-      "sha256": "14372e42524778750dd1a3107fc0ec8db52c2e06af6b85dd3bd510c706d64420",
+      "size": 88416,
+      "sha256": "0dfc524fe720248a10e785bea6d5276ac4b7b7e83473038ecade385af6fa42a6",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
-      "size": 41481,
-      "sha256": "367fdb5d69ba84c93b939e121e9fec76252be14a55182014b4d7714725b26127",
+      "size": 42038,
+      "sha256": "27977015dbbfd71a51c8f8dd4b93c45981745e5bd49451b71e6c7be2a9bf4491",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
       "type": "regular-file",
-      "size": 102453,
-      "sha256": "b2939484b8675f2af5fb040213e1289ae1ad80a1c1dc3ed266e10403e9648588",
+      "size": 103217,
+      "sha256": "044e1c0cd3c9625c773a0fd2e19935967e8adfe42f7baeab141ebcf79196659a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "5e31d71145168354f3d1d7b969804a4682fe266b69fdfb0d56a5f2b110a5bcff",
+      "sha256": "cddc3c231cf8e25c9bb5034ef2227504a60fb19a7b11a98a6ce1735a2e1d6829",
       "executable": false
     },
     {
