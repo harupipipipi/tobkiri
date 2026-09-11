@@ -88,3 +88,56 @@ def test_fast_command_requires_owner_and_preserves_unrelated_settings(tmp_path):
     assert module.run({"enabled": False}, {}, settings_owner=owner)["status"] == "ok"
     assert owner.read_snapshot()["models"]["fast_mode_enabled"] is False
     assert owner.read_snapshot()["general"]["language"] == "ja"
+
+
+def test_command_http_routes_retain_the_setup_owner(tmp_path, monkeypatch):
+    """Per-request payload/context cannot replace the setup-captured owner."""
+    setup = importlib.import_module("blocks.ui.setup")
+    states = importlib.import_module("blocks.ui.command_protocol_states")
+    settings = importlib.import_module("blocks.ui.settings")
+    owner = FrontendSettingsStore(tmp_path / "owned.json")
+    request_owner = FrontendSettingsStore(tmp_path / "request.json")
+    captured = []
+
+    def run_states(input_data, context, *, settings_owner=None):
+        captured.append((input_data, context, settings_owner))
+        return {"status": "ok"}
+
+    monkeypatch.setattr(states, "run", run_states)
+    monkeypatch.setattr(settings, "run", run_states)
+
+    class Registry:
+        def __init__(self):
+            self.routes = []
+
+        def register(self, kind, value, meta=None):
+            if kind == "io.http.route":
+                self.routes.append(value)
+
+    registry = Registry()
+    setup.run(
+        {
+            "interface_registry": registry,
+            "_settings_owner_port": owner,
+        }
+    )
+    for pattern in (
+        "/api/ui/settings",
+        "/api/command-protocol/v1/states/query",
+    ):
+        route = next(
+            item for item in registry.routes if item["pattern"] == pattern
+        )
+        result = route["handler"](
+            {"settings_owner": "payload-owner"},
+            {"_settings_owner_port": request_owner},
+        )
+        assert result == {"status": "ok"}
+
+    assert [item[2] for item in captured] == [owner, owner]
+    assert all(item[0]["settings_owner"] == "payload-owner" for item in captured)
+    assert all(
+        item[1]["_settings_owner_port"] is request_owner for item in captured
+    )
+    assert not owner.path.exists()
+    assert not request_owner.path.exists()

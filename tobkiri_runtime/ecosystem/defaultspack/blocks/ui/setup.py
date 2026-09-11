@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
+import inspect
+from functools import partial
 
 
 def _lazy(
@@ -12,15 +14,23 @@ def _lazy(
     *,
     sensitive: bool = False,
     local_only: bool = False,
+    settings_owner=None,
 ):
     def handler(request_data, context):
         import importlib
 
         mod = importlib.import_module(module_path)
-        return getattr(mod, func_name)(request_data, context)
+        run = getattr(mod, func_name)
+        if "settings_owner" in inspect.signature(run).parameters:
+            return run(
+                request_data,
+                context,
+                settings_owner=settings_owner,
+            )
+        return run(request_data, context)
 
-    handler.__rumi_route_sensitive__ = sensitive
-    handler.__rumi_route_local_only__ = local_only
+    setattr(handler, "__rumi_route_sensitive__", sensitive)
+    setattr(handler, "__rumi_route_local_only__", local_only)
     return handler
 
 
@@ -58,6 +68,8 @@ def run(context):
 
     interface_registry = context["interface_registry"]
     source_component = context.get("_source_component", "defaultspack:frontend:ui")
+    settings_owner = context.get("_settings_owner_port")
+    owner_route = partial(_lazy, settings_owner=settings_owner)
     routes = [
         ("GET", "/api/ui/catalog", _lazy("blocks.ui.catalog"), {}),
         (
@@ -70,44 +82,71 @@ def run(context):
             ),
             {},
         ),
-        ("GET", "/api/ui/settings", _lazy("blocks.ui.settings"), {}),
-        ("PUT", "/api/ui/settings", _lazy("blocks.ui.settings"), {}),
+        ("GET", "/api/ui/settings", owner_route("blocks.ui.settings"), {}),
+        ("PUT", "/api/ui/settings", owner_route("blocks.ui.settings"), {}),
         ("GET", "/api/ui/provider-health", _lazy("blocks.ui.provider_health"), {}),
         ("GET", "/api/connections/codex", _lazy("blocks.connections.codex"), {}),
         ("POST", "/api/connections/codex", _lazy("blocks.connections.codex"), {}),
-        ("GET", "/api/ui/commands", _lazy("blocks.ui.commands"), {}),
-        ("POST", "/api/ui/commands/execute", _lazy("blocks.ui.commands"), {}),
-        ("GET", "/api/command-protocol/v1/catalog", _lazy("blocks.ui.command_protocol_catalog"), {}),
-        ("POST", "/api/command-protocol/v1/invoke", _lazy("blocks.ui.command_protocol_invoke"), {}),
+        (
+            "GET",
+            "/api/ui/commands",
+            owner_route("blocks.ui.commands"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/ui/commands/execute",
+            owner_route("blocks.ui.commands"),
+            {},
+        ),
+        (
+            "GET",
+            "/api/command-protocol/v1/catalog",
+            owner_route("blocks.ui.command_protocol_catalog"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/invoke",
+            owner_route("blocks.ui.command_protocol_invoke"),
+            {},
+        ),
         (
             "POST",
             "/api/command-protocol/v1/invocations/events/query",
-            _lazy("blocks.ui.command_protocol_events"),
+            owner_route("blocks.ui.command_protocol_events"),
             {},
         ),
         (
             "GET",
             "/api/command-protocol/v1/invocations/{invocation_id}/events",
-            _lazy("blocks.ui.command_protocol_stream", sensitive=True),
+            owner_route("blocks.ui.command_protocol_stream", sensitive=True),
             {"invocation_id": "invocation_id"},
         ),
         (
             "POST",
             "/api/command-protocol/v1/offline",
-            _lazy("blocks.ui.command_protocol_offline"),
+            owner_route("blocks.ui.command_protocol_offline"),
             {},
         ),
         (
             "POST",
             "/api/command-protocol/v1/resume",
-            _lazy(
-                "blocks.ui.command_protocol_resume",
-                sensitive=True,
-            ),
+            owner_route("blocks.ui.command_protocol_resume", sensitive=True),
             {},
         ),
-        ("POST", "/api/command-protocol/v1/states/query", _lazy("blocks.ui.command_protocol_states"), {}),
-        ("POST", "/api/command-protocol/v1/datasources/query", _lazy("blocks.ui.command_protocol_datasources"), {}),
+        (
+            "POST",
+            "/api/command-protocol/v1/states/query",
+            owner_route("blocks.ui.command_protocol_states"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/datasources/query",
+            owner_route("blocks.ui.command_protocol_datasources"),
+            {},
+        ),
         ("POST", "/api/ui/clipboard", _lazy("blocks.ui.clipboard"), {}),
         ("POST", "/api/ui/client-events", _lazy("blocks.ui.client_events"), {}),
         ("POST", "/api/ui/compile-plan", _lazy("blocks.ui.compile_plan"), {}),

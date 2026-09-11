@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from _common import ok, error
@@ -7,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.frontend.registry import FrontendRegistry
 from domain.frontend_settings_store import MUTATION_RECEIPTS_KEY, STATE_REVISIONS_KEY
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 
 def _bool_with_default(value, default=False):
@@ -22,17 +24,27 @@ def _bool_with_default(value, default=False):
     return default
 
 
-def run(input_data, context):
+def run(
+    input_data: dict[str, Any] | None,
+    context: dict[str, Any] | None,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     # A trusted in-process owner port can be supplied by the host caller.
     # Request data never selects a path, creates an owner or grants authority.
     registry = FrontendRegistry(
-        settings_owner=(context or {}).get("_settings_owner_port")
+        settings_owner=(
+            settings_owner
+            if settings_owner is not None
+            else (context or {}).get("_settings_owner_port")
+        )
     )
     method = (input_data or {}).get("_method", "GET").upper()
     if method == "GET":
         return ok(registry.get_settings(lightweight=not _bool_with_default((input_data or {}).get("full"), False)))
     if method == "PUT":
         patches = (input_data or {}).get("patches")
+        values: Any
         if isinstance(patches, list):
             values = {}
             for item in patches:
