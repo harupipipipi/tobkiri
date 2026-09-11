@@ -22,6 +22,12 @@ class ChatDrawer extends StatelessWidget {
     required this.onContinueOffline,
     this.pcConversations = const [],
     this.loadingPc = false,
+    this.deletedConversations = const [],
+    this.deletingIds = const {},
+    this.restoringIds = const {},
+    this.deletionStatus = '',
+    this.focusConversationId,
+    this.onRestore,
   });
 
   final List<Space> spaces;
@@ -39,6 +45,12 @@ class ChatDrawer extends StatelessWidget {
   final VoidCallback onReconnectSpace;
   final VoidCallback onContinueOffline;
   final bool loadingPc;
+  final List<Conversation> deletedConversations;
+  final Set<String> deletingIds;
+  final Set<String> restoringIds;
+  final String deletionStatus;
+  final String? focusConversationId;
+  final ValueChanged<String>? onRestore;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +60,12 @@ class ChatDrawer extends StatelessWidget {
     return SafeArea(
       child: Column(
         children: [
+          if (deletionStatus.isNotEmpty)
+            Semantics(
+              liveRegion: true,
+              label: deletionStatus,
+              child: const SizedBox.shrink(),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 12, 8),
             child: Row(
@@ -198,6 +216,8 @@ class ChatDrawer extends StatelessWidget {
               onDelete: () => onDelete(c.id),
               onRename: () => onRename(c.id),
               onPin: () => onPin(c.id),
+              pending: deletingIds.contains(c.id),
+              requestFocus: focusConversationId == c.id,
             ),
           const SizedBox(height: 8),
         ],
@@ -217,7 +237,20 @@ class ChatDrawer extends StatelessWidget {
             onDelete: () => onDelete(c.id),
             onRename: () => onRename(c.id),
             onPin: () => onPin(c.id),
+            pending: deletingIds.contains(c.id),
+            requestFocus: focusConversationId == c.id,
           ),
+        if (deletedConversations.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const _GroupHeader('最近削除したチャット'),
+          for (final conversation in deletedConversations)
+            _DeletedConversationTile(
+              conversation: conversation,
+              restoring: restoringIds.contains(conversation.id),
+              onRestore:
+                  onRestore == null ? null : () => onRestore!(conversation.id),
+            ),
+        ],
       ],
     );
   }
@@ -255,8 +288,11 @@ class _SpaceSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final selectorHeight = MediaQuery.textScalerOf(
+      context,
+    ).scale(56).clamp(56, 96).toDouble();
     return SizedBox(
-      height: 56,
+      height: selectorHeight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -435,6 +471,8 @@ class _ConversationTile extends StatelessWidget {
     required this.onDelete,
     required this.onRename,
     required this.onPin,
+    required this.pending,
+    required this.requestFocus,
   });
 
   final Conversation conversation;
@@ -443,6 +481,8 @@ class _ConversationTile extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onRename;
   final VoidCallback onPin;
+  final bool pending;
+  final bool requestFocus;
 
   @override
   Widget build(BuildContext context) {
@@ -453,6 +493,8 @@ class _ConversationTile extends StatelessWidget {
           : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
       child: ListTile(
+        enabled: !pending,
+        autofocus: requestFocus,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         leading: Icon(
           conversation.pinned ? Icons.push_pin : Icons.chat_bubble_outline,
@@ -470,33 +512,42 @@ class _ConversationTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 12),
         ),
-        trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_horiz, size: 18),
-          onSelected: (value) {
-            switch (value) {
-              case 'rename':
-                onRename();
-                break;
-              case 'pin':
-                onPin();
-                break;
-              case 'delete':
-                onDelete();
-                break;
-            }
-          },
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'rename', child: Text('名前を変更')),
-            PopupMenuItem(
-              value: 'pin',
-              child: Text(conversation.pinned ? 'ピン留め解除' : 'ピン留め'),
-            ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Text('削除', style: TextStyle(color: Colors.redAccent)),
-            ),
-          ],
-        ),
+        trailing: pending
+            ? const SizedBox.square(
+                dimension: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : PopupMenuButton<String>(
+                icon: const Icon(Icons.more_horiz, size: 18),
+                tooltip: '${conversation.title}の操作',
+                onSelected: (value) {
+                  switch (value) {
+                    case 'rename':
+                      onRename();
+                      break;
+                    case 'pin':
+                      onPin();
+                      break;
+                    case 'delete':
+                      onDelete();
+                      break;
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'rename', child: Text('名前を変更')),
+                  PopupMenuItem(
+                    value: 'pin',
+                    child: Text(conversation.pinned ? 'ピン留め解除' : 'ピン留め'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text(
+                      '削除',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                ],
+              ),
         onTap: onSelect,
       ),
     );
@@ -517,27 +568,70 @@ class _PcConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: selected
-          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        leading: Icon(
-          item.pinned ? Icons.push_pin : Icons.cloud_outlined,
-          size: 18,
-          color: Colors.grey,
+    return Semantics(
+      label: 'PC会話。削除は接続先のPCで管理します',
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          leading: Icon(
+            item.pinned ? Icons.push_pin : Icons.cloud_outlined,
+            size: 18,
+            color: Colors.grey,
+          ),
+          title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            item.preview,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12),
+          ),
+          trailing: const Tooltip(
+            message: 'PC会話は接続先のPCで管理します',
+            child: Icon(Icons.info_outline, size: 18),
+          ),
+          onTap: onSelect,
         ),
-        title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          item.preview,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12),
-        ),
-        onTap: onSelect,
       ),
     );
   }
+}
+
+class _DeletedConversationTile extends StatelessWidget {
+  const _DeletedConversationTile({
+    required this.conversation,
+    required this.restoring,
+    required this.onRestore,
+  });
+
+  final Conversation conversation;
+  final bool restoring;
+  final VoidCallback? onRestore;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        enabled: !restoring && onRestore != null,
+        leading: const Icon(Icons.restore_from_trash_outlined, size: 18),
+        title: Text(
+          conversation.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: const Text('この端末に保存されています'),
+        trailing: restoring
+            ? const SizedBox.square(
+                dimension: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : IconButton(
+                tooltip: '${conversation.title}を復元',
+                onPressed: onRestore,
+                icon: const Icon(Icons.restore),
+              ),
+      );
 }

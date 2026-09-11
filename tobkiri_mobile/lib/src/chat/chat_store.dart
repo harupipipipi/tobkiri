@@ -31,6 +31,18 @@ class PlatformChatStorage implements ChatKeyValueStorage {
   Future<void> delete(String key) => _preferences.delete(key);
 }
 
+class ConversationDeletionResult {
+  const ConversationDeletionResult({
+    required this.conversation,
+    required this.wasActive,
+    required this.nextActiveId,
+  });
+
+  final Conversation conversation;
+  final bool wasActive;
+  final String? nextActiveId;
+}
+
 class ChatStore {
   ChatStore({ChatKeyValueStorage? storage})
       : _storage = storage ?? PlatformChatStorage();
@@ -40,12 +52,21 @@ class ChatStore {
   List<Conversation> _conversations = const [];
   String? _activeId;
 
-  List<Conversation> get conversations =>
-      List<Conversation>.unmodifiable(_conversations);
+  List<Conversation> get conversations => List<Conversation>.unmodifiable(
+        _conversations.where((conversation) => conversation.deletedAt == null),
+      );
+
+  List<Conversation> get deletedConversations =>
+      List<Conversation>.unmodifiable(
+        _conversations
+            .where((conversation) => conversation.deletedAt != null)
+            .toList()
+          ..sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!)),
+      );
 
   Conversation? get active => _activeId == null
       ? null
-      : _firstWhere(_conversations, (c) => c.id == _activeId);
+      : _firstWhere(conversations, (c) => c.id == _activeId);
 
   Future<void> load() async {
     String? raw;
@@ -69,23 +90,27 @@ class ChatStore {
     } catch (_) {
       _activeId = null;
     }
-    if (_activeId != null && !_conversations.any((c) => c.id == _activeId)) {
-      _activeId = _conversations.isEmpty ? null : _conversations.first.id;
+    if (_activeId != null && !conversations.any((c) => c.id == _activeId)) {
+      _activeId = conversations.isEmpty ? null : conversations.first.id;
     }
-    if (_activeId == null && _conversations.isNotEmpty) {
-      _activeId = _conversations.first.id;
+    if (_activeId == null && conversations.isNotEmpty) {
+      _activeId = conversations.first.id;
+    }
+  }
+
+  Future<void> _persistChecked() async {
+    final raw = jsonEncode(_conversations.map((c) => c.toJson()).toList());
+    await _storage.write(_kConversationsKey, raw);
+    if (_activeId != null) {
+      await _storage.write(_kActiveConversationKey, _activeId!);
+    } else {
+      await _storage.delete(_kActiveConversationKey);
     }
   }
 
   Future<void> _persist() async {
     try {
-      final raw = jsonEncode(_conversations.map((c) => c.toJson()).toList());
-      await _storage.write(_kConversationsKey, raw);
-      if (_activeId != null) {
-        await _storage.write(_kActiveConversationKey, _activeId!);
-      } else {
-        await _storage.delete(_kActiveConversationKey);
-      }
+      await _persistChecked();
     } catch (_) {
       // Keep the in-memory conversation usable even if platform storage fails.
     }
@@ -96,14 +121,16 @@ class ChatStore {
     convo.updatedAt = DateTime.now();
   }
 
+  Conversation _newConversationRecord() => Conversation(
+        id: _uuid.v4(),
+        title: '新しいチャット',
+        messages: <ChatMessage>[],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
   Conversation newConversation() {
-    final convo = Conversation(
-      id: _uuid.v4(),
-      title: '新しいチャット',
-      messages: <ChatMessage>[],
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
+    final convo = _newConversationRecord();
     _conversations = [convo, ..._conversations];
     _activeId = convo.id;
     return convo;
@@ -120,12 +147,92 @@ class ChatStore {
     await _persist();
   }
 
-  Future<void> delete(String id) async {
-    _conversations = _conversations.where((c) => c.id != id).toList();
-    if (_activeId == id) {
-      _activeId = _conversations.isEmpty ? null : _conversations.first.id;
+  Future<ConversationDeletionResult> delete(String id) async {
+    final visible = conversations;
+    final index = visible.indexWhere((conversation) => conversation.id == id);
+    if (index < 0) {
+      throw StateError('conversation is unavailable for deletion');
     }
-    await _persist();
+    final conversation = visible[index];
+    final previousActiveId = _activeId;
+    final wasActive = previousActiveId == id;
+    Conversation? replacement;
+
+    conversation.deletedAt = DateTime.now();
+    conversation.deletedReplacementId = null;
+    final remaining = conversations;
+    if (wasActive) {
+      if (remaining.isEmpty) {
+        replacement = _newConversationRecord();
+        _conversations = [replacement, ..._conversations];
+        conversation.deletedReplacementId = replacement.id;
+        _activeId = replacement.id;
+      } else {
+        final nextIndex =
+            index < remaining.length ? index : remaining.length - 1;
+        _activeId = remaining[nextIndex].id;
+      }
+    }
+
+    try {
+      await _persistChecked();
+    } catch (_) {
+      if (replacement != null) {
+        _conversations =
+            _conversations.where((item) => item.id != replacement!.id).toList();
+      }
+      conversation.deletedAt = null;
+      conversation.deletedReplacementId = null;
+      _activeId = previousActiveId;
+      await _persist();
+      rethrow;
+    }
+    return ConversationDeletionResult(
+      conversation: conversation,
+      wasActive: wasActive,
+      nextActiveId: _activeId,
+    );
+  }
+
+  Future<void> restore(String id) async {
+    final conversation = _firstWhere(
+      _conversations,
+      (item) => item.id == id && item.deletedAt != null,
+    );
+    if (conversation == null) {
+      throw StateError('conversation is unavailable for restore');
+    }
+    final previousActiveId = _activeId;
+    final previousDeletedAt = conversation.deletedAt;
+    final replacementId = conversation.deletedReplacementId;
+    final replacement =
+        replacementId == null || replacementId == conversation.id
+            ? null
+            : _firstWhere(_conversations, (item) => item.id == replacementId);
+    final discardReplacement = replacement != null &&
+        replacement.messages.isEmpty &&
+        replacement.title == '新しいチャット';
+
+    conversation.deletedAt = null;
+    conversation.deletedReplacementId = null;
+    if (discardReplacement) {
+      _conversations =
+          _conversations.where((item) => item.id != replacementId).toList();
+    }
+    _activeId = conversation.id;
+
+    try {
+      await _persistChecked();
+    } catch (_) {
+      conversation.deletedAt = previousDeletedAt;
+      conversation.deletedReplacementId = replacementId;
+      if (discardReplacement) {
+        _conversations = [replacement, ..._conversations];
+      }
+      _activeId = previousActiveId;
+      await _persist();
+      rethrow;
+    }
   }
 
   Future<void> rename(String id, String title) async {
@@ -158,8 +265,12 @@ class ChatStore {
   }
 
   Future<void> updateMessage(
-      String conversationId, String messageId, String content,
-      {bool? pending, bool? error}) async {
+    String conversationId,
+    String messageId,
+    String content, {
+    bool? pending,
+    bool? error,
+  }) async {
     final convo = _firstWhere(_conversations, (c) => c.id == conversationId);
     if (convo == null) return;
     final msg = _firstWhere(convo.messages, (m) => m.id == messageId);
