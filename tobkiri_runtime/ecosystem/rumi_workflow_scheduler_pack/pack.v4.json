@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:adce2ab47a1c95b157bc43636d12be9a35af52d76def06fb50939d5feef36241",
+      "digest": "sha256:fc3029cf6ef970ca5426fcbe7bb87e6c3605a1908c54a68808dd4bcbb9df4add",
+      "kind": "asset",
+      "path": "catalog/delivery_handoffs.yaml"
+    },
+    {
+      "digest": "sha256:af06cc07a864864964cb71f993ecd7c23c08be781dacb36dbc8724cc52430856",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:b288a852c50e397b879e2e6f7cac9d6e8bf25d7e33cccd7ff93fd75c6f53a4be",
-    "contract_catalog_digest": "sha256:76e5d4e3536dc7a12a50200233e1e32505f0b62f1cb4d9f1545ef37e779d707f",
-    "source_identity": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f"
+    "artifact_set_digest": "sha256:93d4a9e6dd3577dd6fe1d8cb539ce49e330f718555137008e696903a47cbb9e9",
+    "contract_catalog_digest": "sha256:ac7452848673a9e35aae8166698c69b6c33f732a4fb68b8f55ba13a3c4b0fbed",
+    "source_identity": "sha256:aa4f79a11ab87030f3a18d051e42b96b56d3f25f4720065c02fdfa14e2f543c6"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:b288a852c50e397b879e2e6f7cac9d6e8bf25d7e33cccd7ff93fd75c6f53a4be",
+    "artifact_digest": "sha256:93d4a9e6dd3577dd6fe1d8cb539ce49e330f718555137008e696903a47cbb9e9",
     "display_name": "rumi_workflow_scheduler_pack",
     "id": "rumi_workflow_scheduler_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f",
+        "digest": "sha256:aa4f79a11ab87030f3a18d051e42b96b56d3f25f4720065c02fdfa14e2f543c6",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f",
+    "source_digest": "sha256:aa4f79a11ab87030f3a18d051e42b96b56d3f25f4720065c02fdfa14e2f543c6",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_workflow_scheduler_pack"
   },

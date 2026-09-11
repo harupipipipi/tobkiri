@@ -52,9 +52,9 @@
     },
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:3218a0e7c4ae93d708c2395423b166546f822103aa3129ea85b531cf3f41dc2c",
+      "artifact_digest": "sha256:a9c2930a6626fa3a5d2028291ba283e8f58306478dcfb61a527edd5fee8770f9",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:6b7c8f2a632a11ebd7606e78be66e93d8597d6f2451b0d1230e63cd41c1dfbdc"
+      "source_identity": "sha256:dbcc0e2a7496ae25aa4cfb95c006dbc9fcece7c7b6b53d818e5f301ec2c694e8"
     },
     "executable_code": false,
     "format": "rumi.ecosystem.v1",
@@ -63,7 +63,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:6b7c8f2a632a11ebd7606e78be66e93d8597d6f2451b0d1230e63cd41c1dfbdc"
+      "source_content_hash": "sha256:dbcc0e2a7496ae25aa4cfb95c006dbc9fcece7c7b6b53d818e5f301ec2c694e8"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -110,7 +110,7 @@
   "pack_identity": "rumi:ecosystem/rumi_voice_mobile_pack",
   "provenance": {
     "build_identity": "rumi_voice_mobile_pack:0.1.0",
-    "content_hash": "sha256:3218a0e7c4ae93d708c2395423b166546f822103aa3129ea85b531cf3f41dc2c",
+    "content_hash": "sha256:a9c2930a6626fa3a5d2028291ba283e8f58306478dcfb61a527edd5fee8770f9",
     "signature": null,
     "trust_class": "local"
   },

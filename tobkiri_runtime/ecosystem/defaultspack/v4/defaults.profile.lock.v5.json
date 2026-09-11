@@ -7,7 +7,7 @@
   "profile_revision": "sha256:debaa047bc0a5815ed3acc944dafcf4d7c37ea15eebab22dec9ef969eed9d19e",
   "profile_definition_digest": "sha256:b8c318660fdc8e4b1f41800772386d2fb9005949877bf38adce77e31fce9c99d",
   "catalog_revision": "sha256:9de92e4c741c8b8aba6327580731fa5d1a6414181559564cdab7a70392e01a23",
-  "bundle_digest": "sha256:d40dd6fd69febcbdd1c27272d57ea3a20edb08f77b568118823ab8ab53bd5e63",
+  "bundle_digest": "sha256:9395478d5ebbfb520825364c6986ec15812fd59a46e6f0e9c51589a391246621",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -937,5 +937,5 @@
   "constraints_digest": "sha256:a06f4663fb418c71949acb588c977dbcc76d3281aa4cb79ae990ba08cc30656b",
   "closure_digest": "sha256:f01fa9cec0faf6918ec984692ef629b93074758d4c4b9358cbafaaa8f01efb0e",
   "provenance_digest": "sha256:f04b0f7b6929c2a113c01c0e886fe1efa0cee7b3554fb59d1c2a7ba0ca58c1be",
-  "lock_digest": "sha256:fcf98e5f18c8165f606410bde48557c28a899489bf0fa4c6e99c38eb4baba820"
+  "lock_digest": "sha256:83c0d105e1eb3513325aec336178bc0ca285b5d6e9750350d7535b0ac59f5adf"
 }

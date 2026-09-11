@@ -1,17 +1,22 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:590db091e1f6fbe1c4cdc33c20b9782d370c60609f0a855dbb30424bbb0e6f3e",
+      "digest": "sha256:4dc807c91aecafd1f5baf2d00b66fe91bc730d282d3abe57f12e47e037649109",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:6c8473a4a541d381faa2d79c282779d8ed430c696b19cedd2acd8b9fe35312ee",
+      "kind": "asset",
+      "path": "schemas/locale_issue.schema.json"
     }
   ],
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:f042c07cfc5418cb9fc6eb77da19732d37f845e706c0c8dd13526f541e18f1ce",
-    "contract_catalog_digest": "sha256:448aa3d6235d9d64d64b6f1a2355d276bf92d2ffac8c412bbbf763e33a73b2bd",
-    "source_identity": "sha256:8990a7764885f1af50ae53f4a2ff03a6ae707f200df3e887a28cc41552ec5ad4"
+    "artifact_set_digest": "sha256:2ca7b7e746dd2b4ff5cdaf4d0ba58b5f7f6dfdd37d6adab33cba48a4bfce07ea",
+    "contract_catalog_digest": "sha256:0472ca549337728b403f05425df0d40cd22e34cf7958065f8cbe2861286921b6",
+    "source_identity": "sha256:098b88814a135b791ac21567599996b0989ec75295b6af5825939fab6230525a"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:f042c07cfc5418cb9fc6eb77da19732d37f845e706c0c8dd13526f541e18f1ce",
+    "artifact_digest": "sha256:2ca7b7e746dd2b4ff5cdaf4d0ba58b5f7f6dfdd37d6adab33cba48a4bfce07ea",
     "display_name": "Rumi Localization Pack",
     "id": "rumi_localization_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:8990a7764885f1af50ae53f4a2ff03a6ae707f200df3e887a28cc41552ec5ad4",
+        "digest": "sha256:098b88814a135b791ac21567599996b0989ec75295b6af5825939fab6230525a",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:8990a7764885f1af50ae53f4a2ff03a6ae707f200df3e887a28cc41552ec5ad4",
+    "source_digest": "sha256:098b88814a135b791ac21567599996b0989ec75295b6af5825939fab6230525a",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_localization_pack"
   },

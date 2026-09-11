@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:a73ba255bbd118b5d82c7951c605e325137e6dbb427cb949e2512831a995e44c",
+      "digest": "sha256:a01f8db972fc6f61f0104f35200e6503f7c3ce5408e0993f5816cb0fe051b0ca",
+      "kind": "asset",
+      "path": "catalog/form_action_recipes.yaml"
+    },
+    {
+      "digest": "sha256:4566bac590d962cf59de831a53616f0446d55833d8ee56ae07e62d56831d94c4",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:7f0142b3933a9b82963794e49ed7eae189bcf37abd6177bc5d381aa0cf1e1c23",
-    "contract_catalog_digest": "sha256:506717b97d582c18a9ed25ff506adf79c09dda5314594b732f28262bbb70f942",
-    "source_identity": "sha256:c8acc7cd047bbfa5dae270726771223b78eda4087abe8a376574dd35dfee74a8"
+    "artifact_set_digest": "sha256:485b7e577aa436d7076b2acc814b3b3a566577f1f30b2bc7077af574057fbc5c",
+    "contract_catalog_digest": "sha256:5038c3ad52767135fdd5e830d34c66010eaef1311b1a52d9f7a49faa40e65290",
+    "source_identity": "sha256:b14d844776de02ab00a0c2fb8b715443b190f11982bcc23be8a1c35127c37250"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:7f0142b3933a9b82963794e49ed7eae189bcf37abd6177bc5d381aa0cf1e1c23",
+    "artifact_digest": "sha256:485b7e577aa436d7076b2acc814b3b3a566577f1f30b2bc7077af574057fbc5c",
     "display_name": "Rumi Browser Form Operator Pack",
     "id": "rumi_browser_form_operator_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:c8acc7cd047bbfa5dae270726771223b78eda4087abe8a376574dd35dfee74a8",
+        "digest": "sha256:b14d844776de02ab00a0c2fb8b715443b190f11982bcc23be8a1c35127c37250",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:c8acc7cd047bbfa5dae270726771223b78eda4087abe8a376574dd35dfee74a8",
+    "source_digest": "sha256:b14d844776de02ab00a0c2fb8b715443b190f11982bcc23be8a1c35127c37250",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_browser_form_operator_pack"
   },

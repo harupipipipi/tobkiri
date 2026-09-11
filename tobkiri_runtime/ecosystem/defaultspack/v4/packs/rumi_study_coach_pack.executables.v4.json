@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_study_coach_pack",
-  "source_identity": "sha256:688b23c2d0987f8fe780fe0ac0557e5f363ab29a2d5b77bea851754b1893c4aa",
+  "source_identity": "sha256:e7b479c2dffd70f75baa74640f1389c289a6957a08c45469a8aa25043c87eb98",
   "variants": [],
-  "materialization_catalog_digest": "sha256:fb999bc8e34a71d7c0fe13c4e85556430e9603f8f356c49662b28e1a92e91d38",
-  "catalog_digest": "sha256:42d5539b029dada59a4f8e7b2968b7e1292364ea10af9652785da1ccc6ed8105"
+  "materialization_catalog_digest": "sha256:7ef7b4892a77c5e17b91beb41ea412b004e386ff189a7f462df0770a7d12cc49",
+  "catalog_digest": "sha256:19e97f7773a14ce99364045e9028d205b55428740f7d5563f56f1112af5257fe"
 }

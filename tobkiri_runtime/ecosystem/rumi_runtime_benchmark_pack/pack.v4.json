@@ -1,17 +1,22 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:4e15fc47d752e23d5ed18e1aef7b0dc17ee78b6fbc7d0aea45ebcd6439d56712",
+      "digest": "sha256:a15890baa385aa46346b9db3936bc868cd943e1b66d8cef0c94284807356a952",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:bc005dbd1f4ed9e9d0f1c70294180a4884cce35b03044a516c45e3d782d34ba2",
+      "kind": "asset",
+      "path": "schemas/metric_record.schema.json"
     }
   ],
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:0281c43fa4d0484e14561d5ee2e9b0af241e989df922cf8e402951ceff0a7922",
-    "contract_catalog_digest": "sha256:e38ac62d0a93cac396c5561f3cce4df1c9b0a52a96f849d61948f3997d99e8d0",
-    "source_identity": "sha256:39691e57efff84247334a4b307980f81a6c16852f684ff9c1228121e94dba02f"
+    "artifact_set_digest": "sha256:ee107e11eee6a1523927bdd78ec26c582ea3e4ada8e0224379d856f3fd39cf08",
+    "contract_catalog_digest": "sha256:afa0e6ee29a3caad5b0aa96e72e9869ad7d0df6283039f05a2c77106604371e1",
+    "source_identity": "sha256:1f471647dbd746c14840cc543fcfb04ff835164e22c7374b8067e6bfbae49d14"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:0281c43fa4d0484e14561d5ee2e9b0af241e989df922cf8e402951ceff0a7922",
+    "artifact_digest": "sha256:ee107e11eee6a1523927bdd78ec26c582ea3e4ada8e0224379d856f3fd39cf08",
     "display_name": "Rumi Runtime Benchmark Pack",
     "id": "rumi_runtime_benchmark_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:39691e57efff84247334a4b307980f81a6c16852f684ff9c1228121e94dba02f",
+        "digest": "sha256:1f471647dbd746c14840cc543fcfb04ff835164e22c7374b8067e6bfbae49d14",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:39691e57efff84247334a4b307980f81a6c16852f684ff9c1228121e94dba02f",
+    "source_digest": "sha256:1f471647dbd746c14840cc543fcfb04ff835164e22c7374b8067e6bfbae49d14",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_runtime_benchmark_pack"
   },

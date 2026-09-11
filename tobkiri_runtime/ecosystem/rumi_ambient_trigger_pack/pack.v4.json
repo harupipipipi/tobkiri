@@ -1,17 +1,22 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:2e9ac6e17587b17e430ce2173b41bfbdcd90a3d5bb02cce3a94844aff540b9da",
+      "digest": "sha256:a348e000a9b56b36aad9a29184e5ecb4ac58ef25c3dfd71dbb723072464c39ab",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3cd80e3628c524e33983626946622b85e2394ad25a33dfce008950e2fc6d99c1",
+      "kind": "asset",
+      "path": "frontend_extensions/ambient_trigger.ui.json"
     }
   ],
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:b4e5e39e28e92a10a548a4a22d443ba9edb01f8d822317adad36cb41a8a08319",
-    "contract_catalog_digest": "sha256:4d19fd6dd7201813f8c9cba9e69d392a2e6abda2d7a9f4b640aca4ff57e3c887",
-    "source_identity": "sha256:edb82744516b51187b03d24676517fb1810c2bc7f06869880011e0354b48f162"
+    "artifact_set_digest": "sha256:d62910436be4d49289270bc74a31aa660b23ebafffa520a31317ab76dc6a0e79",
+    "contract_catalog_digest": "sha256:a7bbe3eb2c626686678d463118b4dd64a31e366c0464ead3990d7fb0a06781d6",
+    "source_identity": "sha256:189ae4c4633f9f1c55df17caa7f07c030813dae62267a766a2c0797b726225bc"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:b4e5e39e28e92a10a548a4a22d443ba9edb01f8d822317adad36cb41a8a08319",
+    "artifact_digest": "sha256:d62910436be4d49289270bc74a31aa660b23ebafffa520a31317ab76dc6a0e79",
     "display_name": "rumi_ambient_trigger_pack",
     "id": "rumi_ambient_trigger_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:edb82744516b51187b03d24676517fb1810c2bc7f06869880011e0354b48f162",
+        "digest": "sha256:189ae4c4633f9f1c55df17caa7f07c030813dae62267a766a2c0797b726225bc",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:edb82744516b51187b03d24676517fb1810c2bc7f06869880011e0354b48f162",
+    "source_digest": "sha256:189ae4c4633f9f1c55df17caa7f07c030813dae62267a766a2c0797b726225bc",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ambient_trigger_pack"
   },

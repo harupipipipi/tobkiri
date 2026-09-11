@@ -74,9 +74,9 @@
     "base_pack_promotion_eligible": false,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:bf9ffe722d26a41a084ff2cb2fbfdb8c730add2c4bb73ae57f3214bc4830dded",
+      "artifact_digest": "sha256:429947fc4065c51645df0694207f54732de545a39d131f1a74f464cd8e9b1fab",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:57f0d86ee58cc618aa3bb1bd78394c23f7c01d25b83c320f476bac2dc492666d"
+      "source_identity": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd"
     },
     "consumes_existing_sources_only": true,
     "declarative_only": true,
@@ -87,7 +87,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:57f0d86ee58cc618aa3bb1bd78394c23f7c01d25b83c320f476bac2dc492666d"
+      "source_content_hash": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -140,7 +140,7 @@
   "pack_identity": "rumi:ecosystem/rumi_telephony_delegate_pack",
   "provenance": {
     "build_identity": "rumi_telephony_delegate_pack:0.1.0",
-    "content_hash": "sha256:bf9ffe722d26a41a084ff2cb2fbfdb8c730add2c4bb73ae57f3214bc4830dded",
+    "content_hash": "sha256:429947fc4065c51645df0694207f54732de545a39d131f1a74f464cd8e9b1fab",
     "signature": null,
     "trust_class": "local"
   },

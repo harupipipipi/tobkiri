@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:0518e2ec09df2f047f6035387ffc2a0e4209a1ef9b88d28d8e7f54c44f7a11bf",
+      "digest": "sha256:e3ff49926f09c29ab9b81ec503c9ce0f0773369d866148eb507402103ac0e8e2",
+      "kind": "asset",
+      "path": "catalog/capabilities.memory.json"
+    },
+    {
+      "digest": "sha256:d8b529bb6c1480d4f1321ac98c045debe28ebfb2e40250f275f9bde51217e77d",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:d9631f55d1e73af9e8ec562bcea29cb81f12705916070b8d0cb3a95dd54781cc",
-    "contract_catalog_digest": "sha256:c6ef3523947dbaaf107d3eb9a44337865e241220408a685c7c6e05a644a0566b",
-    "source_identity": "sha256:e2dfe102c67443ea6590399c0c252a48a90a6bac477f71867f6f0ee803fd0f01"
+    "artifact_set_digest": "sha256:bf4e1288d0dd878b2d489f89a4c2f6344f1ed77bf9993de75666c6ace0ec0b7b",
+    "contract_catalog_digest": "sha256:c6870768f4fe41c8599681576a68ea435ec6fdc2fd01f2a09882187535f05c86",
+    "source_identity": "sha256:20549adc00eef257a65f290a24d63e7b25aa49e8970527af5bbef40149545149"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:d9631f55d1e73af9e8ec562bcea29cb81f12705916070b8d0cb3a95dd54781cc",
+    "artifact_digest": "sha256:bf4e1288d0dd878b2d489f89a4c2f6344f1ed77bf9993de75666c6ace0ec0b7b",
     "display_name": "rumi_memory_knowledge_pack",
     "id": "rumi_memory_knowledge_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:e2dfe102c67443ea6590399c0c252a48a90a6bac477f71867f6f0ee803fd0f01",
+        "digest": "sha256:20549adc00eef257a65f290a24d63e7b25aa49e8970527af5bbef40149545149",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:e2dfe102c67443ea6590399c0c252a48a90a6bac477f71867f6f0ee803fd0f01",
+    "source_digest": "sha256:20549adc00eef257a65f290a24d63e7b25aa49e8970527af5bbef40149545149",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_memory_knowledge_pack"
   },

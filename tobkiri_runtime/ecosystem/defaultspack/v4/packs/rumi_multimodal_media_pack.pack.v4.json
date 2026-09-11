@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:8d1dcee7121067a41b9b2e8688b2a39dbda01bfbd1ae85c058fbe4160ffc859f",
+      "digest": "sha256:d2e1e4a8adbaf335bf6a5d8781853a426617b06c695a540190958e9540b0df7e",
+      "kind": "asset",
+      "path": "catalog/artifact_schema.media.yaml"
+    },
+    {
+      "digest": "sha256:ecb1c8ab803634c10bf5238908a1dab18bac4fa218c52df013f2c14370e24368",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,8 +14,8 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:415714360e01572b097396d4a03b0728fa904b703f59d9f805bb77ad3e3a6ea4",
-    "artifact_set_digest": "sha256:d7b2fb9614171edd168453239182b64ee888b1cc39f2957803ec03ede24c93d0",
+    "source_identity": "sha256:e0536e8d0389227c4337230fb41f55e5e11f93d5c59fff50ca2f136c19e683b7",
+    "artifact_set_digest": "sha256:68700228bca6ffdd095d19c7495532cc0a95107745a42dcd110124f8f80c3116",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:4f889333dd2f5d1e58710b44a6749c45efaa82b928335aae689dfb8b294d9697",
+    "artifact_digest": "sha256:87eab2926665b389748f516abf5b38a105f11c0f14dd1e28ecd4214067b344e6",
     "display_name": "Rumi Multimodal Media Pack",
     "id": "rumi_multimodal_media_pack",
     "kind": "application",
@@ -35,15 +40,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_multimodal_media_pack/pack.v4.json",
-    "source_digest": "sha256:415714360e01572b097396d4a03b0728fa904b703f59d9f805bb77ad3e3a6ea4",
+    "source_digest": "sha256:e0536e8d0389227c4337230fb41f55e5e11f93d5c59fff50ca2f136c19e683b7",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:b2234538d6cac4faaf710c1029feeb13b53ca2066f46731ed3f9401f799d65f3",
+    "content_root_digest": "sha256:7a83df365dd7aba1c29e06d885e2749d1a056ca12391b3ad4bb2aaa6bae0b428",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:c35662b4cde56b0ba89a730aec71c7df673ca38e87947f93b4d32f83e50381a1",
+    "input_inventory_digest": "sha256:f3d872a91f83cf424e8e252b5c63e1f8da0194eff321ac057ee3bae6be03a5f1",
     "normative": true,
     "evidence": [
       {
@@ -54,7 +59,7 @@
       {
         "path": "ecosystem/rumi_multimodal_media_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:415714360e01572b097396d4a03b0728fa904b703f59d9f805bb77ad3e3a6ea4"
+        "digest": "sha256:e0536e8d0389227c4337230fb41f55e5e11f93d5c59fff50ca2f136c19e683b7"
       }
     ]
   },

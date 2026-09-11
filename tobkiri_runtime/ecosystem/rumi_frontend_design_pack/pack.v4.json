@@ -1,17 +1,22 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:53f8f07f85d1fccd943c9b759c40dccddd8ff8627854d53ba209b8b5d4e38807",
+      "digest": "sha256:f257504da6ab8ab8fbcae3add8e131f640fc208605e52d543873f9ac27b139ca",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:512594fdf9d3fe5c0f9d7340552b4411d5b8b2040072c4a960558e99e9b0d584",
+      "kind": "asset",
+      "path": "schemas/component_acceptance.schema.yaml"
     }
   ],
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:e6934d200946b08eca8b4bf718b08bbf0a9f6880c7b292c272f44d06d690ef35",
-    "contract_catalog_digest": "sha256:bf2e7e9c662cb56f37026e412129dec49753e626364ddbc5906b0c4d3e5caff1",
-    "source_identity": "sha256:5c2fd51c7c6dc694f607c52314c1ad06ed0c08d5a85f888ed035050d2795dc0b"
+    "artifact_set_digest": "sha256:9fc5382eeddb88fc52d2716bec132f53e76c838eaee69b69ba2a78d928fc9b31",
+    "contract_catalog_digest": "sha256:6d24b84075214b238f5124a15d679952f6cd22a48144f75b703efa1b768a69a5",
+    "source_identity": "sha256:06df2fc766db75d460dc8139738bc2267355d4d0e6d57de7eb0423a68b27ecc4"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:e6934d200946b08eca8b4bf718b08bbf0a9f6880c7b292c272f44d06d690ef35",
+    "artifact_digest": "sha256:9fc5382eeddb88fc52d2716bec132f53e76c838eaee69b69ba2a78d928fc9b31",
     "display_name": "Rumi Frontend Design Pack",
     "id": "rumi_frontend_design_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:5c2fd51c7c6dc694f607c52314c1ad06ed0c08d5a85f888ed035050d2795dc0b",
+        "digest": "sha256:06df2fc766db75d460dc8139738bc2267355d4d0e6d57de7eb0423a68b27ecc4",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:5c2fd51c7c6dc694f607c52314c1ad06ed0c08d5a85f888ed035050d2795dc0b",
+    "source_digest": "sha256:06df2fc766db75d460dc8139738bc2267355d4d0e6d57de7eb0423a68b27ecc4",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_frontend_design_pack"
   },

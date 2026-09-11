@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:a35422c0c856da8dd81418df2208c005197ed6a4b5ddf3fd3261be61fc834167",
+  "catalog_digest": "sha256:18e44ea70f67568950a79e489686c95ad018625bf30cc7cfff59d172265c1243",
   "pack_id": "rumi_telephony_delegate_pack",
-  "source_identity": "sha256:57f0d86ee58cc618aa3bb1bd78394c23f7c01d25b83c320f476bac2dc492666d",
+  "source_identity": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd",
   "variants": []
 }

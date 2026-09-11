@@ -74,9 +74,9 @@
     "base_pack_promotion_eligible": false,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:a9e9d6ca95120841600c91de9b492e578c1a68bc26ec57185d8e07d6d1111ffd",
+      "artifact_digest": "sha256:719b05ac4bb8bd1f358068d63424d5be66a3cc40cd876ab73af745f86772bcd3",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:05d6740eba7d7531d5ef79ad24d7756622182334b1bde2cfae6e150436547921"
+      "source_identity": "sha256:e096ee7eb2d0f77c185eca35ad73baac76746a486f63efb9bc8595de657b53bb"
     },
     "consumes_existing_sources_only": true,
     "declarative_only": true,
@@ -87,7 +87,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:05d6740eba7d7531d5ef79ad24d7756622182334b1bde2cfae6e150436547921"
+      "source_content_hash": "sha256:e096ee7eb2d0f77c185eca35ad73baac76746a486f63efb9bc8595de657b53bb"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -134,7 +134,7 @@
   "pack_identity": "rumi:ecosystem/rumi_experiment_design_pack",
   "provenance": {
     "build_identity": "rumi_experiment_design_pack:0.1.0",
-    "content_hash": "sha256:a9e9d6ca95120841600c91de9b492e578c1a68bc26ec57185d8e07d6d1111ffd",
+    "content_hash": "sha256:719b05ac4bb8bd1f358068d63424d5be66a3cc40cd876ab73af745f86772bcd3",
     "signature": null,
     "trust_class": "local"
   },

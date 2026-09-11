@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:ca3dda4a0e00752467fb78ecb1b54b29e030086518809188c5666a41774f28fe",
+      "digest": "sha256:c7771a85b8b243d8826ea8cde3d668c71cbd6f53959709b6b7a3dafb1cec8754",
+      "kind": "asset",
+      "path": "catalog/voice_mobile_workflows.yaml"
+    },
+    {
+      "digest": "sha256:99a328880b323c7f670a1db73e7735189b763bbdf0bbbd630a65101f044533e5",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,8 +14,8 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:09b328854d50180330900bcf83739f9883a46ee00a8a3c0cc3f7700f919a9e78",
-    "artifact_set_digest": "sha256:e24626cc9dc925701de56516019c7292d1ecdb7e7c7fa2225fc0e836132f8c73",
+    "source_identity": "sha256:199cc4fa6b2e1265e2c2cc52a1cc952110a8e1d11637f12111e68c05eb1d9b90",
+    "artifact_set_digest": "sha256:f1b9f99798cf2df97566ff43530b140e6747cbc2ee0986ac4e0f45e6366e89b4",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:3218a0e7c4ae93d708c2395423b166546f822103aa3129ea85b531cf3f41dc2c",
+    "artifact_digest": "sha256:a9c2930a6626fa3a5d2028291ba283e8f58306478dcfb61a527edd5fee8770f9",
     "display_name": "Rumi Voice Mobile Pack",
     "id": "rumi_voice_mobile_pack",
     "kind": "application",
@@ -35,15 +40,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_voice_mobile_pack/pack.v4.json",
-    "source_digest": "sha256:09b328854d50180330900bcf83739f9883a46ee00a8a3c0cc3f7700f919a9e78",
+    "source_digest": "sha256:199cc4fa6b2e1265e2c2cc52a1cc952110a8e1d11637f12111e68c05eb1d9b90",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:2f6393dfe3474fe29749c97a289eee28ad24540198526a41cc9c4abf6674e545",
+    "content_root_digest": "sha256:6b0aa0b85250d3b26eb0a490d91a7958937a112e1edcbd972f437e71fc0bddaa",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:ae9f5b88fdfd541b8633f942eba57150c0aa325f9d6b6668a419d0c50904e408",
+    "input_inventory_digest": "sha256:bef4920c8a2a30342996e3e4ea0da31602dd8037886d9023fb35485264ccd7d7",
     "normative": true,
     "evidence": [
       {
@@ -54,7 +59,7 @@
       {
         "path": "ecosystem/rumi_voice_mobile_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:09b328854d50180330900bcf83739f9883a46ee00a8a3c0cc3f7700f919a9e78"
+        "digest": "sha256:199cc4fa6b2e1265e2c2cc52a1cc952110a8e1d11637f12111e68c05eb1d9b90"
       }
     ]
   },

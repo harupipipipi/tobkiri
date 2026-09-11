@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_multimodal_media_pack",
-  "source_identity": "sha256:415714360e01572b097396d4a03b0728fa904b703f59d9f805bb77ad3e3a6ea4",
+  "source_identity": "sha256:e0536e8d0389227c4337230fb41f55e5e11f93d5c59fff50ca2f136c19e683b7",
   "variants": [],
-  "materialization_catalog_digest": "sha256:40f74d4040d1b957df97f126dbf38b72b3473f2fdf03fc56e53555e67c3ab919",
-  "catalog_digest": "sha256:15e49a7d480eddb4581c01c88137ba6fa46e8b1a9ebc75f2d96080fb10f86f83"
+  "materialization_catalog_digest": "sha256:0af2a59deb81dffc4cb6037c84b85c7aa982633d511d9ea2589265098c9e3d90",
+  "catalog_digest": "sha256:3beacd1e2f5218b9f9d3dcd0da417bef9e06c55d8399c4ebde2362d2e944b653"
 }

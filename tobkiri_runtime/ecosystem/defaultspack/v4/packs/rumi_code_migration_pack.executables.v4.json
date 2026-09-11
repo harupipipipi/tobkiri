@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_code_migration_pack",
-  "source_identity": "sha256:243a8ebe8ace2f6aca9051dd37b4617a3d65e79e77369458721c23c167e261d0",
+  "source_identity": "sha256:a02b70283b499fa08e66a28ae8f2ccb40649789af1b3f482a68f3ec0b61dfaed",
   "variants": [],
-  "materialization_catalog_digest": "sha256:9b0ce64c8d88fe6fa628a709dcfdb47c87ba3eb21c34d9a0aa9d30c239913b6b",
-  "catalog_digest": "sha256:5b8a6f8a418d878559e594ae634d7156f925823996b2012fb8a9be90ad6eaa5b"
+  "materialization_catalog_digest": "sha256:811094c4c5a8031d528d31d3392ac3ed5f2e672e9b6fed9f07c810dd50073245",
+  "catalog_digest": "sha256:30ad59ece7d5368f8de9e956d637319060d40e31082838c676f32e3d2859100d"
 }

@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:13990dc7f2d104a1c0d03a0b877b9a15d87fd45a1445793cfb3a5aad11f73997",
+      "digest": "sha256:dd79c0f5bd37d5571ddb4040334c58a6529d1315bb3e9c5766b24d860ced458e",
+      "kind": "asset",
+      "path": "asset_index.json"
+    },
+    {
+      "digest": "sha256:6724df6e0df4fc5d6eaf40a52dd46f21eb63c21289d2d70c46a743d8acac8460",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:97702f25268e5b44202cfc38976edb9c80ce6fa953d39077e6cbe2d7774ed9ea",
-    "contract_catalog_digest": "sha256:0f48ab7dbd8786dd7efa85fc0eb82fe429b7869e253d90d5662cd4fbf03f8c79",
-    "source_identity": "sha256:7b2e74f6594e717075df30ed3012ca7b19b8a79a4e4477cde2d20611f3417e28"
+    "artifact_set_digest": "sha256:cd324c4cbe681b70e893ed1545061cef157d777395aca1a1a9cd3442fa3034f8",
+    "contract_catalog_digest": "sha256:ea940c3ce6f1f97f116fe8c47f8604c7e1c735b00fa20e7aa9ea31937c8c9cb3",
+    "source_identity": "sha256:0d2f2441d719bbf3fffc298f8af34169fce7e49b9fa72a46c712a50267e5e0a8"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:97702f25268e5b44202cfc38976edb9c80ce6fa953d39077e6cbe2d7774ed9ea",
+    "artifact_digest": "sha256:cd324c4cbe681b70e893ed1545061cef157d777395aca1a1a9cd3442fa3034f8",
     "display_name": "Rumi Omnichannel Agent Inbox Pack",
     "id": "rumi_omnichannel_agent_inbox_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:7b2e74f6594e717075df30ed3012ca7b19b8a79a4e4477cde2d20611f3417e28",
+        "digest": "sha256:0d2f2441d719bbf3fffc298f8af34169fce7e49b9fa72a46c712a50267e5e0a8",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:7b2e74f6594e717075df30ed3012ca7b19b8a79a4e4477cde2d20611f3417e28",
+    "source_digest": "sha256:0d2f2441d719bbf3fffc298f8af34169fce7e49b9fa72a46c712a50267e5e0a8",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_omnichannel_agent_inbox_pack"
   },

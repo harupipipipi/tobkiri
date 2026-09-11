@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:b0debfb53b05a5c604f86e40a106cbda54c607abcf6cabc401b558476d7af481",
+      "digest": "sha256:9409ea2827eda1debe94cb08a4ea1636fa88f127b1e950294f13ebbee34d76e6",
+      "kind": "asset",
+      "path": "asset_index.json"
+    },
+    {
+      "digest": "sha256:8b7b7279c6642217f85cdb851eee9e81fe182942f24730a7abbee0552fd34dcc",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:3fe6668d03e48dcd2c927fafa24f3ebe0136c46b1e0514073046369718a35692",
-    "contract_catalog_digest": "sha256:c64d07b5aa8927ed9e6b6f808b3cf3987c9d3f5c752c9288f0e25cb558392e93",
-    "source_identity": "sha256:ce1aaebd980f8e10393c110843a30853efba40cfbb845a9fa5250c356173ac9e"
+    "artifact_set_digest": "sha256:f6504b5e397b31aa687cb94f8b73fedd6780e9cf4fa4086295213a861e591511",
+    "contract_catalog_digest": "sha256:907d745dbeee878d91adb209992240e513565aef1d39395f41be71d43a2a3b83",
+    "source_identity": "sha256:51f896fadb18403bc38a59274457b314a62d5e17ba1ce9833cb400e6629c6268"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:3fe6668d03e48dcd2c927fafa24f3ebe0136c46b1e0514073046369718a35692",
+    "artifact_digest": "sha256:f6504b5e397b31aa687cb94f8b73fedd6780e9cf4fa4086295213a861e591511",
     "display_name": "Rumi Evidence Dossier Pack",
     "id": "rumi_evidence_dossier_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:ce1aaebd980f8e10393c110843a30853efba40cfbb845a9fa5250c356173ac9e",
+        "digest": "sha256:51f896fadb18403bc38a59274457b314a62d5e17ba1ce9833cb400e6629c6268",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:ce1aaebd980f8e10393c110843a30853efba40cfbb845a9fa5250c356173ac9e",
+    "source_digest": "sha256:51f896fadb18403bc38a59274457b314a62d5e17ba1ce9833cb400e6629c6268",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_evidence_dossier_pack"
   },

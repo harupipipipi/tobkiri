@@ -5,9 +5,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:f6beabe38d4bfd3d2ea484ee45250c87b82338c03d2bf9e74f9681927e2aca99",
+      "artifact_digest": "sha256:be73958b6e407035a01128a28d09dcbbca58217a57a37eb6b7e9525882dd05a9",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:3bc48ab7173dbe20c57943dbf22a444aa80f7bee92a0be54a371f81876992ee1"
+      "source_identity": "sha256:5824e32d583c58000d2c31be704dbc7ffe97b210a5ee88e63673b43376c00069"
     },
     "description": "Semantic DOM and browser-use style element recognition profiles for the Rumi Browser Companion extension.",
     "format": "rumi.ecosystem.v1",
@@ -16,7 +16,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:3bc48ab7173dbe20c57943dbf22a444aa80f7bee92a0be54a371f81876992ee1"
+      "source_content_hash": "sha256:5824e32d583c58000d2c31be704dbc7ffe97b210a5ee88e63673b43376c00069"
     },
     "license": "MIT",
     "manifest_authority": "v4-authoritative",
@@ -28,7 +28,7 @@
   "pack_identity": "rumi:ecosystem/rumi_browser_element_pack",
   "provenance": {
     "build_identity": "rumi_browser_element_pack:1.0.0",
-    "content_hash": "sha256:f6beabe38d4bfd3d2ea484ee45250c87b82338c03d2bf9e74f9681927e2aca99",
+    "content_hash": "sha256:be73958b6e407035a01128a28d09dcbbca58217a57a37eb6b7e9525882dd05a9",
     "signature": null,
     "trust_class": "local"
   },

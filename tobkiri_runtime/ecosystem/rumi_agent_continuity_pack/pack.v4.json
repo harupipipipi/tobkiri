@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:e6663ac2701bc92e35a96151212956201ff0dc5232a9b3d35f1f6e806be1ba41",
+      "digest": "sha256:e3e0d2c1e59c93ab31e141b169a5ba4a232e1076ffc05ff715bf63badb7185d9",
+      "kind": "asset",
+      "path": "asset_index.json"
+    },
+    {
+      "digest": "sha256:ea1f9353591836c049d1edbf24146f414b17391321d3fe521e61778154fbf130",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:72c434df97200493f991abaa3ab2ab507fc1ddb83d5407fe9d0b63c85bfdebed",
-    "contract_catalog_digest": "sha256:c94acd64435c5b93b76235a110d58ef832042fd625ef7cb2ed98df0fde99437b",
-    "source_identity": "sha256:e9a85723f24ce3a9038db8f1d8b82f069d296a57966b1339cc80dba0764f6cf5"
+    "artifact_set_digest": "sha256:fc4fba7954af27b0db9bb27e14b743c43760bf5149d267a4dbf566aea195018a",
+    "contract_catalog_digest": "sha256:a79f3603a3a582d613e7eeb561f3f5ce564e7ef7688e5e5c35250eb7b4cabb10",
+    "source_identity": "sha256:bbb4cc966b9ab945a13721209d0fdba92af3a913e933151ff2df163aba6dd254"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:72c434df97200493f991abaa3ab2ab507fc1ddb83d5407fe9d0b63c85bfdebed",
+    "artifact_digest": "sha256:fc4fba7954af27b0db9bb27e14b743c43760bf5149d267a4dbf566aea195018a",
     "display_name": "Rumi Agent Continuity Pack",
     "id": "rumi_agent_continuity_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:e9a85723f24ce3a9038db8f1d8b82f069d296a57966b1339cc80dba0764f6cf5",
+        "digest": "sha256:bbb4cc966b9ab945a13721209d0fdba92af3a913e933151ff2df163aba6dd254",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:e9a85723f24ce3a9038db8f1d8b82f069d296a57966b1339cc80dba0764f6cf5",
+    "source_digest": "sha256:bbb4cc966b9ab945a13721209d0fdba92af3a913e933151ff2df163aba6dd254",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_agent_continuity_pack"
   },

@@ -1,16 +1,21 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:ec12737aef5f239891595ce00bab930c108fe7e5efa8564973a1ce393506c33a",
+      "digest": "sha256:417e4613eeaec3639feaa2da88439d336cf1103a47f0fc1df87c9b7001de614a",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:a89986c199934e0492e5b07bdf182a004f8566b22155e75ba1db1f0c62ceaada",
+      "kind": "asset",
+      "path": "schemas/sop_mining_record.schema.json"
     }
   ],
   "contracts": [],
   "functions": [],
   "integrity": {
-    "source_identity": "sha256:83929729c13ed54b85ed8a0ba2ed6384b0ae4eb402fd0dda99810ec303c25747",
-    "artifact_set_digest": "sha256:b0407dd667e91e2d2ce069674a92bc934eccadf4267ca3e8e4222278e192cf55",
+    "source_identity": "sha256:66dc2787ce30fdc72aa82e17039ecd6672233a3bb16ab181f15fb7ca5e7416c2",
+    "artifact_set_digest": "sha256:c46f7bde3269987dee016b6cd5d2aab2c2ca8dcc33ad16725ac56de6c4b529a1",
     "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "migration": {
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:37b99b504839c83b03b65e810b03591103bf7afca111978287b5d9bc24e25dd1",
+    "artifact_digest": "sha256:aadfe0ada7c669b376b12113bb91842c35cac06d63b1e5305d77a02f9d857bd3",
     "display_name": "Rumi SOP Mining Pack",
     "id": "rumi_sop_mining_pack",
     "kind": "application",
@@ -35,15 +40,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_sop_mining_pack/pack.v4.json",
-    "source_digest": "sha256:83929729c13ed54b85ed8a0ba2ed6384b0ae4eb402fd0dda99810ec303c25747",
+    "source_digest": "sha256:66dc2787ce30fdc72aa82e17039ecd6672233a3bb16ab181f15fb7ca5e7416c2",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:fc56087996f6d37646a07d2ea95ef9e76d10b00e79292337be112f9ec3d7fa54",
+    "content_root_digest": "sha256:c8505ebd774b8b0d01e7651c584e0144a4764c3a13720a4f4ecae0fe59e9b876",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:85598baa904f1fb577d432744ad78f0210d711320cd84d0a0913b5fec0047275",
+    "input_inventory_digest": "sha256:7f2651e02cf624ceab2296ea4e3856f73db8f404e1a6930cd4e0c19a0255f498",
     "normative": true,
     "evidence": [
       {
@@ -54,7 +59,7 @@
       {
         "path": "ecosystem/rumi_sop_mining_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:83929729c13ed54b85ed8a0ba2ed6384b0ae4eb402fd0dda99810ec303c25747"
+        "digest": "sha256:66dc2787ce30fdc72aa82e17039ecd6672233a3bb16ab181f15fb7ca5e7416c2"
       }
     ]
   },

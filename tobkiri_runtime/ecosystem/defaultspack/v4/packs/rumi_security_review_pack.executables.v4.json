@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_security_review_pack",
-  "source_identity": "sha256:68a5383402b9c778c3be207ad482d5f6db6feacadd15bda4d2cb5fc89bf2a894",
+  "source_identity": "sha256:2e28b08f233c4a0efe325b6157962c743fbd35de2f21f89baa8537202d0ac56a",
   "variants": [],
-  "materialization_catalog_digest": "sha256:30e3a35b95a7496918c5702ccedcfa197b42badccf49d184be6dc7e49aac75d0",
-  "catalog_digest": "sha256:301cfb38504405c1463a475a120b49282d9d8c7263d372147bc1a8ce5266dd08"
+  "materialization_catalog_digest": "sha256:0e1f42b9cbaaf1b2aa7165dafc6413152b87c25e47ea471d4ed3824a666d03db",
+  "catalog_digest": "sha256:53ae7fd50884eff0b5b2a8b8d22f5757f1c356f6d483539d0a08ce31343f600d"
 }

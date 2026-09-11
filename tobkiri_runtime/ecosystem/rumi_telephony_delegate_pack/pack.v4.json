@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:0e3d527d553174fcec365c86a03dc1a92cebeae26b41e20dec3abec919a5ed47",
+      "digest": "sha256:d8a136617109a39598e4a1801a82dfefbebec878a96c4bbc02c6b559b1a0f7e6",
+      "kind": "asset",
+      "path": "asset_index.yaml"
+    },
+    {
+      "digest": "sha256:4e7b066f153ae7361b2b7a2f3fb5d2e0095185655753490e084b3485871fbb84",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:bf9ffe722d26a41a084ff2cb2fbfdb8c730add2c4bb73ae57f3214bc4830dded",
-    "contract_catalog_digest": "sha256:8600c90b2128d19c80d7ae57914177be58fe4122af7ca600abe39267211d012a",
-    "source_identity": "sha256:57f0d86ee58cc618aa3bb1bd78394c23f7c01d25b83c320f476bac2dc492666d"
+    "artifact_set_digest": "sha256:429947fc4065c51645df0694207f54732de545a39d131f1a74f464cd8e9b1fab",
+    "contract_catalog_digest": "sha256:ec8bf4b3494aaefa71d28180eac8b9df4c1912607ffc2c939ea7efc709df51e8",
+    "source_identity": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:bf9ffe722d26a41a084ff2cb2fbfdb8c730add2c4bb73ae57f3214bc4830dded",
+    "artifact_digest": "sha256:429947fc4065c51645df0694207f54732de545a39d131f1a74f464cd8e9b1fab",
     "display_name": "Rumi Telephony Delegate Pack",
     "id": "rumi_telephony_delegate_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:57f0d86ee58cc618aa3bb1bd78394c23f7c01d25b83c320f476bac2dc492666d",
+        "digest": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:57f0d86ee58cc618aa3bb1bd78394c23f7c01d25b83c320f476bac2dc492666d",
+    "source_digest": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_telephony_delegate_pack"
   },

@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:4f597c3a9562a32fa7bbb9a41c2bdf7c2c7ce172f4b53db719b31b612d0e25b0",
+      "digest": "sha256:d463989ce4f6c059c9786f20abf0570870f5ef1728830ca0f9f8846c42450fb4",
+      "kind": "asset",
+      "path": "asset_index.yaml"
+    },
+    {
+      "digest": "sha256:5ce87554a90e8a81b17bae8f21e7300d855cc7412c8c9a8a95b0895ca72bb9cc",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:4342e0add728cb85de3c6bd73fc7f9447bd70d4f7fc545f50e43ba9e7a60f995",
-    "contract_catalog_digest": "sha256:326f61d62a6271532d51ee1ff17ca07e431f27b83f12df1cb1d5f02761294785",
-    "source_identity": "sha256:167b19bbb45083d5dad98e3480257978deeecddedef6e5e54ca92f4056340ad8"
+    "artifact_set_digest": "sha256:18ae6243113c8876a048597cecf08731bf666805b18fff7d04b943658be53c8c",
+    "contract_catalog_digest": "sha256:efc2cc0ca063642559a832756dad0db85f10153089d8db14fc5409c092d1dd7d",
+    "source_identity": "sha256:25f63bff88ce632cd9754da957ff9d2d79fba8edaef397516e2e0c582d0b2e92"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:4342e0add728cb85de3c6bd73fc7f9447bd70d4f7fc545f50e43ba9e7a60f995",
+    "artifact_digest": "sha256:18ae6243113c8876a048597cecf08731bf666805b18fff7d04b943658be53c8c",
     "display_name": "Rumi Study Coach Pack",
     "id": "rumi_study_coach_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:167b19bbb45083d5dad98e3480257978deeecddedef6e5e54ca92f4056340ad8",
+        "digest": "sha256:25f63bff88ce632cd9754da957ff9d2d79fba8edaef397516e2e0c582d0b2e92",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:167b19bbb45083d5dad98e3480257978deeecddedef6e5e54ca92f4056340ad8",
+    "source_digest": "sha256:25f63bff88ce632cd9754da957ff9d2d79fba8edaef397516e2e0c582d0b2e92",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_study_coach_pack"
   },

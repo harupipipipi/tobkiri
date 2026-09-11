@@ -9,9 +9,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:b4e5e39e28e92a10a548a4a22d443ba9edb01f8d822317adad36cb41a8a08319",
+      "artifact_digest": "sha256:d62910436be4d49289270bc74a31aa660b23ebafffa520a31317ab76dc6a0e79",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:edb82744516b51187b03d24676517fb1810c2bc7f06869880011e0354b48f162"
+      "source_identity": "sha256:189ae4c4633f9f1c55df17caa7f07c030813dae62267a766a2c0797b726225bc"
     },
     "description": "Voice wake, camera pinch, 2/3/4 gesture replies, and approval gesture extension for defaultspack input.",
     "format": "rumi.ecosystem.v1",
@@ -20,7 +20,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:edb82744516b51187b03d24676517fb1810c2bc7f06869880011e0354b48f162"
+      "source_content_hash": "sha256:189ae4c4633f9f1c55df17caa7f07c030813dae62267a766a2c0797b726225bc"
     },
     "legacy_annotations": {
       "frontend_extensions": [
@@ -83,7 +83,7 @@
   "pack_identity": "rumi:ecosystem/rumi_ambient_trigger_pack",
   "provenance": {
     "build_identity": "rumi_ambient_trigger_pack:0.1.0",
-    "content_hash": "sha256:b4e5e39e28e92a10a548a4a22d443ba9edb01f8d822317adad36cb41a8a08319",
+    "content_hash": "sha256:d62910436be4d49289270bc74a31aa660b23ebafffa520a31317ab76dc6a0e79",
     "signature": null,
     "trust_class": "local"
   },

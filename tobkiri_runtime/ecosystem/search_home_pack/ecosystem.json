@@ -15,9 +15,9 @@
   "metadata": {
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:3bbfd0f894ff5c7171249e92c4154e22d8ec669c7d8f93786a9b870f909adfaa",
+      "artifact_digest": "sha256:768c8a5b38c9fb521e086b4de89d897dcb7885fb9de8a3d981c482e4d1352221",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:c04ed0af0ab1da791de163b40b678fd8adf6d7da6f08d6b9e084d68820d3efb7"
+      "source_identity": "sha256:18c3deafdb8851ff2135b29cda1ebbb33eb27064b9f2032134319cce0d9b8658"
     },
     "category": "frontend",
     "description": "Local search surface that resolves the best destination URL before navigation.",
@@ -27,7 +27,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:c04ed0af0ab1da791de163b40b678fd8adf6d7da6f08d6b9e084d68820d3efb7"
+      "source_content_hash": "sha256:18c3deafdb8851ff2135b29cda1ebbb33eb27064b9f2032134319cce0d9b8658"
     },
     "legacy_annotations": {
       "enabled": true
@@ -41,7 +41,7 @@
   "pack_identity": "rumi:ecosystem/search_home_pack",
   "provenance": {
     "build_identity": "search_home_pack:0.1.0",
-    "content_hash": "sha256:3bbfd0f894ff5c7171249e92c4154e22d8ec669c7d8f93786a9b870f909adfaa",
+    "content_hash": "sha256:768c8a5b38c9fb521e086b4de89d897dcb7885fb9de8a3d981c482e4d1352221",
     "signature": null,
     "trust_class": "local"
   },

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_sop_mining_pack",
-  "source_identity": "sha256:83929729c13ed54b85ed8a0ba2ed6384b0ae4eb402fd0dda99810ec303c25747",
+  "source_identity": "sha256:66dc2787ce30fdc72aa82e17039ecd6672233a3bb16ab181f15fb7ca5e7416c2",
   "variants": [],
-  "materialization_catalog_digest": "sha256:7937c16706ef2ca84dc23cfe0a235916c26d7fb16c1a7fdb4b802dca0e8188d1",
-  "catalog_digest": "sha256:5d7f6c292591711ff16e594a173752022b8b3280ae98216319ba6b92dc7e69f8"
+  "materialization_catalog_digest": "sha256:38fa72efb44b0262f85944579d1ef0f50e7b54f711410afa946d07bff518cae6",
+  "catalog_digest": "sha256:0aab3aa1d5da6ccaeef9a92ac6de93b89b91839e746d963c5c514b5411a48f64"
 }

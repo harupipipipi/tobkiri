@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:f62b3056f08814a7f8db80950072ebd115af3b71ef669a22a6ffce19caf53acf",
+      "digest": "sha256:4600336bb87f44defab6b5b6c5320336eaa1c2a155e19783793769107f1df1fd",
+      "kind": "asset",
+      "path": "asset_index.yaml"
+    },
+    {
+      "digest": "sha256:b450bf14a5ebfd674af29d4a415d87b19604991c7966e773ef8c68a5a186fc56",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:71886d6c72ce2adc90ced40cc1da740a8466236987cf1c591b00274954112d0b",
-    "contract_catalog_digest": "sha256:8d7e3f2be8916dbd38a32a261a5942127ec1c11acdb2c3e0f0662f2674ff7a53",
-    "source_identity": "sha256:35a746d23770e95302397587eaef1a0c9ba2258ffaaa5f0c7193a155ccf5ac04"
+    "artifact_set_digest": "sha256:2d03b8c20b174ccc967bb33ae7d8bb14e8a9d3b67469392ff9d43066ad64a933",
+    "contract_catalog_digest": "sha256:b418356f1e9119aa17b4ab74f8294e7c7f60405bf388b77b5fffd8479cf9d2c6",
+    "source_identity": "sha256:c7b05c6d489310f2c705885ebaf49a5c85e6890e235b5dcf91a014639430d195"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:71886d6c72ce2adc90ced40cc1da740a8466236987cf1c591b00274954112d0b",
+    "artifact_digest": "sha256:2d03b8c20b174ccc967bb33ae7d8bb14e8a9d3b67469392ff9d43066ad64a933",
     "display_name": "Rumi Meeting Intelligence Pack",
     "id": "rumi_meeting_intelligence_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:35a746d23770e95302397587eaef1a0c9ba2258ffaaa5f0c7193a155ccf5ac04",
+        "digest": "sha256:c7b05c6d489310f2c705885ebaf49a5c85e6890e235b5dcf91a014639430d195",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:35a746d23770e95302397587eaef1a0c9ba2258ffaaa5f0c7193a155ccf5ac04",
+    "source_digest": "sha256:c7b05c6d489310f2c705885ebaf49a5c85e6890e235b5dcf91a014639430d195",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_meeting_intelligence_pack"
   },

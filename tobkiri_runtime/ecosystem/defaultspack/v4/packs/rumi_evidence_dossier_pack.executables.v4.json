@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_evidence_dossier_pack",
-  "source_identity": "sha256:4b3d6f2ad2d054cdcf7f3c6b5ebfecd19d14c8f9b926572860efb2ca212b3b81",
+  "source_identity": "sha256:9fba99e80c12a79ee78259cd5b932e5d03cba89aa743234b14ce6631ffd03ccd",
   "variants": [],
-  "materialization_catalog_digest": "sha256:dcfbb8f116ae65edf9a0e2e55955fb73b05f30fa75f998195e12ed39632e11d5",
-  "catalog_digest": "sha256:e8824ceccc220ae265ba446094737026d66ae70408ee28214bb0c70c1a3a3917"
+  "materialization_catalog_digest": "sha256:ce19bafbf1c458311345417f0701a2e08e9f51b39dc16ec6363b25d61c257e04",
+  "catalog_digest": "sha256:d981aaf629659390f5310d5c6052cd12af8116ef0ca4e15bc6edd32a12691dc1"
 }

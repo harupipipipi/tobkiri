@@ -1421,7 +1421,14 @@
       "pack_id": "rumi_agent_continuity_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:e3e0d2c1e59c93ab31e141b169a5ba4a232e1076ffc05ff715bf63badb7185d9",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -1840,7 +1847,14 @@
       "pack_id": "rumi_agent_workroom_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:cdd1fa81daef7322aead4f002dc41aa9d7c672caad83a0114ebbb199d7b6e35d",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -1883,7 +1897,14 @@
       "pack_id": "rumi_agentic_qa_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:acc7e0a832020baaa533cde967d4adb4ecaf44af0e41ad46623a39bd8ffc6469",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/acceptance_rubric.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -3092,7 +3113,14 @@
       "pack_id": "rumi_ambient_trigger_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:3cd80e3628c524e33983626946622b85e2394ad25a33dfce008950e2fc6d99c1",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "frontend_extensions/ambient_trigger.ui.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -3135,7 +3163,14 @@
       "pack_id": "rumi_api_toolsmith_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:7ce8d2cc9a1dd0c67042f47ede219dfce62397d9329a8e51bf856cf17c5ceff1",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/api_toolsmith_workflows.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -3277,7 +3312,14 @@
       "pack_id": "rumi_browser_element_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:e121e5124ce3ae7c3bdad9cacdf12bd18600a8992f2d4b9f2e3bd7cd6e1c170b",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/element_schema.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -3320,7 +3362,14 @@
       "pack_id": "rumi_browser_form_operator_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:a01f8db972fc6f61f0104f35200e6503f7c3ce5408e0993f5816cb0fe051b0ca",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/form_action_recipes.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -3511,7 +3560,14 @@
       "pack_id": "rumi_browser_session_replay_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:e8905874026844a19c64645d20fbdc6b8adfb0f81d3b925dbad3577d0f709da6",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -3554,7 +3610,14 @@
       "pack_id": "rumi_business_ops_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:3fec883e8deb46a0c65b6a5e2e5958f2af3650bc3f608b91ecfdd108d903436d",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/business_ops_workflows.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -3801,7 +3864,14 @@
       "pack_id": "rumi_code_migration_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:66740223ccefd760189433dd251b8226046da79c8a83fc88bd91b81ea25877f7",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -4899,7 +4969,14 @@
       "pack_id": "rumi_connector_gateway_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:257d7172b16cee4043206de2443ba8f05aad7912c45081382b3e03ca258b082c",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/connectors.gateway.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -7331,7 +7408,14 @@
       "pack_id": "rumi_document_intelligence_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:bc89a2d0dd326329a1868481e99be9c1dc6164ef6b02bb5c6ea9f05e4b533db9",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "schemas/citation_trace.schema.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -7485,7 +7569,14 @@
       "pack_id": "rumi_evidence_dossier_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:9409ea2827eda1debe94cb08a4ea1636fa88f127b1e950294f13ebbee34d76e6",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -7528,7 +7619,14 @@
       "pack_id": "rumi_experiment_design_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:85a7dcc9d10fa4486bee74437272fbb928af1e4d1200e938caf961f920e6010c",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -7968,7 +8066,14 @@
       "pack_id": "rumi_frontend_design_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:512594fdf9d3fe5c0f9d7340552b4411d5b8b2040072c4a960558e99e9b0d584",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "schemas/component_acceptance.schema.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -8968,7 +9073,14 @@
       "pack_id": "rumi_host_capabilities_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:34ff7ec1e6954fbc69fe10ac50b1a153b8b50b6d899f270a5545e5f5da8d06d1",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "policies/host_capability_boundary.policy.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -9870,7 +9982,14 @@
       "pack_id": "rumi_knowledge_marketplace_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:856e92189ecccc2b5e5209316fc7cbb88509e45dd2a4eb3f63cbae8bbed07481",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "frontend_extensions/marketplace_preview.ui.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -10191,7 +10310,14 @@
       "pack_id": "rumi_localization_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:6c8473a4a541d381faa2d79c282779d8ed430c696b19cedd2acd8b9fe35312ee",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "schemas/locale_issue.schema.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -10826,7 +10952,14 @@
       "pack_id": "rumi_meeting_intelligence_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:4600336bb87f44defab6b5b6c5320336eaa1c2a155e19783793769107f1df1fd",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -10915,7 +11048,14 @@
       "pack_id": "rumi_memory_knowledge_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:e3ff49926f09c29ab9b81ec503c9ce0f0773369d866148eb507402103ac0e8e2",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/capabilities.memory.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -11710,7 +11850,14 @@
       "pack_id": "rumi_multimodal_media_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:d2e1e4a8adbaf335bf6a5d8781853a426617b06c695a540190958e9540b0df7e",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/artifact_schema.media.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -11766,7 +11913,14 @@
       "pack_id": "rumi_observability_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:6cab43bde21b219439cf4bdf95a0547007f4818aeceacd860eb2aec5e07e49fe",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "schemas/observability_event.schema.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -11863,7 +12017,14 @@
       "pack_id": "rumi_omnichannel_agent_inbox_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:dd79c0f5bd37d5571ddb4040334c58a6529d1315bb3e9c5766b24d860ced458e",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -11937,7 +12098,14 @@
       "pack_id": "rumi_operations_company_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:ab45b027ff4ec985f1b385a6a341f2c8de06f1c74375dfb1c865a12c42d1e20f",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "frontend_extensions/operations_company.ui.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -13317,7 +13485,14 @@
       "pack_id": "rumi_runtime_benchmark_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:bc005dbd1f4ed9e9d0f1c70294180a4884cce35b03044a516c45e3d782d34ba2",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "schemas/metric_record.schema.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -13360,7 +13535,14 @@
       "pack_id": "rumi_sandbox_runtime_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:d3fb8b9c2518d1b6126f9dec846cbcd20a1b359c82127746f5fe202547db3829",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/runtime_matrix.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -13978,7 +14160,14 @@
       "pack_id": "rumi_security_review_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:7f19094cce192c3d84b3145905da5d26ea2099d1be521d5f2834749bb11df2c2",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/finding_schema.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -14439,7 +14628,14 @@
       "pack_id": "rumi_sop_mining_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:a89986c199934e0492e5b07bdf182a004f8566b22155e75ba1db1f0c62ceaada",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "schemas/sop_mining_record.schema.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -14482,7 +14678,14 @@
       "pack_id": "rumi_study_coach_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:d463989ce4f6c059c9786f20abf0570870f5ef1728830ca0f9f8846c42450fb4",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -14830,7 +15033,14 @@
       "pack_id": "rumi_subagent_pr_manager_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:dbc1b2d2a8a00d44d2063177f6cca91767ad8333e4971aed3e1daedc005c1330",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/pr_acceptance_rubric.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -14873,7 +15083,14 @@
       "pack_id": "rumi_telephony_delegate_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:d8a136617109a39598e4a1801a82dfefbebec878a96c4bbc02c6b559b1a0f7e6",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "asset_index.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -17277,7 +17494,14 @@
       "pack_id": "rumi_voice_mobile_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:c7771a85b8b243d8826ea8cde3d668c71cbd6f53959709b6b7a3dafb1cec8754",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/voice_mobile_workflows.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -17320,7 +17544,14 @@
       "pack_id": "rumi_workflow_scheduler_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:fc3029cf6ef970ca5426fcbe7bb87e6c3605a1908c54a68808dd4bcbb9df4add",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/delivery_handoffs.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -17530,7 +17761,14 @@
       "pack_id": "rumi_workspace_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:65902b917ed5627f7ac2e865f3a19b84de1e91014a453c4dad723b43bb5d3cd4",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "catalog/artifact_types.workspace.yaml"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {
@@ -17573,7 +17811,14 @@
       "pack_id": "search_home_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:2df0c57e8f0ffa49798f8461b9b763210e0c8fe3520607780f13f1c2df1dae0b",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "nodes/search_home_surface.node.json"
+        }
+      ],
       "secrets": [],
       "source_evidence": [
         {

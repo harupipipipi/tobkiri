@@ -1,7 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:369f34070197b81205f46aa0142f5c1a81276728171f1119867d37a46699cf4e",
+      "digest": "sha256:d2e1e4a8adbaf335bf6a5d8781853a426617b06c695a540190958e9540b0df7e",
+      "kind": "asset",
+      "path": "catalog/artifact_schema.media.yaml"
+    },
+    {
+      "digest": "sha256:e561621ce1f20844cf03dbca04a1a859d79e16d586a29615d3761bd24f06b7b6",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +14,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:4f889333dd2f5d1e58710b44a6749c45efaa82b928335aae689dfb8b294d9697",
-    "contract_catalog_digest": "sha256:f6b66277b4948cb408fc9f8887d5c40e099be70ed264e66195d59a0a52a7c496",
-    "source_identity": "sha256:c6272eca785014a9a756db91da8d379bc4e3b6e84980d9d57ac0d91d459e9bbd"
+    "artifact_set_digest": "sha256:87eab2926665b389748f516abf5b38a105f11c0f14dd1e28ecd4214067b344e6",
+    "contract_catalog_digest": "sha256:f79345f6b8bcabbafcd7501d4cf2d439d874a20628011051e1a63cc680635e71",
+    "source_identity": "sha256:e728cd6c5223e83606ffa94b33b6259240c391fbc1812fdccb5f789bee5c698b"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +29,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:4f889333dd2f5d1e58710b44a6749c45efaa82b928335aae689dfb8b294d9697",
+    "artifact_digest": "sha256:87eab2926665b389748f516abf5b38a105f11c0f14dd1e28ecd4214067b344e6",
     "display_name": "Rumi Multimodal Media Pack",
     "id": "rumi_multimodal_media_pack",
     "kind": "application",
@@ -34,7 +39,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:c6272eca785014a9a756db91da8d379bc4e3b6e84980d9d57ac0d91d459e9bbd",
+        "digest": "sha256:e728cd6c5223e83606ffa94b33b6259240c391fbc1812fdccb5f789bee5c698b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +50,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:c6272eca785014a9a756db91da8d379bc4e3b6e84980d9d57ac0d91d459e9bbd",
+    "source_digest": "sha256:e728cd6c5223e83606ffa94b33b6259240c391fbc1812fdccb5f789bee5c698b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_multimodal_media_pack"
   },
