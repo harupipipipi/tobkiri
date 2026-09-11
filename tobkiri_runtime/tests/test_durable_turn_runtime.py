@@ -12,6 +12,7 @@ import pytest
 
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
+from tobkiri_protocol.canonical import canonical_digest
 
 PAYLOAD = {
     "profile_id": "defaults",
@@ -47,6 +48,14 @@ def test_saved_claim_has_one_winner_across_independent_stores(tmp_path: Path) ->
     assert record["status"] == "running"
     assert record["revision"] == 2
     assert len(record["events"]) == 2
+    claim_details = record["events"][-1]["details"]
+    for role in ("user", "assistant"):
+        assert claim_details[f"{role}_message_id"] == (
+            "message:"
+            + canonical_digest(["conversation", "turn", role]).removeprefix(
+                "sha256:"
+            )
+        )
     assert store.claim_saved(SAVED_PAYLOAD) == {"claimed": False, "turn": record}
 
 
