@@ -224,3 +224,72 @@ def test_host_credential_lease_completes_one_verified_tls_request(
     assert not any(
         thread.name == "tobkiri-http-deadline" for thread in threading.enumerate()
     )
+
+
+@pytest.mark.parametrize("phase", ["dns", "tls"])
+@pytest.mark.parametrize("change", ["revoke", "epoch"])
+def test_authority_changed_during_connection_cannot_send_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tls_server: tuple[ssl.SSLContext, Path], phase: str, change: str,
+) -> None:
+    """A completed DNS/TLS wait cannot revive the prior credential authority."""
+    tls, certificate = tls_server
+    received: list[str] = []
+
+    def reply(handler: BaseHTTPRequestHandler) -> None:
+        received.append(handler.command)
+        _reply(handler, b'{"message":"unapproved effect"}')
+
+    context = ssl.create_default_context(cafile=str(certificate))
+    monkeypatch.setattr(ssl, "create_default_context", lambda **_kwargs: context)
+    _, connections = _pin_test_network(monkeypatch)
+    with _server(reply, tls) as origin:
+        owner, arguments = _https_transport(tmp_path, endpoint_origin=origin)
+        audits = []
+        owner._audit_sink = audits.append
+        changed = False
+
+        def invalidate() -> None:
+            nonlocal changed
+            assert not changed
+            changed = True
+            if change == "epoch":
+                owner._authority_store.advance_security_epoch("TLS fixture fence")
+            else:
+                owner._authority_store.revoke(
+                    target_kind="function_principal",
+                    target_id=owner._binding.provider_principal_id,
+                    reason="TLS fixture revoke",
+                )
+            assert not owner._authority_still_active()
+
+        if phase == "dns":
+            resolve = socket.getaddrinfo
+
+            def resolve_then_revoke(*args, **kwargs):
+                result = resolve(*args, **kwargs)
+                invalidate()
+                return result
+
+            monkeypatch.setattr(socket, "getaddrinfo", resolve_then_revoke)
+        else:
+            connect = transport._PinnedHTTPSConnection.connect
+
+            def connect_then_revoke(connection):
+                connect(connection)
+                invalidate()
+
+            monkeypatch.setattr(
+                transport._PinnedHTTPSConnection, "connect", connect_then_revoke,
+            )
+        with pytest.raises(transport.CredentialTransportDenied):
+            owner.post_json(**arguments)
+        assert changed
+        assert all(item["status"] != "completed" for item in audits)
+        with pytest.raises(transport.CredentialTransportDenied):
+            owner.post_json(**arguments)
+    assert received == []
+    assert len(connections) == (0 if phase == "dns" else 1)
+    assert not any(
+        thread.name == "tobkiri-http-deadline" for thread in threading.enumerate()
+    )

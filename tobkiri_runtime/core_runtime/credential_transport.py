@@ -441,6 +441,7 @@ class HostBoundCredentialTransport:
                 deadline=deadline_started + initial_remaining,
                 cancellation=self._envelope.cancellation_requested,
                 clock=self._monotonic_clock,
+                authority_check=self._authority_still_active,
             ) as response:
                 response_bytes = response.read(_MAX_RESPONSE_BYTES + 1)
                 if len(response_bytes) > _MAX_RESPONSE_BYTES:
@@ -1075,13 +1076,16 @@ def _open_pinned_request(
     deadline: float | None = None,
     cancellation: Event | None = None,
     clock: Callable[[], float] = time.monotonic,
+    authority_check: Callable[[], bool] | None = None,
 ) -> JsonResponse:
     """Open one non-redirecting request to an egress-vetted, DNS-pinned peer."""
     lifetime = HttpRequestLifetime(
         timeout=timeout, deadline=deadline, cancellation=cancellation, clock=clock,
     )
     try:
-        return _open_pinned_response(request, lifetime=lifetime)
+        return _open_pinned_response(
+            request, lifetime=lifetime, authority_check=authority_check,
+        )
     except BaseException:
         lifetime.close()
         raise
@@ -1089,6 +1093,7 @@ def _open_pinned_request(
 
 def _open_pinned_response(
     request: urllib.request.Request, *, lifetime: HttpRequestLifetime,
+    authority_check: Callable[[], bool] | None = None,
 ) -> JsonResponse:
     parsed = urllib.parse.urlsplit(request.full_url)
     origin = _origin(request.full_url)
@@ -1116,6 +1121,8 @@ def _open_pinned_response(
     last_error: OSError | None = None
     for address in addresses:
         lifetime.check()
+        if authority_check is not None and not authority_check():
+            raise CredentialTransportDenied("binding_invalid")
         if parsed.scheme == "https":
             connection: http.client.HTTPConnection = _PinnedHTTPSConnection(
                 host,
@@ -1143,6 +1150,9 @@ def _open_pinned_response(
             lifetime.attach(connection.sock)
             connection.sock.settimeout(lifetime.remaining())
             connection.auto_open = 0
+            # DNS/TLS may have waited across a durable revocation or epoch fence.
+            if authority_check is not None and not authority_check():
+                raise CredentialTransportDenied("binding_invalid")
             lifetime.check()
             connection.request(request.get_method(), path, body=body, headers=headers)
             response = connection.getresponse()
