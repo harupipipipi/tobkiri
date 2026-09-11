@@ -36,9 +36,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:875de058af53bf84ee896b096de72efe668dd40a1204b49efe583f65578667a9",
+      "artifact_digest": "sha256:3b5c629cc5950f8f5cf878c829d9effbc3e4f2b29efbdf56b1195e42aef709ac",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:cb2cc66db0959f038d3bd06c28a6693511ed75876fe6061deab83b3e3651b105"
+      "source_identity": "sha256:dd57377b8b7869e98a772c47f4a8ef598b5b20a99d260bb0806a0a8db5839173"
     },
     "description": "Declarative local-first security and privacy review pack for threat modeling, secret scanning review, permission review, MCP/browser risk, dependency review, and release signoff.",
     "executable_code": false,
@@ -48,7 +48,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:cb2cc66db0959f038d3bd06c28a6693511ed75876fe6061deab83b3e3651b105"
+      "source_content_hash": "sha256:dd57377b8b7869e98a772c47f4a8ef598b5b20a99d260bb0806a0a8db5839173"
     },
     "grant_override": false,
     "license": "MIT",
@@ -71,7 +71,7 @@
   "pack_identity": "rumi:ecosystem/rumi_security_review_pack",
   "provenance": {
     "build_identity": "rumi_security_review_pack:1.0.0",
-    "content_hash": "sha256:875de058af53bf84ee896b096de72efe668dd40a1204b49efe583f65578667a9",
+    "content_hash": "sha256:3b5c629cc5950f8f5cf878c829d9effbc3e4f2b29efbdf56b1195e42aef709ac",
     "signature": null,
     "trust_class": "local"
   },

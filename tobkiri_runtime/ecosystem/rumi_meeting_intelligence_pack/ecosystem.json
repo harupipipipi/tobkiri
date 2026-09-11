@@ -66,9 +66,9 @@
     },
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:343eab2a3b11b681bbb1bbfde3f9a51f23eb1994e907f4b0a608b01fdbca7fe4",
+      "artifact_digest": "sha256:71886d6c72ce2adc90ced40cc1da740a8466236987cf1c591b00274954112d0b",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:f911340a02d617776953a06282fa38a7e2643ef9c6ae82af362ffafbf82d3764"
+      "source_identity": "sha256:35a746d23770e95302397587eaef1a0c9ba2258ffaaa5f0c7193a155ccf5ac04"
     },
     "consumes_existing_sources_only": true,
     "declarative_only": true,
@@ -79,7 +79,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:f911340a02d617776953a06282fa38a7e2643ef9c6ae82af362ffafbf82d3764"
+      "source_content_hash": "sha256:35a746d23770e95302397587eaef1a0c9ba2258ffaaa5f0c7193a155ccf5ac04"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -138,7 +138,7 @@
   "pack_identity": "rumi:ecosystem/rumi_meeting_intelligence_pack",
   "provenance": {
     "build_identity": "rumi_meeting_intelligence_pack:0.1.0",
-    "content_hash": "sha256:343eab2a3b11b681bbb1bbfde3f9a51f23eb1994e907f4b0a608b01fdbca7fe4",
+    "content_hash": "sha256:71886d6c72ce2adc90ced40cc1da740a8466236987cf1c591b00274954112d0b",
     "signature": null,
     "trust_class": "local"
   },

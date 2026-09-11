@@ -52,9 +52,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:aca616bafa7bc604625f9cb00aaef8dfb91e6d01d781a2393a647bf957b7a076",
+      "artifact_digest": "sha256:671bf5904ba4574f2c5c1a0702bf3ecc60f7cc6f3530373a1007b79f1924122f",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:78103daf20e7e622a2685fc36c8eadd88547a381e8a30c17c3dbbdde72a3804a"
+      "source_identity": "sha256:17ed3cedb97a014868188341b61afc4b87f249032e7587ca26fb242545ac2414"
     },
     "dependency_notes": {
       "defaultspack": "Uses defaultspack grants, approvals, audit, prompt/profile conventions, and core tool routing.",
@@ -68,7 +68,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:78103daf20e7e622a2685fc36c8eadd88547a381e8a30c17c3dbbdde72a3804a"
+      "source_content_hash": "sha256:17ed3cedb97a014868188341b61afc4b87f249032e7587ca26fb242545ac2414"
     },
     "grant_override": false,
     "legacy_annotations": {
@@ -121,7 +121,7 @@
   "pack_identity": "rumi:ecosystem/rumi_computer_control_pack",
   "provenance": {
     "build_identity": "rumi_computer_control_pack:1.0.0",
-    "content_hash": "sha256:aca616bafa7bc604625f9cb00aaef8dfb91e6d01d781a2393a647bf957b7a076",
+    "content_hash": "sha256:671bf5904ba4574f2c5c1a0702bf3ecc60f7cc6f3530373a1007b79f1924122f",
     "signature": null,
     "trust_class": "local"
   },

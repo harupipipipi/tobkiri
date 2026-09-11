@@ -8,9 +8,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:0bd4fca7423ab3df0a4899bbe6009a73b82eea6f46ca2114f6e9f265b7ac7fbe",
+      "artifact_digest": "sha256:5220b89a756d7756093d4b308064d93186fd73f3bba89f26f34bbfecd4aa04ea",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:1748289a3dab8d8afe2712a3f4d722e5c4c3a37abdb7905ac4b05b8ba2b49a28"
+      "source_identity": "sha256:81c8df7149eee4bdff65e71e861c8982fc8b2a7fe55f902f23a3da7a17ecf64c"
     },
     "description": "Typed local host capability broker for OS-facing Rumi operations.",
     "format": "rumi.ecosystem.v1",
@@ -19,7 +19,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:1748289a3dab8d8afe2712a3f4d722e5c4c3a37abdb7905ac4b05b8ba2b49a28"
+      "source_content_hash": "sha256:81c8df7149eee4bdff65e71e861c8982fc8b2a7fe55f902f23a3da7a17ecf64c"
     },
     "legacy_annotations": {
       "default_grants": {
@@ -85,7 +85,7 @@
   "pack_identity": "rumi:ecosystem/rumi_host_capabilities_pack",
   "provenance": {
     "build_identity": "rumi_host_capabilities_pack:0.1.0",
-    "content_hash": "sha256:0bd4fca7423ab3df0a4899bbe6009a73b82eea6f46ca2114f6e9f265b7ac7fbe",
+    "content_hash": "sha256:5220b89a756d7756093d4b308064d93186fd73f3bba89f26f34bbfecd4aa04ea",
     "signature": null,
     "trust_class": "local"
   },

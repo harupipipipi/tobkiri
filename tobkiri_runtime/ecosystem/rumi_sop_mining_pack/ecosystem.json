@@ -71,9 +71,9 @@
     },
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:5102398c55350d94472f8420f05b2d50aec423c6d0754f00524aefc22fcd6b98",
+      "artifact_digest": "sha256:37b99b504839c83b03b65e810b03591103bf7afca111978287b5d9bc24e25dd1",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398"
+      "source_identity": "sha256:791d3223e9412b8087ba149a2277f1a963bc80619f44bf834efe55226159f53f"
     },
     "declarative_only": true,
     "excluded_surfaces": [
@@ -94,7 +94,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398"
+      "source_content_hash": "sha256:791d3223e9412b8087ba149a2277f1a963bc80619f44bf834efe55226159f53f"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -151,7 +151,7 @@
   "pack_identity": "rumi:ecosystem/rumi_sop_mining_pack",
   "provenance": {
     "build_identity": "rumi_sop_mining_pack:0.1.0",
-    "content_hash": "sha256:5102398c55350d94472f8420f05b2d50aec423c6d0754f00524aefc22fcd6b98",
+    "content_hash": "sha256:37b99b504839c83b03b65e810b03591103bf7afca111978287b5d9bc24e25dd1",
     "signature": null,
     "trust_class": "local"
   },

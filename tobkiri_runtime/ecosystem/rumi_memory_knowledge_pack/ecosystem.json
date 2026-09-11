@@ -51,9 +51,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:20bf8969fba8106ff65e3276f32fb01c20e8030cb6ab2efc20a5f37d7190023d",
+      "artifact_digest": "sha256:d9631f55d1e73af9e8ec562bcea29cb81f12705916070b8d0cb3a95dd54781cc",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:369c8c953fe5519ac26858e0c910b9d3b4f6cb5c90d7d2f6fc4b176778dc4967"
+      "source_identity": "sha256:e2dfe102c67443ea6590399c0c252a48a90a6bac477f71867f6f0ee803fd0f01"
     },
     "declarative_only": true,
     "description": "Declarative local-first contracts for session recall, user profile memory, project knowledge, skill-learning proposals, hygiene, and evidence-backed recall.",
@@ -63,7 +63,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:369c8c953fe5519ac26858e0c910b9d3b4f6cb5c90d7d2f6fc4b176778dc4967"
+      "source_content_hash": "sha256:e2dfe102c67443ea6590399c0c252a48a90a6bac477f71867f6f0ee803fd0f01"
     },
     "inspired_by": [
       "Hermes-style persistent memory and session search",
@@ -84,7 +84,7 @@
   "pack_identity": "rumi:ecosystem/rumi_memory_knowledge_pack",
   "provenance": {
     "build_identity": "rumi_memory_knowledge_pack:1.0.0",
-    "content_hash": "sha256:20bf8969fba8106ff65e3276f32fb01c20e8030cb6ab2efc20a5f37d7190023d",
+    "content_hash": "sha256:d9631f55d1e73af9e8ec562bcea29cb81f12705916070b8d0cb3a95dd54781cc",
     "signature": null,
     "trust_class": "local"
   },

@@ -41,9 +41,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:68f6f16e72c86f6276a39282e662ad5e81912af4483caaa7cbe91054edf5e8c6",
+      "artifact_digest": "sha256:b288a852c50e397b879e2e6f7cac9d6e8bf25d7e33cccd7ff93fd75c6f53a4be",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36"
+      "source_identity": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f"
     },
     "description": "Declarative local-first workflow scheduler pack for recurring tasks, monitors, wakeups, follow-ups, cron-like schedules, delivery handoffs, retry policy, evidence, and stop conditions.",
     "executable_code": false,
@@ -53,7 +53,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36"
+      "source_content_hash": "sha256:519a1b939a1d81631e6a7b1e7b6ef74467bbb3a58bc69923a50da90a6f08d26f"
     },
     "implements_automations": false,
     "license": "MIT",
@@ -78,7 +78,7 @@
   "pack_identity": "rumi:ecosystem/rumi_workflow_scheduler_pack",
   "provenance": {
     "build_identity": "rumi_workflow_scheduler_pack:1.0.0",
-    "content_hash": "sha256:68f6f16e72c86f6276a39282e662ad5e81912af4483caaa7cbe91054edf5e8c6",
+    "content_hash": "sha256:b288a852c50e397b879e2e6f7cac9d6e8bf25d7e33cccd7ff93fd75c6f53a4be",
     "signature": null,
     "trust_class": "local"
   },

@@ -37,9 +37,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:2253f112c86f44d2574a2d25d0ce49929c62dcdae084a8d694b57597e4b12d21",
+      "artifact_digest": "sha256:ad304d92f638611a7978c415da7c4370b3271d60936b99f186452e560f04b27c",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:d0ed98248dc1acbcb5e2a71ad866aa19a3bf4c5297876ff342ad935c732f16e4"
+      "source_identity": "sha256:706176ee1b0b262a2132269bb434dfdb075c30b7a9c73036c7d137c904a23913"
     },
     "declarative_only": true,
     "description": "Declarative workspace artifact profiles, catalogs, presets, prompts, examples, exports, and background job recipes for document-oriented agent work.",
@@ -49,7 +49,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:d0ed98248dc1acbcb5e2a71ad866aa19a3bf4c5297876ff342ad935c732f16e4"
+      "source_content_hash": "sha256:706176ee1b0b262a2132269bb434dfdb075c30b7a9c73036c7d137c904a23913"
     },
     "inspired_by": [
       "Genspark-style artifact generation",
@@ -67,7 +67,7 @@
   "pack_identity": "rumi:ecosystem/rumi_workspace_pack",
   "provenance": {
     "build_identity": "rumi_workspace_pack:1.0.0",
-    "content_hash": "sha256:2253f112c86f44d2574a2d25d0ce49929c62dcdae084a8d694b57597e4b12d21",
+    "content_hash": "sha256:ad304d92f638611a7978c415da7c4370b3271d60936b99f186452e560f04b27c",
     "signature": null,
     "trust_class": "local"
   },
