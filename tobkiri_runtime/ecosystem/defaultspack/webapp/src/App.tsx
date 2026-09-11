@@ -115,7 +115,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -4115,6 +4115,25 @@ export function ChatApp() {
           if (turn.status === "running" || turn.status === "waiting") {
             turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
             if (disposed) return;
+          }
+          const terminalNotice = savedTurnTerminalNotice(
+            turn,
+            activeConversationId,
+            pendingRequest.operationId,
+          );
+          if (terminalNotice) {
+            const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {
+              if (error instanceof Error && /^HTTP (?:404|410)\b/.test(error.message)) return null;
+              throw error;
+            });
+            if (disposed) return;
+            if (conversation) setActiveConversation(conversation);
+            setError(terminalNotice);
+            forgetPendingRequest(activeConversationId);
+            replaceChatIdInUrl(activeConversationId, false);
+            setIsGenerating(false);
+            void refreshConversations(activeConversationId);
+            return;
           }
           if (turn.status !== "completed") {
             const conversation = await api.getConversation(activeConversationId).catch((error: unknown) => {

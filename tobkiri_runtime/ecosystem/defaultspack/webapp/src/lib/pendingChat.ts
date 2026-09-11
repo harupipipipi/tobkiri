@@ -86,6 +86,21 @@ export function savedTurnProgressNotice(state: SavedTurnProgressState): string {
   return "turn 台帳は未完了です。保存状態を照合中のため自動再送はしません。";
 }
 
+export function savedTurnTerminalNotice(
+  turn: SavedTurnResult["turn"],
+  conversationId: string,
+  turnId: string,
+): string | null {
+  if (turn.id !== turnId || turn.conversation_id !== conversationId) return null;
+  if (turn.status === "cancelled") {
+    return "送信の停止を確認しました。保存済みメッセージを表示し、自動再送はしません。";
+  }
+  if (turn.status === "failed") {
+    return "送信は失敗で終了しました。保存済みメッセージを表示し、自動再送はしません。";
+  }
+  return null;
+}
+
 export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;

@@ -8,6 +8,7 @@ import {
   savedTurnSnapshotNotice,
   savedTurnProgressNotice,
   savedTurnProgressState,
+  savedTurnTerminalNotice,
   updateSavedTurnNotice,
   isAssistantMessageStillRunning,
   shouldClearPendingAfterConversationRefresh,
@@ -186,6 +187,24 @@ test("pending saved turn distinguishes owner message persistence without authori
   assert.match(savedTurnProgressNotice("all_messages_saved_unconfirmed"), /完了状態/);
   assert.match(savedTurnProgressNotice("conversation_unavailable"), /取得できません/);
   assert.match(savedTurnProgressNotice("ledger_only"), /保存状態/);
+});
+
+test("only matching terminal saved turns stop reconciliation", () => {
+  const turn: SavedTurnResult["turn"] = {
+    id: "turn-1", conversation_id: "c1", status: "failed", revision: 4,
+  };
+  assert.match(savedTurnTerminalNotice(turn, "c1", "turn-1")!, /失敗で終了/);
+  assert.match(savedTurnTerminalNotice({ ...turn, status: "cancelled" }, "c1", "turn-1")!, /停止を確認/);
+  for (const candidate of [
+    { ...turn, status: "running" },
+    { ...turn, status: "waiting" },
+    { ...turn, status: "queued" },
+    { ...turn, status: "unknown" },
+    { ...turn, id: "other" },
+    { ...turn, conversation_id: "other" },
+  ]) {
+    assert.equal(savedTurnTerminalNotice(candidate, "c1", "turn-1"), null);
+  }
 });
 
 test("stale user-only pending is cleared after reload grace", () => {
