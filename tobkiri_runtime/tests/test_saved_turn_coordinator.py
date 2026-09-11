@@ -343,7 +343,7 @@ def test_invalid_acknowledgement_never_marks_completed(
     assert session.calls == 1
 
 
-@pytest.mark.parametrize("guard_call", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("guard_call", [1, 2, 3, 4, 5, 6])
 def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
     tmp_path: Path,
     guard_call: int,
@@ -358,10 +358,10 @@ def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
         if calls == guard_call:
             raise TimeoutError("original invocation is no longer active")
 
-    if guard_call <= 3:
+    if guard_call <= 4:
         with pytest.raises(TimeoutError):
             _run(store, session, guard)
-        if guard_call <= 2:
+        if guard_call <= 3:
             assert not store.path.exists()
         else:
             assert store.get("turn-1")["status"] == "queued"
@@ -369,7 +369,7 @@ def test_cancellation_and_deadline_guards_fence_dispatch_and_completion(
         result = _run(store, session, guard)
         assert result["status"] == "reconciliation_required"
         assert result["turn"]["status"] == "waiting"
-    assert session.calls == (1 if guard_call == 5 else 0)
+    assert session.calls == (1 if guard_call == 6 else 0)
 
 
 def test_duplicate_request_can_reconcile_commit_without_reexecuting_live_turn(
