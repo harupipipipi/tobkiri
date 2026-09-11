@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "ba2cb9d2b25cbf8d7b4df51317a167a8760891edf15ca6883aa7effadd0d0c1f",
+    "digest": "f3062be589affa401f8858cc89be8d3fbc3e84c46e134391630e1ff3826f5632",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5573,
-        "sha256": "8284c3b21b4a9a8029bee967384c028d11f8befd547ba54069195ed9d11da3ed"
+        "size": 5605,
+        "sha256": "798f95362249a2e2a542c4214f24ce981d3237eb20519c26f5c41ad8bee9ca0e"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 340097,
-        "sha256": "f89ccabde3c2057139a0e793a6a8c654444d15727b6ace85a343edbec9211f1a"
+        "size": 340619,
+        "sha256": "080e362eeb4a4fca1e098eca5755448ba95e1cb4eb70c9d71af84345576c96bb"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -1134,6 +1134,11 @@
         "sha256": "f0414dedb7c2edce7125fc7a568cab82075ee7db0e5fd347592d89d1758e3b9c"
       },
       {
+        "path": "src/lib/appLoadFailures.test.ts",
+        "size": 5777,
+        "sha256": "990de269bb9ca672767053be0aa14e082d21c2665f092f13f7b29526ee763388"
+      },
+      {
         "path": "src/lib/approvalPresentation.ts",
         "size": 6689,
         "sha256": "5e1c17325ff58b0ec230502f939db7cd2df8e16fe7e8828f188c1025edce2d31"
@@ -1901,7 +1906,7 @@
     ]
   },
   "bundle": {
-    "digest": "383f559183c60f23b4eb0401bc3dacdf3b1da1fc85d6f2d5d0bb8a6357c367d8",
+    "digest": "1e5bbd5ff158c126594b764cde8f25c37df1d52412e29f4d140856eac62df3f6",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1915,8 +1920,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2218869,
-        "sha256": "b69915c8bad811b668704cdf250518aa056233f30b5b31b8185ae6ec2016041e"
+        "size": 2219023,
+        "sha256": "c8571c16dcca67bf63446b04a85bb274b6a89539dddf9d1d9733cc204609f9f0"
       },
       {
         "path": "shell-rolldown-runtime.js",

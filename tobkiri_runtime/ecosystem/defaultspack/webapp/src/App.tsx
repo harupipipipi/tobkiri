@@ -3415,20 +3415,23 @@ export function ChatApp() {
   };
 
   const loadCodingWorkspaces = useCallback(async () => {
-    try {
-      const result = await api.listCodingWorkspaces();
-      setCodingWorkspaces(result.workspaces);
-      let selectedWorkspaceId = result.selected_workspace_id ?? result.workspaces[0]?.workspace_id ?? null;
-      setSelectedCodingWorkspaceId((current) => {
-        selectedWorkspaceId = current ?? selectedWorkspaceId;
-        return selectedWorkspaceId;
-      });
-      return { ...result, selected_workspace_id: selectedWorkspaceId };
-    } catch {
-      setCodingWorkspaces([]);
-      return { workspaces: [], selected_workspace_id: null };
-    }
+    const result = await api.listCodingWorkspaces();
+    setCodingWorkspaces(result.workspaces);
+    let selectedWorkspaceId = result.selected_workspace_id ?? result.workspaces[0]?.workspace_id ?? null;
+    setSelectedCodingWorkspaceId((current) => {
+      selectedWorkspaceId = current ?? selectedWorkspaceId;
+      return selectedWorkspaceId;
+    });
+    return { ...result, selected_workspace_id: selectedWorkspaceId };
   }, []);
+
+  const reportCodingLoadError = useCallback((loadError: unknown) => {
+    setError(loadError instanceof Error ? loadError.message : "ワークスペースを読み込めませんでした。");
+  }, []);
+
+  const refreshCodingWorkspaces = useCallback(() => {
+    void loadCodingWorkspaces().catch(reportCodingLoadError);
+  }, [loadCodingWorkspaces, reportCodingLoadError]);
 
   const activeConversationWorkspaceContext = useMemo(
     () => workspaceContextFromConversation(activeConversation),
@@ -3447,7 +3450,10 @@ export function ChatApp() {
     try {
       const [result, branchInfo] = await Promise.all([
         api.getCodingContext({ directory: codingDirectory, workspace_id: workspaceId }),
-        api.getGitBranch({ workspace_id: workspaceId }).catch(() => null),
+        api.getGitBranch({ workspace_id: workspaceId }).catch((branchError) => {
+          reportCodingLoadError(branchError);
+          return null;
+        }),
       ]);
       setCodingContext({
         branch: result.branch,
@@ -3459,10 +3465,11 @@ export function ChatApp() {
         entries: result.entries,
         git: result.git,
       });
-    } catch {
+    } catch (contextError) {
       setCodingContext(null);
+      throw contextError;
     }
-  }, [codingDirectory, effectiveWorkspaceId]);
+  }, [codingDirectory, effectiveWorkspaceId, reportCodingLoadError]);
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -3543,9 +3550,11 @@ export function ChatApp() {
 
   useEffect(() => {
     if (mode === "coding") {
-      void loadCodingWorkspaces().then((result) => loadCodingContext(result.selected_workspace_id ?? null));
+      void loadCodingWorkspaces()
+        .then((result) => loadCodingContext(result.selected_workspace_id ?? null))
+        .catch(reportCodingLoadError);
     }
-  }, [mode, loadCodingContext, loadCodingWorkspaces]);
+  }, [mode, loadCodingContext, loadCodingWorkspaces, reportCodingLoadError]);
 
   useEffect(() => {
     if (window.location.pathname !== "/coding") return;
@@ -3636,6 +3645,7 @@ export function ChatApp() {
           },
         });
       }
+      if (reason === "bootstrap") throw healthError;
     }
   }, [activeConversationId]);
 
@@ -6836,7 +6846,7 @@ export function ChatApp() {
       onWorkspaceSelect={handleCodingWorkspaceSelect}
       onWorkspaceCreate={() => void handleCodingWorkspacePickCreate()}
       onWorkspaceTrust={handleCodingWorkspaceTrust}
-      onWorkspacesRefresh={() => void loadCodingWorkspaces()}
+      onWorkspacesRefresh={refreshCodingWorkspaces}
     />
   ) : null;
   const isCalendarMode = activeWorkspaceKind === "calendar";
@@ -6996,8 +7006,8 @@ export function ChatApp() {
       onCodingWorkspaceSelect={handleCodingWorkspaceSelect}
       onCodingWorkspaceTrust={handleCodingWorkspaceTrust}
       onCodingWorkspaceCreate={handleCodingWorkspaceCreate}
-      onCodingWorkspacesRefresh={() => void loadCodingWorkspaces()}
-      onCodingContextRefresh={loadCodingContext}
+      onCodingWorkspacesRefresh={refreshCodingWorkspaces}
+      onCodingContextRefresh={() => void loadCodingContext().catch(reportCodingLoadError)}
       onProjectSelect={handleComposerProjectSelect}
       onProjectDirectorySelect={handleDirectorySelect}
       onProjectStoragePrepare={handlePrepareChatGroupStorage}
@@ -7180,7 +7190,7 @@ export function ChatApp() {
                   onWorkspaceSelect={handleCodingWorkspaceSelect}
                   onWorkspaceCreate={() => void handleCodingWorkspacePickCreate()}
                   onWorkspaceTrust={handleCodingWorkspaceTrust}
-                  onWorkspacesRefresh={() => void loadCodingWorkspaces()}
+                  onWorkspacesRefresh={refreshCodingWorkspaces}
                 />
               </div>
             ) : isSubagentWorkspace ? (
