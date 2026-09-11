@@ -27,6 +27,7 @@ from tobkiri_protocol.validation import validate_document  # noqa: E402
 ECOSYSTEM = ROOT / "ecosystem"
 CATALOG = ROOT / "schemas" / "manifest_authority.v1.json"
 PACK_V4_CATALOG = ROOT / "schemas" / "pack_v4_catalog.v1.json"
+MIGRATION_POLICY = ROOT / "schemas" / "legacy_manifest_migration_policy.v1.json"
 V4_PROJECTION_GENERATOR = "tobkiri.scripts.migrate_manifest_authority/v2"
 
 
@@ -357,7 +358,35 @@ def _schema_properties() -> set[str]:
     return set(schema["properties"])
 
 
-def _normalize_legacy(data: dict[str, Any]) -> dict[str, Any]:
+def _runtime_dependency_aliases(pack_ids: tuple[str, ...]) -> frozenset[str]:
+    """Load the finite dependency aliases retired by legacy projection."""
+
+    try:
+        policy = json.loads(MIGRATION_POLICY.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read legacy manifest migration policy: {exc}") from exc
+    aliases = policy.get("runtime_dependency_aliases")
+    valid = (
+        policy.get("policy_api_version")
+        == "io.tobkiri.legacy-manifest-migration-policy.v1"
+        and isinstance(aliases, list)
+        and bool(aliases)
+        and all(
+            isinstance(alias, str) and alias.strip() == alias and alias
+            for alias in aliases
+        )
+        and aliases == sorted(aliases)
+        and len(aliases) == len(set(aliases))
+        and set(aliases).issubset(pack_ids)
+    )
+    if not valid:
+        raise SystemExit("legacy manifest migration policy is invalid")
+    return frozenset(aliases)
+
+
+def _normalize_legacy(
+    data: dict[str, Any], *, runtime_dependency_aliases: frozenset[str]
+) -> dict[str, Any]:
     result = dict(data)
     metadata = result.get("metadata")
     metadata = dict(metadata) if isinstance(metadata, dict) else {}
@@ -381,11 +410,14 @@ def _normalize_legacy(data: dict[str, Any]) -> dict[str, Any]:
     elif depends_on is not None:
         annotations["depends_on"] = depends_on
     dependencies = result.get("dependencies")
-    if isinstance(dependencies, dict) and "defaultspack" in dependencies:
-        annotations["runtime_dependency_aliases"] = ["defaultspack"]
+    if isinstance(dependencies, dict):
+        aliases = sorted(set(dependencies) & runtime_dependency_aliases)
         dependencies = dict(dependencies)
-        dependencies.pop("defaultspack", None)
-        result["dependencies"] = dependencies
+        for alias in aliases:
+            dependencies.pop(alias, None)
+        if aliases:
+            annotations["runtime_dependency_aliases"] = aliases
+            result["dependencies"] = dependencies
     elif isinstance(dependencies, list):
         runtime_aliases = []
         filtered = []
@@ -395,8 +427,9 @@ def _normalize_legacy(data: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(dependency, dict)
                 else dependency
             )
-            if str(dependency_id or "").strip() == "defaultspack":
-                runtime_aliases.append("defaultspack")
+            normalized_dependency_id = str(dependency_id or "").strip()
+            if normalized_dependency_id in runtime_dependency_aliases:
+                runtime_aliases.append(normalized_dependency_id)
                 continue
             filtered.append(dependency)
         if runtime_aliases:
@@ -429,6 +462,7 @@ def migrate(*, check: bool) -> None:
     pack_ids = tuple(str(item) for item in pack_catalog.get("pack_ids") or ())
     if len(pack_ids) != len(set(pack_ids)):
         raise SystemExit("canonical Pack catalog contains duplicate IDs")
+    runtime_dependency_aliases = _runtime_dependency_aliases(pack_ids)
     pack_roots = [ECOSYSTEM / pack_id for pack_id in sorted(pack_ids)]
     if any(not root.is_dir() for root in pack_roots):
         raise SystemExit("canonical Pack catalog references a missing Pack root")
@@ -451,7 +485,8 @@ def migrate(*, check: bool) -> None:
             continue
         v4 = _load_v4(root)
         ecosystem = _normalize_legacy(
-            json.loads(ecosystem_path.read_text(encoding="utf-8"))
+            json.loads(ecosystem_path.read_text(encoding="utf-8")),
+            runtime_dependency_aliases=runtime_dependency_aliases,
         )
         v3_path = root / "rumi.pack.v3.json"
         artifact_index_hash = _normalize_artifact_index(

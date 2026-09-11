@@ -48,36 +48,6 @@
       "violation_category": "product_pack_branch"
     },
     {
-      "identity": "product_pack_branch|tobkiri_runtime/scripts/migrate_manifest_authority.py|ast-v1:10be2c9f5973df8f2e6f|host|defaultspack",
-      "rule": "product_pack_branch",
-      "path": "tobkiri_runtime/scripts/migrate_manifest_authority.py",
-      "line": 340,
-      "fingerprint": "ast-v1:10be2c9f5973df8f2e6f",
-      "source": "host",
-      "target": "defaultspack",
-      "owner": "pack-architecture",
-      "reason": "Observed in the integrated full-v4 candidate and left unreviewed by Phase 0; remove or explicitly adjudicate before the sunset.",
-      "introduced_at": "2026-09-01",
-      "fix_by_wave": 10,
-      "sunset_at": "2027-09-01",
-      "violation_category": "product_pack_branch"
-    },
-    {
-      "identity": "product_pack_branch|tobkiri_runtime/scripts/migrate_manifest_authority.py|ast-v1:98802abd2457df68eafe|host|defaultspack",
-      "rule": "product_pack_branch",
-      "path": "tobkiri_runtime/scripts/migrate_manifest_authority.py",
-      "line": 354,
-      "fingerprint": "ast-v1:98802abd2457df68eafe",
-      "source": "host",
-      "target": "defaultspack",
-      "owner": "pack-architecture",
-      "reason": "Observed in the integrated full-v4 candidate and left unreviewed by Phase 0; remove or explicitly adjudicate before the sunset.",
-      "introduced_at": "2026-09-01",
-      "fix_by_wave": 10,
-      "sunset_at": "2027-09-01",
-      "violation_category": "product_pack_branch"
-    },
-    {
       "identity": "product_pack_reference|.github/scripts/build_sealed_python_environment.py|ast-v1:e5a40c0c3793d2550336|host|defaultspack",
       "rule": "product_pack_reference",
       "path": ".github/scripts/build_sealed_python_environment.py",

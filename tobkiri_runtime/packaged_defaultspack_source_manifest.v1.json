@@ -3255,8 +3255,8 @@
     {
       "path": "scripts/migrate_manifest_authority.py",
       "type": "regular-file",
-      "size": 22066,
-      "sha256": "05380f64543dbab26ddb1c5e50be87c199818511f2d46d81de80a2012e1ebd04",
+      "size": 23508,
+      "sha256": "1ee0b2483a7733706ca5402b22dbb3dc174e180352d225906528dae0c8f46006",
       "executable": false
     },
     {

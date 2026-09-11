@@ -22,12 +22,83 @@ from scripts.offline_legacy_projection import (
     ManifestProjectionError,
     generate_legacy_ecosystem_projection,
 )
-from scripts.migrate_manifest_authority import _normalize_artifact_index
+from scripts.migrate_manifest_authority import (
+    _normalize_artifact_index,
+    _normalize_legacy,
+    _runtime_dependency_aliases,
+)
 from core_runtime.pack_artifact_integrity import verify_declared_artifacts
 from core_runtime.resolved_profile import ResolutionInput, resolve_profile
 
 ROOT = Path(__file__).resolve().parents[1]
 ECOSYSTEM = ROOT / "ecosystem"
+
+
+def test_legacy_runtime_dependency_aliases_are_policy_driven(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Projection removes only finite aliases declared by migration policy."""
+
+    policy = tmp_path / "migration-policy.json"
+    policy.write_text(
+        json.dumps(
+            {
+                "policy_api_version": (
+                    "io.tobkiri.legacy-manifest-migration-policy.v1"
+                ),
+                "runtime_dependency_aliases": ["runtime_alias"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "scripts.migrate_manifest_authority.MIGRATION_POLICY",
+        policy,
+    )
+
+    aliases = _runtime_dependency_aliases(("runtime_alias", "service_pack"))
+    normalized = _normalize_legacy(
+        {
+            "dependencies": {
+                "runtime_alias": ">=4.0.0",
+                "service_pack": ">=1.0.0",
+            }
+        },
+        runtime_dependency_aliases=aliases,
+    )
+
+    assert normalized["dependencies"] == {"service_pack": ">=1.0.0"}
+    assert normalized["metadata"]["legacy_annotations"][
+        "runtime_dependency_aliases"
+    ] == ["runtime_alias"]
+
+
+def test_legacy_runtime_dependency_alias_policy_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown, duplicate, or unordered aliases cannot silently alter migration."""
+
+    policy = tmp_path / "migration-policy.json"
+    policy.write_text(
+        json.dumps(
+            {
+                "policy_api_version": (
+                    "io.tobkiri.legacy-manifest-migration-policy.v1"
+                ),
+                "runtime_dependency_aliases": ["unknown_alias"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "scripts.migrate_manifest_authority.MIGRATION_POLICY",
+        policy,
+    )
+
+    with pytest.raises(SystemExit, match="migration policy is invalid"):
+        _runtime_dependency_aliases(("service_pack",))
 
 
 def test_every_repository_pack_has_one_explicit_authority() -> None:
