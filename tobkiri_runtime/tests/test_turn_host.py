@@ -156,7 +156,7 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
         "allowed_contract_ids": SAVED_CONTRACTS,
         "consumer_pack_id": "rumi_turn_runtime_pack",
     }]
-    assert len(guards) == 6
+    assert len(guards) == 8
     assert invoke(factory.operation_id, session.initial, invocation) == {
         "status": "existing", "turn": result["turn"],
     }
