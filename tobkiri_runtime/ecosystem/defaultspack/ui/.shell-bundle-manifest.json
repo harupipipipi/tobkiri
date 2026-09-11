@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "f3062be589affa401f8858cc89be8d3fbc3e84c46e134391630e1ff3826f5632",
+    "digest": "4fe1680aea9770939bc28d0dbffec8888884fbe3eb68fd44fd72673675b0818d",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 340619,
-        "sha256": "080e362eeb4a4fca1e098eca5755448ba95e1cb4eb70c9d71af84345576c96bb"
+        "size": 341039,
+        "sha256": "d752f24d2f622a56719edd5d9c6047b8bd3fdece5251da32a713114a212da0f6"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -1130,8 +1130,8 @@
       },
       {
         "path": "src/lib/api.ts",
-        "size": 186150,
-        "sha256": "f0414dedb7c2edce7125fc7a568cab82075ee7db0e5fd347592d89d1758e3b9c"
+        "size": 186241,
+        "sha256": "b970d06299feb08b852a9b63b6aa29d12205783d00e1967ea551f0f55a2545ac"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1490,13 +1490,13 @@
       },
       {
         "path": "src/lib/pendingChat.test.ts",
-        "size": 5851,
-        "sha256": "3ad3aee5244c3cfb01216396686aebce2ca845b548661e7da585396c45c09f06"
+        "size": 8166,
+        "sha256": "0eefbce0df14110ee984d961c1d152133646be6c63404f0d5049fef4f3846939"
       },
       {
         "path": "src/lib/pendingChat.ts",
-        "size": 4699,
-        "sha256": "b9145252a20bc85b03e2588ce4a919df09de67d9c96779dbd7ac8cfcbb9a0bf9"
+        "size": 7150,
+        "sha256": "d7266d3c316ff408f1dfd5f708740f7f34d8acc107614bc9fb20caf690b41f82"
       },
       {
         "path": "src/lib/placement.test.ts",
@@ -1906,7 +1906,7 @@
     ]
   },
   "bundle": {
-    "digest": "1e5bbd5ff158c126594b764cde8f25c37df1d52412e29f4d140856eac62df3f6",
+    "digest": "5a0553e81509e4b48919e48d9910a0ec08cff940d53e2b50827c7d252b6c4d1c",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1920,8 +1920,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2219023,
-        "sha256": "c8571c16dcca67bf63446b04a85bb274b6a89539dddf9d1d9733cc204609f9f0"
+        "size": 2220372,
+        "sha256": "c2d520333cbc53e0913af2231c130049367c1d010b7f6091c573f21be908ce04"
       },
       {
         "path": "shell-rolldown-runtime.js",
