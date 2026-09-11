@@ -488,6 +488,14 @@ def _failure_settlement(
         or result.get("assistant_persistence")
         not in {"not_written", "unknown"}
         or type(result.get("reconciliation_required")) is not bool
+        or (
+            result.get("reconciliation_required") is False
+            and "unknown"
+            in {
+                result.get("user_persistence"),
+                result.get("assistant_persistence"),
+            }
+        )
     ):
         raise ValueError("saved failure acknowledgement is invalid")
     uncertain = result["reconciliation_required"]

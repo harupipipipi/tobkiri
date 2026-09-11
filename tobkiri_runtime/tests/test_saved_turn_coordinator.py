@@ -303,6 +303,26 @@ def test_confirmed_ai_error_is_terminal_without_replay_or_diagnostic_leak(
     assert session.calls == session.ai_calls == 1
 
 
+def test_unknown_persistence_cannot_be_forged_into_a_terminal_failure(
+    tmp_path: Path,
+) -> None:
+    session = _Session(tmp_path)
+    session.ai_outcome = {"status": "ok", "value": {"status": "error"}}
+    session.transform = lambda result: {
+        **result,
+        "user_persistence": "unknown",
+        "reconciliation_required": False,
+    }
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    result = _run(store, session)
+    assert result["status"] == "reconciliation_required"
+    assert result["turn"]["status"] == "waiting"
+    assert result["turn"]["events"][-1]["details"] == {
+        "phase": "reconciliation_required",
+        "reason": "saved_execution_outcome_unconfirmed",
+    }
+
+
 def test_lifecycle_identity_is_required_before_saved_dispatch(tmp_path: Path) -> None:
     session = _Session(tmp_path)
     store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
