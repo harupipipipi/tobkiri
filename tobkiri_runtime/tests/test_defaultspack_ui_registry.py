@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +30,20 @@ def _assert_v4_ui_boundary() -> None:
     assert_retired_module_absent("core_runtime.interface_registry")
     assert_legacy_registry_fails_closed()
     assert_profile_resolver_requires_authority_snapshot()
+
+
+def _owner_bound_frontend_registry(pack_root: Path) -> Any:
+    """Build the legacy projection with an explicit isolated settings owner."""
+    from domain.frontend.registry import FrontendRegistry
+    from domain.frontend_settings_store import defaultspack_frontend_settings_path
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return FrontendRegistry(
+        pack_root=pack_root,
+        settings_owner=FrontendSettingsStore(
+            defaultspack_frontend_settings_path(pack_root)
+        ),
+    )
 
 
 class TestDefaultspackUiRegistry(unittest.TestCase):
@@ -954,8 +969,6 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertFalse(malformed["general"]["manual_runtime_mode_selection"])
 
     def test_keyboard_navigation_migrates_legacy_default_once(self):
-        from domain.frontend.registry import FrontendRegistry
-
         fixture_path = Path(__file__).parent / "fixtures" / (
             "frontend_settings_keyboard_navigation_legacy.json"
         )
@@ -966,7 +979,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             )
             settings_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(fixture_path, settings_path)
-            registry = FrontendRegistry(pack_root=pack_root)
+            registry = _owner_bound_frontend_registry(pack_root)
 
             first = registry.get_settings(lightweight=True)["values"]
             persisted_after_first_read = settings_path.read_text(encoding="utf-8")
@@ -1090,11 +1103,9 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                         self.assertEqual(backups[0].stat().st_mode & 0o777, 0o640)
 
     def test_keyboard_navigation_explicit_false_is_preserved_and_marked(self):
-        from domain.frontend.registry import FrontendRegistry
-
         with tempfile.TemporaryDirectory() as tmpdir:
             pack_root = Path(tmpdir)
-            registry = FrontendRegistry(pack_root=pack_root)
+            registry = _owner_bound_frontend_registry(pack_root)
             migrated = registry.update_settings(
                 {"general": {"keyboard_button_navigation": False}}
             )
@@ -1120,8 +1131,6 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             self.assertEqual(settings_mode, 0o600)
 
     def test_keyboard_navigation_future_version_false_is_not_migrated(self):
-        from domain.frontend.registry import FrontendRegistry
-
         with tempfile.TemporaryDirectory() as tmpdir:
             pack_root = Path(tmpdir)
             settings_path = (
@@ -1140,7 +1149,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            registry = FrontendRegistry(pack_root=pack_root)
+            registry = _owner_bound_frontend_registry(pack_root)
             values = registry.get_settings(lightweight=True)["values"]
             updated = registry.update_settings(
                 {
