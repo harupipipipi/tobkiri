@@ -653,3 +653,36 @@ def test_tool_invoke_requires_plan_even_with_trusted_yolo_context(tmp_path, monk
 
     assert result["status"] == "error"
     assert result["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"
+
+
+def test_tool_handler_receives_captured_settings_owner(monkeypatch):
+    captured_owner = object()
+    seen = {}
+    module = types.ModuleType("test_settings_owner_tool_handler")
+
+    def fake_handler(arguments, context, *, settings_owner=None):
+        seen["arguments"] = arguments
+        seen["context"] = context
+        seen["settings_owner"] = settings_owner
+        return {"result": "handled", "is_error": False, "widget": None}
+
+    module.fake_handler = fake_handler
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    executor = ToolExecutor(settings_owner=captured_owner)
+
+    result = executor._execute_handler(
+        {
+            "tool_id": "settings-owner-test",
+            "execution": {
+                "type": "handler",
+                "handler": f"{module.__name__}:fake_handler",
+            },
+        },
+        {"settings_owner": "payload-owner"},
+        {"settings_owner": "context-owner"},
+    )
+
+    assert result["is_error"] is False
+    assert seen["settings_owner"] is captured_owner
+    assert seen["arguments"]["settings_owner"] == "payload-owner"
+    assert seen["context"]["settings_owner"] == "context-owner"

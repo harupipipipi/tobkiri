@@ -1455,7 +1455,15 @@ class ToolExecutor:
         try:
             module = importlib.import_module(module_name)
             callable_obj = getattr(module, attr_name)
-            result = callable_obj(next_arguments, next_context)
+            handler_parameters = inspect.signature(callable_obj).parameters
+            if "settings_owner" in handler_parameters:
+                result = callable_obj(
+                    next_arguments,
+                    next_context,
+                    settings_owner=self._settings_owner,
+                )
+            else:
+                result = callable_obj(next_arguments, next_context)
         except Exception as exc:
             return {
                 "result": "Tool handler execution failed: {}".format(exc),

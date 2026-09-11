@@ -8,6 +8,10 @@ from _defaultspack_test_isolation import is_pack_test_child, run_pack_test
 
 class _FakeFrontendRegistry:
     updated_values = None
+    owners = []
+
+    def __init__(self, *, settings_owner=None):
+        type(self).owners.append(settings_owner)
 
     def get_settings(self, lightweight=False):
         assert lightweight is False
@@ -114,3 +118,39 @@ def test_settings_update_rejects_secret_fields_and_nested_secret_keys() -> None:
     assert protected_field["widget"]["error"]["code"] == "PROTECTED_SETTINGS_CHANGE"
     assert protected_value["widget"]["error"]["code"] == "PROTECTED_SETTINGS_VALUE"
     assert _FakeFrontendRegistry.updated_values is None
+
+
+def test_settings_tools_use_explicit_owner_instead_of_payload_value() -> None:
+    if not is_pack_test_child():
+        run_pack_test(
+            Path(__file__),
+            "test_settings_tools_use_explicit_owner_instead_of_payload_value",
+        )
+        return
+
+    from domain.tool import settings_tools
+
+    owner = object()
+    _FakeFrontendRegistry.owners = []
+    with patch.object(settings_tools, "FrontendRegistry", _FakeFrontendRegistry):
+        inspected = settings_tools.settings_inspect(
+            {"settings_owner": "payload-owner"},
+            settings_owner=owner,
+        )
+        updated = settings_tools.settings_update(
+            {
+                "settings_owner": "payload-owner",
+                "changes": [
+                    {
+                        "section_id": "general",
+                        "field_id": "compact",
+                        "value": True,
+                    }
+                ],
+            },
+            settings_owner=owner,
+        )
+
+    assert inspected["is_error"] is False
+    assert updated["is_error"] is False
+    assert _FakeFrontendRegistry.owners == [owner, owner]

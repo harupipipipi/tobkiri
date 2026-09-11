@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from domain.frontend.registry import FrontendRegistry
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from ._agent_os_common import err, ok
 from .schema_adapter import list_or_empty
@@ -61,8 +62,12 @@ def _safe_field(section_id: str, field: dict[str, Any]) -> bool:
     )
 
 
-def _catalog() -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    settings = FrontendRegistry().get_settings(lightweight=False)
+def _catalog(
+    *, settings_owner: SettingsOwnerPort | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    settings = FrontendRegistry(settings_owner=settings_owner).get_settings(
+        lightweight=False
+    )
     sections = settings.get("sections") if isinstance(settings, dict) else []
     values = settings.get("values") if isinstance(settings, dict) else {}
     return (
@@ -128,6 +133,8 @@ def _normalize_value(field: dict[str, Any], value: Any) -> tuple[bool, Any]:
 def settings_inspect(
     arguments: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     del context
     data = arguments if isinstance(arguments, dict) else {}
@@ -137,7 +144,7 @@ def settings_inspect(
         for item in data.get("section_ids", [])
         if str(item).strip()
     } if isinstance(data.get("section_ids"), list) else set()
-    sections, values = _catalog()
+    sections, values = _catalog(settings_owner=settings_owner)
     result = []
     for section in sections:
         section_id = str(section.get("id") or "").strip()
@@ -189,6 +196,8 @@ def settings_inspect(
 def settings_update(
     arguments: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     del context
     data = arguments if isinstance(arguments, dict) else {}
@@ -198,7 +207,7 @@ def settings_update(
     if len(changes) > 50:
         return err("at most 50 setting changes may be applied at once", "TOO_MANY_SETTINGS_CHANGES")
 
-    registry = FrontendRegistry()
+    registry = FrontendRegistry(settings_owner=settings_owner)
     current = registry.get_settings(lightweight=False)
     sections = current.get("sections") if isinstance(current, dict) else []
     values = current.get("values") if isinstance(current, dict) else {}
