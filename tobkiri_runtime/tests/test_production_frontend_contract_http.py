@@ -62,8 +62,13 @@ from tobkiri_host.backends import (
 )
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.effects import ProviderOutcome
-from tobkiri_host.errors import BackendUnavailableError
-from tobkiri_host.models import ExecutionKind, OpaqueAuthorityRef, RuntimeEvidence
+from tobkiri_host.errors import AuthorizationError, BackendUnavailableError
+from tobkiri_host.models import (
+    ExecutionKind,
+    InvocationFrame,
+    OpaqueAuthorityRef,
+    RuntimeEvidence,
+)
 from tobkiri_protocol.canonical import canonical_digest
 from tests.conformance_support.host_contract import host_contract
 
@@ -1462,6 +1467,38 @@ def test_external_session_cannot_borrow_a_provider_only_edge(production_server) 
             "rumi_ai_gateway_pack.ai-gateway.generate",
             "external-panel-session",
         )
+
+
+def test_external_session_cannot_borrow_preferences_write_edge(
+    settings_vertical_server,
+    tmp_path: Path,
+) -> None:
+    _server, session, _authority = settings_vertical_server
+    contract_id = "tobkiri.action.ui.preferences.v1"
+    operation_id = "tobkiri_ui_settings_pack.preferences-write"
+    context = session.context_for(contract_id, operation_id, "settings-shell-session")
+    scope = session.effect_scope_for(contract_id, operation_id, {}, context)
+    provider = session.provider_metadata(contract_id)[0]
+    different_caller = replace(
+        context,
+        caller_principal=OpaqueAuthorityRef(str(provider["principal_id"])),
+    )
+    frame = InvocationFrame(
+        contract_id=contract_id,
+        version_range=None,
+        operation_id=operation_id,
+        payload={
+            "profile_id": "defaults",
+            "changes": {"general": {"language": "ja"}},
+            "expected_revision": 0,
+        },
+    )
+
+    with pytest.raises(AuthorizationError, match="static authorization failed"):
+        session.broker.invoke(frame, different_caller, effect_scope=scope)
+    assert not (
+        tmp_path / "user-data/defaultspack/shared/frontend_settings.json"
+    ).exists()
 
 
 def test_command_protocol_paths_are_inert_in_captured_production_http(
