@@ -1,13 +1,7 @@
 {
-  "../../../../../Users/haru/Desktop/puroguramukei/issue_review/tobikiri-pr-1322/tobkiri_launcher/frontend/node_modules/@tauri-apps/api/core.js": {
-    "file": "assets/core-SwWLTXZB.js",
-    "isDynamicEntry": true,
-    "name": "core",
-    "src": "../../../../../Users/haru/Desktop/puroguramukei/issue_review/tobikiri-pr-1322/tobkiri_launcher/frontend/node_modules/@tauri-apps/api/core.js"
-  },
   "_Card-BFaGvZV4.js": {
     "dynamicImports": [
-      "../../../../../Users/haru/Desktop/puroguramukei/issue_review/tobikiri-pr-1322/tobkiri_launcher/frontend/node_modules/@tauri-apps/api/core.js"
+      "node_modules/@tauri-apps/api/core.js"
     ],
     "file": "assets/Card-BFaGvZV4.js",
     "name": "Card"
@@ -83,6 +77,12 @@
     "isEntry": true,
     "name": "index",
     "src": "index.html"
+  },
+  "node_modules/@tauri-apps/api/core.js": {
+    "file": "assets/core-SwWLTXZB.js",
+    "isDynamicEntry": true,
+    "name": "core",
+    "src": "node_modules/@tauri-apps/api/core.js"
   },
   "src/pages/AiInput.tsx": {
     "file": "assets/AiInput-BK_4LKo2.js",
