@@ -70,6 +70,13 @@ test("screen route resolution binds URL identity and declared non-Chat entries",
     kind: "redirect",
     destination: "/p/coding-profile/coding",
   });
+  assert.equal(
+    resolveProfileScreenRequest("/p/coding-profile", {
+      ...codingCatalog,
+      selected_entry_route: "/missing",
+    }).kind,
+    "reject",
+  );
   assert.deepEqual(resolveProfileScreenRequest("/p/coding-profile/coding", codingCatalog), {
     kind: "route",
     route: "/coding",

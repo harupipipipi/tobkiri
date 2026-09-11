@@ -120,6 +120,17 @@ export function resolveProfileScreenRequest(
     };
   }
   if (requested.applicationRoute === null) {
+    const selectedEntries = contributionsForRoute(
+      catalog,
+      catalog.selected_entry_route,
+      catalog.plan_hash,
+    );
+    if (selectedEntries.length !== 1) {
+      return {
+        kind: "reject",
+        reason: "The active Profile's selected Application entry is unavailable.",
+      };
+    }
     try {
       return {
         kind: "redirect",

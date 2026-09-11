@@ -376,11 +376,12 @@ function linkText(children: ReactNode): string {
 function SafeChatLink({ href, children }: { href?: string; children: ReactNode }) {
   const [reviewing, setReviewing] = useState(false);
   const [status, setStatus] = useState("");
+  const appLocation = typeof window === "undefined" ? undefined : window.location.href;
   const decision = useMemo(() => classifyChatLink(
     href,
     linkText(children),
-    typeof window === "undefined" ? undefined : window.location.origin,
-  ), [children, href]);
+    appLocation,
+  ), [appLocation, children, href]);
   const destination = decision.host || decision.normalizedUrl || "invalid destination";
 
   const open = () => {
