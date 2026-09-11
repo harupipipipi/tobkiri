@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "a9f5d21442e892b42ec811762dea08c07de745769f466fcaa65873ddbbe092e8",
+    "digest": "ba2cb9d2b25cbf8d7b4df51317a167a8760891edf15ca6883aa7effadd0d0c1f",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5540,
-        "sha256": "2308649bb3fb708cdd0dd3922a405bf8f1d2b47308dd7b1e40ae7440518740b8"
+        "size": 5573,
+        "sha256": "8284c3b21b4a9a8029bee967384c028d11f8befd547ba54069195ed9d11da3ed"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -195,8 +195,8 @@
       },
       {
         "path": "src/ambient/AmbientTriggerPanel.tsx",
-        "size": 110721,
-        "sha256": "de1c18102b01150b8f9c11a1caa9923e9bbc88d7717cae9636452fca7925a835"
+        "size": 110867,
+        "sha256": "f83f067ca2a1f2146a414198bd6b1f73491c039334d8b4f289b69983dfba456f"
       },
       {
         "path": "src/ambient/AmbientTriggerStatusIcon.tsx",
@@ -215,8 +215,8 @@
       },
       {
         "path": "src/ambient/ambientApprovalBoundary.test.ts",
-        "size": 22061,
-        "sha256": "0bc08d8dd095edfec227c038fbd4970b1f267f7957042336c8af754c8b1b4507"
+        "size": 22133,
+        "sha256": "dfe259b181ffd1d53748469cb3f057d92106d86a3a38cbd0c7a7141dde431ade"
       },
       {
         "path": "src/ambient/ambientConversationCompletion.ts",
@@ -1350,8 +1350,8 @@
       },
       {
         "path": "src/lib/desktopApproval.ts",
-        "size": 3608,
-        "sha256": "7377ec1ab909819ca731b7c57196367aa7d94c0d9ab0d009c5dfae28fab2acad"
+        "size": 2782,
+        "sha256": "52eed481b04b796f82ab5a451377a841651a325e69e1061b19f8dfce106e75f7"
       },
       {
         "path": "src/lib/desktopSystemInfo.test.ts",
@@ -1362,6 +1362,16 @@
         "path": "src/lib/desktopSystemInfo.ts",
         "size": 3453,
         "sha256": "a7888ea435bf9ab0d0a280e8886a39099b2c3f55771080e3ed05a4bd2bbadfcb"
+      },
+      {
+        "path": "src/lib/desktopTransport.test.ts",
+        "size": 2029,
+        "sha256": "7fdd3897bb98ae2fefc5ef83fc2b2c002119d76f4f4eb7d34b51edb4a6868013"
+      },
+      {
+        "path": "src/lib/desktopTransport.ts",
+        "size": 887,
+        "sha256": "947b9847363f3c012fd39e9f0856df685dbe8b30a661eff3ebb7039f84b08ff0"
       },
       {
         "path": "src/lib/duration.test.ts",
@@ -1891,7 +1901,7 @@
     ]
   },
   "bundle": {
-    "digest": "1073edcb42779f146557f98fd82629c7a56d2e714e9fee95c84ddbc803249263",
+    "digest": "383f559183c60f23b4eb0401bc3dacdf3b1da1fc85d6f2d5d0bb8a6357c367d8",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1905,8 +1915,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2218734,
-        "sha256": "8d4370ff0c8f035a024294f7016a4859da66a6e9afef6f200780cf2c09dcc4f0"
+        "size": 2218869,
+        "sha256": "b69915c8bad811b668704cdf250518aa056233f30b5b31b8185ae6ec2016041e"
       },
       {
         "path": "shell-rolldown-runtime.js",

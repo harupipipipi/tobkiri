@@ -1,37 +1,5 @@
 import type { AuthorityApprovalContext } from "./api";
-
-type TauriInvoke = <T = unknown>(command: string, args?: Record<string, unknown>) => Promise<T>;
-
-type TauriWindow = Window & {
-  __TAURI_INTERNALS__?: unknown;
-  __TAURI__?: {
-    core?: {
-      invoke?: TauriInvoke;
-    };
-  };
-};
-
-function tauriInvoke(): TauriInvoke | null {
-  const invoke = (window as TauriWindow).__TAURI__?.core?.invoke;
-  return typeof invoke === "function" ? invoke : null;
-}
-
-function isLikelyTauri(): boolean {
-  const maybeWindow = window as TauriWindow;
-  return Boolean(maybeWindow.__TAURI__ || maybeWindow.__TAURI_INTERNALS__);
-}
-
-async function loadTauriInvoke(): Promise<TauriInvoke | null> {
-  const globalInvoke = tauriInvoke();
-  if (globalInvoke) return globalInvoke;
-  if (!isLikelyTauri()) return null;
-  try {
-    const mod = await import("@tauri-apps/api/core");
-    return mod.invoke as TauriInvoke;
-  } catch {
-    return null;
-  }
-}
+import { loadTauriInvoke } from "./desktopTransport";
 
 export async function openAuthorityApprovalWindow(requestId: string): Promise<boolean> {
   const invoke = await loadTauriInvoke();
