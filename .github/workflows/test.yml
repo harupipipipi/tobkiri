@@ -305,6 +305,7 @@ jobs:
             tests/test_continuation_session.py \
             tests/test_macos_vz_supervisor.py \
             tests/test_macos_vz_registration.py \
+            tests/test_macos_vz_provisioner.py \
             tests/test_packvm_guest_bridge_runner.py \
             tests/test_saved_guest_dispatch.py \
             tests/test_saved_host_exchange.py \

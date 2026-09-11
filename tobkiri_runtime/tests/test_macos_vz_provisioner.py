@@ -1543,8 +1543,19 @@ def test_explicit_lima_injection_stays_out_of_production_composition(
     assert not invocation_marker.exists()
 
 
+@pytest.fixture
+def isolated_default_vz_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> Path:
+    """Keep default-factory recovery away from an existing user's VM journal."""
+    state_dir = tmp_path / "default-vz-state"
+    state_dir.mkdir(mode=0o700)
+    monkeypatch.setattr(macos_vz_provisioner, "_default_state_dir", lambda: state_dir)
+    return state_dir
+
+
 def test_development_default_accepts_only_the_launcher_selected_app_bundle(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, isolated_default_vz_state: Path,
 ) -> None:
     bundle = tmp_path / "Tobkiri Launcher Dev.app"
     manifest = bundle / "Contents/Resources/packvm-vz-provisioning.v1.json"
@@ -1559,10 +1570,12 @@ def test_development_default_accepts_only_the_launcher_selected_app_bundle(
 
     assert lifecycle._provisioner._bundle_root == bundle.resolve()
     assert lifecycle._provisioner._asset_manifest_path == manifest.resolve()
+    assert lifecycle._provisioner.state_path.parent == isolated_default_vz_state
+    assert (isolated_default_vz_state / "packvm-operations.lock").is_file()
 
 
 def test_production_ignores_development_packvm_bundle_override(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, isolated_default_vz_state: Path,
 ) -> None:
     monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
     monkeypatch.setenv(
@@ -1575,6 +1588,8 @@ def test_production_ignores_development_packvm_bundle_override(
     )
 
     assert lifecycle._provisioner._bundle_root is None
+    assert lifecycle._provisioner.state_path.parent == isolated_default_vz_state
+    assert (isolated_default_vz_state / "packvm-operations.lock").is_file()
 
 
 def _helper_process_for_test(response: bytes) -> _MacOSVZHelperProcess:
