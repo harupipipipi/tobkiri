@@ -7,7 +7,7 @@ import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -1724,17 +1724,23 @@ class AIClient:
             )
         return active
 
-    def list_profiles(self, provider=None):
+    def list_profiles(
+        self,
+        provider=None,
+        *,
+        settings: dict[str, Any] | None = None,
+    ):
         active_provider_ids = self._active_provider_ids()
         profiles = build_profile_catalog(
             active_provider_ids=active_provider_ids,
             custom_profiles=self._profiles,
         )
         try:
-            from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+            if isinstance(settings, dict):
+                from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
-            service = ModelRuntimeSettingsService()
-            profiles.extend(service.runtime_defined_profiles(service.get_settings()))
+                service = ModelRuntimeSettingsService()
+                profiles.extend(service.runtime_defined_profiles(settings))
             profiles.extend(self._api_key_bound_profiles())
         except Exception:
             pass

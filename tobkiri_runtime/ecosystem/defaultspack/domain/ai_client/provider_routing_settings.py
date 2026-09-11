@@ -117,13 +117,12 @@ def normalize_provider_list(value: Any) -> list[str]:
     return output
 
 
-def normalize_gateway_routing_settings(values: dict[str, Any] | None = None, *, pack_root: Path | None = None) -> dict[str, Any]:
-    if values is None:
-        try:
-            from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
-            values = ModelRuntimeSettingsService(_pack_root(pack_root)).get_settings()
-        except Exception:
-            values = {}
+def normalize_gateway_routing_settings(
+    values: dict[str, Any] | None = None,
+    *,
+    pack_root: Path | None = None,
+) -> dict[str, Any]:
+    """Normalize an explicit snapshot without reading ambient settings."""
     raw_values = dict(values or {})
     target = normalize_gateway_target(raw_values.get("gateway_routing_target"))
     for provider_id, prefix in (

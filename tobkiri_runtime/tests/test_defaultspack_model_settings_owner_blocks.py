@@ -270,3 +270,67 @@ def test_model_catalog_uses_only_the_supplied_settings_snapshot(
     assert capabilities is not None
     assert capabilities["supports_tool_calling"] is True
     assert seen == [settings, settings]
+
+
+def test_ai_client_profile_catalog_does_not_read_ambient_settings(
+    monkeypatch: Any,
+) -> None:
+    from domain.ai_client import client as client_module
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+
+    settings = {"snapshot": "captured-owner"}
+    seen: list[dict[str, Any]] = []
+    client = object.__new__(client_module.AIClient)
+    client._profiles = {}
+    monkeypatch.setattr(
+        client_module.AIClient,
+        "_active_provider_ids",
+        lambda self: {"captured"},
+    )
+    monkeypatch.setattr(
+        client_module.AIClient,
+        "_api_key_bound_profiles",
+        lambda self: [],
+    )
+    monkeypatch.setattr(client_module, "build_profile_catalog", lambda **kwargs: [])
+    monkeypatch.setattr(
+        ModelRuntimeSettingsService,
+        "get_settings",
+        lambda self: (_ for _ in ()).throw(AssertionError("ambient read")),
+    )
+    monkeypatch.setattr(
+        ModelRuntimeSettingsService,
+        "runtime_defined_profiles",
+        lambda self, value: seen.append(value)
+        or [
+            {
+                "profile_id": "captured/model",
+                "provider_id": "captured",
+            }
+        ],
+    )
+
+    profiles = client.list_profiles(settings=settings)
+
+    assert [profile["profile_id"] for profile in profiles] == ["captured/model"]
+    assert seen == [settings]
+
+
+def test_gateway_routing_normalization_does_not_read_ambient_settings(
+    monkeypatch: Any,
+) -> None:
+    from domain.ai_client import model_runtime_settings
+    from domain.ai_client.provider_routing_settings import (
+        normalize_gateway_routing_settings,
+    )
+
+    monkeypatch.setattr(
+        model_runtime_settings.ModelRuntimeSettingsService,
+        "get_settings",
+        lambda self: (_ for _ in ()).throw(AssertionError("ambient read")),
+    )
+
+    normalized = normalize_gateway_routing_settings()
+
+    assert normalized["gateway_routing_target"] == "all"
+    assert normalized["gateway_allow_fallbacks"] is True
