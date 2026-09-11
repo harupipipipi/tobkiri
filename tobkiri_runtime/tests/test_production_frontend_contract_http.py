@@ -501,7 +501,15 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.parametrize(
     "completion",
-    ["normal", "auto", "calculator", "system_prompt", "reply_lost", "stop_after_commit"],
+    [
+        "normal",
+        "auto",
+        "calculator",
+        "system_prompt",
+        "provider_error",
+        "reply_lost",
+        "stop_after_commit",
+    ],
 )
 def test_saved_send_http_preserves_authority_and_durable_idempotency(
     tmp_path: Path,
@@ -537,6 +545,8 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             return {"ready": True, "model_profile_id": "model-profile-1"}
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
+            if completion == "provider_error":
+                return {"status": "error", "private": "provider diagnostic"}
             if completion == "calculator":
                 assert [item["function"]["name"] for item in payload["tools"]] == ["calculator"]
                 if len(ai_calls) == 1:
@@ -682,6 +692,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 "turn_id": "turn-1",
                 "stopped": False,
             }
+        elif completion == "provider_error":
+            assert status == 200, payload
+            assert payload["data"]["status"] == "reconciliation_required"
+            assert payload["data"]["turn"]["status"] == "failed"
+            assert "provider diagnostic" not in json.dumps(payload)
         else:
             assert status == 200, payload
             assert payload["data"]["status"] == (
@@ -701,9 +716,23 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         else:
             assert repeated["data"] == {"status": "existing", "turn": payload["data"]["turn"]}
         completed_turn = repeated["data"]["turn"]
-        reference = completed_turn["result_reference"]
-        assert reference["conversation_revision"] == 3
         assert len(ai_calls) == (2 if completion == "calculator" else 1)
+        if completion == "provider_error":
+            assert completed_turn["status"] == "failed"
+            assert completed_turn["result_reference"] is None
+            assert completed_turn["events"][-1]["details"] == {
+                "phase": "saved_execution_failed",
+                "error_code": "AI_COMPLETION_UNAVAILABLE",
+                "user_persistence": "saved",
+                "assistant_persistence": "not_written",
+            }
+            assert [
+                message["content"]
+                for message in store.get("conversation-1")["messages"]
+            ] == ["Hello"]
+        else:
+            reference = completed_turn["result_reference"]
+            assert reference["conversation_revision"] == 3
         if completion == "system_prompt":
             assert len(prompt_reads) >= 4
             assert ai_calls[0]["messages"] == [
@@ -721,10 +750,11 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             assert "tools" not in ai_calls[0]
         if completion == "auto":
             assert selected_tools == [{"tools": [], "definitions": {}}] * 3
-        assert [message["content"] for message in store.get("conversation-1")["messages"]] == [
-            "Hello",
-            "Hi",
-        ]
+        if completion != "provider_error":
+            assert [
+                message["content"]
+                for message in store.get("conversation-1")["messages"]
+            ] == ["Hello", "Hi"]
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, snapshot, _ = _request(
             server,
@@ -733,11 +763,18 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
             headers=headers,
         )
         assert status == 200, snapshot
-        assert snapshot["data"]["conversation_revision"] == 3
-        assert [message["id"] for message in snapshot["data"]["messages"]] == [
-            reference["user_message_id"],
-            reference["assistant_message_id"],
-        ]
+        assert snapshot["data"]["conversation_revision"] == (
+            2 if completion == "provider_error" else 3
+        )
+        if completion == "provider_error":
+            assert [message["role"] for message in snapshot["data"]["messages"]] == [
+                "user"
+            ]
+        else:
+            assert [message["id"] for message in snapshot["data"]["messages"]] == [
+                reference["user_message_id"],
+                reference["assistant_message_id"],
+            ]
         assert all(
             message["conversation_id"] == "conversation-1"
             and message["metadata"]["turn_id"] == "turn-1"
