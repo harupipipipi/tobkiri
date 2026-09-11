@@ -49,6 +49,7 @@ class _Session:
         self.begin_transform = lambda value: value
         self.claim_transform = lambda value: value
         self.transform = lambda value: value
+        self.ai_outcome = {"status": "ok", "value": {"status": "ok", "output": "Hi"}}
 
     def provider_metadata(self, contract_id: str) -> tuple:
         return ()
@@ -90,16 +91,16 @@ class _Session:
         self.calls += 1
         self.events.append("saved_dispatch")
         intent = application.start(payload["request"])
-        for hop in range(4):
-            if hop == 2:
+        for _hop in range(20):
+            if intent.get("status") in {"ok", "error"}:
+                return self.transform(intent)
+            if intent["state"]["stage"] == "ai":
                 self.ai_calls += 1
-            outcome = (
-                {"status": "ok", "value": {"status": "ok", "output": "Hi"}}
-                if hop == 2
-                else _owner(self.conversations, intent, saved_input=self.initial)
-            )
+                outcome = self.ai_outcome
+            else:
+                outcome = _owner(self.conversations, intent, saved_input=self.initial)
             intent = application.resume(intent["state"], outcome)
-        return self.transform(intent)
+        raise AssertionError("saved continuation exceeded its hop bound")
 
 
 def _run(store: DurableTurnRuntime, session: _Session, guard=lambda: None, **options) -> dict:
@@ -275,6 +276,31 @@ def test_saved_execution_completes_once_and_keeps_transcript_in_conversation_own
         "begin_saved",
         "claim_saved",
     ]
+
+
+def test_confirmed_ai_error_is_terminal_without_replay_or_diagnostic_leak(
+    tmp_path: Path,
+) -> None:
+    session = _Session(tmp_path)
+    session.ai_outcome = {
+        "status": "ok",
+        "value": {"status": "error", "private": "provider diagnostic"},
+    }
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    result = _run(store, session)
+    assert result["status"] == "reconciliation_required"
+    assert result["turn"]["status"] == "failed"
+    assert result["turn"]["events"][-1]["details"] == {
+        "phase": "saved_execution_failed",
+        "error_code": "AI_COMPLETION_UNAVAILABLE",
+        "user_persistence": "saved",
+        "assistant_persistence": "not_written",
+    }
+    assert "provider diagnostic" not in json.dumps(result)
+    messages = session.conversations.get("conversation-1")["messages"]
+    assert [message["role"] for message in messages] == ["user"]
+    assert _run(store, session) == {"status": "existing", "turn": result["turn"]}
+    assert session.calls == session.ai_calls == 1
 
 
 def test_lifecycle_identity_is_required_before_saved_dispatch(tmp_path: Path) -> None:

@@ -163,7 +163,9 @@ def execute_saved_turn(
                 SAVED_CONVERSATION_CONTRACT, SAVED_CONVERSATION_OPERATION, initial
             )
             guard()
-            reference = _completed_reference(initial["request"], outcome)
+            failure = _failure_settlement(initial["request"], outcome)
+            if failure is None:
+                reference = _completed_reference(initial["request"], outcome)
     except Exception:
         # Dispatch may have committed effects before raising or losing its
         # reply. Never retry it or expose provider/parser exception contents.
@@ -176,6 +178,8 @@ def execute_saved_turn(
                 "reason": "saved_execution_outcome_unconfirmed",
             },
         )
+    if failure is not None:
+        return _settle(store, record, *failure)
     return _settle(store, record, "completed", {"result_reference": reference})
 
 
@@ -428,3 +432,73 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         "assistant_message_id": assistant_id,
         "outcome_digest": canonical_digest(result),
     }
+
+
+def _failure_settlement(
+    request: Mapping[str, Any], value: Any,
+) -> tuple[str, dict[str, Any]] | None:
+    """Validate a finite saved failure without treating it as a lost reply."""
+    encoded = canonical_json(value)
+    if len(encoded) > 512 * 1024:
+        raise ValueError("saved result exceeds byte limit")
+    result = strict_loads(encoded)
+    if not isinstance(result, dict) or result.get("status") != "error":
+        return None
+    expected_ids = {
+        role: "message:"
+        + canonical_digest(
+            [request["conversation_id"], request["turn_id"], role]
+        ).removeprefix("sha256:")
+        for role in ("user", "assistant")
+    }
+    error = result.get("error")
+    allowed_codes = {
+        "AI_COMPLETION_UNAVAILABLE",
+        "CONTEXT_RESOLUTION_REQUIRED",
+        "CONVERSATION_REVISION_CONFLICT",
+        "HOST_ACTION_FAILED",
+        "MODEL_REFERENCE_REQUIRED",
+        "OWNER_RESPONSE_INVALID",
+        "REQUIRED_TOOL_NOT_USED",
+        "TURN_RECONCILIATION_REQUIRED",
+    }
+    if (
+        set(result)
+        != {
+            "status",
+            "error",
+            "turn_id",
+            "conversation_id",
+            "user_message_id",
+            "assistant_message_id",
+            "user_persistence",
+            "assistant_persistence",
+            "reconciliation_required",
+        }
+        or not isinstance(error, dict)
+        or set(error) != {"code", "message"}
+        or error.get("code") not in allowed_codes
+        or error.get("message") != "Saved conversation did not complete."
+        or result.get("turn_id") != request["turn_id"]
+        or result.get("conversation_id") != request["conversation_id"]
+        or result.get("user_message_id") != expected_ids["user"]
+        or result.get("assistant_message_id") != expected_ids["assistant"]
+        or result.get("user_persistence")
+        not in {"not_written", "unknown", "saved"}
+        or result.get("assistant_persistence")
+        not in {"not_written", "unknown"}
+        or type(result.get("reconciliation_required")) is not bool
+    ):
+        raise ValueError("saved failure acknowledgement is invalid")
+    uncertain = result["reconciliation_required"]
+    return (
+        "waiting" if uncertain else "failed",
+        {
+            "phase": (
+                "reconciliation_required" if uncertain else "saved_execution_failed"
+            ),
+            "error_code": error["code"],
+            "user_persistence": result["user_persistence"],
+            "assistant_persistence": result["assistant_persistence"],
+        },
+    )
