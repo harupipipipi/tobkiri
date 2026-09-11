@@ -1,21 +1,17 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from blocks._common import ok, error, gen_id, timestamp
+from blocks._common import error, ok
 
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.model_search import get_model_capabilities
 from domain.chat.message_converter import convert_to_standard
 from domain.chat.modality_detector import detect_modalities
 from domain.chat.store import ChatStore
-from domain.vision.image_bridge import (
-    apply_vision_bridge_to_messages,
-    conversation_image_context,
-    describe_images,
-)
+from domain.vision.image_bridge import conversation_image_context, describe_images
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     store = ChatStore()
     conversation_id = input_data.get("conversation_id")
     if not conversation_id:
@@ -25,14 +21,29 @@ def run(input_data, context):
         return error("updates dict is required", "INVALID_INPUT")
     existing = store.get_conversation(conversation_id)
     if existing is not None and "model" in updates:
-        updates = _with_model_switch_compatibility(store, conversation_id, existing, updates, context or {})
+        updates = _with_model_switch_compatibility(
+            store,
+            conversation_id,
+            existing,
+            updates,
+            context or {},
+            settings_owner=settings_owner,
+        )
     conv = store.update_conversation(conversation_id, updates)
     if conv is None:
         return error("Conversation not found", "NOT_FOUND")
     return ok(conv)
 
 
-def _with_model_switch_compatibility(store, conversation_id, conversation, updates, context):
+def _with_model_switch_compatibility(
+    store,
+    conversation_id,
+    conversation,
+    updates,
+    context,
+    *,
+    settings_owner=None,
+):
     target_model = str(updates.get("model") or "").strip()
     if not target_model:
         return updates
@@ -47,7 +58,9 @@ def _with_model_switch_compatibility(store, conversation_id, conversation, updat
     has_images = any(detect_modalities(message.get("content"), message.get("metadata")).get("has_images") for message in messages if isinstance(message, dict))
     if not has_images:
         return updates
-    settings = ModelRuntimeSettingsService().get_settings()
+    settings = ModelRuntimeSettingsService(
+        settings_owner=settings_owner
+    ).get_settings()
     policy = str(settings.get("on_switch_to_non_vision_with_images") or "auto_bridge")
     if policy == "block":
         raise ValueError("target model does not support vision and conversation contains images")

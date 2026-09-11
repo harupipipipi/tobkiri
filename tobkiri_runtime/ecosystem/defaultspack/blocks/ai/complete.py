@@ -17,7 +17,7 @@ from domain.temporal_context import add_temporal_context_message, current_dateti
 LLMGateway = ContractLLMGateway
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     model = input_data.get("model")
     messages = input_data.get("messages")
     if not model:
@@ -28,7 +28,9 @@ def run(input_data, context):
     tools = input_data.get("tools", [])
     params = dict(input_data.get("params") or {})
     if "thinking_level" not in params:
-        params["thinking_level"] = ModelRuntimeSettingsService().get_effective_thinking_level(
+        params["thinking_level"] = ModelRuntimeSettingsService(
+            settings_owner=settings_owner
+        ).get_effective_thinking_level(
             profile_id=model,
             conversation_id=input_data.get("conversation_id"),
         )["level"]
