@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from tobkiri_protocol.settings_state import SettingsOwnerPort
 
@@ -71,7 +71,7 @@ def get_input_action_registry(*, settings_owner: SettingsOwnerPort | None = None
         return InputActionRegistry([
             InputActionSpec(
                 action_id,
-                partial(handler, settings_owner=settings_owner)
+                partial(cast(Any, handler), settings_owner=settings_owner)
                 if handler in (
                     handle_chat_message,
                     handle_agent_delegate,
