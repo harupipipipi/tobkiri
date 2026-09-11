@@ -15047,7 +15047,7 @@
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:37b58a5b49ab132a185541d170d7f8428ae47e4eaa13834c30a355c436e7a723",
+        "evidence_digest": "sha256:4922f9a1a2ef47137a9d5b15f97d919b74802c72c919d098b2f86b8e85797333",
         "line": 4,
         "path": "tobkiri_runtime/ecosystem/defaultspack/blocks/tool/setup.py",
         "rule_id": "legacy_interface_registry"
@@ -18411,7 +18411,7 @@
     ]
   },
   "repository": {
-    "commit": "5cfd07e6b793e742078a7dc12b3f87f71a97198b",
+    "commit": "e11f8181985fd28c609f9c264a737a2b3462d44e",
     "tree_digest": "4876f9498ae78a26fd817a9dd701b0827de41d9a26aa791918ef587518210927"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
