@@ -3321,30 +3321,20 @@ mod tests {
             "ecosystem/defaultspack/tools",
             "ecosystem/defaultspack/extensions/tools",
         ];
-        for root in roots {
+        for root in &roots {
             collect_source_files(&runtime_root, &runtime_root.join(root), &mut actual);
         }
-        for relative in [
-            "ecosystem/defaultspack/pack.v4.json",
-            "ecosystem/defaultspack/contracts.v4.json",
-            "ecosystem/defaultspack/artifact-index.v4.json",
-            "ecosystem/defaultspack/executables.v4.json",
-            "ecosystem/defaultspack/host_contract_contributions.v1.json",
-            "ecosystem/defaultspack/domain/runtime_surface_v4.py",
-            "ecosystem/defaultspack/update_metadata.v1.json",
-            "ecosystem/defaultspack/domain/frontend_settings_catalog.py",
-            "ecosystem/defaultspack/domain/frontend_builtin_catalog.py",
-            "ecosystem/defaultspack/domain/frontend_command_catalog.py",
-            "ecosystem/defaultspack/commands/default_commands.json",
-            "ecosystem/defaultspack/schemas/command-protocol-v1.schema.json",
-            "ecosystem/defaultspack/domain/frontend_settings_store.py",
-        ] {
+        for relative in expected.keys().filter(|relative| {
+            !roots
+                .iter()
+                .any(|root| relative.as_str() == *root || relative.starts_with(&format!("{root}/")))
+        }) {
             let path = runtime_root.join(relative);
             let metadata = fs::symlink_metadata(&path).expect("source file should exist");
             assert!(!metadata.file_type().is_symlink() && metadata.is_file());
             assert!(!has_multiple_links(&path, &metadata).unwrap());
             actual.insert(
-                relative.to_owned(),
+                relative.clone(),
                 serde_json::json!({
                     "path": relative,
                     "type": "regular-file",
