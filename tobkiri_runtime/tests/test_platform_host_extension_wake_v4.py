@@ -366,6 +366,70 @@ def test_platform_backend_tracks_concurrent_requests_in_one_resident_domain() ->
     assert backend._request_domains == {}
 
 
+def test_platform_backend_cancels_only_one_concurrent_resident_request() -> None:
+    """Cancelling one request neither fences nor stops its resident peer."""
+
+    started = {"request-a": Event(), "request-b": Event()}
+    releases = {"request-a": Event(), "request-b": Event()}
+
+    class ConcurrentCancelDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.cancelled: list[str] = []
+
+        def invoke(self, request: object) -> object:
+            request_id = getattr(getattr(request, "context", None), "request_id")
+            started[request_id].set()
+            assert releases[request_id].wait(timeout=3)
+            if getattr(request, "cancellation_requested").is_set():
+                raise BackendUnavailableError("cancelled request result was fenced")
+            return request
+
+        def cancel(self, request_id: str) -> None:
+            self.cancelled.append(request_id)
+            releases[request_id].set()
+
+    driver = ConcurrentCancelDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.concurrent-cancel",
+    )
+    evidence = backend.materialize(binding(), "reservation-concurrent-cancel")
+
+    def request(request_id: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+            context=SimpleNamespace(request_id=request_id),
+            cancellation_requested=Event(),
+        )
+
+    request_a = request("request-a")
+    request_b = request("request-b")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(backend.invoke, request_a)
+        future_b = executor.submit(backend.invoke, request_b)
+        assert started["request-a"].wait(timeout=3)
+        assert started["request-b"].wait(timeout=3)
+        assert backend._request_domains == {
+            "request-a": "domain.vz.concurrent-cancel",
+            "request-b": "domain.vz.concurrent-cancel",
+        }
+
+        request_b.cancellation_requested.set()
+        backend.cancel("request-b")
+        with pytest.raises(BackendUnavailableError, match="result was fenced"):
+            future_b.result(timeout=3)
+
+        assert not request_a.cancellation_requested.is_set()
+        releases["request-a"].set()
+        assert future_a.result(timeout=3) is request_a
+
+    assert driver.cancelled == ["request-b"]
+    assert backend._pending_requests == {}
+    assert backend._request_domains == {}
+
+
 def test_platform_backend_cancels_pending_request_before_domain_execution() -> None:
     """A started Future waiting on materialization never enters the guest late."""
 
