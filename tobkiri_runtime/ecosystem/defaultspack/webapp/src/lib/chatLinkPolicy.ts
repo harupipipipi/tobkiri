@@ -2,6 +2,7 @@ import {
   parseProfileScreenPath,
   profileScreenPath,
 } from "./profileRoute";
+import { isDefaultspackRouteKey } from "./api";
 
 export type ChatLinkKind = "internal" | "web" | "download" | "local" | "unsupported" | "malformed";
 
@@ -91,7 +92,7 @@ export function classifyChatLink(rawHref: string | undefined, visibleText = "", 
           textMismatch,
         };
       }
-    } else if (!parsed.pathname.startsWith("/api/")) {
+    } else if (!isDefaultspackRouteKey(parsed.pathname)) {
       if (!currentScreen) {
         return {
           kind: "internal",

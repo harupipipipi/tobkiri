@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { defaultspackCanonicalRouteKey } from "./api";
 import { classifyChatLink, openChatLink } from "./chatLinkPolicy";
 
 const ORIGIN = "http://127.0.0.1:38766/p/profile-a/chat";
@@ -24,9 +25,10 @@ test("internal links cannot select another Runtime Profile", () => {
 });
 
 test("API paths remain API paths rather than becoming screen routes", () => {
+  const turnRoute = defaultspackCanonicalRouteKey("api/chat/turn");
   assert.equal(
-    classifyChatLink("/api/chat/turn", "API", ORIGIN).normalizedUrl,
-    "/api/chat/turn",
+    classifyChatLink(turnRoute, "API", ORIGIN).normalizedUrl,
+    turnRoute,
   );
 });
 
