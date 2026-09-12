@@ -203,6 +203,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed={PANEL_BUILD_DIR_ENV}");
     println!("cargo:rerun-if-env-changed={PACKAGING_PYTHON_SNAPSHOT_ENV}");
     println!("cargo:rerun-if-env-changed={PACKAGING_PYTHON_INVENTORY_SHA_ENV}");
+    println!("cargo:rerun-if-env-changed={PACKAGING_SOURCE_SNAPSHOT_ENV}");
     println!("cargo:rerun-if-env-changed={MACOS_ARTIFACT_POLICY_ENV}");
     println!("cargo:rerun-if-env-changed={MACOS_CI_CERT_SHA256_ENV}");
     println!("cargo:rerun-if-env-changed={MACOS_CI_PUBLIC_KEY_ENV}");
