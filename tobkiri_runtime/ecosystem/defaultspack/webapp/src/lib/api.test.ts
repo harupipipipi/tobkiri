@@ -2581,7 +2581,7 @@ test("streamMessage forwards abort signal to fetch", async () => {
   assert.equal(seenSignal, controller.signal);
 });
 
-test("saved stop sends only turn identity and rejects false completion receipts", async () => {
+test("saved stop distinguishes requested and confirmed receipts", async () => {
   const originalFetch = globalThis.fetch;
   let response = { status: "cancellation_requested", turn_id: "turn-1", stopped: false };
   const calls: unknown[] = [];
@@ -2594,13 +2594,18 @@ test("saved stop sends only turn identity and rejects false completion receipts"
     });
   }) as typeof fetch;
   try {
-    await api.stopSavedTurn("turn-1");
-    response = { ...response, stopped: true };
+    assert.deepEqual(await api.stopSavedTurn("turn-1"), response);
+    response = { status: "stopped_confirmed", turn_id: "turn-1", stopped: true };
+    assert.deepEqual(await api.stopSavedTurn("turn-1"), response);
+    response = { ...response, status: "cancellation_requested" };
     await assert.rejects(api.stopSavedTurn("turn-1"), /receipt/);
     response = { ...response, stopped: false, turn_id: "other" };
     await assert.rejects(api.stopSavedTurn("turn-1"), /receipt/);
     await assert.rejects(api.stopSavedTurn("../invalid"), /stable turn ID/);
-    assert.deepEqual(calls, [{ turn_id: "turn-1" }, { turn_id: "turn-1" }, { turn_id: "turn-1" }]);
+    assert.deepEqual(calls, [
+      { turn_id: "turn-1" }, { turn_id: "turn-1" },
+      { turn_id: "turn-1" }, { turn_id: "turn-1" },
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
   }

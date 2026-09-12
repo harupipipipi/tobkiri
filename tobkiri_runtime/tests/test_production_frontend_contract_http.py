@@ -991,9 +991,9 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
                 status, receipt, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
                 assert status == 200, receipt
                 assert receipt["data"] == {
-                    "status": "cancellation_requested",
+                    "status": "stopped_confirmed",
                     "turn_id": "turn-stop-1",
-                    "stopped": False,
+                    "stopped": True,
                 }
                 assert observed.wait(2)
                 sent.result(timeout=5)

@@ -16898,7 +16898,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+              "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -16931,7 +16931,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+              "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -16964,7 +16964,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+              "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -16997,7 +16997,7 @@
             {
               "entrypoint_id": "turn-stop",
               "id": "rumi_turn_runtime_pack.turn-stop",
-              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+              "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -17034,15 +17034,40 @@
               ],
               "properties": {
                 "status": {
-                  "const": "cancellation_requested"
+                  "enum": [
+                    "cancellation_requested",
+                    "stopped_confirmed"
+                  ]
                 },
                 "turn_id": {
                   "type": "string"
                 },
                 "stopped": {
-                  "const": false
+                  "type": "boolean"
                 }
-              }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "status": {
+                      "const": "cancellation_requested"
+                    },
+                    "stopped": {
+                      "const": false
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "stopped_confirmed"
+                    },
+                    "stopped": {
+                      "const": true
+                    }
+                  }
+                }
+              ]
             },
             "error": {
               "type": "object",
@@ -17078,7 +17103,7 @@
             {
               "entrypoint_id": "turn-reconcile",
               "id": "rumi_turn_runtime_pack.turn-reconcile",
-              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+              "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -17142,7 +17167,7 @@
             {
               "entrypoint_id": "turn-saved",
               "id": "rumi_turn_runtime_pack.turn-saved",
-              "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136"
+              "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -17385,7 +17410,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+          "digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8",
           "kind": "executable",
           "path": "runtime/host.py"
         },

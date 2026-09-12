@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 import threading
 from typing import Callable, Iterator
 
 from .broker import RequestEnvelope
+
+
+@dataclass(frozen=True)
+class CancellationObservation:
+    """Host-owned observation that the signalled execution left its live scope."""
+
+    completed: threading.Event
 
 
 class OwnedCancellationHandles:
@@ -14,7 +22,7 @@ class OwnedCancellationHandles:
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._active: dict[tuple[object, ...], threading.Event] = {}
+        self._active: dict[tuple[object, ...], tuple[threading.Event, threading.Event]] = {}
         self._closed = False
 
     def bind(
@@ -46,7 +54,7 @@ class OwnedCancellationHandles:
         """Request shutdown, retaining handles until each executor actually exits."""
         with self._lock:
             self._closed = True
-            for signal in self._active.values():
+            for signal, _completed in self._active.values():
                 signal.set()
 
 
@@ -77,19 +85,24 @@ class OwnedCancellationBinding:
         with registry._lock:
             if self._role != "execute" or registry._closed or key in registry._active:
                 raise PermissionError("operation cancellation handle is unavailable")
-            registry._active[key] = self._signal
+            completed = threading.Event()
+            registry._active[key] = (self._signal, completed)
         try:
             yield
         finally:
             with registry._lock:
-                if registry._active.get(key) is self._signal:
+                current = registry._active.get(key)
+                if current == (self._signal, completed):
+                    completed.set()
                     del registry._active[key]
 
-    def request(self, reference: str) -> None:
-        """Signal one owned live execution, without claiming its effects stopped."""
+    def request(self, reference: str) -> CancellationObservation:
+        """Signal one owned live execution and expose only its scope-exit event."""
         key = self._key(reference)
         registry = self._registry
         with registry._lock:
             if self._role != "stop" or registry._closed or key not in registry._active:
                 raise PermissionError("operation cancellation handle is unavailable")
-            registry._active[key].set()
+            signal, completed = registry._active[key]
+            signal.set()
+            return CancellationObservation(completed=completed)

@@ -168,7 +168,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-    "source_digest": "sha256:05b70b541101e8c06689ffb6d5145fe8a4b02939b7d6c29bb89ba08f17edc905",
+    "source_digest": "sha256:9044c5f2ca96728847720bca6d398898d9a833df1dd4482439fb65e732aa2e72",
     "repository_commit": "working-tree",
     "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
     "generator": "tobkiri-profile-artifacts",
@@ -356,7 +356,7 @@
       "operation_id": "rumi_turn_runtime_pack.turn-stop",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:62e6c65fbf02bd9e418c024420b58a00aca58ad8fe314680e03d3bc621144721",
+        "semantics_digest": "sha256:3f5ff1b9da2dad13182a97d48ff8e5a270fb8fa3c42d254a943957713087790f",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.stop.v1"

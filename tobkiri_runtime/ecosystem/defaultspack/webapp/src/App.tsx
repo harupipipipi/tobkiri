@@ -4276,8 +4276,10 @@ export function ChatApp() {
       const notice = (status: string) => updatePendingRequests((current) =>
         updateSavedTurnNotice(current, conversationId, turnId, status));
       notice("停止を要求しています。停止済みとは扱わず、結果の照合を続けます。");
-      void api.stopSavedTurn(turnId).then(() => {
-        notice("停止要求を受け付けました。実行・保存結果の照合を続けます。");
+      void api.stopSavedTurn(turnId).then((receipt) => {
+        notice(receipt.stopped
+          ? "実行の停止を確認しました。保存結果の照合を続けます。"
+          : "停止要求を受け付けました。実行・保存結果の照合を続けます。");
       }).catch(() => {
         notice("停止要求の結果を確認できません。自動再送せず、実行・保存結果の照合を続けます。");
       });

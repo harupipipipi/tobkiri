@@ -3625,7 +3625,11 @@ export const api = {
     return result.turn;
   },
 
-  async stopSavedTurn(turnId: string): Promise<void> {
+  async stopSavedTurn(turnId: string): Promise<{
+    status: "cancellation_requested" | "stopped_confirmed";
+    turn_id: string;
+    stopped: boolean;
+  }> {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
       throw new Error("A stable turn ID is required for stopping.");
     }
@@ -3634,9 +3638,16 @@ export const api = {
         method: "POST", body: JSON.stringify({ turn_id: turnId }),
       },
     );
-    if (result?.status !== "cancellation_requested" || result.turn_id !== turnId || result.stopped !== false) {
+    const isRequested = result?.status === "cancellation_requested" && result.stopped === false;
+    const isStopped = result?.status === "stopped_confirmed" && result.stopped === true;
+    if ((!isRequested && !isStopped) || result.turn_id !== turnId) {
       throw new Error("Saved turn cancellation receipt does not match the pending operation.");
     }
+    return result as {
+      status: "cancellation_requested" | "stopped_confirmed";
+      turn_id: string;
+      stopped: boolean;
+    };
   },
 
   async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {

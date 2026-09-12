@@ -37,13 +37,16 @@ def test_request_signals_only_live_execution_without_discarding_handle() -> None
     execute = _binding(registry, execution, "execute")
     cancel = _binding(registry, stop, "stop")
     with execute.track("turn"):
-        cancel.request("turn")
-        cancel.request("turn")
+        first = cancel.request("turn")
+        second = cancel.request("turn")
+        assert first.completed is second.completed
+        assert not first.completed.is_set()
         assert execution.cancellation_requested.is_set()
         assert not stop.cancellation_requested.is_set()
         with pytest.raises(PermissionError):
             with execute.track("turn"):
                 pytest.fail("duplicate execution must not replace the handle")
+    assert first.completed.is_set()
     with pytest.raises(PermissionError):
         cancel.request("turn")
 

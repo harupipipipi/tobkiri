@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:868f528b6396453c394cfa1abef7ea207fb8c3224e0699aeaa91f830edc7a009",
+  "catalog_digest": "sha256:8f394f277ebf9a5fed22bff0d4abb694590737fc19e8846f09698c6e975c86b8",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:332024294aaee7b4712db414ec3369102d8776fed49de663a5041946d611b209",
+  "source_identity": "sha256:d7025df00cd46360b4baea3c500b03ae305bcffdc489999c10e28ca8c12ec8a4",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+      "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+      "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -78,7 +78,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+      "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -140,7 +140,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+      "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -174,7 +174,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
-      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+      "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -400,7 +400,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
-      "implementation_digest": "sha256:edc3e174534f8f25334e5a44e7cfeea630a6ae52c4d27b2d7e48acb2dd96d136",
+      "implementation_digest": "sha256:06c7d4c879a91cad0b6563690b3a74578c044c94c0ece802179a0b524d2319e8",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -446,12 +446,37 @@
           "operation_id": "rumi_turn_runtime_pack.turn-stop",
           "output_schema": {
             "additionalProperties": false,
+            "oneOf": [
+              {
+                "properties": {
+                  "status": {
+                    "const": "cancellation_requested"
+                  },
+                  "stopped": {
+                    "const": false
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "status": {
+                    "const": "stopped_confirmed"
+                  },
+                  "stopped": {
+                    "const": true
+                  }
+                }
+              }
+            ],
             "properties": {
               "status": {
-                "const": "cancellation_requested"
+                "enum": [
+                  "cancellation_requested",
+                  "stopped_confirmed"
+                ]
               },
               "stopped": {
-                "const": false
+                "type": "boolean"
               },
               "turn_id": {
                 "type": "string"
@@ -464,7 +489,7 @@
             ],
             "type": "object"
           },
-          "revision_digest": "sha256:62e6c65fbf02bd9e418c024420b58a00aca58ad8fe314680e03d3bc621144721",
+          "revision_digest": "sha256:3f5ff1b9da2dad13182a97d48ff8e5a270fb8fa3c42d254a943957713087790f",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
