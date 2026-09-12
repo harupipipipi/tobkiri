@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:a0a14a4fda266204d41ba00652cba4bb82a948a24fc301a34e6990d88faaa0de",
+      "digest": "sha256:03f5319c5bc848154fe7853684ccbff62e4b917f06490916ecd89e1e8297471c",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -71,7 +71,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:e0608fc7d760ea62fdadb483a8c7a5892326abf198555692cd863f75f950c814",
+    "artifact_set_digest": "sha256:25a472257a8703b78ad358fd6e275d0a644feef4d4a7575928b68f01af3e6d30",
     "contract_catalog_digest": "sha256:e3cf7221e44fa10d6e7b8aadf7edbf028e1435deb72c49e2f33b2233137b011b",
     "source_identity": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65"
   },
@@ -117,7 +117,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:e0608fc7d760ea62fdadb483a8c7a5892326abf198555692cd863f75f950c814",
+    "artifact_digest": "sha256:25a472257a8703b78ad358fd6e275d0a644feef4d4a7575928b68f01af3e6d30",
     "display_name": "Tobkiri UI Settings",
     "id": "tobkiri_ui_settings_pack",
     "kind": "host_extension",

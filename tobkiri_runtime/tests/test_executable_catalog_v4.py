@@ -78,6 +78,74 @@ def test_ai_conversation_chain_outlives_provider_transport_deadline(
     assert operation["timeout_hard_max_ms"] == 300_000
 
 
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        (
+            "tobkiri_ui_settings_pack",
+            "tobkiri.ui.catalog.read",
+            "tobkiri_ui_settings_pack.catalog-read",
+        ),
+        (
+            "tobkiri_ui_settings_pack",
+            "tobkiri.ui.settings.read",
+            "tobkiri_ui_settings_pack.settings-read",
+        ),
+        (
+            "rumi_command_protocol_pack",
+            "rumi_command_protocol_pack.catalog.read",
+            "command.catalog.read",
+        ),
+    ),
+)
+def test_native_startup_reads_outlive_cold_packvm_start(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """Startup reads may include one bounded native PackVM cold start."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item for item in catalog["variants"] if item["function_id"] == function_id
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == operation_id
+    )
+
+    assert operation["timeout_default_ms"] == 120_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
+def test_unrelated_catalog_read_keeps_standard_deadline() -> None:
+    """The native startup allowance must stay limited to the selected reads."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / "defaultspack" / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item
+        for item in catalog["variants"]
+        if item["function_id"] == "defaultspack.application-presentation"
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == "defaultspack.presentation.read"
+    )
+
+    assert operation["timeout_default_ms"] == 30_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
 def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     pack_roots = sorted(path.parent for path in (ROOT / "ecosystem").glob("*/pack.v4.json"))
     compiled = [compile_pack_root(path) for path in pack_roots]

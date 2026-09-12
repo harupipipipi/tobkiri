@@ -35,6 +35,24 @@ _HARD_TIMEOUT_MAX_MS = 300_000
 # finite and identity-specific; unrelated Pack operations retain the shorter
 # default.
 _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
+    # These startup reads can enter the selected presentation Pack through a
+    # Host-owned nested call.  A first native launch includes the authenticated
+    # PackVM cold start, which is bounded separately from steady-state reads.
+    (
+        "tobkiri_ui_settings_pack",
+        "tobkiri.ui.catalog.read",
+        "tobkiri_ui_settings_pack.catalog-read",
+    ): 120_000,
+    (
+        "tobkiri_ui_settings_pack",
+        "tobkiri.ui.settings.read",
+        "tobkiri_ui_settings_pack.settings-read",
+    ): 120_000,
+    (
+        "rumi_command_protocol_pack",
+        "rumi_command_protocol_pack.catalog.read",
+        "command.catalog.read",
+    ): 120_000,
     (
         "defaultspack",
         "defaultspack.conversation",

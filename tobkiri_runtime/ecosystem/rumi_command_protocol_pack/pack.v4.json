@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:847b080a510296bb90033ff12ada11fec14d85a31ae8d707b6c3a29d26a1f15f",
+      "digest": "sha256:77e6ccc23027a9eab6125e1fd30a811d7442b452aa62bc450be81625ed31c43f",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -60,7 +60,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:ef629bb05eab8667474b78094ffd8dea902f320b84f81ad9b0a761e558a72097",
+    "artifact_set_digest": "sha256:90e5d5960a66a8f78fa06c8d4b30e06b5da7f0fab4bfebaa3814a2969c1c98ea",
     "contract_catalog_digest": "sha256:cc20426f67ecaf9d94ca87dde44f7201b67a5ab07b26f94d7fc0815038b821f9",
     "source_identity": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9"
   },
@@ -98,7 +98,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ef629bb05eab8667474b78094ffd8dea902f320b84f81ad9b0a761e558a72097",
+    "artifact_digest": "sha256:90e5d5960a66a8f78fa06c8d4b30e06b5da7f0fab4bfebaa3814a2969c1c98ea",
     "display_name": "Tobkiri Command Protocol",
     "id": "rumi_command_protocol_pack",
     "kind": "host_extension",

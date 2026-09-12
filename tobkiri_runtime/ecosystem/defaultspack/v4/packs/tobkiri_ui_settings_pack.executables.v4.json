@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:5c2764f0ee73c6066b3237c50d7f22b6988dbb909eb6cc659bedcc1421c0f481",
+  "source_identity": "sha256:67943d13613265d722297940a1df461205e5a8b07533d55dfa37f6f836e3bdd7",
   "variants": [
     {
       "variant_id": "tobkiri.ui.catalog.read.python",
@@ -31,7 +31,7 @@
             "type": "object"
           },
           "effect_class": "privileged",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
         }
@@ -230,13 +230,13 @@
             "type": "object"
           },
           "effect_class": "privileged",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
         }
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:fa9cf115ea6c27ce6185efe27bb073ba8841bbb610239eda96fc7cf527fe5809",
-  "catalog_digest": "sha256:b56ec10edceb9472a4cef44529f9871cea215f299a2d155076db8692ed7ce3d8"
+  "materialization_catalog_digest": "sha256:ab10ed1c02c9b7f86c701223d3c5d73ff54e0119ef660000264c61689ea158ce",
+  "catalog_digest": "sha256:2938cc226d88e55a8b56ab087a6ce7d2d76ce318a8bfee63a5c60dda90da060e"
 }

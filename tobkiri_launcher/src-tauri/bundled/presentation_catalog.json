@@ -677,7 +677,7 @@
     "rumi_ai_usage_pack": "sha256:d5080ec84501c313110adbfd73a2ab27aed874307f5ab92a4c5c020abfba7dc2",
     "rumi_browser_host_service_pack": "sha256:7d740ffbd5764dca3fb7ff156da298c87dab922272d8c74dc45361605c09c50a",
     "rumi_clipboard_host_service_pack": "sha256:2b5530d870dd83a4b91c4c2526a75f177fb7f596a0c734a238ed13b55f367092",
-    "rumi_command_protocol_pack": "sha256:dc562472f0d43a0cae3176dbc4fd7f2db9b2099f7efc295bed65b9254e5fe1b1",
+    "rumi_command_protocol_pack": "sha256:b33fc77e2ed867779b9aad03e1ec203ceb5b16eef5f55a0a26d9528d8e70ff69",
     "rumi_conversation_store_pack": "sha256:db487ce389d0f6f38daaaef86692093cb539ce72fe7dc5196e83cdc6d3a7dd78",
     "rumi_credential_broker_pack": "sha256:8cdfba1621a51bf24986bf0599aed797661b12465b78e79113326915fa41b63f",
     "rumi_default_tools_pack": "sha256:8f9807905f3d435861f5af21fd49318d8dc7c71c5dda0c1100d9a673440ce251",
@@ -704,6 +704,6 @@
     "runtime.tauri.application.default": "sha256:264ff7c5e492587f6a524645f9f00587210c34869be48df099ff11c18f210301",
     "shell.tauri.default": "sha256:1abaf30122ccbc6d96aa209f05557aab9a0ce6c16baca3700e98a3a8292edf0f",
     "tobkiri_host_pack_control": "sha256:6a677bab243a30ad8a6923f2890ef220cf120b30861dbacb4a90e53e5bcdf65f",
-    "tobkiri_ui_settings_pack": "sha256:e9f329a8412d2bd647aef79e5dac1142654430a1b0bfb57e6e32357550bc450c"
+    "tobkiri_ui_settings_pack": "sha256:68dbbd039213738f89e7a8e811ff68135b857b56352e62e334dd27524fac264e"
   }
 }
