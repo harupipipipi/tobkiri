@@ -74,7 +74,6 @@ class OwnedCancellationBinding:
             or reference.strip() != reference
         ):
             raise ValueError("operation reference is invalid")
-        self._guard()
         return (*self._scope, reference)
 
     @contextmanager
@@ -83,7 +82,12 @@ class OwnedCancellationBinding:
         key = self._key(reference)
         registry = self._registry
         with registry._lock:
-            if self._role != "execute" or registry._closed or key in registry._active:
+            # Lock contention may outlive the captured invocation.
+            self._guard()
+            if (
+                self._role != "execute" or registry._closed or key in registry._active
+                or self._signal.is_set()
+            ):
                 raise PermissionError("operation cancellation handle is unavailable")
             completed = threading.Event()
             registry._active[key] = (self._signal, completed)
@@ -101,6 +105,7 @@ class OwnedCancellationBinding:
         key = self._key(reference)
         registry = self._registry
         with registry._lock:
+            self._guard()
             if self._role != "stop" or registry._closed or key not in registry._active:
                 raise PermissionError("operation cancellation handle is unavailable")
             signal, completed = registry._active[key]

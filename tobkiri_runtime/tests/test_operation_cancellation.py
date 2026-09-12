@@ -1,6 +1,9 @@
 """Live cancellation is owner-scoped and never a durable completion proof."""
 
 from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
+import threading
 import time
 
 import pytest
@@ -115,3 +118,64 @@ def test_two_live_invocations_do_not_share_signals_or_exit_observations() -> Non
         assert not observed.completed.is_set()
     assert observed.completed.is_set()
     assert not stop.cancellation_requested.is_set()
+
+
+@pytest.mark.parametrize("role", ["execute", "stop"])
+def test_invocation_expiring_during_lock_wait_cannot_change_handles(role: str) -> None:
+    registry, execution = OwnedCancellationHandles(), _envelope()
+    waiting, expired, entered = (threading.Event() for _ in range(3))
+    owner_thread = threading.current_thread()
+
+    class ContendedLock:
+        def __init__(self) -> None:
+            self.lock = threading.RLock()
+
+        def __enter__(self) -> "ContendedLock":
+            if threading.current_thread() is not owner_thread:
+                waiting.set()
+            self.lock.acquire()
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.lock.release()
+
+    registry._lock = ContendedLock()
+
+    def guard() -> None:
+        if expired.is_set():
+            raise PermissionError("invocation expired during lock wait")
+
+    binding = _binding(
+        registry, execution if role == "execute" else _envelope(), role, guard=guard,
+    )
+
+    def attempt() -> None:
+        if role == "stop":
+            binding.request("turn")
+        else:
+            with binding.track("turn"):
+                entered.set()
+
+    live = (
+        _binding(registry, execution, "execute").track("turn")
+        if role == "stop" else nullcontext()
+    )
+    with live, ThreadPoolExecutor(max_workers=1) as pool:
+        with registry._lock:
+            future = pool.submit(attempt)
+            assert waiting.wait(2), "invocation did not contend for the registry lock"
+            expired.set()
+        with pytest.raises(PermissionError, match="expired during lock wait"):
+            future.result(timeout=2)
+    assert not execution.cancellation_requested.is_set()
+    assert not entered.is_set()
+    assert not registry._active
+
+
+def test_cancelled_envelope_cannot_register_execution() -> None:
+    registry, execution = OwnedCancellationHandles(), _envelope()
+    execution.cancellation_requested.set()
+    with pytest.raises(PermissionError):
+        with _binding(registry, execution, "execute").track("turn"):
+            pytest.fail("cancelled execution must not become active")
+    assert not registry._active
