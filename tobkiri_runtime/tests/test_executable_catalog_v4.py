@@ -96,6 +96,11 @@ def test_ai_conversation_chain_outlives_provider_transport_deadline(
             "rumi_command_protocol_pack.catalog.read",
             "command.catalog.read",
         ),
+        (
+            "defaultspack",
+            "defaultspack.application-presentation",
+            "defaultspack.presentation.read",
+        ),
     ),
 )
 def test_native_startup_reads_outlive_cold_packvm_start(
@@ -123,7 +128,7 @@ def test_native_startup_reads_outlive_cold_packvm_start(
     assert operation["timeout_hard_max_ms"] == 300_000
 
 
-def test_unrelated_catalog_read_keeps_standard_deadline() -> None:
+def test_unrelated_saved_turn_keeps_standard_deadline() -> None:
     """The native startup allowance must stay limited to the selected reads."""
 
     catalog = json.loads(
@@ -134,12 +139,12 @@ def test_unrelated_catalog_read_keeps_standard_deadline() -> None:
     variant = next(
         item
         for item in catalog["variants"]
-        if item["function_id"] == "defaultspack.application-presentation"
+        if item["function_id"] == "defaultspack.conversation.saved"
     )
     operation = next(
         item
         for item in variant["operations"]
-        if item["operation_id"] == "defaultspack.presentation.read"
+        if item["operation_id"] == "saved_complete"
     )
 
     assert operation["timeout_default_ms"] == 30_000

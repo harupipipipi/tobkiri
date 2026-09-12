@@ -55,6 +55,11 @@ _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
     ): 120_000,
     (
         "defaultspack",
+        "defaultspack.application-presentation",
+        "defaultspack.presentation.read",
+    ): 120_000,
+    (
+        "defaultspack",
         "defaultspack.conversation",
         "complete",
     ): 120_000,
