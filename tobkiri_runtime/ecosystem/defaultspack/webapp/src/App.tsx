@@ -3723,12 +3723,15 @@ export function ChatApp() {
     const saveRevisionAtRead = settingsSaveRevisionRef.current;
     setSettingsLoadState({ status: "loading" });
     setModelProfilesLoadState({ status: "loading" });
-    const [catalogResult, settingsResult, profilesResult, commandsResult] = await Promise.allSettled([
-      api.uiCatalog(),
-      api.uiSettings(),
-      api.listModelProfiles(),
-      api.resolvedUiCommands(),
-    ]);
+    // The three presentation-dependent reads own distinct Broker reservations
+    // and request-scoped runtimes. Start them in order so a lifecycle gate
+    // never rejects one reservation merely because another is materializing.
+    // Model Profiles are Host-owned and can load alongside that sequence.
+    const profilesResultPromise = Promise.allSettled([api.listModelProfiles()]);
+    const [catalogResult] = await Promise.allSettled([api.uiCatalog()]);
+    const [settingsResult] = await Promise.allSettled([api.uiSettings()]);
+    const [commandsResult] = await Promise.allSettled([api.resolvedUiCommands()]);
+    const [profilesResult] = await profilesResultPromise;
     if (requestSequence !== refreshCatalogSequenceRef.current) return null;
     const nextCatalog = catalogResult.status === "fulfilled" ? catalogResult.value : null;
     const nextSettings = settingsResult.status === "fulfilled" ? settingsResult.value : null;
