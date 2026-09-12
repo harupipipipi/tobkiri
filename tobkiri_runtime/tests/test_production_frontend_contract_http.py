@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Iterator, Mapping
@@ -916,9 +917,22 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
     from ecosystem.defaultspack.runtime.saved_conversation import TARGETS
     from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
     from tobkiri_host.runtime import V4DispatchSession
+    from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 
     entered, observed = threading.Event(), threading.Event()
+    release_child, child_exited, scope_exited = (threading.Event() for _ in range(3))
     signals = []
+    original_track = OwnedCancellationBinding.track
+
+    @contextmanager
+    def track(binding, reference):
+        try:
+            with original_track(binding, reference):
+                yield
+        finally:
+            scope_exited.set()
+
+    monkeypatch.setattr(OwnedCancellationBinding, "track", track)
     original = V4DispatchSession.invoke
 
     def invoke(self, contract_id, operation_id, payload, **kwargs):
@@ -930,7 +944,11 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
             entered.set()
             if signal.wait(8):
                 observed.set()
-            raise RuntimeError("test AI stopped without a result")
+            try:
+                assert release_child.wait(8), "test did not release nested execution"
+                raise RuntimeError("test AI stopped without a result")
+            finally:
+                child_exited.set()
         return original(self, contract_id, operation_id, payload, **kwargs)
 
     monkeypatch.setattr(V4DispatchSession, "invoke", invoke)
@@ -991,16 +1009,20 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
                 status, receipt, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
                 assert status == 200, receipt
                 assert receipt["data"] == {
-                    "status": "stopped_confirmed",
+                    "status": "cancellation_requested",
                     "turn_id": "turn-stop-1",
-                    "stopped": True,
+                    "stopped": False,
                 }
                 assert observed.wait(2)
                 sent.result(timeout=5)
+                assert scope_exited.wait(2), "Host wrapper must exit before the child"
+                assert not child_exited.is_set()
                 assert len(signals) == 1
             finally:
+                release_child.set()
                 for signal in signals:
                     signal.set()
+        assert child_exited.wait(2)
         # No assistant result was produced. Reconciliation and duplicate send
         # cannot invent one, replay the Provider, or append the user twice.
         after_stop = store.path.read_bytes()

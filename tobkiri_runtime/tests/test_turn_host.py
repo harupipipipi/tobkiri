@@ -5,13 +5,11 @@ from pathlib import Path
 import copy
 import json
 import threading
-import time
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from ecosystem.rumi_turn_runtime_pack.runtime import host as turn_host
 from ecosystem.rumi_turn_runtime_pack.runtime.host import TurnHostFactoryV4
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
 from tobkiri_protocol.canonical import canonical_digest
@@ -63,14 +61,13 @@ BEGIN = {
 }
 
 
-@pytest.mark.parametrize("confirmed", [False, True])
-def test_stop_factory_distinguishes_request_from_scope_exit(
+@pytest.mark.parametrize("scope_exited", [False, True])
+def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    confirmed: bool,
+    scope_exited: bool,
 ) -> None:
     completed = threading.Event()
-    if confirmed:
+    if scope_exited:
         completed.set()
     requests: list[str] = []
     fences: list[str] = []
@@ -81,19 +78,17 @@ def test_stop_factory_distinguishes_request_from_scope_exit(
 
     invocation = SimpleNamespace(
         cancellation=SimpleNamespace(request=request),
-        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
         assert_current=lambda: fences.append("checked"),
     )
-    monkeypatch.setattr(turn_host, "_STOP_OBSERVATION_SECONDS", 0.01)
     factory = TurnHostFactoryV4("stop")
     invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
 
     result = invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
 
     assert result == {
-        "status": "stopped_confirmed" if confirmed else "cancellation_requested",
+        "status": "cancellation_requested",
         "turn_id": "saved-turn",
-        "stopped": confirmed,
+        "stopped": False,
     }
     assert requests == ["saved-turn"]
     assert fences == ["checked"]

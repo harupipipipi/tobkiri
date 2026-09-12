@@ -100,3 +100,18 @@ def test_roles_guards_and_close_preserve_live_ownership() -> None:
     with pytest.raises(PermissionError):
         with producer.track("new-turn"):
             pytest.fail("closed capture cannot register work")
+
+
+def test_two_live_invocations_do_not_share_signals_or_exit_observations() -> None:
+    registry = OwnedCancellationHandles()
+    first, second, stop = _envelope(), _envelope(), _envelope()
+    cancel = _binding(registry, stop, "stop")
+    with _binding(registry, first, "execute").track("first"):
+        with _binding(registry, second, "execute").track("second"):
+            observed = cancel.request("first")
+            assert first.cancellation_requested.is_set()
+            assert not second.cancellation_requested.is_set()
+            assert not observed.completed.is_set()
+        assert not observed.completed.is_set()
+    assert observed.completed.is_set()
+    assert not stop.cancellation_requested.is_set()

@@ -159,6 +159,31 @@ def test_named_profile_crud_creates_immutable_successors_and_tombstones(
     ]
 
 
+def test_saved_profile_keeps_old_projection_reference_after_reopen(tmp_path: Path) -> None:
+    """A distribution filename change must not rewrite a saved Profile revision."""
+    from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
+    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+    import copy
+
+    profile = copy.deepcopy(
+        BundledCatalog.load(packaged_profile_bundle_root()).profiles["defaults"]
+    )
+    old_path = "ecosystem/defaultspack/v4/defaults.profile.v4.json"
+    profile["provenance"]["source_path"] = old_path
+    store = ProfileDefinitionStore(tmp_path, clock=lambda: 100)
+    saved = store.bootstrap_defaults(profile)
+    before = canonical_json(store.snapshot())
+
+    reopened = ProfileDefinitionStore(tmp_path, clock=lambda: 200)
+    restored = reopened.get_profile(saved.profile_id)
+    assert restored is not None
+    assert restored.profile_revision == saved.profile_revision
+    assert restored.profile == saved.profile
+    assert restored.profile["provenance"]["source_path"] == old_path
+    assert canonical_json(reopened.snapshot()) == before
+    assert ActiveProfileStore(tmp_path).load() is None
+
+
 def test_profile_store_migrates_legacy_v1_bootstrap_metadata_without_identity_guessing(
     tmp_path: Path,
 ) -> None:

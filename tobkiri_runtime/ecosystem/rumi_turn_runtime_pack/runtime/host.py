@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any, Mapping
 
 from core_runtime.host_provider_backend_v4 import (
@@ -32,7 +31,6 @@ _MUTATIONS = {
     "consume_guidance": (set(), {"guidance_ids"}),
     "cancel_guidance": ({"guidance_id"}, set()),
 }
-_STOP_OBSERVATION_SECONDS = 1.0
 
 
 class TurnHostFactoryV4:
@@ -81,21 +79,14 @@ class TurnHostFactoryV4:
                 if operation_id != self.operation_id or set(values) != {"turn_id"}:
                     raise PermissionError("stop requires only an existing turn ID")
                 turn_id = _identifier(values["turn_id"])
-                observation = invocation.cancellation.request(turn_id)
-                remaining = max(
-                    0.0,
-                    invocation.envelope.deadline_monotonic - time.monotonic(),
-                )
-                stopped = observation.completed.wait(
-                    min(_STOP_OBSERVATION_SECONDS, remaining)
-                )
+                invocation.cancellation.request(turn_id)
                 invocation.assert_current()
+                # A Host scope can exit while a nested Broker future or guest
+                # still runs. Its exit Event is not termination evidence.
                 return {
-                    "status": (
-                        "stopped_confirmed" if stopped else "cancellation_requested"
-                    ),
+                    "status": "cancellation_requested",
                     "turn_id": turn_id,
-                    "stopped": stopped,
+                    "stopped": False,
                 }
             if self.kind == "reconcile":
                 values = {key: value for key, value in payload.items() if key != "_session_id"}

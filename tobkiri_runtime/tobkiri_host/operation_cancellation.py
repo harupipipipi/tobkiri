@@ -12,7 +12,7 @@ from .broker import RequestEnvelope
 
 @dataclass(frozen=True)
 class CancellationObservation:
-    """Host-owned observation that the signalled execution left its live scope."""
+    """Host scope exit only; nested Provider/guest termination is not proven."""
 
     completed: threading.Event
 
