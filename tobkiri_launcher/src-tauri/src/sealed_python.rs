@@ -221,6 +221,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         PythonRole::Kernel => [
             "RUMI_DEFAULTSPACK_SECRETS_DIR",
             "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+            "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
             "RUMI_PORT",
             "TOBKIRI_HOST_CONTRACT_PATH",
             "RUMI_VIEWER_HOST_BROKER_CONNECTION",
@@ -234,6 +235,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         PythonRole::Defaultspack => [
             "RUMI_DEFAULTSPACK_SECRETS_DIR",
             "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+            "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
             "RUMI_VIEWER_HOST_BROKER_CONNECTION",
             "RUMI_VIEWER_BROKER_ATTESTATION_PUBLIC_KEY",
             "RUMI_VIEWER_BROKER_INSTANCE_NONCE",
@@ -3749,7 +3751,11 @@ mod tests {
         {
             let mut role = RoleCommand::packaged(&mut command, PythonRole::Defaultspack);
             role.env("DEFAULTS_HTTP_PORT", "8766")
-                .env("RUMI_DEFAULTSPACK_SURFACE", "webview");
+                .env("RUMI_DEFAULTSPACK_SURFACE", "webview")
+                .env(
+                    "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
+                    "/trusted/user-data/defaultspack/shared",
+                );
             role.finish().unwrap();
         }
         let environment = command
@@ -3760,6 +3766,12 @@ mod tests {
         assert_eq!(
             environment.get(OsStr::new("DEFAULTS_HTTP_PORT")),
             Some(&Some(OsString::from("8766")))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR")),
+            Some(&Some(OsString::from(
+                "/trusted/user-data/defaultspack/shared"
+            )))
         );
 
         for key in [

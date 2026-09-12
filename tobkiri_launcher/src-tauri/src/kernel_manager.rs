@@ -270,6 +270,13 @@ impl KernelManager {
                             .join("shared")
                             .join("frontend_settings.json"),
                     )
+                    .env(
+                        "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
+                        self.config
+                            .user_data_dir
+                            .join("defaultspack")
+                            .join("shared"),
+                    )
                     .env("RUMI_LOG_DIR", &self.config.log_dir)
                     .env("RUMI_PORT", self.config.kernel_port.to_string())
                     .env(crate::host_contract::CONTRACT_ENV, &host_contract_path)

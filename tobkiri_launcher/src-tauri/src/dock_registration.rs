@@ -1038,6 +1038,10 @@ pub(crate) fn spawn_defaultspack_local_server(
                         .join("shared")
                         .join("frontend_settings.json"),
                 )
+                .env(
+                    "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
+                    config.user_data_dir.join("defaultspack").join("shared"),
+                )
                 .env("RUMI_LOG_DIR", &config.log_dir)
                 .env("PYTHONDONTWRITEBYTECODE", "1")
                 .env(
