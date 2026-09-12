@@ -1685,8 +1685,44 @@ class ActivationStore:
 
     def load_active_snapshot(self) -> ActiveDefaultProfile:
         """Load the exact activation snapshot and reject stale restart state."""
+        # Artifact verification can hash a packaged application tree and is
+        # deliberately outside the activation publication lock.  Keeping that
+        # expensive read under the cross-process lock lets concurrent health
+        # and setup reads exhaust their bounded lock wait during a cold start.
         with self._activation_lock():
-            return self._load_active_snapshot_locked()
+            active = self._load_active_snapshot_locked(verify_selected_artifact=False)
+        try:
+            self._verify_selected_artifact(
+                active.resolved.profile,
+                allow_verified_successor_reconfirmation=True,
+            )
+        except ProfileReconfirmationRequired as error:
+            # Preserve the verified predecessor identity used by the explicit
+            # reconfirmation ceremony even though hashing runs outside the lock.
+            plan = active.resolved.plan
+            error.verified_profile_definition_digest = str(
+                plan["profile_definition_digest"]
+            )
+            error.verified_profile = deepcopy(active.resolved.profile)
+            error.verified_activation_identity = (
+                str(plan["profile_revision"]),
+                str(active.activation["activation_id"]),
+                str(plan["plan_digest"]),
+                str(active.resolved.lock["lock_digest"]),
+            )
+            raise
+        # Re-read the authenticated record graph after verifying its selected
+        # bytes.  A concurrent activation must never turn a valid check of the
+        # predecessor into authority for its successor.
+        with self._activation_lock():
+            current = self._load_active_snapshot_locked(
+                verify_selected_artifact=False
+            )
+        if current != active:
+            raise ProfileResolutionDenied(
+                "active Profile changed during artifact verification"
+            )
+        return active
 
     def reconcile_active(
         self,
@@ -1729,7 +1765,9 @@ class ActivationStore:
                 expected_predecessor_activation_id=None,
             )
 
-    def _load_active_snapshot_locked(self) -> ActiveDefaultProfile:
+    def _load_active_snapshot_locked(
+        self, *, verify_selected_artifact: bool = True
+    ) -> ActiveDefaultProfile:
         """Load one snapshot while holding the profile's process lock."""
         self._recover_locked()
         pointer = self._read_state("active.json", "active pointer")
@@ -1793,7 +1831,9 @@ class ActivationStore:
                 plan_value=plan_value,
                 activation_value=activation_value,
             )
-            return self._load_active_snapshot_locked()
+            return self._load_active_snapshot_locked(
+                verify_selected_artifact=verify_selected_artifact
+            )
         profile = validate_document(profile_value, "profile")
         lock = validate_document(lock_value, "profile_lock")
         plan = validate_document(plan_value, "resolved_plan")
@@ -1837,24 +1877,27 @@ class ActivationStore:
             raise ProfileResolutionDenied(
                 "active activation authority, fence, or SecurityEpoch is stale"
             )
-        try:
-            self._verify_selected_artifact(
-                profile,
-                allow_verified_successor_reconfirmation=True,
-            )
-        except ProfileReconfirmationRequired as error:
-            # The record graph and current Authority reservation were verified
-            # above. Expose their source and activation identities for the ceremony;
-            # the predecessor still cannot be captured for execution.
-            error.verified_profile_definition_digest = str(plan["profile_definition_digest"])
-            error.verified_profile = deepcopy(profile)
-            error.verified_activation_identity = (
-                str(plan["profile_revision"]),
-                str(activation["activation_id"]),
-                str(plan["plan_digest"]),
-                str(lock["lock_digest"]),
-            )
-            raise
+        if verify_selected_artifact:
+            try:
+                self._verify_selected_artifact(
+                    profile,
+                    allow_verified_successor_reconfirmation=True,
+                )
+            except ProfileReconfirmationRequired as error:
+                # The record graph and current Authority reservation were verified
+                # above. Expose their source and activation identities for the ceremony;
+                # the predecessor still cannot be captured for execution.
+                error.verified_profile_definition_digest = str(
+                    plan["profile_definition_digest"]
+                )
+                error.verified_profile = deepcopy(profile)
+                error.verified_activation_identity = (
+                    str(plan["profile_revision"]),
+                    str(activation["activation_id"]),
+                    str(plan["plan_digest"]),
+                    str(lock["lock_digest"]),
+                )
+                raise
         return ActiveDefaultProfile(
             resolved=ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan),
             activation=activation,

@@ -6,6 +6,7 @@ import json
 import multiprocessing
 import os
 import shutil
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -1437,6 +1438,106 @@ def test_activation_lock_deadline_then_recovery(tmp_path: Path) -> None:
         os.close(descriptor)
 
     store.recover()
+
+
+def test_slow_artifact_verification_does_not_hold_activation_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Concurrent cold reads may wait for bytes without blocking record capture."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+    first = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        lock_timeout_seconds=0.03,
+    )
+    first.activate(
+        _resolve(),
+        activation_id="activation:defaults-slow-verification",
+        created_at="2026-08-10T00:00:00Z",
+    )
+    second = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        lock_timeout_seconds=0.03,
+    )
+    verification_started = threading.Event()
+    release_verification = threading.Event()
+    errors: list[BaseException] = []
+
+    def slow_verification(*_args: object, **_kwargs: object) -> None:
+        verification_started.set()
+        if not release_verification.wait(timeout=5):
+            raise RuntimeError("verification release timed out")
+
+    monkeypatch.setattr(first, "_verify_selected_artifact", slow_verification)
+
+    def load_first() -> None:
+        try:
+            first.load_active_snapshot()
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    worker = threading.Thread(target=load_first)
+    worker.start()
+    assert verification_started.wait(timeout=2)
+    try:
+        assert second.load_active_snapshot().activation["activation_id"] == (
+            "activation:defaults-slow-verification"
+        )
+    finally:
+        release_verification.set()
+        worker.join(timeout=5)
+        authority.close()
+    assert not worker.is_alive()
+    assert errors == []
+
+
+def test_artifact_verification_is_fenced_by_activation_reread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A verified predecessor cannot be returned after a concurrent activation."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+    reader = ActivationStore(
+        state, workspace, profile_id="defaults", authority=authority
+    )
+    writer = ActivationStore(
+        state, workspace, profile_id="defaults", authority=authority
+    )
+    reader.activate(
+        _resolve(),
+        activation_id="activation:defaults-before-verification",
+        created_at="2026-08-10T00:00:00Z",
+    )
+
+    def replace_activation(*_args: object, **_kwargs: object) -> None:
+        writer.activate(
+            _resolve(),
+            activation_id="activation:defaults-during-verification",
+            created_at="2026-08-10T00:01:00Z",
+        )
+
+    monkeypatch.setattr(reader, "_verify_selected_artifact", replace_activation)
+    with pytest.raises(
+        ProfileResolutionDenied,
+        match="changed during artifact verification",
+    ):
+        reader.load_active_snapshot()
+    assert writer.load_active_snapshot().activation["activation_id"] == (
+        "activation:defaults-during-verification"
+    )
+    authority.close()
 
 
 def test_windows_activation_lock_adapter_uses_nonblocking_retry(
