@@ -34,6 +34,7 @@ SOURCE_ROOTS = (
     "ecosystem/defaultspack/extensions/tools",
 )
 SOURCE_FILES = (
+    "schemas/profile_bundle_generation.v1.json",
     "ecosystem/defaultspack/pack.v4.json",
     "ecosystem/defaultspack/contracts.v4.json",
     "ecosystem/defaultspack/artifact-index.v4.json",

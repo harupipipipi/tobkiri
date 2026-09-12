@@ -3176,6 +3176,13 @@
       "executable": false
     },
     {
+      "path": "schemas/profile_bundle_generation.v1.json",
+      "type": "regular-file",
+      "size": 597,
+      "sha256": "bbfbe9c6cc0a0b40e0894a82c766a80f439a3d45d121ec130dcbebad28326372",
+      "executable": false
+    },
+    {
       "path": "scripts/__init__.py",
       "type": "regular-file",
       "size": 79,
@@ -3248,8 +3255,8 @@
     {
       "path": "scripts/generator_source_manifest.py",
       "type": "regular-file",
-      "size": 33267,
-      "sha256": "d407174f6cb4d76d3fdb5b1f6ae8b17a2fdf4c8ce3c4892d6bca719f3df31e89",
+      "size": 33316,
+      "sha256": "d6c0c77fc3e5feb5f8522828b89af4c4f30a35be4f2e3105a0559289f86ee762",
       "executable": false
     },
     {

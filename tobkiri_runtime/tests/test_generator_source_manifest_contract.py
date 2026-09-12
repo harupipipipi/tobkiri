@@ -188,6 +188,14 @@ def test_source_manifest_declares_root_executable_catalog_sidecar() -> None:
     assert any(entry["path"] == relative for entry in manifest["files"])
 
 
+def test_source_manifest_declares_profile_bundle_generation_policy() -> None:
+    """Relocated generators retain the policy that selects their v4 bundle root."""
+    relative = "schemas/profile_bundle_generation.v1.json"
+    assert relative in generator_source_manifest.SOURCE_FILES
+    manifest = generator_source_manifest.load_source_manifest()
+    assert any(entry["path"] == relative for entry in manifest["files"])
+
+
 def test_source_manifest_declares_moved_runtime_surface_module() -> None:
     """The sparse Rust closure must receive the Pack-owned runtime surface."""
 
