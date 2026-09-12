@@ -52,10 +52,15 @@ def test_defaultspack_web_mounts_keep_the_pack_owned_legacy_alias(tmp_path):
     mounts = defaultspack_web_mounts(tmp_path / "defaultspack")
 
     assert {mount["path_prefix"] for mount in mounts} == {
+        "/p",
         "/chat",
         "/static",
         "/desktops",
     }
+    profile_routes = next(mount for mount in mounts if mount["path_prefix"] == "/p")
+    assert profile_routes["web_root"] == (tmp_path / "defaultspack" / "ui").resolve()
+    assert profile_routes["auth_required"] is True
+    assert profile_routes["auth_bootstrap"] is True
     desktops = next(mount for mount in mounts if mount["path_prefix"] == "/desktops")
     assert desktops["web_root"] == (tmp_path / "defaultspack" / "ui").resolve()
     assert desktops["auth_required"] is True
