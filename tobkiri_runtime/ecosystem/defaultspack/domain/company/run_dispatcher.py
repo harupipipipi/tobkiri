@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import Any, Callable
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
+from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.input.dispatcher import dispatch_input
 from domain.input.envelope import RumiInputEnvelope
 from domain.ai_client.model_search import get_model_capabilities
@@ -24,10 +28,24 @@ class CompanyRunDispatcher:
         company_store: CompanyStore | None = None,
         runtime_store: CompanyRuntimeStore | None = None,
         dispatcher: DispatchCallable | None = None,
+        model_settings: dict[str, Any] | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.company_store = company_store or CompanyStore()
         self.runtime_store = runtime_store or CompanyRuntimeStore()
-        self.dispatcher = dispatcher or dispatch_input
+        self.dispatcher = dispatcher or (
+            partial(dispatch_input, settings_owner=settings_owner)
+            if settings_owner is not None
+            else dispatch_input
+        )
+        if isinstance(model_settings, dict):
+            self.model_settings = dict(model_settings)
+        elif settings_owner is not None:
+            self.model_settings = ModelRuntimeSettingsService(
+                settings_owner=settings_owner
+            ).get_settings()
+        else:
+            self.model_settings = None
 
     def dispatch_task(
         self,
@@ -143,7 +161,10 @@ class CompanyRunDispatcher:
         context: dict[str, Any],
     ) -> dict[str, Any]:
         agent_id = str(agent.get("agent_id") or agent.get("id") or "operations_manager")
-        agent_tools = _agent_tools_for_dispatch(agent)
+        agent_tools = _agent_tools_for_dispatch(
+            agent,
+            settings=self.model_settings,
+        )
         effective_plan = compatibility_effective_plan(
             agent_id=agent_id,
             model=str(agent.get("model") or "default"),
@@ -240,15 +261,19 @@ class CompanyRunDispatcher:
         }
 
 
-def _agent_tools_for_dispatch(agent: dict[str, Any]) -> list[Any]:
+def _agent_tools_for_dispatch(
+    agent: dict[str, Any],
+    *,
+    settings: dict[str, Any] | None = None,
+) -> list[Any]:
     tools = list(agent.get("allowed_tools") or [])
     if not tools:
         return []
     model = str(agent.get("model") or "").strip()
-    if not model or model == "default":
+    if not model or model == "default" or settings is None:
         return tools
     try:
-        capabilities = get_model_capabilities(model) or {}
+        capabilities = get_model_capabilities(model, settings=settings) or {}
     except Exception:
         capabilities = {}
     if capabilities and not capabilities.get("supports_tool_calling"):
