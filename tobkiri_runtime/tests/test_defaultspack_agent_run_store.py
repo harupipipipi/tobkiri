@@ -34,7 +34,7 @@ def _isolate_agent_model_routing(monkeypatch):
     )
     monkeypatch.setattr(
         "domain.agent.engine.get_model_capabilities",
-        lambda model: {
+        lambda model, **kwargs: {
             "profile_id": model,
             "supports_tool_calling": True,
             "supports_vision": True,
