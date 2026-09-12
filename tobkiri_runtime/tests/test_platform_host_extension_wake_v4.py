@@ -165,11 +165,13 @@ class Driver:
     def __init__(self) -> None:
         self.last_launch: IsolationLaunch | None = None
         self.attestation_platform: str | None = None
+        self.capability_ready = True
+        self.capability_reason: str | None = None
         self.terminated: list[str] = []
         self.termination_error: Exception | None = None
 
     def capability(self) -> tuple[bool, str | None]:
-        return True, None
+        return self.capability_ready, self.capability_reason
 
     def launch(self, request: IsolationLaunch) -> PlatformAttestation:
         self.last_launch = request
@@ -257,12 +259,58 @@ def test_platform_selection_and_attestation_fail_closed() -> None:
     assert evidence.resource_reservation_id == "reservation-1"
     assert driver.last_launch is not None
     assert evidence.domain_lease_id == driver.last_launch.lease.lease_id
-    driver.attestation_platform = "linux-arm64"
+    invalid_driver = Driver()
+    invalid_driver.attestation_platform = "linux-arm64"
+    invalid_backend = ProductionIsolationBackend(
+        invalid_driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.invalid",
+    )
     with pytest.raises(BackendUnavailableError, match="attestation"):
-        backend.materialize(selected, "reservation-2")
+        invalid_backend.materialize(selected, "reservation-2")
     wrong = replace(selected.variant, backend="other-packvm")
     with pytest.raises(BackendUnavailableError, match="wrong platform"):
         backend.materialize(replace(selected, variant=wrong), "reservation-3")
+
+
+def test_platform_backend_reuses_only_exact_live_resident_domain() -> None:
+    now = [100.0]
+    driver = Driver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.resident",
+        lease_seconds=30.0,
+        clock=lambda: now[0],
+    )
+
+    first = backend.materialize(binding(), "reservation-first")
+    second = backend.materialize(binding(), "reservation-second")
+
+    assert second == first
+    assert driver.last_launch is not None
+    assert driver.last_launch.reservation_id == "reservation-first"
+    assert driver.terminated == []
+
+    driver.capability_ready = False
+    driver.capability_reason = "supervisor compromised"
+    with pytest.raises(BackendUnavailableError, match="compromised"):
+        backend.materialize(binding(), "reservation-compromised")
+    driver.capability_ready = True
+    driver.capability_reason = None
+
+    now[0] = 131.0
+    backend._request_domains["request-active"] = "domain.vz.resident"
+    with pytest.raises(BackendUnavailableError, match="while active"):
+        backend.materialize(binding(), "reservation-active")
+    assert driver.terminated == []
+    backend._request_domains.pop("request-active")
+
+    third = backend.materialize(binding(), "reservation-third")
+
+    assert driver.terminated == ["domain.vz.resident"]
+    assert driver.last_launch.reservation_id == "reservation-third"
+    assert third.resource_reservation_id == "reservation-third"
 
 
 def test_platform_backend_close_terminates_and_retries_failed_cleanup() -> None:

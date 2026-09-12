@@ -175,6 +175,7 @@ class ProductionIsolationBackend:
         self._domains: dict[str, PlatformAttestation] = {}
         self._reservations: dict[str, str] = {}
         self._leases: dict[str, IsolationLease] = {}
+        self._materialization_lock = threading.RLock()
         self._request_domains: dict[str, str] = {}
         self._request_lock = threading.RLock()
         self._capability_bridge: CapabilityBridge | None = None
@@ -274,6 +275,16 @@ class ProductionIsolationBackend:
         binding: ResolvedOperationBinding,
         reservation_id: str,
     ) -> RuntimeEvidence:
+        """Launch or reuse one exact resident domain under a serialized gate."""
+
+        with self._materialization_lock:
+            return self._materialize_locked(binding, reservation_id)
+
+    def _materialize_locked(
+        self,
+        binding: ResolvedOperationBinding,
+        reservation_id: str,
+    ) -> RuntimeEvidence:
         if not self.status.ready_for_production:
             raise BackendUnavailableError(
                 self.status.unavailable_reason or "platform backend is unavailable"
@@ -282,6 +293,11 @@ class ProductionIsolationBackend:
             raise BackendUnavailableError("launch requested the wrong platform provider")
         if binding.variant.execution_kind is not ExecutionKind.PACK_VM:
             raise BackendUnavailableError("platform backend requires a PackVM variant")
+        ready, reason = self._driver.capability()
+        if not ready:
+            raise BackendUnavailableError(
+                reason or "platform supervisor is no longer available"
+            )
         if reservation_id in self._reservations:
             raise BackendUnavailableError("resource reservation is already materialized")
         if self._artifact_resolver is None:
@@ -311,6 +327,37 @@ class ProductionIsolationBackend:
             raise BackendUnavailableError(
                 "authenticated Pack artifact does not match resolved binding"
             )
+        resident = self._domains.get(target_domain_id)
+        resident_lease = self._leases.get(target_domain_id)
+        if resident is not None:
+            resident_matches = (
+                resident.backend_id == self.status.backend_id
+                and resident.backend_digest == self.status.backend_digest
+                and resident.platform == self.status.platform
+                and resident.executable_digest
+                == binding.function.implementation_digest
+                and resident.artifact_digest == binding.artifact.digest
+                and resident.materialization_digest == artifact.materialization_digest
+                and resident.isolation_profile
+                == binding.route.execution_domain_profile
+                and resident_lease is not None
+                and resident_lease.lease_id == resident.lease_id
+                and resident_lease.reservation_id == resident.reservation_id
+                and resident_lease.expires_monotonic > self._clock()
+                and resident.authenticated_channel
+                and resident.nonce_fresh
+                and resident.attestation_digest
+                == _platform_attestation_digest(resident)
+            )
+            if resident_matches:
+                return self._runtime_evidence(resident)
+            with self._request_lock:
+                resident_in_use = target_domain_id in self._request_domains.values()
+            if resident_in_use:
+                raise BackendUnavailableError(
+                    "resident platform domain changed or expired while active"
+                )
+            self.terminate(target_domain_id)
         lease = IsolationLease(
             lease_id=_digest(
                 {
@@ -345,6 +392,12 @@ class ProductionIsolationBackend:
         self._domains[attestation.domain_id] = attestation
         self._reservations[reservation_id] = attestation.domain_id
         self._leases[attestation.domain_id] = lease
+        return self._runtime_evidence(attestation)
+
+    @staticmethod
+    def _runtime_evidence(attestation: PlatformAttestation) -> RuntimeEvidence:
+        """Project one verified resident attestation into Broker evidence."""
+
         return RuntimeEvidence(
             domain_ref=OpaqueAuthorityRef(attestation.domain_id),
             executable_digest=attestation.executable_digest,
@@ -362,17 +415,25 @@ class ProductionIsolationBackend:
         target = getattr(getattr(request, "target_domain", None), "value", None)
         if not isinstance(target, str):
             raise BackendUnavailableError("provider request has no Host domain identity")
-        lease = self._leases.get(target)
-        if lease is None or lease.expires_monotonic <= self._clock():
-            self.terminate(target)
-            raise BackendUnavailableError("provider domain lease is unavailable or expired")
         request_id = getattr(getattr(request, "context", None), "request_id", None)
         if not isinstance(request_id, str) or not request_id:
             raise BackendUnavailableError("provider request identity is unavailable")
-        with self._request_lock:
-            if request_id in self._request_domains:
-                raise BackendUnavailableError("provider request identity is already active")
-            self._request_domains[request_id] = target
+        with self._materialization_lock:
+            lease = self._leases.get(target)
+            if lease is None or lease.expires_monotonic <= self._clock():
+                with self._request_lock:
+                    target_in_use = target in self._request_domains.values()
+                if not target_in_use:
+                    self.terminate(target)
+                raise BackendUnavailableError(
+                    "provider domain lease is unavailable or expired"
+                )
+            with self._request_lock:
+                if request_id in self._request_domains:
+                    raise BackendUnavailableError(
+                        "provider request identity is already active"
+                    )
+                self._request_domains[request_id] = target
         try:
             return self._driver.invoke(request)
         finally:
@@ -387,6 +448,10 @@ class ProductionIsolationBackend:
         self._driver.cancel(request_id)
 
     def terminate(self, domain_id: str) -> None:
+        with self._materialization_lock:
+            self._terminate_locked(domain_id)
+
+    def _terminate_locked(self, domain_id: str) -> None:
         self._driver.terminate(domain_id)
         with self._request_lock:
             for request_id, target in tuple(self._request_domains.items()):
