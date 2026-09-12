@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -194,6 +195,17 @@ def test_source_manifest_declares_profile_bundle_generation_policy() -> None:
     assert relative in generator_source_manifest.SOURCE_FILES
     manifest = generator_source_manifest.load_source_manifest()
     assert any(entry["path"] == relative for entry in manifest["files"])
+
+
+def test_rust_sealed_source_exact_files_match_the_canonical_generator() -> None:
+    """Desktop packaging accepts every canonical sparse exact-file grant."""
+    root = Path(__file__).resolve().parents[2]
+    rust_source = (
+        root / "tobkiri_launcher/src-tauri/src/packaged_source.rs"
+    ).read_text(encoding="utf-8")
+    files_block = rust_source.split("const FILES: &[&str] = &[", 1)[1].split("];", 1)[0]
+    rust_files = set(re.findall(r'"([^"\\]+)"', files_block))
+    assert rust_files == set(generator_source_manifest.SOURCE_FILES)
 
 
 def test_source_manifest_declares_moved_runtime_surface_module() -> None:
