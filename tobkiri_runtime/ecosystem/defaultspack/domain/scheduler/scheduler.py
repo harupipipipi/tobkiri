@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core_runtime.runtime_events import utc_now
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from .delivery import deliver
 from .job_store import SchedulerJobStore
@@ -12,9 +13,15 @@ from .security import SchedulerPolicyError, validate_scheduler_enabled
 
 
 class Scheduler:
-    def __init__(self, store: SchedulerJobStore | None = None, runner: SchedulerRunner | None = None) -> None:
+    def __init__(
+        self,
+        store: SchedulerJobStore | None = None,
+        runner: SchedulerRunner | None = None,
+        *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self.store = store or SchedulerJobStore()
-        self.runner = runner or SchedulerRunner()
+        self.runner = runner or SchedulerRunner(settings_owner=settings_owner)
 
     def tick(self) -> dict[str, Any]:
         try:

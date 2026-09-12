@@ -201,6 +201,54 @@ def test_get_model_capabilities_uses_captured_owner_and_forwards_snapshot(
     assert captured == [{}]
 
 
+def test_registered_scheduler_trigger_binds_captured_settings_owner(
+    monkeypatch: Any,
+) -> None:
+    import blocks.agent.scheduler.trigger as block
+
+    owner = object()
+    seen: list[Any] = []
+
+    class _Scheduler:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            seen.append(settings_owner)
+
+        def trigger_now(self, schedule_id: str) -> dict[str, str]:
+            return {"id": schedule_id}
+
+    monkeypatch.setattr(block, "Scheduler", _Scheduler)
+
+    result = block.run({"schedule_id": "schedule-1"}, {}, settings_owner=owner)
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_scheduler_runner_binds_owner_to_agent_engine(monkeypatch: Any) -> None:
+    import domain.agent.engine as engine_module
+    from domain.scheduler.runner import SchedulerRunner
+
+    owner = object()
+    seen: list[Any] = []
+
+    class _AgentEngine:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            seen.append(settings_owner)
+
+        def execute(self, *args: Any) -> dict[str, str]:
+            del args
+            return {"status": "ok"}
+
+    monkeypatch.setattr(engine_module, "AgentEngine", _AgentEngine)
+
+    result = SchedulerRunner(settings_owner=owner).run(
+        {"job_id": "job-1", "prompt": "hello", "model": "model-1"}
+    )
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
 def test_recommend_model_uses_captured_owner_and_forwards_snapshot(
     monkeypatch: Any,
 ) -> None:
