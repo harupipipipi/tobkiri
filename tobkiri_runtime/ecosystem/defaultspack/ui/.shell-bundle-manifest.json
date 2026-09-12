@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "e11ac7d79e68bcf54fe5741a15eb838ba57355e6ee2557de069c33f3bd4b6adc",
+    "digest": "764c5e7fc0fb68a8698eba555fb91d72a51dd3ae1f5c0aac6bd5c6faf46080ce",
     "entries": [
       {
         "path": "index.html",
@@ -1245,13 +1245,13 @@
       },
       {
         "path": "src/lib/chatLinkPolicy.test.ts",
-        "size": 3664,
-        "sha256": "896c60177bcc7d2d97ee9a04b60756588448697ddba23d00b946566aa793b63a"
+        "size": 3773,
+        "sha256": "e9f873a3a1e938cf804d6691e8a311c4f9004e43ddbc6dfb21a795e8260ffea4"
       },
       {
         "path": "src/lib/chatLinkPolicy.ts",
-        "size": 6116,
-        "sha256": "3d5d9f530e245c547a537b80b96ae452fc9381995f835e3620dafcda0d7f3c1b"
+        "size": 6168,
+        "sha256": "453d8ac54d6c391fee142adcd9c9f65790e09a362d8d8e1c5a93b6f39b204ea0"
       },
       {
         "path": "src/lib/chatRouteLoading.test.ts",
@@ -1916,7 +1916,7 @@
     ]
   },
   "bundle": {
-    "digest": "ac4d608d0f1664b511378af653135af8c8e7b4fb620bbf051cb22e7609af483b",
+    "digest": "379c38e3dff65ace9449bf5a61540192351bc2b6496b189334c38fb7d9dfcfa8",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1930,8 +1930,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2224287,
-        "sha256": "06afb11fb1d1800cdc3a084b2099cb6ed5296c1a722f22b33516d78b5feb0916"
+        "size": 2224271,
+        "sha256": "29fae27e3d6bef21c7f549c77088d3754dde56d220a10f0eb138808cc4ea8cac"
       },
       {
         "path": "shell-rolldown-runtime.js",
