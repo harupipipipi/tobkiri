@@ -4,28 +4,28 @@ Nonauthoritative, read-only facts. This report never grants runtime admission.
 
 ## Totals
 
-- Packs: 62
-- Operations: 187
+- Packs: 65
+- Operations: 203
 - Tracked Profiles: 1
-- Tracked-Profile-reachable packs: 17
-- Tracked-Profile-reachable operations: 63
+- Tracked-Profile-reachable packs: 28
+- Tracked-Profile-reachable operations: 88
 - AI Runtime signals: 14
-- Tool Runtime signals: 16
-- No AI/Tool Runtime signal: 32
-- Manual-review packs: 30
+- Tool Runtime signals: 17
+- No AI/Tool Runtime signal: 34
+- Manual-review packs: 31
 - Diagnostics: 0
 
 ## Profile inputs
 
 | Profile | Authority | Schema | Packs | Edges | Source |
 |---|---|---|---:|---:|---|
-| `defaults` | authoritative_intent | valid | 19 | 64 | `ecosystem/defaultspack/v4/defaults.profile.intent.v1.json` |
+| `defaults` | authoritative_intent | valid | 30 | 121 | `ecosystem/defaultspack/v4/defaults.profile.intent.v1.json` |
 
 ## Pack facts
 
 | Pack | Ops | Runtime signal | Reachable | Schema | Manual-review reasons |
 |---|---:|---|---:|---|---|
-| `rumi_ai_gateway_pack` | 3 | ai_runtime_signal | 2 | valid | runtime_signal_requires_human_review |
+| `rumi_ai_gateway_pack` | 4 | ai_runtime_signal | 3 | valid | runtime_signal_requires_human_review |
 | `rumi_ai_modality_pack` | 4 | ai_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_ai_pipeline_pack` | 6 | ai_runtime_signal | 4 | valid | runtime_signal_requires_human_review |
 | `rumi_ai_routing_pack` | 3 | ai_runtime_signal | 2 | valid | runtime_signal_requires_human_review |
@@ -35,11 +35,12 @@ Nonauthoritative, read-only facts. This report never grants runtime admission.
 | `rumi_browser_host_service_pack` | 2 | none | 0 | valid | - |
 | `rumi_clipboard_host_service_pack` | 2 | none | 0 | valid | - |
 | `rumi_coding_sandbox_service_pack` | 2 | none | 0 | valid | - |
-| `rumi_command_protocol_pack` | 1 | none | 1 | valid | - |
+| `rumi_command_protocol_pack` | 2 | none | 2 | valid | - |
 | `rumi_context_runtime_pack` | 1 | none | 0 | valid | - |
-| `rumi_conversation_store_pack` | 5 | none | 0 | valid | - |
-| `rumi_credential_broker_pack` | 4 | none | 0 | valid | - |
+| `rumi_conversation_store_pack` | 5 | none | 3 | valid | - |
+| `rumi_credential_broker_pack` | 4 | none | 1 | valid | - |
 | `rumi_default_tool_projection_pack` | 2 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
+| `rumi_default_tools_pack` | 1 | tool_runtime_signal | 1 | valid | runtime_signal_requires_human_review |
 | `rumi_discord_connector_pack` | 1 | none | 0 | valid | - |
 | `rumi_email_connector_pack` | 1 | none | 0 | valid | - |
 | `rumi_file_inspect_pack` | 2 | none | 1 | valid | - |
@@ -58,11 +59,11 @@ Nonauthoritative, read-only facts. This report never grants runtime admission.
 | `rumi_memory_store_pack` | 3 | none | 0 | valid | - |
 | `rumi_model_catalog_pack` | 3 | ai_runtime_signal | 2 | valid | runtime_signal_requires_human_review |
 | `rumi_model_evals_pack` | 3 | ai_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
-| `rumi_model_registry_pack` | 5 | ai_runtime_signal | 2 | valid | runtime_signal_requires_human_review |
+| `rumi_model_registry_pack` | 5 | ai_runtime_signal | 4 | valid | runtime_signal_requires_human_review |
 | `rumi_p2p_connector_pack` | 1 | none | 0 | valid | - |
-| `rumi_prompt_studio_pack` | 5 | none | 0 | valid | - |
+| `rumi_prompt_studio_pack` | 5 | none | 1 | valid | - |
 | `rumi_provider_adapters_pack` | 4 | ai_runtime_signal | 2 | valid | runtime_signal_requires_human_review |
-| `rumi_provider_registry_pack` | 7 | ai_runtime_signal | 4 | valid | runtime_signal_requires_human_review |
+| `rumi_provider_registry_pack` | 9 | ai_runtime_signal | 6 | valid | runtime_signal_requires_human_review |
 | `rumi_repository_context_pack` | 4 | ai_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_shell_execute_pack` | 2 | none | 2 | valid | - |
 | `rumi_slack_connector_pack` | 2 | none | 0 | valid | - |
@@ -71,21 +72,23 @@ Nonauthoritative, read-only facts. This report never grants runtime admission.
 | `rumi_tool_approval_bridge_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_tool_audit_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_tool_authoring_pack` | 2 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
-| `rumi_tool_broker_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
+| `rumi_tool_broker_pack` | 1 | tool_runtime_signal | 1 | valid | runtime_signal_requires_human_review |
 | `rumi_tool_capability_executor_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_tool_executor_selector_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_tool_guard_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
-| `rumi_tool_local_executor_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
+| `rumi_tool_local_executor_pack` | 1 | tool_runtime_signal | 1 | valid | runtime_signal_requires_human_review |
 | `rumi_tool_mcp_executor_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_tool_policy_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
-| `rumi_tool_registry_pack` | 3 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
+| `rumi_tool_registry_pack` | 3 | tool_runtime_signal | 1 | valid | runtime_signal_requires_human_review |
 | `rumi_tool_remote_executor_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
-| `rumi_tool_result_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
+| `rumi_tool_result_pack` | 1 | tool_runtime_signal | 1 | valid | runtime_signal_requires_human_review |
 | `rumi_tool_sandbox_executor_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
-| `rumi_tool_validation_pack` | 1 | tool_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
-| `rumi_turn_runtime_pack` | 3 | none | 0 | valid | - |
+| `rumi_tool_validation_pack` | 1 | tool_runtime_signal | 1 | valid | runtime_signal_requires_human_review |
+| `rumi_turn_runtime_pack` | 6 | none | 5 | valid | - |
 | `rumi_workspace_mount_pack` | 2 | none | 0 | valid | - |
 | `tobkiri_host_pack_control` | 23 | none | 23 | valid | - |
+| `tobkiri_mcp_connection_pack` | 5 | none | 0 | valid | - |
+| `tobkiri_ui_settings_pack` | 3 | none | 3 | valid | - |
 | `tobkiri_workflow_pack` | 20 | none | 0 | valid | - |
 
 ## Diagnostics

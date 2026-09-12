@@ -597,7 +597,7 @@ def test_packaged_generator_binds_macos_tree_and_entrypoint_digests(
         bundle_identity="io.tobkiri.shell.tauri",
         source_provenance_file=provenance,
     )
-    profile = json.loads((bundle / "defaults.profile.v4.json").read_text())
+    profile = json.loads((bundle / "defaults.profile.v5.json").read_text())
     assert profile["provenance"]["normative"] is False
     validate_compatibility_profile(profile)
     for companion in (
@@ -610,10 +610,10 @@ def test_packaged_generator_binds_macos_tree_and_entrypoint_digests(
     profile_entry = next(
         item
         for item in bundle_lock["entries"]
-        if item["path"] == "defaults.profile.v4.json"
+        if item["path"] == "defaults.profile.v5.json"
     )
     assert profile_entry["digest"] == "sha256:" + hashlib.sha256(
-        (bundle / "defaults.profile.v4.json").read_bytes()
+        (bundle / "defaults.profile.v5.json").read_bytes()
     ).hexdigest()
     assert profile["provenance"]["repository_tree"] == repository_tree_digest(
         ROOT,

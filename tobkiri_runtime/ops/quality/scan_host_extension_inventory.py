@@ -21,7 +21,7 @@ from tobkiri_protocol.validation import validate_document  # noqa: E402
 
 DEFAULT_SUMMARY = Path("docs/host-extension-inventory.md")
 INTENT_SUFFIX = ".profile.intent.v1.json"
-PROFILE_SUFFIX = ".profile.v4.json"
+PROFILE_SUFFIXES = (".profile.v4.json", ".profile.v5.json")
 SIGNALS = ("ai_runtime_signal", "tool_runtime_signal", "none")
 IO_MODULES = (
     ("urllib", "network"),
@@ -246,7 +246,7 @@ def _tracked_profile_paths(root: Path) -> list[Path]:
         {
             path
             for path in paths
-            if path.name.endswith(INTENT_SUFFIX) or path.name.endswith(PROFILE_SUFFIX)
+            if path.name.endswith((INTENT_SUFFIX, *PROFILE_SUFFIXES))
         },
         key=lambda path: _relative(root, path),
     )
@@ -254,7 +254,7 @@ def _tracked_profile_paths(root: Path) -> list[Path]:
 
 def _profile_key(root: Path, path: Path) -> str:
     relative = _relative(root, path)
-    for suffix in (INTENT_SUFFIX, PROFILE_SUFFIX):
+    for suffix in (INTENT_SUFFIX, *PROFILE_SUFFIXES):
         if relative.endswith(suffix):
             return relative[: -len(suffix)]
     return relative
@@ -341,7 +341,7 @@ def _profiles(
         path
         for path in paths
         if not (
-            path.name.endswith(PROFILE_SUFFIX)
+            path.name.endswith(PROFILE_SUFFIXES)
             and _profile_key(root, path) in intent_keys
         )
     ]

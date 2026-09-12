@@ -538,7 +538,7 @@ where
         let profile = request
             .projection
             .bundle_root
-            .join("defaults.profile.v4.json");
+            .join("defaults.profile.v5.json");
         let lock = request.projection.bundle_root.join("bundle.lock.json");
         let profile_digest = byte_digest(&fs::read(&profile)?);
         let lock_digest = byte_digest(&fs::read(&lock)?);
@@ -2274,7 +2274,7 @@ fn verify_presentation_release_at(
         ));
     }
     if text_field(release_object, "default_profile_path", "release manifest")?
-        != "ecosystem/defaultspack/v4/defaults.profile.v4.json"
+        != "ecosystem/defaultspack/v4/defaults.profile.v5.json"
         || text_field(release_object, "defaultspack_lock_path", "release manifest")?
             != "ecosystem/defaultspack/v4/bundle.lock.json"
     {
@@ -2295,7 +2295,7 @@ fn verify_presentation_release_at(
     )?;
     let release_profile = require_release_path(
         release_root,
-        "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+        "ecosystem/defaultspack/v4/defaults.profile.v5.json",
         "release default Profile",
     )?;
     let release_defaultspack_lock = require_release_path(
@@ -3676,7 +3676,7 @@ fn verify_release_source_shape(entries: &[ReleaseTreeEntry]) -> io::Result<()> {
         "bundled/presentation_release.v4.json",
         "bundled/shell_artifact_index.v4.json",
         "bundled/shell_profile_lock.v4.json",
-        "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+        "ecosystem/defaultspack/v4/defaults.profile.v5.json",
         "ecosystem/defaultspack/v4/bundle.lock.json",
     ];
     let required_directories = [
@@ -4185,7 +4185,7 @@ fn produce_and_stage_core_presentation_release(staged_root: &Path) -> io::Result
                         "catalog_sha256": catalog_digest, "artifact_index_path": "bundled/shell_artifact_index.v4.json",
                         "artifact_index_sha256": index_file_digest, "profile_lock_path": "bundled/shell_profile_lock.v4.json",
                         "profile_lock_sha256": lock_file_digest,
-                        "default_profile_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+                        "default_profile_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
                         "default_profile_sha256": projection.default_profile_sha256,
                         "defaultspack_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
                         "defaultspack_lock_sha256": projection.defaultspack_lock_sha256,
@@ -7271,7 +7271,7 @@ mod tests {
         let source_identity = "test:source";
         let source_revision = "a".repeat(40);
         let default_profile_path =
-            release_root.join("ecosystem/defaultspack/v4/defaults.profile.v4.json");
+            release_root.join("ecosystem/defaultspack/v4/defaults.profile.v5.json");
         let defaultspack_lock_path =
             release_root.join("ecosystem/defaultspack/v4/bundle.lock.json");
         fs::create_dir_all(default_profile_path.parent().expect("Profile has a parent"))
@@ -7451,7 +7451,7 @@ mod tests {
             "artifact_index_sha256": index_file_digest,
             "profile_lock_path": "bundled/shell_profile_lock.v4.json",
             "profile_lock_sha256": lock_file_digest,
-            "default_profile_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+            "default_profile_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
             "default_profile_sha256": default_profile_sha256,
             "defaultspack_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
             "defaultspack_lock_sha256": defaultspack_lock_sha256,
@@ -7559,7 +7559,7 @@ mod tests {
             "bundled/shell_artifact_index.v4.json",
             "bundled/shell_profile_lock.v4.json",
             "bundled/presentation_release.v4.json",
-            "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+            "ecosystem/defaultspack/v4/defaults.profile.v5.json",
             "ecosystem/defaultspack/v4/bundle.lock.json",
         ] {
             let tree = TestTree::new(&format!("snapshot-race-{}", relative.replace('/', "-")));
@@ -8316,7 +8316,7 @@ mod tests {
             "bundled/shell_artifact_index.v4.json",
             "bundled/shell_profile_lock.v4.json",
             "bundled/presentation_release.v4.json",
-            "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+            "ecosystem/defaultspack/v4/defaults.profile.v5.json",
             "ecosystem/defaultspack/v4/bundle.lock.json",
         ] {
             let tree = TestTree::new(&format!("staged-recheck-{}", relative.replace('/', "-")));
@@ -8394,7 +8394,7 @@ mod tests {
         .expect("core packager fixture should produce a verified bundle");
         assert_eq!(
             output.default_profile_sha256,
-            byte_digest(&fs::read(bundle_root.join("defaults.profile.v4.json")).unwrap())
+            byte_digest(&fs::read(bundle_root.join("defaults.profile.v5.json")).unwrap())
         );
         assert_eq!(
             output.defaultspack_lock_sha256,

@@ -2,21 +2,8 @@
   "baseline_api_version": "io.tobkiri.pack-boundary-baseline.v1",
   "policy": "exact-current-shrink-only-from-reference",
   "summary": {
-    "by_rule": {
-      "pack-boundary.v4-file-uses-v5-api": 1
-    },
-    "total": 1
+    "by_rule": {},
+    "total": 0
   },
-  "violations": [
-    {
-      "evidence": {
-        "declaration": "profile_api_version",
-        "value": "io.tobkiri.profile.v5"
-      },
-      "fingerprint": "sha256:b359002488024336dc49fef5e0ac7a0f5fa4ef7f29252a132c15f18f00029a68",
-      "line": 164,
-      "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json",
-      "rule_id": "pack-boundary.v4-file-uses-v5-api"
-    }
-  ]
+  "violations": []
 }

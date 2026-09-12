@@ -382,7 +382,7 @@ def _v4_pack_artifacts() -> list[Path]:
 
 def _v4_profile_artifacts() -> list[Path]:
     """Return the explicit v4 Profile entrypoint, not recursive Pack bundles."""
-    path = ECOSYSTEM / "defaultspack" / "v4" / "defaults.profile.v4.json"
+    path = ECOSYSTEM / "defaultspack" / "v4" / "defaults.profile.v5.json"
     return [path] if path.is_file() else []
 
 

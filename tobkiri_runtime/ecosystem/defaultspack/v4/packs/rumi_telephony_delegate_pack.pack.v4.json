@@ -43,18 +43,18 @@
     "source_digest": "sha256:d8f6c18bfbee6b12ef0babb335fd40639720c8459edfe03a59caca495234ea4e",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:e8cb747f3db735875acca26574e320e212f9a86fdb614522e65973ee93e43485",
+    "content_root_digest": "sha256:862ffa77af4513679a7f34ab48f98158c521f0a435fae064c8ecf6b2ca890e35",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
     "input_inventory_digest": "sha256:b51464813cd66f990b9c52d4b0071059df67ed932a98e76338d702ab32a3898e",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171"
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
       },
       {
         "path": "ecosystem/rumi_telephony_delegate_pack/pack.v4.json",

@@ -275,7 +275,7 @@ def test_committed_baseline_does_not_excuse_the_non_authoritative_profile(
     scanner: ModuleType,
 ) -> None:
     repo_root = SCRIPT.parents[2]
-    profile_path = "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json"
+    profile_path = "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
     baseline_path = SCRIPT.with_name("pack_boundary_baseline.json")
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     profile_exceptions = [

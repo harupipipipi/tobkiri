@@ -2078,7 +2078,7 @@ mod tests {
             "actual generator failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(bundle_root.join("defaults.profile.v4.json").is_file());
+        assert!(bundle_root.join("defaults.profile.v5.json").is_file());
         assert!(bundle_root
             .join("shell.tauri.default.shell.v1.json")
             .is_file());

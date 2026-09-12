@@ -54,7 +54,7 @@ def captured_host_profile(
     outputs = render(
         bundle_root=bundle,
         intent_path=intent_path,
-        compatibility_path=bundle / "defaults.profile.v4.json",
+        compatibility_path=bundle / "defaults.profile.v5.json",
         lock_path=bundle / "defaults.profile.lock.v5.json",
         provenance_path=bundle / "defaults.release.provenance.json",
         source_bundle_root=_RUNTIME_ROOT / "ecosystem/defaultspack/v4",

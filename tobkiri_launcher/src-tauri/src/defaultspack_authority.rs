@@ -43,7 +43,7 @@ const DEFAULT_SHELL_ID: &str = "shell.tauri.default";
 const DEFAULT_RUNTIME_ID: &str = "runtime.tauri.application.default";
 #[cfg(test)]
 const DEFAULT_PROFILE_SOURCE: &str =
-    "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json";
+    "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json";
 #[cfg(test)]
 const DEFAULT_PROVIDER_PACK_IDS: [&str; 13] = [
     "defaultspack",
@@ -61,7 +61,7 @@ const DEFAULT_PROVIDER_PACK_IDS: [&str; 13] = [
     "tobkiri_host_pack_control",
 ];
 #[cfg(test)]
-const PROFILE_PATH: &str = "defaults.profile.v4.json";
+const PROFILE_PATH: &str = "defaults.profile.v5.json";
 #[cfg(test)]
 const DEFAULTSPACK_PACK_PATH: &str = "packs/defaultspack.pack.v4.json";
 #[cfg(test)]
@@ -4882,7 +4882,7 @@ mod tests {
         fs::remove_file(
             missing_config
                 .app_dir
-                .join("ecosystem/defaultspack/v4/defaults.profile.v4.json"),
+                .join("ecosystem/defaultspack/v4/defaults.profile.v5.json"),
         )
         .unwrap();
         assert!(resolve(&missing_config).is_err());
@@ -4892,7 +4892,7 @@ mod tests {
         fs::write(
             tampered_config
                 .app_dir
-                .join("ecosystem/defaultspack/v4/defaults.profile.v4.json"),
+                .join("ecosystem/defaultspack/v4/defaults.profile.v5.json"),
             b"{}",
         )
         .unwrap();
@@ -4918,7 +4918,7 @@ mod tests {
         let (symlink_root, symlink_config) = fixture("symlink");
         let profile = symlink_config
             .app_dir
-            .join("ecosystem/defaultspack/v4/defaults.profile.v4.json");
+            .join("ecosystem/defaultspack/v4/defaults.profile.v5.json");
         let outside = symlink_root.join("outside.profile.json");
         fs::rename(&profile, &outside).unwrap();
         symlink(&outside, &profile).unwrap();

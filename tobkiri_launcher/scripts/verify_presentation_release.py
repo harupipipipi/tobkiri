@@ -343,7 +343,7 @@ def verify_release_binding(catalog: dict[str, Any], root: Path) -> dict[str, Any
         "catalog_path": "bundled/presentation_catalog.json",
         "artifact_index_path": "bundled/shell_artifact_index.v4.json",
         "profile_lock_path": "bundled/shell_profile_lock.v4.json",
-        "default_profile_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+        "default_profile_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
         "defaultspack_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
     }
     release_fields = {

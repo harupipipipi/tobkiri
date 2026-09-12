@@ -186,7 +186,7 @@ def test_reconciliation_has_no_execution_edge_and_accepts_only_a_turn_identity()
                   {"turn_id": "turn-1", "result_reference": {}},
                   {"turn_id": "turn-1", "profile_id": "other"}):
         assert not validator.is_valid(value)
-    profile = json.loads((root / "ecosystem/defaultspack/v4/defaults.profile.v4.json").read_text())
+    profile = json.loads((root / "ecosystem/defaultspack/v4/defaults.profile.v5.json").read_text())
     edges = [edge for edge in profile["requested_edges"]
              if edge["caller_function_id"] == variant["function_id"]]
     assert [(edge["contract_id"], edge["operation_id"]) for edge in edges] == [

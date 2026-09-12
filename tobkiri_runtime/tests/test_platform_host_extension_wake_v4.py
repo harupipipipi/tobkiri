@@ -658,7 +658,7 @@ def test_generated_tauri_roles_are_separate_and_production_selects_runtime_only(
     toolchain = json.loads(
         (bundle / "packs" / "dev.tauri.toolchain.default.pack.v4.json").read_text(encoding="utf-8")
     )
-    profile = json.loads((bundle / "defaults.profile.v4.json").read_text(encoding="utf-8"))
+    profile = json.loads((bundle / "defaults.profile.v5.json").read_text(encoding="utf-8"))
     assert runtime["pack"]["kind"] == "application"
     assert runtime["contracts"][0]["contract_id"] == "runtime.tauri.application.v1"
     assert toolchain["pack"]["kind"] == "host_extension"

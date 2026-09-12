@@ -2187,14 +2187,14 @@
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/pack.v4.json"
     ],
     "v4_profile_artifacts": [
-      "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json"
+      "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json"
     ]
   },
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "13b931600c3bcd09730d0b5ae0a39dedc3baa228",
-    "semantic_digest": "sha256:00315dd092f20dca51facbfb481ace1d93d6246d3148ac91fb9ba0e998c79b7c",
+    "observed_head_sha": "f57fcc2d321eba12b355c1e49c8d08164eace065",
+    "semantic_digest": "sha256:56088b0b2ae0f0f3475321a5df0535b525a8f74e48f7dd994c6d7a320eca7213",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

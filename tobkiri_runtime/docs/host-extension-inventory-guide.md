@@ -56,7 +56,7 @@ activation authority are intentionally outside this report.
 
 Profile discovery is product-neutral and limited to tracked files below
 `ecosystem/`. Every `*.profile.intent.v1.json` is selected as authoritative.
-A same-name `*.profile.v4.json` compatibility projection is not read when the
+A same-name `*.profile.v4.json` or `*.profile.v5.json` compatibility projection is not read when the
 intent exists; otherwise it is recorded explicitly as a compatibility fallback.
 Duplicate selected `profile_id` values are diagnosed and every conflicting
 definition is excluded from aggregate reachability.

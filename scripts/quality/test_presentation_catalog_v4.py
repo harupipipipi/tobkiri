@@ -53,7 +53,7 @@ def test_v4_catalog_is_byte_identical_and_uninstalled_variants_fail_closed(
 
     assert first.read_bytes() == second.read_bytes()
     catalog = json.loads(first.read_text(encoding="utf-8"))
-    assert catalog["default_profile_source"].endswith("/v4/defaults.profile.v4.json")
+    assert catalog["default_profile_source"].endswith("/v4/defaults.profile.v5.json")
     assert all(
         "domain/pack_architecture" not in value
         for value in json.dumps(catalog, sort_keys=True).split()

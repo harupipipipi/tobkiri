@@ -167,7 +167,7 @@ sentinel commit metadata is rejected. Release verification must use the v2
 content bindings and the signed runtime resource manifest, never the commit
 label as authority.
 
-`defaults.profile.v4.json` is a compatibility projection, not that normative
+`defaults.profile.v5.json` is a compatibility projection, not that normative
 release root. While its intent is unresolved and its source is the working
 tree, it uses non-normative provenance v1. The Profile artifact generator
 rejects an unresolved or working-tree compatibility projection that claims

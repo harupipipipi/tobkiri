@@ -659,7 +659,7 @@ def _validate_staged_bundle(
 ) -> None:
     """Verify every staged Pack/Profile/Shell/lock byte before publication."""
     shell_path = bundle_root / "shell.tauri.default.shell.v1.json"
-    profile_path = bundle_root / "defaults.profile.v4.json"
+    profile_path = bundle_root / "defaults.profile.v5.json"
     lock_path = bundle_root / "bundle.lock.json"
     shell = validate_document(_read_json(shell_path, "Shell"), "shell")
     profile = validate_document(_read_json(profile_path, "Profile"), "profile")
@@ -881,7 +881,7 @@ def _package_transaction(
             )
             _write_json(staged_bundle / "packs" / pack_name, _normalize_pack(pack))
 
-        profile_path = staged_bundle / "defaults.profile.v4.json"
+        profile_path = staged_bundle / "defaults.profile.v5.json"
         profile = _read_json(profile_path, "Profile")
         if not isinstance(profile.get("shell"), dict):
             raise ValueError("packaged Profile has no Shell definition")
@@ -895,7 +895,7 @@ def _package_transaction(
         profile["provenance"] = compatibility_profile_provenance(
             root=ROOT,
             profile=profile,
-            source_path="ecosystem/defaultspack/v4/defaults.profile.v4.json",
+            source_path="ecosystem/defaultspack/v4/defaults.profile.v5.json",
             generator="defaultspack-v4-packager",
             generator_version="2.0.0",
             generator_path=Path(__file__),

@@ -77,7 +77,7 @@ CANONICAL_DEFAULTSPACK_FILES = (
     Path("ecosystem/defaultspack/artifact-index.v4.json"),
     Path("ecosystem/defaultspack/executables.v4.json"),
     Path("ecosystem/defaultspack/v4/bundle.lock.json"),
-    Path("ecosystem/defaultspack/v4/defaults.profile.v4.json"),
+    Path("ecosystem/defaultspack/v4/defaults.profile.v5.json"),
 )
 GENERATED_RESOURCE_DIRS = (
     "core_runtime/core_pack/core_control_panel/web",

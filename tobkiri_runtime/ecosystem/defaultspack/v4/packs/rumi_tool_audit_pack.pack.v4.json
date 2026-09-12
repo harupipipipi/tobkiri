@@ -72,18 +72,18 @@
     "source_digest": "sha256:ee3e6d60aa963893e258c125bf75319d2f19a70737aa59380b1cef4551fc625b",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:1766291386d7392fb423b21df0293940aedf9f5ff2d5c9eb659dcf86ec14a32f",
+    "content_root_digest": "sha256:2e368006d83e79bf3e4969f5a694c4547b83a12de681dcc9dc27a5b94a89e626",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
     "input_inventory_digest": "sha256:e98d659bdf85e1caeb0a20e06a1aed7c21257b25524749d8e89453896321ac74",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171"
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
       },
       {
         "path": "ecosystem/rumi_tool_audit_pack/pack.v4.json",

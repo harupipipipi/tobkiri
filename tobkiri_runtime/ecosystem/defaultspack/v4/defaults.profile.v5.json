@@ -167,10 +167,10 @@
   "provenance": {
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
-    "source_path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
+    "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
     "source_digest": "sha256:9044c5f2ca96728847720bca6d398898d9a833df1dd4482439fb65e732aa2e72",
     "repository_commit": "working-tree",
-    "repository_tree": "4ef99f01e3fbc1cf635a111eb853615b7a82363c1026ad78053b3069dbd72450",
+    "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
     "generator_version": "1.0.0",
     "normative": false,
@@ -183,7 +183,7 @@
       {
         "path": "scripts/generate_profile_artifacts.py",
         "rule_id": "compatibility-projection-generator-bytes",
-        "digest": "sha256:f896517c12c0c784edfdad52a088d2bd6be6726c8c08d2d98509d27c3a181feb"
+        "digest": "sha256:b9307ee0de2eea69e3cf927a5a91224ae0b27f859e5120eab5283003a0228590"
       },
       {
         "path": "scripts/profile_compatibility_provenance.py",

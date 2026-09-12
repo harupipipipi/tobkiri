@@ -13,12 +13,26 @@ from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
 from scripts import generate_defaultspack_v4_bundle as canonical_generator
 from scripts import generate_profile_artifacts as generator
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.defaultspack_bundle_order import canonical_defaultspack_bundle_entries
 from tobkiri_protocol.provenance import repository_tree_digest
 from tobkiri_protocol.validation import validate_document
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
+
+
+@pytest.mark.parametrize("version", [4, 5])
+def test_bundle_reader_keeps_versioned_profile_paths(version: int) -> None:
+    """Renaming current output must not reject existing v4 bundle paths."""
+    entry = {
+        "kind": "profile",
+        "path": f"research.profile.v{version}.json",
+        "digest": "sha256:" + "a" * 64,
+    }
+    assert canonical_defaultspack_bundle_entries([entry]) == [entry]
+    with pytest.raises(ValueError, match="unexpected suffix"):
+        canonical_defaultspack_bundle_entries([{**entry, "kind": "shell"}])
 
 
 def _sha256(raw: bytes) -> str:
@@ -34,7 +48,7 @@ def _copy_bundle(tmp_path: Path) -> Path:
 def _paths(bundle: Path) -> dict[str, Path]:
     return {
         "intent": bundle / "defaults.profile.intent.v1.json",
-        "compatibility": bundle / "defaults.profile.v4.json",
+        "compatibility": bundle / "defaults.profile.v5.json",
         "lock": bundle / "defaults.profile.lock.v5.json",
         "provenance": bundle / "defaults.release.provenance.json",
     }
@@ -127,7 +141,7 @@ def test_checked_in_profile_artifacts_are_deterministic_and_schema_valid() -> No
         (BUNDLE / "defaults.profile.intent.v1.json").read_bytes(),
         "profile_intent",
     )
-    compatibility = validate_document((BUNDLE / "defaults.profile.v4.json").read_bytes(), "profile")
+    compatibility = validate_document((BUNDLE / "defaults.profile.v5.json").read_bytes(), "profile")
     lock = validate_document(
         (BUNDLE / "defaults.profile.lock.v5.json").read_bytes(),
         "profile_artifact_lock",
@@ -139,7 +153,9 @@ def test_checked_in_profile_artifacts_are_deterministic_and_schema_valid() -> No
 
     assert "provenance" not in intent
     assert intent["intent_api_version"] == "io.tobkiri.profile-intent.v1"
-    assert compatibility["provenance"]["source_path"].endswith("defaults.profile.v4.json")
+    assert compatibility["profile_api_version"] == "io.tobkiri.profile.v5"
+    assert not (BUNDLE / "defaults.profile.v4.json").exists()
+    assert compatibility["provenance"]["source_path"].endswith("defaults.profile.v5.json")
     assert compatibility["provenance"]["schema"] == "io.tobkiri.provenance.v1"
     assert compatibility["provenance"]["normative"] is False
     assert compatibility["provenance"]["repository_commit"] == "working-tree"
@@ -184,7 +200,7 @@ def test_checked_in_profile_artifacts_are_deterministic_and_schema_valid() -> No
 def test_compatibility_profile_rejects_normative_unresolved_provenance(
     state: str, repository_commit: str
 ) -> None:
-    profile = json.loads((BUNDLE / "defaults.profile.v4.json").read_text())
+    profile = json.loads((BUNDLE / "defaults.profile.v5.json").read_text())
     profile["state"] = state
     profile["provenance"]["normative"] = True
     profile["provenance"]["repository_commit"] = repository_commit
@@ -196,7 +212,7 @@ def test_compatibility_profile_rejects_normative_unresolved_provenance(
 def test_canonical_bundle_render_preserves_non_authoritative_profile() -> None:
     """The compatibility projection cannot regain authority during canonicalization."""
 
-    profile_path = BUNDLE / "defaults.profile.v4.json"
+    profile_path = BUNDLE / "defaults.profile.v5.json"
     rendered = canonical_generator._render()
     profile = json.loads(rendered[profile_path])
 
@@ -213,7 +229,7 @@ def test_roundtrip_preserves_bundle_compatibility_and_output_bytes(tmp_path: Pat
     assert BundledCatalog.load(bundle).profiles.keys() == {"defaults"}
 
     bundle_lock = json.loads((bundle / "bundle.lock.json").read_text())
-    compatibility = bundle / "defaults.profile.v4.json"
+    compatibility = bundle / "defaults.profile.v5.json"
     entry = next(item for item in bundle_lock["entries"] if item["path"] == compatibility.name)
     assert entry["digest"] == _sha256(compatibility.read_bytes())
 
@@ -221,7 +237,7 @@ def test_roundtrip_preserves_bundle_compatibility_and_output_bytes(tmp_path: Pat
 @pytest.mark.parametrize(
     "artifact_name",
     [
-        "defaults.profile.v4.json",
+        "defaults.profile.v5.json",
         "defaults.profile.lock.v5.json",
         "defaults.release.provenance.json",
     ],
@@ -246,8 +262,8 @@ def test_check_fails_closed_on_intent_drift_and_catalog_tamper(tmp_path: Path) -
     assert _check(bundle) == 1
     expected = _render(bundle)
     assert (
-        expected[bundle / "defaults.profile.v4.json"]
-        != (bundle / "defaults.profile.v4.json").read_bytes()
+        expected[bundle / "defaults.profile.v5.json"]
+        != (bundle / "defaults.profile.v5.json").read_bytes()
     )
 
     pack_path = bundle / "packs" / "defaultspack.pack.v4.json"
@@ -265,16 +281,16 @@ def test_generator_applies_to_non_defaults_named_profile(tmp_path: Path) -> None
     intent["display_name"] = "Research"
     named_intent.write_text(json.dumps(intent, indent=2) + "\n")
 
-    named_compatibility = bundle / "research.profile.v4.json"
+    named_compatibility = bundle / "research.profile.v5.json"
     named_lock = bundle / "research.profile.lock.v5.json"
     named_provenance = bundle / "research.release.provenance.json"
     bundle_lock_path = bundle / "bundle.lock.json"
     bundle_lock = json.loads(bundle_lock_path.read_text())
     for entry in bundle_lock["entries"]:
-        if entry["path"] == "defaults.profile.v4.json":
+        if entry["path"] == "defaults.profile.v5.json":
             entry["path"] = named_compatibility.name
     bundle_lock_path.write_text(json.dumps(bundle_lock, indent=2) + "\n")
-    (bundle / "defaults.profile.v4.json").rename(named_compatibility)
+    (bundle / "defaults.profile.v5.json").rename(named_compatibility)
 
     rendered = generator.render(
         bundle_root=bundle,

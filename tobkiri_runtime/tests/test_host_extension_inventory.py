@@ -6,6 +6,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from ops.quality.scan_host_extension_inventory import (
     build_inventory,
     canonical_json,
@@ -16,6 +18,21 @@ from ops.quality.scan_host_extension_inventory import (
 RUNTIME_ROOT = Path(__file__).parents[1]
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "host_extension_inventory"
 SUMMARY_REPORT = RUNTIME_ROOT / "docs" / "host-extension-inventory.md"
+
+
+@pytest.mark.parametrize("version", [4, 5])
+def test_versioned_projection_cannot_override_author_intent(
+    tmp_path: Path, version: int,
+) -> None:
+    """The renamed projection retains the inventory's intent-first behavior."""
+    root = tmp_path / "runtime"
+    shutil.copytree(FIXTURE_ROOT, root)
+    before = build_inventory(root)
+    projection = (
+        root / "ecosystem/defaultspack/v4" / f"defaults.profile.v{version}.json"
+    )
+    projection.write_text("invalid projection", encoding="utf-8")
+    assert build_inventory(root) == before
 
 
 def test_fixture_reports_schema_profile_reachability_and_advisory_ast() -> None:

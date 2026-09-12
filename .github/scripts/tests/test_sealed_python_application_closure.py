@@ -96,7 +96,7 @@ def _packaged_application_closure(base: Path) -> Path:
         "ecosystem/defaultspack/contracts.v4.json": {"contracts": []},
         "ecosystem/defaultspack/artifact-index.v4.json": {"artifacts": []},
         "ecosystem/defaultspack/executables.v4.json": {"executables": []},
-        "ecosystem/defaultspack/v4/defaults.profile.v4.json": {"profile_id": "defaults"},
+        "ecosystem/defaultspack/v4/defaults.profile.v5.json": {"profile_id": "defaults"},
         "ecosystem/defaultspack/v4/bundle.lock.json": {
             "schema": BUILDER.PACKAGED_APPLICATION_BUNDLE_LOCK_SCHEMA,
             "entries": [],
@@ -132,7 +132,7 @@ def _packaged_application_closure(base: Path) -> Path:
         if not path.is_file() or path.name == lock_path.name:
             continue
         relative = path.relative_to(bundle_root).as_posix()
-        kind = "profile" if path.name == "defaults.profile.v4.json" else "shell"
+        kind = "profile" if path.name == "defaults.profile.v5.json" else "shell"
         entries.append(
             {
                 "path": relative,

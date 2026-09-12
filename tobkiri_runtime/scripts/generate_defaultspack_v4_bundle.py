@@ -181,7 +181,7 @@ def _render_profile_release(
     return profile_artifact_generator.render(
         bundle_root=bundle_root,
         intent_path=bundle_root / "defaults.profile.intent.v1.json",
-        compatibility_path=bundle_root / "defaults.profile.v4.json",
+        compatibility_path=bundle_root / "defaults.profile.v5.json",
         lock_path=bundle_root / "defaults.profile.lock.v5.json",
         provenance_path=bundle_root / "defaults.release.provenance.json",
         source_bundle_root=source_bundle_root,
@@ -905,7 +905,9 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
 
     base_path = BUNDLE / "defaults-basepack.base.v1.json"
     shell_paths = sorted(BUNDLE.glob("*.shell.v1.json"))
-    profile_paths = sorted(BUNDLE.glob("*.profile.v4.json"))
+    profile_paths = sorted(
+        [*BUNDLE.glob("*.profile.v4.json"), *BUNDLE.glob("*.profile.v5.json")]
+    )
     if not profile_paths:
         raise ValueError("defaultspack v4 bundle has no Profile definitions")
     base_source = json.loads(base_path.read_text(encoding="utf-8"))
@@ -1002,7 +1004,13 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
         rendered[shell_path] = _pretty(shell)
 
     entries: list[dict[str, str]] = []
-    kinds = {"packs": "pack", "base.v1": "base", "shell.v1": "shell", "profile.v4": "profile"}
+    kinds = {
+        "packs": "pack",
+        "base.v1": "base",
+        "shell.v1": "shell",
+        "profile.v4": "profile",
+        "profile.v5": "profile",
+    }
     paths = [
         *sorted(path for path in rendered if path.parent == PACKS),
         base_path,

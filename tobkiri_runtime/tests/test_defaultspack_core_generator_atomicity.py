@@ -68,7 +68,7 @@ def _provenance_path(path: Path) -> str:
 def _assert_complete_profile_release(bundle: Path) -> None:
     """Assert the immutable Profile closure that canonical publication owns."""
 
-    profile_path = bundle / "defaults.profile.v4.json"
+    profile_path = bundle / "defaults.profile.v5.json"
     lock_path = bundle / "defaults.profile.lock.v5.json"
     provenance_path = bundle / "defaults.release.provenance.json"
     profile_raw = profile_path.read_bytes()
@@ -84,7 +84,7 @@ def _assert_complete_profile_release(bundle: Path) -> None:
     bundle_raw = (bundle / "bundle.lock.json").read_bytes()
     bundle_lock = json.loads(bundle_raw)
     profile_entry = next(
-        item for item in bundle_lock["entries"] if item["path"] == "defaults.profile.v4.json"
+        item for item in bundle_lock["entries"] if item["path"] == "defaults.profile.v5.json"
     )
     assert profile_entry["digest"] == _sha256(profile_raw)
     assert lock["profile_revision"] == canonical_digest(profile)

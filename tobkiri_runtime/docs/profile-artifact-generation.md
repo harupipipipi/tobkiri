@@ -12,7 +12,7 @@ Profile source and release artifacts have separate roles:
 - `ecosystem/defaultspack/v4/defaults.release.provenance.json` binds the exact
   intent and catalog inputs, generator bytes, compatibility projection, and
   source-release lock.
-- `ecosystem/defaultspack/v4/defaults.profile.v4.json` remains a generated
+- `ecosystem/defaultspack/v4/defaults.profile.v5.json` remains a generated
   compatibility projection for consumers that still load the historical
   filename. Despite the filename, its document API is Profile v5. Its embedded
   legacy provenance remains byte-compatible with the old core bundle check;
@@ -49,7 +49,7 @@ Profile whose compatibility path has one `profile` entry in the selected
 The compatibility projection is supported through **2026-12-31**. It may be
 removed no earlier than **2027-01-01**, and only after repository search and
 packaging tests prove that no runtime, launcher, presentation-catalog, or
-distribution consumer reads `defaults.profile.v4.json` directly. Until that
+distribution consumer reads `defaults.profile.v5.json` directly. Until that
 gate passes, generators must update the projection and its bundle-lock digest
 as one operation.
 
@@ -75,6 +75,6 @@ truth again.
 bundle generator removes all three from its staged output before publication:
 they describe the source release and must not claim to describe a bundle whose
 Shell and Pack artifacts were rewritten for one platform. A packaged bundle
-retains `defaults.profile.v4.json` and `bundle.lock.json`; the latter is
+retains `defaults.profile.v5.json` and `bundle.lock.json`; the latter is
 rewritten after the compatibility projection so its Profile entry remains
 byte-exact. Runtime consumers must not rely on the excluded source artifacts.
