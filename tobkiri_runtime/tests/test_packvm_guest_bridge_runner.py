@@ -579,6 +579,49 @@ def test_expired_resume_cannot_verify_artifact_or_spawn_child(
         runner._resume_bridge_invocation({}, {}, {}, guest_deadline=1000.0)
 
 
+def test_guest_operation_diagnostic_is_fixed_and_does_not_leak_details() -> None:
+    config = _config()
+    request = _envelope(
+        config,
+        "invoke",
+        "diagnostic",
+        "a" * 64,
+        payload=_invoke_payload("diagnostic"),
+    )
+    response = runner._safe_agent_error_response(
+        request,
+        runner._GuestOperationError("EXECUTION_FAILED"),
+    )
+    assert response["error"] == {
+        "code": "EXECUTION_FAILED",
+        "message": "The authenticated PackVM operation was rejected.",
+    }
+    assert "secret-path" not in json.dumps(response)
+
+    generic = runner._safe_agent_error_response(
+        request, ValueError("secret-path/provider-token")
+    )
+    assert generic["error"]["code"] == "CAPABILITY_UNAVAILABLE"
+    assert "secret-path" not in json.dumps(generic)
+
+
+def test_guest_artifact_failure_uses_fixed_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(
+        runner,
+        "_verify_invocation_artifact",
+        lambda _request: (_ for _ in ()).throw(
+            ValueError("/secret/artifact/path is unavailable")
+        ),
+    )
+    with pytest.raises(runner._GuestOperationError) as raised:
+        runner._execute_invocation_step({}, {}, 1000.0)
+    assert raised.value.code == "ARTIFACT_VERIFICATION_FAILED"
+    assert "/secret/artifact/path" not in str(raised.value)
+
+
 @pytest.mark.parametrize(
     "field",
     ("request_id", "target_domain", "guest_artifact_identity", "continuation_nonce"),

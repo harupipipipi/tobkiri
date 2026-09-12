@@ -141,6 +141,25 @@ _VSOCK_CONSOLE_PHASES = frozenset(
         "vsock-startup-validation-rejected",
     }
 )
+_GUEST_OPERATION_ERROR_CODES = frozenset(
+    {
+        "ARTIFACT_VERIFICATION_FAILED",
+        "DEADLINE_EXPIRED",
+        "EXECUTION_FAILED",
+        "REQUEST_OWNERSHIP_FAILED",
+        "SANDBOX_LAUNCH_FAILED",
+    }
+)
+
+
+class _GuestOperationError(ValueError):
+    """Carry one fixed diagnostic code without retaining sensitive details."""
+
+    def __init__(self, code: str) -> None:
+        if code not in _GUEST_OPERATION_ERROR_CODES:
+            raise ValueError("PackVM guest diagnostic code is invalid")
+        super().__init__("The authenticated PackVM operation was rejected.")
+        self.code = code
 
 
 def main() -> int:
@@ -291,30 +310,48 @@ def _execute_invocation_step(
     """Verify the sealed artifact again and execute one fresh sandbox child."""
     if os.geteuid() != 0:
         raise ValueError("PackVM invocation requires the root-owned supervisor")
-    identity = _verify_invocation_artifact(request)
-    artifact_digest = _digest(request["artifact_digest"], "artifact_digest")
-    materialization_digest = _digest(request["materialization_digest"], "materialization_digest")
-    target = (
-        ARTIFACT_ROOT
-        / artifact_digest.removeprefix("sha256:")
-        / materialization_digest.removeprefix("sha256:")
-    )
-    manifest = _load_manifest(target)
-    implementation_path = _relative_path(manifest.get("implementation_path"))
-    implementation = target.joinpath(*PurePosixPath(implementation_path).parts)
+    try:
+        identity = _verify_invocation_artifact(request)
+        artifact_digest = _digest(request["artifact_digest"], "artifact_digest")
+        materialization_digest = _digest(
+            request["materialization_digest"], "materialization_digest"
+        )
+        target = (
+            ARTIFACT_ROOT
+            / artifact_digest.removeprefix("sha256:")
+            / materialization_digest.removeprefix("sha256:")
+        )
+        manifest = _load_manifest(target)
+        implementation_path = _relative_path(manifest.get("implementation_path"))
+        implementation = target.joinpath(*PurePosixPath(implementation_path).parts)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise _GuestOperationError("ARTIFACT_VERIFICATION_FAILED") from exc
     child_request: dict[str, object] = {
         "contract_id": _identifier(request["contract_id"], "contract_id"),
         "operation_id": _identifier(request["operation_id"], "operation_id"),
         "payload": payload,
     }
-    _remaining_guest_budget(guest_deadline)
+    try:
+        _remaining_guest_budget(guest_deadline)
+    except TimeoutError as exc:
+        raise _GuestOperationError("DEADLINE_EXPIRED") from exc
     if execution_guard is not None:
-        execution_guard()
-    process = _spawn_staged_implementation(target, implementation)
+        try:
+            execution_guard()
+        except TimeoutError as exc:
+            raise _GuestOperationError("DEADLINE_EXPIRED") from exc
+    try:
+        process = _spawn_staged_implementation(target, implementation)
+    except (OSError, ValueError) as exc:
+        raise _GuestOperationError("SANDBOX_LAUNCH_FAILED") from exc
     try:
         _register_request(request, process.pid, str(request["cancel_token"]))
-    except BaseException:
+    except BaseException as exc:
         _stop_staged_implementation(process)
+        if isinstance(exc, TimeoutError):
+            raise _GuestOperationError("DEADLINE_EXPIRED") from exc
+        if isinstance(exc, (OSError, ValueError)):
+            raise _GuestOperationError("REQUEST_OWNERSHIP_FAILED") from exc
         raise
     try:
         if execution_guard is not None:
@@ -323,9 +360,14 @@ def _execute_invocation_step(
             except BaseException:
                 _stop_staged_implementation(process)
                 raise
-        result = _communicate_staged_implementation(
-            process, child_request, guest_deadline=guest_deadline,
-        )
+        try:
+            result = _communicate_staged_implementation(
+                process, child_request, guest_deadline=guest_deadline,
+            )
+        except TimeoutError as exc:
+            raise _GuestOperationError("DEADLINE_EXPIRED") from exc
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise _GuestOperationError("EXECUTION_FAILED") from exc
         if _looks_like_bridge_request(result):
             result = _validate_bridge_request(result, operation_id=request["operation_id"])
     finally:
@@ -1599,7 +1641,12 @@ def _safe_agent_error_response(
 ) -> dict[str, object]:
     """Return a bounded error without leaking socket, path, key, or Pack data."""
 
-    del error
+    code = (
+        error.code
+        if isinstance(error, _GuestOperationError)
+        and error.code in _GUEST_OPERATION_ERROR_CODES
+        else "CAPABILITY_UNAVAILABLE"
+    )
     if isinstance(request, dict):
         operation = request.get("operation")
         request_id = request.get("request_id")
@@ -1624,7 +1671,7 @@ def _safe_agent_error_response(
                 "guest_challenge": challenge,
                 "success": False,
                 "error": {
-                    "code": "CAPABILITY_UNAVAILABLE",
+                    "code": code,
                     "message": "The authenticated PackVM operation was rejected.",
                 },
             }

@@ -90,6 +90,15 @@ _GUEST_RESPONSE_PROTOCOL = "io.tobkiri.macos-vz-supervisor.v1"
 _HOST_NONCE = re.compile(r"^[a-f0-9]{64}$")
 _GUEST_NONCE = re.compile(r"^[a-f0-9]{48}$")
 _BRIDGE_ERROR_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+_GUEST_OPERATION_ERROR_CODES = frozenset(
+    {
+        "ARTIFACT_VERIFICATION_FAILED",
+        "DEADLINE_EXPIRED",
+        "EXECUTION_FAILED",
+        "REQUEST_OWNERSHIP_FAILED",
+        "SANDBOX_LAUNCH_FAILED",
+    }
+)
 _CONVERSATION_BRIDGE_TARGET = {
     "contract_id": "tobkiri.service.ai.generate.v1",
     "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
@@ -1435,7 +1444,14 @@ class MacOSVZSupervisorDriver:
                 "macOS VZ guest response signature verification failed"
             ) from exc
         if success is False:
-            raise BackendUnavailableError("macOS VZ guest rejected the operation")
+            error_code = payload["error"]["code"]
+            suffix = (
+                f": {error_code}"
+                if error_code in _GUEST_OPERATION_ERROR_CODES else ""
+            )
+            raise BackendUnavailableError(
+                f"macOS VZ guest rejected the operation{suffix}"
+            )
         return dict(payload["data"])
 
     def _compromise(self, reason: str) -> None:

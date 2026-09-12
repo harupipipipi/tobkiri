@@ -286,6 +286,7 @@ class _Transport:
         self.tamper_guest_signature = False
         self.tamper_guest_binding = False
         self.guest_rejection = False
+        self.guest_rejection_code = "GUEST_DENIED"
         self.pending_bridge = False
         self.helper_failure: str | None = None
         self.replay_host_nonce: str | None = None
@@ -377,7 +378,10 @@ class _Transport:
                     request,
                     operation="invoke",
                     request_id=request_id,
-                    error={"code": "GUEST_DENIED", "message": "request rejected"},
+                    error={
+                        "code": self.guest_rejection_code,
+                        "message": "request rejected",
+                    },
                 )
             elif self.pending_bridge:
                 bridge_payload = {
@@ -644,6 +648,18 @@ def test_guest_binding_tamper_fails_but_signed_guest_rejection_does_not_compromi
     rejected_allocator.transports["domain.provider.conversation"].guest_rejection = True
     with pytest.raises(BackendUnavailableError, match="guest rejected"):
         rejected_driver.invoke(_request("domain.provider.conversation"))
+    assert rejected_driver.capability() == (True, None)
+
+    rejected_allocator.transports[
+        "domain.provider.conversation"
+    ].guest_rejection_code = "EXECUTION_FAILED"
+    with pytest.raises(
+        BackendUnavailableError,
+        match="guest rejected the operation: EXECUTION_FAILED",
+    ):
+        rejected_driver.invoke(
+            _request("domain.provider.conversation", "request-diagnostic")
+        )
     assert rejected_driver.capability() == (True, None)
 
 
