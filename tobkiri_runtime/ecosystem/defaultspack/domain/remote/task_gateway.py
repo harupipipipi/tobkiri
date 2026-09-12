@@ -53,7 +53,10 @@ class RemoteTaskGateway:
         settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.company_store = company_store or CompanyStore()
-        self.company_service = company_service or CompanyService(self.company_store)
+        self.company_service = company_service or CompanyService(
+            self.company_store,
+            settings_owner=settings_owner,
+        )
         self.runtime_store = runtime_store or CompanyRuntimeStore()
         self.run_store = run_store or AgentRunStore()
         self.run_dispatcher = run_dispatcher or CompanyRunDispatcher(

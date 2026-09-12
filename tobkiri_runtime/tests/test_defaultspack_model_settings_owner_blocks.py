@@ -413,3 +413,129 @@ def test_company_message_router_binds_owner_to_default_dispatcher(
     )
 
     assert seen == [owner]
+
+
+def test_subagent_message_block_uses_only_captured_settings_owner(
+    monkeypatch: Any,
+) -> None:
+    import blocks.subagent_team.messages as block
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Service:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            seen.append(settings_owner)
+
+        def send_message(self, *args: Any, **kwargs: Any) -> dict[str, bool]:
+            del args, kwargs
+            return {"sent": True}
+
+    monkeypatch.setattr(block, "SubagentTeamService", Service)
+
+    result = block.run(
+        {
+            "company_id": "company-1",
+            "action": "send",
+            "settings_owner": "payload-owner",
+        },
+        {"settings_owner": "context-owner"},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_subagent_creator_binds_owner_to_nested_team_service(
+    monkeypatch: Any,
+) -> None:
+    from domain.subagent_team import creator_service
+
+    owner = object()
+    seen: list[Any] = []
+
+    class TeamService:
+        def __init__(self, **kwargs: Any) -> None:
+            seen.append(kwargs.get("settings_owner"))
+
+    monkeypatch.setattr(
+        "domain.subagent_team.service.SubagentTeamService",
+        TeamService,
+    )
+
+    service = creator_service.CreatorService(
+        company_store=object(),
+        runtime_store=object(),
+        settings_owner=owner,
+    )
+    service._team_service()
+
+    assert seen == [owner]
+
+
+def test_company_mention_binds_owner_to_message_runtime(monkeypatch: Any) -> None:
+    from domain.company import mention, message_router
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Runtime:
+        def __init__(self, **kwargs: Any) -> None:
+            seen.append(kwargs.get("settings_owner"))
+
+        def post_message(self, *args: Any, **kwargs: Any) -> dict[str, bool]:
+            del args, kwargs
+            return {"sent": True}
+
+    monkeypatch.setattr(message_router, "CompanySlackRuntime", Runtime)
+
+    result = mention.CompanyMentionService(
+        object(),
+        settings_owner=owner,
+    ).create_message_task("company-1", content="hello")
+
+    assert result == {"sent": True}
+    assert seen == [owner]
+
+
+def test_company_dispatch_service_binds_owner_to_dispatcher(
+    monkeypatch: Any,
+) -> None:
+    from domain.company import dispatch
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Dispatcher:
+        def __init__(self, **kwargs: Any) -> None:
+            seen.append(kwargs.get("settings_owner"))
+
+    monkeypatch.setattr(dispatch, "CompanyRunDispatcher", Dispatcher)
+
+    dispatch.CompanyDispatchService(object(), settings_owner=owner)
+
+    assert seen == [owner]
+
+
+def test_agent_engine_binds_owner_to_ai_completion(monkeypatch: Any) -> None:
+    from domain.agent import engine as engine_module
+    import blocks.ai.complete as complete_block
+
+    owner = object()
+    seen: list[Any] = []
+
+    def complete(input_data: Any, context: Any, *, settings_owner: Any = None):
+        del input_data, context
+        seen.append(settings_owner)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(complete_block, "run", complete)
+
+    engine_module.AgentEngine(settings_owner=owner)._ai_complete(
+        [],
+        "model-1",
+        {},
+    )
+
+    assert seen == [owner]

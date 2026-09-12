@@ -520,7 +520,16 @@ class AgentEngine:
     def _ai_complete(self, messages, model, context, tools=None):
         from blocks.ai.complete import run as ai_complete_run
         params = context.get("params") if isinstance(context, dict) and isinstance(context.get("params"), dict) else {}
-        result = ai_complete_run({"messages": messages, "model": model, "tools": tools or [], "params": params}, context)
+        result = ai_complete_run(
+            {
+                "messages": messages,
+                "model": model,
+                "tools": tools or [],
+                "params": params,
+            },
+            context,
+            settings_owner=self._settings_owner,
+        )
         return result
 
     def _execute_tool(self, tool_name, tool_args, context):

@@ -4,6 +4,8 @@ import hashlib
 import re
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from .dispatch import CompanyDispatchService
 from .inbound_routes import CompanyInboundRouteService
 from .mention import CompanyMentionService
@@ -20,9 +22,15 @@ from .store import CompanyStore
 
 
 class CompanyService:
-    def __init__(self, store: CompanyStore | None = None) -> None:
+    def __init__(
+        self,
+        store: CompanyStore | None = None,
+        *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self.store = store or CompanyStore()
         self.runtime_store = CompanyRuntimeStore()
+        self.settings_owner = settings_owner
 
     def create_company(self, data: dict[str, Any]) -> dict[str, Any]:
         name = str(data.get("name") or "").strip()
@@ -144,7 +152,10 @@ class CompanyService:
 
     def mention(self, company_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
         content = str(data.get("content") or data.get("message") or "")
-        return CompanyMentionService(self.store).create_message_task(
+        return CompanyMentionService(
+            self.store,
+            settings_owner=self.settings_owner,
+        ).create_message_task(
             company_id,
             content=content,
             sender_id=str(data.get("sender_id") or "user"),
@@ -153,7 +164,10 @@ class CompanyService:
         )
 
     def dispatch(self, company_id: str, task_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-        return CompanyDispatchService(self.store).dispatch_task(
+        return CompanyDispatchService(
+            self.store,
+            settings_owner=self.settings_owner,
+        ).dispatch_task(
             company_id,
             task_id,
             requested_by=str(data.get("requested_by") or "system"),
@@ -161,7 +175,10 @@ class CompanyService:
         )
 
     def inbound_routes(self) -> CompanyInboundRouteService:
-        return CompanyInboundRouteService(self.store)
+        return CompanyInboundRouteService(
+            self.store,
+            settings_owner=self.settings_owner,
+        )
 
     def _with_runtime_summary(
         self,

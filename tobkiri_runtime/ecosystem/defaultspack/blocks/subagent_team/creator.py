@@ -5,12 +5,12 @@ from domain.subagent_team.service import SubagentTeamService
 from ._helpers import company_id_from, denied, direct_lifecycle_denied, invalid, is_denied, missing_team, normalize_action, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     raw_action = input_data.get("action") or input_data.get("tool_id")
     action = _creator_action(raw_action)
-    service = SubagentTeamService()
+    service = SubagentTeamService(settings_owner=settings_owner)
     try:
         if action in {"status", "bootstrap", "ensure"}:
             result = service.ensure_team(input_data)
