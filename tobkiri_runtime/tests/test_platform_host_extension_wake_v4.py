@@ -8,7 +8,8 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from threading import Barrier, Lock
+from threading import Barrier, Event, Lock
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -350,6 +351,7 @@ def test_platform_backend_tracks_concurrent_requests_in_one_resident_domain() ->
         return SimpleNamespace(
             target_domain=SimpleNamespace(value=evidence.domain_ref.value),
             context=SimpleNamespace(request_id=request_id),
+            cancellation_requested=Event(),
         )
 
     requests = (request("request-a"), request("request-b"))
@@ -361,6 +363,67 @@ def test_platform_backend_tracks_concurrent_requests_in_one_resident_domain() ->
 
     assert driver.launches == 1
     assert set(driver.invoked) == {"request-a", "request-b"}
+    assert backend._request_domains == {}
+
+
+def test_platform_backend_cancels_pending_request_before_domain_execution() -> None:
+    """A started Future waiting on materialization never enters the guest late."""
+
+    class PendingDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.invoked: list[str] = []
+            self.cancelled: list[str] = []
+
+        def invoke(self, request: object) -> object:
+            request_id = getattr(getattr(request, "context", None), "request_id")
+            self.invoked.append(request_id)
+            return request
+
+        def cancel(self, request_id: str) -> None:
+            self.cancelled.append(request_id)
+
+    driver = PendingDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.pending",
+    )
+    evidence = backend.materialize(binding(), "reservation-pending")
+    cancellation = Event()
+    request = SimpleNamespace(
+        target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+        context=SimpleNamespace(request_id="request-pending"),
+        cancellation_requested=cancellation,
+    )
+
+    materialization_lock_held = True
+    backend._materialization_lock.acquire()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(backend.invoke, request)
+            deadline = time.monotonic() + 2
+            while (
+                "request-pending" not in backend._pending_requests
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+            assert backend._pending_requests == {
+                "request-pending": ("domain.vz.pending", cancellation)
+            }
+            backend.cancel("request-pending")
+            assert cancellation.is_set()
+            backend._materialization_lock.release()
+            materialization_lock_held = False
+            with pytest.raises(BackendUnavailableError, match="cancelled before execution"):
+                future.result(timeout=2)
+    finally:
+        if materialization_lock_held:
+            backend._materialization_lock.release()
+
+    assert driver.invoked == []
+    assert driver.cancelled == []
+    assert backend._pending_requests == {}
     assert backend._request_domains == {}
 
 

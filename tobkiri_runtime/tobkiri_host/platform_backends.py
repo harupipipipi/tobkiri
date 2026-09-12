@@ -176,6 +176,7 @@ class ProductionIsolationBackend:
         self._reservations: dict[str, str] = {}
         self._leases: dict[str, IsolationLease] = {}
         self._materialization_lock = threading.RLock()
+        self._pending_requests: dict[str, tuple[str, threading.Event]] = {}
         self._request_domains: dict[str, str] = {}
         self._request_lock = threading.RLock()
         self._capability_bridge: CapabilityBridge | None = None
@@ -418,31 +419,51 @@ class ProductionIsolationBackend:
         request_id = getattr(getattr(request, "context", None), "request_id", None)
         if not isinstance(request_id, str) or not request_id:
             raise BackendUnavailableError("provider request identity is unavailable")
-        with self._materialization_lock:
-            lease = self._leases.get(target)
-            if lease is None or lease.expires_monotonic <= self._clock():
-                with self._request_lock:
-                    target_in_use = target in self._request_domains.values()
-                if not target_in_use:
-                    self.terminate(target)
-                raise BackendUnavailableError(
-                    "provider domain lease is unavailable or expired"
-                )
-            with self._request_lock:
-                if request_id in self._request_domains:
-                    raise BackendUnavailableError(
-                        "provider request identity is already active"
-                    )
-                self._request_domains[request_id] = target
+        cancellation = getattr(request, "cancellation_requested", None)
+        if type(cancellation) is not threading.Event:
+            raise BackendUnavailableError("provider cancellation binding is unavailable")
+        with self._request_lock:
+            if (
+                request_id in self._pending_requests
+                or request_id in self._request_domains
+            ):
+                raise BackendUnavailableError("provider request identity is already active")
+            self._pending_requests[request_id] = (target, cancellation)
         try:
+            with self._materialization_lock:
+                with self._request_lock:
+                    if self._pending_requests.get(request_id) != (target, cancellation):
+                        raise BackendUnavailableError(
+                            "provider pending request ownership changed"
+                        )
+                    if cancellation.is_set():
+                        raise BackendUnavailableError(
+                            "provider request was cancelled before execution"
+                        )
+                    lease = self._leases.get(target)
+                    if lease is None or lease.expires_monotonic <= self._clock():
+                        target_in_use = target in self._request_domains.values()
+                        if not target_in_use:
+                            self._terminate_locked(target)
+                        raise BackendUnavailableError(
+                            "provider domain lease is unavailable or expired"
+                        )
+                    self._pending_requests.pop(request_id, None)
+                    self._request_domains[request_id] = target
             return self._driver.invoke(request)
         finally:
             with self._request_lock:
+                if self._pending_requests.get(request_id) == (target, cancellation):
+                    self._pending_requests.pop(request_id, None)
                 if self._request_domains.get(request_id) == target:
                     self._request_domains.pop(request_id, None)
 
     def cancel(self, request_id: str) -> None:
         with self._request_lock:
+            pending = self._pending_requests.get(request_id)
+            if pending is not None:
+                pending[1].set()
+                return
             if request_id not in self._request_domains:
                 raise BackendUnavailableError("cancel request does not own an active domain")
         self._driver.cancel(request_id)
@@ -454,6 +475,11 @@ class ProductionIsolationBackend:
     def _terminate_locked(self, domain_id: str) -> None:
         self._driver.terminate(domain_id)
         with self._request_lock:
+            for request_id, (target, _cancellation) in tuple(
+                self._pending_requests.items()
+            ):
+                if target == domain_id:
+                    self._pending_requests.pop(request_id, None)
             for request_id, target in tuple(self._request_domains.items()):
                 if target == domain_id:
                     self._request_domains.pop(request_id, None)
