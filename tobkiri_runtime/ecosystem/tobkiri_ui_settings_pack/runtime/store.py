@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import json
+import errno
 import hashlib
+import json
 import os
 import shutil
 import sys
 import tempfile
 import threading
 import time
-from copy import deepcopy
 from collections.abc import Callable, Mapping
 from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -28,6 +29,7 @@ from tobkiri_protocol.settings_state import (
 
 _locks_guard = threading.Lock()
 _locks: dict[str, threading.RLock] = {}
+_LOCK_POLL_SECONDS = 0.025
 
 
 def _thread_lock(path: Path) -> threading.RLock:
@@ -104,7 +106,13 @@ class FrontendSettingsStore:
             return updated
 
     def compare_and_swap_document(
-        self, document: Mapping[str, Any], *, expected_revision: int,
+        self,
+        document: Mapping[str, Any],
+        *,
+        expected_revision: int,
+        lock_cancellation: Any | None = None,
+        lock_deadline: float | None = None,
+        lock_fence: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         """Commit JSON values computed outside the owner at an exact revision.
 
@@ -124,7 +132,11 @@ class FrontendSettingsStore:
         if decoded != candidate:
             raise ValueError("settings document requires JSON keys and values")
         candidate = decoded
-        with self._locked():
+        with self._locked(
+            cancellation=lock_cancellation,
+            deadline=lock_deadline,
+            fence=lock_fence,
+        ):
             # Recovery is a separate write operation. A stale CAS must not
             # repair/replace the primary before deciding its revision conflict.
             current = self._read_locked(recover=False)
@@ -140,6 +152,11 @@ class FrontendSettingsStore:
                     candidate.get(key), sort_keys=True, allow_nan=False
                 ) != json.dumps(current.get(key), sort_keys=True, allow_nan=False):
                     raise ValueError("settings document cannot change owner metadata")
+            _assert_lock_wait_active(
+                cancellation=lock_cancellation,
+                deadline=lock_deadline,
+                fence=lock_fence,
+            )
             candidate[REVISION_KEY] = revision + 1
             self._atomic_write(candidate, preserve_backup=True)
             return candidate
@@ -150,6 +167,9 @@ class FrontendSettingsStore:
         *,
         allowed_fields: Mapping[str, frozenset[str]],
         expected_revision: int,
+        lock_cancellation: Any | None = None,
+        lock_deadline: float | None = None,
+        lock_fence: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         """Merge an owner-authorized field patch without exporting private state.
 
@@ -190,8 +210,17 @@ class FrontendSettingsStore:
             if not isinstance(current, dict):
                 raise FrontendSettingsCorruptError("settings section is invalid")
             snapshot[section] = {**current, **fields}
+        lock_options: dict[str, Any] = {}
+        if lock_cancellation is not None:
+            lock_options["lock_cancellation"] = lock_cancellation
+        if lock_deadline is not None:
+            lock_options["lock_deadline"] = lock_deadline
+        if lock_fence is not None:
+            lock_options["lock_fence"] = lock_fence
         committed = self.compare_and_swap_document(
-            snapshot, expected_revision=expected_revision,
+            snapshot,
+            expected_revision=expected_revision,
+            **lock_options,
         )
         return {"values": decoded, "document_revision": committed[REVISION_KEY]}
 
@@ -344,15 +373,41 @@ class FrontendSettingsStore:
         return settings_state_revision(self.read(), state_ref)
 
     @contextmanager
-    def _locked(self) -> Iterator[None]:
+    def _locked(
+        self,
+        *,
+        cancellation: Any | None = None,
+        deadline: float | None = None,
+        fence: Callable[[], None] | None = None,
+    ) -> Iterator[None]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with _thread_lock(self.path):
+        thread_lock = _thread_lock(self.path)
+        _acquire_thread_lock(
+            thread_lock,
+            cancellation=cancellation,
+            deadline=deadline,
+            fence=fence,
+        )
+        try:
+            _assert_lock_wait_active(
+                cancellation=cancellation, deadline=deadline, fence=fence,
+            )
             with self.lock_path.open("a+b") as lock_file:
-                _lock_file_handle(lock_file)
+                _lock_file_handle(
+                    lock_file,
+                    cancellation=cancellation,
+                    deadline=deadline,
+                    fence=fence,
+                )
                 try:
+                    _assert_lock_wait_active(
+                        cancellation=cancellation, deadline=deadline, fence=fence,
+                    )
                     yield
                 finally:
                     _unlock_file_handle(lock_file)
+        finally:
+            thread_lock.release()
 
     def _read_locked(self, *, recover: bool) -> dict[str, Any]:
         if not self.path.exists():
@@ -437,25 +492,86 @@ class FrontendSettingsStore:
             return
 
 
-def _lock_file_handle(handle: Any) -> None:
+def _assert_lock_wait_active(
+    *,
+    cancellation: Any | None,
+    deadline: float | None,
+    fence: Callable[[], None] | None,
+) -> None:
+    if cancellation is not None and cancellation.is_set():
+        raise InterruptedError("frontend settings lock wait was cancelled")
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError("frontend settings lock deadline exceeded")
+    if fence is not None:
+        fence()
+
+
+def _lock_wait_delay(deadline: float | None) -> float:
+    if deadline is None:
+        return _LOCK_POLL_SECONDS
+    return max(0.0, min(_LOCK_POLL_SECONDS, deadline - time.monotonic()))
+
+
+def _acquire_thread_lock(
+    lock: threading.RLock,
+    *,
+    cancellation: Any | None,
+    deadline: float | None,
+    fence: Callable[[], None] | None,
+) -> None:
+    if cancellation is None and deadline is None:
+        lock.acquire()
+        return
+    while True:
+        _assert_lock_wait_active(
+            cancellation=cancellation, deadline=deadline, fence=fence,
+        )
+        if lock.acquire(timeout=_lock_wait_delay(deadline)):
+            return
+
+
+def _lock_file_handle(
+    handle: Any,
+    *,
+    cancellation: Any | None = None,
+    deadline: float | None = None,
+    fence: Callable[[], None] | None = None,
+) -> None:
     if sys.platform == "win32":
         import msvcrt
 
         _ensure_lock_byte(handle)
         handle.seek(0)
-        for _ in range(400):
+        attempts = 0
+        while True:
+            _assert_lock_wait_active(
+                cancellation=cancellation, deadline=deadline, fence=fence,
+            )
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                break
+                return
             except OSError:
-                time.sleep(0.025)
-        else:
-            raise TimeoutError("timed out acquiring frontend settings lock")
-        return
+                attempts += 1
+                if cancellation is None and deadline is None and attempts >= 400:
+                    raise TimeoutError("timed out acquiring frontend settings lock")
+                time.sleep(_lock_wait_delay(deadline))
     import fcntl
 
     # A missing/failed OS lock must never allow recovery or mutation to run.
-    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    if cancellation is None and deadline is None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return
+    while True:
+        _assert_lock_wait_active(
+            cancellation=cancellation, deadline=deadline, fence=fence,
+        )
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except OSError as error:
+            if error.errno not in {errno.EACCES, errno.EAGAIN}:
+                raise
+            time.sleep(_lock_wait_delay(deadline))
 
 
 def _unlock_file_handle(handle: Any) -> None:

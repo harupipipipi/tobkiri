@@ -242,7 +242,6 @@ class PreferencesWriteHostFactoryV4:
         ) -> Mapping[str, Any]:
             # Admission and approval remain on this exact write Function's
             # Broker edge; the read Function cannot invoke this contribution.
-            del invocation
             if (
                 operation_id != WRITE_OPERATION_ID
                 or payload.get("profile_id") != context.profile_id
@@ -262,9 +261,13 @@ class PreferencesWriteHostFactoryV4:
                         raise PermissionError("preferences field is not writable")
                     if type(value) is not value_type or (isinstance(value, str) and len(value) > 2048):
                         raise ValueError("preferences value is invalid")
+            invocation.assert_current()
             return store.compare_and_swap_fields(
                 changes, allowed_fields=allowed_fields,
                 expected_revision=payload["expected_revision"],
+                lock_cancellation=invocation.envelope.cancellation_requested,
+                lock_deadline=invocation.envelope.deadline_monotonic,
+                lock_fence=invocation.assert_current,
             )
 
         return CapturedHostProviderV4(

@@ -1,7 +1,10 @@
 """Settings read identity checks run before any state or dependency access."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import json
+import threading
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -17,6 +20,32 @@ from ecosystem.tobkiri_ui_settings_pack.runtime.settings import (
     WRITE_FUNCTION_ID,
     WRITE_OPERATION_ID,
 )
+from ecosystem.tobkiri_ui_settings_pack.runtime import store as settings_store
+
+
+class _Invocation:
+    def __init__(
+        self,
+        *,
+        cancellation: threading.Event | None = None,
+        deadline: float | None = None,
+    ) -> None:
+        self.envelope = SimpleNamespace(
+            cancellation_requested=(
+                cancellation if cancellation is not None else threading.Event()
+            ),
+            deadline_monotonic=(
+                deadline if deadline is not None else time.monotonic() + 10
+            ),
+        )
+        self.checks = 0
+
+    def assert_current(self) -> None:
+        self.checks += 1
+        if self.envelope.cancellation_requested.is_set():
+            raise PermissionError("invocation cancelled")
+        if time.monotonic() >= self.envelope.deadline_monotonic:
+            raise PermissionError("invocation expired")
 
 
 def _context(root: Path) -> Any:
@@ -107,7 +136,7 @@ def test_preferences_write_denies_widening_without_storage(tmp_path, patch):
         writer.contributions[0].invoke(WRITE_OPERATION_ID, {
             "profile_id": "defaults", "expected_revision": 0,
             "changes": {"general": {"language": "ja"}}, **patch,
-        }, None)
+        }, _Invocation())
     assert list(tmp_path.iterdir()) == []
 
 
@@ -117,15 +146,51 @@ def test_preferences_write_returns_only_changed_values_and_preserves_private_sta
     saved = {"general": {"language": "en", "private": "secret"}, "unknown": ["kept"]}
     path.write_text(json.dumps(saved), encoding="utf-8")
     writer = PreferencesWriteHostFactoryV4().capture(_write_context(tmp_path))
+    invocation = _Invocation()
     result = writer.contributions[0].invoke(WRITE_OPERATION_ID, {
         "profile_id": "defaults", "expected_revision": 0,
         "changes": {"general": {"language": "ja"}},
-    }, None)
+    }, invocation)
     assert result == {"values": {"general": {"language": "ja"}}, "document_revision": 1}
     assert json.loads(path.read_text()) == {
         **saved, "general": {"language": "ja", "private": "secret"},
         "_settings_revision": 1,
     }
+    assert invocation.checks >= 4
+
+
+@pytest.mark.parametrize("ending", ["cancel", "deadline"])
+def test_preferences_write_lock_wait_obeys_host_invocation_lifetime(
+    tmp_path: Path, ending: str,
+) -> None:
+    path = tmp_path / "defaultspack" / "shared" / "frontend_settings.json"
+    writer = PreferencesWriteHostFactoryV4().capture(_write_context(tmp_path))
+    cancellation = threading.Event()
+    deadline = time.monotonic() + (10 if ending == "cancel" else 0.1)
+    invocation = _Invocation(cancellation=cancellation, deadline=deadline)
+    thread_lock = settings_store._thread_lock(path)
+    thread_lock.acquire()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                writer.contributions[0].invoke,
+                WRITE_OPERATION_ID,
+                {
+                    "profile_id": "defaults",
+                    "expected_revision": 0,
+                    "changes": {"general": {"language": "ja"}},
+                },
+                invocation,
+            )
+            if ending == "cancel":
+                time.sleep(0.05)
+                cancellation.set()
+            expected_error = InterruptedError if ending == "cancel" else TimeoutError
+            with pytest.raises(expected_error):
+                future.result(timeout=1)
+    finally:
+        thread_lock.release()
+    assert not path.exists()
 
 
 def test_preferences_contract_has_independent_write_capability_and_closed_schema():

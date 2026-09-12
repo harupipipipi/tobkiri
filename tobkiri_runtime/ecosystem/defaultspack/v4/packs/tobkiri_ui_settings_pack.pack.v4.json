@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:cb1505ae61e050ed3f155ff448fe2040784f867a40487994bb700a144c5efce6",
+      "digest": "sha256:e2882e3f864db4e09477255e8bd748b02dd612f4a8dc23052d7ca132ee29c7fc",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,12 +11,12 @@
       "path": "runtime/public-settings-fields.v1.json"
     },
     {
-      "digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
+      "digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
       "kind": "executable",
       "path": "runtime/settings.py"
     },
     {
-      "digest": "sha256:2173f6f284b3067e21a26bd5b2807659fb411184b057dd2a988b5dc58bce5d7d",
+      "digest": "sha256:dbb7bc43c0d6277bd13fac05ccb5d0d8341e7b305de330c772c1b8b8c994cd62",
       "kind": "executable",
       "path": "runtime/store.py"
     }
@@ -42,7 +42,7 @@
     {
       "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
+      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.catalog-read"
@@ -52,7 +52,7 @@
     {
       "contract_revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee",
       "id": "tobkiri.ui.preferences.write",
-      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
+      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.preferences-write"
@@ -62,7 +62,7 @@
     {
       "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
+      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.settings-read"
@@ -71,8 +71,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:5b3d90048d0ea1e7913993547418f98bd1e376a868c02cd96b8d91b0ad736e26",
-    "artifact_set_digest": "sha256:de3c033a42fbf7f1244128d505b593887862033f5033bceab579a4ea4a225f89",
+    "source_identity": "sha256:5c2764f0ee73c6066b3237c50d7f22b6988dbb909eb6cc659bedcc1421c0f481",
+    "artifact_set_digest": "sha256:2e27e86fe4c79c741322ea5a9ff17c1aadfc566337c4dc042e1fc2032a3af995",
     "contract_catalog_digest": "sha256:1c6822647fc2e126de13243149a294faf3ed789e5496313b9c873c0be0fbd949"
   },
   "migration": {
@@ -108,7 +108,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:dcb6fce5b4604692cd16c5b822aa81a990548be2e001fde9608b3709adfbccb1",
+    "artifact_digest": "sha256:e0608fc7d760ea62fdadb483a8c7a5892326abf198555692cd863f75f950c814",
     "display_name": "Tobkiri UI Settings",
     "id": "tobkiri_ui_settings_pack",
     "kind": "host_extension",
@@ -119,15 +119,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
-    "source_digest": "sha256:5b3d90048d0ea1e7913993547418f98bd1e376a868c02cd96b8d91b0ad736e26",
+    "source_digest": "sha256:5c2764f0ee73c6066b3237c50d7f22b6988dbb909eb6cc659bedcc1421c0f481",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:3608e81444dddd005f84df928cd8f7e19f10955554b1e9a35f33f5c4ce057527",
+    "content_root_digest": "sha256:7715ec1683586e1f9f49162db2e45baef03b397cc049c11ac907cca69b5e4554",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:8dc389139e448dc90f48647978d71a89bf81610f00d788805865685ead0b7171",
-    "input_inventory_digest": "sha256:d3ec869ba94ef52f82b934a9fa4c0bf90773a18939424454a710ac9669ea01f6",
+    "input_inventory_digest": "sha256:cffa5769c271e32aaf50b62ad42426eb90f11144b1e6f338e3d703b586cb4693",
     "normative": true,
     "evidence": [
       {
@@ -138,7 +138,7 @@
       {
         "path": "ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:5b3d90048d0ea1e7913993547418f98bd1e376a868c02cd96b8d91b0ad736e26"
+        "digest": "sha256:5c2764f0ee73c6066b3237c50d7f22b6988dbb909eb6cc659bedcc1421c0f481"
       }
     ]
   },

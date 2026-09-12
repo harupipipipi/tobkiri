@@ -1,12 +1,39 @@
 """Settings recovery and transactions require an actual OS lock."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 import sys
+import threading
+import time
 
 import pytest
 
 from ecosystem.tobkiri_ui_settings_pack.runtime import store as settings
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX flock semantics")
+def test_posix_lock_wait_cancellation_never_enters_transaction(tmp_path: Path) -> None:
+    import fcntl
+
+    store = settings.FrontendSettingsStore(tmp_path / "settings.json")
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    cancellation = threading.Event()
+    with store.lock_path.open("a+b") as held_lock:
+        fcntl.flock(held_lock.fileno(), fcntl.LOCK_EX)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                store.compare_and_swap_document,
+                {},
+                expected_revision=0,
+                lock_cancellation=cancellation,
+                lock_deadline=time.monotonic() + 10,
+            )
+            time.sleep(0.05)
+            cancellation.set()
+            with pytest.raises(InterruptedError):
+                future.result(timeout=1)
+    assert not store.path.exists()
 
 
 @pytest.mark.parametrize("platform", ["posix", "nt"])
@@ -59,7 +86,7 @@ def test_unlock_error_is_reported_and_file_descriptor_is_closed(
     store = settings.FrontendSettingsStore(tmp_path / "settings.json")
     handles = []
 
-    def acquired(handle: object) -> None:
+    def acquired(handle: object, **_: object) -> None:
         handles.append(handle)
 
     def denied(*args: object) -> None:

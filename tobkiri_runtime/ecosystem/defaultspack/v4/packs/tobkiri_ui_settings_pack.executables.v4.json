@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:5b3d90048d0ea1e7913993547418f98bd1e376a868c02cd96b8d91b0ad736e26",
+  "source_identity": "sha256:5c2764f0ee73c6066b3237c50d7f22b6988dbb909eb6cc659bedcc1421c0f481",
   "variants": [
     {
       "variant_id": "tobkiri.ui.catalog.read.python",
       "function_id": "tobkiri.ui.catalog.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
+      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "tobkiri.ui.preferences.write.python",
       "function_id": "tobkiri.ui.preferences.write",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
+      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -206,7 +206,7 @@
       "variant_id": "tobkiri.ui.settings.read.python",
       "function_id": "tobkiri.ui.settings.read",
       "implementation_path": "runtime/settings.py",
-      "implementation_digest": "sha256:fe5ce66cb4d039cde5ef8a65372ef5fbdb39ef1b1845e62128de380e59a438eb",
+      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -237,6 +237,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:8446880b070b36ee158098db51813e35926e6593ae3e60d69f3e248c3291ca6c",
-  "catalog_digest": "sha256:c45504c498ec96c00f72f00d2097b841eca84eb5c7f038155b02277668dacf06"
+  "materialization_catalog_digest": "sha256:fa9cf115ea6c27ce6185efe27bb073ba8841bbb610239eda96fc7cf527fe5809",
+  "catalog_digest": "sha256:b56ec10edceb9472a4cef44529f9871cea215f299a2d155076db8692ed7ce3d8"
 }
