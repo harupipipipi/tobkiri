@@ -5,6 +5,8 @@ import re
 import threading
 from typing import Any, Iterable
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from core_runtime.runtime_audit_helpers import audit_event, redact_sensitive
 from core_runtime.runtime_events import utc_now
 from domain.agent_runtime.run_store import AgentRunStore
@@ -48,6 +50,7 @@ class RemoteTaskGateway:
         runtime_store: CompanyRuntimeStore | None = None,
         run_store: AgentRunStore | None = None,
         run_dispatcher: CompanyRunDispatcher | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.company_store = company_store or CompanyStore()
         self.company_service = company_service or CompanyService(self.company_store)
@@ -56,6 +59,7 @@ class RemoteTaskGateway:
         self.run_dispatcher = run_dispatcher or CompanyRunDispatcher(
             company_store=self.company_store,
             runtime_store=self.runtime_store,
+            settings_owner=settings_owner,
         )
 
     def create_task(self, args: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:

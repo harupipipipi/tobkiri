@@ -334,3 +334,82 @@ def test_gateway_routing_normalization_does_not_read_ambient_settings(
 
     assert normalized["gateway_routing_target"] == "all"
     assert normalized["gateway_allow_fallbacks"] is True
+
+
+def test_remote_task_block_uses_only_captured_settings_owner(
+    monkeypatch: Any,
+) -> None:
+    import blocks.remote.task_create as block
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Gateway:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            seen.append(settings_owner)
+
+        def create_task(self, input_data: Any, context: Any) -> dict[str, bool]:
+            del input_data, context
+            return {"created": True}
+
+    monkeypatch.setattr(block, "RemoteTaskGateway", Gateway)
+
+    result = block.run(
+        {"settings_owner": "payload-owner"},
+        {"settings_owner": "context-owner"},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_company_supervisor_block_uses_only_captured_settings_owner(
+    monkeypatch: Any,
+) -> None:
+    import blocks.company.supervisor_tick as block
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Supervisor:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            seen.append(settings_owner)
+
+        def tick(self, company_id: str, **kwargs: Any) -> dict[str, str]:
+            del kwargs
+            return {"company_id": company_id}
+
+    monkeypatch.setattr(block, "CompanySupervisor", Supervisor)
+
+    result = block.run(
+        {"company_id": "company-1", "settings_owner": "payload-owner"},
+        {"settings_owner": "context-owner"},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_company_message_router_binds_owner_to_default_dispatcher(
+    monkeypatch: Any,
+) -> None:
+    from domain.company import message_router
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Dispatcher:
+        def __init__(self, **kwargs: Any) -> None:
+            seen.append(kwargs.get("settings_owner"))
+
+    monkeypatch.setattr(message_router, "CompanyRunDispatcher", Dispatcher)
+
+    message_router.CompanyMessageRouter(
+        company_store=object(),
+        runtime_store=object(),
+        settings_owner=owner,
+    )
+
+    assert seen == [owner]
