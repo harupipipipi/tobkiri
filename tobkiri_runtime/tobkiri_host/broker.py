@@ -768,7 +768,12 @@ class RequestBroker:
             cancellation_error: Exception | None = None
             envelope.cancellation_requested.set()
             try:
-                if future is not None:
+                # Cancel the Host work item first.  A True result proves that
+                # backend.invoke never started, so no backend can own this
+                # request yet.  Once execution has started, authenticated
+                # backend cancellation remains mandatory.
+                queued_work_cancelled = future is not None and future.cancel()
+                if future is not None and not queued_work_cancelled:
                     backend.cancel(envelope.context.request_id)
             except Exception as cancel_exc:
                 cancellation_error = cancel_exc

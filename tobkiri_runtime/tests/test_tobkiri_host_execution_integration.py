@@ -317,6 +317,7 @@ def make_broker(
     fail_static: bool = False,
     fail_audit: bool = False,
     backend: FakeBackend | None = None,
+    max_workers: int = 16,
 ) -> BrokerFixture:
     events: list[str] = []
     item = fixture_artifact(effect, timeout_ms)
@@ -336,6 +337,7 @@ def make_broker(
         authority=authority,
         audit=audit,
         reconciliation=reconciliation,
+        max_workers=max_workers,
     )
     return BrokerFixture(
         broker,
@@ -485,6 +487,71 @@ def test_read_timeout_finishes_cleanup_and_later_unique_request_recovers() -> No
     assert fixture.backend.cancelled == ["request-1"]
     assert fixture.authority.fenced == ["request-1"]
     assert fixture.backend.invocations == 2
+    assert fixture.audit.failures == [("provider_failed", False)]
+
+
+def test_queued_read_timeout_never_enters_backend_and_later_request_recovers() -> None:
+    """A queued timeout is removed before backend ownership and cannot run late."""
+
+    first_entered = Event()
+    release_first = Event()
+
+    class SaturatedBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            self.events.append(f"provider_invoked:{request.context.request_id}")
+            if request.context.request_id == "request-1":
+                first_entered.set()
+                assert release_first.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=1000,
+        backend=SaturatedBackend([]),
+        max_workers=1,
+    )
+    first_result: list[Mapping[str, Any]] = []
+    first_error: list[BaseException] = []
+
+    def invoke_first() -> None:
+        try:
+            first_result.append(fixture.broker.invoke(frame(1000), context(), effect_scope={}))
+        except BaseException as exc:
+            first_error.append(exc)
+
+    first_thread = Thread(target=invoke_first)
+    first_thread.start()
+    try:
+        assert first_entered.wait(timeout=2)
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(
+                replace(frame(20), idempotency_key="notification:request-2"),
+                replace(context(), request_id="request-2", trace_id="trace-2"),
+                effect_scope={},
+            )
+        assert fixture.backend.cancelled == []
+        assert fixture.backend.invocations == 1
+
+        release_first.set()
+        first_thread.join(timeout=2)
+        assert not first_thread.is_alive()
+        assert first_error == []
+        assert first_result == [{"delivered": True}]
+
+        recovered = fixture.broker.invoke(
+            replace(frame(1000), idempotency_key="notification:request-3"),
+            replace(context(), request_id="request-3", trace_id="trace-3"),
+            effect_scope={},
+        )
+    finally:
+        release_first.set()
+        first_thread.join(timeout=2)
+        fixture.broker.close()
+
+    assert recovered == {"delivered": True}
+    assert fixture.backend.invocations == 2
+    assert fixture.authority.fenced == ["request-2"]
     assert fixture.audit.failures == [("provider_failed", False)]
 
 
