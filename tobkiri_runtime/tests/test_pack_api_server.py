@@ -1760,6 +1760,84 @@ def test_panel_auth_shell_waits_for_dom_before_touching_body(
     assert document.endswith("</script>")
 
 
+def test_profile_screen_bootstrap_preserves_exact_captured_route(
+    tmp_path: Path,
+) -> None:
+    """A Shell deep link exchanges its code before serving the Profile SPA."""
+
+    web_root = tmp_path / "ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text("profile application", encoding="utf-8")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+        web_mounts=(
+            {
+                "path_prefix": "/p",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "verified-desktop"},
+        )
+        assert status == 200
+        code = str(bootstrap["data"]["code"])
+
+        for rejected_path in (
+            f"/p?code={code}",
+            f"/p/other/chat?code={code}",
+            f"/p/defaults-other/chat?code={code}",
+        ):
+            connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+            connection.request("GET", rejected_path)
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            assert response.status == 401
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        connection.request("GET", f"/p/defaults/chat?code={code}")
+        response = connection.getresponse()
+        document = response.read().decode("utf-8")
+        connection.close()
+        assert response.status == 200
+        assert 'location.replace("/p/defaults/chat")' in document
+        assert code not in document
+
+        origin = f"http://127.0.0.1:{server.port}"
+        status, _exchange, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={"code": code},
+            headers={"Origin": origin},
+        )
+        assert status == 200
+        cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        ).split(";", 1)[0]
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        connection.request("GET", "/p/defaults/chat", headers={"Cookie": cookie})
+        response = connection.getresponse()
+        assert response.read() == b"profile application"
+        connection.close()
+        assert response.status == 200
+    finally:
+        server.stop()
+
+
 def test_panel_exchange_rejects_foreign_origin(
     live_server: tuple[PackAPIServer, _Dispatch],
 ) -> None:

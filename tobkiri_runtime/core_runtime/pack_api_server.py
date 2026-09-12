@@ -15,7 +15,7 @@ from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, cast
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from .api.api_response import APIResponse
 from .api.auth_gate import AuthGateMixin
@@ -1905,8 +1905,7 @@ class PackAPIHandler(
 
         prefix = mount["path_prefix"]
         index_path = f"{prefix}/{mount['index_file']}"
-        allowed_targets = {prefix, f"{prefix}/", index_path}
-        safe_target = target if target in allowed_targets else f"{prefix}/"
+        safe_target = target
         if safe_target == index_path:
             safe_target = f"{prefix}/"
         target_literal = json.dumps(safe_target)
@@ -1931,6 +1930,30 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
             self.wfile.write(document)
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
+
+    @classmethod
+    def _mount_bootstrap_target(
+        cls,
+        target: str,
+        mount: WebMountEntry,
+    ) -> str | None:
+        """Return an exact route that may exchange a one-time panel code."""
+
+        prefix = mount["path_prefix"]
+        index_path = f"{prefix}/{mount['index_file']}"
+        if target in {prefix, f"{prefix}/", index_path}:
+            # A bare /p has no Profile identity and must not choose one.
+            return None if prefix == "/p" else target
+        if prefix != "/p":
+            return None
+        binding = cls._current_panel_auth_binding()
+        if binding is None:
+            return None
+        encoded_profile = quote(binding.profile_id, safe="-._~")
+        profile_root = f"/p/{encoded_profile}"
+        if target == profile_root or target.startswith(f"{profile_root}/"):
+            return target
+        return None
 
     @staticmethod
     def _profile_registry_store() -> Any:
@@ -2168,10 +2191,9 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
         mount = self._match_web_mount(path)
         if mount is not None:
             if mount["auth_required"] and not self._check_auth("GET", path):
-                prefix = mount["path_prefix"]
-                root_paths = {prefix, f"{prefix}/", f"{prefix}/{mount['index_file']}"}
-                if mount.get("auth_bootstrap", False) and path in root_paths:
-                    self._serve_mount_bootstrap_page(path, mount)
+                bootstrap_target = self._mount_bootstrap_target(path, mount)
+                if mount.get("auth_bootstrap", False) and bootstrap_target is not None:
+                    self._serve_mount_bootstrap_page(bootstrap_target, mount)
                 else:
                     self._send_response(APIResponse(False, error="Unauthorized"), 401)
                 return
