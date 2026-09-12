@@ -443,6 +443,51 @@ def test_external_timeout_is_fenced_persisted_and_never_auto_retried() -> None:
     assert fixture.audit.failures == [("ambiguous_effect", True)]
 
 
+def test_read_timeout_finishes_cleanup_and_later_unique_request_recovers() -> None:
+    """A late first result is fenced and does not poison a normal retry."""
+
+    release_first = Event()
+    first_finished = Event()
+
+    class RecoveringBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            self.events.append(f"provider_invoked:{request.context.request_id}")
+            if request.context.request_id == "request-1":
+                assert release_first.wait(timeout=10)
+                first_finished.set()
+            return self.outcome
+
+        def cancel(self, request_id: str) -> None:
+            super().cancel(request_id)
+            if request_id == "request-1":
+                release_first.set()
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=20,
+        backend=RecoveringBackend([]),
+    )
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(frame(20), context(), effect_scope={})
+        assert first_finished.wait(timeout=2)
+        recovered = fixture.broker.invoke(
+            replace(frame(20), idempotency_key="notification:request-2"),
+            replace(context(), request_id="request-2", trace_id="trace-2"),
+            effect_scope={},
+        )
+    finally:
+        release_first.set()
+        fixture.broker.close()
+
+    assert recovered == {"delivered": True}
+    assert fixture.backend.cancelled == ["request-1"]
+    assert fixture.authority.fenced == ["request-1"]
+    assert fixture.backend.invocations == 2
+    assert fixture.audit.failures == [("provider_failed", False)]
+
+
 @pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
 @pytest.mark.parametrize("cancel_fails", [False, True])
 def test_parent_cancellation_targets_inner_request_without_claiming_termination(

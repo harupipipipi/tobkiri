@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from threading import Barrier, Lock
 from types import SimpleNamespace
 
 import pytest
@@ -311,6 +313,55 @@ def test_platform_backend_reuses_only_exact_live_resident_domain() -> None:
     assert driver.terminated == ["domain.vz.resident"]
     assert driver.last_launch.reservation_id == "reservation-third"
     assert third.resource_reservation_id == "reservation-third"
+
+
+def test_platform_backend_tracks_concurrent_requests_in_one_resident_domain() -> None:
+    """Distinct authorized requests can overlap without changing domain identity."""
+
+    barrier = Barrier(3)
+
+    class ConcurrentDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.launches = 0
+            self.invoked: list[str] = []
+            self.invocation_lock = Lock()
+
+        def launch(self, request: IsolationLaunch) -> PlatformAttestation:
+            self.launches += 1
+            return super().launch(request)
+
+        def invoke(self, request: object) -> object:
+            request_id = getattr(getattr(request, "context", None), "request_id")
+            with self.invocation_lock:
+                self.invoked.append(request_id)
+            barrier.wait(timeout=3)
+            return request
+
+    driver = ConcurrentDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.concurrent",
+    )
+    evidence = backend.materialize(binding(), "reservation-concurrent")
+
+    def request(request_id: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+            context=SimpleNamespace(request_id=request_id),
+        )
+
+    requests = (request("request-a"), request("request-b"))
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(backend.invoke, item) for item in requests]
+        barrier.wait(timeout=3)
+        assert set(backend._request_domains) == {"request-a", "request-b"}
+        assert [future.result(timeout=3) for future in futures] == list(requests)
+
+    assert driver.launches == 1
+    assert set(driver.invoked) == {"request-a", "request-b"}
+    assert backend._request_domains == {}
 
 
 def test_platform_backend_close_terminates_and_retries_failed_cleanup() -> None:
