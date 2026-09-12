@@ -23,10 +23,10 @@ write_files:
       phase seeds-mounted
       python3 - "$agent_mount" "$config_mount" "$install_dir" "$runtime_dir" <<'PY'
       import hashlib
-      import importlib.util
       import json
       import os
       from pathlib import Path
+      import runpy
       import stat
       import sys
 
@@ -140,43 +140,35 @@ write_files:
       copy_private(agent_config, runtime_dir / "agent-config.json", 0o600)
       copy_private(agent_key, runtime_dir / "agent-ed25519.pem", 0o600)
       phase("runner-import-begin")
-      runner_spec = importlib.util.spec_from_file_location(
-          "_tobkiri_packvm_seed_runner", install_dir / "packvm_guest_runner.py"
-      )
-      if runner_spec is None or runner_spec.loader is None:
+      runner_globals = runpy.run_path(str(install_dir / "packvm_guest_runner.py"))
+      materialize_seed_artifact = runner_globals.get("materialize_seed_artifact")
+      if not callable(materialize_seed_artifact):
           raise SystemExit("PackVM guest runner seed loader is invalid")
-      runner_module = importlib.util.module_from_spec(runner_spec)
-      sys.modules[runner_spec.name] = runner_module
+      phase("runner-imported")
+      phase("seed-materialize-begin")
       try:
-          runner_spec.loader.exec_module(runner_module)
-          phase("runner-imported")
-          phase("seed-materialize-begin")
-          try:
-              seed_identity = runner_module.materialize_seed_artifact(
-                  artifact_seed,
-                  config_value["artifact_seed"],
-                  config_value["binding_digests"],
-              )
-          except OSError:
-              phase("seed-materialize-oserror")
-              raise
-          except MemoryError:
-              phase("seed-materialize-memory-rejected")
-              raise
-          except ValueError as error:
-              message = str(error)
-              if "free space" in message or "storage quota" in message:
-                  phase("seed-materialize-capacity-rejected")
-              else:
-                  phase("seed-materialize-validation-rejected")
-              raise
-          except BaseException:
-              phase("seed-materialize-unexpected-rejected")
-              raise
-          phase("seed-materialized")
-      finally:
-          if sys.modules.get(runner_spec.name) is runner_module:
-              sys.modules.pop(runner_spec.name, None)
+          seed_identity = materialize_seed_artifact(
+              artifact_seed,
+              config_value["artifact_seed"],
+              config_value["binding_digests"],
+          )
+      except OSError:
+          phase("seed-materialize-oserror")
+          raise
+      except MemoryError:
+          phase("seed-materialize-memory-rejected")
+          raise
+      except ValueError as error:
+          message = str(error)
+          if "free space" in message or "storage quota" in message:
+              phase("seed-materialize-capacity-rejected")
+          else:
+              phase("seed-materialize-validation-rejected")
+          raise
+      except BaseException:
+          phase("seed-materialize-unexpected-rejected")
+          raise
+      phase("seed-materialized")
       if not isinstance(seed_identity, str) or not seed_identity.startswith("sha256:"):
           raise SystemExit("PackVM artifact seed materialization failed")
       write_new(

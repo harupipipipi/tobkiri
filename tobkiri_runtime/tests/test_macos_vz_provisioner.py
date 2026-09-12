@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import runpy
 from collections.abc import Iterator
 from dataclasses import replace
 from contextlib import contextmanager
@@ -56,6 +57,7 @@ from tobkiri_host.macos_vz_supervisor import (
     MacOSVZLaunchAssets,
     MacOSVZSupervisorDriver,
 )
+from scripts.build_packvm_guest_bundle import build_guest_bundle
 
 
 def _digest(value: bytes) -> str:
@@ -96,21 +98,13 @@ def test_nocloud_network_seed_is_local_only_and_has_no_egress_configuration() ->
         assert forbidden not in network_seed
 
 
-def test_cloud_bootstrap_registers_current_dataclass_runner_before_execution() -> None:
-    """Cloud-init must use importlib's module-registration contract."""
+def test_cloud_bootstrap_loads_packaged_guest_zipapp(tmp_path: Path) -> None:
+    """Cloud-init must load the packaged runner format staged in the VM."""
 
     workspace = Path(__file__).resolve().parents[2]
-    runner_path = (
-        workspace
-        / "tobkiri_runtime"
-        / "ecosystem"
-        / "defaultspack"
-        / "backend"
-        / "sandbox"
-        / "isolation"
-        / "resources"
-        / "packvm_guest_runner.py"
-    )
+    runtime_root = workspace / "tobkiri_runtime"
+    runner_path = tmp_path / "packvm_guest_runner.py"
+    runner_path.write_bytes(build_guest_bundle(runtime_root))
     template_path = (
         workspace
         / "tobkiri_launcher"
@@ -119,23 +113,12 @@ def test_cloud_bootstrap_registers_current_dataclass_runner_before_execution() -
         / "cloud_init_template.yaml"
     )
     template = template_path.read_text(encoding="utf-8")
-    assert "sys.modules[runner_spec.name] = runner_module" in template
-    assert "sys.modules.pop(runner_spec.name, None)" in template
+    assert 'runpy.run_path(str(install_dir / "packvm_guest_runner.py"))' in template
+    assert "spec_from_file_location" not in template
 
-    module_name = "_tobkiri_packvm_seed_runner_bootstrap_test"
-    spec = importlib.util.spec_from_file_location(module_name, runner_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    previous = sys.modules.get(module_name)
-    sys.modules[module_name] = module
-    try:
-        spec.loader.exec_module(module)
-        assert callable(module.materialize_seed_artifact)
-    finally:
-        if previous is None:
-            sys.modules.pop(module_name, None)
-        else:
-            sys.modules[module_name] = previous
+    runner_globals = runpy.run_path(str(runner_path))
+    assert runner_globals["__name__"] == "<run_path>"
+    assert callable(runner_globals.get("materialize_seed_artifact"))
 
 
 def test_cloud_bootstrap_emits_only_bounded_nonsecret_materialization_markers() -> None:
@@ -244,6 +227,10 @@ def test_cloud_bootstrap_starts_guest_service_without_multi_user_cycle() -> None
     assert "After=local-fs.target" in unit
     assert "After=multi-user.target" not in unit
     assert "WantedBy=multi-user.target" in unit
+    assert (
+        "ExecStart=/usr/bin/python3 "
+        "/usr/local/lib/tobkiri-packvm/packvm_guest_runner.py --serve-vsock"
+    ) in unit
     assert "systemctl enable --now tobkiri-packvm-guest.service" not in template
     assert "systemctl enable tobkiri-packvm-guest.service" in template
     assert "systemctl start tobkiri-packvm-guest.service" in template
